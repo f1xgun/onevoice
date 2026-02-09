@@ -16,8 +16,9 @@ import (
 
 // JWT token expiry durations
 const (
-	AccessTokenExpiry  = 15 * time.Minute
-	RefreshTokenExpiry = 7 * 24 * time.Hour
+	AccessTokenExpiry     = 15 * time.Minute
+	RefreshTokenExpiry    = 7 * 24 * time.Hour
+	refreshTokenKeyPrefix = "onevoice:auth:refresh_token:"
 )
 
 // AccessTokenClaims represents JWT claims for access tokens
@@ -43,6 +44,9 @@ type userService struct {
 
 // NewUserService creates a new user service instance
 func NewUserService(repo domain.UserRepository, redis *redis.Client, jwtSecret string) *userService {
+	if len(jwtSecret) < 32 {
+		panic("jwt secret must be at least 32 bytes")
+	}
 	return &userService{
 		repo:      repo,
 		redis:     redis,
@@ -58,8 +62,8 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 	}
 
 	// Validate password
-	if len(password) == 0 {
-		return nil, fmt.Errorf("password cannot be empty")
+	if err := validatePassword(password); err != nil {
+		return nil, err
 	}
 
 	// Hash password
@@ -93,16 +97,20 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 func (s *userService) Login(ctx context.Context, email, password string) (*domain.User, string, string, error) {
 	// Get user by email
 	user, err := s.repo.GetByEmail(ctx, email)
-	if err != nil {
-		if errors.Is(err, domain.ErrUserNotFound) {
-			return nil, "", "", domain.ErrInvalidCredentials
-		}
+	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
 		return nil, "", "", fmt.Errorf("get user: %w", err)
 	}
 
-	// Verify password
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
-	if err != nil {
+	// Always perform bcrypt comparison to prevent timing attacks
+	// Use dummy hash if user doesn't exist to keep timing consistent
+	dummyHash := "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+	hashToCompare := dummyHash
+	if user != nil {
+		hashToCompare = user.PasswordHash
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(hashToCompare), []byte(password))
+	if err != nil || user == nil {
 		return nil, "", "", domain.ErrInvalidCredentials
 	}
 
@@ -119,7 +127,7 @@ func (s *userService) Login(ctx context.Context, email, password string) (*domai
 	}
 
 	// Store refresh token in Redis
-	key := "refresh_token:" + tokenID.String()
+	key := refreshTokenKeyPrefix + tokenID.String()
 	err = s.redis.Set(ctx, key, user.ID.String(), RefreshTokenExpiry).Err()
 	if err != nil {
 		return nil, "", "", fmt.Errorf("store refresh token: %w", err)
@@ -148,7 +156,7 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (st
 	}
 
 	// Verify token exists in Redis
-	key := "refresh_token:" + claims.TokenID.String()
+	key := refreshTokenKeyPrefix + claims.TokenID.String()
 	userID, err := s.redis.Get(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -199,10 +207,10 @@ func (s *userService) Logout(ctx context.Context, refreshToken string) error {
 		return domain.ErrInvalidToken
 	}
 
-	// Delete from Redis (ignore if key doesn't exist)
-	key := "refresh_token:" + claims.TokenID.String()
+	// Delete from Redis
+	key := refreshTokenKeyPrefix + claims.TokenID.String()
 	err = s.redis.Del(ctx, key).Err()
-	if err != nil && !errors.Is(err, redis.Nil) {
+	if err != nil {
 		return fmt.Errorf("delete refresh token: %w", err)
 	}
 
@@ -243,6 +251,18 @@ func validateEmail(email string) error {
 		return fmt.Errorf("invalid email format")
 	}
 
+	return nil
+}
+
+// validatePassword checks if password meets security requirements
+func validatePassword(password string) error {
+	if len(password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
+	}
+	if len(password) > 72 {
+		// bcrypt silently truncates passwords longer than 72 bytes
+		return fmt.Errorf("password must be at most 72 characters")
+	}
 	return nil
 }
 
