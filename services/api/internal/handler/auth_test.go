@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -420,6 +421,91 @@ func TestLogout(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			handler.Logout(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			tt.checkResponse(t, w.Body.String())
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+func TestMe(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+
+	tests := []struct {
+		name          string
+		setupContext  func(*http.Request) *http.Request
+		mockSetup     func(*MockUserService)
+		wantStatus    int
+		checkResponse func(t *testing.T, body string)
+	}{
+		{
+			name: "successful me request",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			mockSetup: func(m *MockUserService) {
+				m.On("GetByID", mock.Anything, testUserID).
+					Return(&domain.User{
+						ID:        testUserID,
+						Email:     "user@example.com",
+						Role:      domain.RoleOwner,
+						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+						UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					}, nil)
+			},
+			wantStatus: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				var user domain.User
+				err := json.Unmarshal([]byte(body), &user)
+				require.NoError(t, err)
+				assert.Equal(t, "user@example.com", user.Email)
+				assert.Equal(t, domain.RoleOwner, user.Role)
+				assert.Empty(t, user.PasswordHash, "password hash should not be returned")
+			},
+		},
+		{
+			name: "user not found",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			mockSetup: func(m *MockUserService) {
+				m.On("GetByID", mock.Anything, testUserID).
+					Return(nil, domain.ErrUserNotFound)
+			},
+			wantStatus: http.StatusNotFound,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"user not found"`)
+			},
+		},
+		{
+			name: "missing user ID in context",
+			setupContext: func(r *http.Request) *http.Request {
+				return r
+			},
+			mockSetup: func(m *MockUserService) {},
+			wantStatus: http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"unauthorized"`)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockUserService)
+			tt.mockSetup(mockService)
+
+			handler := NewAuthHandler(mockService)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+			req = tt.setupContext(req)
+			w := httptest.NewRecorder()
+
+			handler.Me(w, req)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
 			tt.checkResponse(t, w.Body.String())
