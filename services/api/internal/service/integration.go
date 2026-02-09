@@ -9,9 +9,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// IntegrationService defines the interface for platform integration management
+type IntegrationService interface {
+	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
+	GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error)
+	Delete(ctx context.Context, integrationID uuid.UUID) error
+}
+
 type integrationService struct {
 	repo domain.IntegrationRepository
 }
+
+// Compile-time check that integrationService implements IntegrationService
+var _ IntegrationService = (*integrationService)(nil)
 
 // NewIntegrationService creates a new integration service instance
 func NewIntegrationService(repo domain.IntegrationRepository) *integrationService {
