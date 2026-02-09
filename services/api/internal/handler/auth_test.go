@@ -1,0 +1,171 @@
+package handler
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+)
+
+// MockUserService is a mock implementation of the user service interface
+type MockUserService struct {
+	mock.Mock
+}
+
+func (m *MockUserService) Register(ctx context.Context, email, password string) (*domain.User, error) {
+	args := m.Called(ctx, email, password)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserService) Login(ctx context.Context, email, password string) (*domain.User, string, string, error) {
+	args := m.Called(ctx, email, password)
+	if args.Get(0) == nil {
+		return nil, "", "", args.Error(3)
+	}
+	return args.Get(0).(*domain.User), args.String(1), args.String(2), args.Error(3)
+}
+
+func (m *MockUserService) RefreshToken(ctx context.Context, refreshToken string) (string, error) {
+	args := m.Called(ctx, refreshToken)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockUserService) Logout(ctx context.Context, refreshToken string) error {
+	args := m.Called(ctx, refreshToken)
+	return args.Error(0)
+}
+
+func (m *MockUserService) GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func TestRegister(t *testing.T) {
+	tests := []struct {
+		name           string
+		requestBody    string
+		mockSetup      func(*MockUserService)
+		wantStatus     int
+		checkResponse  func(t *testing.T, body string)
+	}{
+		{
+			name:        "successful registration",
+			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("Register", mock.Anything, "user@example.com", "password123").
+					Return(&domain.User{
+						ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+						Email:     "user@example.com",
+						Role:      domain.RoleOwner,
+						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+						UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					}, nil)
+			},
+			wantStatus: http.StatusCreated,
+			checkResponse: func(t *testing.T, body string) {
+				var user domain.User
+				err := json.Unmarshal([]byte(body), &user)
+				require.NoError(t, err)
+				assert.Equal(t, "user@example.com", user.Email)
+				assert.Equal(t, domain.RoleOwner, user.Role)
+				assert.Empty(t, user.PasswordHash, "password hash should not be returned")
+			},
+		},
+		{
+			name:        "missing email",
+			requestBody: `{"password":"password123"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Email"`)
+			},
+		},
+		{
+			name:        "missing password",
+			requestBody: `{"email":"user@example.com"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Password"`)
+			},
+		},
+		{
+			name:        "invalid email format",
+			requestBody: `{"email":"not-an-email","password":"password123"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Email"`)
+			},
+		},
+		{
+			name:        "password too short",
+			requestBody: `{"email":"user@example.com","password":"short"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Password"`)
+			},
+		},
+		{
+			name:        "user already exists",
+			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("Register", mock.Anything, "user@example.com", "password123").
+					Return(nil, domain.ErrUserExists)
+			},
+			wantStatus: http.StatusConflict,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error"`)
+			},
+		},
+		{
+			name:        "invalid json",
+			requestBody: `{invalid json}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error"`)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockUserService)
+			tt.mockSetup(mockService)
+
+			handler := NewAuthHandler(mockService)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(tt.requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler.Register(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			tt.checkResponse(t, w.Body.String())
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}
