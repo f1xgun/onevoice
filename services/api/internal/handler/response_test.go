@@ -5,7 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWriteJSON(t *testing.T) {
@@ -97,6 +99,73 @@ func TestWriteJSONError(t *testing.T) {
 			assert.Equal(t, tt.wantStatus, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 			assert.JSONEq(t, tt.wantBody, w.Body.String())
+		})
+	}
+}
+
+func TestWriteValidationError(t *testing.T) {
+	type testStruct struct {
+		Email    string `validate:"required,email"`
+		Password string `validate:"required,min=8"`
+	}
+
+	tests := []struct {
+		name          string
+		input         testStruct
+		wantStatus    int
+		checkResponse func(t *testing.T, body string)
+	}{
+		{
+			name:       "missing required fields",
+			input:      testStruct{},
+			wantStatus: http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"fields"`)
+				assert.Contains(t, body, `"Email"`)
+				assert.Contains(t, body, `"Password"`)
+			},
+		},
+		{
+			name: "invalid email format",
+			input: testStruct{
+				Email:    "not-an-email",
+				Password: "password123",
+			},
+			wantStatus: http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Email"`)
+			},
+		},
+		{
+			name: "password too short",
+			input: testStruct{
+				Email:    "user@example.com",
+				Password: "short",
+			},
+			wantStatus: http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Password"`)
+			},
+		},
+	}
+
+	validate := validator.New()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+
+			err := validate.Struct(tt.input)
+			require.Error(t, err)
+
+			writeValidationError(w, err)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+			tt.checkResponse(t, w.Body.String())
 		})
 	}
 }
