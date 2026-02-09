@@ -41,6 +41,19 @@ type RegisterRequest struct {
 	Password string `json:"password" validate:"required,min=8"`
 }
 
+// LoginRequest represents the login request payload
+type LoginRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
+// LoginResponse represents the login response payload
+type LoginResponse struct {
+	User         *domain.User `json:"user"`
+	AccessToken  string       `json:"accessToken"`
+	RefreshToken string       `json:"refreshToken"`
+}
+
 // Register handles user registration
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
@@ -71,4 +84,46 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Return user (password hash already sanitized by service)
 	writeJSON(w, http.StatusCreated, user)
+}
+
+// Login handles user login
+func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var req LoginRequest
+
+	// Parse request body
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate request
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, err)
+		return
+	}
+
+	// Call service
+	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidCredentials) {
+			// Log failed login attempt for security monitoring
+			slog.Warn("login failed",
+				slog.String("email", req.Email),
+				slog.String("remote_addr", r.RemoteAddr),
+				slog.String("user_agent", r.UserAgent()),
+			)
+			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
+			return
+		}
+		slog.Error("failed to login user", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Return user and tokens
+	writeJSON(w, http.StatusOK, LoginResponse{
+		User:         user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	})
 }
