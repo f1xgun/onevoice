@@ -35,7 +35,9 @@ func setupMongoTestDB(t *testing.T) *mongo.Database {
 	t.Cleanup(func() {
 		// Clean up test data
 		db := client.Database("test_onevoice")
-		_ = db.Drop(ctx)
+		if err := db.Drop(ctx); err != nil {
+			t.Logf("Warning: failed to drop test database: %v", err)
+		}
 		require.NoError(t, client.Disconnect(ctx))
 	})
 
