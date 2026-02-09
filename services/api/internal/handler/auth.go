@@ -64,6 +64,11 @@ type RefreshTokenResponse struct {
 	AccessToken string `json:"accessToken"`
 }
 
+// LogoutRequest represents the logout request payload
+type LogoutRequest struct {
+	RefreshToken string `json:"refreshToken" validate:"required"`
+}
+
 // Register handles user registration
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
@@ -170,4 +175,36 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, RefreshTokenResponse{
 		AccessToken: accessToken,
 	})
+}
+
+// Logout handles user logout by invalidating refresh token
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	var req LogoutRequest
+
+	// Parse request body
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate request
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, err)
+		return
+	}
+
+	// Call service
+	err := h.userService.Logout(r.Context(), req.RefreshToken)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidToken) {
+			writeJSONError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		slog.Error("failed to logout", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Return 204 No Content
+	writeJSON(w, http.StatusNoContent, nil)
 }

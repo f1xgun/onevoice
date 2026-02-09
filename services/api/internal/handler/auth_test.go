@@ -354,3 +354,77 @@ func TestRefreshToken(t *testing.T) {
 		})
 	}
 }
+
+func TestLogout(t *testing.T) {
+	tests := []struct {
+		name          string
+		requestBody   string
+		mockSetup     func(*MockUserService)
+		wantStatus    int
+		checkResponse func(t *testing.T, body string)
+	}{
+		{
+			name:        "successful logout",
+			requestBody: `{"refreshToken":"valid.refresh.token"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("Logout", mock.Anything, "valid.refresh.token").
+					Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Empty(t, body)
+			},
+		},
+		{
+			name:        "invalid refresh token",
+			requestBody: `{"refreshToken":"invalid.token"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("Logout", mock.Anything, "invalid.token").
+					Return(domain.ErrInvalidToken)
+			},
+			wantStatus: http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"invalid token"`)
+			},
+		},
+		{
+			name:        "missing refresh token",
+			requestBody: `{}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"RefreshToken"`)
+			},
+		},
+		{
+			name:        "invalid json",
+			requestBody: `{invalid}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error"`)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockUserService)
+			tt.mockSetup(mockService)
+
+			handler := NewAuthHandler(mockService)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", bytes.NewBufferString(tt.requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler.Logout(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			tt.checkResponse(t, w.Body.String())
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}
