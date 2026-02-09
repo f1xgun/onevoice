@@ -73,7 +73,7 @@ func setupRedis(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
 func TestUserService_Register(t *testing.T) {
 	ctx := context.Background()
 	redisClient, _ := setupRedis(t)
-	jwtSecret := "test-secret-key-32-bytes-long!"
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
 
 	t.Run("success", func(t *testing.T) {
 		var createdUser *domain.User
@@ -179,7 +179,7 @@ func TestUserService_Register(t *testing.T) {
 func TestUserService_Login(t *testing.T) {
 	ctx := context.Background()
 	redisClient, mr := setupRedis(t)
-	jwtSecret := "test-secret-key-32-bytes-long!"
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
 
 	t.Run("success", func(t *testing.T) {
 		// Prepare user with hashed password
@@ -241,12 +241,12 @@ func TestUserService_Login(t *testing.T) {
 		assert.NotEqual(t, uuid.Nil, refreshClaims.TokenID)
 
 		// Verify refresh token stored in Redis
-		val, err := redisClient.Get(ctx, "refresh_token:"+refreshClaims.TokenID.String()).Result()
+		val, err := redisClient.Get(ctx, "onevoice:auth:refresh_token:"+refreshClaims.TokenID.String()).Result()
 		require.NoError(t, err)
 		assert.Equal(t, existingUser.ID.String(), val)
 
 		// Verify TTL is approximately 7 days
-		ttl, err := redisClient.TTL(ctx, "refresh_token:"+refreshClaims.TokenID.String()).Result()
+		ttl, err := redisClient.TTL(ctx, "onevoice:auth:refresh_token:"+refreshClaims.TokenID.String()).Result()
 		require.NoError(t, err)
 		assert.Greater(t, ttl.Seconds(), float64(604700)) // ~7 days - 100s margin
 		assert.Less(t, ttl.Seconds(), float64(604900))    // ~7 days + 100s margin
@@ -346,7 +346,7 @@ func TestUserService_Login(t *testing.T) {
 func TestUserService_RefreshToken(t *testing.T) {
 	ctx := context.Background()
 	redisClient, mr := setupRedis(t)
-	jwtSecret := "test-secret-key-32-bytes-long!"
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
 
 	t.Run("success", func(t *testing.T) {
 		userID := uuid.New()
@@ -383,7 +383,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 		require.NoError(t, err)
 
 		// Store in Redis
-		err = redisClient.Set(ctx, "refresh_token:"+tokenID.String(), userID.String(), 7*24*time.Hour).Err()
+		err = redisClient.Set(ctx, "onevoice:auth:refresh_token:"+tokenID.String(), userID.String(), 7*24*time.Hour).Err()
 		require.NoError(t, err)
 
 		// Call RefreshToken
@@ -495,7 +495,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 		refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret))
 		require.NoError(t, err)
 
-		err = redisClient.Set(ctx, "refresh_token:"+tokenID.String(), userID.String(), 7*24*time.Hour).Err()
+		err = redisClient.Set(ctx, "onevoice:auth:refresh_token:"+tokenID.String(), userID.String(), 7*24*time.Hour).Err()
 		require.NoError(t, err)
 
 		accessToken, err := svc.RefreshToken(ctx, refreshTokenString)
@@ -538,7 +538,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 
 func TestUserService_Logout(t *testing.T) {
 	ctx := context.Background()
-	jwtSecret := "test-secret-key-32-bytes-long!"
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
 
 	t.Run("success", func(t *testing.T) {
 		redisClient, _ := setupRedis(t)
@@ -549,7 +549,7 @@ func TestUserService_Logout(t *testing.T) {
 		userID := uuid.New()
 
 		// Store refresh token in Redis
-		err := redisClient.Set(ctx, "refresh_token:"+tokenID.String(), userID.String(), 7*24*time.Hour).Err()
+		err := redisClient.Set(ctx, "onevoice:auth:refresh_token:"+tokenID.String(), userID.String(), 7*24*time.Hour).Err()
 		require.NoError(t, err)
 
 		// Generate refresh token
@@ -572,7 +572,7 @@ func TestUserService_Logout(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify token removed from Redis
-		_, err = redisClient.Get(ctx, "refresh_token:"+tokenID.String()).Result()
+		_, err = redisClient.Get(ctx, "onevoice:auth:refresh_token:"+tokenID.String()).Result()
 		assert.ErrorIs(t, err, redis.Nil)
 	})
 
@@ -674,7 +674,7 @@ func TestUserService_Logout(t *testing.T) {
 func TestUserService_GetByID(t *testing.T) {
 	ctx := context.Background()
 	redisClient, _ := setupRedis(t)
-	jwtSecret := "test-secret-key-32-bytes-long!"
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
 
 	t.Run("success", func(t *testing.T) {
 		userID := uuid.New()
@@ -789,7 +789,7 @@ func TestValidateEmail(t *testing.T) {
 }
 
 func TestGenerateTokens(t *testing.T) {
-	jwtSecret := "test-secret-key-32-bytes-long!"
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
 	user := &domain.User{
 		ID:    uuid.New(),
 		Email: "test@example.com",
