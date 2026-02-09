@@ -9,9 +9,20 @@ import (
 	"github.com/google/uuid"
 )
 
+// BusinessService defines the interface for business profile management
+type BusinessService interface {
+	Create(ctx context.Context, business *domain.Business) (*domain.Business, error)
+	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
+	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
+}
+
 type businessService struct {
 	repo domain.BusinessRepository
 }
+
+// Compile-time check that businessService implements BusinessService
+var _ BusinessService = (*businessService)(nil)
 
 // NewBusinessService creates a new business service instance
 func NewBusinessService(repo domain.BusinessRepository) *businessService {
