@@ -1,0 +1,290 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
+)
+
+// JWT token expiry durations
+const (
+	AccessTokenExpiry  = 15 * time.Minute
+	RefreshTokenExpiry = 7 * 24 * time.Hour
+)
+
+// AccessTokenClaims represents JWT claims for access tokens
+type AccessTokenClaims struct {
+	UserID uuid.UUID `json:"userId"`
+	Email  string    `json:"email"`
+	Role   string    `json:"role"`
+	jwt.RegisteredClaims
+}
+
+// RefreshTokenClaims represents JWT claims for refresh tokens
+type RefreshTokenClaims struct {
+	UserID  uuid.UUID `json:"userId"`
+	TokenID uuid.UUID `json:"tokenId"`
+	jwt.RegisteredClaims
+}
+
+type userService struct {
+	repo      domain.UserRepository
+	redis     *redis.Client
+	jwtSecret []byte
+}
+
+// NewUserService creates a new user service instance
+func NewUserService(repo domain.UserRepository, redis *redis.Client, jwtSecret string) *userService {
+	return &userService{
+		repo:      repo,
+		redis:     redis,
+		jwtSecret: []byte(jwtSecret),
+	}
+}
+
+// Register creates a new user with encrypted password
+func (s *userService) Register(ctx context.Context, email, password string) (*domain.User, error) {
+	// Validate email
+	if err := validateEmail(email); err != nil {
+		return nil, err
+	}
+
+	// Validate password
+	if len(password) == 0 {
+		return nil, fmt.Errorf("password cannot be empty")
+	}
+
+	// Hash password
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+
+	// Create user
+	user := &domain.User{
+		ID:           uuid.New(),
+		Email:        email,
+		PasswordHash: string(passwordHash),
+		Role:         domain.RoleOwner, // Default role for new registrations
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	err = s.repo.Create(ctx, user)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserExists) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("create user: %w", err)
+	}
+
+	return sanitizeUser(user), nil
+}
+
+// Login authenticates user and issues access and refresh tokens
+func (s *userService) Login(ctx context.Context, email, password string) (*domain.User, string, string, error) {
+	// Get user by email
+	user, err := s.repo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, "", "", domain.ErrInvalidCredentials
+		}
+		return nil, "", "", fmt.Errorf("get user: %w", err)
+	}
+
+	// Verify password
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+	if err != nil {
+		return nil, "", "", domain.ErrInvalidCredentials
+	}
+
+	// Generate access token
+	accessToken, err := generateAccessToken(user, s.jwtSecret)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("generate access token: %w", err)
+	}
+
+	// Generate refresh token
+	refreshToken, tokenID, err := generateRefreshToken(user.ID, s.jwtSecret)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("generate refresh token: %w", err)
+	}
+
+	// Store refresh token in Redis
+	key := "refresh_token:" + tokenID.String()
+	err = s.redis.Set(ctx, key, user.ID.String(), RefreshTokenExpiry).Err()
+	if err != nil {
+		return nil, "", "", fmt.Errorf("store refresh token: %w", err)
+	}
+
+	return sanitizeUser(user), accessToken, refreshToken, nil
+}
+
+// RefreshToken issues a new access token from a valid refresh token
+func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (string, error) {
+	// Parse and validate refresh token
+	token, err := jwt.ParseWithClaims(refreshToken, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return s.jwtSecret, nil
+	})
+
+	if err != nil {
+		return "", domain.ErrInvalidToken
+	}
+
+	claims, ok := token.Claims.(*RefreshTokenClaims)
+	if !ok || !token.Valid {
+		return "", domain.ErrInvalidToken
+	}
+
+	// Verify token exists in Redis
+	key := "refresh_token:" + claims.TokenID.String()
+	userID, err := s.redis.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return "", domain.ErrInvalidToken
+		}
+		return "", fmt.Errorf("validate refresh token: %w", err)
+	}
+
+	// Verify user ID matches
+	if userID != claims.UserID.String() {
+		return "", domain.ErrInvalidToken
+	}
+
+	// Get user from database
+	user, err := s.repo.GetByID(ctx, claims.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return "", err
+		}
+		return "", fmt.Errorf("get user: %w", err)
+	}
+
+	// Generate new access token
+	accessToken, err := generateAccessToken(user, s.jwtSecret)
+	if err != nil {
+		return "", fmt.Errorf("generate access token: %w", err)
+	}
+
+	return accessToken, nil
+}
+
+// Logout invalidates a refresh token
+func (s *userService) Logout(ctx context.Context, refreshToken string) error {
+	// Parse refresh token
+	token, err := jwt.ParseWithClaims(refreshToken, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return s.jwtSecret, nil
+	})
+
+	if err != nil {
+		return domain.ErrInvalidToken
+	}
+
+	claims, ok := token.Claims.(*RefreshTokenClaims)
+	if !ok || !token.Valid {
+		return domain.ErrInvalidToken
+	}
+
+	// Delete from Redis (ignore if key doesn't exist)
+	key := "refresh_token:" + claims.TokenID.String()
+	err = s.redis.Del(ctx, key).Err()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return fmt.Errorf("delete refresh token: %w", err)
+	}
+
+	return nil
+}
+
+// GetByID retrieves a user by ID
+func (s *userService) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	user, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+
+	return sanitizeUser(user), nil
+}
+
+// Helper functions
+
+// sanitizeUser removes sensitive data from user before returning to caller
+func sanitizeUser(user *domain.User) *domain.User {
+	sanitized := *user
+	sanitized.PasswordHash = ""
+	return &sanitized
+}
+
+// validateEmail performs basic email validation
+func validateEmail(email string) error {
+	if len(email) < 3 || !strings.Contains(email, "@") {
+		return fmt.Errorf("invalid email format")
+	}
+
+	// Check that @ is not at the beginning or end
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 || len(parts[0]) == 0 || len(parts[1]) == 0 {
+		return fmt.Errorf("invalid email format")
+	}
+
+	return nil
+}
+
+// generateAccessToken creates a new JWT access token
+func generateAccessToken(user *domain.User, secret []byte) (string, error) {
+	claims := &AccessTokenClaims{
+		UserID: user.ID,
+		Email:  user.Email,
+		Role:   string(user.Role),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(secret)
+	if err != nil {
+		return "", fmt.Errorf("sign token: %w", err)
+	}
+
+	return tokenString, nil
+}
+
+// generateRefreshToken creates a new JWT refresh token
+func generateRefreshToken(userID uuid.UUID, secret []byte) (string, uuid.UUID, error) {
+	tokenID := uuid.New()
+
+	claims := &RefreshTokenClaims{
+		UserID:  userID,
+		TokenID: tokenID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(RefreshTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(secret)
+	if err != nil {
+		return "", uuid.Nil, fmt.Errorf("sign token: %w", err)
+	}
+
+	return tokenString, tokenID, nil
+}
