@@ -1,0 +1,42 @@
+# Worktrees
+.worktrees/
+
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+vendor/
+
+# Node
+web/node_modules/
+web/.next/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+postgres_data/
+mongo_data/
+redis_data/
+nats_data/
+minio_data/
+
+# Temporary
+tmp/
+*.log
