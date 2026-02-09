@@ -22,6 +22,16 @@ func NewBusinessService(repo domain.BusinessRepository) *businessService {
 
 // Create creates a new business for a user
 func (s *businessService) Create(ctx context.Context, business *domain.Business) (*domain.Business, error) {
+	// Check context
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Check nil pointer
+	if business == nil {
+		return nil, fmt.Errorf("business cannot be nil")
+	}
+
 	// Validate required fields
 	if business.Name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -45,6 +55,16 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business)
 
 // GetByUserID retrieves a business by user ID
 func (s *businessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
+	// Check context
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Validate user ID
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("user id is required")
+	}
+
 	business, err := s.repo.GetByUserID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
@@ -58,6 +78,16 @@ func (s *businessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*d
 
 // GetByID retrieves a business by ID
 func (s *businessService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	// Check context
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Validate business ID
+	if id == uuid.Nil {
+		return nil, fmt.Errorf("business id is required")
+	}
+
 	business, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
@@ -71,6 +101,16 @@ func (s *businessService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Bu
 
 // Update updates a business profile
 func (s *businessService) Update(ctx context.Context, business *domain.Business) (*domain.Business, error) {
+	// Check context
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Check nil pointer
+	if business == nil {
+		return nil, fmt.Errorf("business cannot be nil")
+	}
+
 	// Validate required fields
 	if business.Name == "" {
 		return nil, fmt.Errorf("name is required")
