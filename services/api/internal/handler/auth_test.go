@@ -169,3 +169,109 @@ func TestRegister(t *testing.T) {
 		})
 	}
 }
+
+func TestLogin(t *testing.T) {
+	tests := []struct {
+		name          string
+		requestBody   string
+		mockSetup     func(*MockUserService)
+		wantStatus    int
+		checkResponse func(t *testing.T, body string)
+	}{
+		{
+			name:        "successful login",
+			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("Login", mock.Anything, "user@example.com", "password123").
+					Return(
+						&domain.User{
+							ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+							Email:     "user@example.com",
+							Role:      domain.RoleOwner,
+							CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+							UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+						},
+						"access.token.here",
+						"refresh.token.here",
+						nil,
+					)
+			},
+			wantStatus: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				var response map[string]interface{}
+				err := json.Unmarshal([]byte(body), &response)
+				require.NoError(t, err)
+
+				assert.Contains(t, response, "user")
+				assert.Contains(t, response, "accessToken")
+				assert.Contains(t, response, "refreshToken")
+				assert.Equal(t, "access.token.here", response["accessToken"])
+				assert.Equal(t, "refresh.token.here", response["refreshToken"])
+
+				userData := response["user"].(map[string]interface{})
+				assert.Equal(t, "user@example.com", userData["email"])
+			},
+		},
+		{
+			name:        "invalid credentials",
+			requestBody: `{"email":"user@example.com","password":"wrongpassword"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("Login", mock.Anything, "user@example.com", "wrongpassword").
+					Return(nil, "", "", domain.ErrInvalidCredentials)
+			},
+			wantStatus: http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"invalid credentials"`)
+			},
+		},
+		{
+			name:        "missing email",
+			requestBody: `{"password":"password123"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Email"`)
+			},
+		},
+		{
+			name:        "missing password",
+			requestBody: `{"email":"user@example.com"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Password"`)
+			},
+		},
+		{
+			name:        "invalid json",
+			requestBody: `{invalid}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error"`)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockUserService)
+			tt.mockSetup(mockService)
+
+			handler := NewAuthHandler(mockService)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(tt.requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler.Login(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			tt.checkResponse(t, w.Body.String())
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}
