@@ -1,0 +1,11 @@
+go 1.23
+
+use (
+	./pkg
+	./services/api
+	./services/orchestrator
+	./services/agent-google
+	./services/agent-vk
+	./services/agent-telegram
+	./services/webhook
+)
