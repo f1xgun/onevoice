@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -13,19 +14,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type IntegrationRepository struct {
+type integrationRepository struct {
 	pool *pgxpool.Pool
 	sb   squirrel.StatementBuilderType
 }
 
-func NewIntegrationRepository(pool *pgxpool.Pool) *IntegrationRepository {
-	return &IntegrationRepository{
+func NewIntegrationRepository(pool *pgxpool.Pool) domain.IntegrationRepository {
+	return &integrationRepository{
 		pool: pool,
 		sb:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
 }
 
-func (r *IntegrationRepository) Create(ctx context.Context, integration *domain.Integration) error {
+func (r *integrationRepository) Create(ctx context.Context, integration *domain.Integration) error {
 	if integration.ID == uuid.Nil {
 		integration.ID = uuid.New()
 	}
@@ -39,25 +40,28 @@ func (r *IntegrationRepository) Create(ctx context.Context, integration *domain.
 		Values(integration.ID, integration.BusinessID, integration.Platform, integration.Status, integration.EncryptedAccessToken, integration.EncryptedRefreshToken, integration.ExternalID, integration.Metadata, integration.TokenExpiresAt, integration.CreatedAt, integration.UpdatedAt).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build insert query: %w", err)
+		return fmt.Errorf("build insert: %w", err)
 	}
 
 	_, err = r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("failed to insert integration: %w", err)
+		if strings.Contains(err.Error(), "duplicate key") {
+			return domain.ErrIntegrationExists
+		}
+		return fmt.Errorf("insert integration: %w", err)
 	}
 
 	return nil
 }
 
-func (r *IntegrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
+func (r *integrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
 	sql, args, err := r.sb.
 		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "external_id", "metadata", "token_expires_at", "created_at", "updated_at").
 		From("integrations").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build select query: %w", err)
+		return nil, fmt.Errorf("build select: %w", err)
 	}
 
 	var integration domain.Integration
@@ -78,13 +82,13 @@ func (r *IntegrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*dom
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrIntegrationNotFound
 		}
-		return nil, fmt.Errorf("failed to get integration by id: %w", err)
+		return nil, fmt.Errorf("query integration: %w", err)
 	}
 
 	return &integration, nil
 }
 
-func (r *IntegrationRepository) GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error) {
+func (r *integrationRepository) GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error) {
 	sql, args, err := r.sb.
 		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "external_id", "metadata", "token_expires_at", "created_at", "updated_at").
 		From("integrations").
@@ -94,7 +98,7 @@ func (r *IntegrationRepository) GetByBusinessAndPlatform(ctx context.Context, bu
 		}).
 		ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build select query: %w", err)
+		return nil, fmt.Errorf("build select: %w", err)
 	}
 
 	var integration domain.Integration
@@ -115,29 +119,29 @@ func (r *IntegrationRepository) GetByBusinessAndPlatform(ctx context.Context, bu
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrIntegrationNotFound
 		}
-		return nil, fmt.Errorf("failed to get integration by business and platform: %w", err)
+		return nil, fmt.Errorf("query integration: %w", err)
 	}
 
 	return &integration, nil
 }
 
-func (r *IntegrationRepository) ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error) {
+func (r *integrationRepository) ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error) {
 	sql, args, err := r.sb.
 		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "external_id", "metadata", "token_expires_at", "created_at", "updated_at").
 		From("integrations").
 		Where(squirrel.Eq{"business_id": businessID}).
 		ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build select query: %w", err)
+		return nil, fmt.Errorf("build select: %w", err)
 	}
 
 	rows, err := r.pool.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list integrations: %w", err)
+		return nil, fmt.Errorf("query integrations: %w", err)
 	}
 	defer rows.Close()
 
-	var integrations []domain.Integration
+	integrations := make([]domain.Integration, 0)
 	for rows.Next() {
 		var integration domain.Integration
 		err := rows.Scan(
@@ -154,19 +158,19 @@ func (r *IntegrationRepository) ListByBusinessID(ctx context.Context, businessID
 			&integration.UpdatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan integration: %w", err)
+			return nil, fmt.Errorf("scan integration: %w", err)
 		}
 		integrations = append(integrations, integration)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating rows: %w", err)
+		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 
 	return integrations, nil
 }
 
-func (r *IntegrationRepository) Update(ctx context.Context, integration *domain.Integration) error {
+func (r *integrationRepository) Update(ctx context.Context, integration *domain.Integration) error {
 	integration.UpdatedAt = time.Now()
 
 	sql, args, err := r.sb.
@@ -181,12 +185,12 @@ func (r *IntegrationRepository) Update(ctx context.Context, integration *domain.
 		Where(squirrel.Eq{"id": integration.ID}).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
+		return fmt.Errorf("build update: %w", err)
 	}
 
 	cmdTag, err := r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("failed to update integration: %w", err)
+		return fmt.Errorf("update integration: %w", err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {
@@ -196,18 +200,18 @@ func (r *IntegrationRepository) Update(ctx context.Context, integration *domain.
 	return nil
 }
 
-func (r *IntegrationRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (r *integrationRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	sql, args, err := r.sb.
 		Delete("integrations").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build delete query: %w", err)
+		return fmt.Errorf("build delete: %w", err)
 	}
 
 	cmdTag, err := r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("failed to delete integration: %w", err)
+		return fmt.Errorf("delete integration: %w", err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {

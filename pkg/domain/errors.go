@@ -12,11 +12,13 @@ var (
 // Business errors
 var (
 	ErrBusinessNotFound = errors.New("business not found")
+	ErrBusinessExists   = errors.New("business already exists")
 )
 
 // Integration errors
 var (
 	ErrIntegrationNotFound = errors.New("integration not found")
+	ErrIntegrationExists   = errors.New("integration already exists")
 	ErrTokenExpired        = errors.New("token expired")
 )
 
