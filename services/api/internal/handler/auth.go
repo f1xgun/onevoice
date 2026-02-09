@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 )
@@ -207,4 +208,29 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	// Return 204 No Content
 	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// Me returns the authenticated user's profile
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from context (set by auth middleware)
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// Get user from service
+	user, err := h.userService.GetByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			writeJSONError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		slog.Error("failed to get user", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Return user (password hash already sanitized by service)
+	writeJSON(w, http.StatusOK, user)
 }
