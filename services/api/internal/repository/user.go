@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -13,19 +14,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type UserRepository struct {
+type userRepository struct {
 	pool *pgxpool.Pool
 	sb   squirrel.StatementBuilderType
 }
 
-func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
-	return &UserRepository{
+func NewUserRepository(pool *pgxpool.Pool) domain.UserRepository {
+	return &userRepository{
 		pool: pool,
 		sb:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
 }
 
-func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
+func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()
 	}
@@ -39,25 +40,28 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 		Values(user.ID, user.Email, user.PasswordHash, user.Role, user.CreatedAt, user.UpdatedAt).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build insert query: %w", err)
+		return fmt.Errorf("build insert: %w", err)
 	}
 
 	_, err = r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("failed to insert user: %w", err)
+		if strings.Contains(err.Error(), "duplicate key") {
+			return domain.ErrUserExists
+		}
+		return fmt.Errorf("insert user: %w", err)
 	}
 
 	return nil
 }
 
-func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
 		Select("id", "email", "password_hash", "role", "created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build select query: %w", err)
+		return nil, fmt.Errorf("build select: %w", err)
 	}
 
 	var user domain.User
@@ -73,20 +77,20 @@ func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrUserNotFound
 		}
-		return nil, fmt.Errorf("failed to get user by id: %w", err)
+		return nil, fmt.Errorf("query user: %w", err)
 	}
 
 	return &user, nil
 }
 
-func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	sql, args, err := r.sb.
 		Select("id", "email", "password_hash", "role", "created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"email": email}).
 		ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build select query: %w", err)
+		return nil, fmt.Errorf("build select: %w", err)
 	}
 
 	var user domain.User
@@ -102,13 +106,13 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrUserNotFound
 		}
-		return nil, fmt.Errorf("failed to get user by email: %w", err)
+		return nil, fmt.Errorf("query user: %w", err)
 	}
 
 	return &user, nil
 }
 
-func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
+func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	user.UpdatedAt = time.Now()
 
 	sql, args, err := r.sb.
@@ -120,12 +124,12 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 		Where(squirrel.Eq{"id": user.ID}).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
+		return fmt.Errorf("build update: %w", err)
 	}
 
 	cmdTag, err := r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("failed to update user: %w", err)
+		return fmt.Errorf("update user: %w", err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {

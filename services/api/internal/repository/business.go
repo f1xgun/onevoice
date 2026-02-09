@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -13,19 +14,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type BusinessRepository struct {
+type businessRepository struct {
 	pool *pgxpool.Pool
 	sb   squirrel.StatementBuilderType
 }
 
-func NewBusinessRepository(pool *pgxpool.Pool) *BusinessRepository {
-	return &BusinessRepository{
+func NewBusinessRepository(pool *pgxpool.Pool) domain.BusinessRepository {
+	return &businessRepository{
 		pool: pool,
 		sb:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
 	}
 }
 
-func (r *BusinessRepository) Create(ctx context.Context, business *domain.Business) error {
+func (r *businessRepository) Create(ctx context.Context, business *domain.Business) error {
 	if business.ID == uuid.Nil {
 		business.ID = uuid.New()
 	}
@@ -39,25 +40,28 @@ func (r *BusinessRepository) Create(ctx context.Context, business *domain.Busine
 		Values(business.ID, business.UserID, business.Name, business.Category, business.Address, business.Phone, business.Description, business.LogoURL, business.Settings, business.CreatedAt, business.UpdatedAt).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build insert query: %w", err)
+		return fmt.Errorf("build insert: %w", err)
 	}
 
 	_, err = r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("failed to insert business: %w", err)
+		if strings.Contains(err.Error(), "duplicate key") {
+			return domain.ErrBusinessExists
+		}
+		return fmt.Errorf("insert business: %w", err)
 	}
 
 	return nil
 }
 
-func (r *BusinessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
 	sql, args, err := r.sb.
 		Select("id", "user_id", "name", "category", "address", "phone", "description", "logo_url", "settings", "created_at", "updated_at").
 		From("businesses").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build select query: %w", err)
+		return nil, fmt.Errorf("build select: %w", err)
 	}
 
 	var business domain.Business
@@ -78,20 +82,20 @@ func (r *BusinessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrBusinessNotFound
 		}
-		return nil, fmt.Errorf("failed to get business by id: %w", err)
+		return nil, fmt.Errorf("query business: %w", err)
 	}
 
 	return &business, nil
 }
 
-func (r *BusinessRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
+func (r *businessRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
 	sql, args, err := r.sb.
 		Select("id", "user_id", "name", "category", "address", "phone", "description", "logo_url", "settings", "created_at", "updated_at").
 		From("businesses").
 		Where(squirrel.Eq{"user_id": userID}).
 		ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build select query: %w", err)
+		return nil, fmt.Errorf("build select: %w", err)
 	}
 
 	var business domain.Business
@@ -112,13 +116,13 @@ func (r *BusinessRepository) GetByUserID(ctx context.Context, userID uuid.UUID) 
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrBusinessNotFound
 		}
-		return nil, fmt.Errorf("failed to get business by user id: %w", err)
+		return nil, fmt.Errorf("query business: %w", err)
 	}
 
 	return &business, nil
 }
 
-func (r *BusinessRepository) Update(ctx context.Context, business *domain.Business) error {
+func (r *businessRepository) Update(ctx context.Context, business *domain.Business) error {
 	business.UpdatedAt = time.Now()
 
 	sql, args, err := r.sb.
@@ -134,12 +138,12 @@ func (r *BusinessRepository) Update(ctx context.Context, business *domain.Busine
 		Where(squirrel.Eq{"id": business.ID}).
 		ToSql()
 	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
+		return fmt.Errorf("build update: %w", err)
 	}
 
 	cmdTag, err := r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("failed to update business: %w", err)
+		return fmt.Errorf("update business: %w", err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {
