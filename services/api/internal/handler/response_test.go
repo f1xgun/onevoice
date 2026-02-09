@@ -56,3 +56,47 @@ func TestWriteJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestWriteJSONError(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		message    string
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name:       "bad request",
+			status:     http.StatusBadRequest,
+			message:    "invalid input",
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"invalid input"}`,
+		},
+		{
+			name:       "unauthorized",
+			status:     http.StatusUnauthorized,
+			message:    "invalid credentials",
+			wantStatus: http.StatusUnauthorized,
+			wantBody:   `{"error":"invalid credentials"}`,
+		},
+		{
+			name:       "internal server error",
+			status:     http.StatusInternalServerError,
+			message:    "internal server error",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   `{"error":"internal server error"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+
+			writeJSONError(w, tt.status, tt.message)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+			assert.JSONEq(t, tt.wantBody, w.Body.String())
+		})
+	}
+}
