@@ -275,3 +275,82 @@ func TestLogin(t *testing.T) {
 		})
 	}
 }
+
+func TestRefreshToken(t *testing.T) {
+	tests := []struct {
+		name          string
+		requestBody   string
+		mockSetup     func(*MockUserService)
+		wantStatus    int
+		checkResponse func(t *testing.T, body string)
+	}{
+		{
+			name:        "successful token refresh",
+			requestBody: `{"refreshToken":"valid.refresh.token"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("RefreshToken", mock.Anything, "valid.refresh.token").
+					Return("new.access.token", nil)
+			},
+			wantStatus: http.StatusOK,
+			checkResponse: func(t *testing.T, body string) {
+				var response map[string]interface{}
+				err := json.Unmarshal([]byte(body), &response)
+				require.NoError(t, err)
+
+				assert.Contains(t, response, "accessToken")
+				assert.Equal(t, "new.access.token", response["accessToken"])
+			},
+		},
+		{
+			name:        "invalid refresh token",
+			requestBody: `{"refreshToken":"invalid.token"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("RefreshToken", mock.Anything, "invalid.token").
+					Return("", domain.ErrInvalidToken)
+			},
+			wantStatus: http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"invalid token"`)
+			},
+		},
+		{
+			name:        "missing refresh token",
+			requestBody: `{}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"RefreshToken"`)
+			},
+		},
+		{
+			name:        "invalid json",
+			requestBody: `{invalid}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error"`)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockUserService)
+			tt.mockSetup(mockService)
+
+			handler := NewAuthHandler(mockService)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBufferString(tt.requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler.RefreshToken(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			tt.checkResponse(t, w.Body.String())
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}

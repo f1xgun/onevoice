@@ -54,6 +54,16 @@ type LoginResponse struct {
 	RefreshToken string       `json:"refreshToken"`
 }
 
+// RefreshTokenRequest represents the refresh token request payload
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refreshToken" validate:"required"`
+}
+
+// RefreshTokenResponse represents the refresh token response payload
+type RefreshTokenResponse struct {
+	AccessToken string `json:"accessToken"`
+}
+
 // Register handles user registration
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
@@ -125,5 +135,39 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		User:         user,
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
+	})
+}
+
+// RefreshToken handles token refresh
+func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	var req RefreshTokenRequest
+
+	// Parse request body
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate request
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, err)
+		return
+	}
+
+	// Call service
+	accessToken, err := h.userService.RefreshToken(r.Context(), req.RefreshToken)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidToken) {
+			writeJSONError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		slog.Error("failed to refresh token", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Return new access token
+	writeJSON(w, http.StatusOK, RefreshTokenResponse{
+		AccessToken: accessToken,
 	})
 }
