@@ -34,3 +34,8 @@ var (
 var (
 	ErrConversationNotFound = errors.New("conversation not found")
 )
+
+// Message errors
+var (
+	ErrMessageNotFound = errors.New("message not found")
+)

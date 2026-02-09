@@ -72,6 +72,8 @@ func (r *conversationRepository) ListByUserID(ctx context.Context, userID string
 	return conversations, nil
 }
 
+// Update modifies only mutable fields (user_id, title).
+// created_at is intentionally not updated to preserve creation timestamp.
 func (r *conversationRepository) Update(ctx context.Context, conv *domain.Conversation) error {
 	conv.UpdatedAt = time.Now()
 
