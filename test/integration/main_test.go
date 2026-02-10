@@ -99,9 +99,9 @@ func waitForAPI(url string, timeout time.Duration) error {
 func cleanupDatabase(t *testing.T) {
 	ctx := context.Background()
 
-	// Clean PostgreSQL
+	// Clean PostgreSQL (only tables that exist in migration)
 	if pgPool != nil {
-		_, err := pgPool.Exec(ctx, "TRUNCATE users, businesses, integrations, business_schedules, refresh_tokens CASCADE")
+		_, err := pgPool.Exec(ctx, "TRUNCATE users, businesses, integrations CASCADE")
 		if err != nil {
 			t.Logf("Warning: failed to clean postgres: %v", err)
 		}

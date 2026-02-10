@@ -23,7 +23,7 @@ const (
 
 // AccessTokenClaims represents JWT claims for access tokens
 type AccessTokenClaims struct {
-	UserID uuid.UUID `json:"userId"`
+	UserID uuid.UUID `json:"user_id"`
 	Email  string    `json:"email"`
 	Role   string    `json:"role"`
 	jwt.RegisteredClaims
@@ -31,8 +31,8 @@ type AccessTokenClaims struct {
 
 // RefreshTokenClaims represents JWT claims for refresh tokens
 type RefreshTokenClaims struct {
-	UserID  uuid.UUID `json:"userId"`
-	TokenID uuid.UUID `json:"tokenId"`
+	UserID  uuid.UUID `json:"user_id"`
+	TokenID uuid.UUID `json:"token_id"`
 	jwt.RegisteredClaims
 }
 

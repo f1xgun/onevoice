@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
@@ -94,24 +95,49 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Get existing business
+	// Get existing business (if exists)
 	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
+
+	if err != nil && !errors.Is(err, domain.ErrBusinessNotFound) {
 		slog.Error("failed to get business for update", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	// Update business fields from request
+	// Create new business if doesn't exist
+	if errors.Is(err, domain.ErrBusinessNotFound) {
+		newBusiness := &domain.Business{
+			ID:          uuid.New(),
+			UserID:      userID,
+			Name:        req.Name,
+			Category:    req.Category,
+			Address:     req.Address,
+			Phone:       req.Phone,
+			Description: req.Description,
+			Settings:    map[string]interface{}{}, // Initialize empty settings
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		}
+
+		createdBusiness, err := h.businessService.Create(r.Context(), newBusiness)
+		if err != nil {
+			slog.Error("failed to create business", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+
+		// Return created business
+		writeJSON(w, http.StatusOK, createdBusiness)
+		return
+	}
+
+	// Update existing business fields from request
 	business.Name = req.Name
 	business.Category = req.Category
 	business.Address = req.Address
 	business.Phone = req.Phone
 	business.Description = req.Description
+	business.UpdatedAt = time.Now()
 
 	// Update business
 	updatedBusiness, err := h.businessService.Update(r.Context(), business)
