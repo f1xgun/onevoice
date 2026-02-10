@@ -35,6 +35,7 @@ type UpdateBusinessRequest struct {
 	Address     string `json:"address"`
 	Phone       string `json:"phone"`
 	Description string `json:"description"`
+	LogoURL     string `json:"logoUrl"`
 }
 
 // NewBusinessHandler creates a new business handler instance
@@ -114,6 +115,7 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 			Address:     req.Address,
 			Phone:       req.Phone,
 			Description: req.Description,
+			LogoURL:     req.LogoURL,
 			Settings:    map[string]interface{}{}, // Initialize empty settings
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
@@ -137,6 +139,7 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 	business.Address = req.Address
 	business.Phone = req.Phone
 	business.Description = req.Description
+	business.LogoURL = req.LogoURL
 	business.UpdatedAt = time.Now()
 
 	// Update business
