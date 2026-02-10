@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -71,4 +72,45 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 
 	// Return conversation with 201 Created
 	writeJSON(w, http.StatusCreated, conversation)
+}
+
+// ListConversations handles GET /api/v1/conversations
+func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from context (set by auth middleware)
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// Parse query parameters
+	limit := 20  // Default limit
+	offset := 0  // Default offset
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+			// Enforce max limit of 100
+			if limit > 100 {
+				limit = 100
+			}
+		}
+	}
+
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	// Get conversations from repository
+	conversations, err := h.conversationRepo.ListByUserID(r.Context(), userID.String(), limit, offset)
+	if err != nil {
+		slog.Error("failed to list conversations", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Return conversations array (empty array if none)
+	writeJSON(w, http.StatusOK, conversations)
 }
