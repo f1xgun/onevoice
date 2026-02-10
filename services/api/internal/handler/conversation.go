@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -113,4 +115,38 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 
 	// Return conversations array (empty array if none)
 	writeJSON(w, http.StatusOK, conversations)
+}
+
+// GetConversation handles GET /api/v1/conversations/{id}
+func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from context (set by auth middleware)
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// Extract conversation ID from URL path
+	conversationID := chi.URLParam(r, "id")
+
+	// Get conversation from repository
+	conversation, err := h.conversationRepo.GetByID(r.Context(), conversationID)
+	if err != nil {
+		if errors.Is(err, domain.ErrConversationNotFound) {
+			writeJSONError(w, http.StatusNotFound, "conversation not found")
+			return
+		}
+		slog.Error("failed to get conversation", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Authorization check: verify conversation belongs to user
+	if conversation.UserID != userID.String() {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	// Return conversation
+	writeJSON(w, http.StatusOK, conversation)
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -425,6 +426,215 @@ func TestListConversations_RepositoryError(t *testing.T) {
 	// Execute
 	w := httptest.NewRecorder()
 	handler.ListConversations(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var response ErrorResponse
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, "internal server error", response.Error)
+}
+
+// TestGetConversation_Success tests successful conversation retrieval
+func TestGetConversation_Success(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+	conversationID := "507f1f77bcf86cd799439011"
+
+	conversation := &domain.Conversation{
+		ID:        conversationID,
+		UserID:    userID.String(),
+		Title:     "Test Conversation",
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(ctx context.Context, id string) (*domain.Conversation, error) {
+			assert.Equal(t, conversationID, id)
+			return conversation, nil
+		},
+	}
+
+	handler := NewConversationHandler(mockRepo)
+
+	// Create request
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+
+	// Add user ID to context
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+
+	// Add chi URL param
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", conversationID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+
+	req = req.WithContext(ctx)
+
+	// Execute
+	w := httptest.NewRecorder()
+	handler.GetConversation(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response domain.Conversation
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, conversationID, response.ID)
+	assert.Equal(t, userID.String(), response.UserID)
+	assert.Equal(t, "Test Conversation", response.Title)
+}
+
+// TestGetConversation_Unauthorized tests authorization check (different user)
+func TestGetConversation_Unauthorized(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+	otherUserID := uuid.New()
+	conversationID := "507f1f77bcf86cd799439011"
+
+	conversation := &domain.Conversation{
+		ID:        conversationID,
+		UserID:    otherUserID.String(), // Different user
+		Title:     "Test Conversation",
+		CreatedAt: time.Now().Add(-1 * time.Hour),
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(ctx context.Context, id string) (*domain.Conversation, error) {
+			return conversation, nil
+		},
+	}
+
+	handler := NewConversationHandler(mockRepo)
+
+	// Create request
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+
+	// Add user ID to context
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+
+	// Add chi URL param
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", conversationID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+
+	req = req.WithContext(ctx)
+
+	// Execute
+	w := httptest.NewRecorder()
+	handler.GetConversation(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusForbidden, w.Code)
+
+	var response ErrorResponse
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, "forbidden", response.Error)
+}
+
+// TestGetConversation_NotFound tests conversation not found
+func TestGetConversation_NotFound(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+	conversationID := "507f1f77bcf86cd799439011"
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(ctx context.Context, id string) (*domain.Conversation, error) {
+			return nil, domain.ErrConversationNotFound
+		},
+	}
+
+	handler := NewConversationHandler(mockRepo)
+
+	// Create request
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+
+	// Add user ID to context
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+
+	// Add chi URL param
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", conversationID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+
+	req = req.WithContext(ctx)
+
+	// Execute
+	w := httptest.NewRecorder()
+	handler.GetConversation(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var response ErrorResponse
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, "conversation not found", response.Error)
+}
+
+// TestGetConversation_MissingUserID tests get without user ID in context
+func TestGetConversation_MissingUserID(t *testing.T) {
+	// Setup
+	conversationID := "507f1f77bcf86cd799439011"
+	mockRepo := &MockConversationRepository{}
+	handler := NewConversationHandler(mockRepo)
+
+	// Create request without user ID in context
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+
+	// Add chi URL param only
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", conversationID)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	// Execute
+	w := httptest.NewRecorder()
+	handler.GetConversation(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	var response ErrorResponse
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, "unauthorized", response.Error)
+}
+
+// TestGetConversation_RepositoryError tests repository errors
+func TestGetConversation_RepositoryError(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+	conversationID := "507f1f77bcf86cd799439011"
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(ctx context.Context, id string) (*domain.Conversation, error) {
+			return nil, errors.New("database error")
+		},
+	}
+
+	handler := NewConversationHandler(mockRepo)
+
+	// Create request
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+
+	// Add user ID to context
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+
+	// Add chi URL param
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", conversationID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+
+	req = req.WithContext(ctx)
+
+	// Execute
+	w := httptest.NewRecorder()
+	handler.GetConversation(w, req)
 
 	// Assert
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
