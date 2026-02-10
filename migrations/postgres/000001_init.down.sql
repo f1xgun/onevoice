@@ -1,0 +1,12 @@
+DROP TRIGGER IF EXISTS tr_subscriptions_updated_at ON subscriptions;
+DROP TRIGGER IF EXISTS tr_integrations_updated_at ON integrations;
+DROP TRIGGER IF EXISTS tr_businesses_updated_at ON businesses;
+DROP TRIGGER IF EXISTS tr_users_updated_at ON users;
+DROP FUNCTION IF EXISTS update_updated_at();
+DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS subscriptions;
+DROP TABLE IF EXISTS integrations;
+DROP TABLE IF EXISTS business_schedules;
+DROP TABLE IF EXISTS businesses;
+DROP TABLE IF EXISTS users;

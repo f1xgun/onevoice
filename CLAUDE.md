@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+**⚠️ CRITICAL: This worktree follows mandatory development workflow defined in `WORKFLOW.md`**
+**Always check @WORKFLOW.md before starting any task!**
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
