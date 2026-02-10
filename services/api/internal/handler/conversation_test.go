@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
@@ -223,4 +224,213 @@ func TestNewConversationHandler_NilRepository(t *testing.T) {
 	assert.Panics(t, func() {
 		NewConversationHandler(nil)
 	})
+}
+
+// TestListConversations_Success tests successful conversation list retrieval
+func TestListConversations_Success(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+	conversations := []domain.Conversation{
+		{
+			ID:        "507f1f77bcf86cd799439011",
+			UserID:    userID.String(),
+			Title:     "Conversation 1",
+			CreatedAt: time.Now().Add(-2 * time.Hour),
+			UpdatedAt: time.Now().Add(-2 * time.Hour),
+		},
+		{
+			ID:        "507f1f77bcf86cd799439012",
+			UserID:    userID.String(),
+			Title:     "Conversation 2",
+			CreatedAt: time.Now().Add(-1 * time.Hour),
+			UpdatedAt: time.Now().Add(-1 * time.Hour),
+		},
+	}
+
+	mockRepo := &MockConversationRepository{
+		ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
+			assert.Equal(t, userID.String(), uid)
+			assert.Equal(t, 20, limit)  // Default limit
+			assert.Equal(t, 0, offset)  // Default offset
+			return conversations, nil
+		},
+	}
+
+	handler := NewConversationHandler(mockRepo)
+
+	// Create request
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+
+	// Add user ID to context
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	req = req.WithContext(ctx)
+
+	// Execute
+	w := httptest.NewRecorder()
+	handler.ListConversations(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response []domain.Conversation
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Len(t, response, 2)
+	assert.Equal(t, "Conversation 1", response[0].Title)
+	assert.Equal(t, "Conversation 2", response[1].Title)
+}
+
+// TestListConversations_EmptyList tests empty conversation list
+func TestListConversations_EmptyList(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+
+	mockRepo := &MockConversationRepository{
+		ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
+			return []domain.Conversation{}, nil
+		},
+	}
+
+	handler := NewConversationHandler(mockRepo)
+
+	// Create request
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+
+	// Add user ID to context
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	req = req.WithContext(ctx)
+
+	// Execute
+	w := httptest.NewRecorder()
+	handler.ListConversations(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response []domain.Conversation
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Len(t, response, 0)
+	assert.NotNil(t, response) // Should be empty array, not null
+}
+
+// TestListConversations_WithQueryParams tests list with limit and offset
+func TestListConversations_WithQueryParams(t *testing.T) {
+	tests := []struct {
+		name           string
+		queryParams    string
+		expectedLimit  int
+		expectedOffset int
+	}{
+		{
+			name:           "custom limit and offset",
+			queryParams:    "?limit=10&offset=5",
+			expectedLimit:  10,
+			expectedOffset: 5,
+		},
+		{
+			name:           "max limit enforced",
+			queryParams:    "?limit=200",
+			expectedLimit:  100, // Max limit is 100
+			expectedOffset: 0,
+		},
+		{
+			name:           "negative values treated as defaults",
+			queryParams:    "?limit=-10&offset=-5",
+			expectedLimit:  20, // Default limit
+			expectedOffset: 0,  // Default offset
+		},
+		{
+			name:           "invalid values treated as defaults",
+			queryParams:    "?limit=abc&offset=xyz",
+			expectedLimit:  20, // Default limit
+			expectedOffset: 0,  // Default offset
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup
+			userID := uuid.New()
+
+			mockRepo := &MockConversationRepository{
+				ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
+					assert.Equal(t, tt.expectedLimit, limit)
+					assert.Equal(t, tt.expectedOffset, offset)
+					return []domain.Conversation{}, nil
+				},
+			}
+
+			handler := NewConversationHandler(mockRepo)
+
+			// Create request
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations"+tt.queryParams, nil)
+
+			// Add user ID to context
+			ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+			req = req.WithContext(ctx)
+
+			// Execute
+			w := httptest.NewRecorder()
+			handler.ListConversations(w, req)
+
+			// Assert
+			assert.Equal(t, http.StatusOK, w.Code)
+		})
+	}
+}
+
+// TestListConversations_MissingUserID tests list without user ID in context
+func TestListConversations_MissingUserID(t *testing.T) {
+	// Setup
+	mockRepo := &MockConversationRepository{}
+	handler := NewConversationHandler(mockRepo)
+
+	// Create request without user ID in context
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+
+	// Execute
+	w := httptest.NewRecorder()
+	handler.ListConversations(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	var response ErrorResponse
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, "unauthorized", response.Error)
+}
+
+// TestListConversations_RepositoryError tests repository errors
+func TestListConversations_RepositoryError(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+
+	mockRepo := &MockConversationRepository{
+		ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
+			return nil, errors.New("database error")
+		},
+	}
+
+	handler := NewConversationHandler(mockRepo)
+
+	// Create request
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+
+	// Add user ID to context
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	req = req.WithContext(ctx)
+
+	// Execute
+	w := httptest.NewRecorder()
+	handler.ListConversations(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var response ErrorResponse
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, "internal server error", response.Error)
 }
