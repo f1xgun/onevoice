@@ -42,7 +42,10 @@ test-integration: ## Run integration tests with Docker
 	@echo "Waiting for services to be healthy..."
 	@sleep 15
 	@echo "Running database migrations..."
-	@migrate -path $(MIGRATION_PATH) -database "postgres://test:test@localhost:5433/onevoice_test?sslmode=disable" up || true
+	@docker run --rm -v $(PWD)/services/api/migrations:/migrations --network host \
+		migrate/migrate:latest \
+		-path=/migrations \
+		-database "postgres://test:test@localhost:5433/onevoice_test?sslmode=disable" up
 	@echo "Running integration tests..."
 	@TEST_API_URL=http://localhost:8081 \
 	 TEST_POSTGRES_URL=postgres://test:test@localhost:5433/onevoice_test \

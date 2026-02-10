@@ -58,8 +58,8 @@ services:
       MONGO_DB: onevoice_test
       REDIS_HOST: redis-test
       REDIS_PORT: 6379
-      JWT_SECRET: test-jwt-secret-for-integration-tests-minimum-32-characters-long
-      ENCRYPTION_KEY: 12345678901234567890123456789012
+      JWT_SECRET: "test-jwt-secret-for-integration-tests-minimum-32-characters-long"
+      ENCRYPTION_KEY: "12345678901234567890123456789012"
     ports:
       - "8081:8080"
     depends_on:
