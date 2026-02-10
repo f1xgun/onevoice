@@ -73,10 +73,8 @@ func (h *IntegrationHandler) ListIntegrations(w http.ResponseWriter, r *http.Req
 }
 
 // ConnectIntegration is a stub for future OAuth flow implementation
+// Platform parameter will be available via chi.URLParam(r, "platform") when implemented
 func (h *IntegrationHandler) ConnectIntegration(w http.ResponseWriter, r *http.Request) {
-	// Extract platform parameter (for future use)
-	_ = chi.URLParam(r, "platform")
-
 	// Return 501 Not Implemented
 	writeJSONError(w, http.StatusNotImplemented, "OAuth flow not implemented yet")
 }
