@@ -21,11 +21,11 @@ import (
 
 // MockConversationRepository is a mock implementation of ConversationRepository for testing
 type MockConversationRepository struct {
-	CreateFunc           func(ctx context.Context, conv *domain.Conversation) error
-	GetByIDFunc          func(ctx context.Context, id string) (*domain.Conversation, error)
-	ListByUserIDFunc     func(ctx context.Context, userID string, limit, offset int) ([]domain.Conversation, error)
-	UpdateFunc           func(ctx context.Context, conv *domain.Conversation) error
-	DeleteFunc           func(ctx context.Context, id string) error
+	CreateFunc       func(ctx context.Context, conv *domain.Conversation) error
+	GetByIDFunc      func(ctx context.Context, id string) (*domain.Conversation, error)
+	ListByUserIDFunc func(ctx context.Context, userID string, limit, offset int) ([]domain.Conversation, error)
+	UpdateFunc       func(ctx context.Context, conv *domain.Conversation) error
+	DeleteFunc       func(ctx context.Context, id string) error
 }
 
 func (m *MockConversationRepository) Create(ctx context.Context, conv *domain.Conversation) error {
@@ -252,8 +252,8 @@ func TestListConversations_Success(t *testing.T) {
 	mockRepo := &MockConversationRepository{
 		ListByUserIDFunc: func(ctx context.Context, uid string, limit, offset int) ([]domain.Conversation, error) {
 			assert.Equal(t, userID.String(), uid)
-			assert.Equal(t, 20, limit)  // Default limit
-			assert.Equal(t, 0, offset)  // Default offset
+			assert.Equal(t, 20, limit) // Default limit
+			assert.Equal(t, 0, offset) // Default offset
 			return conversations, nil
 		},
 	}

@@ -59,11 +59,11 @@ func (m *MockUserService) GetByID(ctx context.Context, userID uuid.UUID) (*domai
 
 func TestRegister(t *testing.T) {
 	tests := []struct {
-		name           string
-		requestBody    string
-		mockSetup      func(*MockUserService)
-		wantStatus     int
-		checkResponse  func(t *testing.T, body string)
+		name          string
+		requestBody   string
+		mockSetup     func(*MockUserService)
+		wantStatus    int
+		checkResponse func(t *testing.T, body string)
 	}{
 		{
 			name:        "successful registration",
@@ -539,7 +539,7 @@ func TestMe(t *testing.T) {
 			setupContext: func(r *http.Request) *http.Request {
 				return r
 			},
-			mockSetup: func(m *MockUserService) {},
+			mockSetup:  func(m *MockUserService) {},
 			wantStatus: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"error":"unauthorized"`)

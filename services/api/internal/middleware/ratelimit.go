@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	DefaultRateLimit = 60              // 60 requests
-	DefaultWindow    = time.Minute     // per minute
+	DefaultRateLimit = 60          // 60 requests
+	DefaultWindow    = time.Minute // per minute
 )
 
 // RateLimit creates a rate limiting middleware using Redis
