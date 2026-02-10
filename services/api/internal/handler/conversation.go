@@ -135,6 +135,16 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 	// Extract conversation ID from URL path
 	conversationID := chi.URLParam(r, "id")
 
+	// Validate ObjectID format (MongoDB ObjectID is 24 hex characters)
+	if len(conversationID) != 24 {
+		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
+		return
+	}
+	if _, err := primitive.ObjectIDFromHex(conversationID); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
+		return
+	}
+
 	// Get conversation from repository
 	conversation, err := h.conversationRepo.GetByID(r.Context(), conversationID)
 	if err != nil {

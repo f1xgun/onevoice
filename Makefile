@@ -1,4 +1,4 @@
-.PHONY: help build run test test-coverage lint fmt clean
+.PHONY: help build run test test-coverage test-integration lint fmt clean
 .PHONY: migrate-up migrate-down migrate-create db-seed
 .PHONY: docker-up docker-down docker-logs docker-clean
 
@@ -35,6 +35,23 @@ test-coverage: ## Run tests with coverage
 	@cd services/api && GOWORK=$(GOWORK) go test ./... -coverprofile=../../coverage.out
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
+
+test-integration: ## Run integration tests with Docker
+	@echo "Starting test environment..."
+	@cd test/integration && docker-compose -f docker-compose.test.yml up -d
+	@echo "Waiting for services to be healthy..."
+	@sleep 15
+	@echo "Running database migrations..."
+	@migrate -path $(MIGRATION_PATH) -database "postgres://test:test@localhost:5433/onevoice_test?sslmode=disable" up || true
+	@echo "Running integration tests..."
+	@TEST_API_URL=http://localhost:8081 \
+	 TEST_POSTGRES_URL=postgres://test:test@localhost:5433/onevoice_test \
+	 TEST_MONGO_URL=mongodb://localhost:27018 \
+	 TEST_REDIS_URL=localhost:6380 \
+	 go test -v ./test/integration/... || (cd test/integration && docker-compose -f docker-compose.test.yml logs api-test && exit 1)
+	@echo "Cleaning up test environment..."
+	@cd test/integration && docker-compose -f docker-compose.test.yml down -v
+	@echo "Integration tests complete"
 
 # Lint
 lint: ## Run linters
