@@ -10,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 )
@@ -239,5 +240,40 @@ func TestListIntegrations_InternalError(t *testing.T) {
 
 	if response.Error == "" {
 		t.Error("expected error message, got empty string")
+	}
+}
+
+// TestConnectIntegration_NotImplemented tests the stub endpoint returns 501
+func TestConnectIntegration_NotImplemented(t *testing.T) {
+	// Setup
+	mockBusinessService := new(MockBusinessService)
+	mockIntegrationService := new(MockIntegrationService)
+	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+
+	// Create request with platform URL parameter
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/google/connect", nil)
+
+	// Set up chi context with URL parameter
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("platform", "google")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	// Execute
+	rr := httptest.NewRecorder()
+	handler.ConnectIntegration(rr, req)
+
+	// Assert
+	if rr.Code != http.StatusNotImplemented {
+		t.Errorf("expected status 501, got %d", rr.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	expectedError := "OAuth flow not implemented yet"
+	if response.Error != expectedError {
+		t.Errorf("expected error %q, got %q", expectedError, response.Error)
 	}
 }
