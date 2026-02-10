@@ -277,3 +277,221 @@ func TestConnectIntegration_NotImplemented(t *testing.T) {
 		t.Errorf("expected error %q, got %q", expectedError, response.Error)
 	}
 }
+
+// TestDeleteIntegration_Success tests successful deletion of integration
+func TestDeleteIntegration_Success(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+	businessID := uuid.New()
+	integrationID := uuid.New()
+	platform := "google"
+
+	mockBusinessService := new(MockBusinessService)
+	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
+		ID:     businessID,
+		UserID: userID,
+		Name:   "Test Business",
+	}, nil)
+
+	mockIntegrationService := new(MockIntegrationService)
+	mockIntegrationService.On("GetByBusinessAndPlatform", mock.Anything, businessID, platform).Return(&domain.Integration{
+		ID:         integrationID,
+		BusinessID: businessID,
+		Platform:   platform,
+		Status:     "active",
+	}, nil)
+	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(nil)
+
+	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+
+	// Create request with user ID in context and platform URL parameter
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+
+	// Set up chi context with URL parameter
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("platform", platform)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	// Execute
+	rr := httptest.NewRecorder()
+	handler.DeleteIntegration(rr, req)
+
+	// Assert
+	if rr.Code != http.StatusNoContent {
+		t.Errorf("expected status 204, got %d", rr.Code)
+	}
+
+	mockBusinessService.AssertExpectations(t)
+	mockIntegrationService.AssertExpectations(t)
+}
+
+// TestDeleteIntegration_MissingUserID tests deletion without user ID in context
+func TestDeleteIntegration_MissingUserID(t *testing.T) {
+	// Setup
+	mockBusinessService := new(MockBusinessService)
+	mockIntegrationService := new(MockIntegrationService)
+	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+
+	// Create request WITHOUT user ID in context
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+
+	// Set up chi context with URL parameter
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("platform", "google")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	// Execute
+	rr := httptest.NewRecorder()
+	handler.DeleteIntegration(rr, req)
+
+	// Assert
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", rr.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.Error == "" {
+		t.Error("expected error message, got empty string")
+	}
+}
+
+// TestDeleteIntegration_BusinessNotFound tests deletion when business doesn't exist
+func TestDeleteIntegration_BusinessNotFound(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+
+	mockBusinessService := new(MockBusinessService)
+	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(nil, domain.ErrBusinessNotFound)
+
+	mockIntegrationService := new(MockIntegrationService)
+	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+
+	// Create request with user ID in context
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+
+	// Set up chi context with URL parameter
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("platform", "google")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	// Execute
+	rr := httptest.NewRecorder()
+	handler.DeleteIntegration(rr, req)
+
+	// Assert
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rr.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.Error == "" {
+		t.Error("expected error message, got empty string")
+	}
+
+	mockBusinessService.AssertExpectations(t)
+}
+
+// TestDeleteIntegration_IntegrationNotFound tests deletion when integration doesn't exist
+func TestDeleteIntegration_IntegrationNotFound(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+	businessID := uuid.New()
+	platform := "google"
+
+	mockBusinessService := new(MockBusinessService)
+	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
+		ID:     businessID,
+		UserID: userID,
+		Name:   "Test Business",
+	}, nil)
+
+	mockIntegrationService := new(MockIntegrationService)
+	mockIntegrationService.On("GetByBusinessAndPlatform", mock.Anything, businessID, platform).Return(nil, domain.ErrIntegrationNotFound)
+
+	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+
+	// Create request with user ID in context
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+
+	// Set up chi context with URL parameter
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("platform", platform)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	// Execute
+	rr := httptest.NewRecorder()
+	handler.DeleteIntegration(rr, req)
+
+	// Assert
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rr.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.Error == "" {
+		t.Error("expected error message, got empty string")
+	}
+
+	mockBusinessService.AssertExpectations(t)
+	mockIntegrationService.AssertExpectations(t)
+}
+
+// TestDeleteIntegration_InternalError tests deletion with internal error
+func TestDeleteIntegration_InternalError(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+
+	mockBusinessService := new(MockBusinessService)
+	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return((*domain.Business)(nil), errors.New("database connection failed"))
+
+	mockIntegrationService := new(MockIntegrationService)
+	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+
+	// Create request with user ID in context
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+
+	// Set up chi context with URL parameter
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("platform", "google")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	// Execute
+	rr := httptest.NewRecorder()
+	handler.DeleteIntegration(rr, req)
+
+	// Assert
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rr.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.Error == "" {
+		t.Error("expected error message, got empty string")
+	}
+
+	mockBusinessService.AssertExpectations(t)
+}
