@@ -2,12 +2,14 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 )
 
@@ -22,6 +24,16 @@ type BusinessService interface {
 // BusinessHandler handles business profile endpoints
 type BusinessHandler struct {
 	businessService BusinessService
+	validate        *validator.Validate
+}
+
+// UpdateBusinessRequest represents the business update request
+type UpdateBusinessRequest struct {
+	Name        string `json:"name" validate:"required"`
+	Category    string `json:"category"`
+	Address     string `json:"address"`
+	Phone       string `json:"phone"`
+	Description string `json:"description"`
 }
 
 // NewBusinessHandler creates a new business handler instance
@@ -31,6 +43,7 @@ func NewBusinessHandler(businessService BusinessService) *BusinessHandler {
 	}
 	return &BusinessHandler{
 		businessService: businessService,
+		validate:        validate,
 	}
 }
 
@@ -57,4 +70,57 @@ func (h *BusinessHandler) GetBusiness(w http.ResponseWriter, r *http.Request) {
 
 	// Return business
 	writeJSON(w, http.StatusOK, business)
+}
+
+// UpdateBusiness updates the business profile for the authenticated user
+func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from context (set by auth middleware)
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// Parse request body
+	var req UpdateBusinessRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate request
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, err)
+		return
+	}
+
+	// Get existing business
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to get business for update", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Update business fields from request
+	business.Name = req.Name
+	business.Category = req.Category
+	business.Address = req.Address
+	business.Phone = req.Phone
+	business.Description = req.Description
+
+	// Update business
+	updatedBusiness, err := h.businessService.Update(r.Context(), business)
+	if err != nil {
+		slog.Error("failed to update business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Return updated business
+	writeJSON(w, http.StatusOK, updatedBusiness)
 }
