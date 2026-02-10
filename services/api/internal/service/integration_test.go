@@ -14,12 +14,12 @@ import (
 
 // Mock IntegrationRepository
 type mockIntegrationRepository struct {
-	createFunc                  func(ctx context.Context, integration *domain.Integration) error
-	getByIDFunc                 func(ctx context.Context, id uuid.UUID) (*domain.Integration, error)
+	createFunc                   func(ctx context.Context, integration *domain.Integration) error
+	getByIDFunc                  func(ctx context.Context, id uuid.UUID) (*domain.Integration, error)
 	getByBusinessAndPlatformFunc func(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error)
-	listByBusinessIDFunc        func(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
-	updateFunc                  func(ctx context.Context, integration *domain.Integration) error
-	deleteFunc                  func(ctx context.Context, id uuid.UUID) error
+	listByBusinessIDFunc         func(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
+	updateFunc                   func(ctx context.Context, integration *domain.Integration) error
+	deleteFunc                   func(ctx context.Context, id uuid.UUID) error
 }
 
 func (m *mockIntegrationRepository) Create(ctx context.Context, integration *domain.Integration) error {

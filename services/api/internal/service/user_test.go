@@ -18,10 +18,10 @@ import (
 
 // Mock UserRepository
 type mockUserRepository struct {
-	createFunc    func(ctx context.Context, user *domain.User) error
-	getByIDFunc   func(ctx context.Context, id uuid.UUID) (*domain.User, error)
+	createFunc     func(ctx context.Context, user *domain.User) error
+	getByIDFunc    func(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	getByEmailFunc func(ctx context.Context, email string) (*domain.User, error)
-	updateFunc    func(ctx context.Context, user *domain.User) error
+	updateFunc     func(ctx context.Context, user *domain.User) error
 }
 
 func (m *mockUserRepository) Create(ctx context.Context, user *domain.User) error {
