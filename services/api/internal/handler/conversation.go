@@ -14,6 +14,12 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+// Constants for conversation pagination
+const (
+	DefaultConversationLimit = 20
+	MaxConversationLimit     = 100
+)
+
 // ConversationHandler handles conversation-related HTTP requests
 type ConversationHandler struct {
 	conversationRepo domain.ConversationRepository
@@ -86,15 +92,15 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 	}
 
 	// Parse query parameters
-	limit := 20  // Default limit
-	offset := 0  // Default offset
+	limit := DefaultConversationLimit
+	offset := 0
 
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
-			// Enforce max limit of 100
-			if limit > 100 {
-				limit = 100
+			// Enforce max limit
+			if limit > MaxConversationLimit {
+				limit = MaxConversationLimit
 			}
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,7 +150,7 @@ func TestCreateConversation_ValidationError(t *testing.T) {
 		},
 		{
 			name:          "title too long",
-			request:       CreateConversationRequest{Title: string(make([]byte, 201))},
+			request:       CreateConversationRequest{Title: strings.Repeat("a", 201)},
 			expectedField: "Title",
 		},
 	}
