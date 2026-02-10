@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
@@ -24,7 +25,9 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 
 	if data != nil && status != http.StatusNoContent {
-		json.NewEncoder(w).Encode(data)
+		if err := json.NewEncoder(w).Encode(data); err != nil {
+			slog.Error("failed to encode JSON response", "error", err)
+		}
 	}
 }
 
@@ -59,6 +62,8 @@ func writeValidationError(w http.ResponseWriter, err error) {
 
 			fields[field] = message
 		}
+	} else {
+		slog.Warn("validation error is not of type validator.ValidationErrors", "error", err)
 	}
 
 	writeJSON(w, http.StatusBadRequest, ValidationErrorResponse{

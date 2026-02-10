@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -148,6 +149,19 @@ func TestRegister(t *testing.T) {
 				assert.Contains(t, body, `"error"`)
 			},
 		},
+		{
+			name:        "internal server error",
+			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("Register", mock.Anything, "user@example.com", "password123").
+					Return(nil, errors.New("database connection failed"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"internal server error"`)
+				assert.NotContains(t, body, "database") // Should not leak internal details
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -254,6 +268,19 @@ func TestLogin(t *testing.T) {
 				assert.Contains(t, body, `"error"`)
 			},
 		},
+		{
+			name:        "internal server error",
+			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("Login", mock.Anything, "user@example.com", "password123").
+					Return(nil, "", "", errors.New("redis connection failed"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"internal server error"`)
+				assert.NotContains(t, body, "redis") // Should not leak internal details
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -333,6 +360,19 @@ func TestRefreshToken(t *testing.T) {
 				assert.Contains(t, body, `"error"`)
 			},
 		},
+		{
+			name:        "internal server error",
+			requestBody: `{"refreshToken":"valid.refresh.token"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("RefreshToken", mock.Anything, "valid.refresh.token").
+					Return("", errors.New("redis lookup failed"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"internal server error"`)
+				assert.NotContains(t, body, "redis") // Should not leak internal details
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -405,6 +445,19 @@ func TestLogout(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"error"`)
+			},
+		},
+		{
+			name:        "internal server error",
+			requestBody: `{"refreshToken":"valid.refresh.token"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("Logout", mock.Anything, "valid.refresh.token").
+					Return(errors.New("redis delete failed"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"internal server error"`)
+				assert.NotContains(t, body, "redis") // Should not leak internal details
 			},
 		},
 	}
@@ -490,6 +543,22 @@ func TestMe(t *testing.T) {
 			wantStatus: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, body string) {
 				assert.Contains(t, body, `"error":"unauthorized"`)
+			},
+		},
+		{
+			name: "internal server error",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			mockSetup: func(m *MockUserService) {
+				m.On("GetByID", mock.Anything, testUserID).
+					Return(nil, errors.New("database query failed"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, body string) {
+				assert.Contains(t, body, `"error":"internal server error"`)
+				assert.NotContains(t, body, "database") // Should not leak internal details
 			},
 		},
 	}
