@@ -495,3 +495,27 @@ func TestDeleteIntegration_InternalError(t *testing.T) {
 
 	mockBusinessService.AssertExpectations(t)
 }
+
+// TestNewIntegrationHandler_NilIntegrationService tests panic when integration service is nil
+func TestNewIntegrationHandler_NilIntegrationService(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("expected panic when integrationService is nil")
+		}
+	}()
+
+	mockBusinessService := new(MockBusinessService)
+	NewIntegrationHandler(nil, mockBusinessService)
+}
+
+// TestNewIntegrationHandler_NilBusinessService tests panic when business service is nil
+func TestNewIntegrationHandler_NilBusinessService(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("expected panic when businessService is nil")
+		}
+	}()
+
+	mockIntegrationService := new(MockIntegrationService)
+	NewIntegrationHandler(mockIntegrationService, nil)
+}
