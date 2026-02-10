@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -241,6 +242,57 @@ func TestListIntegrations_InternalError(t *testing.T) {
 	if response.Error == "" {
 		t.Error("expected error message, got empty string")
 	}
+}
+
+// TestListIntegrations_IntegrationServiceError tests when integration service fails
+func TestListIntegrations_IntegrationServiceError(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+	businessID := uuid.New()
+	business := &domain.Business{
+		ID:     businessID,
+		UserID: userID,
+		Name:   "Test Business",
+	}
+
+	mockBusinessService := new(MockBusinessService)
+	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+
+	mockIntegrationService := new(MockIntegrationService)
+	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return(([]domain.Integration)(nil), errors.New("database query failed"))
+
+	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+
+	// Create request with user ID in context
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", nil)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	req = req.WithContext(ctx)
+
+	// Execute
+	rr := httptest.NewRecorder()
+	handler.ListIntegrations(rr, req)
+
+	// Assert
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rr.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.Error != "internal server error" {
+		t.Errorf("expected 'internal server error', got '%s'", response.Error)
+	}
+
+	// Verify no database details leaked
+	if strings.Contains(response.Error, "database") || strings.Contains(response.Error, "query") {
+		t.Error("error message should not leak internal details")
+	}
+
+	mockBusinessService.AssertExpectations(t)
+	mockIntegrationService.AssertExpectations(t)
 }
 
 // TestConnectIntegration_NotImplemented tests the stub endpoint returns 501
@@ -494,6 +546,72 @@ func TestDeleteIntegration_InternalError(t *testing.T) {
 	}
 
 	mockBusinessService.AssertExpectations(t)
+}
+
+// TestDeleteIntegration_DeleteServiceError tests when Delete method fails
+func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
+	// Setup
+	userID := uuid.New()
+	businessID := uuid.New()
+	integrationID := uuid.New()
+
+	business := &domain.Business{
+		ID:     businessID,
+		UserID: userID,
+		Name:   "Test Business",
+	}
+
+	integration := &domain.Integration{
+		ID:         integrationID,
+		BusinessID: businessID,
+		Platform:   "google",
+		Status:     "active",
+	}
+
+	mockBusinessService := new(MockBusinessService)
+	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+
+	mockIntegrationService := new(MockIntegrationService)
+	mockIntegrationService.On("GetByBusinessAndPlatform", mock.Anything, businessID, "google").Return(integration, nil)
+	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(errors.New("redis deletion failed"))
+
+	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+
+	// Create request with user ID in context
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+
+	// Set up chi context with URL parameter
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("platform", "google")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	// Execute
+	rr := httptest.NewRecorder()
+	handler.DeleteIntegration(rr, req)
+
+	// Assert
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rr.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.Error != "internal server error" {
+		t.Errorf("expected 'internal server error', got '%s'", response.Error)
+	}
+
+	// Verify no database/redis details leaked
+	if strings.Contains(response.Error, "redis") || strings.Contains(response.Error, "deletion") {
+		t.Error("error message should not leak internal details")
+	}
+
+	mockBusinessService.AssertExpectations(t)
+	mockIntegrationService.AssertExpectations(t)
 }
 
 // TestNewIntegrationHandler_NilIntegrationService tests panic when integration service is nil
