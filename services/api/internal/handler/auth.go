@@ -22,6 +22,9 @@ type UserService interface {
 	GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 }
 
+// Package-level validator instance (reused across handlers)
+var validate = validator.New()
+
 // AuthHandler handles authentication endpoints
 type AuthHandler struct {
 	userService UserService
@@ -30,9 +33,12 @@ type AuthHandler struct {
 
 // NewAuthHandler creates a new auth handler instance
 func NewAuthHandler(userService UserService) *AuthHandler {
+	if userService == nil {
+		panic("userService cannot be nil")
+	}
 	return &AuthHandler{
 		userService: userService,
-		validate:    validator.New(),
+		validate:    validate,
 	}
 }
 
