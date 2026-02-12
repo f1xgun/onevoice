@@ -215,6 +215,7 @@ func TestModelInfo_Fields(t *testing.T) {
 		outputCost := 30.0
 		info := ModelInfo{
 			ID:                 "gpt-4",
+			Name:               "GPT-4",
 			Provider:           "openai",
 			ContextLength:      8192,
 			InputCostPer1MTok:  &inputCost,
@@ -225,6 +226,7 @@ func TestModelInfo_Fields(t *testing.T) {
 		}
 
 		assert.Equal(t, "gpt-4", info.ID)
+		assert.Equal(t, "GPT-4", info.Name)
 		assert.Equal(t, "openai", info.Provider)
 		assert.Equal(t, 8192, info.ContextLength)
 		assert.NotNil(t, info.InputCostPer1MTok)
@@ -239,6 +241,7 @@ func TestModelInfo_Fields(t *testing.T) {
 	t.Run("allows nil pricing for free models", func(t *testing.T) {
 		info := ModelInfo{
 			ID:                 "llama-2",
+			Name:               "Llama 2",
 			Provider:           "local",
 			ContextLength:      4096,
 			InputCostPer1MTok:  nil,
