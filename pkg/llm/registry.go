@@ -91,3 +91,88 @@ func (r *Registry) ModelExists(model string) bool {
 
 	return len(r.entries[model]) > 0
 }
+
+// RecordSuccess updates metrics after successful request
+func (r *Registry) RecordSuccess(provider, model string, latency time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := provider + ":" + model
+	metrics := r.metrics[key]
+	if metrics == nil {
+		return
+	}
+
+	metrics.TotalRequests++
+	metrics.SuccessCount++
+
+	// Update latency rolling window
+	latencyMs := latency.Milliseconds()
+	metrics.LastLatencies = append(metrics.LastLatencies, latencyMs)
+	if len(metrics.LastLatencies) > 100 {
+		metrics.LastLatencies = metrics.LastLatencies[1:]
+	}
+
+	// Recalculate average
+	var sum int64
+	for _, l := range metrics.LastLatencies {
+		sum += l
+	}
+	metrics.AvgLatencyMs = int(sum / int64(len(metrics.LastLatencies)))
+
+	// Update health status
+	if metrics.HealthStatus == "down" || metrics.HealthStatus == "degraded" {
+		if metrics.SuccessCount >= 3 {
+			metrics.HealthStatus = "healthy"
+		}
+	}
+
+	// Update entry in registry
+	for _, entry := range r.entries[model] {
+		if entry.Provider == provider {
+			entry.AvgLatencyMs = metrics.AvgLatencyMs
+			entry.HealthStatus = metrics.HealthStatus
+			entry.LastCheckedAt = time.Now()
+			break
+		}
+	}
+}
+
+// RecordFailure updates metrics after failed request
+func (r *Registry) RecordFailure(provider, model string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := provider + ":" + model
+	metrics := r.metrics[key]
+	if metrics == nil {
+		return
+	}
+
+	metrics.TotalRequests++
+	metrics.FailureCount++
+
+	// Calculate failure rate
+	failureRate := float64(metrics.FailureCount) / float64(metrics.TotalRequests)
+
+	// Update health status based on failure rate
+	var newStatus string
+	if failureRate > 0.5 {
+		newStatus = "down"
+	} else if failureRate > 0.2 {
+		newStatus = "degraded"
+	} else {
+		newStatus = "healthy"
+	}
+
+	metrics.HealthStatus = newStatus
+
+	// Update entry in registry
+	for _, entry := range r.entries[model] {
+		if entry.Provider == provider {
+			entry.HealthStatus = newStatus
+			entry.LastCheckedAt = time.Now()
+			break
+		}
+	}
+}
