@@ -1,6 +1,7 @@
 package llm_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -76,4 +77,71 @@ func TestCalculateCommission(t *testing.T) {
 			assert.InDelta(t, tt.expectedComm, commission, 0.0001)
 		})
 	}
+}
+
+func TestBillingRepository_Interface(t *testing.T) {
+	// Verify interface is defined
+	var _ llm.BillingRepository = (*MockBillingRepository)(nil)
+}
+
+// MockBillingRepository implements BillingRepository for testing
+type MockBillingRepository struct {
+	logs []llm.UsageLog
+}
+
+func (m *MockBillingRepository) LogUsage(ctx context.Context, log *llm.UsageLog) error {
+	m.logs = append(m.logs, *log)
+	return nil
+}
+
+func (m *MockBillingRepository) GetUserBalance(ctx context.Context, userID uuid.UUID) (float64, error) {
+	return 10.0, nil // Mock balance
+}
+
+func (m *MockBillingRepository) GetDailySpend(ctx context.Context, userID uuid.UUID) (float64, error) {
+	total := 0.0
+	for _, log := range m.logs {
+		if log.UserID == userID {
+			total += log.UserCostUSD
+		}
+	}
+	return total, nil
+}
+
+func (m *MockBillingRepository) GetMonthlyUsage(ctx context.Context, userID uuid.UUID, year int, month int) ([]llm.UsageLog, error) {
+	var result []llm.UsageLog
+	for _, log := range m.logs {
+		if log.UserID == userID && log.CreatedAt.Year() == year && int(log.CreatedAt.Month()) == month {
+			result = append(result, log)
+		}
+	}
+	return result, nil
+}
+
+func TestMockBillingRepository(t *testing.T) {
+	repo := &MockBillingRepository{}
+	ctx := context.Background()
+	userID := uuid.New()
+
+	// Log usage
+	log := &llm.UsageLog{
+		ID:          uuid.New(),
+		UserID:      userID,
+		Model:       "gpt-4",
+		Provider:    "openai",
+		UserCostUSD: 0.05,
+		CreatedAt:   time.Now(),
+	}
+	err := repo.LogUsage(ctx, log)
+	assert.NoError(t, err)
+
+	// Get daily spend
+	spend, err := repo.GetDailySpend(ctx, userID)
+	assert.NoError(t, err)
+	assert.Equal(t, 0.05, spend)
+
+	// Get balance
+	balance, err := repo.GetUserBalance(ctx, userID)
+	assert.NoError(t, err)
+	assert.Equal(t, 10.0, balance)
 }
