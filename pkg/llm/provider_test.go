@@ -56,3 +56,16 @@ func TestMockProvider_Chat(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResp, resp)
 }
+
+func TestCostBreakdown(t *testing.T) {
+	cost := CostBreakdown{
+		ProviderCost: 0.045,
+		Commission:   0.009,
+		UserCost:     0.054,
+	}
+
+	assert.Equal(t, 0.045, cost.ProviderCost)
+	assert.Equal(t, 0.009, cost.Commission)
+	assert.Equal(t, 0.054, cost.UserCost)
+	assert.Equal(t, cost.ProviderCost+cost.Commission, cost.UserCost)
+}

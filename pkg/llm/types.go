@@ -99,3 +99,10 @@ const (
 	StrategyCost  Strategy = iota // Minimize cost (default)
 	StrategySpeed                 // Minimize latency
 )
+
+// CostBreakdown separates provider cost from platform commission
+type CostBreakdown struct {
+	ProviderCost float64 `json:"provider_cost"` // Actual cost to LLM provider
+	Commission   float64 `json:"commission"`    // OneVoice markup
+	UserCost     float64 `json:"user_cost"`     // Total charged to user
+}
