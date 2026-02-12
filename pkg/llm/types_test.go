@@ -75,106 +75,45 @@ func TestMessage_JSON(t *testing.T) {
 	})
 }
 
-func TestChatRequest_Validate(t *testing.T) {
+func TestChatRequest_UserID(t *testing.T) {
 	validUserID := uuid.New()
 
-	t.Run("valid request", func(t *testing.T) {
+	t.Run("valid request with userID", func(t *testing.T) {
 		req := ChatRequest{
-			UserID: &validUserID,
+			UserID: validUserID,
 			Model:  "gpt-4",
 			Messages: []Message{
 				{Role: "user", Content: "Hello"},
 			},
 		}
 
-		err := req.Validate()
-		assert.NoError(t, err)
+		assert.Equal(t, validUserID, req.UserID)
 	})
 
-	t.Run("empty model", func(t *testing.T) {
+	t.Run("valid request with zero userID for system calls", func(t *testing.T) {
 		req := ChatRequest{
-			UserID: &validUserID,
-			Model:  "",
-			Messages: []Message{
-				{Role: "user", Content: "Hello"},
-			},
-		}
-
-		err := req.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "model")
-	})
-
-	t.Run("empty messages", func(t *testing.T) {
-		req := ChatRequest{
-			UserID:   &validUserID,
-			Model:    "gpt-4",
-			Messages: []Message{},
-		}
-
-		err := req.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "messages")
-	})
-
-	t.Run("nil userID allowed for system calls", func(t *testing.T) {
-		req := ChatRequest{
-			UserID: nil,
+			UserID: uuid.Nil,
 			Model:  "gpt-4",
 			Messages: []Message{
 				{Role: "user", Content: "Hello"},
 			},
 		}
 
-		err := req.Validate()
-		assert.NoError(t, err)
-	})
-
-	t.Run("invalid temperature", func(t *testing.T) {
-		req := ChatRequest{
-			UserID:      &validUserID,
-			Model:       "gpt-4",
-			Messages:    []Message{{Role: "user", Content: "Hello"}},
-			Temperature: 2.5, // > 2.0
-		}
-
-		err := req.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "temperature")
-	})
-
-	t.Run("invalid top_p", func(t *testing.T) {
-		req := ChatRequest{
-			UserID:   &validUserID,
-			Model:    "gpt-4",
-			Messages: []Message{{Role: "user", Content: "Hello"}},
-			TopP:     1.5, // > 1.0
-		}
-
-		err := req.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "top_p")
+		assert.Equal(t, uuid.Nil, req.UserID)
 	})
 }
 
-func TestTokenUsage_CalculateCost(t *testing.T) {
-	t.Run("calculates cost correctly", func(t *testing.T) {
+func TestTokenUsage_Fields(t *testing.T) {
+	t.Run("stores token counts correctly", func(t *testing.T) {
 		usage := TokenUsage{
-			PromptTokens:     1000,
-			CompletionTokens: 500,
-			TotalTokens:      1500,
+			InputTokens:  1000,
+			OutputTokens: 500,
+			TotalTokens:  1500,
 		}
 
-		// $10/1M input, $30/1M output
-		cost := usage.CalculateCost(10.0, 30.0)
-		expected := (1000.0 / 1_000_000.0 * 10.0) + (500.0 / 1_000_000.0 * 30.0)
-		assert.InDelta(t, expected, cost, 0.0001)
-	})
-
-	t.Run("zero tokens", func(t *testing.T) {
-		usage := TokenUsage{}
-		cost := usage.CalculateCost(10.0, 30.0)
-		assert.Equal(t, 0.0, cost)
+		assert.Equal(t, 1000, usage.InputTokens)
+		assert.Equal(t, 500, usage.OutputTokens)
+		assert.Equal(t, 1500, usage.TotalTokens)
 	})
 }
 
@@ -183,10 +122,8 @@ func TestStrategy_String(t *testing.T) {
 		strategy Strategy
 		expected string
 	}{
-		{StrategyAuto, "auto"},
-		{StrategyCheap, "cheap"},
-		{StrategyFast, "fast"},
-		{StrategyQuality, "quality"},
+		{StrategyCost, "cost"},
+		{StrategySpeed, "speed"},
 	}
 
 	for _, tt := range tests {
@@ -194,26 +131,6 @@ func TestStrategy_String(t *testing.T) {
 			assert.Equal(t, tt.expected, string(tt.strategy))
 		})
 	}
-}
-
-func TestStrategy_Valid(t *testing.T) {
-	t.Run("valid strategies", func(t *testing.T) {
-		validStrategies := []Strategy{
-			StrategyAuto,
-			StrategyCheap,
-			StrategyFast,
-			StrategyQuality,
-		}
-
-		for _, s := range validStrategies {
-			assert.True(t, s.Valid())
-		}
-	})
-
-	t.Run("invalid strategy", func(t *testing.T) {
-		invalid := Strategy("invalid")
-		assert.False(t, invalid.Valid())
-	})
 }
 
 func TestToolDefinition_JSON(t *testing.T) {
@@ -249,43 +166,90 @@ func TestToolDefinition_JSON(t *testing.T) {
 	})
 }
 
-func TestChatResponse_HasToolCalls(t *testing.T) {
-	t.Run("with tool calls", func(t *testing.T) {
+func TestChatResponse_Fields(t *testing.T) {
+	t.Run("stores all required fields", func(t *testing.T) {
+		usage := TokenUsage{InputTokens: 100, OutputTokens: 50, TotalTokens: 150}
 		resp := ChatResponse{
-			ToolCalls: []ToolCall{
-				{ID: "call_1", Type: "function"},
-			},
+			Content:      "Hello",
+			ToolCalls:    []ToolCall{{ID: "call_1", Type: "function"}},
+			FinishReason: "stop",
+			Usage:        usage,
+			Latency:      100 * 1000 * 1000, // 100ms in nanoseconds
+			RawResponse:  map[string]interface{}{"raw": "data"},
 		}
-		assert.True(t, resp.HasToolCalls())
-	})
 
-	t.Run("without tool calls", func(t *testing.T) {
-		resp := ChatResponse{
-			Content: "Hello",
-		}
-		assert.False(t, resp.HasToolCalls())
+		assert.Equal(t, "Hello", resp.Content)
+		assert.Len(t, resp.ToolCalls, 1)
+		assert.Equal(t, "stop", resp.FinishReason)
+		assert.Equal(t, 100, resp.Usage.InputTokens)
+		assert.Equal(t, 100*1000*1000, int(resp.Latency))
+		assert.NotNil(t, resp.RawResponse)
 	})
 }
 
-func TestStreamChunk_IsComplete(t *testing.T) {
-	t.Run("complete chunk with finish reason", func(t *testing.T) {
+func TestStreamChunk_Fields(t *testing.T) {
+	t.Run("stores all required fields", func(t *testing.T) {
+		toolCall := &ToolCall{ID: "call_1", Type: "function"}
+		usage := &TokenUsage{InputTokens: 100, OutputTokens: 50, TotalTokens: 150}
 		chunk := StreamChunk{
-			FinishReason: "stop",
+			Delta:         "Hello",
+			ToolCallDelta: toolCall,
+			FinishReason:  "stop",
+			Usage:         usage,
+			Done:          true,
+			Error:         nil,
 		}
-		assert.True(t, chunk.IsComplete())
+
+		assert.Equal(t, "Hello", chunk.Delta)
+		assert.NotNil(t, chunk.ToolCallDelta)
+		assert.Equal(t, "call_1", chunk.ToolCallDelta.ID)
+		assert.Equal(t, "stop", chunk.FinishReason)
+		assert.NotNil(t, chunk.Usage)
+		assert.True(t, chunk.Done)
+		assert.NoError(t, chunk.Error)
+	})
+}
+
+func TestModelInfo_Fields(t *testing.T) {
+	t.Run("stores all required fields with pointers for pricing", func(t *testing.T) {
+		inputCost := 10.0
+		outputCost := 30.0
+		info := ModelInfo{
+			ID:                 "gpt-4",
+			Provider:           "openai",
+			ContextLength:      8192,
+			InputCostPer1MTok:  &inputCost,
+			OutputCostPer1MTok: &outputCost,
+			SupportsToolUse:    true,
+			SupportsStreaming:  true,
+			SupportsVision:     false,
+		}
+
+		assert.Equal(t, "gpt-4", info.ID)
+		assert.Equal(t, "openai", info.Provider)
+		assert.Equal(t, 8192, info.ContextLength)
+		assert.NotNil(t, info.InputCostPer1MTok)
+		assert.Equal(t, 10.0, *info.InputCostPer1MTok)
+		assert.NotNil(t, info.OutputCostPer1MTok)
+		assert.Equal(t, 30.0, *info.OutputCostPer1MTok)
+		assert.True(t, info.SupportsToolUse)
+		assert.True(t, info.SupportsStreaming)
+		assert.False(t, info.SupportsVision)
 	})
 
-	t.Run("incomplete chunk", func(t *testing.T) {
-		chunk := StreamChunk{
-			Delta: "Hello",
+	t.Run("allows nil pricing for free models", func(t *testing.T) {
+		info := ModelInfo{
+			ID:                 "llama-2",
+			Provider:           "local",
+			ContextLength:      4096,
+			InputCostPer1MTok:  nil,
+			OutputCostPer1MTok: nil,
+			SupportsToolUse:    false,
+			SupportsStreaming:  true,
+			SupportsVision:     false,
 		}
-		assert.False(t, chunk.IsComplete())
-	})
 
-	t.Run("error chunk is complete", func(t *testing.T) {
-		chunk := StreamChunk{
-			Error: assert.AnError,
-		}
-		assert.True(t, chunk.IsComplete())
+		assert.Nil(t, info.InputCostPer1MTok)
+		assert.Nil(t, info.OutputCostPer1MTok)
 	})
 }
