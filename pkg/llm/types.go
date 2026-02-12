@@ -57,8 +57,8 @@ type ChatRequest struct {
 type ChatResponse struct {
 	Content      string        `json:"content"`
 	ToolCalls    []ToolCall    `json:"tool_calls,omitempty"`
-	FinishReason string        `json:"finish_reason"` // "stop", "length", "tool_calls", "content_filter"
 	Usage        TokenUsage    `json:"usage"`
+	FinishReason string        `json:"finish_reason"` // "stop", "length", "tool_calls", "content_filter"
 	Latency      time.Duration `json:"latency"`
 	RawResponse  interface{}   `json:"raw_response,omitempty"`
 }
@@ -82,6 +82,7 @@ type StreamChunk struct {
 // ModelInfo describes the capabilities and pricing of an LLM model.
 type ModelInfo struct {
 	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
 	Provider           string   `json:"provider"`
 	ContextLength      int      `json:"context_length"`
 	InputCostPer1MTok  *float64 `json:"input_cost_per_1m_tok,omitempty"`  // USD per 1M tokens, nil for free models
