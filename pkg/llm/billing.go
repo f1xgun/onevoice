@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,4 +47,19 @@ func CalculateCommission(providerCost float64, mode string, tier string) float64
 	default:
 		return providerCost * 0.20 // Default 20%
 	}
+}
+
+// BillingRepository manages usage logging and billing queries
+type BillingRepository interface {
+	// LogUsage records an LLM usage event
+	LogUsage(ctx context.Context, log *UsageLog) error
+
+	// GetUserBalance returns the user's current balance in USD
+	GetUserBalance(ctx context.Context, userID uuid.UUID) (float64, error)
+
+	// GetDailySpend returns total spend for today
+	GetDailySpend(ctx context.Context, userID uuid.UUID) (float64, error)
+
+	// GetMonthlyUsage returns all usage logs for a given month
+	GetMonthlyUsage(ctx context.Context, userID uuid.UUID, year int, month int) ([]UsageLog, error)
 }
