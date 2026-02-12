@@ -1,9 +1,13 @@
 package llm_test
 
 import (
+	"context"
+	"os"
 	"testing"
 
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -49,4 +53,64 @@ func TestLimits_IsUnlimited(t *testing.T) {
 	}
 
 	assert.False(t, limited.IsUnlimited())
+}
+
+func TestRateLimiter_CheckLimit(t *testing.T) {
+	// Skip if no Redis available
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		t.Skip("REDIS_ADDR not set, skipping Redis tests")
+	}
+
+	ctx := context.Background()
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+	defer rdb.Close()
+
+	// Clean up test keys
+	defer rdb.FlushDB(ctx)
+
+	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+	userID := uuid.New()
+
+	// First request should pass
+	allowed, err := limiter.CheckLimit(ctx, userID, "free", 100) // 100 tokens
+	assert.NoError(t, err)
+	assert.True(t, allowed)
+
+	// 9 more requests (free tier: 10 req/min)
+	for i := 0; i < 9; i++ {
+		allowed, err = limiter.CheckLimit(ctx, userID, "free", 100)
+		assert.NoError(t, err)
+		assert.True(t, allowed)
+	}
+
+	// 11th request should fail (exceeded 10 req/min)
+	allowed, err = limiter.CheckLimit(ctx, userID, "free", 100)
+	assert.NoError(t, err)
+	assert.False(t, allowed)
+}
+
+func TestRateLimiter_TokenLimit(t *testing.T) {
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		t.Skip("REDIS_ADDR not set")
+	}
+
+	ctx := context.Background()
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+	defer rdb.Close()
+	defer rdb.FlushDB(ctx)
+
+	limiter := llm.NewRateLimiter(rdb, llm.DefaultTierLimits)
+	userID := uuid.New()
+
+	// Use 4000 tokens (free tier: 5000 tok/min)
+	allowed, err := limiter.CheckLimit(ctx, userID, "free", 4000)
+	assert.NoError(t, err)
+	assert.True(t, allowed)
+
+	// Use 1500 more tokens (total 5500 > 5000 limit)
+	allowed, err = limiter.CheckLimit(ctx, userID, "free", 1500)
+	assert.NoError(t, err)
+	assert.False(t, allowed) // Exceeds token limit
 }
