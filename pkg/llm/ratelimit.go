@@ -1,5 +1,14 @@
 package llm
 
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+)
+
 // Limits defines rate limits for a subscription tier
 type Limits struct {
 	RequestsPerMin int     `json:"requests_per_min"` // Max requests per minute (-1 = unlimited)
@@ -45,4 +54,91 @@ var DefaultTierLimits = TierLimits{
 		TokensPerMonth:  -1,
 		DailySpendUSD:   -1,
 	},
+}
+
+// RateLimiter enforces per-user rate limits using Redis
+type RateLimiter struct {
+	redis  *redis.Client
+	limits TierLimits
+}
+
+// NewRateLimiter creates a new rate limiter
+func NewRateLimiter(rdb *redis.Client, limits TierLimits) *RateLimiter {
+	return &RateLimiter{
+		redis:  rdb,
+		limits: limits,
+	}
+}
+
+// CheckLimit checks if the user can make a request with given token count
+// Returns false if any limit is exceeded
+func (rl *RateLimiter) CheckLimit(ctx context.Context, userID uuid.UUID, tier string, tokens int) (bool, error) {
+	limits, ok := rl.limits[tier]
+	if !ok {
+		return false, fmt.Errorf("unknown tier: %s", tier)
+	}
+
+	// Enterprise tier is unlimited
+	if limits.IsUnlimited() {
+		return true, nil
+	}
+
+	now := time.Now()
+
+	// Check request rate (requests per minute)
+	if limits.RequestsPerMin > 0 {
+		reqKey := fmt.Sprintf("ratelimit:%s:requests:min", userID.String())
+		count, err := rl.redis.Incr(ctx, reqKey).Result()
+		if err != nil {
+			return false, fmt.Errorf("redis incr failed: %w", err)
+		}
+
+		// Set TTL on first request
+		if count == 1 {
+			rl.redis.Expire(ctx, reqKey, time.Minute)
+		}
+
+		if int(count) > limits.RequestsPerMin {
+			return false, nil
+		}
+	}
+
+	// Check token rate (tokens per minute)
+	if limits.TokensPerMin > 0 {
+		tokKey := fmt.Sprintf("ratelimit:%s:tokens:min", userID.String())
+		count, err := rl.redis.IncrBy(ctx, tokKey, int64(tokens)).Result()
+		if err != nil {
+			return false, fmt.Errorf("redis incrby failed: %w", err)
+		}
+
+		if count == int64(tokens) {
+			rl.redis.Expire(ctx, tokKey, time.Minute)
+		}
+
+		if int(count) > limits.TokensPerMin {
+			return false, nil
+		}
+	}
+
+	// Check monthly token limit
+	if limits.TokensPerMonth > 0 {
+		monthKey := fmt.Sprintf("ratelimit:%s:tokens:month:%s", userID.String(), now.Format("2006-01"))
+		count, err := rl.redis.IncrBy(ctx, monthKey, int64(tokens)).Result()
+		if err != nil {
+			return false, fmt.Errorf("redis incrby failed: %w", err)
+		}
+
+		// Set expiry to end of month
+		if count == int64(tokens) {
+			endOfMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+			ttl := endOfMonth.Sub(now)
+			rl.redis.Expire(ctx, monthKey, ttl)
+		}
+
+		if int(count) > limits.TokensPerMonth {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
