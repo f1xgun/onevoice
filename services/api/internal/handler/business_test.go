@@ -253,19 +253,45 @@ func TestUpdateBusiness(t *testing.T) {
 			},
 		},
 		{
-			name:        "business not found",
-			requestBody: `{"name":"Updated Coffee Shop"}`,
+			name:        "business not found - creates new (upsert)",
+			requestBody: `{"name":"New Coffee Shop","category":"cafe","address":"789 Pine St","phone":"+1122334455","description":"Fresh start"}`,
 			setupContext: func(r *http.Request) *http.Request {
 				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
 				return r.WithContext(ctx)
 			},
 			mockSetup: func(m *MockBusinessService) {
+				// Mock GetByUserID to return not found
 				m.On("GetByUserID", mock.Anything, testUserID).
 					Return(nil, domain.ErrBusinessNotFound)
+
+				// Mock Create to succeed (upsert behavior)
+				m.On("Create", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
+					return b.Name == "New Coffee Shop" &&
+						b.UserID == testUserID &&
+						b.Category == "cafe" &&
+						b.Address == "789 Pine St" &&
+						b.Phone == "+1122334455" &&
+						b.Description == "Fresh start"
+				})).Return(&domain.Business{
+					ID:          testBusinessID,
+					UserID:      testUserID,
+					Name:        "New Coffee Shop",
+					Category:    "cafe",
+					Address:     "789 Pine St",
+					Phone:       "+1122334455",
+					Description: "Fresh start",
+					CreatedAt:   time.Now(),
+					UpdatedAt:   time.Now(),
+				}, nil)
 			},
-			wantStatus: http.StatusNotFound,
+			wantStatus: http.StatusCreated,
 			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"business not found"`)
+				var business domain.Business
+				err := json.Unmarshal([]byte(body), &business)
+				require.NoError(t, err)
+				assert.Equal(t, "New Coffee Shop", business.Name)
+				assert.Equal(t, "cafe", business.Category)
+				assert.Equal(t, testUserID, business.UserID)
 			},
 		},
 		{
