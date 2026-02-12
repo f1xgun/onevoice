@@ -117,18 +117,19 @@ func TestTokenUsage_Fields(t *testing.T) {
 	})
 }
 
-func TestStrategy_String(t *testing.T) {
+func TestStrategy_Values(t *testing.T) {
 	tests := []struct {
+		name     string
 		strategy Strategy
-		expected string
+		expected int
 	}{
-		{StrategyCost, "cost"},
-		{StrategySpeed, "speed"},
+		{"cost strategy", StrategyCost, 0},
+		{"speed strategy", StrategySpeed, 1},
 	}
 
 	for _, tt := range tests {
-		t.Run(string(tt.strategy), func(t *testing.T) {
-			assert.Equal(t, tt.expected, string(tt.strategy))
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, int(tt.strategy))
 		})
 	}
 }
@@ -194,7 +195,6 @@ func TestStreamChunk_Fields(t *testing.T) {
 		chunk := StreamChunk{
 			Delta:         "Hello",
 			ToolCallDelta: toolCall,
-			FinishReason:  "stop",
 			Usage:         usage,
 			Done:          true,
 			Error:         nil,
@@ -203,7 +203,6 @@ func TestStreamChunk_Fields(t *testing.T) {
 		assert.Equal(t, "Hello", chunk.Delta)
 		assert.NotNil(t, chunk.ToolCallDelta)
 		assert.Equal(t, "call_1", chunk.ToolCallDelta.ID)
-		assert.Equal(t, "stop", chunk.FinishReason)
 		assert.NotNil(t, chunk.Usage)
 		assert.True(t, chunk.Done)
 		assert.NoError(t, chunk.Error)

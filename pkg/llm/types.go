@@ -74,10 +74,9 @@ type TokenUsage struct {
 type StreamChunk struct {
 	Delta         string      `json:"delta"`                     // Incremental content
 	ToolCallDelta *ToolCall   `json:"tool_call_delta,omitempty"` // Incremental tool call
-	FinishReason  string      `json:"finish_reason,omitempty"`
-	Usage         *TokenUsage `json:"usage,omitempty"` // Only in final chunk
-	Done          bool        `json:"done"`            // True if this is the final chunk
-	Error         error       `json:"-"`               // If stream encounters error
+	Usage         *TokenUsage `json:"usage,omitempty"`           // Only in final chunk
+	Done          bool        `json:"done"`                      // True if this is the final chunk
+	Error         error       `json:"-"`                         // If stream encounters error
 }
 
 // ModelInfo describes the capabilities and pricing of an LLM model.
@@ -93,9 +92,9 @@ type ModelInfo struct {
 }
 
 // Strategy defines the routing strategy for provider selection.
-type Strategy string
+type Strategy int
 
 const (
-	StrategyCost  Strategy = "cost"  // Lowest cost
-	StrategySpeed Strategy = "speed" // Lowest latency
+	StrategyCost  Strategy = iota // Minimize cost (default)
+	StrategySpeed                 // Minimize latency
 )
