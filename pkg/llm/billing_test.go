@@ -2,6 +2,7 @@ package llm_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -86,19 +87,24 @@ func TestBillingRepository_Interface(t *testing.T) {
 
 // MockBillingRepository implements BillingRepository for testing
 type MockBillingRepository struct {
+	mu   sync.Mutex
 	logs []llm.UsageLog
 }
 
-func (m *MockBillingRepository) LogUsage(ctx context.Context, log *llm.UsageLog) error {
+func (m *MockBillingRepository) LogUsage(_ context.Context, log *llm.UsageLog) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.logs = append(m.logs, *log)
 	return nil
 }
 
-func (m *MockBillingRepository) GetUserBalance(ctx context.Context, userID uuid.UUID) (float64, error) {
+func (m *MockBillingRepository) GetUserBalance(_ context.Context, _ uuid.UUID) (float64, error) {
 	return 10.0, nil // Mock balance
 }
 
-func (m *MockBillingRepository) GetDailySpend(ctx context.Context, userID uuid.UUID) (float64, error) {
+func (m *MockBillingRepository) GetDailySpend(_ context.Context, userID uuid.UUID) (float64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	total := 0.0
 	for _, log := range m.logs {
 		if log.UserID == userID {
@@ -108,7 +114,9 @@ func (m *MockBillingRepository) GetDailySpend(ctx context.Context, userID uuid.U
 	return total, nil
 }
 
-func (m *MockBillingRepository) GetMonthlyUsage(ctx context.Context, userID uuid.UUID, year int, month int) ([]llm.UsageLog, error) {
+func (m *MockBillingRepository) GetMonthlyUsage(_ context.Context, userID uuid.UUID, year int, month int) ([]llm.UsageLog, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var result []llm.UsageLog
 	for _, log := range m.logs {
 		if log.UserID == userID && log.CreatedAt.Year() == year && int(log.CreatedAt.Month()) == month {

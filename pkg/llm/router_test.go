@@ -316,6 +316,13 @@ func TestRouter_Billing_LoggedAfterSuccess(t *testing.T) {
 	assert.Equal(t, "hello", resp.Content)
 
 	year, month := time.Now().Year(), int(time.Now().Month())
+
+	// Wait for async billing goroutine to complete.
+	assert.Eventually(t, func() bool {
+		logs, err := billing.GetMonthlyUsage(context.Background(), userID, year, month)
+		return err == nil && len(logs) == 1
+	}, 100*time.Millisecond, 5*time.Millisecond, "billing log should appear")
+
 	logs, err := billing.GetMonthlyUsage(context.Background(), userID, year, month)
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
