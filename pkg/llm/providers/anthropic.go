@@ -46,8 +46,8 @@ func (p *AnthropicProvider) HealthCheck(ctx context.Context) error {
 func (p *AnthropicProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	input3 := 3.0
 	output3 := 15.0
-	input5 := 3.0
-	output5 := 15.0
+	input5 := 1.0
+	output5 := 5.0
 	return []llm.ModelInfo{
 		{
 			ID:                 "claude-3-5-sonnet-20241022",
@@ -73,37 +73,36 @@ func (p *AnthropicProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, er
 	}, nil
 }
 
-func buildAnthropicMessages(req llm.ChatRequest) (string, []anthropic.MessageParam) {
-	var systemMsg string
+func buildAnthropicMessages(req llm.ChatRequest) ([]anthropic.TextBlockParam, []anthropic.MessageParam) {
+	var systemBlocks []anthropic.TextBlockParam
 	var msgs []anthropic.MessageParam
 	for _, m := range req.Messages {
 		switch m.Role {
 		case "system":
-			systemMsg = m.Content
+			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: m.Content, Type: "text"})
 		case "user":
 			msgs = append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content)))
 		case "assistant":
 			msgs = append(msgs, anthropic.NewAssistantMessage(anthropic.NewTextBlock(m.Content)))
 		}
 	}
-	return systemMsg, msgs
+	return systemBlocks, msgs
 }
 
 // Chat sends a request and returns the complete response
 func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	start := time.Now()
-	systemMsg, msgs := buildAnthropicMessages(req)
+	systemBlocks, msgs := buildAnthropicMessages(req)
 
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(req.Model),
 		MaxTokens: int64(req.MaxTokens),
 		Messages:  msgs,
 	}
-	if systemMsg != "" {
-		params.System = []anthropic.TextBlockParam{
-			{Text: systemMsg, Type: "text"},
-		}
+	if len(systemBlocks) > 0 {
+		params.System = systemBlocks
 	}
+	params.Temperature = anthropic.Float(req.Temperature)
 
 	resp, err := p.client.Messages.New(ctx, params)
 	if err != nil {
@@ -133,18 +132,17 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm
 
 // ChatStream returns a channel of incremental responses
 func (p *AnthropicProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
-	systemMsg, msgs := buildAnthropicMessages(req)
+	systemBlocks, msgs := buildAnthropicMessages(req)
 
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(req.Model),
 		MaxTokens: int64(req.MaxTokens),
 		Messages:  msgs,
 	}
-	if systemMsg != "" {
-		params.System = []anthropic.TextBlockParam{
-			{Text: systemMsg, Type: "text"},
-		}
+	if len(systemBlocks) > 0 {
+		params.System = systemBlocks
 	}
+	params.Temperature = anthropic.Float(req.Temperature)
 
 	stream := p.client.Messages.NewStreaming(ctx, params)
 
