@@ -51,6 +51,9 @@ type ChatRequest struct {
 	TopP        float64          `json:"top_p,omitempty"`
 	Stop        []string         `json:"stop,omitempty"`
 	RequestID   string           `json:"request_id,omitempty"` // For tracing
+	// Routing metadata
+	Tier        string           `json:"tier,omitempty"`     // Subscription tier for rate limiting
+	Strategy    Strategy         `json:"strategy,omitempty"` // Routing strategy (default: StrategyCost)
 }
 
 // ChatResponse represents the response from a chat completion.
