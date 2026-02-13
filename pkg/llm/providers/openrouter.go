@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -124,7 +125,7 @@ func (p *OpenRouterProvider) ChatStream(ctx context.Context, req llm.ChatRequest
 		for {
 			resp, err := stream.Recv()
 			if err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					ch <- llm.StreamChunk{Done: true}
 				} else {
 					ch <- llm.StreamChunk{Error: err, Done: true}
