@@ -47,7 +47,12 @@ func WithBilling(br BillingRepository) RouterOption {
 
 // WithProvider registers a Provider implementation by name.
 func WithProvider(p Provider) RouterOption {
-	return func(r *Router) { r.providers[p.Name()] = p }
+	return func(r *Router) {
+		if p == nil {
+			return
+		}
+		r.providers[p.Name()] = p
+	}
 }
 
 // WithCommission sets the commission configuration for billing.
@@ -161,7 +166,7 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 	resp.Provider = entry.Provider
 
 	if r.billing != nil {
-		r.logBilling(ctx, req, entry, resp)
+		go r.logBilling(context.Background(), req, entry, resp)
 	}
 
 	return resp, nil
@@ -191,6 +196,8 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 		return nil, err
 	}
 
+	// RecordSuccess with 0 latency — streaming latency is not available at channel-open time.
+	// Latency tracking for streaming must be handled at a higher layer.
 	r.registry.RecordSuccess(entry.Provider, req.Model, 0)
 	return ch, nil
 }
