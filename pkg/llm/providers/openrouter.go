@@ -32,7 +32,10 @@ func (p *OpenRouterProvider) Name() string { return "openrouter" }
 // HealthCheck verifies the provider is reachable
 func (p *OpenRouterProvider) HealthCheck(ctx context.Context) error {
 	_, err := p.client.ListModels(ctx)
-	return err
+	if err != nil {
+		return fmt.Errorf("openrouter health check: %w", err)
+	}
+	return nil
 }
 
 // ListModels returns available models from OpenRouter
@@ -74,13 +77,9 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req llm.ChatRequest) (*ll
 		return nil, fmt.Errorf("openrouter chat: %w", err)
 	}
 
-	content := ""
+	var content, finishReason string
 	if len(resp.Choices) > 0 {
 		content = resp.Choices[0].Message.Content
-	}
-
-	finishReason := ""
-	if len(resp.Choices) > 0 {
 		finishReason = string(resp.Choices[0].FinishReason)
 	}
 
@@ -126,9 +125,15 @@ func (p *OpenRouterProvider) ChatStream(ctx context.Context, req llm.ChatRequest
 			resp, err := stream.Recv()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					ch <- llm.StreamChunk{Done: true}
+					select {
+					case ch <- llm.StreamChunk{Done: true}:
+					case <-ctx.Done():
+					}
 				} else {
-					ch <- llm.StreamChunk{Error: err, Done: true}
+					select {
+					case ch <- llm.StreamChunk{Error: err, Done: true}:
+					case <-ctx.Done():
+					}
 				}
 				return
 			}
@@ -136,7 +141,11 @@ func (p *OpenRouterProvider) ChatStream(ctx context.Context, req llm.ChatRequest
 			if len(resp.Choices) > 0 {
 				delta = resp.Choices[0].Delta.Content
 			}
-			ch <- llm.StreamChunk{Delta: delta}
+			select {
+			case ch <- llm.StreamChunk{Delta: delta}:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
