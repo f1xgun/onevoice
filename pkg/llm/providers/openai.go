@@ -61,7 +61,25 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.Ch
 
 	msgs := make([]openai.ChatCompletionMessage, len(req.Messages))
 	for i, m := range req.Messages {
-		msgs[i] = openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
+		msg := openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
+		if m.ToolCallID != "" {
+			msg.ToolCallID = m.ToolCallID
+		}
+		if len(m.ToolCalls) > 0 {
+			oaiToolCalls := make([]openai.ToolCall, len(m.ToolCalls))
+			for j, tc := range m.ToolCalls {
+				oaiToolCalls[j] = openai.ToolCall{
+					ID:   tc.ID,
+					Type: openai.ToolType(tc.Type),
+					Function: openai.FunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				}
+			}
+			msg.ToolCalls = oaiToolCalls
+		}
+		msgs[i] = msg
 	}
 
 	oaiReq := openai.ChatCompletionRequest{
@@ -129,7 +147,25 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.Ch
 func (p *OpenAIProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
 	msgs := make([]openai.ChatCompletionMessage, len(req.Messages))
 	for i, m := range req.Messages {
-		msgs[i] = openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
+		msg := openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
+		if m.ToolCallID != "" {
+			msg.ToolCallID = m.ToolCallID
+		}
+		if len(m.ToolCalls) > 0 {
+			oaiToolCalls := make([]openai.ToolCall, len(m.ToolCalls))
+			for j, tc := range m.ToolCalls {
+				oaiToolCalls[j] = openai.ToolCall{
+					ID:   tc.ID,
+					Type: openai.ToolType(tc.Type),
+					Function: openai.FunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				}
+			}
+			msg.ToolCalls = oaiToolCalls
+		}
+		msgs[i] = msg
 	}
 
 	oaiReq := openai.ChatCompletionRequest{
@@ -138,6 +174,22 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<
 		MaxTokens:   req.MaxTokens,
 		Temperature: float32(req.Temperature),
 		Stream:      true,
+	}
+
+	// Add tool definitions if present
+	if len(req.Tools) > 0 {
+		tools := make([]openai.Tool, len(req.Tools))
+		for i, t := range req.Tools {
+			tools[i] = openai.Tool{
+				Type: openai.ToolTypeFunction,
+				Function: &openai.FunctionDefinition{
+					Name:        t.Function.Name,
+					Description: t.Function.Description,
+					Parameters:  t.Function.Parameters,
+				},
+			}
+		}
+		oaiReq.Tools = tools
 	}
 
 	stream, err := p.client.CreateChatCompletionStream(ctx, oaiReq)
