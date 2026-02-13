@@ -61,6 +61,7 @@ type ChatResponse struct {
 	FinishReason string        `json:"finish_reason"` // "stop", "length", "tool_calls", "content_filter"
 	Latency      time.Duration `json:"latency"`
 	RawResponse  interface{}   `json:"raw_response,omitempty"`
+	Provider     string        `json:"provider,omitempty"` // Provider identifier (e.g., "openrouter", "openai")
 }
 
 // TokenUsage tracks token consumption for a request.
