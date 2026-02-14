@@ -1,0 +1,67 @@
+flowchart TB
+    U1["Владелец бизнеса<br/>задаёт эталонный профиль"]
+
+    subgraph core ["Ядро системы OneVoice"]
+        direction TB
+        O["Оркестратор"]
+        SYNC["Модуль контроля<br/>консистентности"]
+        EVENTS["Модуль обработки<br/>событий"]
+        QUEUE["Очередь задач"]
+
+        O --> SYNC
+        SYNC -- "расхождения" --> QUEUE
+        EVENTS -- "события" --> QUEUE
+        QUEUE --> O
+    end
+
+    subgraph agents ["Специализированные агенты"]
+        direction LR
+        A_VK["API-агент VK"]
+        A_TG["API-агент Telegram"]
+        A_YB["RPA-агент<br/>Яндекс.Бизнес"]
+        A_2G["RPA-агент 2ГИС"]
+    end
+
+    subgraph platforms ["Внешние платформы"]
+        direction LR
+        P_VK["VK<br/>(API)"]
+        P_TG["Telegram<br/>(Bot API)"]
+        P_YB["Яндекс.Бизнес<br/>(Playwright)"]
+        P_2G["2ГИС<br/>(Playwright)"]
+    end
+
+    DB[("PostgreSQL<br/>+ Журнал аудита")]
+    U2["Пользователь<br/>просматривает результаты"]
+
+    U1 --> O
+    O -- "задачи" --> A_VK & A_TG & A_YB & A_2G
+
+    A_VK --> P_VK
+    A_TG --> P_TG
+    A_YB --> P_YB
+    A_2G --> P_2G
+
+    P_VK & P_TG & P_YB & P_2G -- "данные" --> EVENTS
+    A_VK & A_TG & A_YB & A_2G -- "результат" --> O
+
+    O --> DB
+    DB --> U2
+
+    style U1 fill:#e0e0e0,stroke:#333,color:#000,stroke-width:2px
+    style U2 fill:#e0e0e0,stroke:#333,color:#000,stroke-width:2px
+    style O fill:#d0d0d0,stroke:#333,color:#000,stroke-width:2px
+    style DB fill:#f0f0f0,stroke:#333,color:#000
+    style core fill:#fafafa,stroke:#666,stroke-width:1px
+    style agents fill:#f5f5f5,stroke:#666,stroke-width:1px
+    style platforms fill:#f5f5f5,stroke:#666,stroke-width:1px
+    style SYNC fill:#f0f0f0,stroke:#666
+    style EVENTS fill:#f0f0f0,stroke:#666
+    style QUEUE fill:#f0f0f0,stroke:#666
+    style A_VK fill:#fff,stroke:#666
+    style A_TG fill:#fff,stroke:#666
+    style A_YB fill:#fff,stroke:#666
+    style A_2G fill:#fff,stroke:#666
+    style P_VK fill:#e8e8e8,stroke:#333,color:#000
+    style P_TG fill:#e8e8e8,stroke:#333,color:#000
+    style P_YB fill:#e8e8e8,stroke:#333,color:#000
+    style P_2G fill:#e8e8e8,stroke:#333,color:#000

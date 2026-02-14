@@ -1,0 +1,183 @@
+% ==============================================================================
+% preamble.tex — GOST-compliant XeLaTeX preamble for VKR
+% Moscow Polytechnic University, Department of ICT
+% ==============================================================================
+
+\documentclass[14pt,a4paper,oneside]{extreport}
+
+% --- Language and fonts ---
+\usepackage{polyglossia}
+\setdefaultlanguage{russian}
+\setotherlanguage{english}
+\defaultfontfeatures{Ligatures=TeX}
+
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\setmonofont[Script=Default,Ligatures=TeX]{Courier New}
+\newfontfamily\cyrillicfonttt[Script=Cyrillic]{Courier New}
+
+% --- Page geometry (GOST) ---
+\usepackage[
+  a4paper,
+  left=30mm,
+  right=15mm,
+  top=20mm,
+  bottom=20mm,
+  footskip=10mm
+]{geometry}
+
+% --- Line spacing: 1.5 ---
+\usepackage{setspace}
+\onehalfspacing
+
+% --- Paragraph indent: 1.25 cm ---
+\usepackage{indentfirst}
+\setlength{\parindent}{1.25cm}
+
+% --- No extra space between paragraphs ---
+\setlength{\parskip}{0pt}
+
+% --- Page numbering: centered bottom, TNR 12pt ---
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\fontsize{12pt}{14pt}\selectfont\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Redefine plain style (used by chapter first pages)
+\fancypagestyle{plain}{%
+  \fancyhf{}%
+  \fancyfoot[C]{\fontsize{12pt}{14pt}\selectfont\thepage}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0pt}%
+}
+
+% --- Heading formatting (GOST) ---
+\usepackage{titlesec}
+
+% Chapter (level 1): UPPERCASE, centered, bold, 14pt, new page
+% Spacing before: 14pt, after: 14pt
+\titleformat{\chapter}[block]
+  {\centering\bfseries\fontsize{14pt}{16.8pt}\selectfont}
+  {\thechapter\hspace{0.5em}}
+  {0pt}
+  {\MakeUppercase}
+\titlespacing*{\chapter}{0pt}{-\baselineskip}{14pt}
+
+% Section (level 2): bold, paragraph indent, 14pt
+% Spacing before: 14pt, after: 14pt
+\titleformat{\section}[block]
+  {\bfseries\fontsize{14pt}{16.8pt}\selectfont}
+  {\thesection\hspace{0.5em}}
+  {0pt}
+  {}
+\titlespacing*{\section}{\parindent}{14pt}{14pt}
+
+% Subsection (level 3): normal weight, paragraph indent, 14pt
+% Spacing before: 14pt, after: 14pt
+\titleformat{\subsection}[block]
+  {\normalfont\fontsize{14pt}{16.8pt}\selectfont}
+  {\thesubsection\hspace{0.5em}}
+  {0pt}
+  {}
+\titlespacing*{\subsection}{\parindent}{14pt}{14pt}
+
+% --- Unnumbered structural elements (INTRODUCTION, CONCLUSION, etc.) ---
+% Use \chapter* and manually add to TOC
+\newcommand{\structchapter}[1]{%
+  \clearpage
+  \phantomsection
+  \addcontentsline{toc}{chapter}{\texorpdfstring{\MakeUppercase{#1}}{#1}}%
+  {\centering\bfseries\fontsize{14pt}{16.8pt}\selectfont\MakeUppercase{#1}\par}%
+  \vspace{14pt}%
+}
+
+% --- TOC formatting ---
+\usepackage{tocloft}
+\renewcommand{\cftchapleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftchapfont}{\normalfont}
+\renewcommand{\cftchappagefont}{\normalfont}
+\setlength{\cftbeforechapskip}{0pt}
+\setlength{\cftbeforesecskip}{0pt}
+\setlength{\cftbeforesubsecskip}{0pt}
+
+% Depth of TOC (show up to subsections)
+\setcounter{tocdepth}{2}
+% Depth of numbering
+\setcounter{secnumdepth}{3}
+
+% --- Lists (GOST: no bullets, use dashes) ---
+\usepackage{enumitem}
+\setlist{nosep, leftmargin=\parindent, labelindent=\parindent}
+\setlist[itemize]{label={--}}
+\setlist[enumerate,1]{label={\arabic*)}}
+\setlist[enumerate,2]{label={\asbuk*)}}
+
+% --- Tables ---
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{multirow}
+
+% --- Figures ---
+\usepackage{graphicx}
+\graphicspath{{images/}}
+
+% --- Captions (GOST formatting) ---
+\usepackage{caption}
+\DeclareCaptionLabelSeparator{gost}{ -- }
+% Figures: centered, "Рисунок N -- Name"
+\captionsetup[figure]{
+  labelsep=gost,
+  justification=centering,
+  font={onehalfspacing},
+  name=Рисунок
+}
+% Tables: left-aligned, "Таблица N -- Name"
+\captionsetup[table]{
+  labelsep=gost,
+  justification=raggedright,
+  singlelinecheck=false,
+  font={onehalfspacing},
+  name=Таблица
+}
+
+% --- Code listings ---
+\usepackage{listings}
+\lstset{
+  basicstyle=\fontsize{12pt}{14pt}\selectfont\ttfamily,
+  breaklines=true,
+  frame=none,
+  numbers=left,
+  numberstyle=\small,
+  tabsize=4,
+  showstringspaces=false,
+  captionpos=t,
+  aboveskip=10pt,
+  belowskip=10pt
+}
+\renewcommand{\lstlistingname}{Листинг}
+
+% --- Math ---
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% --- Hyperlinks (last loaded, keep refs invisible for print) ---
+\usepackage[
+  hidelinks,
+  unicode,
+  bookmarksnumbered
+]{hyperref}
+
+% --- Custom commands ---
+% Short cite command matching [n] style
+\newcommand{\citep}[1]{[\ref{src:#1}]}
+
+% Reference to figure/table in Russian style
+\newcommand{\figref}[1]{рисунок~\ref{#1}}
+\newcommand{\tabref}[1]{таблица~\ref{#1}}
+
+% First use abbreviation
+\newcommand{\abbr}[2]{#1 (#2)}

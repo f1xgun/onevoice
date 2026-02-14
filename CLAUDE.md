@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**OneVoice** — multi-agent system for automating digital presence management for SMBs (малый и средний бизнес). Currently in the **thesis documentation phase** (ВКР — выпускная квалификационная работа). No implementation code exists yet; the repository contains product specification, thesis roadmap, and a multi-agent workspace for writing the thesis document.
+**OneVoice** — platform-agnostic multi-agent system with hybrid integration model (API + RPA) for automating digital presence management for SMBs (малый и средний бизнес). Currently in the **thesis documentation phase** (ВКР — выпускная квалификационная работа). No implementation code exists yet; the repository contains product specification, thesis roadmap, and a multi-agent workspace for writing the thesis document. The Russian market serves as the primary case study (VK, Telegram, Yandex.Business), but the architecture is universal.
 
 All documentation is in **Russian**. Academic/scientific writing style is required for thesis output.
 
@@ -67,13 +67,18 @@ Alternate paths: `factcheck_needs_more` loops back to `researching`; `blocked_us
 - **Database:** PostgreSQL 16, Redis 7, MinIO (S3)
 - **Infrastructure:** Docker Compose (dev), Kubernetes (prod), GitHub Actions CI/CD
 - **LLM:** OpenAI GPT-4 / Claude 3 for orchestration
-- **Integrations:** Google Business Profile, VK, Telegram, Instagram, Yandex Maps
+- **Integrations (API-based):** VK, Telegram, Google Business Profile (international)
+- **Integrations (RPA-based):** Яндекс.Бизнес (Playwright), 2ГИС (Playwright)
+- **RPA Engine:** Playwright for browser automation of platforms without public APIs
 
 ## Key Decisions (Approved)
 
 1. Domain example: coffee shop (кофейня)
 2. Tech stack: Go + Next.js/React + PostgreSQL
 3. Competitors for analysis: Bitrix24, SendPulse, Kommo, Hootsuite, Buffer, SMMplanner, YouScan
+4. Hybrid integration model: API-based agents (VK, Telegram) + RPA-based agents (Yandex.Business via Playwright) in MVP
+5. Instagram removed from project scope (Meta recognized as extremist org in Russia, legally blocked)
+6. Google Business Profile deprioritized to Phase 3 (only 3% usage in Russia)
 
 ## Thesis Requirements
 

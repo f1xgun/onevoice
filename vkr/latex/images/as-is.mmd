@@ -1,0 +1,67 @@
+flowchart TB
+    owner["Владелец / сотрудник бизнеса"]
+
+    subgraph manual["Ручной процесс управления цифровым присутствием"]
+        direction TB
+
+        change["Изменение бизнес-данных<br/>(часы работы, адрес, контакты)"]
+
+        login1["Авторизация<br/>на Яндекс.Бизнес"]
+        login2["Авторизация<br/>на 2ГИС"]
+        login3["Авторизация<br/>в VK"]
+        login4["Авторизация<br/>в Telegram"]
+
+        update1["Обновление данных<br/>Яндекс.Бизнес"]
+        update2["Обновление данных<br/>2ГИС"]
+        update3["Обновление данных<br/>VK"]
+        update4["Обновление данных<br/>Telegram"]
+
+        review1["Проверка отзывов<br/>Яндекс.Бизнес"]
+        review2["Проверка отзывов<br/>2ГИС"]
+        review3["Проверка сообщений<br/>VK"]
+        review4["Проверка сообщений<br/>Telegram"]
+    end
+
+    subgraph problems["Выявленные недостатки"]
+        direction LR
+        p1["Нет эталонного<br/>источника данных"]
+        p2["Риск рассогласования<br/>между площадками"]
+        p3["Нет централизованного<br/>журнала действий"]
+        p4["Высокая трудоёмкость<br/>ручных операций"]
+    end
+
+    owner --> change
+    change --> login1 --> update1 --> review1
+    change --> login2 --> update2 --> review2
+    change --> login3 --> update3 --> review3
+    change --> login4 --> update4 --> review4
+
+    review1 -.-> p1
+    review2 -.-> p2
+    review3 -.-> p3
+    review4 -.-> p4
+
+    style owner fill:#e0e0e0,stroke:#333,color:#000,stroke-width:2px
+    style change fill:#d0d0d0,stroke:#333,color:#000,stroke-width:2px
+    style manual fill:#fafafa,stroke:#666,stroke-width:1px
+    style problems fill:#f5f5f5,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+
+    style login1 fill:#fff,stroke:#666
+    style login2 fill:#fff,stroke:#666
+    style login3 fill:#fff,stroke:#666
+    style login4 fill:#fff,stroke:#666
+
+    style update1 fill:#f0f0f0,stroke:#666
+    style update2 fill:#f0f0f0,stroke:#666
+    style update3 fill:#f0f0f0,stroke:#666
+    style update4 fill:#f0f0f0,stroke:#666
+
+    style review1 fill:#f5f5f5,stroke:#666
+    style review2 fill:#f5f5f5,stroke:#666
+    style review3 fill:#f5f5f5,stroke:#666
+    style review4 fill:#f5f5f5,stroke:#666
+
+    style p1 fill:#d9d9d9,stroke:#333,color:#000
+    style p2 fill:#d9d9d9,stroke:#333,color:#000
+    style p3 fill:#d9d9d9,stroke:#333,color:#000
+    style p4 fill:#d9d9d9,stroke:#333,color:#000

@@ -1,0 +1,41 @@
+flowchart TB
+    U1["Владелец бизнеса"]
+
+    subgraph core ["Ядро системы OneVoice"]
+        direction TB
+        CP["Эталонный профиль<br/>(canonical profile)"]
+        O["Оркестратор"]
+        SYNC["Модуль контроля<br/>консистентности"]
+        EVENTS["Модуль обработки<br/>событий"]
+        QUEUE["Очередь задач"]
+        DB[("PostgreSQL<br/>+ журнал аудита")]
+
+        CP --> SYNC
+        SYNC -- "расхождения" --> QUEUE
+        EVENTS -- "события" --> QUEUE
+        QUEUE -- "задачи" --> O
+        O -- "результат" --> DB
+    end
+
+    AGENTS["Пул агентов<br/>(API-агенты + RPA-агенты)"]
+    PLATFORMS["Внешние платформы<br/>(VK, Telegram,<br/>Яндекс.Бизнес, 2ГИС)"]
+    U2["Пользователь<br/>просматривает результаты"]
+
+    U1 -- "задаёт эталон" --> CP
+    O -- "делегирует задачи" --> AGENTS
+    AGENTS -- "выполняет действия" --> PLATFORMS
+    PLATFORMS -- "данные и события" --> EVENTS
+    AGENTS -- "результат выполнения" --> O
+    DB --> U2
+
+    style U1 fill:#e0e0e0,stroke:#333,color:#000,stroke-width:2px
+    style U2 fill:#e0e0e0,stroke:#333,color:#000,stroke-width:2px
+    style CP fill:#d9d9d9,stroke:#333,color:#000,stroke-width:2px
+    style O fill:#d0d0d0,stroke:#333,color:#000,stroke-width:2px
+    style DB fill:#f0f0f0,stroke:#333,color:#000
+    style core fill:#fafafa,stroke:#666,stroke-width:1px
+    style SYNC fill:#f0f0f0,stroke:#666
+    style EVENTS fill:#f0f0f0,stroke:#666
+    style QUEUE fill:#f0f0f0,stroke:#666
+    style AGENTS fill:#e8e8e8,stroke:#333,color:#000,stroke-width:2px
+    style PLATFORMS fill:#e8e8e8,stroke:#333,color:#000,stroke-width:2px
