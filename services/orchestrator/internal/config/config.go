@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 // Config holds orchestrator configuration loaded from environment.
@@ -20,11 +21,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("LLM_MODEL is required")
 	}
 
+	maxIter := 10
+	if v := os.Getenv("MAX_ITERATIONS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxIter = n
+		}
+	}
+
 	return &Config{
 		Port:          getEnv("PORT", "8090"),
 		LLMModel:      model,
 		LLMTier:       getEnv("LLM_TIER", "free"),
-		MaxIterations: 10,
+		MaxIterations: maxIter,
 	}, nil
 }
 
