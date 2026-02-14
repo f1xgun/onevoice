@@ -1,0 +1,55 @@
+flowchart TB
+    O["Оркестратор"]
+
+    subgraph api_agents ["API-агенты"]
+        direction LR
+        A_VK["API-агент VK"]
+        A_TG["API-агент Telegram"]
+    end
+
+    subgraph rpa_agents ["RPA-агенты"]
+        direction LR
+        A_YB["RPA-агент<br/>Яндекс.Бизнес"]
+        A_2G["RPA-агент<br/>2ГИС"]
+    end
+
+    subgraph api_platforms ["Платформы с API"]
+        direction LR
+        P_VK["VK"]
+        P_TG["Telegram"]
+    end
+
+    subgraph rpa_platforms ["Платформы без API"]
+        direction LR
+        P_YB["Яндекс.Бизнес"]
+        P_2G["2ГИС"]
+    end
+
+    O -- "задача" --> A_VK
+    O -- "задача" --> A_TG
+    O -- "задача" --> A_YB
+    O -- "задача" --> A_2G
+
+    A_VK -- "результат" --> O
+    A_TG -- "результат" --> O
+    A_YB -- "результат" --> O
+    A_2G -- "результат" --> O
+
+    A_VK -- "OAuth 2.0 /<br/>REST API" --> P_VK
+    A_TG -- "HTTP API /<br/>Bot Token" --> P_TG
+    A_YB -- "Playwright /<br/>браузер" --> P_YB
+    A_2G -- "Playwright /<br/>браузер" --> P_2G
+
+    style O fill:#d0d0d0,stroke:#333,color:#000,stroke-width:2px
+    style api_agents fill:#fafafa,stroke:#666,stroke-width:1px
+    style rpa_agents fill:#fafafa,stroke:#666,stroke-width:1px
+    style api_platforms fill:#f5f5f5,stroke:#666,stroke-width:1px
+    style rpa_platforms fill:#f5f5f5,stroke:#666,stroke-width:1px,stroke-dasharray: 5 5
+    style A_VK fill:#fff,stroke:#666
+    style A_TG fill:#fff,stroke:#666
+    style A_YB fill:#fff,stroke:#666
+    style A_2G fill:#fff,stroke:#666
+    style P_VK fill:#e8e8e8,stroke:#333,color:#000
+    style P_TG fill:#e8e8e8,stroke:#333,color:#000
+    style P_YB fill:#e8e8e8,stroke:#333,color:#000
+    style P_2G fill:#e8e8e8,stroke:#333,color:#000

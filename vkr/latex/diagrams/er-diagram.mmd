@@ -1,0 +1,105 @@
+erDiagram
+    business ||--o{ location : "имеет"
+    business ||--o{ channel_account : "подключает"
+    business ||--|{ canonical_profile : "задаёт эталон"
+    business ||--o{ user_role : "назначает"
+
+    location ||--o{ channel_account : "привязана"
+
+    user ||--o{ user_role : "имеет"
+    role ||--o{ user_role : "определяет"
+
+    channel ||--o{ channel_account : "тип"
+
+    channel_account ||--o{ channel_profile_snapshot : "фиксирует срез"
+    channel_account ||--o{ event : "получает"
+
+    event ||--o{ conversation_thread : "создаёт"
+    conversation_thread ||--o{ message : "содержит"
+
+    event ||--o{ work_item : "порождает"
+    work_item }o--|| workflow_stage : "находится в"
+
+    business ||--o{ audit_log : "журналирует"
+    work_item ||--o{ audit_log : "записывает"
+
+    business {
+        uuid id PK
+        string name
+        string description
+    }
+    location {
+        uuid id PK
+        string address
+        string phone
+        string working_hours
+    }
+    user {
+        uuid id PK
+        string email
+        string name
+    }
+    role {
+        uuid id PK
+        string name
+        string permissions
+    }
+    channel {
+        uuid id PK
+        string name
+        string integration_type
+    }
+    channel_account {
+        uuid id PK
+        string external_id
+        string status
+        json credentials
+    }
+    canonical_profile {
+        uuid id PK
+        json attributes
+        timestamp updated_at
+    }
+    channel_profile_snapshot {
+        uuid id PK
+        json attributes
+        timestamp captured_at
+    }
+    event {
+        uuid id PK
+        string type
+        json payload
+        timestamp created_at
+    }
+    conversation_thread {
+        uuid id PK
+        string status
+    }
+    message {
+        uuid id PK
+        string direction
+        text content
+        timestamp sent_at
+    }
+    work_item {
+        uuid id PK
+        string type
+        string status
+        timestamp created_at
+    }
+    workflow_stage {
+        uuid id PK
+        string name
+        int sort_order
+    }
+    audit_log {
+        uuid id PK
+        string action
+        json diff
+        timestamp created_at
+    }
+    user_role {
+        uuid user_id FK
+        uuid role_id FK
+        uuid business_id FK
+    }
