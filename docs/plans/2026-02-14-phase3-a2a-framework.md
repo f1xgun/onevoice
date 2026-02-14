@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task.
 
-**Goal:** Build the A2A (Agent-to-Agent) communication framework so the LLM orchestrator can dispatch tool calls to platform agents (Telegram, VK, Google) over NATS request-reply.
+**Goal:** Build the A2A (Agent-to-Agent) communication framework so the LLM orchestrator can dispatch tool calls to platform agents (Telegram, VK, Yandex.Business) over NATS request-reply.
 
 **Architecture:** Shared protocol types live in `pkg/a2a` (imported by both orchestrator and agents). The orchestrator holds a `NATSExecutor` per agent that implements `tools.Executor` — when the LLM requests `telegram__send_post`, the executor JSON-encodes a `ToolRequest`, publishes it on NATS subject `tasks.telegram`, and waits for a `ToolResponse` reply (30s timeout). Platform agents import `pkg/a2a.Agent` base which subscribes to `tasks.{agentID}` and dispatches to a `Handler` interface; Phase 4 agents embed this base.
 
@@ -124,7 +124,7 @@ func TestToolResponse_ErrorRoundTrip(t *testing.T) {
 func TestSubject(t *testing.T) {
 	assert.Equal(t, "tasks.telegram", a2a.Subject(a2a.AgentTelegram))
 	assert.Equal(t, "tasks.vk", a2a.Subject(a2a.AgentVK))
-	assert.Equal(t, "tasks.google", a2a.Subject(a2a.AgentGoogle))
+	assert.Equal(t, "tasks.yandex_business", a2a.Subject(a2a.AgentYandexBusiness))
 }
 ```
 
@@ -144,9 +144,9 @@ import "fmt"
 type AgentID = string
 
 const (
-	AgentTelegram AgentID = "telegram"
-	AgentVK       AgentID = "vk"
-	AgentGoogle   AgentID = "google"
+	AgentTelegram       AgentID = "telegram"
+	AgentVK             AgentID = "vk"
+	AgentYandexBusiness AgentID = "yandex_business"
 )
 
 // Subject returns the NATS subject for sending tasks to an agent.
@@ -825,16 +825,15 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			},
 		},
 		{
-			id: a2a.AgentGoogle,
+			id: a2a.AgentYandexBusiness,
 			tools: []llm.ToolDefinition{
 				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "google__update_hours",
-					Description: "Обновляет часы работы в Google Business Profile",
+					Name:        "yandex_business__update_hours",
+					Description: "Обновляет часы работы в Яндекс Бизнес",
 					Parameters: map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
-							"hours":       map[string]interface{}{"type": "string", "description": "Часы работы в формате JSON"},
-							"location_id": map[string]interface{}{"type": "string", "description": "ID локации"},
+							"hours": map[string]interface{}{"type": "string", "description": "Часы работы в формате JSON"},
 						},
 						"required": []string{"hours"},
 					},
