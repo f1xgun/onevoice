@@ -27,7 +27,9 @@ func (t *NATSTransport) Publish(subject string, data []byte) error {
 	return t.nc.Publish(subject, data)
 }
 
-// Close drains and closes the NATS connection.
+// Close initiates graceful shutdown by draining the NATS connection.
+// Drain is asynchronous and errors are intentionally ignored per the Transport interface contract.
+// Callers should allow time for in-flight messages to complete before process exit.
 func (t *NATSTransport) Close() {
-	t.nc.Drain() //nolint:errcheck
+	_ = t.nc.Drain()
 }
