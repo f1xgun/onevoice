@@ -140,11 +140,14 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 				// Execute the tool
 				result, execErr := o.tools.Execute(ctx, tc.Function.Name, args)
 				if execErr != nil {
-					result = map[string]interface{}{"error": execErr.Error()}
+					result = map[string]interface{}{"error": execErr.Error(), "tool_name": tc.Function.Name}
 				}
 
-				// Serialize result
-				resultJSON, _ := json.Marshal(result)
+				// Serialize result; fallback to error JSON if marshal fails
+				resultJSON, marshalErr := json.Marshal(result)
+				if marshalErr != nil {
+					resultJSON = []byte(fmt.Sprintf(`{"error":"marshal failed: %s","tool_name":%q}`, marshalErr.Error(), tc.Function.Name))
+				}
 
 				// Append tool result message
 				messages = append(messages, llm.Message{
