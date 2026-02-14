@@ -2,6 +2,7 @@ go 1.24.0
 
 use (
 	./pkg
+	./services/agent-vk
 	./services/api
 	./services/orchestrator
 	./test/integration
