@@ -129,7 +129,7 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 		}
 
 		// Return created business
-		writeJSON(w, http.StatusOK, createdBusiness)
+		writeJSON(w, http.StatusCreated, createdBusiness)
 		return
 	}
 
