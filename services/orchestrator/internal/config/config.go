@@ -12,6 +12,7 @@ type Config struct {
 	LLMModel      string
 	LLMTier       string
 	MaxIterations int
+	NATSUrl       string
 }
 
 // Load reads config from environment variables.
@@ -33,6 +34,7 @@ func Load() (*Config, error) {
 		LLMModel:      model,
 		LLMTier:       getEnv("LLM_TIER", "free"),
 		MaxIterations: maxIter,
+		NATSUrl:       getEnv("NATS_URL", "nats://localhost:4222"),
 	}, nil
 }
 

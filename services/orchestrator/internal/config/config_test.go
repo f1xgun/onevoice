@@ -32,3 +32,11 @@ func TestLoad_CustomMaxIterations(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 5, cfg.MaxIterations)
 }
+
+func TestLoad_DefaultNATSUrl(t *testing.T) {
+	t.Setenv("LLM_MODEL", "gpt-4o-mini")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "nats://localhost:4222", cfg.NATSUrl)
+}
