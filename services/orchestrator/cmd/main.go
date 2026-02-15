@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -257,6 +258,24 @@ func buildProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) 
 			Enabled:      true,
 		})
 		log.Info("LLM provider registered", "provider", spec.name, "model", cfg.LLMModel)
+	}
+
+	// Wire self-hosted endpoints
+	for i, ep := range cfg.SelfHostedEndpoints {
+		name := fmt.Sprintf("selfhosted-%d", i)
+		p := providers.NewSelfHosted(name, ep.URL, ep.APIKey)
+		if p == nil {
+			log.Warn("self-hosted endpoint skipped (empty name or URL)", "index", i)
+			continue
+		}
+		opts = append(opts, llm.WithProvider(p))
+		reg.RegisterModelProvider(&llm.ModelProviderEntry{
+			Model:        ep.Model,
+			Provider:     name,
+			HealthStatus: "healthy",
+			Enabled:      true,
+		})
+		log.Info("self-hosted LLM registered", "name", name, "url", ep.URL, "model", ep.Model)
 	}
 
 	return opts
