@@ -10,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/llm/providers"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
@@ -31,15 +32,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build LLM registry
+	// Build LLM registry + wire real providers
 	registry := llm.NewRegistry()
-	registry.RegisterModelProvider(&llm.ModelProviderEntry{
-		Model:        cfg.LLMModel,
-		Provider:     "stub",
-		HealthStatus: "healthy",
-		Enabled:      true,
-	})
-	router := llm.NewRouter(registry)
+	routerOpts := buildProviderOpts(cfg, registry, log)
+	if len(routerOpts) == 0 {
+		log.Error("no LLM provider API key set — set OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY")
+		os.Exit(1)
+	}
+	router := llm.NewRouter(registry, routerOpts...)
 
 	// Tool registry — wire NATS executors if NATS is available
 	toolRegistry := tools.NewRegistry()
@@ -54,8 +54,14 @@ func main() {
 
 	// Business context
 	biz := prompt.BusinessContext{
-		Name: os.Getenv("BUSINESS_NAME"),
-		Now:  time.Now(),
+		Name:               cfg.BusinessName,
+		Category:           cfg.BusinessCategory,
+		Tone:               cfg.BusinessTone,
+		ActiveIntegrations: cfg.ActiveIntegrations,
+		Now:                time.Now(),
+	}
+	if len(biz.ActiveIntegrations) == 0 {
+		log.Warn("ACTIVE_INTEGRATIONS not set — LLM will have no platform tools available")
 	}
 
 	// Orchestrator
@@ -219,4 +225,39 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			reg.Register(def, exec)
 		}
 	}
+}
+
+// buildProviderOpts creates RouterOptions for every API key that is set in config,
+// and registers the LLM model → provider mapping in the registry for each.
+// Returns at least one option if any key is set, nil if none.
+func buildProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) []llm.RouterOption {
+	type providerSpec struct {
+		name    string
+		apiKey  string
+		factory func(string) llm.Provider
+	}
+
+	specs := []providerSpec{
+		{"openrouter", cfg.OpenRouterAPIKey, func(k string) llm.Provider { return providers.NewOpenRouter(k) }},
+		{"openai", cfg.OpenAIAPIKey, func(k string) llm.Provider { return providers.NewOpenAI(k) }},
+		{"anthropic", cfg.AnthropicAPIKey, func(k string) llm.Provider { return providers.NewAnthropic(k) }},
+	}
+
+	var opts []llm.RouterOption
+	for _, spec := range specs {
+		if spec.apiKey == "" {
+			continue
+		}
+		p := spec.factory(spec.apiKey)
+		opts = append(opts, llm.WithProvider(p))
+		reg.RegisterModelProvider(&llm.ModelProviderEntry{
+			Model:        cfg.LLMModel,
+			Provider:     spec.name,
+			HealthStatus: "healthy",
+			Enabled:      true,
+		})
+		log.Info("LLM provider registered", "provider", spec.name, "model", cfg.LLMModel)
+	}
+
+	return opts
 }
