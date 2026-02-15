@@ -70,3 +70,46 @@ func TestLoad_ProviderAPIKeys(t *testing.T) {
 	assert.Equal(t, "sk-test", cfg.OpenAIAPIKey)
 	assert.Empty(t, cfg.AnthropicAPIKey)
 }
+
+func TestLoad_SelfHostedEndpoints(t *testing.T) {
+	t.Setenv("LLM_MODEL", "gpt-4o-mini")
+	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
+	t.Setenv("SELF_HOSTED_0_MODEL", "llama3.1")
+	t.Setenv("SELF_HOSTED_0_API_KEY", "sk-local")
+	t.Setenv("SELF_HOSTED_1_URL", "http://vm2:8080/v1")
+	t.Setenv("SELF_HOSTED_1_MODEL", "mistral")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	require.Len(t, cfg.SelfHostedEndpoints, 2)
+	assert.Equal(t, "http://vm1:11434/v1", cfg.SelfHostedEndpoints[0].URL)
+	assert.Equal(t, "llama3.1", cfg.SelfHostedEndpoints[0].Model)
+	assert.Equal(t, "sk-local", cfg.SelfHostedEndpoints[0].APIKey)
+	assert.Equal(t, "http://vm2:8080/v1", cfg.SelfHostedEndpoints[1].URL)
+	assert.Equal(t, "mistral", cfg.SelfHostedEndpoints[1].Model)
+	assert.Empty(t, cfg.SelfHostedEndpoints[1].APIKey)
+}
+
+func TestLoad_SelfHostedEndpoints_MissingModel_Skipped(t *testing.T) {
+	t.Setenv("LLM_MODEL", "gpt-4o-mini")
+	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
+	// no SELF_HOSTED_0_MODEL
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.SelfHostedEndpoints)
+}
+
+func TestLoad_SelfHostedEndpoints_StopsAtGap(t *testing.T) {
+	t.Setenv("LLM_MODEL", "gpt-4o-mini")
+	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
+	t.Setenv("SELF_HOSTED_0_MODEL", "llama3.1")
+	// index 1 missing — scan stops here
+	t.Setenv("SELF_HOSTED_2_URL", "http://vm3:11434/v1")
+	t.Setenv("SELF_HOSTED_2_MODEL", "gemma")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	require.Len(t, cfg.SelfHostedEndpoints, 1)
+	assert.Equal(t, "llama3.1", cfg.SelfHostedEndpoints[0].Model)
+}
