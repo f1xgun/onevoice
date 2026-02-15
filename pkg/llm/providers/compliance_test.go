@@ -12,6 +12,7 @@ var (
 	_ llm.Provider = (*providers.OpenRouterProvider)(nil)
 	_ llm.Provider = (*providers.OpenAIProvider)(nil)
 	_ llm.Provider = (*providers.AnthropicProvider)(nil)
+	_ llm.Provider = (*providers.SelfHostedProvider)(nil)
 )
 
 func TestAllProviders_ImplementInterface(t *testing.T) {
@@ -23,5 +24,8 @@ func TestAllProviders_ImplementInterface(t *testing.T) {
 	})
 	t.Run("anthropic", func(t *testing.T) {
 		var _ llm.Provider = (*providers.AnthropicProvider)(nil)
+	})
+	t.Run("selfhosted", func(t *testing.T) {
+		var _ llm.Provider = (*providers.SelfHostedProvider)(nil)
 	})
 }
