@@ -12,6 +12,10 @@ describe('parseSSELine', () => {
     const result = parseSSELine('data: {"type":"text","content":"hello"}')
     expect(result).toEqual({ type: 'text', content: 'hello' })
   })
+
+  it('returns null for malformed JSON', () => {
+    expect(parseSSELine('data: {bad json}')).toBeNull()
+  })
 })
 
 describe('applySSEEvent', () => {

@@ -33,8 +33,12 @@ export function applySSEEvent(
 
   if (type === 'tool_result') {
     const toolName = event.tool_name as string
-    const updated = (msg.toolCalls ?? []).map((tc) =>
-      tc.name === toolName
+    const updated = (msg.toolCalls ?? []).map((tc, i) => {
+      // Find the first pending tool with this name
+      const firstPendingIdx = (msg.toolCalls ?? []).findIndex(
+        (t) => t.name === toolName && t.status === 'pending'
+      )
+      return i === firstPendingIdx
         ? {
             ...tc,
             result: event.result as Record<string, unknown>,
@@ -42,7 +46,7 @@ export function applySSEEvent(
             status: (event.error ? 'error' : 'done') as ToolCall['status'],
           }
         : tc
-    )
+    })
     return { ...msg, toolCalls: updated }
   }
 
@@ -56,12 +60,13 @@ export function applySSEEvent(
 export function useChat(conversationId: string) {
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const isStreamingRef = useRef(false)
   const accessToken = useAuthStore((s) => s.accessToken)
   const abortRef = useRef<AbortController | null>(null)
 
   const sendMessage = useCallback(
     async (text: string) => {
-      if (isStreaming) return
+      if (isStreamingRef.current) return
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -80,6 +85,7 @@ export function useChat(conversationId: string) {
 
       setMessages((prev) => [...prev, userMessage, assistantMessage])
       setIsStreaming(true)
+      isStreamingRef.current = true
 
       const controller = new AbortController()
       abortRef.current = controller
@@ -94,6 +100,10 @@ export function useChat(conversationId: string) {
           body: JSON.stringify({ message: text }),
           signal: controller.signal,
         })
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
 
         const reader = response.body!.getReader()
         const decoder = new TextDecoder()
@@ -117,6 +127,18 @@ export function useChat(conversationId: string) {
             })
           }
         }
+
+        // Flush any remaining content in buffer
+        if (buffer.trim()) {
+          const event = parseSSELine(buffer.trim())
+          if (event) {
+            setMessages((prev) => {
+              const last = prev[prev.length - 1]
+              if (last.role !== 'assistant') return prev
+              return [...prev.slice(0, -1), applySSEEvent(last, event)]
+            })
+          }
+        }
       } catch (error: unknown) {
         if ((error as Error).name === 'AbortError') return
         setMessages((prev) => {
@@ -126,9 +148,10 @@ export function useChat(conversationId: string) {
         })
       } finally {
         setIsStreaming(false)
+        isStreamingRef.current = false
       }
     },
-    [conversationId, accessToken, isStreaming]
+    [conversationId, accessToken]
   )
 
   const stop = useCallback(() => {
