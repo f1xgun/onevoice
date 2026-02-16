@@ -13,8 +13,7 @@ export default function ChatIndexPage() {
     onSuccess: (conv) => router.replace(`/chat/${conv.id}`),
   })
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { createConversation() }, [])
+  useEffect(() => { createConversation() }, [createConversation])
 
   return (
     <div className="h-full flex items-center justify-center text-gray-400">

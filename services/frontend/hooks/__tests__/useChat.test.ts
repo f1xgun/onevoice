@@ -46,7 +46,7 @@ describe('applySSEEvent', () => {
   it('updates tool_call to done on tool_result', () => {
     const msg: Message = {
       ...baseMessage,
-      toolCalls: [{ name: 'vk__publish_post', args: {}, status: 'pending' }],
+      toolCalls: [{ id: '', name: 'vk__publish_post', args: {}, status: 'pending' }],
     }
     const result = applySSEEvent(msg, {
       type: 'tool_result',

@@ -4,23 +4,17 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { ToolCard } from './ToolCard'
 import type { ToolCall } from '@/types/chat'
-
-const platformColors: Record<string, string> = {
-  vk: '#4680C2',
-  telegram: '#2AABEE',
-  yandex_business: '#FC3F1D',
-}
+import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms'
 
 function PlatformBadge({ name }: { name: string }) {
-  const platform = name.split('__')[0]
-  const color = platformColors[platform] ?? '#6b7280'
-  const labels: Record<string, string> = { vk: 'VK', telegram: 'TG', yandex_business: 'YB' }
+  const platform = getPlatform(name)
+  const color = PLATFORM_COLORS[platform] ?? '#6b7280'
   return (
     <span
       className="px-1.5 py-0.5 rounded text-white text-xs font-bold"
       style={{ backgroundColor: color }}
     >
-      {labels[platform] ?? platform.toUpperCase()}
+      {PLATFORM_LABELS[platform] ?? platform.toUpperCase()}
     </span>
   )
 }
@@ -51,8 +45,8 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
 
       {expanded && (
         <div className="p-2 space-y-2 bg-white">
-          {toolCalls.map((tool, i) => (
-            <ToolCard key={i} tool={tool} />
+          {toolCalls.map((tool) => (
+            <ToolCard key={tool.id} tool={tool} />
           ))}
         </div>
       )}
