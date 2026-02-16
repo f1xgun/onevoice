@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useAuthStore } from '../auth'
+import type { User } from '../auth'
 
 describe('useAuthStore', () => {
   beforeEach(() => {
@@ -8,7 +9,7 @@ describe('useAuthStore', () => {
   })
 
   it('sets user and token on login', () => {
-    const user = { id: '1', email: 'test@test.com', name: 'Test', role: 'owner' }
+    const user: User = { id: '1', email: 'test@test.com', name: 'Test', role: 'owner' }
     useAuthStore.getState().setAuth(user, 'access-token', 'refresh-token')
 
     expect(useAuthStore.getState().user).toEqual(user)
@@ -18,8 +19,9 @@ describe('useAuthStore', () => {
   })
 
   it('clears state on logout', () => {
+    const logoutUser: User = { id: '1', email: 'test@test.com', name: 'Test', role: 'owner' }
     useAuthStore.getState().setAuth(
-      { id: '1', email: 'test@test.com', name: 'Test', role: 'owner' },
+      logoutUser,
       'access-token',
       'refresh-token'
     )

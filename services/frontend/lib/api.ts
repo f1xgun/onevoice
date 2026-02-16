@@ -44,7 +44,12 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('refreshToken')
       if (!refreshToken) throw new Error('no refresh token')
 
-      const { data } = await axios.post('/api/v1/auth/refresh', { refreshToken })
+      interface RefreshResponse {
+        accessToken: string
+        refreshToken: string
+      }
+      const { data } = await axios.post<RefreshResponse>('/api/v1/auth/refresh', { refreshToken })
+      if (!data.accessToken) throw new Error('invalid refresh response')
       const { accessToken, refreshToken: newRefresh } = data
 
       useAuthStore.getState().setAccessToken(accessToken)
