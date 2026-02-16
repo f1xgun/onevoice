@@ -24,6 +24,7 @@ export function applySSEEvent(
 
   if (type === 'tool_call') {
     const toolCall: ToolCall = {
+      id: crypto.randomUUID(),
       name: event.tool_name as string,
       args: (event.tool_args as Record<string, unknown>) ?? {},
       status: 'pending',

@@ -38,7 +38,8 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
                   key={action}
                   type="button"
                   onClick={() => sendMessage(action)}
-                  className="px-4 py-2 rounded-full border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+                  disabled={isStreaming}
+                  className="px-4 py-2 rounded-full border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {action}
                 </button>

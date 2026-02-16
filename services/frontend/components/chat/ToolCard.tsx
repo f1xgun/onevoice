@@ -1,26 +1,10 @@
 import type { ToolCall } from '@/types/chat'
-
-const platformColors: Record<string, string> = {
-  vk: '#4680C2',
-  telegram: '#2AABEE',
-  yandex_business: '#FC3F1D',
-}
-
-const platformLabels: Record<string, string> = {
-  vk: 'VK',
-  telegram: 'TG',
-  yandex_business: 'YB',
-}
-
-function getPlatform(toolName: string): string {
-  const prefix = toolName.split('__')[0]
-  return prefix ?? toolName
-}
+import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms'
 
 export function ToolCard({ tool }: { tool: ToolCall }) {
   const platform = getPlatform(tool.name)
-  const color = platformColors[platform] ?? '#6b7280'
-  const label = platformLabels[platform] ?? platform.toUpperCase()
+  const color = PLATFORM_COLORS[platform] ?? '#6b7280'
+  const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase()
 
   return (
     <div className="border rounded-md p-3 text-sm space-y-1" style={{ borderLeftColor: color, borderLeftWidth: 3 }}>
