@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/auth'
 import { api } from '@/lib/api'
@@ -9,33 +9,47 @@ import type { ReactNode } from 'react'
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
-  const { isAuthenticated, setAuth, accessToken } = useAuthStore()
-  const [checking, setChecking] = useState(true)
+  const { isAuthenticated, setAuth } = useAuthStore()
+  const [checking, setChecking] = useState(false)
+  const isMounted = useRef(true)
 
   useEffect(() => {
+    isMounted.current = true
     const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null
 
     if (!refreshToken) {
       router.replace('/login')
-      setChecking(false)
       return
     }
 
+    const accessToken = useAuthStore.getState().accessToken
     if (!accessToken) {
+      setChecking(true)
       api.post('/auth/refresh', { refreshToken })
         .then((res) => {
-          setAuth(res.data.user, res.data.accessToken, res.data.refreshToken)
+          if (isMounted.current) {
+            setAuth(res.data.user, res.data.accessToken, res.data.refreshToken)
+          }
         })
         .catch(() => {
-          router.replace('/login')
+          if (isMounted.current) {
+            router.replace('/login')
+          }
         })
-        .finally(() => setChecking(false))
-    } else {
-      setChecking(false)
+        .finally(() => {
+          if (isMounted.current) setChecking(false)
+        })
     }
-  }, [])
 
-  if (checking && !isAuthenticated) {
+    return () => { isMounted.current = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // mount-only: intentionally reads store state at mount time
+
+  if (checking) {
+    return null
+  }
+
+  if (!isAuthenticated && typeof window !== 'undefined' && !localStorage.getItem('refreshToken')) {
     return null
   }
 
