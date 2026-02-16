@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/lib/auth'
 import { registerSchema, type RegisterInput } from '@/lib/schemas'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,8 +30,14 @@ export default function RegisterPage() {
       })
       setAuth(res.data.user, res.data.accessToken, res.data.refreshToken)
       router.push('/chat')
-    } catch {
-      toast.error('Ошибка регистрации. Проверьте данные.')
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      if (status === 409) {
+        toast.error('Пользователь с таким email уже существует')
+      } else {
+        toast.error(message ?? 'Ошибка регистрации. Проверьте данные.')
+      }
     }
   }
 
@@ -67,7 +74,7 @@ export default function RegisterPage() {
             </Button>
             <p className="text-center text-sm text-gray-500">
               Уже есть аккаунт?{' '}
-              <a href="/login" className="text-blue-600 hover:underline">Войти</a>
+              <Link href="/login" className="text-blue-600 hover:underline">Войти</Link>
             </p>
           </form>
         </CardContent>
