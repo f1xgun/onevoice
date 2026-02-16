@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/lib/auth'
 import { loginSchema, type LoginInput } from '@/lib/schemas'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,8 +26,9 @@ export default function LoginPage() {
       const res = await api.post('/auth/login', data)
       setAuth(res.data.user, res.data.accessToken, res.data.refreshToken)
       router.push('/chat')
-    } catch {
-      toast.error('Неверный email или пароль')
+    } catch (err) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      toast.error(message ?? 'Неверный email или пароль')
     }
   }
 
@@ -53,7 +55,7 @@ export default function LoginPage() {
             </Button>
             <p className="text-center text-sm text-gray-500">
               Нет аккаунта?{' '}
-              <a href="/register" className="text-blue-600 hover:underline">Зарегистрироваться</a>
+              <Link href="/register" className="text-blue-600 hover:underline">Зарегистрироваться</Link>
             </p>
           </form>
         </CardContent>
