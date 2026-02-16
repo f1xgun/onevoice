@@ -8,6 +8,12 @@ import { useAuthStore } from '@/lib/auth'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
+interface Integration {
+  platform: string
+  status: string
+  last_sync_at?: string
+}
+
 const navItems = [
   { href: '/chat', label: 'Чат', icon: MessageCircle },
   { href: '/integrations', label: 'Интеграции', icon: Plug },
@@ -18,29 +24,20 @@ const navItems = [
   { href: '/settings', label: 'Настройки', icon: Settings },
 ]
 
-const platformColors: Record<string, string> = {
-  telegram: '#2AABEE',
-  vk: '#4680C2',
-  yandex_business: '#FC3F1D',
-}
-
 const platformLabels: Record<string, string> = {
   telegram: 'Telegram',
   vk: 'ВКонтакте',
   yandex_business: 'Яндекс.Бизнес',
 }
 
-// Suppress unused variable warning — kept for future use
-void platformColors
-
 export function Sidebar() {
   const pathname = usePathname()
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
 
-  const { data: integrations } = useQuery({
+  const { data: integrations } = useQuery<Integration[]>({
     queryKey: ['integrations'],
-    queryFn: () => api.get('/integrations').then((r) => r.data.integrations ?? []),
+    queryFn: () => api.get('/integrations').then((r) => (r.data.integrations ?? []) as Integration[]),
   })
 
   return (
@@ -74,7 +71,7 @@ export function Sidebar() {
       <div className="p-4 border-t border-gray-700 space-y-2">
         <p className="text-xs text-gray-500 uppercase tracking-wide">Платформы</p>
         {['telegram', 'vk', 'yandex_business'].map((platform) => {
-          const integration = integrations?.find((i: { platform: string }) => i.platform === platform)
+          const integration = integrations?.find((i) => i.platform === platform)
           const connected = integration?.status === 'active'
           return (
             <div key={platform} className="flex items-center gap-2 text-xs text-gray-300">
