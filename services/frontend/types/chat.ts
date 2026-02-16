@@ -1,6 +1,7 @@
 export type ToolCallStatus = 'pending' | 'done' | 'error'
 
 export interface ToolCall {
+  id: string
   name: string
   args: Record<string, unknown>
   result?: Record<string, unknown>
