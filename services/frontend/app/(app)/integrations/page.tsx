@@ -91,9 +91,9 @@ export default function IntegrationsPage() {
           platform={connectingPlatform}
           open={true}
           onClose={() => setConnectingPlatform(null)}
-          onConnect={(credentials) =>
-            connectMutation.mutateAsync({ platform: connectingPlatform, credentials })
-          }
+          onConnect={async (credentials) => {
+            await connectMutation.mutateAsync({ platform: connectingPlatform, credentials })
+          }}
         />
       )}
     </div>
