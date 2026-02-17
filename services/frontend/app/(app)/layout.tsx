@@ -9,13 +9,16 @@ import type { ReactNode } from 'react'
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
-  const { isAuthenticated, setAuth } = useAuthStore()
-  const [checking, setChecking] = useState(false)
+  const { setAuth } = useAuthStore()
+  // Start as true so we always show a loading state until the effect has run
+  // This prevents the brief flash of protected content
+  const [ready, setReady] = useState(false)
   const isMounted = useRef(true)
 
   useEffect(() => {
     isMounted.current = true
-    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null
+
+    const refreshToken = localStorage.getItem('refreshToken')
 
     if (!refreshToken) {
       router.replace('/login')
@@ -23,33 +26,31 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
 
     const accessToken = useAuthStore.getState().accessToken
-    if (!accessToken) {
-      setChecking(true)
-      api.post('/auth/refresh', { refreshToken })
-        .then((res) => {
-          if (isMounted.current) {
-            setAuth(res.data.user, res.data.accessToken, res.data.refreshToken)
-          }
-        })
-        .catch(() => {
-          if (isMounted.current) {
-            router.replace('/login')
-          }
-        })
-        .finally(() => {
-          if (isMounted.current) setChecking(false)
-        })
+    if (accessToken) {
+      // Already have a valid token in memory — show the page
+      setReady(true)
+      return
     }
+
+    // Have a refresh token but no access token — attempt silent refresh
+    api.post('/auth/refresh', { refreshToken })
+      .then((res) => {
+        if (isMounted.current) {
+          setAuth(res.data.user, res.data.accessToken, res.data.refreshToken)
+          setReady(true)
+        }
+      })
+      .catch(() => {
+        if (isMounted.current) {
+          router.replace('/login')
+        }
+      })
 
     return () => { isMounted.current = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // mount-only: intentionally reads store state at mount time
+  }, []) // mount-only: reads auth state once on load
 
-  if (checking) {
-    return null
-  }
-
-  if (!isAuthenticated && typeof window !== 'undefined' && !localStorage.getItem('refreshToken')) {
+  if (!ready) {
     return null
   }
 
