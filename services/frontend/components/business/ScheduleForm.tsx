@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
@@ -25,10 +25,12 @@ const defaultSchedule: ScheduleDay[] = DAYS.map(({ key }) => ({
 export function ScheduleForm({ initialSchedule }: { initialSchedule?: ScheduleDay[] }) {
   const [schedule, setSchedule] = useState<ScheduleDay[]>(initialSchedule ?? defaultSchedule)
   const qc = useQueryClient()
+  const initialized = useRef(false)
 
   useEffect(() => {
-    if (initialSchedule && initialSchedule.length > 0) {
+    if (!initialized.current && initialSchedule && initialSchedule.length > 0) {
       setSchedule(initialSchedule)
+      initialized.current = true
     }
   }, [initialSchedule])
 
