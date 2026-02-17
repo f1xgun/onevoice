@@ -35,11 +35,16 @@ export function ConnectDialog({ platform, open, onClose, onConnect }: Props) {
 
   if (!config) return null
 
+  const allFilled = config.fields.every((f) => (values[f.key] ?? '').trim().length > 0)
+
   const handleSubmit = async () => {
+    if (!allFilled) return
     setLoading(true)
     try {
       await onConnect(values)
       onClose()
+    } catch {
+      // dialog stays open; toast is handled by mutation onError upstream
     } finally {
       setLoading(false)
     }
@@ -62,7 +67,7 @@ export function ConnectDialog({ platform, open, onClose, onConnect }: Props) {
               />
             </div>
           ))}
-          <Button onClick={handleSubmit} disabled={loading} className="w-full">
+          <Button onClick={handleSubmit} disabled={loading || !allFilled} className="w-full">
             {loading ? 'Подключение...' : 'Подключить'}
           </Button>
         </div>
