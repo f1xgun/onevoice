@@ -50,19 +50,19 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
     <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1">
-          <Label>Название *</Label>
-          <Input {...register('name')} placeholder="Кофейня Уют" />
+          <Label htmlFor="name">Название *</Label>
+          <Input id="name" {...register('name')} placeholder="Кофейня Уют" />
           {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
         </div>
 
         <div className="space-y-1">
-          <Label>Категория *</Label>
+          <Label htmlFor="category">Категория *</Label>
           <Controller
             control={control}
             name="category"
             render={({ field }) => (
               <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                <SelectTrigger><SelectValue placeholder="Выберите категорию" /></SelectTrigger>
+                <SelectTrigger id="category" onBlur={field.onBlur} ref={field.ref}><SelectValue placeholder="Выберите категорию" /></SelectTrigger>
                 <SelectContent>
                   {CATEGORIES.map((c) => (
                     <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
@@ -75,26 +75,26 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
         </div>
 
         <div className="space-y-1">
-          <Label>Телефон</Label>
-          <Input {...register('phone')} placeholder="+79001234567" />
+          <Label htmlFor="phone">Телефон</Label>
+          <Input id="phone" {...register('phone')} placeholder="+79001234567" />
           {errors.phone && <p className="text-sm text-red-500">{errors.phone.message}</p>}
         </div>
 
         <div className="space-y-1">
-          <Label>Сайт</Label>
-          <Input {...register('website')} placeholder="https://example.com" />
+          <Label htmlFor="website">Сайт</Label>
+          <Input id="website" {...register('website')} placeholder="https://example.com" />
           {errors.website && <p className="text-sm text-red-500">{errors.website.message}</p>}
         </div>
 
         <div className="space-y-1 md:col-span-2">
-          <Label>Адрес</Label>
-          <Input {...register('address')} placeholder="г. Москва, ул. Примерная, 1" />
+          <Label htmlFor="address">Адрес</Label>
+          <Input id="address" {...register('address')} placeholder="г. Москва, ул. Примерная, 1" />
           {errors.address && <p className="text-sm text-red-500">{errors.address.message}</p>}
         </div>
 
         <div className="space-y-1 md:col-span-2">
-          <Label>Описание</Label>
-          <Input {...register('description')} placeholder="Краткое описание бизнеса" />
+          <Label htmlFor="description">Описание</Label>
+          <Input id="description" {...register('description')} placeholder="Краткое описание бизнеса" />
         </div>
       </div>
 
