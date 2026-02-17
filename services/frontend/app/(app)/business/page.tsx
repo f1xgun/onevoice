@@ -8,12 +8,13 @@ import { Separator } from '@/components/ui/separator'
 import type { Business } from '@/types/business'
 
 export default function BusinessPage() {
-  const { data, isLoading } = useQuery<Business>({
+  const { data, isLoading, isError } = useQuery<Business>({
     queryKey: ['business'],
     queryFn: () => api.get('/business').then((r) => r.data.business as Business),
   })
 
   if (isLoading) return <div className="p-8 text-gray-400">Загрузка...</div>
+  if (isError) return <div className="p-8 text-red-500">Ошибка загрузки данных</div>
 
   return (
     <div className="p-8 max-w-2xl space-y-8">
