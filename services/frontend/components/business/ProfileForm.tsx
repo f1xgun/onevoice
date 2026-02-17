@@ -1,6 +1,7 @@
 'use client'
 
-import { useForm } from 'react-hook-form'
+import { useEffect } from 'react'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -24,11 +25,17 @@ const CATEGORIES = [
 export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Business> }) {
   const qc = useQueryClient()
 
-  const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } =
+  const { register, handleSubmit, control, reset, formState: { errors, isSubmitting } } =
     useForm<BusinessInput>({
       resolver: zodResolver(businessSchema),
       defaultValues: defaultValues ?? {},
     })
+
+  useEffect(() => {
+    if (defaultValues) {
+      reset(defaultValues)
+    }
+  }, [defaultValues, reset])
 
   const mutation = useMutation({
     mutationFn: (data: BusinessInput) => api.put('/business', data),
@@ -50,14 +57,20 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
 
         <div className="space-y-1">
           <Label>Категория *</Label>
-          <Select onValueChange={(v) => setValue('category', v)} defaultValue={defaultValues?.category}>
-            <SelectTrigger><SelectValue placeholder="Выберите категорию" /></SelectTrigger>
-            <SelectContent>
-              {CATEGORIES.map((c) => (
-                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Controller
+            control={control}
+            name="category"
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                <SelectTrigger><SelectValue placeholder="Выберите категорию" /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
           {errors.category && <p className="text-sm text-red-500">{errors.category.message}</p>}
         </div>
 
@@ -76,6 +89,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
         <div className="space-y-1 md:col-span-2">
           <Label>Адрес</Label>
           <Input {...register('address')} placeholder="г. Москва, ул. Примерная, 1" />
+          {errors.address && <p className="text-sm text-red-500">{errors.address.message}</p>}
         </div>
 
         <div className="space-y-1 md:col-span-2">
