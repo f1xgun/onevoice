@@ -175,6 +175,7 @@ services:
     build:
       context: ./services/frontend
       dockerfile: Dockerfile
+    container_name: onevoice-frontend
     environment:
       - NODE_ENV=production
     depends_on:
@@ -186,6 +187,7 @@ services:
 
   nginx:
     image: nginx:alpine
+    container_name: onevoice-nginx
     ports:
       - "80:80"
     volumes:
