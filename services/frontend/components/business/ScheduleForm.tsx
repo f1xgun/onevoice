@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
@@ -26,6 +26,12 @@ export function ScheduleForm({ initialSchedule }: { initialSchedule?: ScheduleDa
   const [schedule, setSchedule] = useState<ScheduleDay[]>(initialSchedule ?? defaultSchedule)
   const qc = useQueryClient()
 
+  useEffect(() => {
+    if (initialSchedule && initialSchedule.length > 0) {
+      setSchedule(initialSchedule)
+    }
+  }, [initialSchedule])
+
   const mutation = useMutation({
     mutationFn: () => api.put('/business/schedule', { schedule }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['business'] }); toast.success('Расписание сохранено') },
@@ -40,7 +46,8 @@ export function ScheduleForm({ initialSchedule }: { initialSchedule?: ScheduleDa
     <div className="space-y-3">
       <div className="grid gap-2">
         {DAYS.map(({ key, label }) => {
-          const day = schedule.find((d) => d.day === key)!
+          const day = schedule.find((d) => d.day === key)
+          if (!day) return null
           return (
             <div key={key} className="flex items-center gap-3">
               <span className="w-8 text-sm font-medium text-gray-600">{label}</span>
