@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,21 @@ import (
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/agent"
 )
 
+// fakeTokenFetcher records the last call and returns a preset token.
+type fakeTokenFetcher struct {
+	token      string
+	err        error
+	lastBizID  string
+	lastPlatform string
+}
+
+func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, _ string) (string, error) {
+	f.lastBizID = businessID
+	f.lastPlatform = platform
+	return f.token, f.err
+}
+
+// stubBrowser records operations performed on it.
 type stubBrowser struct {
 	updatedHours string
 	updatedInfo  map[string]string
@@ -38,28 +54,43 @@ func (s *stubBrowser) ReplyReview(_ context.Context, reviewID, text string) erro
 	return nil
 }
 
-func TestHandler_UpdateHours(t *testing.T) {
+func newHandler(fetcher agent.TokenFetcher, browser *stubBrowser) *agent.Handler {
+	factory := func(_ string) agent.YandexBrowser {
+		return browser
+	}
+	return agent.NewHandler(fetcher, factory)
+}
+
+func TestHandler_UpdateHours_FetchesTokenPerRequest(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "cookies-json-abc"}
 	browser := &stubBrowser{}
-	h := agent.NewHandler(browser)
+	h := newHandler(fetcher, browser)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
-		TaskID: "t1",
-		Tool:   "yandex_business__update_hours",
-		Args:   map[string]interface{}{"hours": `{"mon":"09:00-21:00"}`},
+		TaskID:     "t1",
+		BusinessID: "biz-10",
+		Tool:       "yandex_business__update_hours",
+		Args:       map[string]interface{}{"hours": `{"mon":"09:00-21:00"}`},
 	})
 
 	require.NoError(t, err)
 	assert.True(t, resp.Success)
 	assert.Equal(t, `{"mon":"09:00-21:00"}`, browser.updatedHours)
+
+	// Verify token was fetched with correct businessID and platform
+	assert.Equal(t, "biz-10", fetcher.lastBizID)
+	assert.Equal(t, "yandex_business", fetcher.lastPlatform)
 }
 
 func TestHandler_UpdateInfo(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "cookies-json"}
 	browser := &stubBrowser{}
-	h := agent.NewHandler(browser)
+	h := newHandler(fetcher, browser)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
-		TaskID: "t2",
-		Tool:   "yandex_business__update_info",
+		TaskID:     "t2",
+		BusinessID: "biz-11",
+		Tool:       "yandex_business__update_info",
 		Args: map[string]interface{}{
 			"phone":       "+7 999 123 45 67",
 			"website":     "https://example.com",
@@ -73,13 +104,15 @@ func TestHandler_UpdateInfo(t *testing.T) {
 }
 
 func TestHandler_GetReviews(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "cookies-json"}
 	browser := &stubBrowser{}
-	h := agent.NewHandler(browser)
+	h := newHandler(fetcher, browser)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
-		TaskID: "t3",
-		Tool:   "yandex_business__get_reviews",
-		Args:   map[string]interface{}{"limit": float64(10)},
+		TaskID:     "t3",
+		BusinessID: "biz-12",
+		Tool:       "yandex_business__get_reviews",
+		Args:       map[string]interface{}{"limit": float64(10)},
 	})
 
 	require.NoError(t, err)
@@ -91,12 +124,14 @@ func TestHandler_GetReviews(t *testing.T) {
 }
 
 func TestHandler_ReplyReview(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "cookies-json"}
 	browser := &stubBrowser{}
-	h := agent.NewHandler(browser)
+	h := newHandler(fetcher, browser)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
-		TaskID: "t4",
-		Tool:   "yandex_business__reply_review",
+		TaskID:     "t4",
+		BusinessID: "biz-13",
+		Tool:       "yandex_business__reply_review",
 		Args: map[string]interface{}{
 			"review_id": "r1",
 			"text":      "Спасибо за отзыв!",
@@ -109,8 +144,27 @@ func TestHandler_ReplyReview(t *testing.T) {
 	assert.Equal(t, "Спасибо за отзыв!", browser.repliedText)
 }
 
+func TestHandler_TokenFetchError_ReturnsError(t *testing.T) {
+	fetcher := &fakeTokenFetcher{err: fmt.Errorf("integration not found")}
+	browser := &stubBrowser{}
+	h := newHandler(fetcher, browser)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t5",
+		BusinessID: "biz-14",
+		Tool:       "yandex_business__update_hours",
+		Args:       map[string]interface{}{"hours": "{}"},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fetch token")
+}
+
 func TestHandler_UnknownTool(t *testing.T) {
-	h := agent.NewHandler(&stubBrowser{})
+	fetcher := &fakeTokenFetcher{token: "tok"}
+	browser := &stubBrowser{}
+	h := newHandler(fetcher, browser)
+
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{Tool: "yandex_business__unknown"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown tool")
