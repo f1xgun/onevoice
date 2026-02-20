@@ -20,7 +20,7 @@ func (b *Browser) UpdateHours(ctx context.Context, hoursJSON string) error {
 			}
 			humanDelay()
 			// Canary check: verify we're on the hours settings page
-			if _, err := page.WaitForSelector("[data-testid='hours-form'], .hours-editor", playwright.PageWaitForSelectorOptions{
+			if err := page.Locator("[data-testid='hours-form'], .hours-editor").WaitFor(playwright.LocatorWaitForOptions{
 				Timeout: playwright.Float(10000),
 			}); err != nil {
 				return fmt.Errorf("canary check failed: hours form not found: %w", err)
