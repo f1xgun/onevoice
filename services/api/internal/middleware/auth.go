@@ -150,5 +150,5 @@ func GetUserRole(ctx context.Context) (string, error) {
 func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(ErrorResponse{Error: message})
+	_ = json.NewEncoder(w).Encode(ErrorResponse{Error: message})
 }
