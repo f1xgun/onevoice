@@ -64,6 +64,7 @@ func (m *mockIntegrationRepository) Delete(ctx context.Context, id uuid.UUID) er
 	}
 	return nil
 }
+
 func (m *mockIntegrationRepository) ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error) {
 	return []domain.Integration{}, nil
 }
