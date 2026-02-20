@@ -58,7 +58,7 @@ services:
   nats:
     image: nats:2.10-alpine
     container_name: onevoice-nats
-    command: ["-js", "-sd", "/data"]
+    command: ["-js", "-sd", "/data", "-m", "8222"]
     ports:
       - "4222:4222"
       - "8222:8222"
@@ -190,6 +190,29 @@ services:
       - ./certs/ca.crt:/certs/ca.crt:ro
       - ./certs/yandex-business.crt:/certs/client.crt:ro
       - ./certs/yandex-business.key:/certs/client.key:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
+  # LLM Orchestrator
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    container_name: onevoice-orchestrator
+    environment:
+      PORT: 8090
+      NATS_URL: nats://nats:4222
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-4o-mini}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MAX_ITERATIONS: 10
+    ports:
+      - "8090:8090"
     depends_on:
       nats:
         condition: service_healthy
