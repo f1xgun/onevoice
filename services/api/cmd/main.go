@@ -57,7 +57,7 @@ func main() {
 		log.Error("failed to connect to mongodb", "error", err)
 		os.Exit(1)
 	}
-	defer mongoClient.Disconnect(ctx)
+	defer func() { _ = mongoClient.Disconnect(ctx) }()
 	mongoDB := mongoClient.Database(cfg.MongoDB)
 	log.Info("connected to mongodb")
 

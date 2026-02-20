@@ -1,0 +1,28 @@
+# Build stage
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache git
+
+ENV GOWORK=off
+ENV GOTOOLCHAIN=auto
+
+COPY pkg/ ./pkg/
+COPY services/agent-vk/ ./services/agent-vk/
+
+RUN cd pkg && go mod download
+RUN cd services/agent-vk && go mod download
+
+RUN cd services/agent-vk && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/agent ./cmd/main.go
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /root/
+
+COPY --from=builder /app/bin/agent .
+
+CMD ["./agent"]

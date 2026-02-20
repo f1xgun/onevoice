@@ -68,5 +68,5 @@ func TestToolResponse_ErrorRoundTrip(t *testing.T) {
 func TestSubject(t *testing.T) {
 	assert.Equal(t, "tasks.telegram", a2a.Subject(a2a.AgentTelegram))
 	assert.Equal(t, "tasks.vk", a2a.Subject(a2a.AgentVK))
-	assert.Equal(t, "tasks.google", a2a.Subject(a2a.AgentGoogle))
+	assert.Equal(t, "tasks.yandex_business", a2a.Subject(a2a.AgentYandexBusiness))
 }
