@@ -64,6 +64,13 @@ func (m *mockIntegrationRepository) Delete(ctx context.Context, id uuid.UUID) er
 	}
 	return nil
 }
+func (m *mockIntegrationRepository) ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error) {
+	return []domain.Integration{}, nil
+}
+
+func (m *mockIntegrationRepository) GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform string, externalID string) (*domain.Integration, error) {
+	return nil, domain.ErrIntegrationNotFound
+}
 
 func TestIntegrationService_ListByBusinessID(t *testing.T) {
 	ctx := context.Background()
