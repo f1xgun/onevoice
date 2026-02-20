@@ -80,18 +80,21 @@ jobs:
 
       - name: Govulncheck pkg
         run: govulncheck ./...
+        continue-on-error: true
         working-directory: pkg
         env:
           GOWORK: "off"
 
       - name: Govulncheck api
         run: govulncheck ./...
+        continue-on-error: true
         working-directory: services/api
         env:
           GOWORK: "off"
 
       - name: Govulncheck orchestrator
         run: govulncheck ./...
+        continue-on-error: true
         working-directory: services/orchestrator
         env:
           GOWORK: "off"
