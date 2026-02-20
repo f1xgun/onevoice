@@ -123,6 +123,83 @@ services:
       - onevoice-network
     restart: unless-stopped
 
+  # Telegram agent
+  agent-telegram:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-telegram
+    container_name: onevoice-agent-telegram
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      NATS_URL: nats://nats:4222
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
+  # VK agent
+  agent-vk:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-vk
+    container_name: onevoice-agent-vk
+    environment:
+      VK_ACCESS_TOKEN: ${VK_ACCESS_TOKEN}
+      NATS_URL: nats://nats:4222
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
+  # Yandex.Business RPA agent
+  agent-yandex-business:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-yandex-business
+    container_name: onevoice-agent-yandex-business
+    environment:
+      YANDEX_COOKIES_JSON: ${YANDEX_COOKIES_JSON}
+      NATS_URL: nats://nats:4222
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile
+    container_name: onevoice-frontend
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - api
+      - orchestrator
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: onevoice-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - api
+      - orchestrator
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     driver: local

@@ -6,9 +6,9 @@ import "fmt"
 type AgentID = string
 
 const (
-	AgentTelegram AgentID = "telegram"
-	AgentVK       AgentID = "vk"
-	AgentGoogle   AgentID = "google"
+	AgentTelegram       AgentID = "telegram"
+	AgentVK             AgentID = "vk"
+	AgentYandexBusiness AgentID = "yandex_business"
 )
 
 // Subject returns the NATS subject for sending tasks to an agent.

@@ -33,7 +33,7 @@ func TestRateLimit_WithinLimit(t *testing.T) {
 
 	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	// Make 5 requests (within limit)
@@ -67,7 +67,7 @@ func TestRateLimit_ExceedsLimit(t *testing.T) {
 
 	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	// Make 3 requests (at limit)
@@ -108,7 +108,7 @@ func TestRateLimit_DifferentIPs(t *testing.T) {
 
 	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	// IP 1: Make 2 requests (at limit)
@@ -142,7 +142,7 @@ func TestRateLimit_DifferentPaths(t *testing.T) {
 
 	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	// Path 1: Make 2 requests (at limit)
@@ -176,7 +176,7 @@ func TestRateLimit_XForwardedFor(t *testing.T) {
 
 	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	// Request 1: Use X-Forwarded-For header
@@ -211,7 +211,7 @@ func TestRateLimit_XRealIP(t *testing.T) {
 
 	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	req := httptest.NewRequest("GET", "/api/v1/test", nil)

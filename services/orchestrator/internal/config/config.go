@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds orchestrator configuration loaded from environment.
@@ -12,6 +13,27 @@ type Config struct {
 	LLMModel      string
 	LLMTier       string
 	MaxIterations int
+	NATSUrl       string
+
+	// LLM provider API keys (at least one must be set)
+	OpenRouterAPIKey string
+	OpenAIAPIKey     string
+	AnthropicAPIKey  string
+
+	// Business context defaults (can be overridden per-request in future)
+	BusinessName        string
+	BusinessCategory    string
+	BusinessTone        string
+	ActiveIntegrations  []string // e.g. ["telegram","vk","yandex_business"]
+
+	SelfHostedEndpoints []SelfHostedEndpoint
+}
+
+// SelfHostedEndpoint holds configuration for one self-hosted LLM inference endpoint.
+type SelfHostedEndpoint struct {
+	URL    string
+	Model  string
+	APIKey string // optional
 }
 
 // Load reads config from environment variables.
@@ -28,12 +50,64 @@ func Load() (*Config, error) {
 		}
 	}
 
+	activeIntegrations := parseCSV(os.Getenv("ACTIVE_INTEGRATIONS"))
+
 	return &Config{
 		Port:          getEnv("PORT", "8090"),
 		LLMModel:      model,
 		LLMTier:       getEnv("LLM_TIER", "free"),
 		MaxIterations: maxIter,
+		NATSUrl:       getEnv("NATS_URL", "nats://localhost:4222"),
+
+		OpenRouterAPIKey: os.Getenv("OPENROUTER_API_KEY"),
+		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
+		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
+
+		BusinessName:        os.Getenv("BUSINESS_NAME"),
+		BusinessCategory:    os.Getenv("BUSINESS_CATEGORY"),
+		BusinessTone:        os.Getenv("BUSINESS_TONE"),
+		ActiveIntegrations:  activeIntegrations,
+		SelfHostedEndpoints: parseIndexedEndpoints(),
 	}, nil
+}
+
+// parseCSV splits a comma-separated string, trimming spaces, ignoring empty tokens.
+func parseCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// parseIndexedEndpoints scans SELF_HOSTED_N_URL / _MODEL / _API_KEY env vars
+// for N = 0, 1, 2, … stopping when SELF_HOSTED_N_URL is missing.
+// Entries without MODEL are skipped.
+func parseIndexedEndpoints() []SelfHostedEndpoint {
+	var result []SelfHostedEndpoint
+	for i := 0; ; i++ {
+		prefix := fmt.Sprintf("SELF_HOSTED_%d_", i)
+		url := os.Getenv(prefix + "URL")
+		if url == "" {
+			break
+		}
+		model := os.Getenv(prefix + "MODEL")
+		if model == "" {
+			continue
+		}
+		result = append(result, SelfHostedEndpoint{
+			URL:    url,
+			Model:  model,
+			APIKey: os.Getenv(prefix + "API_KEY"),
+		})
+	}
+	return result
 }
 
 func getEnv(key, defaultValue string) string {

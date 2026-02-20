@@ -17,7 +17,7 @@ func TestRequestLogger_Success(t *testing.T) {
 
 	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
@@ -46,7 +46,7 @@ func TestRequestLogger_ErrorStatus(t *testing.T) {
 
 	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("not found"))
+		_, _ = w.Write([]byte("not found"))
 	}))
 
 	req := httptest.NewRequest("GET", "/api/v1/unknown", nil)
@@ -65,7 +65,7 @@ func TestRequestLogger_PostRequest(t *testing.T) {
 
 	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte("created"))
+		_, _ = w.Write([]byte("created"))
 	}))
 
 	req := httptest.NewRequest("POST", "/api/v1/businesses", strings.NewReader(`{"name":"test"}`))
@@ -85,7 +85,7 @@ func TestRequestLogger_ImplicitStatusOK(t *testing.T) {
 
 	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Don't explicitly call WriteHeader - should default to 200
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	req := httptest.NewRequest("GET", "/api/v1/test", nil)
