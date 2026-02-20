@@ -33,7 +33,7 @@ func TestSelfHostedProvider_NilOnEmptyURL(t *testing.T) {
 func TestSelfHostedProvider_Chat(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"id":     "chatcmpl-test",
 			"object": "chat.completion",
 			"choices": []map[string]interface{}{
