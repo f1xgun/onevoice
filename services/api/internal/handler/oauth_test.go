@@ -17,6 +17,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 )
@@ -26,17 +27,17 @@ type MockOAuthStateService struct {
 	mock.Mock
 }
 
-func (m *MockOAuthStateService) GenerateState(ctx context.Context, data OAuthStateData) (string, error) {
+func (m *MockOAuthStateService) GenerateState(ctx context.Context, data service.OAuthStateData) (string, error) {
 	args := m.Called(ctx, data)
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockOAuthStateService) ValidateState(ctx context.Context, state string) (*OAuthStateData, error) {
+func (m *MockOAuthStateService) ValidateState(ctx context.Context, state string) (*service.OAuthStateData, error) {
 	args := m.Called(ctx, state)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*OAuthStateData), args.Error(1)
+	return args.Get(0).(*service.OAuthStateData), args.Error(1)
 }
 
 // MockOAuthIntegrationService mocks OAuthIntegrationService
@@ -44,7 +45,7 @@ type MockOAuthIntegrationService struct {
 	mock.Mock
 }
 
-func (m *MockOAuthIntegrationService) Connect(ctx context.Context, params ConnectParams) (*domain.Integration, error) {
+func (m *MockOAuthIntegrationService) Connect(ctx context.Context, params service.ConnectParams) (*domain.Integration, error) {
 	args := m.Called(ctx, params)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -89,7 +90,7 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 		ID:     businessID,
 		UserID: userID,
 	}, nil)
-	mockOAuth.On("GenerateState", mock.Anything, OAuthStateData{
+	mockOAuth.On("GenerateState", mock.Anything, service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "vk",
@@ -187,13 +188,13 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 	mockIntegration := new(MockOAuthIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	stateData := &OAuthStateData{
+	stateData := &service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "vk",
 	}
 	mockOAuth.On("ValidateState", mock.Anything, "valid-state").Return(stateData, nil)
-	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p ConnectParams) bool {
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		return p.BusinessID == businessID && p.Platform == "vk" && p.AccessToken == "vk_access_token_123"
 	})).Return(&domain.Integration{ID: uuid.New(), Platform: "vk"}, nil)
 
@@ -372,7 +373,7 @@ func TestConnectTelegram_Success(t *testing.T) {
 		ID:     businessID,
 		UserID: userID,
 	}, nil)
-	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p ConnectParams) bool {
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		return p.BusinessID == businessID && p.Platform == "telegram" && p.ExternalID == "@mychannel"
 	})).Return(&domain.Integration{
 		ID:       integrationID,
@@ -450,7 +451,7 @@ func TestGetYandexAuthURL_ReturnsURL(t *testing.T) {
 		ID:     businessID,
 		UserID: userID,
 	}, nil)
-	mockOAuth.On("GenerateState", mock.Anything, OAuthStateData{
+	mockOAuth.On("GenerateState", mock.Anything, service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "yandex_business",
@@ -529,13 +530,13 @@ func TestYandexCallback_ExchangesCode(t *testing.T) {
 	mockIntegration := new(MockOAuthIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	stateData := &OAuthStateData{
+	stateData := &service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "yandex_business",
 	}
 	mockOAuth.On("ValidateState", mock.Anything, "valid-yandex-state").Return(stateData, nil)
-	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p ConnectParams) bool {
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		return p.BusinessID == businessID &&
 			p.Platform == "yandex_business" &&
 			p.AccessToken == "yandex_access_token_xyz" &&

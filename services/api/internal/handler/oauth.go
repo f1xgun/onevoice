@@ -19,36 +19,18 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
-	"github.com/google/uuid"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // OAuthStateService abstracts OAuth state management.
 type OAuthStateService interface {
-	GenerateState(ctx context.Context, data OAuthStateData) (string, error)
-	ValidateState(ctx context.Context, state string) (*OAuthStateData, error)
-}
-
-// OAuthStateData holds data stored in the OAuth state token.
-type OAuthStateData struct {
-	UserID     uuid.UUID `json:"user_id"`
-	BusinessID uuid.UUID `json:"business_id"`
-	Platform   string    `json:"platform"`
+	GenerateState(ctx context.Context, data service.OAuthStateData) (string, error)
+	ValidateState(ctx context.Context, state string) (*service.OAuthStateData, error)
 }
 
 // OAuthIntegrationService is the subset of IntegrationService needed for OAuth flows.
 type OAuthIntegrationService interface {
-	Connect(ctx context.Context, params ConnectParams) (*domain.Integration, error)
-}
-
-// ConnectParams holds the parameters needed to connect a platform integration.
-type ConnectParams struct {
-	BusinessID   uuid.UUID
-	Platform     string
-	ExternalID   string
-	AccessToken  string
-	RefreshToken string
-	Metadata     map[string]interface{}
-	ExpiresAt    *time.Time
+	Connect(ctx context.Context, params service.ConnectParams) (*domain.Integration, error)
 }
 
 // OAuthConfig holds platform OAuth credentials and optional test overrides.
@@ -138,7 +120,7 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state, err := h.oauthService.GenerateState(r.Context(), OAuthStateData{
+	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: business.ID,
 		Platform:   "vk",
@@ -196,7 +178,7 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create integration
-	_, err = h.integrationService.Connect(r.Context(), ConnectParams{
+	_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  stateData.BusinessID,
 		Platform:    "vk",
 		ExternalID:  "default",
@@ -303,7 +285,7 @@ func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	integration, err := h.integrationService.Connect(r.Context(), ConnectParams{
+	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
 		Platform:    "telegram",
 		ExternalID:  req.ChannelID,
@@ -340,7 +322,7 @@ func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	state, err := h.oauthService.GenerateState(r.Context(), OAuthStateData{
+	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: business.ID,
 		Platform:   "yandex_business",
@@ -407,7 +389,7 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 
 	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 
-	_, err = h.integrationService.Connect(r.Context(), ConnectParams{
+	_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:   stateData.BusinessID,
 		Platform:     "yandex_business",
 		ExternalID:   "default",
