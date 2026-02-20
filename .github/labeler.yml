@@ -1,0 +1,35 @@
+backend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - pkg/**
+          - services/api/**
+          - services/orchestrator/**
+          - go.work
+          - Makefile
+
+frontend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - services/frontend/**
+
+agents:
+  - changed-files:
+      - any-glob-to-any-file:
+          - services/agent-telegram/**
+          - services/agent-vk/**
+          - services/agent-yandex-business/**
+
+infrastructure:
+  - changed-files:
+      - any-glob-to-any-file:
+          - Dockerfile*
+          - docker-compose.yml
+          - nginx/**
+          - migrations/**
+          - .github/**
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+          - "**/*.md"
