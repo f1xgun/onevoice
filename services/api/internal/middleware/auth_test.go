@@ -46,7 +46,7 @@ func testHandler(t *testing.T, expectedUserID uuid.UUID, expectedEmail, expected
 		assert.Equal(t, expectedRole, role)
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}
 }
 
