@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
@@ -20,17 +22,23 @@ type Runner interface {
 // ChatHandler handles SSE chat requests.
 type ChatHandler struct {
 	runner Runner
-	biz    prompt.BusinessContext
 }
 
 // NewChatHandler creates a ChatHandler.
-func NewChatHandler(runner Runner, biz prompt.BusinessContext) *ChatHandler {
-	return &ChatHandler{runner: runner, biz: biz}
+func NewChatHandler(runner Runner) *ChatHandler {
+	return &ChatHandler{runner: runner}
 }
 
 type chatRequest struct {
-	Model   string `json:"model"`
-	Message string `json:"message"`
+	Model              string   `json:"model"`
+	Message            string   `json:"message"`
+	BusinessID         string   `json:"business_id"`
+	BusinessName       string   `json:"business_name"`
+	BusinessCategory   string   `json:"business_category"`
+	BusinessAddress    string   `json:"business_address"`
+	BusinessPhone      string   `json:"business_phone"`
+	BusinessDesc       string   `json:"business_description"`
+	ActiveIntegrations []string `json:"active_integrations"`
 }
 
 // sseEvent matches the JSON shape written to the SSE stream.
@@ -53,7 +61,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Model == "" {
-		req.Model = "gpt-4o-mini" // sensible default
+		req.Model = "gpt-4o-mini"
 	}
 
 	// Set SSE headers
@@ -68,15 +76,26 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runReq := orchestrator.RunRequest{
-		Model:           req.Model,
-		BusinessContext: h.biz,
-		Messages: []llm.Message{
-			{Role: "user", Content: req.Message},
-		},
+	biz := prompt.BusinessContext{
+		Name:               req.BusinessName,
+		Category:           req.BusinessCategory,
+		Address:            req.BusinessAddress,
+		Phone:              req.BusinessPhone,
+		Description:        req.BusinessDesc,
+		ActiveIntegrations: req.ActiveIntegrations,
+		Now:                time.Now(),
 	}
 
-	events, err := h.runner.Run(r.Context(), runReq)
+	ctx := a2a.WithBusinessID(r.Context(), req.BusinessID)
+
+	runReq := orchestrator.RunRequest{
+		Model:              req.Model,
+		BusinessContext:    biz,
+		ActiveIntegrations: req.ActiveIntegrations,
+		Messages:           []llm.Message{{Role: "user", Content: req.Message}},
+	}
+
+	events, err := h.runner.Run(ctx, runReq)
 	if err != nil {
 		writeSSE(w, flusher, sseEvent{Type: "error", Content: err.Error()})
 		return
