@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -21,46 +22,52 @@ import (
 	"github.com/google/uuid"
 )
 
-// OAuthStateData holds the data stored in the OAuth state token.
+// OAuthStateService abstracts OAuth state management.
+type OAuthStateService interface {
+	GenerateState(ctx context.Context, data OAuthStateData) (string, error)
+	ValidateState(ctx context.Context, state string) (*OAuthStateData, error)
+}
+
+// OAuthStateData holds data stored in the OAuth state token.
 type OAuthStateData struct {
 	UserID     uuid.UUID `json:"user_id"`
 	BusinessID uuid.UUID `json:"business_id"`
 	Platform   string    `json:"platform"`
 }
 
-// ConnectParams holds the parameters needed to connect a platform integration.
-type ConnectParams struct {
-	BusinessID   uuid.UUID
-	Platform     string
-	AccessToken  string
-	RefreshToken string
-	ExternalID   string
-	ExpiresAt    *time.Time
-}
-
-// OAuthConfig holds OAuth credentials for each supported platform.
-type OAuthConfig struct {
-	VKClientID         string
-	VKClientSecret     string
-	VKRedirectURI      string
-	TelegramBotToken   string
-	YandexClientID     string
-	YandexClientSecret string
-	YandexRedirectURI  string
-}
-
-// OAuthStateService manages OAuth state tokens.
-type OAuthStateService interface {
-	GenerateState(ctx context.Context, data OAuthStateData) (string, error)
-	ValidateState(ctx context.Context, state string) (*OAuthStateData, error)
-}
-
-// OAuthIntegrationService manages platform integrations via OAuth.
+// OAuthIntegrationService is the subset of IntegrationService needed for OAuth flows.
 type OAuthIntegrationService interface {
 	Connect(ctx context.Context, params ConnectParams) (*domain.Integration, error)
 }
 
-// OAuthHandler handles OAuth flows for VK, Telegram, and Yandex.Business.
+// ConnectParams holds the parameters needed to connect a platform integration.
+type ConnectParams struct {
+	BusinessID   uuid.UUID
+	Platform     string
+	ExternalID   string
+	AccessToken  string
+	RefreshToken string
+	Metadata     map[string]interface{}
+	ExpiresAt    *time.Time
+}
+
+// OAuthConfig holds platform OAuth credentials and optional test overrides.
+type OAuthConfig struct {
+	VKClientID         string
+	VKClientSecret     string
+	VKRedirectURI      string
+	YandexClientID     string
+	YandexClientSecret string
+	YandexRedirectURI  string
+	TelegramBotToken   string
+	FrontendURL        string // for redirects, defaults to "/"
+
+	// Overridable base URLs for testing
+	vkTokenBaseURL     string
+	yandexTokenBaseURL string
+}
+
+// OAuthHandler handles all OAuth-related endpoints.
 type OAuthHandler struct {
 	oauthService       OAuthStateService
 	integrationService OAuthIntegrationService
@@ -69,8 +76,7 @@ type OAuthHandler struct {
 	httpClient         *http.Client
 }
 
-// NewOAuthHandler creates a new OAuthHandler. If httpClient is nil,
-// http.DefaultClient is used.
+// NewOAuthHandler creates a new OAuthHandler.
 func NewOAuthHandler(
 	oauthService OAuthStateService,
 	integrationService OAuthIntegrationService,
@@ -79,7 +85,7 @@ func NewOAuthHandler(
 	httpClient *http.Client,
 ) *OAuthHandler {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Timeout: 10 * time.Second}
 	}
 	return &OAuthHandler{
 		oauthService:       oauthService,
@@ -90,7 +96,30 @@ func NewOAuthHandler(
 	}
 }
 
-// GetVKAuthURL generates a VK OAuth authorization URL.
+// vkTokenURL returns the VK token exchange URL (supports test override via cfg.vkTokenBaseURL).
+func (h *OAuthHandler) vkTokenURL(code string) string {
+	base := "https://oauth.vk.com"
+	if h.cfg.vkTokenBaseURL != "" {
+		base = h.cfg.vkTokenBaseURL
+	}
+	return fmt.Sprintf("%s/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
+		base,
+		h.cfg.VKClientID,
+		h.cfg.VKClientSecret,
+		url.QueryEscape(h.cfg.VKRedirectURI),
+		code,
+	)
+}
+
+// yandexTokenURL returns the Yandex token exchange URL (supports test override via cfg.yandexTokenBaseURL).
+func (h *OAuthHandler) yandexTokenURL() string {
+	if h.cfg.yandexTokenBaseURL != "" {
+		return h.cfg.yandexTokenBaseURL + "/token"
+	}
+	return "https://oauth.yandex.net/token"
+}
+
+// GetVKAuthURL generates a VK OAuth authorization URL (JWT required).
 func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -104,7 +133,7 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return
 		}
-		slog.Error("failed to get business", "error", err)
+		slog.Error("failed to get business for VK OAuth", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -115,13 +144,12 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 		Platform:   "vk",
 	})
 	if err != nil {
-		slog.Error("failed to generate oauth state", "error", err)
+		slog.Error("failed to generate OAuth state for VK", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	authURL := fmt.Sprintf(
-		"https://oauth.vk.com/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=wall,photos,groups&state=%s",
+	authURL := fmt.Sprintf("https://oauth.vk.com/authorize?client_id=%s&redirect_uri=%s&scope=wall,groups,manage&response_type=code&state=%s&v=5.199",
 		url.QueryEscape(h.cfg.VKClientID),
 		url.QueryEscape(h.cfg.VKRedirectURI),
 		url.QueryEscape(state),
@@ -130,13 +158,8 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"url": authURL})
 }
 
-// VKCallback handles the VK OAuth callback, exchanges the code for a token,
-// and stores the integration.
+// VKCallback handles the VK OAuth callback (public — state validates identity).
 func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
-	h.vkCallback(w, r, "https://oauth.vk.com")
-}
-
-func (h *OAuthHandler) vkCallback(w http.ResponseWriter, r *http.Request, vkBase string) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 
@@ -147,42 +170,40 @@ func (h *OAuthHandler) vkCallback(w http.ResponseWriter, r *http.Request, vkBase
 
 	stateData, err := h.oauthService.ValidateState(r.Context(), state)
 	if err != nil {
+		slog.Warn("invalid VK OAuth state", "error", err)
 		http.Redirect(w, r, "/integrations?error=invalid_state", http.StatusFound)
 		return
 	}
 
-	tokenURL := fmt.Sprintf(
-		"%s/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
-		vkBase,
-		url.QueryEscape(h.cfg.VKClientID),
-		url.QueryEscape(h.cfg.VKClientSecret),
-		url.QueryEscape(h.cfg.VKRedirectURI),
-		url.QueryEscape(code),
-	)
-
+	// Exchange code for token
+	tokenURL := h.vkTokenURL(code)
 	resp, err := h.httpClient.Get(tokenURL)
 	if err != nil {
-		slog.Error("vk token exchange failed", "error", err)
-		http.Redirect(w, r, "/integrations?error=token_exchange_failed", http.StatusFound)
+		slog.Error("VK token exchange failed", "error", err)
+		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
 	defer resp.Body.Close()
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
+		Error       string `json:"error"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil || tokenResp.AccessToken == "" {
-		http.Redirect(w, r, "/integrations?error=token_exchange_failed", http.StatusFound)
+		slog.Error("VK token response invalid", "error", err)
+		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
 
+	// Create integration
 	_, err = h.integrationService.Connect(r.Context(), ConnectParams{
 		BusinessID:  stateData.BusinessID,
 		Platform:    "vk",
+		ExternalID:  "default",
 		AccessToken: tokenResp.AccessToken,
 	})
 	if err != nil {
-		slog.Error("failed to connect vk integration", "error", err)
+		slog.Error("failed to connect VK integration", "error", err)
 		http.Redirect(w, r, "/integrations?error=connect_failed", http.StatusFound)
 		return
 	}
@@ -190,77 +211,79 @@ func (h *OAuthHandler) vkCallback(w http.ResponseWriter, r *http.Request, vkBase
 	http.Redirect(w, r, "/integrations?connected=vk", http.StatusFound)
 }
 
-// telegramAuthRequest represents the data sent by Telegram Login Widget.
-type telegramAuthRequest map[string]interface{}
-
-// VerifyTelegramLogin verifies the Telegram Login Widget data hash.
+// VerifyTelegramLogin verifies a Telegram Login Widget callback (JWT required).
 func (h *OAuthHandler) VerifyTelegramLogin(w http.ResponseWriter, r *http.Request) {
-	var data telegramAuthRequest
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+	var req map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	hash, _ := data["hash"].(string)
+	// Extract and remove hash
+	hash, _ := req["hash"].(string)
 	if hash == "" {
-		writeJSONError(w, http.StatusUnauthorized, "missing hash")
+		writeJSONError(w, http.StatusBadRequest, "hash is required")
 		return
 	}
 
-	authDateStr, _ := data["auth_date"].(string)
+	// Check auth_date — JSON numbers arrive as float64
+	authDateStr, _ := req["auth_date"].(string)
 	if authDateStr == "" {
-		writeJSONError(w, http.StatusUnauthorized, "missing auth_date")
-		return
+		if authDateF, ok := req["auth_date"].(float64); ok {
+			authDateStr = strconv.FormatInt(int64(authDateF), 10)
+		}
 	}
-
 	authDate, err := strconv.ParseInt(authDateStr, 10, 64)
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "invalid auth_date")
-		return
-	}
-
-	// Telegram requires auth_date within 5 minutes
-	if time.Now().Unix()-authDate > 300 {
+	if err != nil || time.Since(time.Unix(authDate, 0)) > 5*time.Minute {
 		writeJSONError(w, http.StatusUnauthorized, "auth_date expired")
 		return
 	}
 
-	// Build check string (all fields except hash, sorted alphabetically)
-	var parts []string
-	for k, v := range data {
-		if k == "hash" {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s=%v", k, v))
+	// Build check string (exclude hash)
+	delete(req, "hash")
+	keys := make([]string, 0, len(req))
+	for k := range req {
+		keys = append(keys, k)
 	}
-	sort.Strings(parts)
+	sort.Strings(keys)
+
+	var parts []string
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", k, req[k]))
+	}
 	checkString := strings.Join(parts, "\n")
 
-	// Compute HMAC-SHA256 with SHA256(bot_token) as key
+	// Verify HMAC-SHA256
 	secretKey := sha256.Sum256([]byte(h.cfg.TelegramBotToken))
 	mac := hmac.New(sha256.New, secretKey[:])
 	mac.Write([]byte(checkString))
 	expectedHash := hex.EncodeToString(mac.Sum(nil))
 
-	if !hmac.Equal([]byte(hash), []byte(expectedHash)) {
+	if hash != expectedHash {
 		writeJSONError(w, http.StatusUnauthorized, "invalid hash")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]bool{"verified": true})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"verified": true, "user": req})
 }
 
-// connectTelegramRequest represents the body for connecting a Telegram channel.
+// connectTelegramRequest is the request body for ConnectTelegram.
 type connectTelegramRequest struct {
 	ChannelID      string `json:"channel_id"`
 	TelegramUserID string `json:"telegram_user_id"`
 }
 
-// ConnectTelegram connects a Telegram channel for the authenticated user's business.
+// ConnectTelegram stores a Telegram channel integration using the system bot token (JWT required).
 func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req connectTelegramRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -270,14 +293,8 @@ func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return
 		}
-		slog.Error("failed to get business", "error", err)
+		slog.Error("failed to get business for Telegram connect", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	var req connectTelegramRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -289,19 +306,22 @@ func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 	integration, err := h.integrationService.Connect(r.Context(), ConnectParams{
 		BusinessID:  business.ID,
 		Platform:    "telegram",
-		AccessToken: h.cfg.TelegramBotToken,
 		ExternalID:  req.ChannelID,
+		AccessToken: h.cfg.TelegramBotToken,
+		Metadata: map[string]interface{}{
+			"telegram_user_id": req.TelegramUserID,
+		},
 	})
 	if err != nil {
-		slog.Error("failed to connect telegram", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		slog.Error("failed to connect Telegram integration", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to connect")
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, integration)
 }
 
-// GetYandexAuthURL generates a Yandex OAuth authorization URL.
+// GetYandexAuthURL generates a Yandex OAuth authorization URL (JWT required).
 func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -315,7 +335,7 @@ func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) 
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return
 		}
-		slog.Error("failed to get business", "error", err)
+		slog.Error("failed to get business for Yandex OAuth", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -326,13 +346,12 @@ func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) 
 		Platform:   "yandex_business",
 	})
 	if err != nil {
-		slog.Error("failed to generate oauth state", "error", err)
+		slog.Error("failed to generate OAuth state for Yandex", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	authURL := fmt.Sprintf(
-		"https://oauth.yandex.ru/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s",
+	authURL := fmt.Sprintf("https://oauth.yandex.ru/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s",
 		url.QueryEscape(h.cfg.YandexClientID),
 		url.QueryEscape(h.cfg.YandexRedirectURI),
 		url.QueryEscape(state),
@@ -341,12 +360,8 @@ func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{"url": authURL})
 }
 
-// YandexCallback handles the Yandex OAuth callback.
+// YandexCallback handles the Yandex OAuth callback (public — state validates identity).
 func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
-	h.yandexCallback(w, r, "https://oauth.yandex.ru")
-}
-
-func (h *OAuthHandler) yandexCallback(w http.ResponseWriter, r *http.Request, yandexBase string) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 
@@ -357,75 +372,54 @@ func (h *OAuthHandler) yandexCallback(w http.ResponseWriter, r *http.Request, ya
 
 	stateData, err := h.oauthService.ValidateState(r.Context(), state)
 	if err != nil {
+		slog.Warn("invalid Yandex OAuth state", "error", err)
 		http.Redirect(w, r, "/integrations?error=invalid_state", http.StatusFound)
 		return
 	}
 
-	tokenURL := fmt.Sprintf("%s/token", yandexBase)
-	formData := url.Values{
+	// Exchange code for token
+	form := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
 		"client_id":     {h.cfg.YandexClientID},
 		"client_secret": {h.cfg.YandexClientSecret},
-		"redirect_uri":  {h.cfg.YandexRedirectURI},
 	}
-
-	resp, err := h.httpClient.PostForm(tokenURL, formData)
+	resp, err := h.httpClient.PostForm(h.yandexTokenURL(), form)
 	if err != nil {
-		slog.Error("yandex token exchange failed", "error", err)
-		http.Redirect(w, r, "/integrations?error=token_exchange_failed", http.StatusFound)
+		slog.Error("Yandex token exchange failed", "error", err)
+		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
 	var tokenResp struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int    `json:"expires_in"`
+		ExpiresIn    int64  `json:"expires_in"`
+		Error        string `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil || tokenResp.AccessToken == "" {
-		http.Redirect(w, r, "/integrations?error=token_exchange_failed", http.StatusFound)
+	if err := json.Unmarshal(body, &tokenResp); err != nil || tokenResp.AccessToken == "" {
+		slog.Error("Yandex token response invalid", "error", err)
+		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
 
-	var expiresAt *time.Time
-	if tokenResp.ExpiresIn > 0 {
-		t := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
-		expiresAt = &t
-	}
+	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 
 	_, err = h.integrationService.Connect(r.Context(), ConnectParams{
 		BusinessID:   stateData.BusinessID,
 		Platform:     "yandex_business",
+		ExternalID:   "default",
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
-		ExpiresAt:    expiresAt,
+		ExpiresAt:    &expiresAt,
 	})
 	if err != nil {
-		slog.Error("failed to connect yandex integration", "error", err)
+		slog.Error("failed to connect Yandex.Business integration", "error", err)
 		http.Redirect(w, r, "/integrations?error=connect_failed", http.StatusFound)
 		return
 	}
 
 	http.Redirect(w, r, "/integrations?connected=yandex_business", http.StatusFound)
-}
-
-// testableVKCallbackHandler wraps OAuthHandler to allow overriding the VK token URL.
-type testableVKCallbackHandler struct {
-	*OAuthHandler
-	vkTokenBase string
-}
-
-func (h *testableVKCallbackHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
-	h.OAuthHandler.vkCallback(w, r, h.vkTokenBase)
-}
-
-// testableYandexCallbackHandler wraps OAuthHandler to allow overriding the Yandex token URL.
-type testableYandexCallbackHandler struct {
-	*OAuthHandler
-	yandexTokenBase string
-}
-
-func (h *testableYandexCallbackHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
-	h.OAuthHandler.yandexCallback(w, r, h.yandexTokenBase)
 }
