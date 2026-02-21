@@ -44,6 +44,7 @@ type UserService interface {
 	RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
 }
 
 type userService struct {
@@ -260,6 +261,39 @@ func (s *userService) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, 
 	}
 
 	return sanitizeUser(user), nil
+}
+
+// ChangePassword validates current password and updates to new password
+func (s *userService) ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error {
+	user, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return err
+		}
+		return fmt.Errorf("get user: %w", err)
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+		return domain.ErrInvalidCredentials
+	}
+
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+
+	user.PasswordHash = string(newHash)
+	user.UpdatedAt = time.Now()
+
+	if err := s.repo.Update(ctx, user); err != nil {
+		return fmt.Errorf("update user: %w", err)
+	}
+
+	return nil
 }
 
 // Helper functions

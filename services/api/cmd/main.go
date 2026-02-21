@@ -88,12 +88,18 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	businessRepo := repository.NewBusinessRepository(pgPool)
 	integrationRepo := repository.NewIntegrationRepository(pgPool)
 	conversationRepo := repository.NewConversationRepository(mongoDB)
+	reviewRepo := repository.NewReviewRepository(mongoDB)
+	postRepo := repository.NewPostRepository(mongoDB)
+	agentTaskRepo := repository.NewAgentTaskRepository(mongoDB)
 
 	// Initialize services
 	userService := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
 	businessService := service.NewBusinessService(businessRepo)
 	integrationService := service.NewIntegrationService(integrationRepo, enc)
 	oauthService := service.NewOAuthService(redisClient)
+	reviewService := service.NewReviewService(reviewRepo, businessService)
+	postService := service.NewPostService(postRepo, businessService)
+	agentTaskService := service.NewAgentTaskService(agentTaskRepo, businessService)
 
 	// Initialize handlers
 	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
@@ -116,6 +122,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		OAuth:         oauthHandler,
 		InternalToken: internalTokenHandler,
 		ChatProxy:     chatProxyHandler,
+		Review:        handler.NewReviewHandler(reviewService),
+		Post:          handler.NewPostHandler(postService),
+		AgentTask:     handler.NewAgentTaskHandler(agentTaskService),
 	}
 
 	// Setup router

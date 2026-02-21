@@ -39,3 +39,18 @@ var (
 var (
 	ErrMessageNotFound = errors.New("message not found")
 )
+
+// Review errors
+var (
+	ErrReviewNotFound = errors.New("review not found")
+)
+
+// Post errors
+var (
+	ErrPostNotFound = errors.New("post not found")
+)
+
+// AgentTask errors
+var (
+	ErrAgentTaskNotFound = errors.New("agent task not found")
+)
