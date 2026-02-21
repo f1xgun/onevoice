@@ -68,7 +68,7 @@ func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID 
 		url.QueryEscape(externalID),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("tokenclient: build request: %w", err)
 	}
@@ -77,7 +77,7 @@ func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID 
 	if err != nil {
 		return nil, fmt.Errorf("tokenclient: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("tokenclient: integration not found")

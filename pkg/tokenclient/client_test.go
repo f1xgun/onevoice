@@ -26,7 +26,7 @@ func TestGetToken_FetchesFromAPI(t *testing.T) {
 		assert.Equal(t, "biz-1", r.URL.Query().Get("business_id"))
 		assert.Equal(t, "vk", r.URL.Query().Get("platform"))
 		assert.Equal(t, "group-456", r.URL.Query().Get("external_id"))
-		json.NewEncoder(w).Encode(want)
+		require.NoError(t, json.NewEncoder(w).Encode(want))
 	}))
 	defer srv.Close()
 
@@ -42,7 +42,7 @@ func TestGetToken_CachesResult(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount.Add(1)
-		json.NewEncoder(w).Encode(&TokenResponse{AccessToken: "tok"})
+		require.NoError(t, json.NewEncoder(w).Encode(&TokenResponse{AccessToken: "tok"}))
 	}))
 	defer srv.Close()
 
@@ -87,10 +87,10 @@ func TestGetToken_CacheEvictsExpiringSoon(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount.Add(1)
-		json.NewEncoder(w).Encode(&TokenResponse{
+		require.NoError(t, json.NewEncoder(w).Encode(&TokenResponse{
 			AccessToken: "tok",
 			ExpiresAt:   &expiresAt,
-		})
+		}))
 	}))
 	defer srv.Close()
 

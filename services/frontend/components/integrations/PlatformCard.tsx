@@ -1,25 +1,25 @@
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { PlatformIcon } from '@/components/integrations/PlatformIcons'
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 
 interface Integration {
-  id: string
-  platform: string
-  status: string
-  externalId: string
-  metadata?: Record<string, unknown>
+  id: string;
+  platform: string;
+  status: string;
+  externalId: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface Props {
-  platform: string
-  label: string
-  description: string
-  color: string
-  integrations: Integration[]
-  onConnect: () => void
-  onDisconnect: (integrationId: string) => void
-  disabled?: boolean
+  platform: string;
+  label: string;
+  description: string;
+  color: string;
+  integrations: Integration[];
+  onConnect: () => void;
+  onDisconnect: (integrationId: string) => void;
+  disabled?: boolean;
 }
 
 const statusLabels: Record<string, string> = {
@@ -28,7 +28,7 @@ const statusLabels: Record<string, string> = {
   error: 'Ошибка',
   pending_cookies: 'Ожидание',
   token_expired: 'Токен истёк',
-}
+};
 
 const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = {
   active: 'default',
@@ -36,24 +36,30 @@ const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = 
   error: 'destructive',
   pending_cookies: 'secondary',
   token_expired: 'destructive',
-}
+};
 
 export function PlatformCard({
-  platform, label, description, color, integrations,
-  onConnect, onDisconnect, disabled,
+  platform,
+  label,
+  description,
+  color,
+  integrations,
+  onConnect,
+  onDisconnect,
+  disabled,
 }: Props) {
-  const hasActive = integrations.some((i) => i.status === 'active')
+  const hasActive = integrations.some((i) => i.status === 'active');
 
   return (
-    <Card className={disabled ? 'opacity-40 pointer-events-none' : ''}>
-      <CardContent className="p-5 space-y-3">
+    <Card className={disabled ? 'pointer-events-none opacity-40' : ''}>
+      <CardContent className="space-y-3 p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center text-white"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white"
               style={{ backgroundColor: color }}
             >
-              <PlatformIcon platform={platform} className="w-5 h-5" />
+              <PlatformIcon platform={platform} className="h-5 w-5" />
             </div>
             <div>
               <p className="font-medium">{label}</p>
@@ -65,18 +71,23 @@ export function PlatformCard({
         </div>
 
         {integrations.length > 0 && (
-          <div className="space-y-2 pt-2 border-t">
+          <div className="space-y-2 border-t pt-2">
             {integrations.map((i) => (
               <div key={i.id} className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <Badge variant={statusVariants[i.status] ?? 'secondary'} className="text-xs">
                     {statusLabels[i.status] ?? i.status}
                   </Badge>
-                  <span className="text-gray-600 text-xs">
+                  <span className="text-xs text-gray-600">
                     {(i.metadata as Record<string, string>)?.channel_title ?? i.externalId}
                   </span>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => onDisconnect(i.id)} className="text-red-500 h-7 px-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDisconnect(i.id)}
+                  className="h-7 px-2 text-red-500"
+                >
                   Отключить
                 </Button>
               </div>
@@ -91,5 +102,5 @@ export function PlatformCard({
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
