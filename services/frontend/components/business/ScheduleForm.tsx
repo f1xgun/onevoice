@@ -2,93 +2,248 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
-import { api } from '@/lib/api';
+import { format, parseISO } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { CalendarIcon, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { ScheduleDay } from '@/types/business';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
+import { api } from '@/lib/api';
+import type { ScheduleDay, SpecialDate } from '@/types/business';
 
-const DAYS: { key: ScheduleDay['day']; label: string }[] = [
-  { key: 'mon', label: 'Пн' },
-  { key: 'tue', label: 'Вт' },
-  { key: 'wed', label: 'Ср' },
-  { key: 'thu', label: 'Чт' },
-  { key: 'fri', label: 'Пт' },
-  { key: 'sat', label: 'Сб' },
-  { key: 'sun', label: 'Вс' },
+const DAY_LABELS: Record<ScheduleDay['day'], string> = {
+  mon: 'Понедельник',
+  tue: 'Вторник',
+  wed: 'Среда',
+  thu: 'Четверг',
+  fri: 'Пятница',
+  sat: 'Суббота',
+  sun: 'Воскресенье',
+};
+
+const DEFAULT_SCHEDULE: ScheduleDay[] = [
+  { day: 'mon', open: '09:00', close: '21:00', closed: false },
+  { day: 'tue', open: '09:00', close: '21:00', closed: false },
+  { day: 'wed', open: '09:00', close: '21:00', closed: false },
+  { day: 'thu', open: '09:00', close: '21:00', closed: false },
+  { day: 'fri', open: '09:00', close: '21:00', closed: false },
+  { day: 'sat', open: '09:00', close: '21:00', closed: false },
+  { day: 'sun', open: '09:00', close: '21:00', closed: true },
 ];
 
-const defaultSchedule: ScheduleDay[] = DAYS.map(({ key }) => ({
-  day: key,
-  open: '09:00',
-  close: '21:00',
-  closed: key === 'sun',
-}));
+interface ScheduleFormProps {
+  initialSchedule?: ScheduleDay[];
+  initialSpecialDates?: SpecialDate[];
+}
 
-export function ScheduleForm({ initialSchedule }: { initialSchedule?: ScheduleDay[] }) {
-  const [schedule, setSchedule] = useState<ScheduleDay[]>(initialSchedule ?? defaultSchedule);
-  const qc = useQueryClient();
+export function ScheduleForm({
+  initialSchedule,
+  initialSpecialDates,
+}: ScheduleFormProps) {
+  const [schedule, setSchedule] = useState<ScheduleDay[]>(DEFAULT_SCHEDULE);
+  const [specialDates, setSpecialDates] = useState<SpecialDate[]>([]);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const initialized = useRef(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!initialized.current && initialSchedule && initialSchedule.length > 0) {
+    if (initialSchedule && initialSchedule.length > 0 && !initialized.current) {
       setSchedule(initialSchedule);
       initialized.current = true;
     }
-  }, [initialSchedule]);
+    if (initialSpecialDates && !initialized.current) {
+      setSpecialDates(initialSpecialDates);
+    }
+  }, [initialSchedule, initialSpecialDates]);
 
   const mutation = useMutation({
-    mutationFn: () => api.put('/business/schedule', { schedule }),
+    mutationFn: (data: { schedule: ScheduleDay[]; specialDates: SpecialDate[] }) =>
+      api.put('/business/schedule', data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['business'] });
       toast.success('Расписание сохранено');
+      queryClient.invalidateQueries({ queryKey: ['business'] });
     },
-    onError: () => toast.error('Ошибка сохранения'),
+    onError: () => {
+      toast.error('Ошибка сохранения');
+    },
   });
 
-  const update = (day: ScheduleDay['day'], patch: Partial<ScheduleDay>) => {
-    setSchedule((s) => s.map((d) => (d.day === day ? { ...d, ...patch } : d)));
-  };
+  function updateDay(index: number, updates: Partial<ScheduleDay>) {
+    setSchedule((prev) =>
+      prev.map((d, i) => (i === index ? { ...d, ...updates } : d)),
+    );
+  }
+
+  function addSpecialDate(date: Date) {
+    const iso = format(date, 'yyyy-MM-dd');
+    if (specialDates.some((sd) => sd.date === iso)) return;
+    setSpecialDates((prev) => [...prev, { date: iso, closed: true }]);
+    setCalendarOpen(false);
+  }
+
+  function updateSpecialDate(index: number, updates: Partial<SpecialDate>) {
+    setSpecialDates((prev) =>
+      prev.map((sd, i) => (i === index ? { ...sd, ...updates } : sd)),
+    );
+  }
+
+  function removeSpecialDate(index: number) {
+    setSpecialDates((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleSave() {
+    mutation.mutate({ schedule, specialDates });
+  }
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-2">
-        {DAYS.map(({ key, label }) => {
-          const day = schedule.find((d) => d.day === key);
-          if (!day) return null;
-          return (
-            <div key={key} className="flex items-center gap-3">
-              <span className="w-8 text-sm font-medium text-gray-600">{label}</span>
-              <label className="flex cursor-pointer items-center gap-1 text-sm text-gray-500">
-                <input
-                  type="checkbox"
-                  checked={day.closed}
-                  onChange={(e) => update(key, { closed: e.target.checked })}
-                />
-                Выходной
-              </label>
-              {!day.closed && (
-                <>
-                  <Input
-                    type="time"
-                    value={day.open}
-                    onChange={(e) => update(key, { open: e.target.value })}
-                    className="w-28"
-                  />
-                  <span className="text-gray-400">—</span>
-                  <Input
-                    type="time"
-                    value={day.close}
-                    onChange={(e) => update(key, { close: e.target.value })}
-                    className="w-28"
-                  />
-                </>
-              )}
+    <div className="space-y-6">
+      {/* Weekly schedule */}
+      <div className="space-y-3">
+        {schedule.map((day, index) => (
+          <div
+            key={day.day}
+            className="flex items-center gap-4 rounded-lg border p-3"
+          >
+            <span className="w-28 text-sm font-medium">
+              {DAY_LABELS[day.day]}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={!day.closed}
+                onCheckedChange={(checked) =>
+                  updateDay(index, { closed: !checked })
+                }
+              />
+              <Label className="text-sm text-muted-foreground">
+                {day.closed ? 'Выходной' : 'Открыто'}
+              </Label>
             </div>
-          );
-        })}
+
+            {!day.closed && (
+              <div className="flex items-center gap-2">
+                <Input
+                  type="time"
+                  value={day.open}
+                  onChange={(e) => updateDay(index, { open: e.target.value })}
+                  className="w-28"
+                />
+                <span className="text-muted-foreground">&mdash;</span>
+                <Input
+                  type="time"
+                  value={day.close}
+                  onChange={(e) => updateDay(index, { close: e.target.value })}
+                  className="w-28"
+                />
+              </div>
+            )}
+          </div>
+        ))}
       </div>
-      <Button onClick={() => mutation.mutate()} disabled={mutation.isPending} type="button">
+
+      <Separator />
+
+      {/* Special dates */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium">Особые даты</h3>
+            <p className="text-xs text-muted-foreground">
+              Праздники и особый режим работы
+            </p>
+          </div>
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                Добавить дату
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="single"
+                onSelect={(date) => date && addSpecialDate(date)}
+                locale={ru}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        {specialDates.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Нет особых дат
+          </p>
+        )}
+
+        {specialDates.map((sd, index) => (
+          <div
+            key={sd.date}
+            className="flex items-center gap-4 rounded-lg border p-3"
+          >
+            <span className="w-28 text-sm font-medium">
+              {format(parseISO(sd.date), 'd MMMM', { locale: ru })}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={!sd.closed}
+                onCheckedChange={(checked) =>
+                  updateSpecialDate(index, {
+                    closed: !checked,
+                    open: checked ? '10:00' : undefined,
+                    close: checked ? '18:00' : undefined,
+                  })
+                }
+              />
+              <Label className="text-sm text-muted-foreground">
+                {sd.closed ? 'Выходной' : 'Особый режим'}
+              </Label>
+            </div>
+
+            {!sd.closed && (
+              <div className="flex items-center gap-2">
+                <Input
+                  type="time"
+                  value={sd.open || ''}
+                  onChange={(e) =>
+                    updateSpecialDate(index, { open: e.target.value })
+                  }
+                  className="w-28"
+                />
+                <span className="text-muted-foreground">&mdash;</span>
+                <Input
+                  type="time"
+                  value={sd.close || ''}
+                  onChange={(e) =>
+                    updateSpecialDate(index, { close: e.target.value })
+                  }
+                  className="w-28"
+                />
+              </div>
+            )}
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto h-8 w-8 text-muted-foreground hover:text-destructive"
+              onClick={() => removeSpecialDate(index)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      <Button onClick={handleSave} disabled={mutation.isPending}>
         {mutation.isPending ? 'Сохранение...' : 'Сохранить расписание'}
       </Button>
     </div>
