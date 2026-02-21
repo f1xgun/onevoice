@@ -58,7 +58,7 @@ services:
   nats:
     image: nats:2.10-alpine
     container_name: onevoice-nats
-    command: ["-js", "-sd", "/data"]
+    command: ["-js", "-sd", "/data", "-m", "8222"]
     ports:
       - "4222:4222"
       - "8222:8222"
@@ -108,8 +108,22 @@ services:
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production-min-32-chars}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-12345678901234567890123456789012}
+      INTERNAL_PORT: 8443
+      ORCHESTRATOR_URL: http://orchestrator:8090
+      VK_CLIENT_ID: ${VK_CLIENT_ID:-}
+      VK_CLIENT_SECRET: ${VK_CLIENT_SECRET:-}
+      VK_REDIRECT_URI: ${VK_REDIRECT_URI:-http://localhost/api/v1/oauth/vk/callback}
+      YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
+      YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
+      YANDEX_REDIRECT_URI: ${YANDEX_REDIRECT_URI:-http://localhost/api/v1/oauth/yandex_business/callback}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-8026734096:AAF2cBY2r7D3nyj9pVLqAjQyCuSlJwF1wAA}
     ports:
       - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+      - ./certs/server.crt:/certs/server.crt:ro
+      - ./certs/server.key:/certs/server.key:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -130,8 +144,12 @@ services:
       dockerfile: Dockerfile.agent-telegram
     container_name: onevoice-agent-telegram
     environment:
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       NATS_URL: nats://nats:4222
+      API_INTERNAL_URL: http://api:8443
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+      - ./certs/telegram.crt:/certs/client.crt:ro
+      - ./certs/telegram.key:/certs/client.key:ro
     depends_on:
       nats:
         condition: service_healthy
@@ -146,8 +164,12 @@ services:
       dockerfile: Dockerfile.agent-vk
     container_name: onevoice-agent-vk
     environment:
-      VK_ACCESS_TOKEN: ${VK_ACCESS_TOKEN}
       NATS_URL: nats://nats:4222
+      API_INTERNAL_URL: http://api:8443
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+      - ./certs/vk.crt:/certs/client.crt:ro
+      - ./certs/vk.key:/certs/client.key:ro
     depends_on:
       nats:
         condition: service_healthy
@@ -162,8 +184,35 @@ services:
       dockerfile: Dockerfile.agent-yandex-business
     container_name: onevoice-agent-yandex-business
     environment:
-      YANDEX_COOKIES_JSON: ${YANDEX_COOKIES_JSON}
       NATS_URL: nats://nats:4222
+      API_INTERNAL_URL: http://api:8443
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+      - ./certs/yandex-business.crt:/certs/client.crt:ro
+      - ./certs/yandex-business.key:/certs/client.key:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
+  # LLM Orchestrator
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    container_name: onevoice-orchestrator
+    environment:
+      PORT: 8090
+      NATS_URL: nats://nats:4222
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-4o-mini}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MAX_ITERATIONS: 10
+    ports:
+      - "8090:8090"
     depends_on:
       nats:
         condition: service_healthy
@@ -195,7 +244,6 @@ services:
     depends_on:
       - frontend
       - api
-      - orchestrator
     networks:
       - onevoice-network
     restart: unless-stopped

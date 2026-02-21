@@ -7,6 +7,11 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
+// TokenFetcher retrieves an access token (cookies JSON) for a given business/platform combination.
+type TokenFetcher interface {
+	GetToken(ctx context.Context, businessID, platform, externalID string) (accessToken string, err error)
+}
+
 // YandexBrowser abstracts Playwright browser operations for testability.
 type YandexBrowser interface {
 	UpdateHours(ctx context.Context, hoursJSON string) error
@@ -15,14 +20,18 @@ type YandexBrowser interface {
 	ReplyReview(ctx context.Context, reviewID, text string) error
 }
 
+// BrowserFactory creates a YandexBrowser from a cookies JSON string.
+type BrowserFactory func(cookiesJSON string) YandexBrowser
+
 // Handler implements a2a.Handler for the Yandex.Business RPA agent.
 type Handler struct {
-	browser YandexBrowser
+	tokens         TokenFetcher
+	browserFactory BrowserFactory
 }
 
-// NewHandler creates a Handler with the given browser automation implementation.
-func NewHandler(browser YandexBrowser) *Handler {
-	return &Handler{browser: browser}
+// NewHandler creates a Handler with the given TokenFetcher and BrowserFactory.
+func NewHandler(tokens TokenFetcher, factory BrowserFactory) *Handler {
+	return &Handler{tokens: tokens, browserFactory: factory}
 }
 
 // Handle routes ToolRequests to the appropriate Yandex.Business operation.
@@ -41,9 +50,22 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 	}
 }
 
+func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBrowser, error) {
+	token, err := h.tokens.GetToken(ctx, req.BusinessID, "yandex_business", "")
+	if err != nil {
+		return nil, fmt.Errorf("fetch token: %w", err)
+	}
+	return h.browserFactory(token), nil
+}
+
 func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
 	hours, _ := req.Args["hours"].(string)
-	if err := h.browser.UpdateHours(ctx, hours); err != nil {
+	if err := browser.UpdateHours(ctx, hours); err != nil {
 		return nil, fmt.Errorf("yandex: update hours: %w", err)
 	}
 	return &a2a.ToolResponse{
@@ -54,13 +76,18 @@ func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 }
 
 func (h *Handler) updateInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
 	info := make(map[string]string)
 	for _, key := range []string{"phone", "website", "description"} {
 		if v, ok := req.Args[key].(string); ok {
 			info[key] = v
 		}
 	}
-	if err := h.browser.UpdateInfo(ctx, info); err != nil {
+	if err := browser.UpdateInfo(ctx, info); err != nil {
 		return nil, fmt.Errorf("yandex: update info: %w", err)
 	}
 	return &a2a.ToolResponse{
@@ -71,13 +98,18 @@ func (h *Handler) updateInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 }
 
 func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
 	limitF, _ := req.Args["limit"].(float64)
 	limit := int(limitF)
 	if limit == 0 {
 		limit = 20
 	}
 
-	reviews, err := h.browser.GetReviews(ctx, limit)
+	reviews, err := browser.GetReviews(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("yandex: get reviews: %w", err)
 	}
@@ -89,10 +121,15 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 }
 
 func (h *Handler) replyReview(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
 	reviewID, _ := req.Args["review_id"].(string)
 	text, _ := req.Args["text"].(string)
 
-	if err := h.browser.ReplyReview(ctx, reviewID, text); err != nil {
+	if err := browser.ReplyReview(ctx, reviewID, text); err != nil {
 		return nil, fmt.Errorf("yandex: reply review: %w", err)
 	}
 	return &a2a.ToolResponse{

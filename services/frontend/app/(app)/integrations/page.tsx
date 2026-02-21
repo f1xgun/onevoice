@@ -2,17 +2,18 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
 import { toast } from 'sonner';
-import Link from 'next/link';
 import { api } from '@/lib/api';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
-import { ConnectDialog } from '@/components/integrations/ConnectDialog';
+import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 
 interface Integration {
+  id: string;
   platform: string;
-  status: 'active' | 'inactive' | 'error';
-  last_sync_at?: string;
+  status: 'active' | 'inactive' | 'error' | 'pending_cookies' | 'token_expired';
+  externalId: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
 }
 
 const PLATFORMS = [
@@ -39,17 +40,16 @@ const DISABLED_PLATFORMS = [
 
 export default function IntegrationsPage() {
   const qc = useQueryClient();
-  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
+  const [telegramOpen, setTelegramOpen] = useState(false);
 
-  const { data, isError, error } = useQuery<Integration[]>({
+  const { data: integrations = [] } = useQuery<Integration[]>({
     queryKey: ['integrations'],
     queryFn: () =>
-      api.get('/integrations').then((r) => (r.data.integrations ?? []) as Integration[]),
-    retry: false,
+      api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
   });
 
   const disconnectMutation = useMutation({
-    mutationFn: (platform: string) => api.delete(`/integrations/${platform}`),
+    mutationFn: (integrationId: string) => api.delete(`/integrations/${integrationId}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['integrations'] });
       toast.success('Отключено');
@@ -57,40 +57,23 @@ export default function IntegrationsPage() {
     onError: () => toast.error('Ошибка отключения'),
   });
 
-  const connectMutation = useMutation({
-    mutationFn: ({
-      platform,
-      credentials,
-    }: {
-      platform: string;
-      credentials: Record<string, string>;
-    }) => api.post(`/integrations/${platform}/connect`, credentials),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['integrations'] });
-      toast.success('Подключено');
-    },
-    onError: () => toast.error('Ошибка подключения'),
-  });
+  const getIntegrationsForPlatform = (platformId: string): Integration[] =>
+    integrations.filter((i) => i.platform === platformId);
 
-  const noBusinessYet = isError && isAxiosError(error) && error.response?.status === 404;
+  const handleConnect = async (platformId: string) => {
+    if (platformId === 'telegram') {
+      setTelegramOpen(true);
+      return;
+    }
 
-  if (noBusinessYet) {
-    return (
-      <div className="max-w-3xl p-8">
-        <h1 className="mb-6 text-2xl font-bold">Интеграции</h1>
-        <p className="text-gray-500">
-          Сначала{' '}
-          <Link href="/business" className="text-blue-600 underline hover:text-blue-800">
-            создайте профиль бизнеса
-          </Link>
-          , чтобы подключить интеграции.
-        </p>
-      </div>
-    );
-  }
-
-  const getIntegration = (platformId: string): Integration | undefined =>
-    data?.find((i) => i.platform === platformId);
+    // VK and Yandex.Business: OAuth redirect flow
+    try {
+      const { data } = await api.get(`/integrations/${platformId}/auth-url`);
+      window.location.href = data.url;
+    } catch {
+      toast.error('Ошибка получения ссылки авторизации');
+    }
+  };
 
   return (
     <div className="max-w-3xl p-8">
@@ -98,16 +81,15 @@ export default function IntegrationsPage() {
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
         {PLATFORMS.map((p) => {
-          const integration = getIntegration(p.id);
+          const platformIntegrations = getIntegrationsForPlatform(p.id);
           return (
             <PlatformCard
               key={p.id}
               {...p}
               platform={p.id}
-              status={integration?.status ?? null}
-              lastSyncAt={integration?.last_sync_at}
-              onConnect={() => setConnectingPlatform(p.id)}
-              onDisconnect={() => disconnectMutation.mutate(p.id)}
+              integrations={platformIntegrations}
+              onConnect={() => handleConnect(p.id)}
+              onDisconnect={(integrationId) => disconnectMutation.mutate(integrationId)}
             />
           );
         })}
@@ -120,7 +102,7 @@ export default function IntegrationsPage() {
             key={p.id}
             {...p}
             platform={p.id}
-            status={null}
+            integrations={[]}
             disabled
             onConnect={() => {}}
             onDisconnect={() => {}}
@@ -128,16 +110,13 @@ export default function IntegrationsPage() {
         ))}
       </div>
 
-      {connectingPlatform && (
-        <ConnectDialog
-          platform={connectingPlatform}
-          open={true}
-          onClose={() => setConnectingPlatform(null)}
-          onConnect={async (credentials) => {
-            await connectMutation.mutateAsync({ platform: connectingPlatform, credentials });
-          }}
-        />
-      )}
+      <TelegramConnectModal
+        open={telegramOpen}
+        onClose={() => {
+          setTelegramOpen(false);
+          qc.invalidateQueries({ queryKey: ['integrations'] });
+        }}
+      />
     </div>
   );
 }

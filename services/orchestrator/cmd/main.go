@@ -20,7 +20,6 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
 )
 
@@ -60,25 +59,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		registerPlatformTools(toolRegistry, nc)
 	}
 
-	// Business context
-	biz := prompt.BusinessContext{
-		Name:               cfg.BusinessName,
-		Category:           cfg.BusinessCategory,
-		Tone:               cfg.BusinessTone,
-		ActiveIntegrations: cfg.ActiveIntegrations,
-		Now:                time.Now(),
-	}
-	if len(biz.ActiveIntegrations) == 0 {
-		log.Warn("ACTIVE_INTEGRATIONS not set — LLM will have no platform tools available")
-	}
-
 	// Orchestrator
 	orch := orchestrator.NewWithOptions(router, toolRegistry, orchestrator.Options{
 		MaxIterations: cfg.MaxIterations,
 	})
 
-	// HTTP handler
-	chatHandler := handler.NewChatHandler(orch, biz)
+	// HTTP handler — business context is now provided per-request in the body
+	chatHandler := handler.NewChatHandler(orch, cfg.LLMModel)
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)

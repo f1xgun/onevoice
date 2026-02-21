@@ -32,9 +32,10 @@ func New(agentID a2a.AgentID, requester Requester) *NATSExecutor {
 // It implements tools.Executor.
 func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	req := a2a.ToolRequest{
-		TaskID: uuid.New().String(),
-		Tool:   e.agentID,
-		Args:   args,
+		TaskID:     uuid.New().String(),
+		Tool:       e.agentID,
+		Args:       args,
+		BusinessID: a2a.BusinessIDFromContext(ctx),
 	}
 
 	data, err := json.Marshal(req)

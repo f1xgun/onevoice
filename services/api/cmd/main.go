@@ -77,8 +77,8 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	log.Info("connected to redis")
 
-	// Initialize encryptor (for validation only - not used in repositories)
-	_, err = crypto.NewEncryptor([]byte(cfg.EncryptionKey))
+	// Initialize encryptor for token encryption
+	enc, err := crypto.NewEncryptor([]byte(cfg.EncryptionKey))
 	if err != nil {
 		return fmt.Errorf("create encryptor: %w", err)
 	}
@@ -92,14 +92,30 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// Initialize services
 	userService := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
 	businessService := service.NewBusinessService(businessRepo)
-	integrationService := service.NewIntegrationService(integrationRepo)
+	integrationService := service.NewIntegrationService(integrationRepo, enc)
+	oauthService := service.NewOAuthService(redisClient)
 
 	// Initialize handlers
+	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
+		VKClientID:         cfg.VKClientID,
+		VKClientSecret:     cfg.VKClientSecret,
+		VKRedirectURI:      cfg.VKRedirectURI,
+		YandexClientID:     cfg.YandexClientID,
+		YandexClientSecret: cfg.YandexClientSecret,
+		YandexRedirectURI:  cfg.YandexRedirectURI,
+		TelegramBotToken:   cfg.TelegramBotToken,
+	}, nil)
+	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
+	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, cfg.OrchestratorURL, nil)
+
 	handlers := &router.Handlers{
-		Auth:         handler.NewAuthHandler(userService),
-		Business:     handler.NewBusinessHandler(businessService),
-		Integration:  handler.NewIntegrationHandler(integrationService, businessService),
-		Conversation: handler.NewConversationHandler(conversationRepo),
+		Auth:          handler.NewAuthHandler(userService),
+		Business:      handler.NewBusinessHandler(businessService),
+		Integration:   handler.NewIntegrationHandler(integrationService, businessService),
+		Conversation:  handler.NewConversationHandler(conversationRepo),
+		OAuth:         oauthHandler,
+		InternalToken: internalTokenHandler,
+		ChatProxy:     chatProxyHandler,
 	}
 
 	// Setup router
@@ -124,6 +140,21 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		}
 	}()
 
+	// Internal server
+	internalRouter := router.SetupInternal(handlers)
+	internalAddr := ":" + cfg.InternalPort
+	internalSrv := &http.Server{
+		Addr:              internalAddr,
+		Handler:           internalRouter,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	go func() {
+		log.Info("internal server listening", "addr", internalAddr)
+		if err := internalSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("internal server error", "error", err)
+		}
+	}()
+
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -138,6 +169,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	if err := internalSrv.Shutdown(shutdownCtx); err != nil {
+		log.Error("internal server forced to shutdown", "error", err)
+	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("server forced to shutdown: %w", err)
 	}

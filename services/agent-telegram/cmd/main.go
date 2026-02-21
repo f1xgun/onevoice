@@ -11,6 +11,7 @@ import (
 	natslib "github.com/nats-io/nats.go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	agentpkg "github.com/f1xgun/onevoice/services/agent-telegram/internal/agent"
 	"github.com/f1xgun/onevoice/services/agent-telegram/internal/telegram"
 )
@@ -23,10 +24,7 @@ func main() {
 }
 
 func run() error {
-	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	if botToken == "" {
-		return fmt.Errorf("TELEGRAM_BOT_TOKEN is required")
-	}
+	apiURL := getEnv("API_INTERNAL_URL", "http://localhost:8443")
 
 	natsURL := getEnv("NATS_URL", natslib.DefaultURL)
 	nc, err := natslib.Connect(natsURL)
@@ -35,12 +33,11 @@ func run() error {
 	}
 	defer nc.Close()
 
-	bot, err := telegram.New(botToken)
-	if err != nil {
-		return fmt.Errorf("failed to create Telegram bot: %w", err)
-	}
-
-	handler := agentpkg.NewHandler(bot)
+	tc := tokenclient.New(apiURL, nil)
+	tokens := &tokenAdapter{client: tc}
+	handler := agentpkg.NewHandler(tokens, func(botToken string) (agentpkg.Sender, error) {
+		return telegram.New(botToken)
+	})
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentTelegram, transport, handler)
 
@@ -55,6 +52,18 @@ func run() error {
 	<-ctx.Done()
 	slog.Info("telegram agent shutting down")
 	return nil
+}
+
+type tokenAdapter struct {
+	client *tokenclient.Client
+}
+
+func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (string, error) {
+	resp, err := a.client.GetToken(ctx, businessID, platform, externalID)
+	if err != nil {
+		return "", err
+	}
+	return resp.AccessToken, nil
 }
 
 func getEnv(key, defaultValue string) string {
