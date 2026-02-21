@@ -14,11 +14,11 @@ import (
 
 // fakeTokenFetcher records the last call and returns a preset token.
 type fakeTokenFetcher struct {
-	token      string
-	err        error
-	lastBizID  string
+	token        string
+	err          error
+	lastBizID    string
 	lastPlatform string
-	lastExtID  string
+	lastExtID    string
 }
 
 func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, externalID string) (string, error) {
