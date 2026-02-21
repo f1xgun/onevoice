@@ -93,10 +93,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           return (
             <div key={platform} className="flex items-center gap-2 text-xs text-gray-300">
               <span
-                className={cn(
-                  'h-2 w-2 rounded-full',
-                  connected ? 'bg-green-500' : 'bg-gray-500'
-                )}
+                className={cn('h-2 w-2 rounded-full', connected ? 'bg-green-500' : 'bg-gray-500')}
               />
               {platformLabels[platform]}
             </div>
@@ -140,7 +137,7 @@ export function Sidebar() {
       </div>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex h-screen w-60 shrink-0 flex-col">
+      <aside className="hidden h-screen w-60 shrink-0 flex-col md:flex">
         <SidebarContent />
       </aside>
     </>
