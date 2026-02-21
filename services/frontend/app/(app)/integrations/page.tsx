@@ -34,7 +34,7 @@ export default function IntegrationsPage() {
 
   const { data: integrations = [] } = useQuery<Integration[]>({
     queryKey: ['integrations'],
-    queryFn: () => api.get('/integrations').then((r) => (r.data.integrations ?? []) as Integration[]),
+    queryFn: () => api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
   })
 
   const disconnectMutation = useMutation({

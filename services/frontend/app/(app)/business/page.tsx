@@ -11,7 +11,7 @@ import type { Business } from '@/types/business';
 export default function BusinessPage() {
   const { data, isLoading, isError, error } = useQuery<Business>({
     queryKey: ['business'],
-    queryFn: () => api.get('/business').then((r) => r.data.business as Business),
+    queryFn: () => api.get('/business').then((r) => r.data as Business),
     retry: false,
   });
 

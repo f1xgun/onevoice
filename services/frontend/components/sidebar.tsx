@@ -47,7 +47,7 @@ export function Sidebar() {
   const { data: integrations } = useQuery<Integration[]>({
     queryKey: ['integrations'],
     queryFn: () =>
-      api.get('/integrations').then((r) => (r.data.integrations ?? []) as Integration[]),
+      api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
     retry: false,
     placeholderData: [],
   });
