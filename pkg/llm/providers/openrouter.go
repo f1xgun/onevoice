@@ -7,8 +7,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 // OpenRouterProvider implements llm.Provider using OpenRouter's OpenAI-compatible API
@@ -47,9 +48,9 @@ func (p *OpenRouterProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, e
 	result := make([]llm.ModelInfo, 0, len(models.Models))
 	for _, m := range models.Models {
 		result = append(result, llm.ModelInfo{
-			ID:               m.ID,
-			Name:             m.ID,
-			Provider:         "openrouter",
+			ID:                m.ID,
+			Name:              m.ID,
+			Provider:          "openrouter",
 			SupportsStreaming: true,
 		})
 	}
@@ -120,7 +121,7 @@ func (p *OpenRouterProvider) ChatStream(ctx context.Context, req llm.ChatRequest
 	ch := make(chan llm.StreamChunk, 16)
 	go func() {
 		defer close(ch)
-		defer stream.Close()
+		defer func() { _ = stream.Close() }()
 		for {
 			resp, err := stream.Recv()
 			if err != nil {

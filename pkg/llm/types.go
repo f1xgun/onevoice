@@ -42,7 +42,7 @@ type FunctionDefinition struct {
 
 // ChatRequest represents a request to generate a chat completion.
 type ChatRequest struct {
-	UserID      uuid.UUID        `json:"user_id"`         // Use uuid.Nil for system-level calls
+	UserID      uuid.UUID        `json:"user_id"` // Use uuid.Nil for system-level calls
 	Model       string           `json:"model"`
 	Messages    []Message        `json:"messages"`
 	Tools       []ToolDefinition `json:"tools,omitempty"`
@@ -52,8 +52,8 @@ type ChatRequest struct {
 	Stop        []string         `json:"stop,omitempty"`
 	RequestID   string           `json:"request_id,omitempty"` // For tracing
 	// Routing metadata
-	Tier        string           `json:"tier,omitempty"`     // Subscription tier for rate limiting
-	Strategy    Strategy         `json:"strategy,omitempty"` // Routing strategy (default: StrategyCost)
+	Tier     string   `json:"tier,omitempty"`     // Subscription tier for rate limiting
+	Strategy Strategy `json:"strategy,omitempty"` // Routing strategy (default: StrategyCost)
 }
 
 // ChatResponse represents the response from a chat completion.

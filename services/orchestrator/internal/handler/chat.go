@@ -98,6 +98,6 @@ func writeSSE(w http.ResponseWriter, flusher http.Flusher, event sseEvent) {
 		slog.Error("failed to marshal SSE event", "error", err)
 		return
 	}
-	fmt.Fprintf(w, "data: %s\n\n", data)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
 }

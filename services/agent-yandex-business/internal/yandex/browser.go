@@ -24,12 +24,12 @@ func NewBrowser(cookiesJSON string) *Browser {
 
 // withPage creates a headless Chromium page, injects cookies, and calls fn.
 // A screenshot is saved to /tmp/yandex_error_*.png on error for diagnostics.
-func (b *Browser) withPage(ctx context.Context, fn func(page playwright.Page) error) error {
+func (b *Browser) withPage(ctx context.Context, fn func(page playwright.Page) error) error { //nolint:unparam // ctx will be used for cancellation when Playwright supports it
 	pw, err := playwright.Run()
 	if err != nil {
 		return fmt.Errorf("playwright: run: %w", err)
 	}
-	defer pw.Stop() //nolint:errcheck
+	defer pw.Stop() //nolint:errcheck // Playwright Stop returns error only if already stopped
 
 	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(true),
@@ -41,7 +41,7 @@ func (b *Browser) withPage(ctx context.Context, fn func(page playwright.Page) er
 	if err != nil {
 		return fmt.Errorf("playwright: launch: %w", err)
 	}
-	defer browser.Close()
+	defer func() { _ = browser.Close() }()
 
 	bCtx, err := browser.NewContext(playwright.BrowserNewContextOptions{
 		UserAgent: playwright.String("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"),
@@ -49,7 +49,7 @@ func (b *Browser) withPage(ctx context.Context, fn func(page playwright.Page) er
 	if err != nil {
 		return fmt.Errorf("playwright: new context: %w", err)
 	}
-	defer bCtx.Close()
+	defer func() { _ = bCtx.Close() }()
 
 	if err := b.setCookies(bCtx); err != nil {
 		return fmt.Errorf("playwright: set cookies: %w", err)
@@ -92,11 +92,11 @@ func (b *Browser) setCookies(bCtx playwright.BrowserContext) error {
 
 // humanDelay waits 1–4 seconds to mimic human browsing behavior.
 func humanDelay() {
-	time.Sleep(time.Duration(rand.Intn(3000)+1000) * time.Millisecond)
+	time.Sleep(time.Duration(rand.Intn(3000)+1000) * time.Millisecond) //nolint:gosec // weak random is intentional for human-like delay simulation
 }
 
 // withRetry retries fn up to maxAttempts times with exponential backoff (2^i seconds).
-func withRetry(ctx context.Context, maxAttempts int, fn func() error) error {
+func withRetry(ctx context.Context, maxAttempts int, fn func() error) error { //nolint:unparam // keeping maxAttempts as parameter for flexibility
 	var lastErr error
 	for i := range maxAttempts {
 		if err := ctx.Err(); err != nil {
@@ -107,7 +107,7 @@ func withRetry(ctx context.Context, maxAttempts int, fn func() error) error {
 			return nil
 		}
 		if i < maxAttempts-1 {
-			time.Sleep(time.Duration(1<<uint(i)) * time.Second)
+			time.Sleep(time.Duration(1<<uint(i)) * time.Second) //nolint:gosec // i is bounded by maxAttempts (small value), no overflow risk
 		}
 	}
 	return fmt.Errorf("all %d attempts failed: %w", maxAttempts, lastErr)

@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 type conversationRepository struct {
@@ -63,7 +64,7 @@ func (r *conversationRepository) ListByUserID(ctx context.Context, userID string
 	if err != nil {
 		return conversations, fmt.Errorf("find conversations: %w", err)
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	if err := cursor.All(ctx, &conversations); err != nil {
 		return conversations, fmt.Errorf("decode conversations: %w", err)

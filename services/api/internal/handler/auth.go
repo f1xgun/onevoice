@@ -7,16 +7,17 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // UserService defines the interface for user-related operations
 type UserService interface {
 	Register(ctx context.Context, email, password string) (*domain.User, error)
-	Login(ctx context.Context, email, password string) (*domain.User, string, string, error)
+	Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error)
 	RefreshToken(ctx context.Context, refreshToken string) (string, error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)

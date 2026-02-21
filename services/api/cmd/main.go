@@ -10,6 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
@@ -17,10 +22,6 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func main() {
@@ -35,6 +36,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := run(log, cfg); err != nil {
+		log.Error("application error", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(log *slog.Logger, cfg *config.Config) error {
 	log.Info("starting onevoice api server")
 
 	// Initialize database connections
@@ -45,8 +53,7 @@ func main() {
 		cfg.PostgresUser, cfg.PostgresPass, cfg.PostgresHost, cfg.PostgresPort, cfg.PostgresDB)
 	pgPool, err := pgxpool.New(ctx, pgConnStr)
 	if err != nil {
-		log.Error("failed to connect to postgres", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("connect to postgres: %w", err)
 	}
 	defer pgPool.Close()
 	log.Info("connected to postgres")
@@ -54,8 +61,7 @@ func main() {
 	// MongoDB
 	mongoClient, err := mongo.Connect(options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
-		log.Error("failed to connect to mongodb", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("connect to mongodb: %w", err)
 	}
 	defer func() { _ = mongoClient.Disconnect(ctx) }()
 	mongoDB := mongoClient.Database(cfg.MongoDB)
@@ -65,18 +71,16 @@ func main() {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 	})
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Error("failed to connect to redis", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("connect to redis: %w", err)
 	}
 	log.Info("connected to redis")
 
 	// Initialize encryptor (for validation only - not used in repositories)
 	_, err = crypto.NewEncryptor([]byte(cfg.EncryptionKey))
 	if err != nil {
-		log.Error("failed to create encryptor", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("create encryptor: %w", err)
 	}
 
 	// Initialize repositories
@@ -112,27 +116,32 @@ func main() {
 	}
 
 	// Start server in goroutine
+	errCh := make(chan error, 1)
 	go func() {
 		log.Info("server listening", "addr", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("server error", "error", err)
-			os.Exit(1)
+			errCh <- err
 		}
 	}()
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	log.Info("shutting down server")
+	select {
+	case <-quit:
+		log.Info("shutting down server")
+	case err := <-errCh:
+		return fmt.Errorf("server error: %w", err)
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error("server forced to shutdown", "error", err)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
 
 	log.Info("server stopped")
+	return nil
 }

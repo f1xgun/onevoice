@@ -7,18 +7,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 // JWT token expiry durations
 const (
 	AccessTokenExpiry     = 15 * time.Minute
 	RefreshTokenExpiry    = 7 * 24 * time.Hour
-	refreshTokenKeyPrefix = "onevoice:auth:refresh_token:"
+	refreshTokenKeyPrefix = "onevoice:auth:refresh_token:" //nolint:gosec // not a credential, just a Redis key prefix
 )
 
 // AccessTokenClaims represents JWT claims for access tokens
@@ -36,20 +37,32 @@ type RefreshTokenClaims struct {
 	jwt.RegisteredClaims
 }
 
+// UserService defines the interface for user-related operations
+type UserService interface {
+	Register(ctx context.Context, email, password string) (*domain.User, error)
+	Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error)
+	RefreshToken(ctx context.Context, refreshToken string) (string, error)
+	Logout(ctx context.Context, refreshToken string) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+}
+
 type userService struct {
 	repo      domain.UserRepository
 	redis     *redis.Client
 	jwtSecret []byte
 }
 
+// Compile-time check that userService implements UserService
+var _ UserService = (*userService)(nil)
+
 // NewUserService creates a new user service instance
-func NewUserService(repo domain.UserRepository, redis *redis.Client, jwtSecret string) *userService {
+func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSecret string) UserService {
 	if len(jwtSecret) < 32 {
 		panic("jwt secret must be at least 32 bytes")
 	}
 	return &userService{
 		repo:      repo,
-		redis:     redis,
+		redis:     redisClient,
 		jwtSecret: []byte(jwtSecret),
 	}
 }
@@ -94,9 +107,9 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 }
 
 // Login authenticates user and issues access and refresh tokens
-func (s *userService) Login(ctx context.Context, email, password string) (*domain.User, string, string, error) {
+func (s *userService) Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error) {
 	// Get user by email
-	user, err := s.repo.GetByEmail(ctx, email)
+	user, err = s.repo.GetByEmail(ctx, email)
 	if err != nil && !errors.Is(err, domain.ErrUserNotFound) {
 		return nil, "", "", fmt.Errorf("get user: %w", err)
 	}
@@ -115,13 +128,14 @@ func (s *userService) Login(ctx context.Context, email, password string) (*domai
 	}
 
 	// Generate access token
-	accessToken, err := generateAccessToken(user, s.jwtSecret)
+	accessToken, err = generateAccessToken(user, s.jwtSecret)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("generate access token: %w", err)
 	}
 
 	// Generate refresh token
-	refreshToken, tokenID, err := generateRefreshToken(user.ID, s.jwtSecret)
+	var tokenID uuid.UUID
+	refreshToken, tokenID, err = generateRefreshToken(user.ID, s.jwtSecret)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("generate refresh token: %w", err)
 	}
@@ -247,7 +261,7 @@ func validateEmail(email string) error {
 
 	// Check that @ is not at the beginning or end
 	parts := strings.Split(email, "@")
-	if len(parts) != 2 || len(parts[0]) == 0 || len(parts[1]) == 0 {
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return fmt.Errorf("invalid email format")
 	}
 

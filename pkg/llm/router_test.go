@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 // ---------------------------------------------------------------------------
@@ -53,7 +54,7 @@ func (s *stubProvider) ChatStream(_ context.Context, _ llm.ChatRequest) (<-chan 
 }
 func (s *stubProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) { return nil, nil }
 func (s *stubProvider) HealthCheck(_ context.Context) error                   { return nil }
-func (s *stubProvider) Name() string                                           { return s.name }
+func (s *stubProvider) Name() string                                          { return s.name }
 
 func makeStub(name string) *stubProvider {
 	return &stubProvider{

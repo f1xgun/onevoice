@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
-	"github.com/google/uuid"
 )
 
 // EventType identifies the kind of event emitted by the agent loop.

@@ -3,12 +3,13 @@ package router
 import (
 	"net/http"
 
-	"github.com/f1xgun/onevoice/services/api/internal/handler"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/f1xgun/onevoice/services/api/internal/handler"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // Handlers encapsulates all HTTP handlers

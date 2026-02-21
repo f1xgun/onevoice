@@ -26,7 +26,7 @@ func setupTestRedis(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
 
 func TestRateLimit_WithinLimit(t *testing.T) {
 	redisClient, _ := setupTestRedis(t)
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	limit := 5
 	window := time.Minute
@@ -38,7 +38,7 @@ func TestRateLimit_WithinLimit(t *testing.T) {
 
 	// Make 5 requests (within limit)
 	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest("GET", "/api/v1/test", nil)
+		req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
 
 		rr := httptest.NewRecorder()
@@ -60,7 +60,7 @@ func TestRateLimit_WithinLimit(t *testing.T) {
 
 func TestRateLimit_ExceedsLimit(t *testing.T) {
 	redisClient, _ := setupTestRedis(t)
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	limit := 3
 	window := time.Minute
@@ -72,7 +72,7 @@ func TestRateLimit_ExceedsLimit(t *testing.T) {
 
 	// Make 3 requests (at limit)
 	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest("GET", "/api/v1/test", nil)
+		req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
 
 		rr := httptest.NewRecorder()
@@ -82,7 +82,7 @@ func TestRateLimit_ExceedsLimit(t *testing.T) {
 	}
 
 	// 4th request should be rate limited
-	req := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 
 	rr := httptest.NewRecorder()
@@ -101,7 +101,7 @@ func TestRateLimit_ExceedsLimit(t *testing.T) {
 
 func TestRateLimit_DifferentIPs(t *testing.T) {
 	redisClient, _ := setupTestRedis(t)
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	limit := 2
 	window := time.Minute
@@ -113,7 +113,7 @@ func TestRateLimit_DifferentIPs(t *testing.T) {
 
 	// IP 1: Make 2 requests (at limit)
 	for i := 0; i < 2; i++ {
-		req := httptest.NewRequest("GET", "/api/v1/test", nil)
+		req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
 
 		rr := httptest.NewRecorder()
@@ -123,7 +123,7 @@ func TestRateLimit_DifferentIPs(t *testing.T) {
 	}
 
 	// IP 2: Should still be able to make requests
-	req := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.2:12345"
 
 	rr := httptest.NewRecorder()
@@ -135,7 +135,7 @@ func TestRateLimit_DifferentIPs(t *testing.T) {
 
 func TestRateLimit_DifferentPaths(t *testing.T) {
 	redisClient, _ := setupTestRedis(t)
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	limit := 2
 	window := time.Minute
@@ -147,7 +147,7 @@ func TestRateLimit_DifferentPaths(t *testing.T) {
 
 	// Path 1: Make 2 requests (at limit)
 	for i := 0; i < 2; i++ {
-		req := httptest.NewRequest("GET", "/api/v1/path1", nil)
+		req := httptest.NewRequest("GET", "/api/v1/path1", http.NoBody)
 		req.RemoteAddr = "192.168.1.1:12345"
 
 		rr := httptest.NewRecorder()
@@ -157,7 +157,7 @@ func TestRateLimit_DifferentPaths(t *testing.T) {
 	}
 
 	// Path 2: Should have separate limit
-	req := httptest.NewRequest("GET", "/api/v1/path2", nil)
+	req := httptest.NewRequest("GET", "/api/v1/path2", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 
 	rr := httptest.NewRecorder()
@@ -169,7 +169,7 @@ func TestRateLimit_DifferentPaths(t *testing.T) {
 
 func TestRateLimit_XForwardedFor(t *testing.T) {
 	redisClient, _ := setupTestRedis(t)
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	limit := 2
 	window := time.Minute
@@ -180,7 +180,7 @@ func TestRateLimit_XForwardedFor(t *testing.T) {
 	}))
 
 	// Request 1: Use X-Forwarded-For header
-	req1 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req1 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req1.RemoteAddr = "192.168.1.100:12345"
 	req1.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.1")
 
@@ -191,7 +191,7 @@ func TestRateLimit_XForwardedFor(t *testing.T) {
 	assert.Equal(t, "1", rr1.Header().Get("X-RateLimit-Remaining"))
 
 	// Request 2: Same X-Forwarded-For IP (should count against same limit)
-	req2 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req2 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req2.RemoteAddr = "192.168.1.200:12345"
 	req2.Header.Set("X-Forwarded-For", "203.0.113.1")
 
@@ -204,7 +204,7 @@ func TestRateLimit_XForwardedFor(t *testing.T) {
 
 func TestRateLimit_XRealIP(t *testing.T) {
 	redisClient, _ := setupTestRedis(t)
-	defer redisClient.Close()
+	defer func() { _ = redisClient.Close() }()
 
 	limit := 1
 	window := time.Minute
@@ -214,7 +214,7 @@ func TestRateLimit_XRealIP(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	req := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.100:12345"
 	req.Header.Set("X-Real-IP", "203.0.113.1")
 
@@ -225,7 +225,7 @@ func TestRateLimit_XRealIP(t *testing.T) {
 	assert.Equal(t, "0", rr.Header().Get("X-RateLimit-Remaining"))
 
 	// Second request with same X-Real-IP should be rate limited
-	req2 := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req2 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	req2.RemoteAddr = "192.168.1.200:12345"
 	req2.Header.Set("X-Real-IP", "203.0.113.1")
 
@@ -236,7 +236,7 @@ func TestRateLimit_XRealIP(t *testing.T) {
 }
 
 func TestGetClientIP_XForwardedFor(t *testing.T) {
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest("GET", "/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 	req.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.1")
 
@@ -245,7 +245,7 @@ func TestGetClientIP_XForwardedFor(t *testing.T) {
 }
 
 func TestGetClientIP_XRealIP(t *testing.T) {
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest("GET", "/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 	req.Header.Set("X-Real-IP", "203.0.113.1")
 
@@ -254,7 +254,7 @@ func TestGetClientIP_XRealIP(t *testing.T) {
 }
 
 func TestGetClientIP_RemoteAddr(t *testing.T) {
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest("GET", "/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 
 	ip := getClientIP(req)
@@ -262,7 +262,7 @@ func TestGetClientIP_RemoteAddr(t *testing.T) {
 }
 
 func TestGetClientIP_Priority(t *testing.T) {
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest("GET", "/test", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 	req.Header.Set("X-Forwarded-For", "203.0.113.1")
 	req.Header.Set("X-Real-IP", "198.51.100.1")

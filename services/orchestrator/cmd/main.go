@@ -9,6 +9,9 @@ import (
 
 	natslib "github.com/nats-io/nats.go"
 
+	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
+
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/llm/providers"
@@ -19,8 +22,6 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
-	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
@@ -33,12 +34,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := run(log, cfg); err != nil {
+		log.Error("application error", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(log *slog.Logger, cfg *config.Config) error {
 	// Build LLM registry + wire real providers
 	registry := llm.NewRegistry()
 	routerOpts := buildProviderOpts(cfg, registry, log)
 	if len(routerOpts) == 0 {
-		log.Error("no LLM provider API key set — set OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY")
-		os.Exit(1)
+		return fmt.Errorf("no LLM provider API key set — set OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY")
 	}
 	router := llm.NewRouter(registry, routerOpts...)
 
@@ -85,10 +92,17 @@ func main() {
 
 	addr := ":" + cfg.Port
 	log.Info("orchestrator listening", "addr", addr)
-	if err := http.ListenAndServe(addr, r); err != nil {
-		log.Error("server error", "error", err)
-		os.Exit(1)
+
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 0, // SSE requires long-lived connections
 	}
+	if err := srv.ListenAndServe(); err != nil {
+		return fmt.Errorf("server error: %w", err)
+	}
+	return nil
 }
 
 // registerPlatformTools wires NATS executors into the tool registry for each MVP agent.
@@ -244,7 +258,7 @@ func buildProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) 
 		{"anthropic", cfg.AnthropicAPIKey, func(k string) llm.Provider { return providers.NewAnthropic(k) }},
 	}
 
-	var opts []llm.RouterOption
+	opts := make([]llm.RouterOption, 0, len(specs)+len(cfg.SelfHostedEndpoints))
 	for _, spec := range specs {
 		if spec.apiKey == "" {
 			continue

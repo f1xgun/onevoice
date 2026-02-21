@@ -20,7 +20,7 @@ func TestRequestLogger_Success(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:12345"
 
 	rr := httptest.NewRecorder()
@@ -49,7 +49,7 @@ func TestRequestLogger_ErrorStatus(t *testing.T) {
 		_, _ = w.Write([]byte("not found"))
 	}))
 
-	req := httptest.NewRequest("GET", "/api/v1/unknown", nil)
+	req := httptest.NewRequest("GET", "/api/v1/unknown", http.NoBody)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -88,7 +88,7 @@ func TestRequestLogger_ImplicitStatusOK(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	req := httptest.NewRequest("GET", "/api/v1/test", nil)
+	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 

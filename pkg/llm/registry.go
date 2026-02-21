@@ -157,11 +157,12 @@ func (r *Registry) RecordFailure(provider, model string) {
 
 	// Update health status based on failure rate
 	var newStatus string
-	if failureRate > 0.5 {
+	switch {
+	case failureRate > 0.5:
 		newStatus = "down"
-	} else if failureRate > 0.2 {
+	case failureRate > 0.2:
 		newStatus = "degraded"
-	} else {
+	default:
 		newStatus = "healthy"
 	}
 

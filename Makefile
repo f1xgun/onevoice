@@ -1,12 +1,18 @@
-.PHONY: help build run test test-coverage test-integration lint fmt clean
+.PHONY: help build run test test-all test-coverage test-integration
+.PHONY: lint lint-frontend lint-all fmt fmt-fix
 .PHONY: migrate-up migrate-down migrate-create db-seed
 .PHONY: docker-up docker-down docker-logs docker-clean
+.PHONY: clean
 
 # Variables
 BINARY_NAME=api
 MAIN_PATH=./cmd/main.go
 MIGRATION_PATH=./migrations/postgres
 GOWORK=off
+GOLANGCI_CONFIG=../../.golangci.yml
+
+# All Go modules (relative paths)
+GO_MODULES=pkg services/api services/orchestrator services/agent-telegram services/agent-vk services/agent-yandex-business
 
 # Help target
 help: ## Show this help message
@@ -25,10 +31,19 @@ run: ## Run the API server
 	@cd services/api && GOWORK=$(GOWORK) go run $(MAIN_PATH)
 
 # Test
-test: ## Run all tests
-	@echo "Running tests..."
-	@cd pkg && go test ./... -v
-	@cd services/api && GOWORK=$(GOWORK) go test ./... -v
+test: ## Run all Go tests with race detector
+	@echo "Running Go tests..."
+	@for mod in $(GO_MODULES); do \
+		echo "  Testing $$mod..."; \
+		cd $$mod && GOWORK=$(GOWORK) go test -race ./... && cd - > /dev/null || exit 1; \
+	done
+	@echo "All Go tests passed"
+
+test-all: test test-frontend ## Run all tests (Go + frontend)
+
+test-frontend: ## Run frontend tests
+	@echo "Running frontend tests..."
+	@cd services/frontend && pnpm test
 
 test-coverage: ## Run tests with coverage
 	@echo "Running tests with coverage..."
@@ -57,15 +72,37 @@ test-integration: ## Run integration tests with Docker
 	@echo "Integration tests complete"
 
 # Lint
-lint: ## Run linters
-	@echo "Running linters..."
-	@cd pkg && golangci-lint run ./...
-	@cd services/api && golangci-lint run ./...
+lint: ## Run Go linters on all modules
+	@echo "Running Go linters..."
+	@for mod in $(GO_MODULES); do \
+		echo "  Linting $$mod..."; \
+		cd $$mod && golangci-lint run --config $(GOLANGCI_CONFIG) ./... && cd - > /dev/null || exit 1; \
+	done
+	@echo "All Go modules lint clean"
 
-fmt: ## Format Go code
-	@echo "Formatting code..."
-	@cd pkg && go fmt ./...
-	@cd services/api && go fmt ./...
+lint-frontend: ## Run frontend linters (ESLint + Prettier)
+	@echo "Running frontend linters..."
+	@cd services/frontend && pnpm lint
+	@cd services/frontend && pnpm exec prettier --check .
+	@echo "Frontend lint clean"
+
+lint-all: lint lint-frontend ## Run all linters (Go + frontend)
+
+# Format
+fmt: ## Check Go formatting
+	@echo "Checking Go formatting..."
+	@for mod in $(GO_MODULES); do \
+		cd $$mod && gofmt -l . && cd - > /dev/null; \
+	done
+
+fmt-fix: ## Auto-format everything (Go + frontend)
+	@echo "Formatting Go code..."
+	@for mod in $(GO_MODULES); do \
+		cd $$mod && gofmt -w . && cd - > /dev/null; \
+	done
+	@echo "Formatting frontend code..."
+	@cd services/frontend && pnpm exec prettier --write .
+	@echo "All code formatted"
 
 # Migrations
 migrate-up: ## Run database migrations
