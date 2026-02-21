@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { Sidebar } from '@/components/sidebar';
@@ -9,6 +11,7 @@ import type { ReactNode } from 'react';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { setAuth } = useAuthStore();
   // Start as true so we always show a loading state until the effect has run
   // This prevents the brief flash of protected content
@@ -52,6 +55,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount-only: reads auth state once on load
+
+  const businessQuery = useQuery({
+    queryKey: ['business'],
+    queryFn: () => api.get('/business').then((r) => r.data),
+    retry: false,
+    enabled: ready,
+  });
+
+  useEffect(() => {
+    if (
+      businessQuery.isError &&
+      isAxiosError(businessQuery.error) &&
+      businessQuery.error.response?.status === 404 &&
+      !pathname.startsWith('/business')
+    ) {
+      router.replace('/business');
+    }
+  }, [businessQuery.isError, businessQuery.error, pathname, router]);
 
   if (!ready) {
     return null;
