@@ -49,11 +49,21 @@ const platformLabels: Record<string, string> = {
 function TaskSkeleton() {
   return (
     <TableRow>
-      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-      <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
-      <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
-      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-32" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-20" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-20" />
+      </TableCell>
     </TableRow>
   );
 }
@@ -63,20 +73,20 @@ function ExpandedRow({ task }: { task: AgentTask }) {
     <TableRow>
       <TableCell colSpan={5} className="bg-muted/30 p-4">
         <div className="space-y-3">
-          {task.input && (
+          {task.input != null && (
             <div>
               <p className="mb-1 text-xs font-medium text-muted-foreground">Входные данные</p>
               <pre className="max-h-40 overflow-auto rounded-md bg-muted p-3 text-xs">
-                {JSON.stringify(task.input, null, 2)}
+                {JSON.stringify(task.input as object, null, 2)}
               </pre>
             </div>
           )}
 
-          {task.output && (
+          {task.output != null && (
             <div>
               <p className="mb-1 text-xs font-medium text-muted-foreground">Результат</p>
               <pre className="max-h-40 overflow-auto rounded-md bg-muted p-3 text-xs">
-                {JSON.stringify(task.output, null, 2)}
+                {JSON.stringify(task.output as object, null, 2)}
               </pre>
             </div>
           )}
@@ -90,14 +100,12 @@ function ExpandedRow({ task }: { task: AgentTask }) {
 
           {task.startedAt && (
             <p className="text-xs text-muted-foreground">
-              Начало:{' '}
-              {format(new Date(task.startedAt), 'd MMM yyyy HH:mm', { locale: ru })}
+              Начало: {format(new Date(task.startedAt), 'd MMM yyyy HH:mm', { locale: ru })}
             </p>
           )}
           {task.completedAt && (
             <p className="text-xs text-muted-foreground">
-              Завершено:{' '}
-              {format(new Date(task.completedAt), 'd MMM yyyy HH:mm', { locale: ru })}
+              Завершено: {format(new Date(task.completedAt), 'd MMM yyyy HH:mm', { locale: ru })}
             </p>
           )}
         </div>
@@ -125,9 +133,7 @@ export default function TasksPage() {
     <div className="max-w-4xl space-y-6 p-8">
       <div>
         <h1 className="mb-1 text-2xl font-bold">Задачи</h1>
-        <p className="text-sm text-muted-foreground">
-          Задачи, выполняемые агентами на платформах
-        </p>
+        <p className="text-sm text-muted-foreground">Задачи, выполняемые агентами на платформах</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -197,8 +203,7 @@ export default function TasksPage() {
               let duration = '';
               if (task.startedAt && task.completedAt) {
                 const ms =
-                  new Date(task.completedAt).getTime() -
-                  new Date(task.startedAt).getTime();
+                  new Date(task.completedAt).getTime() - new Date(task.startedAt).getTime();
                 duration = ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
               }
 

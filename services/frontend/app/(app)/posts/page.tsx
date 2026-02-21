@@ -49,10 +49,18 @@ const platformLabels: Record<string, string> = {
 function PostSkeleton() {
   return (
     <TableRow>
-      <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-      <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
-      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-48" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-24" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-20" />
+      </TableCell>
     </TableRow>
   );
 }
@@ -72,9 +80,7 @@ function ExpandedRow({ post }: { post: Post }) {
           {post.mediaUrls && post.mediaUrls.length > 0 && (
             <div>
               <p className="mb-1 text-xs font-medium text-muted-foreground">Медиа</p>
-              <p className="text-sm text-muted-foreground">
-                {post.mediaUrls.length} файл(ов)
-              </p>
+              <p className="text-sm text-muted-foreground">{post.mediaUrls.length} файл(ов)</p>
             </div>
           )}
 
@@ -85,13 +91,8 @@ function ExpandedRow({ post }: { post: Post }) {
               </p>
               <div className="space-y-1">
                 {results.map(([platform, result]) => (
-                  <div
-                    key={platform}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <span className="font-medium">
-                      {platformLabels[platform] ?? platform}:
-                    </span>
+                  <div key={platform} className="flex items-center gap-2 text-sm">
+                    <span className="font-medium">{platformLabels[platform] ?? platform}:</span>
                     <Badge
                       variant={result.status === 'published' ? 'default' : 'destructive'}
                       className="text-xs"
@@ -141,9 +142,7 @@ export default function PostsPage() {
     <div className="max-w-4xl space-y-6 p-8">
       <div>
         <h1 className="mb-1 text-2xl font-bold">Посты</h1>
-        <p className="text-sm text-muted-foreground">
-          Все публикации на подключённых платформах
-        </p>
+        <p className="text-sm text-muted-foreground">Все публикации на подключённых платформах</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -207,9 +206,7 @@ export default function PostsPage() {
           <TableBody>
             {posts.map((post) => {
               const isExpanded = expandedId === post.id;
-              const platforms = post.platformResults
-                ? Object.keys(post.platformResults)
-                : [];
+              const platforms = post.platformResults ? Object.keys(post.platformResults) : [];
 
               return (
                 <Fragment key={post.id}>

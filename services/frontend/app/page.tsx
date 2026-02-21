@@ -1,11 +1,5 @@
 import Link from 'next/link';
-import {
-  MessageSquare,
-  Star,
-  Share2,
-  Zap,
-  ArrowRight,
-} from 'lucide-react';
+import { MessageSquare, Star, Share2, Zap, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const features = [
@@ -71,8 +65,8 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="mx-auto mb-8 max-w-xl text-lg text-gray-400">
-            Управляйте Telegram, VK и Яндекс Бизнес через единый ИИ-интерфейс.
-            Автоматизируйте посты, отзывы и коммуникации.
+            Управляйте Telegram, VK и Яндекс Бизнес через единый ИИ-интерфейс. Автоматизируйте
+            посты, отзывы и коммуникации.
           </p>
           <Link href="/register">
             <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700">
@@ -88,10 +82,7 @@ export default function LandingPage() {
         <h2 className="mb-12 text-center text-3xl font-bold">Возможности</h2>
         <div className="grid gap-6 sm:grid-cols-2">
           {features.map((f) => (
-            <div
-              key={f.title}
-              className="rounded-xl border border-gray-800 bg-gray-900/50 p-6"
-            >
+            <div key={f.title} className="rounded-xl border border-gray-800 bg-gray-900/50 p-6">
               <f.icon className="mb-3 h-8 w-8 text-indigo-400" />
               <h3 className="mb-2 text-lg font-semibold">{f.title}</h3>
               <p className="text-sm text-gray-400">{f.description}</p>
@@ -107,10 +98,7 @@ export default function LandingPage() {
           <div className="flex flex-wrap items-center justify-center gap-8">
             {platforms.map((p) => (
               <div key={p.name} className="flex items-center gap-3">
-                <div
-                  className="h-3 w-3 rounded-full"
-                  style={{ backgroundColor: p.color }}
-                />
+                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: p.color }} />
                 <span className="text-lg font-medium text-gray-300">{p.name}</span>
               </div>
             ))}

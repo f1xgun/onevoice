@@ -114,9 +114,7 @@ export default function ReviewsPage() {
     <div className="max-w-3xl space-y-6 p-8">
       <div>
         <h1 className="mb-1 text-2xl font-bold">Отзывы</h1>
-        <p className="text-sm text-muted-foreground">
-          Управляйте отзывами с подключённых платформ
-        </p>
+        <p className="text-sm text-muted-foreground">Управляйте отзывами с подключённых платформ</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -163,10 +161,7 @@ export default function ReviewsPage() {
               <CardContent className="space-y-3 p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="secondary"
-                      className={platformColors[review.platform] ?? ''}
-                    >
+                    <Badge variant="secondary" className={platformColors[review.platform] ?? ''}>
                       {platformLabels[review.platform] ?? review.platform}
                     </Badge>
                     <span className="text-sm font-medium">{review.authorName}</span>
@@ -187,9 +182,7 @@ export default function ReviewsPage() {
                 )}
 
                 <div className="flex items-center justify-between pt-1">
-                  <Badge
-                    variant={review.replyStatus === 'replied' ? 'default' : 'secondary'}
-                  >
+                  <Badge variant={review.replyStatus === 'replied' ? 'default' : 'secondary'}>
                     {replyStatusLabels[review.replyStatus] ?? review.replyStatus}
                   </Badge>
                   <Button variant="outline" size="sm" onClick={() => openReply(review)}>

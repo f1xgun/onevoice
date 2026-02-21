@@ -87,59 +87,33 @@ export default function SettingsPage() {
           <CardTitle className="text-lg">Смена пароля</CardTitle>
         </CardHeader>
         <CardContent>
-          <form
-            onSubmit={handleSubmit((d) => mutation.mutate(d))}
-            className="space-y-4"
-          >
+          <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
             <div className="space-y-1">
               <Label htmlFor="currentPassword">Текущий пароль</Label>
-              <Input
-                id="currentPassword"
-                type="password"
-                {...register('currentPassword')}
-              />
+              <Input id="currentPassword" type="password" {...register('currentPassword')} />
               {errors.currentPassword && (
-                <p className="text-sm text-destructive">
-                  {errors.currentPassword.message}
-                </p>
+                <p className="text-sm text-destructive">{errors.currentPassword.message}</p>
               )}
             </div>
 
             <div className="space-y-1">
               <Label htmlFor="newPassword">Новый пароль</Label>
-              <Input
-                id="newPassword"
-                type="password"
-                {...register('newPassword')}
-              />
+              <Input id="newPassword" type="password" {...register('newPassword')} />
               {errors.newPassword && (
-                <p className="text-sm text-destructive">
-                  {errors.newPassword.message}
-                </p>
+                <p className="text-sm text-destructive">{errors.newPassword.message}</p>
               )}
             </div>
 
             <div className="space-y-1">
               <Label htmlFor="confirmPassword">Подтверждение пароля</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                {...register('confirmPassword')}
-              />
+              <Input id="confirmPassword" type="password" {...register('confirmPassword')} />
               {errors.confirmPassword && (
-                <p className="text-sm text-destructive">
-                  {errors.confirmPassword.message}
-                </p>
+                <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
               )}
             </div>
 
-            <Button
-              type="submit"
-              disabled={isSubmitting || mutation.isPending}
-            >
-              {isSubmitting || mutation.isPending
-                ? 'Сохранение...'
-                : 'Изменить пароль'}
+            <Button type="submit" disabled={isSubmitting || mutation.isPending}>
+              {isSubmitting || mutation.isPending ? 'Сохранение...' : 'Изменить пароль'}
             </Button>
           </form>
         </CardContent>
