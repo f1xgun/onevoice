@@ -18,7 +18,7 @@ import (
 type UserService interface {
 	Register(ctx context.Context, email, password string) (*domain.User, error)
 	Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error)
-	RefreshToken(ctx context.Context, refreshToken string) (string, error)
+	RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 }
@@ -69,7 +69,9 @@ type RefreshTokenRequest struct {
 
 // RefreshTokenResponse represents the refresh token response payload
 type RefreshTokenResponse struct {
-	AccessToken string `json:"accessToken"`
+	User         *domain.User `json:"user"`
+	AccessToken  string       `json:"accessToken"`
+	RefreshToken string       `json:"refreshToken"`
 }
 
 // LogoutRequest represents the logout request payload
@@ -179,7 +181,7 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call service
-	accessToken, err := h.userService.RefreshToken(r.Context(), req.RefreshToken)
+	user, accessToken, newRefreshToken, err := h.userService.RefreshToken(r.Context(), req.RefreshToken)
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidToken) {
 			writeJSONError(w, http.StatusUnauthorized, "invalid token")
@@ -190,9 +192,11 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return new access token
+	// Return user and new tokens
 	writeJSON(w, http.StatusOK, RefreshTokenResponse{
-		AccessToken: accessToken,
+		User:         user,
+		AccessToken:  accessToken,
+		RefreshToken: newRefreshToken,
 	})
 }
 

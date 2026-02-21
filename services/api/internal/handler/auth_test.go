@@ -40,9 +40,12 @@ func (m *MockUserService) Login(ctx context.Context, email, password string) (us
 	return args.Get(0).(*domain.User), args.String(1), args.String(2), args.Error(3)
 }
 
-func (m *MockUserService) RefreshToken(ctx context.Context, refreshToken string) (string, error) {
+func (m *MockUserService) RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error) {
 	args := m.Called(ctx, refreshToken)
-	return args.String(0), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, "", "", args.Error(3)
+	}
+	return args.Get(0).(*domain.User), args.String(1), args.String(2), args.Error(3)
 }
 
 func (m *MockUserService) Logout(ctx context.Context, refreshToken string) error {
@@ -327,7 +330,18 @@ func TestRefreshToken(t *testing.T) {
 			requestBody: `{"refreshToken":"valid.refresh.token"}`,
 			mockSetup: func(m *MockUserService) {
 				m.On("RefreshToken", mock.Anything, "valid.refresh.token").
-					Return("new.access.token", nil)
+					Return(
+						&domain.User{
+							ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+							Email:     "user@example.com",
+							Role:      domain.RoleOwner,
+							CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+							UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+						},
+						"new.access.token",
+						"new.refresh.token",
+						nil,
+					)
 			},
 			wantStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, body string) {
@@ -335,8 +349,14 @@ func TestRefreshToken(t *testing.T) {
 				err := json.Unmarshal([]byte(body), &response)
 				require.NoError(t, err)
 
+				assert.Contains(t, response, "user")
 				assert.Contains(t, response, "accessToken")
+				assert.Contains(t, response, "refreshToken")
 				assert.Equal(t, "new.access.token", response["accessToken"])
+				assert.Equal(t, "new.refresh.token", response["refreshToken"])
+
+				userData := response["user"].(map[string]interface{})
+				assert.Equal(t, "user@example.com", userData["email"])
 			},
 		},
 		{
@@ -344,7 +364,7 @@ func TestRefreshToken(t *testing.T) {
 			requestBody: `{"refreshToken":"invalid.token"}`,
 			mockSetup: func(m *MockUserService) {
 				m.On("RefreshToken", mock.Anything, "invalid.token").
-					Return("", domain.ErrInvalidToken)
+					Return(nil, "", "", domain.ErrInvalidToken)
 			},
 			wantStatus: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, body string) {
@@ -375,7 +395,7 @@ func TestRefreshToken(t *testing.T) {
 			requestBody: `{"refreshToken":"valid.refresh.token"}`,
 			mockSetup: func(m *MockUserService) {
 				m.On("RefreshToken", mock.Anything, "valid.refresh.token").
-					Return("", errors.New("redis lookup failed"))
+					Return(nil, "", "", errors.New("redis lookup failed"))
 			},
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, body string) {

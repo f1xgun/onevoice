@@ -10,6 +10,10 @@ RUN npm install -g pnpm
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG API_URL=http://api:8080
+ARG ORCHESTRATOR_URL=http://orchestrator:8090
+ENV API_URL=$API_URL
+ENV ORCHESTRATOR_URL=$ORCHESTRATOR_URL
 RUN pnpm build
 
 FROM node:20-alpine AS runner
