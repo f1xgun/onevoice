@@ -9,7 +9,7 @@ BINARY_NAME=api
 MAIN_PATH=./cmd/main.go
 MIGRATION_PATH=./migrations/postgres
 GOWORK=off
-GOLANGCI_CONFIG=../../.golangci.yml
+GOLANGCI_CONFIG=$(CURDIR)/.golangci.yml
 
 # All Go modules (relative paths)
 GO_MODULES=pkg services/api services/orchestrator services/agent-telegram services/agent-vk services/agent-yandex-business

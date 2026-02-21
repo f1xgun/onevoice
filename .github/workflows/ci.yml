@@ -37,7 +37,7 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
-          args: --config ../../.golangci.yml
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: pkg
         env:
           GOWORK: "off"
@@ -46,7 +46,7 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
-          args: --config ../../.golangci.yml
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/api
         env:
           GOWORK: "off"
@@ -55,7 +55,7 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
-          args: --config ../../.golangci.yml
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/orchestrator
         env:
           GOWORK: "off"
@@ -64,7 +64,7 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
-          args: --config ../../.golangci.yml
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-telegram
         env:
           GOWORK: "off"
@@ -73,7 +73,7 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
-          args: --config ../../.golangci.yml
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-vk
         env:
           GOWORK: "off"
@@ -82,7 +82,7 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
-          args: --config ../../.golangci.yml
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-yandex-business
         env:
           GOWORK: "off"
