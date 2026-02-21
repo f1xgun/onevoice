@@ -11,8 +11,8 @@ const nextConfig = {
         source: '/chat/:path*',
         destination: `${process.env.ORCHESTRATOR_URL || 'http://localhost:8090'}/chat/:path*`,
       },
-    ]
+    ];
   },
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

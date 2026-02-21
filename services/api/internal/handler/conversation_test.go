@@ -11,12 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // MockConversationRepository is a mock implementation of ConversationRepository for testing
@@ -261,7 +262,7 @@ func TestListConversations_Success(t *testing.T) {
 	handler := NewConversationHandler(mockRepo)
 
 	// Create request
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 
 	// Add user ID to context
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -296,7 +297,7 @@ func TestListConversations_EmptyList(t *testing.T) {
 	handler := NewConversationHandler(mockRepo)
 
 	// Create request
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 
 	// Add user ID to context
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -366,7 +367,7 @@ func TestListConversations_WithQueryParams(t *testing.T) {
 			handler := NewConversationHandler(mockRepo)
 
 			// Create request
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations"+tt.queryParams, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations"+tt.queryParams, http.NoBody)
 
 			// Add user ID to context
 			ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -389,7 +390,7 @@ func TestListConversations_MissingUserID(t *testing.T) {
 	handler := NewConversationHandler(mockRepo)
 
 	// Create request without user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 
 	// Execute
 	w := httptest.NewRecorder()
@@ -418,7 +419,7 @@ func TestListConversations_RepositoryError(t *testing.T) {
 	handler := NewConversationHandler(mockRepo)
 
 	// Create request
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 
 	// Add user ID to context
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -461,7 +462,7 @@ func TestGetConversation_Success(t *testing.T) {
 	handler := NewConversationHandler(mockRepo)
 
 	// Create request
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
 	// Add user ID to context
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -512,7 +513,7 @@ func TestGetConversation_Unauthorized(t *testing.T) {
 	handler := NewConversationHandler(mockRepo)
 
 	// Create request
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
 	// Add user ID to context
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -552,7 +553,7 @@ func TestGetConversation_NotFound(t *testing.T) {
 	handler := NewConversationHandler(mockRepo)
 
 	// Create request
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
 	// Add user ID to context
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -585,7 +586,7 @@ func TestGetConversation_MissingUserID(t *testing.T) {
 	handler := NewConversationHandler(mockRepo)
 
 	// Create request without user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
 	// Add chi URL param only
 	rctx := chi.NewRouteContext()
@@ -621,7 +622,7 @@ func TestGetConversation_RepositoryError(t *testing.T) {
 	handler := NewConversationHandler(mockRepo)
 
 	// Create request
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
 
 	// Add user ID to context
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)

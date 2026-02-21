@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // stubLLM returns canned responses in order.
@@ -74,7 +75,7 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 
 	reg := tools.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type: "function",
+		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "get info", Parameters: map[string]interface{}{}},
 	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"name": "Кофейня Уют"}, nil
@@ -99,6 +100,8 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 			toolEvents = append(toolEvents, e)
 		case orchestrator.EventText:
 			textEvents = append(textEvents, e)
+		case orchestrator.EventError, orchestrator.EventDone:
+			// not relevant for this test
 		}
 	}
 
@@ -115,8 +118,8 @@ func TestRun_MaxIterations_Stops(t *testing.T) {
 		stub.responses = append(stub.responses, &llm.ChatResponse{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
-				ID:   "call_loop",
-				Type: "function",
+				ID:       "call_loop",
+				Type:     "function",
 				Function: llm.FunctionCall{Name: "get_business_info", Arguments: string(args)},
 			}},
 		})
@@ -124,7 +127,7 @@ func TestRun_MaxIterations_Stops(t *testing.T) {
 
 	reg := tools.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type: "function",
+		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "d", Parameters: map[string]interface{}{}},
 	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil

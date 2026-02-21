@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
 // fakeTransport simulates NATS subscription without a real server.

@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
 func TestToolRequest_RoundTrip(t *testing.T) {

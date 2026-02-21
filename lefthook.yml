@@ -1,0 +1,17 @@
+pre-commit:
+  parallel: true
+  commands:
+    go-lint:
+      glob: "*.go"
+      run: golangci-lint run --config .golangci.yml --new-from-rev=HEAD {staged_files}
+    go-fmt:
+      glob: "*.go"
+      run: gofmt -l {staged_files}
+    frontend-prettier:
+      root: "services/frontend/"
+      glob: "*.{ts,tsx,js,jsx,json,css,md}"
+      run: pnpm exec prettier --check {staged_files}
+    frontend-eslint:
+      root: "services/frontend/"
+      glob: "*.{ts,tsx}"
+      run: pnpm exec eslint {staged_files}

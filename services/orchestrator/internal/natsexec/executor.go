@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
 // Requester abstracts NATS request-reply for testability.

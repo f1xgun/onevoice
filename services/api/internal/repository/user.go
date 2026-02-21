@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 type userRepository struct {

@@ -21,10 +21,10 @@ type Config struct {
 	AnthropicAPIKey  string
 
 	// Business context defaults (can be overridden per-request in future)
-	BusinessName        string
-	BusinessCategory    string
-	BusinessTone        string
-	ActiveIntegrations  []string // e.g. ["telegram","vk","yandex_business"]
+	BusinessName       string
+	BusinessCategory   string
+	BusinessTone       string
+	ActiveIntegrations []string // e.g. ["telegram","vk","yandex_business"]
 
 	SelfHostedEndpoints []SelfHostedEndpoint
 }

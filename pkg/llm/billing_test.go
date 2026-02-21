@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 func TestUsageLog(t *testing.T) {
@@ -36,11 +37,11 @@ func TestUsageLog(t *testing.T) {
 
 func TestCalculateCommission(t *testing.T) {
 	tests := []struct {
-		name          string
-		mode          string
-		providerCost  float64
-		tier          string
-		expectedComm  float64
+		name         string
+		mode         string
+		providerCost float64
+		tier         string
+		expectedComm float64
 	}{
 		{
 			name:         "percentage mode",
@@ -114,7 +115,7 @@ func (m *MockBillingRepository) GetDailySpend(_ context.Context, userID uuid.UUI
 	return total, nil
 }
 
-func (m *MockBillingRepository) GetMonthlyUsage(_ context.Context, userID uuid.UUID, year int, month int) ([]llm.UsageLog, error) {
+func (m *MockBillingRepository) GetMonthlyUsage(_ context.Context, userID uuid.UUID, year, month int) ([]llm.UsageLog, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var result []llm.UsageLog

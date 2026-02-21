@@ -7,6 +7,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
@@ -149,7 +150,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req llm.ChatRequest)
 	ch := make(chan llm.StreamChunk, 16)
 	go func() {
 		defer close(ch)
-		defer stream.Close()
+		defer func() { _ = stream.Close() }()
 		for stream.Next() {
 			event := stream.Current()
 			switch event.Type {

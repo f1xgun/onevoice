@@ -3,9 +3,10 @@ package config_test
 import (
 	"testing"
 
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 )
 
 func TestLoad_RequiredFields(t *testing.T) {
@@ -14,7 +15,7 @@ func TestLoad_RequiredFields(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 	assert.Equal(t, "gpt-4o-mini", cfg.LLMModel)
-	assert.Equal(t, "8090", cfg.Port) // default
+	assert.Equal(t, "8090", cfg.Port)      // default
 	assert.Equal(t, 10, cfg.MaxIterations) // default
 }
 
