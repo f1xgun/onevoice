@@ -48,6 +48,8 @@ export function Sidebar() {
     queryKey: ['integrations'],
     queryFn: () =>
       api.get('/integrations').then((r) => (r.data.integrations ?? []) as Integration[]),
+    retry: false,
+    placeholderData: [],
   });
 
   return (
