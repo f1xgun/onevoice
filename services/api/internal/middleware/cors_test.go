@@ -11,7 +11,7 @@ import (
 func TestCORS_AllowedOrigin(t *testing.T) {
 	allowedOrigins := []string{"http://localhost:3000", "http://localhost:3001"}
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Origin", "http://localhost:3000")
 
 	rr := httptest.NewRecorder()
@@ -31,7 +31,7 @@ func TestCORS_AllowedOrigin(t *testing.T) {
 func TestCORS_DisallowedOrigin(t *testing.T) {
 	allowedOrigins := []string{"http://localhost:3000"}
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Origin", "http://evil.com")
 
 	rr := httptest.NewRecorder()
@@ -48,7 +48,7 @@ func TestCORS_DisallowedOrigin(t *testing.T) {
 func TestCORS_NoOriginHeader(t *testing.T) {
 	allowedOrigins := []string{"http://localhost:3000"}
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	// No Origin header
 
 	rr := httptest.NewRecorder()
@@ -65,7 +65,7 @@ func TestCORS_NoOriginHeader(t *testing.T) {
 func TestCORS_WildcardOrigin(t *testing.T) {
 	allowedOrigins := []string{"*"}
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Origin", "http://any-origin.com")
 
 	rr := httptest.NewRecorder()
@@ -82,7 +82,7 @@ func TestCORS_WildcardOrigin(t *testing.T) {
 func TestCORS_PreflightRequest(t *testing.T) {
 	allowedOrigins := []string{"http://localhost:3000"}
 
-	req := httptest.NewRequest("OPTIONS", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("OPTIONS", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Origin", "http://localhost:3000")
 
 	rr := httptest.NewRecorder()
@@ -103,7 +103,7 @@ func TestCORS_PreflightRequest(t *testing.T) {
 func TestCORS_CaseInsensitiveOrigin(t *testing.T) {
 	allowedOrigins := []string{"http://localhost:3000"}
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Origin", "HTTP://LOCALHOST:3000")
 
 	rr := httptest.NewRecorder()

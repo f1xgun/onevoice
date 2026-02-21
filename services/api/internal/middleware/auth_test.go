@@ -57,7 +57,7 @@ func TestAuth_ValidToken(t *testing.T) {
 
 	token := createTestToken(userID, email, role, 15*time.Minute)
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	rr := httptest.NewRecorder()
@@ -70,7 +70,7 @@ func TestAuth_ValidToken(t *testing.T) {
 }
 
 func TestAuth_MissingAuthorizationHeader(t *testing.T) {
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	// No Authorization header
 
 	rr := httptest.NewRecorder()
@@ -101,7 +101,7 @@ func TestAuth_InvalidHeaderFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+			req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 			req.Header.Set("Authorization", tt.header)
 
 			rr := httptest.NewRecorder()
@@ -125,7 +125,7 @@ func TestAuth_InvalidTokenSignature(t *testing.T) {
 	userID := uuid.New()
 	token := createTestToken(userID, "test@example.com", "owner", 15*time.Minute)
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	rr := httptest.NewRecorder()
@@ -150,7 +150,7 @@ func TestAuth_ExpiredToken(t *testing.T) {
 	// Create token that expired 1 hour ago
 	token := createTestToken(userID, "test@example.com", "owner", -1*time.Hour)
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	rr := httptest.NewRecorder()
@@ -169,7 +169,7 @@ func TestAuth_ExpiredToken(t *testing.T) {
 }
 
 func TestAuth_MalformedToken(t *testing.T) {
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Authorization", "Bearer malformed.token.here")
 
 	rr := httptest.NewRecorder()
@@ -224,7 +224,7 @@ func TestAuth_MissingClaims(t *testing.T) {
 			tokenString, err := token.SignedString(testJWTSecret)
 			require.NoError(t, err)
 
-			req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+			req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 			req.Header.Set("Authorization", "Bearer "+tokenString)
 
 			rr := httptest.NewRecorder()
@@ -256,7 +256,7 @@ func TestAuth_InvalidUserIDFormat(t *testing.T) {
 	tokenString, err := token.SignedString(testJWTSecret)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest("GET", "/api/v1/businesses", nil)
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Authorization", "Bearer "+tokenString)
 
 	rr := httptest.NewRecorder()

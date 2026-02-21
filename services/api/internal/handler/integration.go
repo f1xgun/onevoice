@@ -6,10 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // IntegrationService defines the interface for integration operations

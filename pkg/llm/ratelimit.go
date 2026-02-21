@@ -31,28 +31,28 @@ type TierLimits map[string]Limits
 // DefaultTierLimits defines standard subscription tiers
 var DefaultTierLimits = TierLimits{
 	"free": {
-		RequestsPerMin:  10,
-		TokensPerMin:    5000,
-		TokensPerMonth:  100000,
-		DailySpendUSD:   1.0,
+		RequestsPerMin: 10,
+		TokensPerMin:   5000,
+		TokensPerMonth: 100000,
+		DailySpendUSD:  1.0,
 	},
 	"basic": {
-		RequestsPerMin:  60,
-		TokensPerMin:    50000,
-		TokensPerMonth:  1000000,
-		DailySpendUSD:   10.0,
+		RequestsPerMin: 60,
+		TokensPerMin:   50000,
+		TokensPerMonth: 1000000,
+		DailySpendUSD:  10.0,
 	},
 	"pro": {
-		RequestsPerMin:  120,
-		TokensPerMin:    100000,
-		TokensPerMonth:  -1, // unlimited
-		DailySpendUSD:   50.0,
+		RequestsPerMin: 120,
+		TokensPerMin:   100000,
+		TokensPerMonth: -1, // unlimited
+		DailySpendUSD:  50.0,
 	},
 	"enterprise": {
-		RequestsPerMin:  -1, // unlimited
-		TokensPerMin:    -1,
-		TokensPerMonth:  -1,
-		DailySpendUSD:   -1,
+		RequestsPerMin: -1, // unlimited
+		TokensPerMin:   -1,
+		TokensPerMonth: -1,
+		DailySpendUSD:  -1,
 	},
 }
 

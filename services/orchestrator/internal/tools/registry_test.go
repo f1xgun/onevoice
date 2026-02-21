@@ -4,15 +4,16 @@ import (
 	"context"
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
 )
 
 func makeDef(name string) llm.ToolDefinition {
 	return llm.ToolDefinition{
-		Type: "function",
+		Type:     "function",
 		Function: llm.FunctionDefinition{Name: name, Description: "test", Parameters: map[string]interface{}{}},
 	}
 }

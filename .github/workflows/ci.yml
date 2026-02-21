@@ -34,43 +34,55 @@ jobs:
             services/agent-yandex-business/go.sum
 
       - name: Lint pkg
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
+          version: v2.1
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: pkg
         env:
           GOWORK: "off"
 
       - name: Lint api
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
+          version: v2.1
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/api
         env:
           GOWORK: "off"
 
       - name: Lint orchestrator
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
+          version: v2.1
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/orchestrator
         env:
           GOWORK: "off"
 
       - name: Lint agent-telegram
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
+          version: v2.1
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-telegram
         env:
           GOWORK: "off"
 
       - name: Lint agent-vk
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
+          version: v2.1
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-vk
         env:
           GOWORK: "off"
 
       - name: Lint agent-yandex-business
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
+          version: v2.1
+          args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-yandex-business
         env:
           GOWORK: "off"
@@ -191,6 +203,9 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      - name: Prettier check
+        run: pnpm exec prettier --check .
 
       - name: Unit tests
         run: pnpm test

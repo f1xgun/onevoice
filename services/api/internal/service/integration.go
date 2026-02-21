@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 // IntegrationService defines the interface for platform integration management
@@ -24,7 +25,7 @@ type integrationService struct {
 var _ IntegrationService = (*integrationService)(nil)
 
 // NewIntegrationService creates a new integration service instance
-func NewIntegrationService(repo domain.IntegrationRepository) *integrationService {
+func NewIntegrationService(repo domain.IntegrationRepository) IntegrationService {
 	return &integrationService{
 		repo: repo,
 	}

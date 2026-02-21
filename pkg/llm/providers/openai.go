@@ -7,8 +7,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 // OpenAIProvider implements llm.Provider using the official OpenAI API
@@ -45,11 +46,11 @@ func (p *OpenAIProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, error
 	result := make([]llm.ModelInfo, 0, len(models.Models))
 	for _, m := range models.Models {
 		result = append(result, llm.ModelInfo{
-			ID:               m.ID,
-			Name:             m.ID,
-			Provider:         "openai",
+			ID:                m.ID,
+			Name:              m.ID,
+			Provider:          "openai",
 			SupportsStreaming: true,
-			SupportsToolUse:  true,
+			SupportsToolUse:   true,
 		})
 	}
 	return result, nil
@@ -200,7 +201,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<
 	ch := make(chan llm.StreamChunk, 16)
 	go func() {
 		defer close(ch)
-		defer stream.Close()
+		defer func() { _ = stream.Close() }()
 		for {
 			resp, err := stream.Recv()
 			if err != nil {

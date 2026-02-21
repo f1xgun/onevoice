@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // MockBusinessService is a mock implementation of the business service interface
@@ -147,7 +148,7 @@ func TestGetBusiness(t *testing.T) {
 
 			handler := NewBusinessHandler(mockService)
 
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/business", nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/business", http.NoBody)
 			req = tt.setupContext(req)
 			w := httptest.NewRecorder()
 

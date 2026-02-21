@@ -3,9 +3,10 @@ package llm_test
 import (
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 func TestConfigUnmarshal(t *testing.T) {

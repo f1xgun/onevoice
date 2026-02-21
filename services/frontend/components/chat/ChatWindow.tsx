@@ -1,45 +1,45 @@
-'use client'
+'use client';
 
-import { useRef, useEffect, useState } from 'react'
-import { Send } from 'lucide-react'
-import { MessageBubble } from './MessageBubble'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { useChat } from '@/hooks/useChat'
+import { useRef, useEffect, useState } from 'react';
+import { Send } from 'lucide-react';
+import { MessageBubble } from './MessageBubble';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useChat } from '@/hooks/useChat';
 
-const QUICK_ACTIONS = ['Проверить отзывы', 'Обновить часы работы', 'Опубликовать пост']
+const QUICK_ACTIONS = ['Проверить отзывы', 'Обновить часы работы', 'Опубликовать пост'];
 
 export function ChatWindow({ conversationId }: { conversationId: string }) {
-  const { messages, isStreaming, sendMessage } = useChat(conversationId)
-  const [input, setInput] = useState('')
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const { messages, isStreaming, sendMessage } = useChat(conversationId);
+  const [input, setInput] = useState('');
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleSend = async () => {
-    const text = input.trim()
-    if (!text || isStreaming) return
-    setInput('')
-    await sendMessage(text)
-  }
+    const text = input.trim();
+    if (!text || isStreaming) return;
+    setInput('');
+    await sendMessage(text);
+  };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6">
         {messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center gap-4">
-            <p className="text-gray-400 text-lg">Чем могу помочь?</p>
-            <div className="flex flex-wrap gap-2 justify-center">
+          <div className="flex h-full flex-col items-center justify-center gap-4">
+            <p className="text-lg text-gray-400">Чем могу помочь?</p>
+            <div className="flex flex-wrap justify-center gap-2">
               {QUICK_ACTIONS.map((action) => (
                 <button
                   key={action}
                   type="button"
                   onClick={() => sendMessage(action)}
                   disabled={isStreaming}
-                  className="px-4 py-2 rounded-full border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {action}
                 </button>
@@ -53,7 +53,7 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
       </div>
 
       {/* Input */}
-      <div className="border-t bg-white p-4 flex gap-2">
+      <div className="flex gap-2 border-t bg-white p-4">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -67,5 +67,5 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
         </Button>
       </div>
     </div>
-  )
+  );
 }

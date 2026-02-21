@@ -1,42 +1,47 @@
-'use client'
+'use client';
 
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
-import { api } from '@/lib/api'
-import { useAuthStore } from '@/lib/auth'
-import { loginSchema, type LoginInput } from '@/lib/schemas'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { api } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth';
+import { loginSchema, type LoginInput } from '@/lib/schemas';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function LoginPage() {
-  const router = useRouter()
-  const setAuth = useAuthStore((s) => s.setAuth)
+  const router = useRouter();
+  const setAuth = useAuthStore((s) => s.setAuth);
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginInput>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-  })
+  });
 
   const onSubmit = async (data: LoginInput) => {
     try {
-      const res = await api.post('/auth/login', data)
-      setAuth(res.data.user, res.data.accessToken, res.data.refreshToken)
-      router.push('/chat')
+      const res = await api.post('/auth/login', data);
+      setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
+      router.push('/chat');
     } catch (err) {
-      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-      toast.error(message ?? 'Неверный email или пароль')
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data
+        ?.message;
+      toast.error(message ?? 'Неверный email или пароль');
     }
-  }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">Войти в OneVoice</CardTitle>
+          <CardTitle className="text-center text-2xl">Войти в OneVoice</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -55,11 +60,13 @@ export default function LoginPage() {
             </Button>
             <p className="text-center text-sm text-gray-500">
               Нет аккаунта?{' '}
-              <Link href="/register" className="text-blue-600 hover:underline">Зарегистрироваться</Link>
+              <Link href="/register" className="text-blue-600 hover:underline">
+                Зарегистрироваться
+              </Link>
             </p>
           </form>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

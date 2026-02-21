@@ -3,8 +3,9 @@ package a2a_test
 import (
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
 // Compile-time check that NATSTransport implements Transport.

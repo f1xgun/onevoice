@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 func TestRegistry_RegisterModelProvider(t *testing.T) {

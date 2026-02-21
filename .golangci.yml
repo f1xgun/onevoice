@@ -1,0 +1,89 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/f1xgun/onevoice
+
+linters:
+  enable:
+    # Core
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+
+    # Style
+    - revive
+    - misspell
+    - unconvert
+    - whitespace
+
+    # Quality
+    - gocritic
+    - nolintlint
+    - prealloc
+    - unparam
+
+    # Security
+    - bodyclose
+    - gosec
+
+    # Correctness
+    - exhaustive
+    - copyloopvar
+
+  settings:
+    revive:
+      rules:
+        - name: context-keys-type
+        - name: error-naming
+        - name: unexported-return
+        - name: context-as-argument
+          arguments:
+            - allowTypesBefore: "*testing.T"
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - opinionated
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    gosec:
+      excludes:
+        - G104
+
+    misspell:
+      locale: US
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+          - bodyclose
+    paths:
+      - vendor
+      - node_modules
+      - ".*_gen\\.go$"
+      - ".*\\.pb\\.go$"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 // BusinessService defines the interface for business profile management
@@ -25,7 +26,7 @@ type businessService struct {
 var _ BusinessService = (*businessService)(nil)
 
 // NewBusinessService creates a new business service instance
-func NewBusinessService(repo domain.BusinessRepository) *businessService {
+func NewBusinessService(repo domain.BusinessRepository) BusinessService {
 	return &businessService{
 		repo: repo,
 	}

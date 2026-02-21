@@ -23,7 +23,7 @@ type UsageLog struct {
 }
 
 // CalculateCommission calculates commission based on mode and tier
-func CalculateCommission(providerCost float64, mode string, tier string) float64 {
+func CalculateCommission(providerCost float64, mode, tier string) float64 {
 	switch mode {
 	case "percentage":
 		return providerCost * 0.20 // 20% default
@@ -61,5 +61,5 @@ type BillingRepository interface {
 	GetDailySpend(ctx context.Context, userID uuid.UUID) (float64, error)
 
 	// GetMonthlyUsage returns all usage logs for a given month
-	GetMonthlyUsage(ctx context.Context, userID uuid.UUID, year int, month int) ([]UsageLog, error)
+	GetMonthlyUsage(ctx context.Context, userID uuid.UUID, year, month int) ([]UsageLog, error)
 }

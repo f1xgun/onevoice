@@ -1,19 +1,22 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
+import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 
 interface Props {
-  platform: string
-  open: boolean
-  onClose: () => void
-  onConnect: (credentials: Record<string, string>) => Promise<void>
+  platform: string;
+  open: boolean;
+  onClose: () => void;
+  onConnect: (credentials: Record<string, string>) => Promise<void>;
 }
 
-const configs: Record<string, { label: string; fields: { key: string; label: string; placeholder: string }[] }> = {
+const configs: Record<
+  string,
+  { label: string; fields: { key: string; label: string; placeholder: string }[] }
+> = {
   telegram: {
     label: 'Подключить Telegram',
     fields: [{ key: 'bot_token', label: 'Bot Token', placeholder: 'Получите у @BotFather' }],
@@ -24,31 +27,33 @@ const configs: Record<string, { label: string; fields: { key: string; label: str
   },
   yandex_business: {
     label: 'Подключить Яндекс.Бизнес',
-    fields: [{ key: 'cookies', label: 'Cookies JSON', placeholder: 'Скопируйте cookies из браузера' }],
+    fields: [
+      { key: 'cookies', label: 'Cookies JSON', placeholder: 'Скопируйте cookies из браузера' },
+    ],
   },
-}
+};
 
 export function ConnectDialog({ platform, open, onClose, onConnect }: Props) {
-  const config = configs[platform]
-  const [values, setValues] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(false)
+  const config = configs[platform];
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
 
-  if (!config) return null
+  if (!config) return null;
 
-  const allFilled = config.fields.every((f) => (values[f.key] ?? '').trim().length > 0)
+  const allFilled = config.fields.every((f) => (values[f.key] ?? '').trim().length > 0);
 
   const handleSubmit = async () => {
-    if (!allFilled) return
-    setLoading(true)
+    if (!allFilled) return;
+    setLoading(true);
     try {
-      await onConnect(values)
-      onClose()
+      await onConnect(values);
+      onClose();
     } catch {
       // dialog stays open; toast is handled by mutation onError upstream
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -73,5 +78,5 @@ export function ConnectDialog({ platform, open, onClose, onConnect }: Props) {
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

@@ -1,7 +1,7 @@
-'use client'
+'use client';
 
-import { ChatWindow } from '@/components/chat/ChatWindow'
+import { ChatWindow } from '@/components/chat/ChatWindow';
 
 export default function ConversationPage({ params }: { params: { id: string } }) {
-  return <ChatWindow conversationId={params.id} />
+  return <ChatWindow conversationId={params.id} />;
 }

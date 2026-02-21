@@ -5,11 +5,12 @@ import (
 	"os"
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
-	"github.com/f1xgun/onevoice/pkg/llm/providers"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/llm/providers"
 )
 
 func TestOpenAIProvider_Name(t *testing.T) {

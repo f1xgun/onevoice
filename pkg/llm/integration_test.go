@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 // TestIntegration_RegistryWithConfig verifies registry works with config types

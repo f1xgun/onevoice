@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 // Mock IntegrationRepository
@@ -140,7 +141,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 		assert.Contains(t, err.Error(), "business id is required")
 	})
 
-	t.Run("error - cancelled context", func(t *testing.T) {
+	t.Run("error - canceled context", func(t *testing.T) {
 		cancelledCtx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -245,7 +246,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 		assert.Contains(t, err.Error(), "platform is required")
 	})
 
-	t.Run("error - cancelled context", func(t *testing.T) {
+	t.Run("error - canceled context", func(t *testing.T) {
 		cancelledCtx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -320,7 +321,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 		assert.Contains(t, err.Error(), "integration id is required")
 	})
 
-	t.Run("error - cancelled context", func(t *testing.T) {
+	t.Run("error - canceled context", func(t *testing.T) {
 		cancelledCtx, cancel := context.WithCancel(context.Background())
 		cancel()
 

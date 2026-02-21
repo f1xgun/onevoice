@@ -7,8 +7,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 // SelfHostedProvider implements llm.Provider for any OpenAI-compatible inference server.
@@ -191,7 +192,7 @@ func (p *SelfHostedProvider) ChatStream(ctx context.Context, req llm.ChatRequest
 	ch := make(chan llm.StreamChunk, 16)
 	go func() {
 		defer close(ch)
-		defer stream.Close()
+		defer func() { _ = stream.Close() }()
 		for {
 			resp, err := stream.Recv()
 			if err != nil {

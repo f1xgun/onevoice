@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -15,17 +16,22 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("fatal error", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	accessToken := os.Getenv("VK_ACCESS_TOKEN")
 	if accessToken == "" {
-		slog.Error("VK_ACCESS_TOKEN is required")
-		os.Exit(1)
+		return fmt.Errorf("VK_ACCESS_TOKEN is required")
 	}
 
 	natsURL := getEnv("NATS_URL", natslib.DefaultURL)
 	nc, err := natslib.Connect(natsURL)
 	if err != nil {
-		slog.Error("failed to connect to NATS", "url", natsURL, "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to connect to NATS (url=%s): %w", natsURL, err)
 	}
 	defer nc.Close()
 
@@ -38,13 +44,13 @@ func main() {
 	defer stop()
 
 	if err := ag.Start(ctx); err != nil {
-		slog.Error("failed to start agent", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to start agent: %w", err)
 	}
 
 	slog.Info("VK agent started", "subject", a2a.Subject(a2a.AgentVK))
 	<-ctx.Done()
 	slog.Info("VK agent shutting down")
+	return nil
 }
 
 func getEnv(key, defaultValue string) string {

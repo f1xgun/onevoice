@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/llm"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 )
 
 func TestBuildSystemPrompt_ContainsBusinessName(t *testing.T) {

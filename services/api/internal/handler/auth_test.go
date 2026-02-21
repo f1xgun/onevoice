@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // MockUserService is a mock implementation of the user service interface
@@ -31,7 +32,7 @@ func (m *MockUserService) Register(ctx context.Context, email, password string) 
 	return args.Get(0).(*domain.User), args.Error(1)
 }
 
-func (m *MockUserService) Login(ctx context.Context, email, password string) (*domain.User, string, string, error) {
+func (m *MockUserService) Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error) {
 	args := m.Called(ctx, email, password)
 	if args.Get(0) == nil {
 		return nil, "", "", args.Error(3)
@@ -570,7 +571,7 @@ func TestMe(t *testing.T) {
 
 			handler := NewAuthHandler(mockService)
 
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", http.NoBody)
 			req = tt.setupContext(req)
 			w := httptest.NewRecorder()
 

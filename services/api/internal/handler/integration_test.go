@@ -9,11 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // MockIntegrationService is a mock implementation of IntegrationService for testing
@@ -76,7 +77,7 @@ func TestListIntegrations_Success(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	req = req.WithContext(ctx)
 
@@ -118,7 +119,7 @@ func TestListIntegrations_EmptyList(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	req = req.WithContext(ctx)
 
@@ -153,7 +154,7 @@ func TestListIntegrations_MissingUserID(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request WITHOUT user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
 
 	// Execute
 	rr := httptest.NewRecorder()
@@ -186,7 +187,7 @@ func TestListIntegrations_BusinessNotFound(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	req = req.WithContext(ctx)
 
@@ -221,7 +222,7 @@ func TestListIntegrations_InternalError(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	req = req.WithContext(ctx)
 
@@ -259,12 +260,12 @@ func TestListIntegrations_IntegrationServiceError(t *testing.T) {
 	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(business, nil)
 
 	mockIntegrationService := new(MockIntegrationService)
-	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return(([]domain.Integration)(nil), errors.New("database query failed"))
+	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration(nil), errors.New("database query failed"))
 
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	req = req.WithContext(ctx)
 
@@ -303,7 +304,7 @@ func TestConnectIntegration_NotImplemented(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with platform URL parameter
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/google/connect", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/google/connect", http.NoBody)
 
 	// Set up chi context with URL parameter
 	rctx := chi.NewRouteContext()
@@ -357,7 +358,7 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context and platform URL parameter
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
 	// Set up chi context with URL parameter
@@ -387,7 +388,7 @@ func TestDeleteIntegration_MissingUserID(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request WITHOUT user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
 
 	// Set up chi context with URL parameter
 	rctx := chi.NewRouteContext()
@@ -425,7 +426,7 @@ func TestDeleteIntegration_BusinessNotFound(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
 	// Set up chi context with URL parameter
@@ -475,7 +476,7 @@ func TestDeleteIntegration_IntegrationNotFound(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
 	// Set up chi context with URL parameter
@@ -518,7 +519,7 @@ func TestDeleteIntegration_InternalError(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
 	// Set up chi context with URL parameter
@@ -578,7 +579,7 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
 	// Set up chi context with URL parameter
