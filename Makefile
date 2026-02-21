@@ -1,8 +1,8 @@
 .PHONY: help build run test test-all test-coverage test-integration
 .PHONY: lint lint-frontend lint-all fmt fmt-fix
 .PHONY: migrate-up migrate-down migrate-create db-seed
-.PHONY: docker-up docker-down docker-logs docker-clean
-.PHONY: up down restart logs clean certs
+.PHONY: up down logs restart restart-service docker-up docker-down docker-logs docker-clean
+.PHONY: clean certs
 
 # Variables
 BINARY_NAME=api
@@ -121,28 +121,48 @@ db-seed: ## Seed database with test data
 	@echo "Seeding database..."
 	@cd scripts && go run seed.go
 
-# Docker (shorthand)
-up: ## Start all services
-	@docker compose up -d
-	@echo "All services started. App at http://localhost"
+# Docker — shortcuts
+up: ## Start all services (build + migrate + run)
+	@echo "Starting all services..."
+	@docker compose up -d --build
+	@echo ""
+	@echo "Services started:"
+	@echo "  Frontend:     http://localhost:80"
+	@echo "  API:          http://localhost:8080"
+	@echo "  Orchestrator: http://localhost:8090"
+	@echo "  NATS monitor: http://localhost:8222"
 
 down: ## Stop all services
 	@docker compose down
 
-restart: ## Restart all services (rebuild changed images)
+restart: ## Rebuild and restart all services after code changes
+	@echo "Rebuilding and restarting all services..."
 	@docker compose down
 	@docker compose up -d --build
-	@echo "All services restarted"
+	@echo ""
+	@echo "Services restarted:"
+	@echo "  Frontend:     http://localhost:80"
+	@echo "  API:          http://localhost:8080"
+	@echo "  Orchestrator: http://localhost:8090"
+	@echo "  NATS monitor: http://localhost:8222"
+
+restart-service: ## Rebuild and restart a single service (usage: make restart-service s=api)
+	@echo "Rebuilding and restarting $(s)..."
+	@docker compose up -d --build --no-deps $(s)
+	@echo "$(s) restarted"
 
 logs: ## Tail logs from all services
 	@docker compose logs -f
 
-# Docker (legacy aliases)
-docker-up: up
-docker-down: down
-docker-logs: logs
+# Docker — long-form aliases
+docker-up: up ## Alias for 'up'
+
+docker-down: down ## Alias for 'down'
+
+docker-logs: logs ## Alias for 'logs'
 
 docker-clean: ## Remove volumes and clean up
+	@echo "Cleaning up..."
 	@docker compose down -v
 	@rm -rf data/
 

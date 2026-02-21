@@ -388,10 +388,19 @@ func TestUserService_RefreshToken(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call RefreshToken
-		newAccessToken, err := svc.RefreshToken(ctx, refreshTokenString)
+		user, newAccessToken, newRefreshToken, err := svc.RefreshToken(ctx, refreshTokenString)
 
 		require.NoError(t, err)
+		assert.NotNil(t, user)
+		assert.Equal(t, userID, user.ID)
+		assert.Equal(t, existingUser.Email, user.Email)
+		assert.Empty(t, user.PasswordHash, "password hash should be sanitized")
 		assert.NotEmpty(t, newAccessToken)
+		assert.NotEmpty(t, newRefreshToken)
+
+		// Verify old refresh token was revoked
+		_, err = redisClient.Get(ctx, "onevoice:auth:refresh_token:"+tokenID.String()).Result()
+		assert.ErrorIs(t, err, redis.Nil)
 
 		// Verify new access token
 		token, err := jwt.ParseWithClaims(newAccessToken, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
@@ -404,16 +413,32 @@ func TestUserService_RefreshToken(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, userID, claims.UserID)
 		assert.Equal(t, existingUser.Email, claims.Email)
+
+		// Verify new refresh token is valid and stored in Redis
+		newToken, err := jwt.ParseWithClaims(newRefreshToken, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+			return []byte(jwtSecret), nil
+		})
+		require.NoError(t, err)
+		newClaims, ok := newToken.Claims.(*RefreshTokenClaims)
+		require.True(t, ok)
+		assert.Equal(t, userID, newClaims.UserID)
+		assert.NotEqual(t, tokenID, newClaims.TokenID, "new token should have different ID")
+
+		val, err := redisClient.Get(ctx, "onevoice:auth:refresh_token:"+newClaims.TokenID.String()).Result()
+		require.NoError(t, err)
+		assert.Equal(t, userID.String(), val)
 	})
 
 	t.Run("invalid token format", func(t *testing.T) {
 		repo := &mockUserRepository{}
 		svc := NewUserService(repo, redisClient, jwtSecret)
 
-		accessToken, err := svc.RefreshToken(ctx, "invalid-token")
+		user, accessToken, refreshToken, err := svc.RefreshToken(ctx, "invalid-token")
 
 		assert.ErrorIs(t, err, domain.ErrInvalidToken)
+		assert.Nil(t, user)
 		assert.Empty(t, accessToken)
+		assert.Empty(t, refreshToken)
 	})
 
 	t.Run("expired token", func(t *testing.T) {
@@ -437,10 +462,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 		refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret))
 		require.NoError(t, err)
 
-		accessToken, err := svc.RefreshToken(ctx, refreshTokenString)
+		user, accessToken, newRefresh, err := svc.RefreshToken(ctx, refreshTokenString)
 
 		assert.ErrorIs(t, err, domain.ErrInvalidToken)
+		assert.Nil(t, user)
 		assert.Empty(t, accessToken)
+		assert.Empty(t, newRefresh)
 	})
 
 	t.Run("token not in redis", func(t *testing.T) {
@@ -464,10 +491,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 		refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret))
 		require.NoError(t, err)
 
-		accessToken, err := svc.RefreshToken(ctx, refreshTokenString)
+		user, accessToken, newRefresh, err := svc.RefreshToken(ctx, refreshTokenString)
 
 		assert.ErrorIs(t, err, domain.ErrInvalidToken)
+		assert.Nil(t, user)
 		assert.Empty(t, accessToken)
+		assert.Empty(t, newRefresh)
 	})
 
 	t.Run("user not found", func(t *testing.T) {
@@ -499,10 +528,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 		err = redisClient.Set(ctx, "onevoice:auth:refresh_token:"+tokenID.String(), userID.String(), 7*24*time.Hour).Err()
 		require.NoError(t, err)
 
-		accessToken, err := svc.RefreshToken(ctx, refreshTokenString)
+		user, accessToken, newRefresh, err := svc.RefreshToken(ctx, refreshTokenString)
 
 		assert.ErrorIs(t, err, domain.ErrUserNotFound)
+		assert.Nil(t, user)
 		assert.Empty(t, accessToken)
+		assert.Empty(t, newRefresh)
 	})
 
 	t.Run("redis error", func(t *testing.T) {
@@ -529,10 +560,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 		// Close Redis to simulate error
 		mr.Close()
 
-		accessToken, err := svc.RefreshToken(ctx, refreshTokenString)
+		user, accessToken, newRefresh, err := svc.RefreshToken(ctx, refreshTokenString)
 
 		assert.Error(t, err)
+		assert.Nil(t, user)
 		assert.Empty(t, accessToken)
+		assert.Empty(t, newRefresh)
 		assert.Contains(t, err.Error(), "validate refresh token")
 	})
 }
