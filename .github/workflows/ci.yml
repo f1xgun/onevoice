@@ -34,7 +34,7 @@ jobs:
             services/agent-yandex-business/go.sum
 
       - name: Lint pkg
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
           args: --config ../../.golangci.yml
@@ -43,7 +43,7 @@ jobs:
           GOWORK: "off"
 
       - name: Lint api
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
           args: --config ../../.golangci.yml
@@ -52,7 +52,7 @@ jobs:
           GOWORK: "off"
 
       - name: Lint orchestrator
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
           args: --config ../../.golangci.yml
@@ -61,7 +61,7 @@ jobs:
           GOWORK: "off"
 
       - name: Lint agent-telegram
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
           args: --config ../../.golangci.yml
@@ -70,7 +70,7 @@ jobs:
           GOWORK: "off"
 
       - name: Lint agent-vk
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
           args: --config ../../.golangci.yml
@@ -79,7 +79,7 @@ jobs:
           GOWORK: "off"
 
       - name: Lint agent-yandex-business
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
           args: --config ../../.golangci.yml
