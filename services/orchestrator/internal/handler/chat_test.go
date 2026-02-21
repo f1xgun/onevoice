@@ -30,7 +30,7 @@ func TestChatHandler_SSEResponse(t *testing.T) {
 	reg := tools.NewRegistry()
 	orch := orchestrator.New(stub, reg)
 
-	h := handler.NewChatHandler(orch)
+	h := handler.NewChatHandler(orch, "openai/gpt-4o-mini")
 
 	body := `{"model":"gpt-4o-mini","message":"Привет","business_id":"biz-1","business_name":"Test Business","active_integrations":["telegram"]}`
 	req := httptest.NewRequest(http.MethodPost, "/chat/conv123", bytes.NewBufferString(body))
@@ -71,7 +71,7 @@ func TestChatHandler_SSEResponse(t *testing.T) {
 func TestChatHandler_MissingMessage_Returns400(t *testing.T) {
 	reg := tools.NewRegistry()
 	orch := orchestrator.New(&stubLLM{}, reg)
-	h := handler.NewChatHandler(orch)
+	h := handler.NewChatHandler(orch, "openai/gpt-4o-mini")
 
 	body := `{"model":"gpt-4o-mini","business_name":"Test"}` // missing "message"
 	req := httptest.NewRequest(http.MethodPost, "/chat/conv123", bytes.NewBufferString(body))

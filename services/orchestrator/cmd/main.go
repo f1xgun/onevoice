@@ -65,7 +65,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	})
 
 	// HTTP handler — business context is now provided per-request in the body
-	chatHandler := handler.NewChatHandler(orch)
+	chatHandler := handler.NewChatHandler(orch, cfg.LLMModel)
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)

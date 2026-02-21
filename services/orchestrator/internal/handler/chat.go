@@ -21,12 +21,14 @@ type Runner interface {
 
 // ChatHandler handles SSE chat requests.
 type ChatHandler struct {
-	runner Runner
+	runner       Runner
+	defaultModel string
 }
 
-// NewChatHandler creates a ChatHandler.
-func NewChatHandler(runner Runner) *ChatHandler {
-	return &ChatHandler{runner: runner}
+// NewChatHandler creates a ChatHandler. defaultModel is used when the request
+// does not specify a model (typically the LLM_MODEL env var).
+func NewChatHandler(runner Runner, defaultModel string) *ChatHandler {
+	return &ChatHandler{runner: runner, defaultModel: defaultModel}
 }
 
 type chatRequest struct {
@@ -61,7 +63,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Model == "" {
-		req.Model = "gpt-4o-mini"
+		req.Model = h.defaultModel
 	}
 
 	// Set SSE headers
