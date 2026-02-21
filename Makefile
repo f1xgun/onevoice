@@ -2,7 +2,7 @@
 .PHONY: lint lint-frontend lint-all fmt fmt-fix
 .PHONY: migrate-up migrate-down migrate-create db-seed
 .PHONY: docker-up docker-down docker-logs docker-clean
-.PHONY: clean certs
+.PHONY: up down restart logs clean certs
 
 # Variables
 BINARY_NAME=api
@@ -121,22 +121,29 @@ db-seed: ## Seed database with test data
 	@echo "Seeding database..."
 	@cd scripts && go run seed.go
 
-# Docker
-docker-up: ## Start all services with Docker Compose
-	@echo "Starting services..."
-	@docker-compose up -d
-	@echo "Services started. API available at http://localhost:8080"
+# Docker (shorthand)
+up: ## Start all services
+	@docker compose up -d
+	@echo "All services started. App at http://localhost"
 
-docker-down: ## Stop all services
-	@echo "Stopping services..."
-	@docker-compose down
+down: ## Stop all services
+	@docker compose down
 
-docker-logs: ## View logs from all services
-	@docker-compose logs -f
+restart: ## Restart all services (rebuild changed images)
+	@docker compose down
+	@docker compose up -d --build
+	@echo "All services restarted"
+
+logs: ## Tail logs from all services
+	@docker compose logs -f
+
+# Docker (legacy aliases)
+docker-up: up
+docker-down: down
+docker-logs: logs
 
 docker-clean: ## Remove volumes and clean up
-	@echo "Cleaning up..."
-	@docker-compose down -v
+	@docker compose down -v
 	@rm -rf data/
 
 # Certificates
