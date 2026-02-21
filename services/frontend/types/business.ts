@@ -6,9 +6,9 @@ export interface ScheduleDay {
 }
 
 export interface SpecialDate {
-  date: string;    // "2026-03-08" ISO format
-  open?: string;   // "10:00" — if absent, means closed
-  close?: string;  // "15:00"
+  date: string; // "2026-03-08" ISO format
+  open?: string; // "10:00" — if absent, means closed
+  close?: string; // "15:00"
   closed: boolean;
 }
 

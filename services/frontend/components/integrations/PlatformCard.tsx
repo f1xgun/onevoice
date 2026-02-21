@@ -42,10 +42,7 @@ const statusLabels: Record<string, string> = {
   token_expired: 'Токен истёк',
 };
 
-const statusVariants: Record<
-  string,
-  'default' | 'secondary' | 'destructive'
-> = {
+const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = {
   active: 'default',
   inactive: 'secondary',
   error: 'destructive',
@@ -75,22 +72,15 @@ export function PlatformCard({
   const channelList = (
     <div className="space-y-2">
       {integrations.map((i) => (
-        <div
-          key={i.id}
-          className="flex items-center justify-between rounded-lg border px-3 py-2"
-        >
+        <div key={i.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
           <div className="flex items-center gap-2.5">
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${statusColors[i.status] ?? 'bg-gray-400'}`}
             />
             <span className="text-sm">
-              {(i.metadata as Record<string, string>)?.channel_title ??
-                i.externalId}
+              {(i.metadata as Record<string, string>)?.channel_title ?? i.externalId}
             </span>
-            <Badge
-              variant={statusVariants[i.status] ?? 'secondary'}
-              className="text-xs"
-            >
+            <Badge variant={statusVariants[i.status] ?? 'secondary'} className="text-xs">
               {statusLabels[i.status] ?? i.status}
             </Badge>
           </div>
@@ -108,15 +98,12 @@ export function PlatformCard({
               <AlertDialogHeader>
                 <AlertDialogTitle>Отключить канал?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Канал будет отключён от OneVoice. Вы сможете подключить его
-                  снова.
+                  Канал будет отключён от OneVoice. Вы сможете подключить его снова.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Отмена</AlertDialogCancel>
-                <AlertDialogAction onClick={() => onDisconnect(i.id)}>
-                  Отключить
-                </AlertDialogAction>
+                <AlertDialogAction onClick={() => onDisconnect(i.id)}>Отключить</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -142,16 +129,12 @@ export function PlatformCard({
             </div>
           </div>
           {hasActive && <Badge variant="default">Подключено</Badge>}
-          {!hasActive && integrations.length === 0 && (
-            <Badge variant="secondary">Отключено</Badge>
-          )}
+          {!hasActive && integrations.length === 0 && <Badge variant="secondary">Отключено</Badge>}
         </div>
 
         {integrations.length > 0 && (
           <div className="border-t pt-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Каналы
-            </p>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Каналы</p>
             {integrations.length > 3 ? (
               <ScrollArea className="max-h-40">{channelList}</ScrollArea>
             ) : (

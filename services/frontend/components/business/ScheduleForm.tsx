@@ -10,11 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -45,10 +41,7 @@ interface ScheduleFormProps {
   initialSpecialDates?: SpecialDate[];
 }
 
-export function ScheduleForm({
-  initialSchedule,
-  initialSpecialDates,
-}: ScheduleFormProps) {
+export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleFormProps) {
   const [schedule, setSchedule] = useState<ScheduleDay[]>(DEFAULT_SCHEDULE);
   const [specialDates, setSpecialDates] = useState<SpecialDate[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -78,9 +71,7 @@ export function ScheduleForm({
   });
 
   function updateDay(index: number, updates: Partial<ScheduleDay>) {
-    setSchedule((prev) =>
-      prev.map((d, i) => (i === index ? { ...d, ...updates } : d)),
-    );
+    setSchedule((prev) => prev.map((d, i) => (i === index ? { ...d, ...updates } : d)));
   }
 
   function addSpecialDate(date: Date) {
@@ -91,9 +82,7 @@ export function ScheduleForm({
   }
 
   function updateSpecialDate(index: number, updates: Partial<SpecialDate>) {
-    setSpecialDates((prev) =>
-      prev.map((sd, i) => (i === index ? { ...sd, ...updates } : sd)),
-    );
+    setSpecialDates((prev) => prev.map((sd, i) => (i === index ? { ...sd, ...updates } : sd)));
   }
 
   function removeSpecialDate(index: number) {
@@ -109,20 +98,13 @@ export function ScheduleForm({
       {/* Weekly schedule */}
       <div className="space-y-3">
         {schedule.map((day, index) => (
-          <div
-            key={day.day}
-            className="flex items-center gap-4 rounded-lg border p-3"
-          >
-            <span className="w-28 text-sm font-medium">
-              {DAY_LABELS[day.day]}
-            </span>
+          <div key={day.day} className="flex items-center gap-4 rounded-lg border p-3">
+            <span className="w-28 text-sm font-medium">{DAY_LABELS[day.day]}</span>
 
             <div className="flex items-center gap-2">
               <Switch
                 checked={!day.closed}
-                onCheckedChange={(checked) =>
-                  updateDay(index, { closed: !checked })
-                }
+                onCheckedChange={(checked) => updateDay(index, { closed: !checked })}
               />
               <Label className="text-sm text-muted-foreground">
                 {day.closed ? 'Выходной' : 'Открыто'}
@@ -157,9 +139,7 @@ export function ScheduleForm({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-medium">Особые даты</h3>
-            <p className="text-xs text-muted-foreground">
-              Праздники и особый режим работы
-            </p>
+            <p className="text-xs text-muted-foreground">Праздники и особый режим работы</p>
           </div>
           <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
             <PopoverTrigger asChild>
@@ -179,16 +159,11 @@ export function ScheduleForm({
         </div>
 
         {specialDates.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Нет особых дат
-          </p>
+          <p className="text-sm text-muted-foreground">Нет особых дат</p>
         )}
 
         {specialDates.map((sd, index) => (
-          <div
-            key={sd.date}
-            className="flex items-center gap-4 rounded-lg border p-3"
-          >
+          <div key={sd.date} className="flex items-center gap-4 rounded-lg border p-3">
             <span className="w-28 text-sm font-medium">
               {format(parseISO(sd.date), 'd MMMM', { locale: ru })}
             </span>
@@ -214,18 +189,14 @@ export function ScheduleForm({
                 <Input
                   type="time"
                   value={sd.open || ''}
-                  onChange={(e) =>
-                    updateSpecialDate(index, { open: e.target.value })
-                  }
+                  onChange={(e) => updateSpecialDate(index, { open: e.target.value })}
                   className="w-28"
                 />
                 <span className="text-muted-foreground">&mdash;</span>
                 <Input
                   type="time"
                   value={sd.close || ''}
-                  onChange={(e) =>
-                    updateSpecialDate(index, { close: e.target.value })
-                  }
+                  onChange={(e) => updateSpecialDate(index, { close: e.target.value })}
                   className="w-28"
                 />
               </div>
