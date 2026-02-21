@@ -16,14 +16,14 @@ import (
 
 // Mock IntegrationRepository
 type mockIntegrationRepository struct {
-	createFunc                         func(ctx context.Context, integration *domain.Integration) error
-	getByIDFunc                        func(ctx context.Context, id uuid.UUID) (*domain.Integration, error)
-	getByBusinessAndPlatformFunc       func(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error)
-	listByBusinessIDFunc               func(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
-	listByBusinessAndPlatformFunc      func(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
-	getByBusinessPlatformExternalFunc  func(ctx context.Context, businessID uuid.UUID, platform string, externalID string) (*domain.Integration, error)
-	updateFunc                         func(ctx context.Context, integration *domain.Integration) error
-	deleteFunc                         func(ctx context.Context, id uuid.UUID) error
+	createFunc                        func(ctx context.Context, integration *domain.Integration) error
+	getByIDFunc                       func(ctx context.Context, id uuid.UUID) (*domain.Integration, error)
+	getByBusinessAndPlatformFunc      func(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error)
+	listByBusinessIDFunc              func(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
+	listByBusinessAndPlatformFunc     func(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
+	getByBusinessPlatformExternalFunc func(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*domain.Integration, error)
+	updateFunc                        func(ctx context.Context, integration *domain.Integration) error
+	deleteFunc                        func(ctx context.Context, id uuid.UUID) error
 }
 
 func (m *mockIntegrationRepository) Create(ctx context.Context, integration *domain.Integration) error {
@@ -61,7 +61,7 @@ func (m *mockIntegrationRepository) ListByBusinessAndPlatform(ctx context.Contex
 	return []domain.Integration{}, nil
 }
 
-func (m *mockIntegrationRepository) GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform string, externalID string) (*domain.Integration, error) {
+func (m *mockIntegrationRepository) GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*domain.Integration, error) {
 	if m.getByBusinessPlatformExternalFunc != nil {
 		return m.getByBusinessPlatformExternalFunc(ctx, businessID, platform, externalID)
 	}

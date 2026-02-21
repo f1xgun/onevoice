@@ -15,7 +15,7 @@ func setupOAuthService(t *testing.T) *OAuthService {
 	t.Helper()
 	mr := miniredis.RunT(t)
 	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { rc.Close() })
+	t.Cleanup(func() { _ = rc.Close() })
 	return NewOAuthService(rc)
 }
 

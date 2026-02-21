@@ -122,7 +122,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Stream SSE response back to client
 	w.Header().Set("Content-Type", "text/event-stream")

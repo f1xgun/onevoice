@@ -107,7 +107,7 @@ func SetupInternal(handlers *Handlers) *chi.Mux {
 	r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	return r

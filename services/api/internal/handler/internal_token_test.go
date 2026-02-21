@@ -48,7 +48,7 @@ func TestGetToken_Success(t *testing.T) {
 
 	h := NewInternalTokenHandler(mockTokenService)
 
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s&platform=telegram&external_id=channel_123", businessID.String()), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s&platform=telegram&external_id=channel_123", businessID.String()), http.NoBody)
 	rr := httptest.NewRecorder()
 	h.GetToken(rr, req)
 
@@ -82,7 +82,7 @@ func TestGetToken_MissingBusinessID(t *testing.T) {
 	mockTokenService := new(MockTokenService)
 	h := NewInternalTokenHandler(mockTokenService)
 
-	req := httptest.NewRequest(http.MethodGet, "/internal/v1/tokens?platform=telegram", nil)
+	req := httptest.NewRequest(http.MethodGet, "/internal/v1/tokens?platform=telegram", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.GetToken(rr, req)
 
@@ -108,7 +108,7 @@ func TestGetToken_MissingPlatform(t *testing.T) {
 	mockTokenService := new(MockTokenService)
 	h := NewInternalTokenHandler(mockTokenService)
 
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s", businessID.String()), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s", businessID.String()), http.NoBody)
 	rr := httptest.NewRecorder()
 	h.GetToken(rr, req)
 
@@ -137,7 +137,7 @@ func TestGetToken_NotFound(t *testing.T) {
 
 	h := NewInternalTokenHandler(mockTokenService)
 
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s&platform=telegram&external_id=channel_123", businessID.String()), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s&platform=telegram&external_id=channel_123", businessID.String()), http.NoBody)
 	rr := httptest.NewRecorder()
 	h.GetToken(rr, req)
 
@@ -166,7 +166,7 @@ func TestGetToken_Expired(t *testing.T) {
 
 	h := NewInternalTokenHandler(mockTokenService)
 
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s&platform=vk&external_id=group_456", businessID.String()), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/internal/v1/tokens?business_id=%s&platform=vk&external_id=group_456", businessID.String()), http.NoBody)
 	rr := httptest.NewRecorder()
 	h.GetToken(rr, req)
 

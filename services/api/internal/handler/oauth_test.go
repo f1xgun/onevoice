@@ -65,7 +65,7 @@ func buildTelegramHash(token string, fields map[string]interface{}) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	var parts []string
+	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
 		parts = append(parts, fmt.Sprintf("%s=%v", k, fields[k]))
 	}
@@ -102,7 +102,7 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 	}
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", http.NoBody)
 	req = req.WithContext(ctxWithUser(userID))
 	rr := httptest.NewRecorder()
 
@@ -139,7 +139,7 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 func TestGetVKAuthURL_Unauthorized(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", http.NoBody)
 	// no user in context
 	rr := httptest.NewRecorder()
 	h.GetVKAuthURL(rr, req)
@@ -159,7 +159,7 @@ func TestGetVKAuthURL_BusinessNotFound(t *testing.T) {
 
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, OAuthConfig{}, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", http.NoBody)
 	req = req.WithContext(ctxWithUser(userID))
 	rr := httptest.NewRecorder()
 	h.GetVKAuthURL(rr, req)
@@ -178,7 +178,7 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 	// Mock VK token exchange server
 	vkServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "vk_access_token_123",
 		})
 	}))
@@ -199,15 +199,15 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 	})).Return(&domain.Integration{ID: uuid.New(), Platform: "vk"}, nil)
 
 	cfg := OAuthConfig{
-		VKClientID:         "client_id",
-		VKClientSecret:     "client_secret",
-		VKRedirectURI:      "https://example.com/callback/vk",
-		vkTokenBaseURL:     vkServer.URL,
+		VKClientID:     "client_id",
+		VKClientSecret: "client_secret",
+		VKRedirectURI:  "https://example.com/callback/vk",
+		vkTokenBaseURL: vkServer.URL,
 	}
 
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, vkServer.Client())
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback?code=auth_code&state=valid-state", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback?code=auth_code&state=valid-state", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	h.VKCallback(rr, req)
@@ -231,7 +231,7 @@ func TestVKCallback_InvalidState(t *testing.T) {
 
 	h := NewOAuthHandler(mockOAuth, new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback?code=somecode&state=bad-state", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback?code=somecode&state=bad-state", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	h.VKCallback(rr, req)
@@ -249,7 +249,7 @@ func TestVKCallback_InvalidState(t *testing.T) {
 func TestVKCallback_MissingParams(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	h.VKCallback(rr, req)
@@ -364,10 +364,10 @@ func newTelegramAPIMock(t *testing.T, title string, fail bool) *httptest.Server 
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if fail {
-			fmt.Fprintf(w, `{"ok":false,"description":"Bad Request: chat not found"}`)
+			_, _ = fmt.Fprintf(w, `{"ok":false,"description":"Bad Request: chat not found"}`)
 			return
 		}
-		fmt.Fprintf(w, `{"ok":true,"result":{"id":-1001234567890,"title":%q,"type":"channel"}}`, title)
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"id":-1001234567890,"title":%q,"type":"channel"}}`, title)
 	}))
 }
 
@@ -524,7 +524,7 @@ func TestGetYandexAuthURL_ReturnsURL(t *testing.T) {
 	}
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", http.NoBody)
 	req = req.WithContext(ctxWithUser(userID))
 	rr := httptest.NewRecorder()
 
@@ -561,7 +561,7 @@ func TestGetYandexAuthURL_ReturnsURL(t *testing.T) {
 func TestGetYandexAuthURL_Unauthorized(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.GetYandexAuthURL(rr, req)
 
@@ -579,7 +579,7 @@ func TestYandexCallback_ExchangesCode(t *testing.T) {
 	// Mock Yandex token server
 	yandexServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token":  "yandex_access_token_xyz",
 			"refresh_token": "yandex_refresh_token_xyz",
 			"expires_in":    3600,
@@ -613,7 +613,7 @@ func TestYandexCallback_ExchangesCode(t *testing.T) {
 
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, yandexServer.Client())
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback?code=auth_code&state=valid-yandex-state", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback?code=auth_code&state=valid-yandex-state", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	h.YandexCallback(rr, req)
@@ -637,7 +637,7 @@ func TestYandexCallback_InvalidState(t *testing.T) {
 
 	h := NewOAuthHandler(mockOAuth, new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback?code=code&state=bad-state", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback?code=code&state=bad-state", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	h.YandexCallback(rr, req)
@@ -655,7 +655,7 @@ func TestYandexCallback_InvalidState(t *testing.T) {
 func TestYandexCallback_MissingParams(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback", http.NoBody)
 	rr := httptest.NewRecorder()
 
 	h.YandexCallback(rr, req)

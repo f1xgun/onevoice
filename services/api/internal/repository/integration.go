@@ -254,7 +254,7 @@ func (r *integrationRepository) ListByBusinessAndPlatform(ctx context.Context, b
 	return integrations, rows.Err()
 }
 
-func (r *integrationRepository) GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform string, externalID string) (*domain.Integration, error) {
+func (r *integrationRepository) GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*domain.Integration, error) {
 	sql, args, err := r.sb.
 		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "external_id", "metadata", "token_expires_at", "created_at", "updated_at").
 		From("integrations").

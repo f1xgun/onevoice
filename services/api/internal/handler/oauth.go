@@ -166,7 +166,7 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
@@ -230,7 +230,7 @@ func (h *OAuthHandler) VerifyTelegramLogin(w http.ResponseWriter, r *http.Reques
 	}
 	sort.Strings(keys)
 
-	var parts []string
+	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
 		parts = append(parts, fmt.Sprintf("%s=%v", k, req[k]))
 	}
@@ -278,7 +278,7 @@ func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("telegram API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -427,7 +427,7 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	var tokenResp struct {

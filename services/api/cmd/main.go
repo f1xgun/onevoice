@@ -144,8 +144,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	internalRouter := router.SetupInternal(handlers)
 	internalAddr := ":" + cfg.InternalPort
 	internalSrv := &http.Server{
-		Addr:    internalAddr,
-		Handler: internalRouter,
+		Addr:              internalAddr,
+		Handler:           internalRouter,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
 		log.Info("internal server listening", "addr", internalAddr)
