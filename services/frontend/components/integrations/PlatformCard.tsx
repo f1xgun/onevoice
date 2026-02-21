@@ -1,6 +1,18 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { PlatformIcon } from '@/components/integrations/PlatformIcons';
 
 interface Integration {
@@ -38,6 +50,14 @@ const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = 
   token_expired: 'destructive',
 };
 
+const statusColors: Record<string, string> = {
+  active: 'bg-green-500',
+  inactive: 'bg-gray-400',
+  error: 'bg-red-500',
+  pending_cookies: 'bg-yellow-500',
+  token_expired: 'bg-red-500',
+};
+
 export function PlatformCard({
   platform,
   label,
@@ -49,21 +69,63 @@ export function PlatformCard({
   disabled,
 }: Props) {
   const hasActive = integrations.some((i) => i.status === 'active');
+  const channelList = (
+    <div className="space-y-2">
+      {integrations.map((i) => (
+        <div key={i.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${statusColors[i.status] ?? 'bg-gray-400'}`}
+            />
+            <span className="text-sm">
+              {(i.metadata as Record<string, string>)?.channel_title ?? i.externalId}
+            </span>
+            <Badge variant={statusVariants[i.status] ?? 'secondary'} className="text-xs">
+              {statusLabels[i.status] ?? i.status}
+            </Badge>
+          </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-destructive hover:text-destructive"
+              >
+                Отключить
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Отключить канал?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Канал будет отключён от OneVoice. Вы сможете подключить его снова.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Отмена</AlertDialogCancel>
+                <AlertDialogAction onClick={() => onDisconnect(i.id)}>Отключить</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <Card className={disabled ? 'pointer-events-none opacity-40' : ''}>
-      <CardContent className="space-y-3 p-5">
+      <CardContent className="space-y-4 p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-white"
               style={{ backgroundColor: color }}
             >
-              <PlatformIcon platform={platform} className="h-5 w-5" />
+              <PlatformIcon platform={platform} className="h-6 w-6" />
             </div>
             <div>
               <p className="font-medium">{label}</p>
-              <p className="text-xs text-gray-500">{description}</p>
+              <p className="text-xs text-muted-foreground">{description}</p>
             </div>
           </div>
           {hasActive && <Badge variant="default">Подключено</Badge>}
@@ -71,35 +133,19 @@ export function PlatformCard({
         </div>
 
         {integrations.length > 0 && (
-          <div className="space-y-2 border-t pt-2">
-            {integrations.map((i) => (
-              <div key={i.id} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <Badge variant={statusVariants[i.status] ?? 'secondary'} className="text-xs">
-                    {statusLabels[i.status] ?? i.status}
-                  </Badge>
-                  <span className="text-xs text-gray-600">
-                    {(i.metadata as Record<string, string>)?.channel_title ?? i.externalId}
-                  </span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onDisconnect(i.id)}
-                  className="h-7 px-2 text-red-500"
-                >
-                  Отключить
-                </Button>
-              </div>
-            ))}
+          <div className="border-t pt-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Каналы</p>
+            {integrations.length > 3 ? (
+              <ScrollArea className="max-h-40">{channelList}</ScrollArea>
+            ) : (
+              channelList
+            )}
           </div>
         )}
 
-        <div className="flex gap-2">
-          <Button size="sm" onClick={onConnect}>
-            {integrations.length > 0 ? 'Добавить ещё' : 'Подключить'}
-          </Button>
-        </div>
+        <Button size="sm" onClick={onConnect}>
+          {integrations.length > 0 ? 'Добавить канал' : 'Подключить'}
+        </Button>
       </CardContent>
     </Card>
   );
