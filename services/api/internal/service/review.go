@@ -64,7 +64,7 @@ func (s *reviewService) GetByID(ctx context.Context, userID uuid.UUID, id string
 	return review, nil
 }
 
-func (s *reviewService) Reply(ctx context.Context, userID uuid.UUID, id string, replyText string) error {
+func (s *reviewService) Reply(ctx context.Context, userID uuid.UUID, id, replyText string) error {
 	if replyText == "" {
 		return fmt.Errorf("reply text cannot be empty")
 	}

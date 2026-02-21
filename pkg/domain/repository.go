@@ -84,7 +84,7 @@ type TaskFilter struct {
 type ReviewRepository interface {
 	ListByBusinessID(ctx context.Context, businessID string, filter ReviewFilter) ([]Review, int, error)
 	GetByID(ctx context.Context, id string) (*Review, error)
-	UpdateReply(ctx context.Context, id string, replyText string, replyStatus string) error
+	UpdateReply(ctx context.Context, id, replyText, replyStatus string) error
 }
 
 type PostRepository interface {

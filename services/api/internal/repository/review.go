@@ -69,7 +69,7 @@ func (r *reviewRepository) GetByID(ctx context.Context, id string) (*domain.Revi
 	return &review, nil
 }
 
-func (r *reviewRepository) UpdateReply(ctx context.Context, id string, replyText string, replyStatus string) error {
+func (r *reviewRepository) UpdateReply(ctx context.Context, id, replyText, replyStatus string) error {
 	update := bson.M{
 		"$set": bson.M{
 			"reply_text":   replyText,
