@@ -54,3 +54,44 @@ type MessageRepository interface {
 	ListByConversationID(ctx context.Context, conversationID string, limit, offset int) ([]Message, error)
 	CountByConversationID(ctx context.Context, conversationID string) (int64, error)
 }
+
+// Filter types
+
+type ReviewFilter struct {
+	Platform    string
+	ReplyStatus string
+	Limit       int
+	Offset      int
+}
+
+type PostFilter struct {
+	Platform string
+	Status   string
+	Limit    int
+	Offset   int
+}
+
+type TaskFilter struct {
+	Platform string
+	Status   string
+	Type     string
+	Limit    int
+	Offset   int
+}
+
+// MongoDB repositories for content
+
+type ReviewRepository interface {
+	ListByBusinessID(ctx context.Context, businessID string, filter ReviewFilter) ([]Review, int, error)
+	GetByID(ctx context.Context, id string) (*Review, error)
+	UpdateReply(ctx context.Context, id string, replyText string, replyStatus string) error
+}
+
+type PostRepository interface {
+	ListByBusinessID(ctx context.Context, businessID string, filter PostFilter) ([]Post, int, error)
+	GetByID(ctx context.Context, id string) (*Post, error)
+}
+
+type AgentTaskRepository interface {
+	ListByBusinessID(ctx context.Context, businessID string, filter TaskFilter) ([]AgentTask, int, error)
+}
