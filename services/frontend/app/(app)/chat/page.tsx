@@ -9,7 +9,7 @@ export default function ChatIndexPage() {
   const router = useRouter();
 
   const { mutate: createConversation } = useMutation({
-    mutationFn: () => api.post('/conversations').then((r) => r.data.conversation),
+    mutationFn: () => api.post('/conversations', { title: 'Новый диалог' }).then((r) => r.data),
     onSuccess: (conv) => router.replace(`/chat/${conv.id}`),
   });
 

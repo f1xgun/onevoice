@@ -78,15 +78,24 @@ func TestRegister(t *testing.T) {
 						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 						UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 					}, nil)
+				m.On("Login", mock.Anything, "user@example.com", "password123").
+					Return(&domain.User{
+						ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+						Email:     "user@example.com",
+						Role:      domain.RoleOwner,
+						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+						UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					}, "access-token", "refresh-token", nil)
 			},
 			wantStatus: http.StatusCreated,
 			checkResponse: func(t *testing.T, body string) {
-				var user domain.User
-				err := json.Unmarshal([]byte(body), &user)
+				var resp LoginResponse
+				err := json.Unmarshal([]byte(body), &resp)
 				require.NoError(t, err)
-				assert.Equal(t, "user@example.com", user.Email)
-				assert.Equal(t, domain.RoleOwner, user.Role)
-				assert.Empty(t, user.PasswordHash, "password hash should not be returned")
+				assert.Equal(t, "user@example.com", resp.User.Email)
+				assert.Equal(t, domain.RoleOwner, resp.User.Role)
+				assert.Equal(t, "access-token", resp.AccessToken)
+				assert.Equal(t, "refresh-token", resp.RefreshToken)
 			},
 		},
 		{

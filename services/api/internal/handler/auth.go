@@ -77,7 +77,7 @@ type LogoutRequest struct {
 	RefreshToken string `json:"refreshToken" validate:"required"`
 }
 
-// Register handles user registration
+// Register handles user registration and auto-login
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
@@ -93,8 +93,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Call service
-	user, err := h.userService.Register(r.Context(), req.Email, req.Password)
+	// Register user
+	_, err := h.userService.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserExists) {
 			writeJSONError(w, http.StatusConflict, "user already exists")
@@ -105,8 +105,19 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return user (password hash already sanitized by service)
-	writeJSON(w, http.StatusCreated, user)
+	// Auto-login to return tokens
+	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
+	if err != nil {
+		slog.Error("auto-login after register failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, LoginResponse{
+		User:         user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	})
 }
 
 // Login handles user login

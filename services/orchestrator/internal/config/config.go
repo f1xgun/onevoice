@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 )
 
 // Config holds orchestrator configuration loaded from environment.
@@ -19,12 +18,6 @@ type Config struct {
 	OpenRouterAPIKey string
 	OpenAIAPIKey     string
 	AnthropicAPIKey  string
-
-	// Business context defaults (can be overridden per-request in future)
-	BusinessName       string
-	BusinessCategory   string
-	BusinessTone       string
-	ActiveIntegrations []string // e.g. ["telegram","vk","yandex_business"]
 
 	SelfHostedEndpoints []SelfHostedEndpoint
 }
@@ -50,8 +43,6 @@ func Load() (*Config, error) {
 		}
 	}
 
-	activeIntegrations := parseCSV(os.Getenv("ACTIVE_INTEGRATIONS"))
-
 	return &Config{
 		Port:          getEnv("PORT", "8090"),
 		LLMModel:      model,
@@ -63,27 +54,8 @@ func Load() (*Config, error) {
 		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
 		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
 
-		BusinessName:        os.Getenv("BUSINESS_NAME"),
-		BusinessCategory:    os.Getenv("BUSINESS_CATEGORY"),
-		BusinessTone:        os.Getenv("BUSINESS_TONE"),
-		ActiveIntegrations:  activeIntegrations,
 		SelfHostedEndpoints: parseIndexedEndpoints(),
 	}, nil
-}
-
-// parseCSV splits a comma-separated string, trimming spaces, ignoring empty tokens.
-func parseCSV(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			result = append(result, t)
-		}
-	}
-	return result
 }
 
 // parseIndexedEndpoints scans SELF_HOSTED_N_URL / _MODEL / _API_KEY env vars

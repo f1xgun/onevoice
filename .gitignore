@@ -37,6 +37,9 @@ redis_data/
 nats_data/
 minio_data/
 
+# Certificates
+certs/
+
 # Temporary
 tmp/
 *.log

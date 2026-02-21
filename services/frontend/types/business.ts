@@ -14,5 +14,6 @@ export interface Business {
   description?: string;
   logo_url?: string;
   address?: string;
+  settings?: Record<string, unknown>;
   schedule?: ScheduleDay[];
 }

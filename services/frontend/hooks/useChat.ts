@@ -89,7 +89,7 @@ export function useChat(conversationId: string) {
       abortRef.current = controller;
 
       try {
-        const response = await fetch(`/chat/${conversationId}`, {
+        const response = await fetch(`/api/v1/chat/${conversationId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

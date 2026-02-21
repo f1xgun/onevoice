@@ -337,7 +337,6 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
 	integrationID := uuid.New()
-	platform := "google"
 
 	mockBusinessService := new(MockBusinessService)
 	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
@@ -347,23 +346,19 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	}, nil)
 
 	mockIntegrationService := new(MockIntegrationService)
-	mockIntegrationService.On("GetByBusinessAndPlatform", mock.Anything, businessID, platform).Return(&domain.Integration{
-		ID:         integrationID,
-		BusinessID: businessID,
-		Platform:   platform,
-		Status:     "active",
+	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{
+		{ID: integrationID, BusinessID: businessID, Platform: "google", Status: "active"},
 	}, nil)
 	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(nil)
 
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
-	// Create request with user ID in context and platform URL parameter
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
+	// Create request with user ID in context and integration ID in URL
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
-	// Set up chi context with URL parameter
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("platform", platform)
+	rctx.URLParams.Add("id", integrationID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -383,16 +378,16 @@ func TestDeleteIntegration_Success(t *testing.T) {
 // TestDeleteIntegration_MissingUserID tests deletion without user ID in context
 func TestDeleteIntegration_MissingUserID(t *testing.T) {
 	// Setup
+	integrationID := uuid.New()
 	mockBusinessService := new(MockBusinessService)
 	mockIntegrationService := new(MockIntegrationService)
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request WITHOUT user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
 
-	// Set up chi context with URL parameter
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("platform", "google")
+	rctx.URLParams.Add("id", integrationID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	// Execute
@@ -418,6 +413,7 @@ func TestDeleteIntegration_MissingUserID(t *testing.T) {
 func TestDeleteIntegration_BusinessNotFound(t *testing.T) {
 	// Setup
 	userID := uuid.New()
+	integrationID := uuid.New()
 
 	mockBusinessService := new(MockBusinessService)
 	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(nil, domain.ErrBusinessNotFound)
@@ -426,12 +422,11 @@ func TestDeleteIntegration_BusinessNotFound(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
-	// Set up chi context with URL parameter
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("platform", "google")
+	rctx.URLParams.Add("id", integrationID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -456,12 +451,12 @@ func TestDeleteIntegration_BusinessNotFound(t *testing.T) {
 	mockBusinessService.AssertExpectations(t)
 }
 
-// TestDeleteIntegration_IntegrationNotFound tests deletion when integration doesn't exist
+// TestDeleteIntegration_IntegrationNotFound tests deletion when integration doesn't belong to business
 func TestDeleteIntegration_IntegrationNotFound(t *testing.T) {
 	// Setup
 	userID := uuid.New()
 	businessID := uuid.New()
-	platform := "google"
+	integrationID := uuid.New()
 
 	mockBusinessService := new(MockBusinessService)
 	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
@@ -471,17 +466,17 @@ func TestDeleteIntegration_IntegrationNotFound(t *testing.T) {
 	}, nil)
 
 	mockIntegrationService := new(MockIntegrationService)
-	mockIntegrationService.On("GetByBusinessAndPlatform", mock.Anything, businessID, platform).Return(nil, domain.ErrIntegrationNotFound)
+	// Return empty list — integration not in this business
+	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
-	// Set up chi context with URL parameter
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("platform", platform)
+	rctx.URLParams.Add("id", integrationID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -511,6 +506,7 @@ func TestDeleteIntegration_IntegrationNotFound(t *testing.T) {
 func TestDeleteIntegration_InternalError(t *testing.T) {
 	// Setup
 	userID := uuid.New()
+	integrationID := uuid.New()
 
 	mockBusinessService := new(MockBusinessService)
 	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return((*domain.Business)(nil), errors.New("database connection failed"))
@@ -519,12 +515,11 @@ func TestDeleteIntegration_InternalError(t *testing.T) {
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
-	// Set up chi context with URL parameter
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("platform", "google")
+	rctx.URLParams.Add("id", integrationID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -562,29 +557,23 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 		Name:   "Test Business",
 	}
 
-	integration := &domain.Integration{
-		ID:         integrationID,
-		BusinessID: businessID,
-		Platform:   "google",
-		Status:     "active",
-	}
-
 	mockBusinessService := new(MockBusinessService)
 	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(business, nil)
 
 	mockIntegrationService := new(MockIntegrationService)
-	mockIntegrationService.On("GetByBusinessAndPlatform", mock.Anything, businessID, "google").Return(integration, nil)
+	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{
+		{ID: integrationID, BusinessID: businessID, Platform: "google", Status: "active"},
+	}, nil)
 	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(errors.New("redis deletion failed"))
 
 	handler := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
 
 	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/google", http.NoBody)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 
-	// Set up chi context with URL parameter
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("platform", "google")
+	rctx.URLParams.Add("id", integrationID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 

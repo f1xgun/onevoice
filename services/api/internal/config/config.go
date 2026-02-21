@@ -18,6 +18,21 @@ type Config struct {
 	RedisPort     string
 	JWTSecret     string
 	EncryptionKey string
+
+	// OAuth credentials
+	VKClientID         string
+	VKClientSecret     string
+	VKRedirectURI      string
+	YandexClientID     string
+	YandexClientSecret string
+	YandexRedirectURI  string
+	TelegramBotToken   string
+
+	// Internal server
+	InternalPort string
+
+	// Orchestrator
+	OrchestratorURL string
 }
 
 func Load() (*Config, error) {
@@ -34,6 +49,16 @@ func Load() (*Config, error) {
 		RedisPort:     getEnv("REDIS_PORT", "6379"),
 		JWTSecret:     getEnv("JWT_SECRET", ""),
 		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
+
+		VKClientID:         os.Getenv("VK_CLIENT_ID"),
+		VKClientSecret:     os.Getenv("VK_CLIENT_SECRET"),
+		VKRedirectURI:      getEnv("VK_REDIRECT_URI", "http://localhost/api/v1/oauth/vk/callback"),
+		YandexClientID:     os.Getenv("YANDEX_CLIENT_ID"),
+		YandexClientSecret: os.Getenv("YANDEX_CLIENT_SECRET"),
+		YandexRedirectURI:  getEnv("YANDEX_REDIRECT_URI", "http://localhost/api/v1/oauth/yandex_business/callback"),
+		TelegramBotToken:   os.Getenv("TELEGRAM_BOT_TOKEN"),
+		InternalPort:       getEnv("INTERNAL_PORT", "8443"),
+		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", "http://localhost:8090"),
 	}
 
 	// Validate required fields

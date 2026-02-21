@@ -42,24 +42,6 @@ func TestLoad_DefaultNATSUrl(t *testing.T) {
 	assert.Equal(t, "nats://localhost:4222", cfg.NATSUrl)
 }
 
-func TestLoad_ActiveIntegrations(t *testing.T) {
-	t.Setenv("LLM_MODEL", "gpt-4o-mini")
-	t.Setenv("ACTIVE_INTEGRATIONS", "telegram, vk , yandex_business")
-
-	cfg, err := config.Load()
-	require.NoError(t, err)
-	assert.Equal(t, []string{"telegram", "vk", "yandex_business"}, cfg.ActiveIntegrations)
-}
-
-func TestLoad_ActiveIntegrations_Empty(t *testing.T) {
-	t.Setenv("LLM_MODEL", "gpt-4o-mini")
-	t.Setenv("ACTIVE_INTEGRATIONS", "")
-
-	cfg, err := config.Load()
-	require.NoError(t, err)
-	assert.Nil(t, cfg.ActiveIntegrations)
-}
-
 func TestLoad_ProviderAPIKeys(t *testing.T) {
 	t.Setenv("LLM_MODEL", "gpt-4o-mini")
 	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")

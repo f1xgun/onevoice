@@ -16,7 +16,6 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
 )
 
@@ -31,10 +30,9 @@ func TestChatHandler_SSEResponse(t *testing.T) {
 	reg := tools.NewRegistry()
 	orch := orchestrator.New(stub, reg)
 
-	biz := prompt.BusinessContext{Name: "Test Business"}
-	h := handler.NewChatHandler(orch, biz)
+	h := handler.NewChatHandler(orch, "openai/gpt-4o-mini")
 
-	body := `{"model":"gpt-4o-mini","message":"Привет"}`
+	body := `{"model":"gpt-4o-mini","message":"Привет","business_id":"biz-1","business_name":"Test Business","active_integrations":["telegram"]}`
 	req := httptest.NewRequest(http.MethodPost, "/chat/conv123", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -73,10 +71,9 @@ func TestChatHandler_SSEResponse(t *testing.T) {
 func TestChatHandler_MissingMessage_Returns400(t *testing.T) {
 	reg := tools.NewRegistry()
 	orch := orchestrator.New(&stubLLM{}, reg)
-	biz := prompt.BusinessContext{Name: "Test"}
-	h := handler.NewChatHandler(orch, biz)
+	h := handler.NewChatHandler(orch, "openai/gpt-4o-mini")
 
-	body := `{"model":"gpt-4o-mini"}` // missing "message"
+	body := `{"model":"gpt-4o-mini","business_name":"Test"}` // missing "message"
 	req := httptest.NewRequest(http.MethodPost, "/chat/conv123", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

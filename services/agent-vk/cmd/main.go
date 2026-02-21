@@ -11,6 +11,7 @@ import (
 	natslib "github.com/nats-io/nats.go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	agentpkg "github.com/f1xgun/onevoice/services/agent-vk/internal/agent"
 	"github.com/f1xgun/onevoice/services/agent-vk/internal/vk"
 )
@@ -23,10 +24,7 @@ func main() {
 }
 
 func run() error {
-	accessToken := os.Getenv("VK_ACCESS_TOKEN")
-	if accessToken == "" {
-		return fmt.Errorf("VK_ACCESS_TOKEN is required")
-	}
+	apiURL := getEnv("API_INTERNAL_URL", "http://localhost:8443")
 
 	natsURL := getEnv("NATS_URL", natslib.DefaultURL)
 	nc, err := natslib.Connect(natsURL)
@@ -35,8 +33,11 @@ func run() error {
 	}
 	defer nc.Close()
 
-	client := vk.New(accessToken)
-	handler := agentpkg.NewHandler(client)
+	tc := tokenclient.New(apiURL, nil)
+	tokens := &tokenAdapter{client: tc}
+	handler := agentpkg.NewHandler(tokens, func(token string) agentpkg.VKClient {
+		return vk.New(token)
+	})
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentVK, transport, handler)
 
@@ -51,6 +52,19 @@ func run() error {
 	<-ctx.Done()
 	slog.Info("VK agent shutting down")
 	return nil
+}
+
+// tokenAdapter adapts tokenclient.Client to the agent's TokenFetcher interface.
+type tokenAdapter struct {
+	client *tokenclient.Client
+}
+
+func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (string, error) {
+	resp, err := a.client.GetToken(ctx, businessID, platform, externalID)
+	if err != nil {
+		return "", err
+	}
+	return resp.AccessToken, nil
 }
 
 func getEnv(key, defaultValue string) string {

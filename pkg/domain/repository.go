@@ -33,6 +33,8 @@ type IntegrationRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Integration, error)
 	GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*Integration, error)
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]Integration, error)
+	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]Integration, error)
+	GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform string, externalID string) (*Integration, error)
 	Update(ctx context.Context, integration *Integration) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
