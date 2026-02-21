@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { toast } from 'sonner';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { ConnectDialog } from '@/components/integrations/ConnectDialog';
@@ -39,10 +41,11 @@ export default function IntegrationsPage() {
   const qc = useQueryClient();
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
 
-  const { data } = useQuery<Integration[]>({
+  const { data, isError, error } = useQuery<Integration[]>({
     queryKey: ['integrations'],
     queryFn: () =>
       api.get('/integrations').then((r) => (r.data.integrations ?? []) as Integration[]),
+    retry: false,
   });
 
   const disconnectMutation = useMutation({
@@ -68,6 +71,23 @@ export default function IntegrationsPage() {
     },
     onError: () => toast.error('Ошибка подключения'),
   });
+
+  const noBusinessYet = isError && isAxiosError(error) && error.response?.status === 404;
+
+  if (noBusinessYet) {
+    return (
+      <div className="max-w-3xl p-8">
+        <h1 className="mb-6 text-2xl font-bold">Интеграции</h1>
+        <p className="text-gray-500">
+          Сначала{' '}
+          <Link href="/business" className="text-blue-600 underline hover:text-blue-800">
+            создайте профиль бизнеса
+          </Link>
+          , чтобы подключить интеграции.
+        </p>
+      </div>
+    );
+  }
 
   const getIntegration = (platformId: string): Integration | undefined =>
     data?.find((i) => i.platform === platformId);
