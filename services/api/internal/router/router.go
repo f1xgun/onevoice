@@ -21,6 +21,9 @@ type Handlers struct {
 	OAuth         *handler.OAuthHandler
 	InternalToken *handler.InternalTokenHandler
 	ChatProxy     *handler.ChatProxyHandler
+	Review        *handler.ReviewHandler
+	Post          *handler.PostHandler
+	AgentTask     *handler.AgentTaskHandler
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
@@ -85,6 +88,21 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client) *chi
 			r.Get("/conversations", handlers.Conversation.ListConversations)
 			r.Post("/conversations", handlers.Conversation.CreateConversation)
 			r.Get("/conversations/{id}", handlers.Conversation.GetConversation)
+
+			// Password change
+			r.Put("/auth/password", handlers.Auth.ChangePassword)
+
+			// Review routes
+			r.Get("/reviews", handlers.Review.ListReviews)
+			r.Get("/reviews/{id}", handlers.Review.GetReview)
+			r.Put("/reviews/{id}/reply", handlers.Review.ReplyToReview)
+
+			// Post routes
+			r.Get("/posts", handlers.Post.ListPosts)
+			r.Get("/posts/{id}", handlers.Post.GetPost)
+
+			// Agent task routes
+			r.Get("/tasks", handlers.AgentTask.ListTasks)
 		})
 	})
 
