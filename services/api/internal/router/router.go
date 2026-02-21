@@ -64,10 +64,11 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client) *chi
 			// Business routes
 			r.Get("/business", handlers.Business.GetBusiness)
 			r.Put("/business", handlers.Business.UpdateBusiness)
+			r.Put("/business/schedule", handlers.Business.UpdateSchedule)
 
 			// Integration routes
 			r.Get("/integrations", handlers.Integration.ListIntegrations)
-			r.Delete("/integrations/{platform}", handlers.Integration.DeleteIntegration)
+			r.Delete("/integrations/{id}", handlers.Integration.DeleteIntegration)
 
 			// OAuth auth-url routes (need JWT to generate state with user context)
 			r.Get("/integrations/vk/auth-url", handlers.OAuth.GetVKAuthURL)

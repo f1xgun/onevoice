@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { ProfileForm } from '@/components/business/ProfileForm';
 import { ScheduleForm } from '@/components/business/ScheduleForm';
 import { Separator } from '@/components/ui/separator';
-import type { Business } from '@/types/business';
+import type { Business, ScheduleDay } from '@/types/business';
 
 export default function BusinessPage() {
   const { data, isLoading, isError, error } = useQuery<Business>({
@@ -44,7 +44,7 @@ export default function BusinessPage() {
 
           <section className="space-y-4">
             <h2 className="text-lg font-semibold">Расписание работы</h2>
-            <ScheduleForm initialSchedule={data?.schedule} />
+            <ScheduleForm initialSchedule={data?.settings?.schedule as ScheduleDay[] | undefined} />
           </section>
         </>
       )}

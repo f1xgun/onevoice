@@ -50,14 +50,12 @@ api.interceptors.response.use(
 
       interface RefreshResponse {
         accessToken: string
-        refreshToken: string
       }
       const { data } = await axios.post<RefreshResponse>('/api/v1/auth/refresh', { refreshToken })
       if (!data.accessToken) throw new Error('invalid refresh response')
-      const { accessToken, refreshToken: newRefresh } = data
+      const { accessToken } = data
 
       useAuthStore.getState().setAccessToken(accessToken)
-      localStorage.setItem('refreshToken', newRefresh)
 
       queue.forEach(({ resolve }) => resolve(accessToken))
       queue = []

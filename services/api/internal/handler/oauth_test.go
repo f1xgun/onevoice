@@ -360,7 +360,21 @@ func TestVerifyTelegramLogin_ExpiredAuthDate(t *testing.T) {
 	}
 }
 
+func newTelegramAPIMock(t *testing.T, title string, fail bool) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fail {
+			fmt.Fprintf(w, `{"ok":false,"description":"Bad Request: chat not found"}`)
+			return
+		}
+		fmt.Fprintf(w, `{"ok":true,"result":{"id":-1001234567890,"title":%q,"type":"channel"}}`, title)
+	}))
+}
+
 func TestConnectTelegram_Success(t *testing.T) {
+	tgServer := newTelegramAPIMock(t, "My Channel", false)
+	defer tgServer.Close()
+
 	userID := uuid.New()
 	businessID := uuid.New()
 	integrationID := uuid.New()
@@ -374,14 +388,21 @@ func TestConnectTelegram_Success(t *testing.T) {
 		UserID: userID,
 	}, nil)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
-		return p.BusinessID == businessID && p.Platform == "telegram" && p.ExternalID == "@mychannel"
+		title, _ := p.Metadata["channel_title"].(string)
+		return p.BusinessID == businessID &&
+			p.Platform == "telegram" &&
+			p.ExternalID == "@mychannel" &&
+			title == "My Channel"
 	})).Return(&domain.Integration{
 		ID:       integrationID,
 		Platform: "telegram",
 	}, nil)
 
-	cfg := OAuthConfig{TelegramBotToken: "bot_token_123"}
-	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil)
+	cfg := OAuthConfig{
+		TelegramBotToken:   "bot_token_123",
+		telegramAPIBaseURL: tgServer.URL,
+	}
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, tgServer.Client())
 
 	reqBody := `{"channel_id":"@mychannel","telegram_user_id":"12345"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
@@ -397,6 +418,46 @@ func TestConnectTelegram_Success(t *testing.T) {
 
 	mockBusiness.AssertExpectations(t)
 	mockIntegration.AssertExpectations(t)
+}
+
+func TestConnectTelegram_BotNoAccess(t *testing.T) {
+	tgServer := newTelegramAPIMock(t, "", true)
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	mockBusiness := new(MockBusinessService)
+	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
+		ID:     businessID,
+		UserID: userID,
+	}, nil)
+
+	cfg := OAuthConfig{
+		TelegramBotToken:   "bot_token_123",
+		telegramAPIBaseURL: tgServer.URL,
+	}
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), mockBusiness, cfg, tgServer.Client())
+
+	reqBody := `{"channel_id":"-1001234567890"}`
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctxWithUser(userID))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Error != "bot does not have access to this channel" {
+		t.Errorf("expected bot access error, got %q", resp.Error)
+	}
 }
 
 func TestConnectTelegram_MissingChannelID(t *testing.T) {

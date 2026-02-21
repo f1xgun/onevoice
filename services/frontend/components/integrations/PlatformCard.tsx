@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { PlatformIcon } from '@/components/integrations/PlatformIcons'
 
 interface Integration {
   id: string
@@ -38,7 +39,7 @@ const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = 
 }
 
 export function PlatformCard({
-  label, description, color, integrations,
+  platform, label, description, color, integrations,
   onConnect, onDisconnect, disabled,
 }: Props) {
   const hasActive = integrations.some((i) => i.status === 'active')
@@ -49,10 +50,10 @@ export function PlatformCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+              className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center text-white"
               style={{ backgroundColor: color }}
             >
-              {label.slice(0, 2).toUpperCase()}
+              <PlatformIcon platform={platform} className="w-5 h-5" />
             </div>
             <div>
               <p className="font-medium">{label}</p>

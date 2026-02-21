@@ -80,7 +80,7 @@ func (h *IntegrationHandler) ConnectIntegration(w http.ResponseWriter, r *http.R
 	writeJSONError(w, http.StatusNotImplemented, "OAuth flow not implemented yet")
 }
 
-// DeleteIntegration deletes a platform integration
+// DeleteIntegration deletes an integration by ID
 func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from context
 	userID, err := middleware.GetUserID(r.Context())
@@ -89,8 +89,13 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Extract platform parameter
-	platform := chi.URLParam(r, "platform")
+	// Parse integration ID from URL
+	idStr := chi.URLParam(r, "id")
+	integrationID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid integration ID")
+		return
+	}
 
 	// Get business for user
 	business, err := h.businessService.GetByUserID(r.Context(), userID)
@@ -104,20 +109,28 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Get integration by business and platform
-	integration, err := h.integrationService.GetByBusinessAndPlatform(r.Context(), business.ID, platform)
+	// Verify integration belongs to this business
+	integrations, err := h.integrationService.ListByBusinessID(r.Context(), business.ID)
 	if err != nil {
-		if errors.Is(err, domain.ErrIntegrationNotFound) {
-			writeJSONError(w, http.StatusNotFound, "integration not found")
-			return
-		}
-		slog.Error("failed to get integration", "error", err)
+		slog.Error("failed to list integrations", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
+	found := false
+	for _, i := range integrations {
+		if i.ID == integrationID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeJSONError(w, http.StatusNotFound, "integration not found")
+		return
+	}
+
 	// Delete integration
-	err = h.integrationService.Delete(r.Context(), integration.ID)
+	err = h.integrationService.Delete(r.Context(), integrationID)
 	if err != nil {
 		slog.Error("failed to delete integration", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")

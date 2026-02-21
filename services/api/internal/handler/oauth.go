@@ -47,6 +47,7 @@ type OAuthConfig struct {
 	// Overridable base URLs for testing
 	vkTokenBaseURL     string
 	yandexTokenBaseURL string
+	telegramAPIBaseURL string
 }
 
 // OAuthHandler handles all OAuth-related endpoints.
@@ -255,6 +256,47 @@ type connectTelegramRequest struct {
 	TelegramUserID string `json:"telegram_user_id"`
 }
 
+// telegramGetChatResponse represents the Telegram Bot API getChat response.
+type telegramGetChatResponse struct {
+	OK     bool `json:"ok"`
+	Result struct {
+		Title string `json:"title"`
+	} `json:"result"`
+	Description string `json:"description"`
+}
+
+// telegramGetChat calls the Telegram Bot API to validate bot access and fetch channel title.
+func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (string, error) {
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getChat?chat_id=%s",
+		botToken, url.QueryEscape(chatID))
+	if h.cfg.telegramAPIBaseURL != "" {
+		apiURL = fmt.Sprintf("%s/bot%s/getChat?chat_id=%s",
+			h.cfg.telegramAPIBaseURL, botToken, url.QueryEscape(chatID))
+	}
+
+	resp, err := h.httpClient.Get(apiURL)
+	if err != nil {
+		return "", fmt.Errorf("telegram API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response body: %w", err)
+	}
+
+	var chatResp telegramGetChatResponse
+	if err := json.Unmarshal(body, &chatResp); err != nil {
+		return "", fmt.Errorf("parse telegram response: %w", err)
+	}
+
+	if !chatResp.OK {
+		return "", fmt.Errorf("telegram API error: %s", chatResp.Description)
+	}
+
+	return chatResp.Result.Title, nil
+}
+
 // ConnectTelegram stores a Telegram channel integration using the system bot token (JWT required).
 func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
@@ -285,14 +327,27 @@ func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate bot access and fetch channel title
+	channelTitle, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelID)
+	if err != nil {
+		slog.Warn("telegram getChat failed", "error", err, "channel_id", req.ChannelID)
+		writeJSONError(w, http.StatusBadRequest, "bot does not have access to this channel")
+		return
+	}
+
+	metadata := map[string]interface{}{
+		"channel_title": channelTitle,
+	}
+	if req.TelegramUserID != "" {
+		metadata["telegram_user_id"] = req.TelegramUserID
+	}
+
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
 		Platform:    "telegram",
 		ExternalID:  req.ChannelID,
 		AccessToken: h.cfg.TelegramBotToken,
-		Metadata: map[string]interface{}{
-			"telegram_user_id": req.TelegramUserID,
-		},
+		Metadata:    metadata,
 	})
 	if err != nil {
 		slog.Error("failed to connect Telegram integration", "error", err)
