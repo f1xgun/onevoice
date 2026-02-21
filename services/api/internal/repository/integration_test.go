@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 func newTestIntegrationRepo(t *testing.T) (*integrationRepository, pgxmock.PgxPoolIface) {

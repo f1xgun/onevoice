@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // MockTokenService is a mock implementation of TokenService for testing

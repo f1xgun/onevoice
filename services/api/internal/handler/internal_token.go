@@ -5,9 +5,10 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
-	"github.com/google/uuid"
 )
 
 // TokenService defines the interface for decrypted token retrieval

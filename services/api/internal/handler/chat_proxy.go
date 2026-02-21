@@ -9,9 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
-	"github.com/go-chi/chi/v5"
 )
 
 // ChatProxyHandler enriches chat requests with business context and proxies

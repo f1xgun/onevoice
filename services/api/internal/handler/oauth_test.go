@@ -15,11 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
+
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/mock"
 )
 
 // MockOAuthStateService mocks OAuthStateService

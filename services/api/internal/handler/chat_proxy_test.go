@@ -9,13 +9,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // TestChatProxy_EnrichesContext verifies that business and integration context
