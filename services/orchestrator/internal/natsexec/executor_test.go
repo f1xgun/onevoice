@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 )
 
 // fakeRequester simulates NATS request-reply without a real server.

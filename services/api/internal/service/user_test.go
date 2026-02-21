@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
 // Mock UserRepository
@@ -63,7 +64,7 @@ func setupRedis(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
 	})
 
 	t.Cleanup(func() {
-		client.Close()
+		_ = client.Close()
 		mr.Close()
 	})
 

@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/services/agent-vk/internal/agent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/services/agent-vk/internal/agent"
 )
 
 type fakeVKClient struct {

@@ -1,23 +1,23 @@
-'use client'
+'use client';
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useMutation } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useMutation } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
 export default function ChatIndexPage() {
-  const router = useRouter()
+  const router = useRouter();
 
   const { mutate: createConversation } = useMutation({
     mutationFn: () => api.post('/conversations').then((r) => r.data.conversation),
     onSuccess: (conv) => router.replace(`/chat/${conv.id}`),
-  })
+  });
 
-  useEffect(() => { createConversation() }, [createConversation])
+  useEffect(() => {
+    createConversation();
+  }, [createConversation]);
 
   return (
-    <div className="h-full flex items-center justify-center text-gray-400">
-      Создание диалога...
-    </div>
-  )
+    <div className="flex h-full items-center justify-center text-gray-400">Создание диалога...</div>
+  );
 }
