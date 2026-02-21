@@ -61,6 +61,11 @@ func (m *MockUserService) GetByID(ctx context.Context, userID uuid.UUID) (*domai
 	return args.Get(0).(*domain.User), args.Error(1)
 }
 
+func (m *MockUserService) ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error {
+	args := m.Called(ctx, userID, currentPassword, newPassword)
+	return args.Error(0)
+}
+
 func TestRegister(t *testing.T) {
 	tests := []struct {
 		name          string

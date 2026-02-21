@@ -21,6 +21,7 @@ type UserService interface {
 	RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
 }
 
 // Package-level validator instance (reused across handlers)
@@ -77,6 +78,12 @@ type RefreshTokenResponse struct {
 // LogoutRequest represents the logout request payload
 type LogoutRequest struct {
 	RefreshToken string `json:"refreshToken" validate:"required"`
+}
+
+// ChangePasswordRequest represents the password change request payload
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword" validate:"required"`
+	NewPassword     string `json:"newPassword" validate:"required,min=8"`
 }
 
 // Register handles user registration and auto-login
@@ -255,4 +262,40 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	// Return user (password hash already sanitized by service)
 	writeJSON(w, http.StatusOK, user)
+}
+
+// ChangePassword handles PUT /api/v1/auth/password
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, err)
+		return
+	}
+
+	if err := h.userService.ChangePassword(r.Context(), userID, req.CurrentPassword, req.NewPassword); err != nil {
+		if errors.Is(err, domain.ErrInvalidCredentials) {
+			writeJSONError(w, http.StatusUnauthorized, "invalid current password")
+			return
+		}
+		if errors.Is(err, domain.ErrUserNotFound) {
+			writeJSONError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		slog.Error("failed to change password", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
