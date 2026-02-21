@@ -2,7 +2,7 @@
 .PHONY: lint lint-frontend lint-all fmt fmt-fix
 .PHONY: migrate-up migrate-down migrate-create db-seed
 .PHONY: docker-up docker-down docker-logs docker-clean
-.PHONY: clean
+.PHONY: up down restart logs clean certs
 
 # Variables
 BINARY_NAME=api
@@ -121,23 +121,58 @@ db-seed: ## Seed database with test data
 	@echo "Seeding database..."
 	@cd scripts && go run seed.go
 
-# Docker
-docker-up: ## Start all services with Docker Compose
-	@echo "Starting services..."
-	@docker-compose up -d
-	@echo "Services started. API available at http://localhost:8080"
+# Docker (shorthand)
+up: ## Start all services
+	@docker compose up -d
+	@echo "All services started. App at http://localhost"
 
-docker-down: ## Stop all services
-	@echo "Stopping services..."
-	@docker-compose down
+down: ## Stop all services
+	@docker compose down
 
-docker-logs: ## View logs from all services
-	@docker-compose logs -f
+restart: ## Restart all services (rebuild changed images)
+	@docker compose down
+	@docker compose up -d --build
+	@echo "All services restarted"
+
+logs: ## Tail logs from all services
+	@docker compose logs -f
+
+# Docker (legacy aliases)
+docker-up: up
+docker-down: down
+docker-logs: logs
 
 docker-clean: ## Remove volumes and clean up
-	@echo "Cleaning up..."
-	@docker-compose down -v
+	@docker compose down -v
 	@rm -rf data/
+
+# Certificates
+certs: ## Generate mTLS certificates for internal communication
+	@echo "Generating certificates..."
+	@mkdir -p certs
+	@# CA
+	@openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+		-days 3650 -nodes -keyout certs/ca.key -out certs/ca.crt \
+		-subj "/CN=OneVoice Internal CA" 2>/dev/null
+	@# Server (API internal)
+	@openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+		-nodes -keyout certs/server.key -out certs/server.csr \
+		-subj "/CN=api" 2>/dev/null
+	@echo "subjectAltName=DNS:api,DNS:localhost,IP:127.0.0.1" > certs/server.ext
+	@openssl x509 -req -in certs/server.csr -CA certs/ca.crt -CAkey certs/ca.key \
+		-CAcreateserial -out certs/server.crt -days 3650 -extfile certs/server.ext 2>/dev/null
+	@rm certs/server.csr certs/server.ext
+	@# Agent clients
+	@for agent in telegram vk yandex-business; do \
+		openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+			-nodes -keyout certs/$$agent.key -out certs/$$agent.csr \
+			-subj "/CN=agent-$$agent" 2>/dev/null; \
+		openssl x509 -req -in certs/$$agent.csr -CA certs/ca.crt -CAkey certs/ca.key \
+			-CAcreateserial -out certs/$$agent.crt -days 3650 2>/dev/null; \
+		rm certs/$$agent.csr; \
+	done
+	@rm -f certs/ca.srl
+	@echo "Certificates generated in certs/"
 
 # Clean
 clean: ## Remove build artifacts

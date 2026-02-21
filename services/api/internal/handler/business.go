@@ -154,3 +154,46 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 	// Return updated business
 	writeJSON(w, http.StatusOK, updatedBusiness)
 }
+
+// UpdateSchedule updates the business schedule (stored in settings)
+func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to get business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	var req struct {
+		Schedule interface{} `json:"schedule"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if business.Settings == nil {
+		business.Settings = make(map[string]interface{})
+	}
+	business.Settings["schedule"] = req.Schedule
+	business.UpdatedAt = time.Now()
+
+	updated, err := h.businessService.Update(r.Context(), business)
+	if err != nil {
+		slog.Error("failed to update schedule", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}

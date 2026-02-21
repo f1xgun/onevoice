@@ -24,7 +24,14 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
 
-    if (error.response?.status !== 401 || original._retry) {
+    // Don't intercept 401 from auth endpoints — let the caller handle it
+    const url = original?.url ?? '';
+    const isAuthEndpoint =
+      url.includes('/auth/login') ||
+      url.includes('/auth/register') ||
+      url.includes('/auth/refresh');
+
+    if (error.response?.status !== 401 || original._retry || isAuthEndpoint) {
       return Promise.reject(error);
     }
 
@@ -46,14 +53,12 @@ api.interceptors.response.use(
 
       interface RefreshResponse {
         accessToken: string;
-        refreshToken: string;
       }
       const { data } = await axios.post<RefreshResponse>('/api/v1/auth/refresh', { refreshToken });
       if (!data.accessToken) throw new Error('invalid refresh response');
-      const { accessToken, refreshToken: newRefresh } = data;
+      const { accessToken } = data;
 
       useAuthStore.getState().setAccessToken(accessToken);
-      localStorage.setItem('refreshToken', newRefresh);
 
       queue.forEach(({ resolve }) => resolve(accessToken));
       queue = [];
