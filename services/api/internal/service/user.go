@@ -41,7 +41,7 @@ type RefreshTokenClaims struct {
 type UserService interface {
 	Register(ctx context.Context, email, password string) (*domain.User, error)
 	Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error)
-	RefreshToken(ctx context.Context, refreshToken string) (string, error)
+	RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 }
@@ -150,8 +150,9 @@ func (s *userService) Login(ctx context.Context, email, password string) (user *
 	return sanitizeUser(user), accessToken, refreshToken, nil
 }
 
-// RefreshToken issues a new access token from a valid refresh token
-func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (string, error) {
+// RefreshToken validates a refresh token and returns a new token pair with user data.
+// The old refresh token is revoked (rotation) and a new one is issued.
+func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error) {
 	// Parse and validate refresh token
 	token, err := jwt.ParseWithClaims(refreshToken, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -161,45 +162,62 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (st
 	})
 
 	if err != nil {
-		return "", domain.ErrInvalidToken
+		return nil, "", "", domain.ErrInvalidToken
 	}
 
 	claims, ok := token.Claims.(*RefreshTokenClaims)
 	if !ok || !token.Valid {
-		return "", domain.ErrInvalidToken
+		return nil, "", "", domain.ErrInvalidToken
 	}
 
 	// Verify token exists in Redis
-	key := refreshTokenKeyPrefix + claims.TokenID.String()
-	userID, err := s.redis.Get(ctx, key).Result()
+	oldKey := refreshTokenKeyPrefix + claims.TokenID.String()
+	userID, err := s.redis.Get(ctx, oldKey).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return "", domain.ErrInvalidToken
+			return nil, "", "", domain.ErrInvalidToken
 		}
-		return "", fmt.Errorf("validate refresh token: %w", err)
+		return nil, "", "", fmt.Errorf("validate refresh token: %w", err)
 	}
 
 	// Verify user ID matches
 	if userID != claims.UserID.String() {
-		return "", domain.ErrInvalidToken
+		return nil, "", "", domain.ErrInvalidToken
 	}
 
+	// Revoke old refresh token
+	s.redis.Del(ctx, oldKey)
+
 	// Get user from database
-	user, err := s.repo.GetByID(ctx, claims.UserID)
+	user, err = s.repo.GetByID(ctx, claims.UserID)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
-			return "", err
+			return nil, "", "", err
 		}
-		return "", fmt.Errorf("get user: %w", err)
+		return nil, "", "", fmt.Errorf("get user: %w", err)
 	}
 
 	// Generate new access token
-	accessToken, err := generateAccessToken(user, s.jwtSecret)
+	accessToken, err = generateAccessToken(user, s.jwtSecret)
 	if err != nil {
-		return "", fmt.Errorf("generate access token: %w", err)
+		return nil, "", "", fmt.Errorf("generate access token: %w", err)
 	}
 
-	return accessToken, nil
+	// Generate new refresh token (rotation)
+	var newTokenID uuid.UUID
+	newRefreshToken, newTokenID, err = generateRefreshToken(user.ID, s.jwtSecret)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("generate refresh token: %w", err)
+	}
+
+	// Store new refresh token in Redis
+	newKey := refreshTokenKeyPrefix + newTokenID.String()
+	err = s.redis.Set(ctx, newKey, user.ID.String(), RefreshTokenExpiry).Err()
+	if err != nil {
+		return nil, "", "", fmt.Errorf("store refresh token: %w", err)
+	}
+
+	return sanitizeUser(user), accessToken, newRefreshToken, nil
 }
 
 // Logout invalidates a refresh token

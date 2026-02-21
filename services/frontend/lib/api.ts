@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from './auth';
+import type { User } from './auth';
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -52,13 +53,20 @@ api.interceptors.response.use(
       if (!refreshToken) throw new Error('no refresh token');
 
       interface RefreshResponse {
+        user: User;
         accessToken: string;
+        refreshToken: string;
       }
       const { data } = await axios.post<RefreshResponse>('/api/v1/auth/refresh', { refreshToken });
       if (!data.accessToken) throw new Error('invalid refresh response');
-      const { accessToken } = data;
+      const { accessToken, refreshToken: newRefresh, user } = data;
 
-      useAuthStore.getState().setAccessToken(accessToken);
+      if (user) {
+        useAuthStore.getState().setAuth(user, accessToken, newRefresh);
+      } else {
+        useAuthStore.getState().setAccessToken(accessToken);
+        localStorage.setItem('refreshToken', newRefresh);
+      }
 
       queue.forEach(({ resolve }) => resolve(accessToken));
       queue = [];
