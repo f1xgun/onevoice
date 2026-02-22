@@ -140,7 +140,7 @@ export default function ReviewsPage() {
       </div>
 
       {isLoading && (
-        <div className="space-y-4">
+        <div className="space-y-4 duration-200 animate-in fade-in">
           {Array.from({ length: 3 }, (_, i) => (
             <ReviewSkeleton key={i} />
           ))}
@@ -148,14 +148,14 @@ export default function ReviewsPage() {
       )}
 
       {!isLoading && reviews.length === 0 && (
-        <div className="py-16 text-center">
+        <div className="py-16 text-center duration-300 animate-in fade-in">
           <MessageSquare className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
           <p className="text-muted-foreground">Отзывов пока нет</p>
         </div>
       )}
 
       {!isLoading && reviews.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-4 duration-300 animate-in fade-in slide-in-from-bottom-2">
           {reviews.map((review) => (
             <Card key={review.id}>
               <CardContent className="space-y-3 p-5">
