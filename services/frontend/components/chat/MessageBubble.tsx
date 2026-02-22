@@ -24,7 +24,7 @@ export function MessageBubble({ message }: { message: Message }) {
           ) : isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : (
-            <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5">
+            <div className="prose prose-sm max-w-none prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0.5">
               <Markdown>{message.content}</Markdown>
             </div>
           )}
