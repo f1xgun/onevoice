@@ -1,13 +1,16 @@
 package handler
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -20,6 +23,7 @@ import (
 type ChatProxyHandler struct {
 	businessService    BusinessService
 	integrationService IntegrationService
+	messageRepo        domain.MessageRepository
 	orchestratorURL    string
 	httpClient         *http.Client
 }
@@ -29,6 +33,7 @@ type ChatProxyHandler struct {
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
+	messageRepo domain.MessageRepository,
 	orchestratorURL string,
 	httpClient *http.Client,
 ) *ChatProxyHandler {
@@ -38,6 +43,7 @@ func NewChatProxyHandler(
 	return &ChatProxyHandler{
 		businessService:    businessService,
 		integrationService: integrationService,
+		messageRepo:        messageRepo,
 		orchestratorURL:    orchestratorURL,
 		httpClient:         httpClient,
 	}
@@ -96,6 +102,19 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Load conversation history from MongoDB
+	history := h.loadHistory(r.Context(), conversationID)
+
+	// Save user message before proxying
+	userMsg := &domain.Message{
+		ConversationID: conversationID,
+		Role:           "user",
+		Content:        req.Message,
+	}
+	if err := h.messageRepo.Create(r.Context(), userMsg); err != nil {
+		slog.Error("failed to save user message", "error", err)
+	}
+
 	orchReq := map[string]interface{}{
 		"model":                req.Model,
 		"message":              req.Message,
@@ -106,6 +125,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		"business_phone":       business.Phone,
 		"business_description": business.Description,
 		"active_integrations":  activeIntegrations,
+		"history":              history,
 	}
 
 	orchURL := fmt.Sprintf("%s/chat/%s", h.orchestratorURL, conversationID)
@@ -137,18 +157,96 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	buf := make([]byte, 4096)
-	for {
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			_, _ = w.Write(buf[:n])
-			flusher.Flush()
+	// Stream SSE line-by-line, accumulating assistant text and tool calls for persistence
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 64*1024), 64*1024)
+
+	var assistantText strings.Builder
+	var toolCalls []domain.ToolCall
+	var toolResults []domain.ToolResult
+	// track tool call ID by name for result correlation
+	toolCallIDByName := make(map[string]string)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		_, _ = fmt.Fprintf(w, "%s\n", line)
+		flusher.Flush()
+
+		if !strings.HasPrefix(line, "data: ") {
+			continue
 		}
-		if readErr == io.EOF {
-			break
+		var ev struct {
+			Type       string                 `json:"type"`
+			Content    string                 `json:"content"`
+			ToolName   string                 `json:"tool_name"`
+			ToolArgs   map[string]interface{} `json:"tool_args"`
+			ToolResult interface{}            `json:"result"`
+			ToolError  string                 `json:"error"`
 		}
-		if readErr != nil {
-			break
+		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
+			continue
+		}
+		switch ev.Type {
+		case "text":
+			assistantText.WriteString(ev.Content)
+		case "tool_call":
+			tc := domain.ToolCall{
+				ID:        fmt.Sprintf("tc-%d", len(toolCalls)),
+				Name:      ev.ToolName,
+				Arguments: ev.ToolArgs,
+			}
+			toolCalls = append(toolCalls, tc)
+			toolCallIDByName[ev.ToolName] = tc.ID
+		case "tool_result":
+			var content map[string]interface{}
+			if m, ok := ev.ToolResult.(map[string]interface{}); ok {
+				content = m
+			} else {
+				content = map[string]interface{}{"raw": ev.ToolResult}
+			}
+			tcID := toolCallIDByName[ev.ToolName]
+			toolResults = append(toolResults, domain.ToolResult{
+				ToolCallID: tcID,
+				Content:    content,
+				IsError:    ev.ToolError != "",
+			})
 		}
 	}
+
+	// Persist assistant response after stream ends
+	if assistantText.Len() > 0 || len(toolCalls) > 0 {
+		saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		assistantMsg := &domain.Message{
+			ConversationID: conversationID,
+			Role:           "assistant",
+			Content:        assistantText.String(),
+			ToolCalls:      toolCalls,
+			ToolResults:    toolResults,
+		}
+		if err := h.messageRepo.Create(saveCtx, assistantMsg); err != nil {
+			slog.Error("failed to save assistant message", "error", err)
+		}
+	}
+}
+
+// loadHistory fetches prior messages for the conversation and converts them
+// to the simple role/content map format expected by the orchestrator.
+func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID string) []map[string]string {
+	msgs, err := h.messageRepo.ListByConversationID(ctx, conversationID, 100, 0)
+	if err != nil {
+		slog.Error("failed to load conversation history", "error", err)
+		return nil
+	}
+
+	history := make([]map[string]string, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role == "user" || m.Role == "assistant" {
+			history = append(history, map[string]string{
+				"role":    m.Role,
+				"content": m.Content,
+			})
+		}
+	}
+	return history
 }

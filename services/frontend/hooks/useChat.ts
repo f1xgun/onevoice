@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/lib/auth';
 import type { Message, ToolCall } from '@/types/chat';
 
@@ -55,12 +55,82 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
   return msg;
 }
 
+interface ApiToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+interface ApiToolResult {
+  toolCallId: string;
+  content: Record<string, unknown>;
+  isError: boolean;
+}
+
+interface ApiMessage {
+  id: string;
+  role: string;
+  content: string;
+  toolCalls?: ApiToolCall[];
+  toolResults?: ApiToolResult[];
+}
+
 export function useChat(conversationId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const isStreamingRef = useRef(false);
   const accessToken = useAuthStore((s) => s.accessToken);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Load existing messages on mount
+  useEffect(() => {
+    setIsLoading(true);
+    fetch(`/api/v1/conversations/${conversationId}/messages`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((r) => {
+        if (!r.ok) return [];
+        return r.json() as Promise<ApiMessage[]>;
+      })
+      .then((apiMsgs) => {
+        if (Array.isArray(apiMsgs)) {
+          setMessages(
+            apiMsgs.map((m) => {
+              const toolCalls: ToolCall[] | undefined =
+                m.toolCalls && m.toolCalls.length > 0
+                  ? m.toolCalls.map((tc) => {
+                      const result = m.toolResults?.find((r) => r.toolCallId === tc.id);
+                      return {
+                        id: tc.id,
+                        name: tc.name,
+                        args: tc.arguments ?? {},
+                        result: result && !result.isError ? result.content : undefined,
+                        error: result?.isError
+                          ? ((result.content?.error as string) ?? 'error')
+                          : undefined,
+                        status: result
+                          ? result.isError
+                            ? ('error' as const)
+                            : ('done' as const)
+                          : ('done' as const),
+                      };
+                    })
+                  : undefined;
+              return {
+                id: m.id,
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+                toolCalls,
+                status: 'done' as const,
+              };
+            })
+          );
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, [conversationId, accessToken]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -156,5 +226,5 @@ export function useChat(conversationId: string) {
     abortRef.current?.abort();
   }, []);
 
-  return { messages, isStreaming, sendMessage, stop };
+  return { messages, isLoading, isStreaming, sendMessage, stop };
 }

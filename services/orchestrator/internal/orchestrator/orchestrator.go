@@ -16,18 +16,21 @@ import (
 type EventType string
 
 const (
-	EventText     EventType = "text"
-	EventToolCall EventType = "tool_call"
-	EventError    EventType = "error"
-	EventDone     EventType = "done"
+	EventText       EventType = "text"
+	EventToolCall   EventType = "tool_call"
+	EventToolResult EventType = "tool_result"
+	EventError      EventType = "error"
+	EventDone       EventType = "done"
 )
 
 // Event is emitted on the output channel during agent execution.
 type Event struct {
-	Type     EventType
-	Content  string
-	ToolName string
-	ToolArgs map[string]interface{}
+	Type       EventType
+	Content    string
+	ToolName   string
+	ToolArgs   map[string]interface{}
+	ToolResult interface{}
+	ToolError  string
 }
 
 // LLMClient abstracts the Router for testability.
@@ -142,6 +145,21 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 				result, execErr := o.tools.Execute(ctx, tc.Function.Name, args)
 				if execErr != nil {
 					result = map[string]interface{}{"error": execErr.Error(), "tool_name": tc.Function.Name}
+				}
+
+				// Emit tool result event for the frontend
+				toolResultEv := Event{
+					Type:       EventToolResult,
+					ToolName:   tc.Function.Name,
+					ToolResult: result,
+				}
+				if execErr != nil {
+					toolResultEv.ToolError = execErr.Error()
+				}
+				select {
+				case ch <- toolResultEv:
+				case <-ctx.Done():
+					return
 				}
 
 				// Serialize result; fallback to error JSON if marshal fails

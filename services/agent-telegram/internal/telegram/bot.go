@@ -24,3 +24,11 @@ func (b *Bot) SendMessage(chatID int64, text string) error {
 	_, err := b.api.Send(msg)
 	return err
 }
+
+// SendPhoto sends a photo to the given chat ID using a public URL.
+func (b *Bot) SendPhoto(chatID int64, photoURL, caption string) error {
+	photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileURL(photoURL))
+	photo.Caption = caption
+	_, err := b.api.Send(photo)
+	return err
+}

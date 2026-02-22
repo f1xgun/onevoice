@@ -24,15 +24,20 @@ const (
 // ConversationHandler handles conversation-related HTTP requests
 type ConversationHandler struct {
 	conversationRepo domain.ConversationRepository
+	messageRepo      domain.MessageRepository
 }
 
 // NewConversationHandler creates a new conversation handler instance
-func NewConversationHandler(conversationRepo domain.ConversationRepository) *ConversationHandler {
+func NewConversationHandler(conversationRepo domain.ConversationRepository, messageRepo domain.MessageRepository) *ConversationHandler {
 	if conversationRepo == nil {
 		panic("conversationRepo cannot be nil")
 	}
+	if messageRepo == nil {
+		panic("messageRepo cannot be nil")
+	}
 	return &ConversationHandler{
 		conversationRepo: conversationRepo,
+		messageRepo:      messageRepo,
 	}
 }
 
@@ -166,4 +171,124 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 
 	// Return conversation
 	writeJSON(w, http.StatusOK, conversation)
+}
+
+// UpdateConversationRequest represents the conversation update request
+type UpdateConversationRequest struct {
+	Title string `json:"title" validate:"required,max=200"`
+}
+
+// UpdateConversation handles PUT /api/v1/conversations/{id}
+func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	conversationID := chi.URLParam(r, "id")
+
+	var req UpdateConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		writeValidationError(w, err)
+		return
+	}
+
+	conversation, err := h.conversationRepo.GetByID(r.Context(), conversationID)
+	if err != nil {
+		if errors.Is(err, domain.ErrConversationNotFound) {
+			writeJSONError(w, http.StatusNotFound, "conversation not found")
+			return
+		}
+		slog.Error("failed to get conversation", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if conversation.UserID != userID.String() {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	conversation.Title = req.Title
+	if err := h.conversationRepo.Update(r.Context(), conversation); err != nil {
+		slog.Error("failed to update conversation", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, conversation)
+}
+
+// DeleteConversation handles DELETE /api/v1/conversations/{id}
+func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	conversationID := chi.URLParam(r, "id")
+
+	conversation, err := h.conversationRepo.GetByID(r.Context(), conversationID)
+	if err != nil {
+		if errors.Is(err, domain.ErrConversationNotFound) {
+			writeJSONError(w, http.StatusNotFound, "conversation not found")
+			return
+		}
+		slog.Error("failed to get conversation", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if conversation.UserID != userID.String() {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	if err := h.conversationRepo.Delete(r.Context(), conversationID); err != nil {
+		slog.Error("failed to delete conversation", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListMessages handles GET /api/v1/conversations/{id}/messages
+func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	conversationID := chi.URLParam(r, "id")
+
+	// Verify conversation exists and belongs to user
+	conversation, err := h.conversationRepo.GetByID(r.Context(), conversationID)
+	if err != nil {
+		if errors.Is(err, domain.ErrConversationNotFound) {
+			writeJSONError(w, http.StatusNotFound, "conversation not found")
+			return
+		}
+		slog.Error("failed to get conversation", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if conversation.UserID != userID.String() {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	messages, err := h.messageRepo.ListByConversationID(r.Context(), conversationID, 200, 0)
+	if err != nil {
+		slog.Error("failed to list messages", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, messages)
 }
