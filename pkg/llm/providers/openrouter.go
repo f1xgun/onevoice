@@ -63,7 +63,25 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req llm.ChatRequest) (*ll
 
 	msgs := make([]openai.ChatCompletionMessage, len(req.Messages))
 	for i, m := range req.Messages {
-		msgs[i] = openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
+		msg := openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
+		if m.ToolCallID != "" {
+			msg.ToolCallID = m.ToolCallID
+		}
+		if len(m.ToolCalls) > 0 {
+			oaiToolCalls := make([]openai.ToolCall, len(m.ToolCalls))
+			for j, tc := range m.ToolCalls {
+				oaiToolCalls[j] = openai.ToolCall{
+					ID:   tc.ID,
+					Type: openai.ToolType(tc.Type),
+					Function: openai.FunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				}
+			}
+			msg.ToolCalls = oaiToolCalls
+		}
+		msgs[i] = msg
 	}
 
 	oaiReq := openai.ChatCompletionRequest{
@@ -73,19 +91,47 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req llm.ChatRequest) (*ll
 		Temperature: float32(req.Temperature),
 	}
 
+	if len(req.Tools) > 0 {
+		tools := make([]openai.Tool, len(req.Tools))
+		for i, t := range req.Tools {
+			tools[i] = openai.Tool{
+				Type: openai.ToolTypeFunction,
+				Function: &openai.FunctionDefinition{
+					Name:        t.Function.Name,
+					Description: t.Function.Description,
+					Parameters:  t.Function.Parameters,
+				},
+			}
+		}
+		oaiReq.Tools = tools
+	}
+
 	resp, err := p.client.CreateChatCompletion(ctx, oaiReq)
 	if err != nil {
 		return nil, fmt.Errorf("openrouter chat: %w", err)
 	}
 
 	var content, finishReason string
+	var toolCalls []llm.ToolCall
 	if len(resp.Choices) > 0 {
-		content = resp.Choices[0].Message.Content
-		finishReason = string(resp.Choices[0].FinishReason)
+		choice := resp.Choices[0]
+		content = choice.Message.Content
+		finishReason = string(choice.FinishReason)
+		for _, tc := range choice.Message.ToolCalls {
+			toolCalls = append(toolCalls, llm.ToolCall{
+				ID:   tc.ID,
+				Type: string(tc.Type),
+				Function: llm.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			})
+		}
 	}
 
 	return &llm.ChatResponse{
 		Content:      content,
+		ToolCalls:    toolCalls,
 		FinishReason: finishReason,
 		Usage: llm.TokenUsage{
 			InputTokens:  resp.Usage.PromptTokens,
@@ -102,7 +148,25 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req llm.ChatRequest) (*ll
 func (p *OpenRouterProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
 	msgs := make([]openai.ChatCompletionMessage, len(req.Messages))
 	for i, m := range req.Messages {
-		msgs[i] = openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
+		msg := openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
+		if m.ToolCallID != "" {
+			msg.ToolCallID = m.ToolCallID
+		}
+		if len(m.ToolCalls) > 0 {
+			oaiToolCalls := make([]openai.ToolCall, len(m.ToolCalls))
+			for j, tc := range m.ToolCalls {
+				oaiToolCalls[j] = openai.ToolCall{
+					ID:   tc.ID,
+					Type: openai.ToolType(tc.Type),
+					Function: openai.FunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				}
+			}
+			msg.ToolCalls = oaiToolCalls
+		}
+		msgs[i] = msg
 	}
 
 	oaiReq := openai.ChatCompletionRequest{
@@ -111,6 +175,21 @@ func (p *OpenRouterProvider) ChatStream(ctx context.Context, req llm.ChatRequest
 		MaxTokens:   req.MaxTokens,
 		Temperature: float32(req.Temperature),
 		Stream:      true,
+	}
+
+	if len(req.Tools) > 0 {
+		tools := make([]openai.Tool, len(req.Tools))
+		for i, t := range req.Tools {
+			tools[i] = openai.Tool{
+				Type: openai.ToolTypeFunction,
+				Function: &openai.FunctionDefinition{
+					Name:        t.Function.Name,
+					Description: t.Function.Description,
+					Parameters:  t.Function.Parameters,
+				},
+			}
+		}
+		oaiReq.Tools = tools
 	}
 
 	stream, err := p.client.CreateChatCompletionStream(ctx, oaiReq)

@@ -100,7 +100,7 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 			toolEvents = append(toolEvents, e)
 		case orchestrator.EventText:
 			textEvents = append(textEvents, e)
-		case orchestrator.EventError, orchestrator.EventDone:
+		case orchestrator.EventError, orchestrator.EventDone, orchestrator.EventToolResult:
 			// not relevant for this test
 		}
 	}

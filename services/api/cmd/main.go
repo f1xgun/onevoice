@@ -88,6 +88,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	businessRepo := repository.NewBusinessRepository(pgPool)
 	integrationRepo := repository.NewIntegrationRepository(pgPool)
 	conversationRepo := repository.NewConversationRepository(mongoDB)
+	messageRepo := repository.NewMessageRepository(mongoDB)
 	reviewRepo := repository.NewReviewRepository(mongoDB)
 	postRepo := repository.NewPostRepository(mongoDB)
 	agentTaskRepo := repository.NewAgentTaskRepository(mongoDB)
@@ -112,13 +113,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		TelegramBotToken:   cfg.TelegramBotToken,
 	}, nil)
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
-	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, cfg.OrchestratorURL, nil)
+	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, cfg.OrchestratorURL, nil)
 
 	handlers := &router.Handlers{
 		Auth:          handler.NewAuthHandler(userService),
 		Business:      handler.NewBusinessHandler(businessService),
 		Integration:   handler.NewIntegrationHandler(integrationService, businessService),
-		Conversation:  handler.NewConversationHandler(conversationRepo),
+		Conversation:  handler.NewConversationHandler(conversationRepo, messageRepo),
 		OAuth:         oauthHandler,
 		InternalToken: internalTokenHandler,
 		ChatProxy:     chatProxyHandler,

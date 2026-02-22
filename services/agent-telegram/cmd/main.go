@@ -58,12 +58,15 @@ type tokenAdapter struct {
 	client *tokenclient.Client
 }
 
-func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (string, error) {
+func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (agentpkg.TokenInfo, error) {
 	resp, err := a.client.GetToken(ctx, businessID, platform, externalID)
 	if err != nil {
-		return "", err
+		return agentpkg.TokenInfo{}, err
 	}
-	return resp.AccessToken, nil
+	return agentpkg.TokenInfo{
+		AccessToken: resp.AccessToken,
+		ExternalID:  resp.ExternalID,
+	}, nil
 }
 
 func getEnv(key, defaultValue string) string {

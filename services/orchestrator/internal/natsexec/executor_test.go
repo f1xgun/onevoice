@@ -37,7 +37,7 @@ func TestNATSExecutor_SuccessfulExecution(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, fake)
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
 	result, err := exec.Execute(context.Background(), map[string]interface{}{
 		"text": "Hello World",
 	})
@@ -57,7 +57,7 @@ func TestNATSExecutor_AgentReturnsError(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, fake)
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
 	_, err := exec.Execute(context.Background(), map[string]interface{}{})
 
 	require.Error(t, err)
@@ -66,10 +66,28 @@ func TestNATSExecutor_AgentReturnsError(t *testing.T) {
 
 func TestNATSExecutor_TransportError(t *testing.T) {
 	fake := &fakeRequester{err: context.DeadlineExceeded}
-	exec := natsexec.New(a2a.AgentTelegram, fake)
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
 
 	_, err := exec.Execute(context.Background(), nil)
 	require.Error(t, err)
+}
+
+func TestExecute_SetsToolNameInRequest(t *testing.T) {
+	fake := &fakeRequester{
+		response: &a2a.ToolResponse{
+			TaskID:  "t4",
+			Success: true,
+			Result:  map[string]interface{}{},
+		},
+	}
+
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	_, err := exec.Execute(context.Background(), map[string]interface{}{"text": "hi"})
+	require.NoError(t, err)
+
+	var toolReq a2a.ToolRequest
+	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
+	assert.Equal(t, a2a.AgentID("telegram__send_channel_post"), toolReq.Tool)
 }
 
 func TestExecute_SetsBusinessIDFromContext(t *testing.T) {
@@ -81,7 +99,7 @@ func TestExecute_SetsBusinessIDFromContext(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, fake)
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
 
 	ctx := a2a.WithBusinessID(context.Background(), "biz-uuid-123")
 	_, err := exec.Execute(ctx, map[string]interface{}{"text": "hello"})

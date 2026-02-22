@@ -31,24 +31,32 @@ func NewChatHandler(runner Runner, defaultModel string) *ChatHandler {
 	return &ChatHandler{runner: runner, defaultModel: defaultModel}
 }
 
+type historyEntry struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type chatRequest struct {
-	Model              string   `json:"model"`
-	Message            string   `json:"message"`
-	BusinessID         string   `json:"business_id"`
-	BusinessName       string   `json:"business_name"`
-	BusinessCategory   string   `json:"business_category"`
-	BusinessAddress    string   `json:"business_address"`
-	BusinessPhone      string   `json:"business_phone"`
-	BusinessDesc       string   `json:"business_description"`
-	ActiveIntegrations []string `json:"active_integrations"`
+	Model              string         `json:"model"`
+	Message            string         `json:"message"`
+	BusinessID         string         `json:"business_id"`
+	BusinessName       string         `json:"business_name"`
+	BusinessCategory   string         `json:"business_category"`
+	BusinessAddress    string         `json:"business_address"`
+	BusinessPhone      string         `json:"business_phone"`
+	BusinessDesc       string         `json:"business_description"`
+	ActiveIntegrations []string       `json:"active_integrations"`
+	History            []historyEntry `json:"history"`
 }
 
 // sseEvent matches the JSON shape written to the SSE stream.
 type sseEvent struct {
-	Type     string                 `json:"type"`
-	Content  string                 `json:"content,omitempty"`
-	ToolName string                 `json:"tool_name,omitempty"`
-	ToolArgs map[string]interface{} `json:"tool_args,omitempty"`
+	Type       string                 `json:"type"`
+	Content    string                 `json:"content,omitempty"`
+	ToolName   string                 `json:"tool_name,omitempty"`
+	ToolArgs   map[string]interface{} `json:"tool_args,omitempty"`
+	ToolResult interface{}            `json:"result,omitempty"`
+	ToolError  string                 `json:"error,omitempty"`
 }
 
 // Chat handles POST /chat/{conversationID} and streams SSE events.
@@ -90,11 +98,18 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	ctx := a2a.WithBusinessID(r.Context(), req.BusinessID)
 
+	// Build message history: prior turns + current user message
+	history := make([]llm.Message, 0, len(req.History)+1)
+	for _, h := range req.History {
+		history = append(history, llm.Message{Role: h.Role, Content: h.Content})
+	}
+	history = append(history, llm.Message{Role: "user", Content: req.Message})
+
 	runReq := orchestrator.RunRequest{
 		Model:              req.Model,
 		BusinessContext:    biz,
 		ActiveIntegrations: req.ActiveIntegrations,
-		Messages:           []llm.Message{{Role: "user", Content: req.Message}},
+		Messages:           history,
 	}
 
 	events, err := h.runner.Run(ctx, runReq)
@@ -108,6 +123,11 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		if event.Type == orchestrator.EventToolCall {
 			sse.ToolName = event.ToolName
 			sse.ToolArgs = event.ToolArgs
+		}
+		if event.Type == orchestrator.EventToolResult {
+			sse.ToolName = event.ToolName
+			sse.ToolResult = event.ToolResult
+			sse.ToolError = event.ToolError
 		}
 		writeSSE(w, flusher, sse)
 	}

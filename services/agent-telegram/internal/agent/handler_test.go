@@ -15,28 +15,45 @@ import (
 // fakeTokenFetcher records the last call and returns a preset token.
 type fakeTokenFetcher struct {
 	token        string
+	externalID   string
 	err          error
 	lastBizID    string
 	lastPlatform string
 	lastExtID    string
 }
 
-func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, externalID string) (string, error) {
+func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, externalID string) (agent.TokenInfo, error) {
 	f.lastBizID = businessID
 	f.lastPlatform = platform
 	f.lastExtID = externalID
-	return f.token, f.err
+	if f.err != nil {
+		return agent.TokenInfo{}, f.err
+	}
+	resolvedExtID := externalID
+	if resolvedExtID == "" {
+		resolvedExtID = f.externalID
+	}
+	return agent.TokenInfo{AccessToken: f.token, ExternalID: resolvedExtID}, nil
 }
 
 // fakeSender records the last message sent.
 type fakeSender struct {
-	sentMessage string
-	sentChatID  int64
+	sentMessage  string
+	sentChatID   int64
+	sentPhotoURL string
+	sentCaption  string
 }
 
 func (f *fakeSender) SendMessage(chatID int64, text string) error {
 	f.sentMessage = text
 	f.sentChatID = chatID
+	return nil
+}
+
+func (f *fakeSender) SendPhoto(chatID int64, photoURL, caption string) error {
+	f.sentChatID = chatID
+	f.sentPhotoURL = photoURL
+	f.sentCaption = caption
 	return nil
 }
 

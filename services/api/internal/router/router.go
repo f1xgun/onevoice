@@ -88,6 +88,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client) *chi
 			r.Get("/conversations", handlers.Conversation.ListConversations)
 			r.Post("/conversations", handlers.Conversation.CreateConversation)
 			r.Get("/conversations/{id}", handlers.Conversation.GetConversation)
+			r.Put("/conversations/{id}", handlers.Conversation.UpdateConversation)
+			r.Delete("/conversations/{id}", handlers.Conversation.DeleteConversation)
+			r.Get("/conversations/{id}/messages", handlers.Conversation.ListMessages)
 
 			// Password change
 			r.Put("/auth/password", handlers.Auth.ChangePassword)

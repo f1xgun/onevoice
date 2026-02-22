@@ -10,7 +10,7 @@ import { useChat } from '@/hooks/useChat';
 const QUICK_ACTIONS = ['Проверить отзывы', 'Обновить часы работы', 'Опубликовать пост'];
 
 export function ChatWindow({ conversationId }: { conversationId: string }) {
-  const { messages, isStreaming, sendMessage } = useChat(conversationId);
+  const { messages, isLoading, isStreaming, sendMessage } = useChat(conversationId);
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +29,11 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
     <div className="flex h-full flex-col">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6">
-        {messages.length === 0 ? (
+        {isLoading ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
             <p className="text-lg text-gray-400">Чем могу помочь?</p>
             <div className="flex flex-wrap justify-center gap-2">

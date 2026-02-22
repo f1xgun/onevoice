@@ -173,11 +173,34 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 	return integration, nil
 }
 
-// GetDecryptedToken retrieves and decrypts the access token for a specific integration
+// GetDecryptedToken retrieves and decrypts the access token for a specific integration.
+// When externalID is empty, the first active integration for the platform is used.
 func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*TokenResponse, error) {
-	integration, err := s.repo.GetByBusinessPlatformExternal(ctx, businessID, platform, externalID)
-	if err != nil {
-		return nil, err
+	var integration *domain.Integration
+	var err error
+
+	if externalID != "" {
+		integration, err = s.repo.GetByBusinessPlatformExternal(ctx, businessID, platform, externalID)
+		if err != nil && !errors.Is(err, domain.ErrIntegrationNotFound) {
+			return nil, err
+		}
+	}
+
+	// Fall back to the first active integration if not found by externalID
+	if integration == nil {
+		integrations, listErr := s.repo.ListByBusinessAndPlatform(ctx, businessID, platform)
+		if listErr != nil {
+			return nil, listErr
+		}
+		for i := range integrations {
+			if integrations[i].Status == "active" {
+				integration = &integrations[i]
+				break
+			}
+		}
+		if integration == nil {
+			return nil, domain.ErrIntegrationNotFound
+		}
 	}
 
 	// Check expiration
