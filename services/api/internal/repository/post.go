@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -20,6 +21,19 @@ func NewPostRepository(db *mongo.Database) domain.PostRepository {
 	return &postRepository{
 		collection: db.Collection("posts"),
 	}
+}
+
+func (r *postRepository) Create(ctx context.Context, post *domain.Post) error {
+	if post.ID == "" {
+		post.ID = bson.NewObjectID().Hex()
+	}
+	post.CreatedAt = time.Now()
+
+	_, err := r.collection.InsertOne(ctx, post)
+	if err != nil {
+		return fmt.Errorf("insert post: %w", err)
+	}
+	return nil
 }
 
 func (r *postRepository) ListByBusinessID(ctx context.Context, businessID string, filter domain.PostFilter) ([]domain.Post, int, error) {

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -19,6 +20,19 @@ func NewAgentTaskRepository(db *mongo.Database) domain.AgentTaskRepository {
 	return &agentTaskRepository{
 		collection: db.Collection("agent_tasks"),
 	}
+}
+
+func (r *agentTaskRepository) Create(ctx context.Context, task *domain.AgentTask) error {
+	if task.ID == "" {
+		task.ID = bson.NewObjectID().Hex()
+	}
+	task.CreatedAt = time.Now()
+
+	_, err := r.collection.InsertOne(ctx, task)
+	if err != nil {
+		return fmt.Errorf("insert agent task: %w", err)
+	}
+	return nil
 }
 
 func (r *agentTaskRepository) ListByBusinessID(ctx context.Context, businessID string, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
