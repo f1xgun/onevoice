@@ -1,3 +1,4 @@
+import Markdown from 'react-markdown';
 import { ToolCallsBlock } from './ToolCallsBlock';
 import type { Message } from '@/types/chat';
 
@@ -20,8 +21,12 @@ export function MessageBubble({ message }: { message: Message }) {
               <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
               <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
             </span>
-          ) : (
+          ) : isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
+          ) : (
+            <div className="prose prose-sm max-w-none prose-p:my-1 prose-ol:my-1 prose-ul:my-1 prose-li:my-0.5">
+              <Markdown>{message.content}</Markdown>
+            </div>
           )}
           {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
             <ToolCallsBlock toolCalls={message.toolCalls} />
