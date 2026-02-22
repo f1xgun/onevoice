@@ -72,7 +72,10 @@ export function PlatformCard({
   const channelList = (
     <div className="space-y-2">
       {integrations.map((i) => (
-        <div key={i.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+        <div
+          key={i.id}
+          className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
+        >
           <div className="flex min-w-0 items-center gap-2">
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${statusColors[i.status] ?? 'bg-gray-400'}`}
@@ -85,29 +88,31 @@ export function PlatformCard({
             <Badge variant={statusVariants[i.status] ?? 'secondary'} className="text-xs">
               {statusLabels[i.status] ?? i.status}
             </Badge>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-destructive hover:text-destructive"
-              >
-                Отключить
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Отключить канал?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Канал будет отключён от OneVoice. Вы сможете подключить его снова.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Отмена</AlertDialogCancel>
-                <AlertDialogAction onClick={() => onDisconnect(i.id)}>Отключить</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-destructive hover:text-destructive"
+                >
+                  Отключить
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Отключить канал?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Канал будет отключён от OneVoice. Вы сможете подключить его снова.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Отмена</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => onDisconnect(i.id)}>
+                    Отключить
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       ))}

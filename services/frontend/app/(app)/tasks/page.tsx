@@ -161,7 +161,7 @@ export default function TasksPage() {
       </div>
 
       {isLoading && (
-        <div className="animate-in fade-in duration-200">
+        <div className="duration-200 animate-in fade-in">
           <Table>
             <TableHeader>
               <TableRow>
@@ -182,75 +182,75 @@ export default function TasksPage() {
       )}
 
       {!isLoading && tasks.length === 0 && (
-        <div className="animate-in fade-in duration-300 py-16 text-center">
+        <div className="py-16 text-center duration-300 animate-in fade-in">
           <ListChecks className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
           <p className="text-muted-foreground">Задач пока нет</p>
         </div>
       )}
 
       {!isLoading && tasks.length > 0 && (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Тип</TableHead>
-              <TableHead>Платформа</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead>Создано</TableHead>
-              <TableHead>Длительность</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tasks.map((task) => {
-              const isExpanded = expandedId === task.id;
-              let duration = '';
-              if (task.startedAt && task.completedAt) {
-                const ms =
-                  new Date(task.completedAt).getTime() - new Date(task.startedAt).getTime();
-                duration = ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
-              }
+        <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Тип</TableHead>
+                <TableHead>Платформа</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead>Создано</TableHead>
+                <TableHead>Длительность</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tasks.map((task) => {
+                const isExpanded = expandedId === task.id;
+                let duration = '';
+                if (task.startedAt && task.completedAt) {
+                  const ms =
+                    new Date(task.completedAt).getTime() - new Date(task.startedAt).getTime();
+                  duration = ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+                }
 
-              return (
-                <Fragment key={task.id}>
-                  <TableRow
-                    className="cursor-pointer"
-                    onClick={() => setExpandedId(isExpanded ? null : task.id)}
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        )}
-                        <span className="text-sm font-medium">{task.type}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        {platformLabels[task.platform] ?? task.platform}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariants[task.status] ?? 'secondary'}>
-                        {statusLabels[task.status] ?? task.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {format(new Date(task.createdAt), 'd MMM yyyy HH:mm', {
-                        locale: ru,
-                      })}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {duration || '—'}
-                    </TableCell>
-                  </TableRow>
-                  {isExpanded && <ExpandedRow task={task} />}
-                </Fragment>
-              );
-            })}
-          </TableBody>
-        </Table>
+                return (
+                  <Fragment key={task.id}>
+                    <TableRow
+                      className="cursor-pointer"
+                      onClick={() => setExpandedId(isExpanded ? null : task.id)}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
+                          <span className="text-sm font-medium">{task.type}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {platformLabels[task.platform] ?? task.platform}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariants[task.status] ?? 'secondary'}>
+                          {statusLabels[task.status] ?? task.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {format(new Date(task.createdAt), 'd MMM yyyy HH:mm', {
+                          locale: ru,
+                        })}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {duration || '—'}
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && <ExpandedRow task={task} />}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

@@ -11,7 +11,7 @@ import type { Business, ScheduleDay } from '@/types/business';
 
 function BusinessSkeleton() {
   return (
-    <div className="animate-in fade-in duration-200 max-w-2xl space-y-8 p-8">
+    <div className="max-w-2xl space-y-8 p-8 duration-200 animate-in fade-in">
       <div className="space-y-2">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-4 w-96" />
@@ -46,7 +46,7 @@ export default function BusinessPage() {
     : 'Эта информация используется ИИ при общении с клиентами';
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-2xl space-y-8 p-8">
+    <div className="max-w-2xl space-y-8 p-8 duration-300 animate-in fade-in slide-in-from-bottom-2">
       <div>
         <h1 className="mb-1 text-2xl font-bold">{title}</h1>
         <p className="text-sm text-gray-500">{subtitle}</p>
