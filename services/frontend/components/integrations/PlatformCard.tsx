@@ -72,18 +72,19 @@ export function PlatformCard({
   const channelList = (
     <div className="space-y-2">
       {integrations.map((i) => (
-        <div key={i.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
-          <div className="flex items-center gap-2.5">
+        <div key={i.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2">
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${statusColors[i.status] ?? 'bg-gray-400'}`}
             />
-            <span className="text-sm">
+            <span className="min-w-0 truncate text-sm">
               {(i.metadata as Record<string, string>)?.channel_title ?? i.externalId}
             </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
             <Badge variant={statusVariants[i.status] ?? 'secondary'} className="text-xs">
               {statusLabels[i.status] ?? i.status}
             </Badge>
-          </div>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
@@ -107,6 +108,7 @@ export function PlatformCard({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          </div>
         </div>
       ))}
     </div>

@@ -169,31 +169,34 @@ export default function PostsPage() {
       </div>
 
       {isLoading && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Контент</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead>Платформы</TableHead>
-              <TableHead>Дата</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {Array.from({ length: 5 }, (_, i) => (
-              <PostSkeleton key={i} />
-            ))}
-          </TableBody>
-        </Table>
+        <div className="animate-in fade-in duration-200">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Контент</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead>Платформы</TableHead>
+                <TableHead>Дата</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 5 }, (_, i) => (
+                <PostSkeleton key={i} />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       {!isLoading && posts.length === 0 && (
-        <div className="py-16 text-center">
+        <div className="animate-in fade-in duration-300 py-16 text-center">
           <FileText className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
           <p className="text-muted-foreground">Постов пока нет</p>
         </div>
       )}
 
       {!isLoading && posts.length > 0 && (
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         <Table>
           <TableHeader>
             <TableRow>
@@ -250,6 +253,7 @@ export default function PostsPage() {
             })}
           </TableBody>
         </Table>
+        </div>
       )}
     </div>
   );
