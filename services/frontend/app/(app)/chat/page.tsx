@@ -86,11 +86,7 @@ function ConversationItem({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <button
-            type="button"
-            className="block w-full text-left"
-            onClick={onOpen}
-          >
+          <button type="button" className="block w-full text-left" onClick={onOpen}>
             <p className="truncate font-medium">{conv.title}</p>
             <p className="text-sm text-gray-400">
               {formatDistanceToNow(new Date(conv.createdAt), {
@@ -210,7 +206,10 @@ export default function ChatListPage() {
         </div>
       )}
 
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить диалог?</AlertDialogTitle>

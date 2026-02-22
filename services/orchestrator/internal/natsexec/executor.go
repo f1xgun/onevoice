@@ -34,7 +34,7 @@ func New(agentID a2a.AgentID, toolName string, requester Requester) *NATSExecuto
 func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	req := a2a.ToolRequest{
 		TaskID:     uuid.New().String(),
-		Tool:       a2a.AgentID(e.toolName),
+		Tool:       e.toolName,
 		Args:       args,
 		BusinessID: a2a.BusinessIDFromContext(ctx),
 	}

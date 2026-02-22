@@ -107,9 +107,13 @@ export function useChat(conversationId: string) {
                         args: tc.arguments ?? {},
                         result: result && !result.isError ? result.content : undefined,
                         error: result?.isError
-                          ? (result.content?.error as string) ?? 'error'
+                          ? ((result.content?.error as string) ?? 'error')
                           : undefined,
-                        status: result ? (result.isError ? ('error' as const) : ('done' as const)) : ('done' as const),
+                        status: result
+                          ? result.isError
+                            ? ('error' as const)
+                            : ('done' as const)
+                          : ('done' as const),
                       };
                     })
                   : undefined;
