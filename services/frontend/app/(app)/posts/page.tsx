@@ -169,87 +169,91 @@ export default function PostsPage() {
       </div>
 
       {isLoading && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Контент</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead>Платформы</TableHead>
-              <TableHead>Дата</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {Array.from({ length: 5 }, (_, i) => (
-              <PostSkeleton key={i} />
-            ))}
-          </TableBody>
-        </Table>
+        <div className="duration-200 animate-in fade-in">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Контент</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead>Платформы</TableHead>
+                <TableHead>Дата</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 5 }, (_, i) => (
+                <PostSkeleton key={i} />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       {!isLoading && posts.length === 0 && (
-        <div className="py-16 text-center">
+        <div className="py-16 text-center duration-300 animate-in fade-in">
           <FileText className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
           <p className="text-muted-foreground">Постов пока нет</p>
         </div>
       )}
 
       {!isLoading && posts.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Контент</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead>Платформы</TableHead>
-              <TableHead>Дата</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {posts.map((post) => {
-              const isExpanded = expandedId === post.id;
-              const platforms = post.platformResults ? Object.keys(post.platformResults) : [];
+        <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Контент</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead>Платформы</TableHead>
+                <TableHead>Дата</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {posts.map((post) => {
+                const isExpanded = expandedId === post.id;
+                const platforms = post.platformResults ? Object.keys(post.platformResults) : [];
 
-              return (
-                <Fragment key={post.id}>
-                  <TableRow
-                    className="cursor-pointer"
-                    onClick={() => setExpandedId(isExpanded ? null : post.id)}
-                  >
-                    <TableCell className="max-w-xs">
-                      <div className="flex items-center gap-2">
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        )}
-                        <span className="truncate text-sm">{post.content}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariants[post.status] ?? 'secondary'}>
-                        {statusLabels[post.status] ?? post.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {platforms.map((p) => (
-                          <Badge key={p} variant="outline" className="text-xs">
-                            {platformLabels[p] ?? p}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {format(new Date(post.publishedAt ?? post.createdAt), 'd MMM yyyy', {
-                        locale: ru,
-                      })}
-                    </TableCell>
-                  </TableRow>
-                  {isExpanded && <ExpandedRow post={post} />}
-                </Fragment>
-              );
-            })}
-          </TableBody>
-        </Table>
+                return (
+                  <Fragment key={post.id}>
+                    <TableRow
+                      className="cursor-pointer"
+                      onClick={() => setExpandedId(isExpanded ? null : post.id)}
+                    >
+                      <TableCell className="max-w-xs">
+                        <div className="flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
+                          <span className="truncate text-sm">{post.content}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariants[post.status] ?? 'secondary'}>
+                          {statusLabels[post.status] ?? post.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {platforms.map((p) => (
+                            <Badge key={p} variant="outline" className="text-xs">
+                              {platformLabels[p] ?? p}
+                            </Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {format(new Date(post.publishedAt ?? post.createdAt), 'd MMM yyyy', {
+                          locale: ru,
+                        })}
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && <ExpandedRow post={post} />}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </div>
   );

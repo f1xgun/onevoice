@@ -155,6 +155,42 @@ Agent: [After Task 2 completes]
 
 ---
 
+### 6.5. 🎨 ui-review (frontend tasks only)
+**Activates:** After code review, when the task modified files under `services/frontend/`
+**Purpose:** Visual UI/UX verification using Playwright MCP at three viewports
+**Rule:** Critical issues block progress (same as code review)
+
+**Trigger condition:** Task touched any file matching `services/frontend/**/*.{tsx,ts,css}`. If no frontend files changed, skip this step entirely.
+
+**Prerequisites:** Frontend dev server running at `http://localhost:3000`. Start with `cd services/frontend && pnpm dev` if not running.
+
+**IMPORTANT — Restart before review:** The dev server MUST be restarted before every UI review to guarantee the latest code changes are served. Next.js HMR can miss certain changes (layout shifts, new CSS classes, config updates). Always:
+1. Kill the running dev server (`pkill -f 'next dev'` or Ctrl-C the terminal)
+2. Restart it (`cd services/frontend && pnpm dev`)
+3. Wait for "Ready" message before proceeding
+
+**Usage:**
+```
+Agent: [After code review passes, frontend files were changed]
+  → Restart frontend dev server (kill + pnpm dev)
+  → Wait for "Ready" confirmation
+  → Dispatch ui-reviewer subagent (read .claude/agents/ui-reviewer.md)
+  → Subagent navigates to affected pages via Playwright MCP
+  → Screenshots at 3 viewports: desktop (1440x900), tablet (768x1024), mobile (375x812)
+  → Accessibility snapshot for each page
+  → Console error check
+  → Review returns:
+    - Critical issues (MUST fix — broken layout, unreadable text, overflow)
+    - Important issues (SHOULD fix — spacing inconsistency, poor responsive behavior)
+    - Minor issues (CAN defer — small alignment, polish)
+  → Fix Critical issues immediately
+  → Continue to next task
+```
+
+**Slash command:** `/ui-review` (can also pass specific routes: `/ui-review /integrations /business`)
+
+---
+
 ### 7. ✅ finishing-a-development-branch
 **Activates:** When all tasks complete
 **Purpose:** Verifies tests, presents options, cleans up worktree
@@ -191,6 +227,7 @@ Rough Idea
         ├─ [test-driven-development] (RED-GREEN-REFACTOR)
         ├─ Implement
         ├─ [requesting-code-review]
+        ├─ [ui-review] (if frontend files changed)
         ├─ Fix issues
         └─ Next task
     ↓
@@ -210,6 +247,7 @@ Rough Idea
 ### During Implementation:
 - ✅ Every task follows TDD (RED-GREEN-REFACTOR)
 - ✅ Code review after each task
+- ✅ UI review after each frontend task (Playwright MCP, 3 viewports)
 - ✅ Critical issues fixed immediately
 
 ### Before Merging:
@@ -231,6 +269,7 @@ Agent **automatically checks** for relevant skills before any task. Skills are i
 /subagent-driven-development
 /test-driven-development
 /requesting-code-review
+/ui-review
 /finishing-a-development-branch
 ```
 

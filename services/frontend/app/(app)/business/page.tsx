@@ -6,7 +6,26 @@ import { api } from '@/lib/api';
 import { ProfileForm } from '@/components/business/ProfileForm';
 import { ScheduleForm } from '@/components/business/ScheduleForm';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { Business, ScheduleDay } from '@/types/business';
+
+function BusinessSkeleton() {
+  return (
+    <div className="max-w-2xl space-y-8 p-8 duration-200 animate-in fade-in">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-96" />
+      </div>
+      <div className="space-y-4">
+        <Skeleton className="h-5 w-48" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-10 w-32" />
+      </div>
+    </div>
+  );
+}
 
 export default function BusinessPage() {
   const { data, isLoading, isError, error } = useQuery<Business>({
@@ -17,7 +36,7 @@ export default function BusinessPage() {
 
   const is404 = isError && isAxiosError(error) && error.response?.status === 404;
 
-  if (isLoading) return <div className="p-8 text-gray-400">Загрузка...</div>;
+  if (isLoading) return <BusinessSkeleton />;
   if (isError && !is404) return <div className="p-8 text-red-500">Ошибка загрузки данных</div>;
 
   const isCreateMode = is404;
@@ -27,7 +46,7 @@ export default function BusinessPage() {
     : 'Эта информация используется ИИ при общении с клиентами';
 
   return (
-    <div className="max-w-2xl space-y-8 p-8">
+    <div className="max-w-2xl space-y-8 p-8 duration-300 animate-in fade-in slide-in-from-bottom-2">
       <div>
         <h1 className="mb-1 text-2xl font-bold">{title}</h1>
         <p className="text-sm text-gray-500">{subtitle}</p>

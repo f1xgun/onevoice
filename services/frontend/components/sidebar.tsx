@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   MessageCircle,
   Plug,
@@ -45,6 +45,7 @@ const platformLabels: Record<string, string> = {
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
 
@@ -106,6 +107,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         onClick={() => {
           onNavigate?.();
           logout();
+          router.push('/login');
         }}
         className="flex items-center gap-3 border-t border-gray-700 p-4 text-sm text-gray-400 hover:bg-gray-800 hover:text-white"
       >
