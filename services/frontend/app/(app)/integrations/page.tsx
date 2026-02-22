@@ -76,10 +76,10 @@ export default function IntegrationsPage() {
   };
 
   return (
-    <div className="max-w-3xl p-8">
+    <div className="max-w-5xl p-8">
       <h1 className="mb-6 text-2xl font-bold">Интеграции</h1>
 
-      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="mb-8 grid grid-cols-1 items-start gap-4 md:grid-cols-2">
         {PLATFORMS.map((p) => {
           const platformIntegrations = getIntegrationsForPlatform(p.id);
           return (
@@ -96,7 +96,7 @@ export default function IntegrationsPage() {
       </div>
 
       <h2 className="mb-4 text-lg font-medium text-gray-400">Скоро</h2>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
         {DISABLED_PLATFORMS.map((p) => (
           <PlatformCard
             key={p.id}

@@ -13,6 +13,7 @@ Go 1.24 + Next.js 14 + PostgreSQL + NATS + Playwright RPA.
 - **Anti-patterns:** [docs/anti-patterns.md](docs/anti-patterns.md)
 - **Coding Rules (detailed):** [CODING_RULES.md](CODING_RULES.md)
 - **Dev Workflow:** [WORKFLOW.md](WORKFLOW.md)
+- **UI Reviewer Agent:** [.claude/agents/ui-reviewer.md](.claude/agents/ui-reviewer.md)
 
 ## Module Map
 
