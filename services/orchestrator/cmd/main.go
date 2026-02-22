@@ -104,7 +104,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			tools: []llm.ToolDefinition{
 				{Type: "function", Function: llm.FunctionDefinition{
 					Name:        "telegram__send_channel_post",
-					Description: "Публикует сообщение в Telegram-канал",
+					Description: "Публикует текстовое сообщение в Telegram-канал (без фото). Если нужно опубликовать пост с фото — используй telegram__send_channel_photo вместо этого.",
 					Parameters: map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
@@ -112,6 +112,19 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 							"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
 						},
 						"required": []string{"text"},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "telegram__send_channel_photo",
+					Description: "Публикует пост с фото и текстовой подписью в Telegram-канал. Используй эту функцию вместо send_channel_post когда нужно опубликовать пост с изображением.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"photo_url":  map[string]interface{}{"type": "string", "description": "Публичный URL изображения"},
+							"caption":    map[string]interface{}{"type": "string", "description": "Подпись к фото"},
+							"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
+						},
+						"required": []string{"photo_url"},
 					},
 				}},
 				{Type: "function", Function: llm.FunctionDefinition{
@@ -222,8 +235,8 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 
 	conn := natsexec.NewNATSConn(nc)
 	for _, a := range agents {
-		exec := natsexec.New(a.id, conn)
 		for _, def := range a.tools {
+			exec := natsexec.New(a.id, def.Function.Name, conn)
 			reg.Register(def, exec)
 		}
 	}

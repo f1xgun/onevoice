@@ -19,13 +19,14 @@ type Requester interface {
 // NATSExecutor implements tools.Executor by sending tool requests
 // to a platform agent via NATS request-reply.
 type NATSExecutor struct {
-	agentID a2a.AgentID
-	req     Requester
+	agentID  a2a.AgentID
+	toolName string
+	req      Requester
 }
 
-// New creates a NATSExecutor for the given agent.
-func New(agentID a2a.AgentID, requester Requester) *NATSExecutor {
-	return &NATSExecutor{agentID: agentID, req: requester}
+// New creates a NATSExecutor for the given agent and specific tool name.
+func New(agentID a2a.AgentID, toolName string, requester Requester) *NATSExecutor {
+	return &NATSExecutor{agentID: agentID, toolName: toolName, req: requester}
 }
 
 // Execute sends a ToolRequest to the agent and returns its result.
@@ -33,7 +34,7 @@ func New(agentID a2a.AgentID, requester Requester) *NATSExecutor {
 func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	req := a2a.ToolRequest{
 		TaskID:     uuid.New().String(),
-		Tool:       e.agentID,
+		Tool:       a2a.AgentID(e.toolName),
 		Args:       args,
 		BusinessID: a2a.BusinessIDFromContext(ctx),
 	}
