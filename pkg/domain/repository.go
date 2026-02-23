@@ -88,10 +88,12 @@ type ReviewRepository interface {
 }
 
 type PostRepository interface {
+	Create(ctx context.Context, post *Post) error
 	ListByBusinessID(ctx context.Context, businessID string, filter PostFilter) ([]Post, int, error)
 	GetByID(ctx context.Context, id string) (*Post, error)
 }
 
 type AgentTaskRepository interface {
+	Create(ctx context.Context, task *AgentTask) error
 	ListByBusinessID(ctx context.Context, businessID string, filter TaskFilter) ([]AgentTask, int, error)
 }
