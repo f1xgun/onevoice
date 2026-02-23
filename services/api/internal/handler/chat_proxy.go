@@ -344,9 +344,9 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			}
 
 			post := &domain.Post{
-				BusinessID:  business.ID.String(),
-				Content:     content,
-				MediaURLs:   mediaURLs,
+				BusinessID: business.ID.String(),
+				Content:    content,
+				MediaURLs:  mediaURLs,
 				PlatformResults: map[string]domain.PlatformResult{
 					info.platform: platformResult,
 				},
