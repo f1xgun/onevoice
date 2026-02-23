@@ -37,8 +37,8 @@ func (r *businessRepository) Create(ctx context.Context, business *domain.Busine
 
 	sql, args, err := r.sb.
 		Insert("businesses").
-		Columns("id", "user_id", "name", "category", "address", "phone", "description", "logo_url", "settings", "created_at", "updated_at").
-		Values(business.ID, business.UserID, business.Name, business.Category, business.Address, business.Phone, business.Description, business.LogoURL, business.Settings, business.CreatedAt, business.UpdatedAt).
+		Columns("id", "user_id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
+		Values(business.ID, business.UserID, business.Name, business.Category, business.Address, business.Phone, business.Website, business.Description, business.LogoURL, business.Settings, business.CreatedAt, business.UpdatedAt).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert: %w", err)
@@ -57,7 +57,7 @@ func (r *businessRepository) Create(ctx context.Context, business *domain.Busine
 
 func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
 	sql, args, err := r.sb.
-		Select("id", "user_id", "name", "category", "address", "phone", "description", "logo_url", "settings", "created_at", "updated_at").
+		Select("id", "user_id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
 		From("businesses").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -73,6 +73,7 @@ func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 		&business.Category,
 		&business.Address,
 		&business.Phone,
+		&business.Website,
 		&business.Description,
 		&business.LogoURL,
 		&business.Settings,
@@ -91,7 +92,7 @@ func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 
 func (r *businessRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
 	sql, args, err := r.sb.
-		Select("id", "user_id", "name", "category", "address", "phone", "description", "logo_url", "settings", "created_at", "updated_at").
+		Select("id", "user_id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
 		From("businesses").
 		Where(squirrel.Eq{"user_id": userID}).
 		ToSql()
@@ -107,6 +108,7 @@ func (r *businessRepository) GetByUserID(ctx context.Context, userID uuid.UUID) 
 		&business.Category,
 		&business.Address,
 		&business.Phone,
+		&business.Website,
 		&business.Description,
 		&business.LogoURL,
 		&business.Settings,
@@ -132,6 +134,7 @@ func (r *businessRepository) Update(ctx context.Context, business *domain.Busine
 		Set("category", business.Category).
 		Set("address", business.Address).
 		Set("phone", business.Phone).
+		Set("website", business.Website).
 		Set("description", business.Description).
 		Set("logo_url", business.LogoURL).
 		Set("settings", business.Settings).
