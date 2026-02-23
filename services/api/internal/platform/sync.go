@@ -55,10 +55,9 @@ func (s *Syncer) SyncDescription(businessID uuid.UUID, description string) {
 		if integ.Status != "active" {
 			continue
 		}
-		switch integ.Platform {
-		case "telegram":
-			s.syncTelegram(ctx, businessID, integ.ExternalID, description)
 		// VK: external_id is "default" (no real group_id stored at connect time), skip for now
+		if integ.Platform == "telegram" {
+			s.syncTelegram(ctx, businessID, integ.ExternalID, description)
 		}
 	}
 }
@@ -77,7 +76,7 @@ func (s *Syncer) syncTelegram(ctx context.Context, businessID uuid.UUID, channel
 		url.QueryEscape(description),
 	)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
 		slog.Error("platform sync: telegram setChatDescription build request failed", "channel_id", channelID, "error", err)
 		return

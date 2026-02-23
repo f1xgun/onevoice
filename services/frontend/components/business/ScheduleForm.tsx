@@ -25,20 +25,24 @@ function TimeSelect({ value, onChange }: { value: string; onChange: (v: string) 
       <select
         value={hh}
         onChange={(e) => onChange(`${e.target.value}:${mm}`)}
-        className="appearance-none bg-transparent px-2 py-1.5 outline-none cursor-pointer"
+        className="cursor-pointer appearance-none bg-transparent px-2 py-1.5 outline-none"
       >
         {HOURS.map((h) => (
-          <option key={h} value={h}>{h}</option>
+          <option key={h} value={h}>
+            {h}
+          </option>
         ))}
       </select>
-      <span className="text-muted-foreground select-none">:</span>
+      <span className="select-none text-muted-foreground">:</span>
       <select
         value={mm}
         onChange={(e) => onChange(`${hh}:${e.target.value}`)}
-        className="appearance-none bg-transparent px-2 py-1.5 outline-none cursor-pointer"
+        className="cursor-pointer appearance-none bg-transparent px-2 py-1.5 outline-none"
       >
         {MINUTES.map((m) => (
-          <option key={m} value={m}>{m}</option>
+          <option key={m} value={m}>
+            {m}
+          </option>
         ))}
       </select>
     </div>
@@ -127,7 +131,10 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
       {/* Weekly schedule */}
       <div className="space-y-3">
         {schedule.map((day, index) => (
-          <div key={day.day} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border p-3">
+          <div
+            key={day.day}
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border p-3"
+          >
             <span className="w-28 text-sm font-medium">{DAY_LABELS[day.day]}</span>
 
             <div className="flex items-center gap-2">
@@ -141,7 +148,7 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
             </div>
 
             {!day.closed && (
-              <div className="flex items-center gap-2 sm:ml-0 ml-auto w-full sm:w-auto">
+              <div className="ml-auto flex w-full items-center gap-2 sm:ml-0 sm:w-auto">
                 <TimeSelect value={day.open} onChange={(v) => updateDay(index, { open: v })} />
                 <span className="text-muted-foreground">&mdash;</span>
                 <TimeSelect value={day.close} onChange={(v) => updateDay(index, { close: v })} />
@@ -182,7 +189,10 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
         )}
 
         {specialDates.map((sd, index) => (
-          <div key={sd.date} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border p-3">
+          <div
+            key={sd.date}
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border p-3"
+          >
             <span className="w-28 text-sm font-medium">
               {format(parseISO(sd.date), 'd MMMM', { locale: ru })}
             </span>
@@ -213,7 +223,7 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
             </Button>
 
             {!sd.closed && (
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex w-full items-center gap-2 sm:w-auto">
                 <TimeSelect
                   value={sd.open || '00:00'}
                   onChange={(v) => updateSpecialDate(index, { open: v })}
