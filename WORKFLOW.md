@@ -155,9 +155,9 @@ Agent: [After Task 2 completes]
 
 ---
 
-### 6.5. 🎨 ui-review (frontend tasks only)
+### 6.5. 🎨 ui-review + 🧪 playwright-smoke (frontend tasks only)
 **Activates:** After code review, when the task modified files under `services/frontend/`
-**Purpose:** Visual UI/UX verification using Playwright MCP at three viewports
+**Purpose:** Visual UI/UX verification using Playwright MCP at three viewports + functional smoke test of the changed feature
 **Rule:** Critical issues block progress (same as code review)
 
 **Trigger condition:** Task touched any file matching `services/frontend/**/*.{tsx,ts,css}`. If no frontend files changed, skip this step entirely.
@@ -184,10 +184,35 @@ Agent: [After code review passes, frontend files were changed]
     - Important issues (SHOULD fix — spacing inconsistency, poor responsive behavior)
     - Minor issues (CAN defer — small alignment, polish)
   → Fix Critical issues immediately
+  → THEN run Playwright smoke test for the changed feature (see below)
   → Continue to next task
 ```
 
 **Slash command:** `/ui-review` (can also pass specific routes: `/ui-review /integrations /business`)
+
+#### Playwright Smoke Test (mandatory after every change)
+After the visual UI review, **always** run a functional smoke test using Playwright MCP directly in the main session:
+
+1. Navigate to the affected page(s)
+2. Exercise the primary user flow (e.g. for posts: load page → verify rows render → click row to expand → test filter tabs)
+3. Check network requests — confirm API calls return 200 and correct data shape
+4. Verify the actual data appears in the UI (not just that the page loads)
+
+**Common pitfalls to catch:**
+- API response shape mismatch (e.g. `r.data` vs `r.data.posts` — wrap in correct field)
+- Empty state vs loading state vs data state rendering logic
+- Filter/tab interactions triggering correct query params
+- Expanded/collapsed row state toggling
+
+```
+Agent: [After ui-reviewer completes]
+  → Use Playwright MCP tools directly (browser_navigate, browser_snapshot, browser_click)
+  → Log in if needed (use test credentials from test/integration/auth_test.go)
+  → Seed test data via API if the feature requires existing records
+  → Walk through the key interactions for the changed feature
+  → Confirm data renders correctly, no console errors
+  → Report pass/fail — fix any functional issues before merging
+```
 
 ---
 
@@ -227,7 +252,7 @@ Rough Idea
         ├─ [test-driven-development] (RED-GREEN-REFACTOR)
         ├─ Implement
         ├─ [requesting-code-review]
-        ├─ [ui-review] (if frontend files changed)
+        ├─ [ui-review + playwright-smoke] (if frontend files changed)
         ├─ Fix issues
         └─ Next task
     ↓
@@ -248,6 +273,7 @@ Rough Idea
 - ✅ Every task follows TDD (RED-GREEN-REFACTOR)
 - ✅ Code review after each task
 - ✅ UI review after each frontend task (Playwright MCP, 3 viewports)
+- ✅ Playwright smoke test after each frontend task (functional flow verification)
 - ✅ Critical issues fixed immediately
 
 ### Before Merging:
