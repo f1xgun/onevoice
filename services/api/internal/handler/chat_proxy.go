@@ -143,6 +143,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		"business_category":    business.Category,
 		"business_address":     business.Address,
 		"business_phone":       business.Phone,
+		"business_website":     business.Website,
 		"business_description": business.Description,
 		"active_integrations":  activeIntegrations,
 		"history":              history,
