@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,6 +9,15 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// photoHTTPClient is used for downloading images from user-provided URLs.
+// TLS verification is skipped because external image URLs may use self-signed
+// or corp-CA certificates not present in the container trust store.
+var photoHTTPClient = &http.Client{ //nolint:gosec // G402: intentional for photo downloads
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402
+	},
+}
 
 // Bot wraps the Telegram Bot API client.
 type Bot struct {
@@ -33,7 +43,7 @@ func (b *Bot) SendMessage(chatID int64, text string) error {
 // SendPhoto downloads the image from photoURL and sends it to Telegram as file
 // bytes, avoiding Telegram-server-side URL fetching failures.
 func (b *Bot) SendPhoto(chatID int64, photoURL, caption string) error {
-	resp, err := http.Get(photoURL) //nolint:gosec // G107: URL comes from LLM tool args, intentional
+	resp, err := photoHTTPClient.Get(photoURL) //nolint:gosec // G107: URL comes from LLM tool args, intentional
 	if err != nil {
 		return fmt.Errorf("download photo: %w", err)
 	}
