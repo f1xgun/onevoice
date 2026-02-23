@@ -33,7 +33,7 @@ func (b *Bot) SendMessage(chatID int64, text string) error {
 // SendPhoto downloads the image from photoURL and sends it to Telegram as file
 // bytes, avoiding Telegram-server-side URL fetching failures.
 func (b *Bot) SendPhoto(chatID int64, photoURL, caption string) error {
-	resp, err := http.Get(photoURL) //nolint:noctx
+	resp, err := http.Get(photoURL) //nolint:gosec // G107: URL comes from LLM tool args, intentional
 	if err != nil {
 		return fmt.Errorf("download photo: %w", err)
 	}
