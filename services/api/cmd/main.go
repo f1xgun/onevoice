@@ -113,7 +113,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		TelegramBotToken:   cfg.TelegramBotToken,
 	}, nil)
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
-	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, cfg.OrchestratorURL, nil)
+	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
 
 	handlers := &router.Handlers{
 		Auth:          handler.NewAuthHandler(userService),

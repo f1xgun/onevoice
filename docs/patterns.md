@@ -81,6 +81,46 @@ tools := registry.Available(activeIntegrations)
 // e.g., "telegram__send_channel_post" → NATS subject "tasks.telegram"
 ```
 
+`NATSExecutor.Execute` sends `a2a.ToolRequest{Tool: toolName, BusinessID: ..., Args: ...}` and waits for `a2a.ToolResponse`. The `toolName` field is a plain `string` — no type conversion needed.
+
+### Integration Token Lookup with Fallback
+
+`GetDecryptedToken(ctx, businessID, platform, externalID)` in `services/api/internal/service/integration.go`:
+1. If `externalID` non-empty → try exact match via `GetByBusinessPlatformExternal`
+2. If not found OR `externalID` empty → fall back to first active integration for that platform
+3. Returns `TokenResponse{AccessToken, ExternalID}` — `ExternalID` is the resolved integration's external_id
+
+This means LLM hallucinating a business name as a channel_id won't break tool execution.
+
+### Agent Channel ID Resolution
+
+In Telegram agent handlers (`handler.go`), after `getSender` returns the resolved integration `ExternalID`:
+
+```go
+chatID, parseErr := strconv.ParseInt(channelIDStr, 10, 64)
+if parseErr != nil {
+    // LLM passed a non-numeric id — use the integration's own numeric id
+    chatID, err = strconv.ParseInt(resolvedID, 10, 64)
+    if err != nil {
+        return nil, fmt.Errorf("telegram: invalid channel_id %q: %w", channelIDStr, parseErr)
+    }
+}
+```
+
+### Tool Call Persistence in Chat Proxy
+
+`chat_proxy.go` accumulates events during SSE streaming and persists to MongoDB:
+
+```go
+case "tool_call":
+    tc := domain.ToolCall{ID: fmt.Sprintf("tc-%d", len(toolCalls)), Name: ev.ToolName, Arguments: ev.ToolArgs}
+    toolCalls = append(toolCalls, tc)
+case "tool_result":
+    toolResults = append(toolResults, domain.ToolResult{ToolCallID: tcID, Content: content, IsError: ev.ToolError != ""})
+```
+
+Saved on the Message document so `GET /conversations/:id/messages` can return full tool call history.
+
 ### SSE Streaming
 
 ```go

@@ -125,7 +125,7 @@ export default function TasksPage() {
       const params = new URLSearchParams();
       if (status !== 'all') params.set('status', status);
       if (platform !== 'all') params.set('platform', platform);
-      return api.get(`/tasks?${params}`).then((r) => r.data as AgentTask[]);
+      return api.get(`/tasks?${params}`).then((r) => (r.data.tasks ?? []) as AgentTask[]);
     },
   });
 

@@ -82,17 +82,27 @@ It uses a hybrid integration model: API-based agents for platforms with public A
 
 ```
 1. User sends message via frontend
-2. Frontend POSTs to /chat/{id} on orchestrator
+2. API proxy receives POST /api/v1/chat/{id}, forwards to orchestrator
 3. Orchestrator builds prompt (system + history + user message)
 4. Orchestrator sends to LLM via router (OpenRouter/OpenAI/Anthropic)
 5. LLM responds with text or tool_call
 6. If tool_call:
-   a. Orchestrator resolves tool → agent mapping
-   b. Sends NATS request to tasks.{agentID}
-   c. Agent executes tool, returns result
-   d. Result fed back to LLM (loop continues)
-7. Final text streamed to client via SSE
+   a. Orchestrator emits SSE event: {"type":"tool_call","tool_name":"...","tool_args":{}}
+   b. Resolves tool → agent mapping (platform prefix → NATS subject)
+   c. Sends NATS request to tasks.{agentID}
+   d. Agent fetches integration token from API internal endpoint
+   e. Agent executes tool (Telegram Bot API / VK API / Playwright RPA)
+   f. Orchestrator emits SSE event: {"type":"tool_result","tool_name":"...","tool_result":{}}
+   g. Result fed back to LLM (loop continues, max 10 iterations)
+7. Final text streamed via SSE: {"type":"text","content":"..."}
+8. API proxy accumulates tool_call/tool_result events, persists to MongoDB Message
 ```
+
+## Conversation History
+
+- `GET /api/v1/conversations` — list conversations
+- `GET /api/v1/conversations/:id/messages` — full message history with toolCalls + toolResults
+- Frontend `useChat.ts` loads history on mount; reconstructs tool call panel state from API response
 
 ## LLM Provider Stack
 

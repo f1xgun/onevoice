@@ -18,22 +18,40 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
+// postingToolInfo describes how to extract post data from a platform tool call.
+type postingToolInfo struct {
+	platform     string
+	contentField string
+	mediaField   string
+}
+
+// postingTools maps tool names that publish content to their extraction info.
+var postingTools = map[string]postingToolInfo{
+	"telegram__send_channel_post":  {platform: "telegram", contentField: "text"},
+	"telegram__send_channel_photo": {platform: "telegram", contentField: "caption", mediaField: "photo_url"},
+	"vk__publish_post":             {platform: "vk", contentField: "text"},
+}
+
 // ChatProxyHandler enriches chat requests with business context and proxies
 // them to the orchestrator service.
 type ChatProxyHandler struct {
 	businessService    BusinessService
 	integrationService IntegrationService
 	messageRepo        domain.MessageRepository
+	postRepo           domain.PostRepository
+	agentTaskRepo      domain.AgentTaskRepository
 	orchestratorURL    string
 	httpClient         *http.Client
 }
 
 // NewChatProxyHandler creates a new ChatProxyHandler. If httpClient is nil,
-// http.DefaultClient is used.
+// http.DefaultClient is used. postRepo and agentTaskRepo may be nil to skip persistence.
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
 	messageRepo domain.MessageRepository,
+	postRepo domain.PostRepository,
+	agentTaskRepo domain.AgentTaskRepository,
 	orchestratorURL string,
 	httpClient *http.Client,
 ) *ChatProxyHandler {
@@ -44,6 +62,8 @@ func NewChatProxyHandler(
 		businessService:    businessService,
 		integrationService: integrationService,
 		messageRepo:        messageRepo,
+		postRepo:           postRepo,
+		agentTaskRepo:      agentTaskRepo,
 		orchestratorURL:    orchestratorURL,
 		httpClient:         httpClient,
 	}
@@ -226,6 +246,116 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := h.messageRepo.Create(saveCtx, assistantMsg); err != nil {
 			slog.Error("failed to save assistant message", "error", err)
+		}
+	}
+
+	// Create AgentTask records for every platform tool call (name contains "__")
+	if h.agentTaskRepo != nil && len(toolResults) > 0 {
+		toolCallByID := make(map[string]domain.ToolCall, len(toolCalls))
+		for _, tc := range toolCalls {
+			toolCallByID[tc.ID] = tc
+		}
+
+		taskCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		now := time.Now()
+		for _, tr := range toolResults {
+			tc, ok := toolCallByID[tr.ToolCallID]
+			if !ok {
+				continue
+			}
+			sep := strings.Index(tc.Name, "__")
+			if sep == -1 {
+				continue // internal tool, skip
+			}
+			platform := tc.Name[:sep]
+			toolType := tc.Name[sep+2:]
+
+			status := "done"
+			var errMsg string
+			var output interface{}
+			if tr.IsError {
+				status = "error"
+				if msg, ok := tr.Content["error"].(string); ok {
+					errMsg = msg
+				}
+			} else {
+				output = tr.Content
+			}
+
+			agentTask := &domain.AgentTask{
+				BusinessID:  business.ID.String(),
+				Type:        toolType,
+				Platform:    platform,
+				Status:      status,
+				Input:       tc.Arguments,
+				Output:      output,
+				Error:       errMsg,
+				StartedAt:   &now,
+				CompletedAt: &now,
+			}
+			if err := h.agentTaskRepo.Create(taskCtx, agentTask); err != nil {
+				slog.Error("failed to create agent task record", "tool", tc.Name, "error", err)
+			}
+		}
+	}
+
+	// Create Post records for each successful posting tool call
+	if h.postRepo != nil && len(toolResults) > 0 {
+		toolCallByID := make(map[string]domain.ToolCall, len(toolCalls))
+		for _, tc := range toolCalls {
+			toolCallByID[tc.ID] = tc
+		}
+
+		postCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		for _, tr := range toolResults {
+			tc, ok := toolCallByID[tr.ToolCallID]
+			if !ok {
+				continue
+			}
+			info, isPost := postingTools[tc.Name]
+			if !isPost {
+				continue
+			}
+
+			content, _ := tc.Arguments[info.contentField].(string)
+			var mediaURLs []string
+			if info.mediaField != "" {
+				if u, ok := tc.Arguments[info.mediaField].(string); ok && u != "" {
+					mediaURLs = []string{u}
+				}
+			}
+
+			status := "published"
+			var publishedAt *time.Time
+			platformResult := domain.PlatformResult{Status: status}
+			if tr.IsError {
+				status = "error"
+				platformResult.Status = "error"
+				if errMsg, ok := tr.Content["error"].(string); ok {
+					platformResult.Error = errMsg
+				}
+			} else {
+				now := time.Now()
+				publishedAt = &now
+			}
+
+			post := &domain.Post{
+				BusinessID: business.ID.String(),
+				Content:    content,
+				MediaURLs:  mediaURLs,
+				PlatformResults: map[string]domain.PlatformResult{
+					info.platform: platformResult,
+				},
+				Status:      status,
+				PublishedAt: publishedAt,
+			}
+			if err := h.postRepo.Create(postCtx, post); err != nil {
+				slog.Error("failed to create post record", "tool", tc.Name, "error", err)
+			}
 		}
 	}
 }

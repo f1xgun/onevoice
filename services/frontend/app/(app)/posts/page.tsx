@@ -134,7 +134,7 @@ export default function PostsPage() {
       const params = new URLSearchParams();
       if (status !== 'all') params.set('status', status);
       if (platform !== 'all') params.set('platform', platform);
-      return api.get(`/posts?${params}`).then((r) => r.data as Post[]);
+      return api.get(`/posts?${params}`).then((r) => (r.data.posts ?? []) as Post[]);
     },
   });
 
