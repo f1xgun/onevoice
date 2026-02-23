@@ -44,6 +44,7 @@ type chatRequest struct {
 	BusinessCategory   string         `json:"business_category"`
 	BusinessAddress    string         `json:"business_address"`
 	BusinessPhone      string         `json:"business_phone"`
+	BusinessWebsite    string         `json:"business_website"`
 	BusinessDesc       string         `json:"business_description"`
 	ActiveIntegrations []string       `json:"active_integrations"`
 	History            []historyEntry `json:"history"`
@@ -91,6 +92,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Category:           req.BusinessCategory,
 		Address:            req.BusinessAddress,
 		Phone:              req.BusinessPhone,
+		Website:            req.BusinessWebsite,
 		Description:        req.BusinessDesc,
 		ActiveIntegrations: req.ActiveIntegrations,
 		Now:                time.Now(),

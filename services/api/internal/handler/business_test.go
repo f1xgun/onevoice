@@ -146,7 +146,7 @@ func TestGetBusiness(t *testing.T) {
 			mockService := new(MockBusinessService)
 			tt.mockSetup(mockService)
 
-			handler := NewBusinessHandler(mockService)
+			handler := NewBusinessHandler(mockService, nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/business", http.NoBody)
 			req = tt.setupContext(req)
@@ -345,7 +345,7 @@ func TestUpdateBusiness(t *testing.T) {
 			mockService := new(MockBusinessService)
 			tt.mockSetup(mockService)
 
-			handler := NewBusinessHandler(mockService)
+			handler := NewBusinessHandler(mockService, nil)
 
 			req := httptest.NewRequest(http.MethodPut, "/api/v1/business", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")

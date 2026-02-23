@@ -14,6 +14,7 @@ type BusinessContext struct {
 	Category           string
 	Address            string
 	Phone              string
+	Website            string
 	Description        string
 	Tone               string   // e.g., "дружелюбный", "профессиональный"
 	ActiveIntegrations []string // e.g., ["telegram", "vk", "google_business"]
@@ -44,6 +45,9 @@ func buildSystemContent(ctx BusinessContext) string {
 	}
 	if ctx.Phone != "" {
 		sb.WriteString(fmt.Sprintf("Телефон: %s\n", ctx.Phone))
+	}
+	if ctx.Website != "" {
+		sb.WriteString(fmt.Sprintf("Сайт: %s\n", ctx.Website))
 	}
 	if ctx.Description != "" {
 		sb.WriteString(fmt.Sprintf("Описание: %s\n", ctx.Description))

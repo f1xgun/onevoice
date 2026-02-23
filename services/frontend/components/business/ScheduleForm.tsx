@@ -6,7 +6,6 @@ import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { CalendarIcon, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
@@ -15,6 +14,40 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import type { ScheduleDay, SpecialDate } from '@/types/business';
+
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES = ['00', '15', '30', '45'];
+
+function TimeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [hh, mm] = value.split(':');
+  return (
+    <div className="flex items-center rounded-md border border-input bg-background text-sm">
+      <select
+        value={hh}
+        onChange={(e) => onChange(`${e.target.value}:${mm}`)}
+        className="cursor-pointer appearance-none bg-transparent px-2 py-1.5 outline-none"
+      >
+        {HOURS.map((h) => (
+          <option key={h} value={h}>
+            {h}
+          </option>
+        ))}
+      </select>
+      <span className="select-none text-muted-foreground">:</span>
+      <select
+        value={mm}
+        onChange={(e) => onChange(`${hh}:${e.target.value}`)}
+        className="cursor-pointer appearance-none bg-transparent px-2 py-1.5 outline-none"
+      >
+        {MINUTES.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 const DAY_LABELS: Record<ScheduleDay['day'], string> = {
   mon: 'Понедельник',
@@ -98,7 +131,10 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
       {/* Weekly schedule */}
       <div className="space-y-3">
         {schedule.map((day, index) => (
-          <div key={day.day} className="flex items-center gap-4 rounded-lg border p-3">
+          <div
+            key={day.day}
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border p-3"
+          >
             <span className="w-28 text-sm font-medium">{DAY_LABELS[day.day]}</span>
 
             <div className="flex items-center gap-2">
@@ -112,20 +148,10 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
             </div>
 
             {!day.closed && (
-              <div className="flex items-center gap-2">
-                <Input
-                  type="time"
-                  value={day.open}
-                  onChange={(e) => updateDay(index, { open: e.target.value })}
-                  className="w-28"
-                />
+              <div className="ml-auto flex w-full items-center gap-2 sm:ml-0 sm:w-auto">
+                <TimeSelect value={day.open} onChange={(v) => updateDay(index, { open: v })} />
                 <span className="text-muted-foreground">&mdash;</span>
-                <Input
-                  type="time"
-                  value={day.close}
-                  onChange={(e) => updateDay(index, { close: e.target.value })}
-                  className="w-28"
-                />
+                <TimeSelect value={day.close} onChange={(v) => updateDay(index, { close: v })} />
               </div>
             )}
           </div>
@@ -163,7 +189,10 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
         )}
 
         {specialDates.map((sd, index) => (
-          <div key={sd.date} className="flex items-center gap-4 rounded-lg border p-3">
+          <div
+            key={sd.date}
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border p-3"
+          >
             <span className="w-28 text-sm font-medium">
               {format(parseISO(sd.date), 'd MMMM', { locale: ru })}
             </span>
@@ -184,24 +213,6 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
               </Label>
             </div>
 
-            {!sd.closed && (
-              <div className="flex items-center gap-2">
-                <Input
-                  type="time"
-                  value={sd.open || ''}
-                  onChange={(e) => updateSpecialDate(index, { open: e.target.value })}
-                  className="w-28"
-                />
-                <span className="text-muted-foreground">&mdash;</span>
-                <Input
-                  type="time"
-                  value={sd.close || ''}
-                  onChange={(e) => updateSpecialDate(index, { close: e.target.value })}
-                  className="w-28"
-                />
-              </div>
-            )}
-
             <Button
               variant="ghost"
               size="icon"
@@ -210,6 +221,20 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
             >
               <X className="h-4 w-4" />
             </Button>
+
+            {!sd.closed && (
+              <div className="flex w-full items-center gap-2 sm:w-auto">
+                <TimeSelect
+                  value={sd.open || '00:00'}
+                  onChange={(v) => updateSpecialDate(index, { open: v })}
+                />
+                <span className="text-muted-foreground">&mdash;</span>
+                <TimeSelect
+                  value={sd.close || '00:00'}
+                  onChange={(v) => updateSpecialDate(index, { close: v })}
+                />
+              </div>
+            )}
           </div>
         ))}
       </div>
