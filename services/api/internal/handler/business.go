@@ -23,9 +23,15 @@ type BusinessService interface {
 	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
 }
 
+// BusinessSyncer syncs updated business data to connected platforms.
+type BusinessSyncer interface {
+	SyncDescription(businessID uuid.UUID, description string)
+}
+
 // BusinessHandler handles business profile endpoints
 type BusinessHandler struct {
 	businessService BusinessService
+	syncer          BusinessSyncer // optional; may be nil
 	validate        *validator.Validate
 }
 
@@ -35,17 +41,19 @@ type UpdateBusinessRequest struct {
 	Category    string `json:"category"`
 	Address     string `json:"address"`
 	Phone       string `json:"phone"`
+	Website     string `json:"website"`
 	Description string `json:"description"`
-	LogoURL     string `json:"logoUrl"`
 }
 
-// NewBusinessHandler creates a new business handler instance
-func NewBusinessHandler(businessService BusinessService) *BusinessHandler {
+// NewBusinessHandler creates a new business handler instance.
+// syncer may be nil; if provided, it is called asynchronously after each successful update.
+func NewBusinessHandler(businessService BusinessService, syncer BusinessSyncer) *BusinessHandler {
 	if businessService == nil {
 		panic("businessService cannot be nil")
 	}
 	return &BusinessHandler{
 		businessService: businessService,
+		syncer:          syncer,
 		validate:        validate,
 	}
 }
@@ -115,8 +123,8 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 			Category:    req.Category,
 			Address:     req.Address,
 			Phone:       req.Phone,
+			Website:     req.Website,
 			Description: req.Description,
-			LogoURL:     req.LogoURL,
 			Settings:    map[string]interface{}{}, // Initialize empty settings
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
@@ -139,8 +147,8 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 	business.Category = req.Category
 	business.Address = req.Address
 	business.Phone = req.Phone
+	business.Website = req.Website
 	business.Description = req.Description
-	business.LogoURL = req.LogoURL
 	business.UpdatedAt = time.Now()
 
 	// Update business
@@ -149,6 +157,11 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 		slog.Error("failed to update business", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
+	}
+
+	// Sync description to connected platforms asynchronously
+	if h.syncer != nil {
+		go h.syncer.SyncDescription(updatedBusiness.ID, updatedBusiness.Description)
 	}
 
 	// Return updated business

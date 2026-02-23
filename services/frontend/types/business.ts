@@ -19,7 +19,7 @@ export interface Business {
   phone?: string;
   website?: string;
   description?: string;
-  logo_url?: string;
+  logoUrl?: string;
   address?: string;
   settings?: Record<string, unknown>;
   schedule?: ScheduleDay[];

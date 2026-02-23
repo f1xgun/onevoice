@@ -10,15 +10,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/f1xgun/onevoice/pkg/crypto"
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
+	"github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -102,6 +105,12 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	postService := service.NewPostService(postRepo, businessService)
 	agentTaskService := service.NewAgentTaskService(agentTaskRepo, businessService)
 
+	// Platform syncer: pushes business description updates to connected platforms
+	platformSyncer := platform.NewSyncer(
+		&integrationSyncAdapter{svc: integrationService},
+		nil,
+	)
+
 	// Initialize handlers
 	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
 		VKClientID:         cfg.VKClientID,
@@ -117,7 +126,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	handlers := &router.Handlers{
 		Auth:          handler.NewAuthHandler(userService),
-		Business:      handler.NewBusinessHandler(businessService),
+		Business:      handler.NewBusinessHandler(businessService, platformSyncer),
 		Integration:   handler.NewIntegrationHandler(integrationService, businessService),
 		Conversation:  handler.NewConversationHandler(conversationRepo, messageRepo),
 		OAuth:         oauthHandler,
@@ -188,4 +197,21 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	log.Info("server stopped")
 	return nil
+}
+
+// integrationSyncAdapter bridges service.IntegrationService to platform.integrationProvider.
+type integrationSyncAdapter struct {
+	svc service.IntegrationService
+}
+
+func (a *integrationSyncAdapter) ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error) {
+	return a.svc.ListByBusinessID(ctx, businessID)
+}
+
+func (a *integrationSyncAdapter) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, plt, externalID string) (string, error) {
+	resp, err := a.svc.GetDecryptedToken(ctx, businessID, plt, externalID)
+	if err != nil {
+		return "", err
+	}
+	return resp.AccessToken, nil
 }
