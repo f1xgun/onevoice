@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -33,6 +34,16 @@ type Config struct {
 
 	// Orchestrator
 	OrchestratorURL string
+
+	// NATS (optional — review sync is disabled if empty)
+	NATSUrl string
+
+	// Review sync
+	ReviewSyncInterval int // minutes, 0 = disabled
+
+	// File uploads
+	UploadDir string
+	PublicURL string
 }
 
 func Load() (*Config, error) {
@@ -59,6 +70,10 @@ func Load() (*Config, error) {
 		TelegramBotToken:   os.Getenv("TELEGRAM_BOT_TOKEN"),
 		InternalPort:       getEnv("INTERNAL_PORT", "8443"),
 		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", "http://localhost:8090"),
+		NATSUrl:            os.Getenv("NATS_URL"),
+		ReviewSyncInterval: getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30),
+		UploadDir:          getEnv("UPLOAD_DIR", "./uploads"),
+		PublicURL:          getEnv("PUBLIC_URL", "http://localhost:8080"),
 	}
 
 	// Validate required fields
@@ -81,6 +96,15 @@ func Load() (*Config, error) {
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if n, err := strconv.Atoi(value); err == nil {
+			return n
+		}
 	}
 	return defaultValue
 }

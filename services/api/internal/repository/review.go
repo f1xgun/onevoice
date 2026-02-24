@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -67,6 +68,52 @@ func (r *reviewRepository) GetByID(ctx context.Context, id string) (*domain.Revi
 	}
 
 	return &review, nil
+}
+
+func (r *reviewRepository) Upsert(ctx context.Context, review *domain.Review) error {
+	if review.ExternalID == "" {
+		return fmt.Errorf("upsert review: external_id is required")
+	}
+
+	id := review.ID
+	if id == "" {
+		id = uuid.NewString()
+	}
+
+	setFields := bson.M{
+		"author_name":  review.AuthorName,
+		"rating":       review.Rating,
+		"text":         review.Text,
+		"reply_status": review.ReplyStatus,
+		"created_at":   review.CreatedAt,
+	}
+	if review.ReplyText != "" {
+		setFields["reply_text"] = review.ReplyText
+	}
+	if len(review.PlatformMeta) > 0 {
+		setFields["platform_meta"] = review.PlatformMeta
+	}
+
+	filter := bson.M{
+		"business_id": review.BusinessID,
+		"platform":    review.Platform,
+		"external_id": review.ExternalID,
+	}
+	update := bson.M{
+		"$set": setFields,
+		"$setOnInsert": bson.M{
+			"_id":         id,
+			"business_id": review.BusinessID,
+			"platform":    review.Platform,
+			"external_id": review.ExternalID,
+		},
+	}
+
+	_, err := r.collection.UpdateOne(ctx, filter, update, options.UpdateOne().SetUpsert(true))
+	if err != nil {
+		return fmt.Errorf("upsert review: %w", err)
+	}
+	return nil
 }
 
 func (r *reviewRepository) UpdateReply(ctx context.Context, id, replyText, replyStatus string) error {

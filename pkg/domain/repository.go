@@ -35,6 +35,7 @@ type IntegrationRepository interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]Integration, error)
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]Integration, error)
 	GetByBusinessPlatformExternal(ctx context.Context, businessID uuid.UUID, platform string, externalID string) (*Integration, error)
+	ListAllActiveByPlatforms(ctx context.Context, platforms []string) ([]Integration, error)
 	Update(ctx context.Context, integration *Integration) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -85,6 +86,7 @@ type ReviewRepository interface {
 	ListByBusinessID(ctx context.Context, businessID string, filter ReviewFilter) ([]Review, int, error)
 	GetByID(ctx context.Context, id string) (*Review, error)
 	UpdateReply(ctx context.Context, id, replyText, replyStatus string) error
+	Upsert(ctx context.Context, review *Review) error
 }
 
 type PostRepository interface {

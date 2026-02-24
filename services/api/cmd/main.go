@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	natslib "github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -105,10 +106,16 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	postService := service.NewPostService(postRepo, businessService)
 	agentTaskService := service.NewAgentTaskService(agentTaskRepo, businessService)
 
-	// Platform syncer: pushes business description updates to connected platforms
+	// Ensure upload directory exists
+	if err := os.MkdirAll(cfg.UploadDir, 0750); err != nil {
+		return fmt.Errorf("create upload dir: %w", err)
+	}
+
+	// Platform syncer: pushes business info updates to connected platforms
 	platformSyncer := platform.NewSyncer(
 		&integrationSyncAdapter{svc: integrationService},
 		nil,
+		cfg.PublicURL,
 	)
 
 	// Initialize handlers
@@ -122,11 +129,11 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		TelegramBotToken:   cfg.TelegramBotToken,
 	}, nil)
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
-	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
+	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
 
 	handlers := &router.Handlers{
 		Auth:          handler.NewAuthHandler(userService),
-		Business:      handler.NewBusinessHandler(businessService, platformSyncer),
+		Business:      handler.NewBusinessHandler(businessService, platformSyncer, cfg.UploadDir),
 		Integration:   handler.NewIntegrationHandler(integrationService, businessService),
 		Conversation:  handler.NewConversationHandler(conversationRepo, messageRepo),
 		OAuth:         oauthHandler,
@@ -138,7 +145,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 
 	// Setup router
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient)
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, cfg.UploadDir)
 
 	// Start HTTP server
 	addr := ":" + cfg.Port
@@ -173,6 +180,22 @@ func run(log *slog.Logger, cfg *config.Config) error {
 			log.Error("internal server error", "error", err)
 		}
 	}()
+
+	// Review syncer — optional, requires NATS_URL
+	if cfg.NATSUrl != "" {
+		nc, natsErr := natslib.Connect(cfg.NATSUrl)
+		if natsErr != nil {
+			log.Warn("NATS unavailable — review sync disabled", "url", cfg.NATSUrl, "error", natsErr)
+		} else {
+			defer nc.Close()
+			syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
+			syncer := service.NewReviewSyncer(nc, integrationRepo, reviewRepo, syncInterval)
+			syncCtx, syncCancel := context.WithCancel(ctx)
+			defer syncCancel()
+			go syncer.Start(syncCtx)
+			log.Info("review syncer started", "interval_minutes", cfg.ReviewSyncInterval)
+		}
+	}
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
