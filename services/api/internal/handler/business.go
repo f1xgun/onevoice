@@ -278,7 +278,7 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 
 	filename := business.ID.String() + "_logo" + ext
 	filePath := filepath.Join(h.uploadDir, filename)
-	dst, err := os.Create(filePath)
+	dst, err := os.Create(filePath) //nolint:gosec // filePath is constructed from uploadDir+businessID+ext, not user-controlled
 	if err != nil {
 		slog.Error("upload logo: create file failed", "path", filePath, "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
