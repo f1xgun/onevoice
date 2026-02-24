@@ -94,7 +94,14 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full border-2 border-dashed border-gray-300 bg-gray-50 hover:border-gray-400 focus:outline-none disabled:opacity-50"
         >
           {logoUrl ? (
-            <Image src={logoUrl} alt="Логотип" width={80} height={80} className="h-full w-full object-cover" unoptimized />
+            <Image
+              src={logoUrl}
+              alt="Логотип"
+              width={80}
+              height={80}
+              className="h-full w-full object-cover"
+              unoptimized
+            />
           ) : (
             <span className="text-2xl text-gray-400">+</span>
           )}

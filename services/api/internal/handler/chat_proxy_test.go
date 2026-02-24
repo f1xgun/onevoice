@@ -61,7 +61,7 @@ func TestChatProxy_EnrichesContext(t *testing.T) {
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return(integrations, nil)
 
-	h := NewChatProxyHandler(mockBiz, mockInteg, &MockMessageRepository{}, nil, nil, orchServer.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &MockMessageRepository{}, nil, nil, nil, orchServer.URL, nil)
 
 	body := `{"message":"hello","model":"gpt-4"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-123", strings.NewReader(body))
@@ -118,7 +118,7 @@ func TestChatProxy_StreamsSSE(t *testing.T) {
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	h := NewChatProxyHandler(mockBiz, mockInteg, &MockMessageRepository{}, nil, nil, orchServer.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &MockMessageRepository{}, nil, nil, nil, orchServer.URL, nil)
 
 	reqBody := `{"message":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-456", strings.NewReader(reqBody))
@@ -151,7 +151,7 @@ func TestChatProxy_NoBusiness(t *testing.T) {
 
 	mockInteg := new(MockIntegrationService)
 
-	h := NewChatProxyHandler(mockBiz, mockInteg, &MockMessageRepository{}, nil, nil, "http://unused", nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &MockMessageRepository{}, nil, nil, nil, "http://unused", nil)
 
 	reqBody := `{"message":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-789", strings.NewReader(reqBody))
@@ -193,7 +193,7 @@ func TestChatProxy_OrchestratorDown(t *testing.T) {
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
 	// Use a guaranteed unreachable address
-	h := NewChatProxyHandler(mockBiz, mockInteg, &MockMessageRepository{}, nil, nil, "http://127.0.0.1:1", nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &MockMessageRepository{}, nil, nil, nil, "http://127.0.0.1:1", nil)
 
 	reqBody := `{"message":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-000", strings.NewReader(reqBody))
