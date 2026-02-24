@@ -8,6 +8,13 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // ErrorResponse represents a JSON error response
 type ErrorResponse struct {
 	Error string `json:"error"`

@@ -22,7 +22,7 @@ type Business struct {
 	Category    string                 `json:"category" db:"category"`
 	Address     string                 `json:"address" db:"address"`
 	Phone       string                 `json:"phone" db:"phone"`
-	Website     string                 `json:"website" db:"website"`
+	Website     *string                `json:"website" db:"website"`
 	Description string                 `json:"description" db:"description"`
 	LogoURL     string                 `json:"logoUrl" db:"logo_url"`
 	Settings    map[string]interface{} `json:"settings" db:"settings"`
