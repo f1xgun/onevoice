@@ -13,9 +13,9 @@ import (
 // photoHTTPClient is used for downloading images from user-provided URLs.
 // TLS verification is skipped because external image URLs may use self-signed
 // or corp-CA certificates not present in the container trust store.
-var photoHTTPClient = &http.Client{ //nolint:gosec // G402: intentional for photo downloads
+var photoHTTPClient = &http.Client{
 	Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: intentional, external image hosts may use self-signed certs
 	},
 }
 
@@ -43,7 +43,7 @@ func (b *Bot) SendMessage(chatID int64, text string) error {
 // SendPhoto downloads the image from photoURL and sends it to Telegram as file
 // bytes, avoiding Telegram-server-side URL fetching failures.
 func (b *Bot) SendPhoto(chatID int64, photoURL, caption string) error {
-	resp, err := photoHTTPClient.Get(photoURL) //nolint:gosec // G107: URL comes from LLM tool args, intentional
+	resp, err := photoHTTPClient.Get(photoURL) //nolint:gosec // G107: photo URL comes from LLM tool args
 	if err != nil {
 		return fmt.Errorf("download photo: %w", err)
 	}
