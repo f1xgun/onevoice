@@ -75,6 +75,10 @@ func (m *mockIntegrationRepository) Update(ctx context.Context, integration *dom
 	return nil
 }
 
+func (m *mockIntegrationRepository) ListAllActiveByPlatforms(ctx context.Context, platforms []string) ([]domain.Integration, error) {
+	return []domain.Integration{}, nil
+}
+
 func (m *mockIntegrationRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	if m.deleteFunc != nil {
 		return m.deleteFunc(ctx, id)
