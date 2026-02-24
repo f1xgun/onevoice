@@ -107,7 +107,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	agentTaskService := service.NewAgentTaskService(agentTaskRepo, businessService)
 
 	// Ensure upload directory exists
-	if err := os.MkdirAll(cfg.UploadDir, 0750); err != nil {
+	if err := os.MkdirAll(cfg.UploadDir, 0o750); err != nil {
 		return fmt.Errorf("create upload dir: %w", err)
 	}
 

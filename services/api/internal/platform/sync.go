@@ -160,13 +160,10 @@ func formatSchedule(settings map[string]interface{}) string {
 		start, end string
 		open, cls  string
 	}
-	var groups []group
+	groups := make([]group, 0, len(dayOrder))
 	for _, key := range dayOrder {
 		s, open := byDay[key]
 		if !open {
-			if len(groups) > 0 && groups[len(groups)-1].end != "" {
-				// break current group
-			}
 			continue
 		}
 		if len(groups) > 0 {
@@ -183,7 +180,7 @@ func formatSchedule(settings map[string]interface{}) string {
 		return ""
 	}
 
-	var segments []string
+	segments := make([]string, 0, len(groups))
 	for _, g := range groups {
 		label := dayRU[g.start]
 		if g.end != g.start {
@@ -283,7 +280,7 @@ func (s *Syncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, ch
 
 	// Resolve relative paths to absolute URL using publicURL
 	fullURL := logoURL
-	if len(logoURL) > 0 && logoURL[0] == '/' {
+	if logoURL != "" && logoURL[0] == '/' {
 		fullURL = s.publicURL + logoURL
 	}
 
