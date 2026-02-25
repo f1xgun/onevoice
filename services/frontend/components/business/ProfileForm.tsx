@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import Image from 'next/image';
 import type { Business } from '@/types/business';
 
 const CATEGORIES = [
@@ -30,6 +31,8 @@ const CATEGORIES = [
 
 export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Business> }) {
   const qc = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [logoUrl, setLogoUrl] = useState(defaultValues?.logoUrl ?? '');
 
   const {
     register,
@@ -45,6 +48,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   useEffect(() => {
     if (defaultValues) {
       reset(defaultValues);
+      setLogoUrl(defaultValues.logoUrl ?? '');
     }
   }, [defaultValues, reset]);
 
@@ -57,8 +61,68 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
     onError: () => toast.error('Ошибка сохранения'),
   });
 
+  const logoMutation = useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append('logo', file);
+      return api.put<Business>('/business/logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
+    onSuccess: (res) => {
+      setLogoUrl(res.data.logoUrl ?? '');
+      qc.invalidateQueries({ queryKey: ['business'] });
+      toast.success('Логотип обновлён');
+    },
+    onError: () => toast.error('Ошибка загрузки логотипа'),
+  });
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) logoMutation.mutate(file);
+    e.target.value = '';
+  }
+
   return (
     <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
+      {/* Logo upload */}
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={logoMutation.isPending}
+          className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full border-2 border-dashed border-gray-300 bg-gray-50 hover:border-gray-400 focus:outline-none disabled:opacity-50"
+        >
+          {logoUrl ? (
+            <Image
+              src={logoUrl}
+              alt="Логотип"
+              width={80}
+              height={80}
+              className="h-full w-full object-cover"
+              unoptimized
+            />
+          ) : (
+            <span className="text-2xl text-gray-400">+</span>
+          )}
+          {logoMutation.isPending && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+              <span className="text-xs text-gray-500">...</span>
+            </div>
+          )}
+        </button>
+        <div className="text-sm text-gray-500">
+          <p className="font-medium text-gray-700">Логотип</p>
+          <p>JPEG, PNG, WebP или GIF · макс. 5 МБ</p>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="name">Название *</Label>
