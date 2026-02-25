@@ -17,6 +17,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     isMounted.current = true;
+    const controller = new AbortController();
 
     const refreshToken = localStorage.getItem('refreshToken');
 
@@ -33,20 +34,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
 
     // Have a refresh token but no access token — attempt silent refresh
+    let newRefreshToken = refreshToken;
+
     api
-      .post('/auth/refresh', { refreshToken })
+      .post('/auth/refresh', { refreshToken }, { signal: controller.signal })
       .then((res) => {
         if (!isMounted.current) return;
-        // Refresh endpoint returns only accessToken — set it first, then fetch user
+        // Capture the new refresh token from rotation before it's lost
+        newRefreshToken = res.data.refreshToken ?? refreshToken;
         useAuthStore.getState().setAccessToken(res.data.accessToken);
-        return api.get('/auth/me');
+        return api.get('/auth/me', { signal: controller.signal });
       })
       .then((res) => {
         if (!isMounted.current || !res) return;
-        setAuth(res.data, useAuthStore.getState().accessToken!, refreshToken);
+        setAuth(res.data, useAuthStore.getState().accessToken!, newRefreshToken);
         setReady(true);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
         if (isMounted.current) {
           router.replace('/login');
         }
@@ -54,6 +59,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
     return () => {
       isMounted.current = false;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount-only: reads auth state once on load
