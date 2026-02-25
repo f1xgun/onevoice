@@ -50,7 +50,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         setAuth(res.data, useAuthStore.getState().accessToken!, newRefreshToken);
         setReady(true);
       })
-      .catch((err: unknown) => {
+      .catch((_err: unknown) => {
         if (controller.signal.aborted) return;
         if (isMounted.current) {
           router.replace('/login');
