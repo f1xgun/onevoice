@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
@@ -39,18 +40,20 @@ type ChatProxyHandler struct {
 	integrationService IntegrationService
 	messageRepo        domain.MessageRepository
 	postRepo           domain.PostRepository
+	reviewRepo         domain.ReviewRepository
 	agentTaskRepo      domain.AgentTaskRepository
 	orchestratorURL    string
 	httpClient         *http.Client
 }
 
 // NewChatProxyHandler creates a new ChatProxyHandler. If httpClient is nil,
-// http.DefaultClient is used. postRepo and agentTaskRepo may be nil to skip persistence.
+// http.DefaultClient is used. postRepo, reviewRepo and agentTaskRepo may be nil to skip persistence.
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
 	messageRepo domain.MessageRepository,
 	postRepo domain.PostRepository,
+	reviewRepo domain.ReviewRepository,
 	agentTaskRepo domain.AgentTaskRepository,
 	orchestratorURL string,
 	httpClient *http.Client,
@@ -63,6 +66,7 @@ func NewChatProxyHandler(
 		integrationService: integrationService,
 		messageRepo:        messageRepo,
 		postRepo:           postRepo,
+		reviewRepo:         reviewRepo,
 		agentTaskRepo:      agentTaskRepo,
 		orchestratorURL:    orchestratorURL,
 		httpClient:         httpClient,
@@ -143,7 +147,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		"business_category":    business.Category,
 		"business_address":     business.Address,
 		"business_phone":       business.Phone,
-		"business_website":     business.Website,
+		"business_website":     derefString(business.Website),
 		"business_description": business.Description,
 		"active_integrations":  activeIntegrations,
 		"history":              history,
@@ -358,6 +362,96 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 				slog.Error("failed to create post record", "tool", tc.Name, "error", err)
 			}
 		}
+	}
+
+	// Upsert Review records for each successful *__get_reviews tool call
+	if h.reviewRepo != nil && len(toolResults) > 0 {
+		toolCallByID := make(map[string]domain.ToolCall, len(toolCalls))
+		for _, tc := range toolCalls {
+			toolCallByID[tc.ID] = tc
+		}
+
+		reviewCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		for _, tr := range toolResults {
+			if tr.IsError {
+				continue
+			}
+			tc, ok := toolCallByID[tr.ToolCallID]
+			if !ok {
+				continue
+			}
+			if !strings.HasSuffix(tc.Name, "__get_reviews") {
+				continue
+			}
+			platform := tc.Name[:len(tc.Name)-len("__get_reviews")]
+
+			reviewsRaw, ok := tr.Content["reviews"]
+			if !ok {
+				continue
+			}
+			reviewsList, ok := reviewsRaw.([]interface{})
+			if !ok {
+				continue
+			}
+
+			for _, r := range reviewsList {
+				m, ok := r.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				review := reviewFromToolResult(m, business.ID.String(), platform)
+				if review.ExternalID == "" {
+					continue
+				}
+				if err := h.reviewRepo.Upsert(reviewCtx, review); err != nil {
+					slog.Error("failed to upsert review", "tool", tc.Name, "error", err)
+				}
+			}
+		}
+	}
+}
+
+// reviewFromToolResult converts a raw review map from a *__get_reviews tool result
+// into a domain.Review ready to be upserted.
+func reviewFromToolResult(m map[string]interface{}, businessID, platform string) *domain.Review {
+	externalID, _ := m["id"].(string)
+	author, _ := m["author"].(string)
+	text, _ := m["text"].(string)
+	reply, _ := m["reply"].(string)
+
+	rating := 0
+	switch v := m["rating"].(type) {
+	case float64:
+		rating = int(v)
+	case int:
+		rating = v
+	}
+
+	createdAt := time.Now()
+	if ts, ok := m["created_at"].(string); ok && ts != "" {
+		if t, err := time.Parse(time.RFC3339, ts); err == nil {
+			createdAt = t
+		}
+	}
+
+	replyStatus := "pending"
+	if reply != "" {
+		replyStatus = "replied"
+	}
+
+	return &domain.Review{
+		ID:          uuid.NewString(),
+		BusinessID:  businessID,
+		Platform:    platform,
+		ExternalID:  externalID,
+		AuthorName:  author,
+		Rating:      rating,
+		Text:        text,
+		ReplyText:   reply,
+		ReplyStatus: replyStatus,
+		CreatedAt:   createdAt,
 	}
 }
 
