@@ -27,7 +27,7 @@ type Handlers struct {
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
-func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client) *chi.Mux {
+func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uploadDir string) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -68,6 +68,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client) *chi
 			r.Get("/business", handlers.Business.GetBusiness)
 			r.Put("/business", handlers.Business.UpdateBusiness)
 			r.Put("/business/schedule", handlers.Business.UpdateSchedule)
+			r.Put("/business/logo", handlers.Business.UploadLogo)
 
 			// Integration routes
 			r.Get("/integrations", handlers.Integration.ListIntegrations)
@@ -108,6 +109,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client) *chi
 			r.Get("/tasks", handlers.AgentTask.ListTasks)
 		})
 	})
+
+	// Serve uploaded logo files
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadDir))))
 
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
