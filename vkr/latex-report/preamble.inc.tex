@@ -1,0 +1,204 @@
+% ==============================================================================
+% preamble.inc.tex — Преамбула для ВКР (дополнение к классу G7-32)
+%
+% Класс G7-32 уже загружает: babel, fontspec (XeLaTeX), geometry, fancyhdr,
+% indentfirst, caption, amssymb, amsmath, longtable, flafter
+% ==============================================================================
+
+\sloppy
+
+% --- Настройки стиля ГОСТ 7-32 ---
+% \EqInChapter  % формулы нумеруются в пределах раздела
+% \TableInChapter % таблицы нумеруются в пределах раздела
+% \PicInChapter   % рисунки нумеруются в пределах раздела
+
+% --- Гипертекстовое оглавление ---
+\usepackage[
+  bookmarks=true, colorlinks=true, unicode=true,
+  urlcolor=black, linkcolor=black, anchorcolor=black,
+  citecolor=black, menucolor=black, filecolor=black,
+]{hyperref}
+
+\urlstyle{same}
+
+% --- Включение PDF-страниц (для титульного листа) ---
+\usepackage{pdfpages}
+
+% --- Графика ---
+\usepackage{graphicx}
+\graphicspath{{images/},{../latex/images/}}
+
+% --- TikZ ---
+\usepackage{tikz}
+\usetikzlibrary{arrows,positioning,shadows}
+
+% --- Списки и таблицы ---
+\usepackage{enumerate}
+\usepackage{multirow}
+\usepackage{paralist,array}
+\usepackage{tabularx}
+\usepackage{dcolumn}
+\usepackage{booktabs}
+
+% --- Полуторный интервал ---
+\usepackage{setspace}
+\setstretch{1.43}
+
+% --- Компактный нумерованный список ---
+\newenvironment{compactlist}{%
+    \renewcommand{\labelenumi}{\hspace{13mm}\arabic{enumi}.}
+    \setlength{\topsep}{0pt}%
+    \setlength{\partopsep}{0pt}%
+    \setlength{\itemsep}{0pt}%
+    \setlength{\parsep}{0pt}%
+    \begin{enumerate}%
+}{%
+    \end{enumerate}%
+}
+
+% --- Отступы в оглавлении ---
+\makeatletter
+\renewcommand*\l@section{\@dottedtocline{1}{0em}{2.3em}}
+\renewcommand*\l@subsection{\@dottedtocline{2}{0em}{3.2em}}
+\renewcommand*\l@subsubsection{\@dottedtocline{3}{0em}{4.1em}}
+\makeatother
+
+% --- Подписи к рисункам и таблицам ---
+\usepackage{ragged2e}
+
+\DeclareCaptionJustification{centerednohyphen}{%
+  \Centering\hyphenpenalty=10000\exhyphenpenalty=10000%
+}
+\DeclareCaptionLabelSeparator{shortdash}{ \textendash\ }
+
+% --- Настройки float ---
+\usepackage{float}
+\setlength{\floatsep}{0pt}
+\setlength{\textfloatsep}{10pt}
+\setlength{\intextsep}{7pt}
+
+\captionsetup{
+  aboveskip=7pt, belowskip=0pt,
+  justification=centerednohyphen,
+  singlelinecheck=false,
+  labelsep=shortdash
+}
+\captionsetup[table]{justification=RaggedRight, singlelinecheck=false}
+\captionsetup[figure]{justification=centerednohyphen, singlelinecheck=false}
+
+% --- Счётчики ---
+\usepackage{chngcntr}
+
+% --- Рамки и цвет ---
+\usepackage{mdframed}
+\usepackage{xcolor}
+
+\mdfsetup{
+  linecolor=black,
+  linewidth=1pt,
+  roundcorner=5pt,
+  innerleftmargin=5pt,
+  innerrightmargin=5pt,
+  innertopmargin=5pt,
+  innerbottommargin=5pt,
+  skipabove=0pt,
+  skipbelow=0pt,
+  leftmargin=0pt,
+  rightmargin=0pt
+}
+
+% --- Листинги кода (minted) ---
+% NOTE: Для использования minted необходим Python с pygments.
+% Раскомментируйте при необходимости (требует --shell-escape).
+% Текущая версия minted (0.6.0) несовместима с Python 3.14+.
+%
+% \usepackage[chapter]{minted}
+%
+% \captionsetup[listing]{
+%   position=top,
+%   justification=RaggedRight,
+%   singlelinecheck=false
+% }
+%
+% \floatstyle{plaintop}
+% \restylefloat{listing}
+%
+% \setminted{
+%   linenos=true,
+%   numberblanklines=false,
+%   numbersep=5pt,
+%   xleftmargin=1em,
+%   fontsize=\small,
+%   breakanywhere=true,
+%   breakautoindent=true,
+%   breaklines=true,
+% }
+%
+% \renewcommand{\listingscaption}{Листинг}
+% \renewcommand{\listoflistingscaption}{Листинги}
+
+% --- Листинги кода (listings, альтернативный вариант) ---
+\usepackage{listings}
+\lstset{
+  basicstyle=\fontsize{12pt}{14pt}\selectfont\ttfamily,
+  breaklines=true,
+  frame=none,
+  numbers=left,
+  numberstyle=\small,
+  tabsize=4,
+  showstringspaces=false,
+  captionpos=t,
+  aboveskip=10pt,
+  belowskip=10pt
+}
+\renewcommand{\lstlistingname}{Листинг}
+
+% --- Оглавление без переносов ---
+\makeatletter
+\let\oldtableofcontents\tableofcontents
+\renewcommand{\tableofcontents}{%
+  \begingroup
+  \hyphenpenalty=10000
+  \exhyphenpenalty=10000
+  \oldtableofcontents
+  \endgroup
+}
+\makeatother
+
+% --- Заголовки без висячего отступа ---
+\makeatletter
+\def\@hangfrom#1{\setbox\@tempboxa\hbox{{#1}}%
+      \hangindent 0pt%
+      \noindent\box\@tempboxa}
+\makeatother
+
+% --- Отступы после окружений ---
+\usepackage{etoolbox}
+% \AtEndEnvironment{listing}{\vspace{-10pt}} % требует minted
+\AtEndEnvironment{table}{\vspace{-10pt}}
+\AtEndEnvironment{center}{\vspace{-14pt}}
+\AtEndEnvironment{figure}{\vspace{4pt}}
+
+% --- Шрифты (Times New Roman) ---
+\setmainfont{Times New Roman}
+\newfontfamily\cyrillicfont{Times New Roman}
+\setmonofont[Script=Default,Ligatures=TeX]{Courier New}
+\newfontfamily\cyrillicfonttt[Script=Cyrillic]{Courier New}
+
+% --- Удалить точку после номера раздела (стиль без точки) ---
+\makeatletter
+\renewcommand*{\@seccntformat}[1]{%
+  \csname the#1\endcsname\hspace{0.5em}%
+}
+\makeatother
+
+% --- Глубина оглавления (до подразделов) ---
+\setcounter{tocdepth}{2}
+
+% --- Пользовательские команды ---
+% Сокращение с расшифровкой при первом использовании
+\newcommand{\abbr}[2]{#1 (#2)}
+
+% Ссылки на рисунок/таблицу в русском стиле
+\newcommand{\figref}[1]{рисунок~\ref{#1}}
+\newcommand{\tabref}[1]{таблица~\ref{#1}}

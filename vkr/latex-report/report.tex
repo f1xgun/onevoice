@@ -1,0 +1,28 @@
+% ==============================================================================
+% report.tex — Описание проекта (3–4 стр., ответы на чек-лист)
+% OneVoice — мультиагентная система для управления цифровым присутствием МСБ
+%
+% Сборка: xelatex report.tex
+% ==============================================================================
+
+\documentclass[12pt]{G7-32}
+
+\usepackage{xurl}
+
+\input{preamble.inc}
+
+% Компактнее: меньше отступов у списков, можно чуть уменьшить межстрочный интервал
+\setlength{\parskip}{2pt plus 1pt}
+
+\begin{document}
+
+\frontmatter
+
+\include{00-title}
+
+\mainmatter
+
+\include{12-intro}
+\include{10-body-short}
+
+\end{document}

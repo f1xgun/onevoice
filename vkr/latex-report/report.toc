@@ -1,0 +1,22 @@
+\babel@toc {russian}{}\relax 
+\contentsline {chapter}{{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{ВВЕДЕНИЕ}}}{4}{section*.3}%
+\contentsline {chapter}{\numberline {1}{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{Проблема и целевая аудитория}}}{5}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Какую проблему решает проект}{5}{section.1.1}%
+\contentsline {section}{\numberline {1.2}У кого возникает проблема (целевая аудитория)}{6}{section.1.2}%
+\contentsline {chapter}{\numberline {2}{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{Текущее состояние процесса (как решается сейчас)}}}{7}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Как проблема целевой аудитории решается в настоящее время}{7}{section.2.1}%
+\contentsline {chapter}{\numberline {3}{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{Аналоги и конкуренты}}}{8}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Выявленные аналоги и конкуренты}{8}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Критерии для сравнения аналогов и конкурентов}{8}{section.3.2}%
+\contentsline {chapter}{\numberline {4}{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{Предметная область}}}{10}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Анализ предметной области (исследовательская часть)}{10}{section.4.1}%
+\contentsline {chapter}{\numberline {5}{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{Практическая часть и технологии}}}{12}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Технологии и инструменты}{12}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Протокол взаимодействия агентов (A2A)}{12}{section.5.2}%
+\contentsline {section}{\numberline {5.3}Спецификации агентов (MVP)}{13}{section.5.3}%
+\contentsline {chapter}{\numberline {6}{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{Данные проекта}}}{14}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Какие данные используются в проекте}{14}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Откуда берутся данные}{14}{section.6.2}%
+\contentsline {section}{\numberline {6.3}Работа с персональными данными}{15}{section.6.3}%
+\contentsline {chapter}{{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{ЗАКЛЮЧЕНИЕ}}}{16}{section*.6}%
+\contentsline {chapter}{{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}}}{17}{section*.7}%

@@ -269,10 +269,9 @@
 %   \RequirePackage{xltxtra}
   \RequirePackage{fontspec}
   \RequirePackage{xecyr}
-  \defaultfontfeatures{Mapping=tex-text}
-  % Шрифты, доступные в macOS/Windows/TinyTeX (CMU часто отсутствует в TinyTeX)
+  \defaultfontfeatures{Ligatures=TeX}
   \setmainfont{Times New Roman}
-  \setsansfont{Arial}
+  \setsansfont{Helvetica}
   \setmonofont{Courier New}
 \fi
 \RequirePackage{flafter}
@@ -474,7 +473,7 @@
 }
 
 % 4.5 Сноски
-\RequirePackage[perpage,bottom]{footmisc}
+\RequirePackage[bottom]{footmisc}
 
 % Части документа- для выбора вида заголовков и т.д.
 %  введение, обозначения
