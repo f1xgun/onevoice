@@ -1,0 +1,58 @@
+% ==============================================================================
+% main.tex — Спецификация требований
+% Проект: OneVoice — мультиагентная система управления цифровым присутствием МСБ
+%
+% Шаблон: docs/Спецификация_требований_v1_для_ВКР_2026.docx
+% Источники: vkr/latex/chapters/chapter1.tex, docs/TECHNICAL_REQUIREMENTS.md
+%
+% Compile: xelatex --shell-escape main.tex
+% ==============================================================================
+
+\documentclass{G7-32}
+
+\usepackage{xurl}
+
+\input{preamble.inc}
+
+\begin{document}
+
+\frontmatter
+
+\thispagestyle{empty}
+\begin{center}
+  \vspace*{2cm}
+  {\fontsize{16pt}{24pt}\selectfont\bfseries Спецификация требований}
+  \vspace{1cm}
+  {\fontsize{12pt}{18pt}\selectfont (OneVoice)}
+  \vspace{2cm}
+  {\fontsize{14pt}{21pt}\selectfont ФИО: Михайлов Даниил Сергеевич}
+  \vspace{1.5cm}
+  {\fontsize{12pt}{18pt}\selectfont \today}
+\end{center}
+\clearpage
+
+\chapter*{Спецификация требований}
+\addcontentsline{toc}{chapter}{Спецификация требований}
+
+\tableofcontents
+
+\mainmatter
+
+% --- Раздел 1. Общее описание ---
+\include{chapters/01-general}
+
+% --- Раздел 2. Детальные требования ---
+\include{chapters/02-interfaces}
+\include{chapters/03-functional}
+\include{chapters/04-nonfunctional}
+
+% --- Раздел 3. Приложения ---
+\appendix
+\include{chapters/90-appendices}
+
+\backmatter
+
+% --- Список использованных источников ---
+\input{bibliography}
+
+\end{document}

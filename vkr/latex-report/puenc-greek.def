@@ -1,0 +1,3 @@
+% Stub for puenc-greek.def (TinyTeX may not have greek-fontenc).
+% Used by hyperref for Greek in PDF bookmarks; empty stub is sufficient for Cyrillic docs.
+\endinput

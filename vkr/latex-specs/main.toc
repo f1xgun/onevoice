@@ -1,0 +1,21 @@
+\babel@toc {russian}{}\relax 
+\contentsline {chapter}{Спецификация требований}{2}{section*.1}%
+\contentsline {chapter}{\numberline {1}Общее описание}{4}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Цель создания}{4}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Границы проекта}{4}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Окружение системы}{4}{section.1.3}%
+\contentsline {section}{\numberline {1.4}Характеристики пользователей}{4}{section.1.4}%
+\contentsline {section}{\numberline {1.5}Предположения и зависимости}{5}{section.1.5}%
+\contentsline {section}{\numberline {1.6}Термины и соглашения}{5}{section.1.6}%
+\contentsline {chapter}{\numberline {2}Детальные требования}{6}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Требования к внешним интерфейсам}{6}{section.2.1}%
+\contentsline {subsection}{\numberline {2.1.1}Интерфейсы пользователя (UI)}{6}{subsection.2.1.1}%
+\contentsline {subsection}{\numberline {2.1.2}Аппаратные интерфейсы}{6}{subsection.2.1.2}%
+\contentsline {subsection}{\numberline {2.1.3}Программные интерфейсы}{6}{subsection.2.1.3}%
+\contentsline {subsection}{\numberline {2.1.4}Интерфейсы связи и коммуникации}{6}{subsection.2.1.4}%
+\contentsline {section}{\numberline {2.2}Функциональные требования}{7}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Нефункциональные требования}{8}{section.2.3}%
+\contentsline {chapter}{\numberline {А}Макеты пользовательского интерфейса}{9}{appendix.A}%
+\contentsline {chapter}{\numberline {Б}Модели данных}{10}{appendix.B}%
+\contentsline {chapter}{\numberline {В}Дополнительная информация}{11}{appendix.C}%
+\contentsline {chapter}{{\fontsize {14pt}{21pt}\selectfont \MakeUppercase []{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}}}{12}{section*.7}%
