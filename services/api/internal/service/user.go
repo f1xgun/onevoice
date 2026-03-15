@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/auth"
 )
 
 // JWT token expiry durations
@@ -21,21 +22,6 @@ const (
 	RefreshTokenExpiry    = 7 * 24 * time.Hour
 	refreshTokenKeyPrefix = "onevoice:auth:refresh_token:" //nolint:gosec // not a credential, just a Redis key prefix
 )
-
-// AccessTokenClaims represents JWT claims for access tokens
-type AccessTokenClaims struct {
-	UserID uuid.UUID `json:"user_id"`
-	Email  string    `json:"email"`
-	Role   string    `json:"role"`
-	jwt.RegisteredClaims
-}
-
-// RefreshTokenClaims represents JWT claims for refresh tokens
-type RefreshTokenClaims struct {
-	UserID  uuid.UUID `json:"user_id"`
-	TokenID uuid.UUID `json:"token_id"`
-	jwt.RegisteredClaims
-}
 
 // UserService defines the interface for user-related operations
 type UserService interface {
@@ -155,18 +141,18 @@ func (s *userService) Login(ctx context.Context, email, password string) (user *
 // The old refresh token is revoked (rotation) and a new one is issued.
 func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error) {
 	// Parse and validate refresh token
-	token, err := jwt.ParseWithClaims(refreshToken, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return s.jwtSecret, nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience))
 
 	if err != nil {
 		return nil, "", "", domain.ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*RefreshTokenClaims)
+	claims, ok := token.Claims.(*auth.RefreshTokenClaims)
 	if !ok || !token.Valid {
 		return nil, "", "", domain.ErrInvalidToken
 	}
@@ -224,18 +210,18 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (us
 // Logout invalidates a refresh token
 func (s *userService) Logout(ctx context.Context, refreshToken string) error {
 	// Parse refresh token
-	token, err := jwt.ParseWithClaims(refreshToken, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return s.jwtSecret, nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience))
 
 	if err != nil {
 		return domain.ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*RefreshTokenClaims)
+	claims, ok := token.Claims.(*auth.RefreshTokenClaims)
 	if !ok || !token.Valid {
 		return domain.ErrInvalidToken
 	}
@@ -334,11 +320,13 @@ func validatePassword(password string) error {
 
 // generateAccessToken creates a new JWT access token
 func generateAccessToken(user *domain.User, secret []byte) (string, error) {
-	claims := &AccessTokenClaims{
+	claims := &auth.AccessTokenClaims{
 		UserID: user.ID,
 		Email:  user.Email,
 		Role:   string(user.Role),
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    auth.TokenIssuer,
+			Audience:  jwt.ClaimStrings{auth.TokenAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
@@ -357,10 +345,12 @@ func generateAccessToken(user *domain.User, secret []byte) (string, error) {
 func generateRefreshToken(userID uuid.UUID, secret []byte) (string, uuid.UUID, error) {
 	tokenID := uuid.New()
 
-	claims := &RefreshTokenClaims{
+	claims := &auth.RefreshTokenClaims{
 		UserID:  userID,
 		TokenID: tokenID,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    auth.TokenIssuer,
+			Audience:  jwt.ClaimStrings{auth.TokenAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(RefreshTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
