@@ -157,9 +157,9 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (us
 		return nil, "", "", domain.ErrInvalidToken
 	}
 
-	// Verify token exists in Redis
+	// Atomically get and delete the refresh token from Redis (prevents TOCTOU race)
 	oldKey := refreshTokenKeyPrefix + claims.TokenID.String()
-	userID, err := s.redis.Get(ctx, oldKey).Result()
+	userID, err := s.redis.GetDel(ctx, oldKey).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil, "", "", domain.ErrInvalidToken
@@ -171,9 +171,6 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (us
 	if userID != claims.UserID.String() {
 		return nil, "", "", domain.ErrInvalidToken
 	}
-
-	// Revoke old refresh token
-	s.redis.Del(ctx, oldKey)
 
 	// Get user from database
 	user, err = s.repo.GetByID(ctx, claims.UserID)
