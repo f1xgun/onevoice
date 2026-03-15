@@ -14,7 +14,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
-| 1 | Security Foundation | In progress | 3/4 |
+| 1 | Security Foundation | Complete | 4/4 |
 | 2 | Reliability Foundation | Pending | 0/4 |
 | 3 | VK Agent Completion | Pending | 0/5 |
 | 4 | Yandex.Business Agent | Pending | 0/5 |
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ## Plan Index
 
 ### Phase 1: Security Foundation
-- [ ] PLAN-1.1: httpOnly cookie migration for refresh token (SEC-01, SEC-06)
+- [x] PLAN-1.1: httpOnly cookie migration for refresh token (SEC-01, SEC-06)
 - [x] PLAN-1.2: Typed JWT claims with full validation (SEC-02)
 - [x] PLAN-1.3: Rate limiting on auth and chat endpoints (SEC-03, SEC-04)
 - [x] PLAN-1.4: Security headers middleware (SEC-05)
@@ -64,4 +64,4 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-15 after plan 01-02 (typed JWT claims with full validation) completed*
+*Last updated: 2026-03-15 after plan 01-03 (httpOnly cookie migration + atomic rotation) completed*
