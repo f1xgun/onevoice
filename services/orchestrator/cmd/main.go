@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	natslib "github.com/nats-io/nats.go"
@@ -54,7 +57,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if natsErr != nil {
 		log.Warn("NATS unavailable — tools will return stubs", "url", cfg.NATSUrl, "error", natsErr)
 	} else {
-		defer nc.Close()
 		log.Info("connected to NATS", "url", cfg.NATSUrl)
 		registerPlatformTools(toolRegistry, nc)
 	}
@@ -78,7 +80,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	})
 
 	addr := ":" + cfg.Port
-	log.Info("orchestrator listening", "addr", addr)
 
 	srv := &http.Server{
 		Addr:         addr,
@@ -86,9 +87,41 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 0, // SSE requires long-lived connections
 	}
-	if err := srv.ListenAndServe(); err != nil {
+
+	// Start server in goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		log.Info("orchestrator listening", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	// Wait for signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case <-quit:
+		log.Info("shutting down orchestrator")
+	case err := <-errCh:
 		return fmt.Errorf("server error: %w", err)
 	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+
+	// 1. Stop HTTP server (drains active SSE connections)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("http shutdown error", "error", err)
+	}
+
+	// 2. Drain NATS
+	if nc != nil {
+		_ = nc.Drain()
+	}
+
+	log.Info("orchestrator stopped")
 	return nil
 }
 
