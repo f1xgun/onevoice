@@ -28,7 +28,7 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginInput) => {
     try {
       const res = await api.post('/auth/login', data);
-      setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
+      setAuth(res.data.user, res.data.accessToken);
       router.push('/chat');
     } catch (err) {
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data

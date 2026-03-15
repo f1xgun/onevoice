@@ -32,7 +32,7 @@ export default function RegisterPage() {
         email: data.email,
         password: data.password,
       });
-      setAuth(res.data.user, res.data.accessToken, res.data.refreshToken);
+      setAuth(res.data.user, res.data.accessToken);
       router.push('/chat');
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
