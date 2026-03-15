@@ -27,12 +27,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Security
 
-- [ ] **SEC-01**: Refresh token stored in httpOnly+Secure+SameSite=Strict cookie instead of localStorage
-- [ ] **SEC-02**: JWT uses typed claims struct with expiration required, valid methods, issuer/audience validation
-- [ ] **SEC-03**: Auth endpoints rate-limited: /auth/login (10/min/IP), /auth/register (5/min/IP)
-- [ ] **SEC-04**: Chat endpoint rate-limited per user (10/min/user) via Redis sliding window
-- [ ] **SEC-05**: API service returns CSP + security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
-- [ ] **SEC-06**: Refresh token rotation uses atomic DELETE...RETURNING to prevent replay races
+- [x] **SEC-01**: Refresh token stored in httpOnly+Secure+SameSite=Strict cookie instead of localStorage
+- [x] **SEC-02**: JWT uses typed claims struct with expiration required, valid methods, issuer/audience validation
+- [x] **SEC-03**: Auth endpoints rate-limited: /auth/login (10/min/IP), /auth/register (5/min/IP)
+- [x] **SEC-04**: Chat endpoint rate-limited per user (10/min/user) via Redis sliding window
+- [x] **SEC-05**: API service returns CSP + security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
+- [x] **SEC-06**: Refresh token rotation uses atomic DELETE...RETURNING to prevent replay races
 
 ### Observability
 
@@ -113,12 +113,12 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | YBZ-04 | Phase 4 | Pending |
 | YBZ-05 | Phase 4 | Pending |
 | YBZ-06 | Phase 4 | Pending |
-| SEC-01 | Phase 1 | Pending |
-| SEC-02 | Phase 1 | Pending |
-| SEC-03 | Phase 1 | Pending |
-| SEC-04 | Phase 1 | Pending |
-| SEC-05 | Phase 1 | Pending |
-| SEC-06 | Phase 1 | Pending |
+| SEC-01 | Phase 1 | Complete |
+| SEC-02 | Phase 1 | Complete |
+| SEC-03 | Phase 1 | Complete |
+| SEC-04 | Phase 1 | Complete |
+| SEC-05 | Phase 1 | Complete |
+| SEC-06 | Phase 1 | Complete |
 | OBS-01 | Phase 5 | Pending |
 | OBS-02 | Phase 5 | Pending |
 | OBS-03 | Phase 5 | Pending |
