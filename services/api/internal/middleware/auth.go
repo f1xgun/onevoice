@@ -3,12 +3,15 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/services/api/internal/auth"
 )
 
 // Context keys for storing user information
@@ -37,62 +40,34 @@ func Auth(jwtSecret []byte) func(http.Handler) http.Handler {
 			}
 
 			// Parse and validate token
-			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-				// Verify signing method
+			token, err := jwt.ParseWithClaims(tokenString, &auth.AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 				}
 				return jwtSecret, nil
-			})
+			}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience))
 
 			if err != nil {
-				writeJSONError(w, http.StatusUnauthorized, "invalid token: "+err.Error())
+				switch {
+				case errors.Is(err, jwt.ErrTokenExpired):
+					writeJSONError(w, http.StatusUnauthorized, "token_expired")
+				case errors.Is(err, jwt.ErrSignatureInvalid):
+					writeJSONError(w, http.StatusUnauthorized, "token_invalid")
+				default:
+					writeJSONError(w, http.StatusUnauthorized, "token_invalid")
+				}
 				return
 			}
 
-			if !token.Valid {
-				writeJSONError(w, http.StatusUnauthorized, "invalid token")
+			claims, ok := token.Claims.(*auth.AccessTokenClaims)
+			if !ok || !token.Valid {
+				writeJSONError(w, http.StatusUnauthorized, "token_invalid")
 				return
 			}
 
-			// Extract claims
-			claims, ok := token.Claims.(jwt.MapClaims)
-			if !ok {
-				writeJSONError(w, http.StatusUnauthorized, "invalid token claims")
-				return
-			}
-
-			// Extract user_id
-			userIDStr, ok := claims["user_id"].(string)
-			if !ok {
-				writeJSONError(w, http.StatusUnauthorized, "invalid token claims: missing user_id")
-				return
-			}
-
-			userID, err := uuid.Parse(userIDStr)
-			if err != nil {
-				writeJSONError(w, http.StatusUnauthorized, "invalid user_id format")
-				return
-			}
-
-			// Extract email
-			email, ok := claims["email"].(string)
-			if !ok {
-				writeJSONError(w, http.StatusUnauthorized, "invalid token claims: missing email")
-				return
-			}
-
-			// Extract role
-			role, ok := claims["role"].(string)
-			if !ok {
-				writeJSONError(w, http.StatusUnauthorized, "invalid token claims: missing role")
-				return
-			}
-
-			// Store claims in context
-			ctx := context.WithValue(r.Context(), UserIDKey, userID)
-			ctx = context.WithValue(ctx, UserEmailKey, email)
-			ctx = context.WithValue(ctx, UserRoleKey, role)
+			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
+			ctx = context.WithValue(ctx, UserRoleKey, claims.Role)
 
 			// Call next handler with updated context
 			next.ServeHTTP(w, r.WithContext(ctx))

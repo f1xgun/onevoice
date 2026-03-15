@@ -12,17 +12,24 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/services/api/internal/auth"
 )
 
 var testJWTSecret = []byte("test-secret-key-for-jwt-signing")
 
-// Helper to create valid JWT token
+// Helper to create valid JWT token using typed AccessTokenClaims
 func createTestToken(userID uuid.UUID, email, role string, expiry time.Duration) string {
-	claims := jwt.MapClaims{
-		"user_id": userID.String(),
-		"email":   email,
-		"role":    role,
-		"exp":     time.Now().Add(expiry).Unix(),
+	claims := &auth.AccessTokenClaims{
+		UserID: userID,
+		Email:  email,
+		Role:   role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    auth.TokenIssuer,
+			Audience:  jwt.ClaimStrings{auth.TokenAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiry)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -142,7 +149,7 @@ func TestAuth_InvalidTokenSignature(t *testing.T) {
 	var errResp ErrorResponse
 	err := json.NewDecoder(rr.Body).Decode(&errResp)
 	require.NoError(t, err)
-	assert.Contains(t, errResp.Error, "invalid token")
+	assert.Contains(t, errResp.Error, "token_invalid")
 }
 
 func TestAuth_ExpiredToken(t *testing.T) {
@@ -184,7 +191,7 @@ func TestAuth_MalformedToken(t *testing.T) {
 	var errResp ErrorResponse
 	err := json.NewDecoder(rr.Body).Decode(&errResp)
 	require.NoError(t, err)
-	assert.Contains(t, errResp.Error, "invalid token")
+	assert.Contains(t, errResp.Error, "token_invalid")
 }
 
 func TestAuth_MissingClaims(t *testing.T) {
@@ -239,7 +246,7 @@ func TestAuth_MissingClaims(t *testing.T) {
 			var errResp ErrorResponse
 			err = json.NewDecoder(rr.Body).Decode(&errResp)
 			require.NoError(t, err)
-			assert.Contains(t, errResp.Error, "invalid token claims")
+			assert.Contains(t, errResp.Error, "token_invalid")
 		})
 	}
 }
@@ -271,7 +278,7 @@ func TestAuth_InvalidUserIDFormat(t *testing.T) {
 	var errResp ErrorResponse
 	err = json.NewDecoder(rr.Body).Decode(&errResp)
 	require.NoError(t, err)
-	assert.Contains(t, errResp.Error, "invalid user_id")
+	assert.Contains(t, errResp.Error, "token_invalid")
 }
 
 func TestGetUserID_Success(t *testing.T) {

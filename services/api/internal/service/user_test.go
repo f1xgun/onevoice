@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/auth"
 )
 
 // Mock UserRepository
@@ -217,26 +218,26 @@ func TestUserService_Login(t *testing.T) {
 		assert.NotEmpty(t, refreshToken)
 
 		// Verify access token
-		token, err := jwt.ParseWithClaims(accessToken, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		token, err := jwt.ParseWithClaims(accessToken, &auth.AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
 		require.NoError(t, err)
 		assert.True(t, token.Valid)
 
-		claims, ok := token.Claims.(*AccessTokenClaims)
+		claims, ok := token.Claims.(*auth.AccessTokenClaims)
 		require.True(t, ok)
 		assert.Equal(t, existingUser.ID, claims.UserID)
 		assert.Equal(t, existingUser.Email, claims.Email)
 		assert.Equal(t, string(existingUser.Role), claims.Role)
 
 		// Verify refresh token
-		refreshTokenParsed, err := jwt.ParseWithClaims(refreshToken, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		refreshTokenParsed, err := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
 		require.NoError(t, err)
 		assert.True(t, refreshTokenParsed.Valid)
 
-		refreshClaims, ok := refreshTokenParsed.Claims.(*RefreshTokenClaims)
+		refreshClaims, ok := refreshTokenParsed.Claims.(*auth.RefreshTokenClaims)
 		require.True(t, ok)
 		assert.Equal(t, existingUser.ID, refreshClaims.UserID)
 		assert.NotEqual(t, uuid.Nil, refreshClaims.TokenID)
@@ -370,10 +371,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 
 		// Generate a valid refresh token
 		tokenID := uuid.New()
-		refreshClaims := &RefreshTokenClaims{
+		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
+				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
@@ -403,23 +406,23 @@ func TestUserService_RefreshToken(t *testing.T) {
 		assert.ErrorIs(t, err, redis.Nil)
 
 		// Verify new access token
-		token, err := jwt.ParseWithClaims(newAccessToken, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		token, err := jwt.ParseWithClaims(newAccessToken, &auth.AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
 		require.NoError(t, err)
 		assert.True(t, token.Valid)
 
-		claims, ok := token.Claims.(*AccessTokenClaims)
+		claims, ok := token.Claims.(*auth.AccessTokenClaims)
 		require.True(t, ok)
 		assert.Equal(t, userID, claims.UserID)
 		assert.Equal(t, existingUser.Email, claims.Email)
 
 		// Verify new refresh token is valid and stored in Redis
-		newToken, err := jwt.ParseWithClaims(newRefreshToken, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		newToken, err := jwt.ParseWithClaims(newRefreshToken, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
 		require.NoError(t, err)
-		newClaims, ok := newToken.Claims.(*RefreshTokenClaims)
+		newClaims, ok := newToken.Claims.(*auth.RefreshTokenClaims)
 		require.True(t, ok)
 		assert.Equal(t, userID, newClaims.UserID)
 		assert.NotEqual(t, tokenID, newClaims.TokenID, "new token should have different ID")
@@ -449,10 +452,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 		svc := NewUserService(repo, redisClient, jwtSecret)
 
 		// Generate expired refresh token
-		refreshClaims := &RefreshTokenClaims{
+		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
+				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)), // Expired
 				IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
 			},
@@ -478,10 +483,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 		svc := NewUserService(repo, redisClient, jwtSecret)
 
 		// Generate valid token but don't store in Redis
-		refreshClaims := &RefreshTokenClaims{
+		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
+				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
@@ -512,10 +519,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 		svc := NewUserService(repo, redisClient, jwtSecret)
 
 		// Generate valid token and store in Redis
-		refreshClaims := &RefreshTokenClaims{
+		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
+				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
@@ -544,10 +553,12 @@ func TestUserService_RefreshToken(t *testing.T) {
 		svc := NewUserService(repo, redisClient, jwtSecret)
 
 		// Generate valid token
-		refreshClaims := &RefreshTokenClaims{
+		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
+				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
@@ -587,10 +598,12 @@ func TestUserService_Logout(t *testing.T) {
 		require.NoError(t, err)
 
 		// Generate refresh token
-		refreshClaims := &RefreshTokenClaims{
+		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
+				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
@@ -629,10 +642,12 @@ func TestUserService_Logout(t *testing.T) {
 		tokenID := uuid.New()
 
 		// Generate expired token
-		refreshClaims := &RefreshTokenClaims{
+		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
+				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
 			},
@@ -655,10 +670,12 @@ func TestUserService_Logout(t *testing.T) {
 		userID := uuid.New()
 		tokenID := uuid.New()
 
-		refreshClaims := &RefreshTokenClaims{
+		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
+				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
@@ -685,10 +702,12 @@ func TestUserService_Logout(t *testing.T) {
 		userID := uuid.New()
 		tokenID := uuid.New()
 
-		refreshClaims := &RefreshTokenClaims{
+		refreshClaims := &auth.RefreshTokenClaims{
 			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    auth.TokenIssuer,
+				Audience:  jwt.ClaimStrings{auth.TokenAudience},
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
@@ -836,13 +855,13 @@ func TestGenerateTokens(t *testing.T) {
 		assert.NotEmpty(t, token)
 
 		// Parse and verify
-		parsed, err := jwt.ParseWithClaims(token, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		parsed, err := jwt.ParseWithClaims(token, &auth.AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
 		require.NoError(t, err)
 		assert.True(t, parsed.Valid)
 
-		claims, ok := parsed.Claims.(*AccessTokenClaims)
+		claims, ok := parsed.Claims.(*auth.AccessTokenClaims)
 		require.True(t, ok)
 		assert.Equal(t, user.ID, claims.UserID)
 		assert.Equal(t, user.Email, claims.Email)
@@ -856,13 +875,13 @@ func TestGenerateTokens(t *testing.T) {
 		assert.NotEqual(t, uuid.Nil, tokenID)
 
 		// Parse and verify
-		parsed, err := jwt.ParseWithClaims(token, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		parsed, err := jwt.ParseWithClaims(token, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
 		require.NoError(t, err)
 		assert.True(t, parsed.Valid)
 
-		claims, ok := parsed.Claims.(*RefreshTokenClaims)
+		claims, ok := parsed.Claims.(*auth.RefreshTokenClaims)
 		require.True(t, ok)
 		assert.Equal(t, user.ID, claims.UserID)
 		assert.Equal(t, tokenID, claims.TokenID)
