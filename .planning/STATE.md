@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 2
-status: planning
-last_updated: "2026-03-15T19:17:35.779Z"
+status: in_progress
+last_updated: "2026-03-15"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -17,19 +17,19 @@ progress:
 **Project:** OneVoice
 **Milestone:** Hardening
 **Current Phase:** 2
-**Status:** Ready to plan
+**Status:** In Progress
 
 ## Project Reference
 See: .planning/PROJECT.md (updated 2026-03-15)
 **Core value:** Business owners can manage digital presence across platforms through a single conversational interface
-**Current focus:** Phase 1 — Security Foundation
+**Current focus:** Phase 2 — Reliability Foundation
 
 ## Phase Progress
 
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
 | 1 | Security Foundation | Complete | 4/4 |
-| 2 | Reliability Foundation | Pending | 0/4 |
+| 2 | Reliability Foundation | In Progress | 1/4 |
 | 3 | VK Agent Completion | Pending | 0/5 |
 | 4 | Yandex.Business Agent | Pending | 0/5 |
 | 5 | Observability | Pending | 0/4 |
@@ -44,7 +44,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 - [x] PLAN-1.4: Security headers middleware (SEC-05)
 
 ### Phase 2: Reliability Foundation
-- [ ] PLAN-2.1: NonRetryableError type in pkg/a2a and withRetry integration (REL-03)
+- [x] PLAN-2.1: NonRetryableError type in pkg/a2a and withRetry integration (REL-03)
 - [ ] PLAN-2.2: Error taxonomy applied across all agents (REL-02)
 - [ ] PLAN-2.3: Graceful shutdown for all services (REL-01)
 - [ ] PLAN-2.4: Replace all panic() calls in production handlers (REL-04)
@@ -78,4 +78,4 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-15 after plan 01-03 (httpOnly cookie migration + atomic rotation) completed*
+*Last updated: 2026-03-15 after plan 02-01 (NonRetryableError type + withRetry integration) completed*
