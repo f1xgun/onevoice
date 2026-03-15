@@ -31,8 +31,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to NATS (url=%s): %w", natsURL, err)
 	}
-	defer nc.Close()
-
 	tc := tokenclient.New(apiURL, nil)
 	tokens := &tokenAdapter{client: tc}
 	handler := agentpkg.NewHandler(tokens, func(botToken string) (agentpkg.Sender, error) {
@@ -50,7 +48,10 @@ func run() error {
 
 	slog.Info("telegram agent started", "subject", a2a.Subject(a2a.AgentTelegram))
 	<-ctx.Done()
-	slog.Info("telegram agent shutting down")
+	slog.Info("telegram agent shutting down — draining in-flight requests")
+	transport.Close() // drain NATS — no new messages
+	ag.Stop()         // wait for in-flight handlers
+	slog.Info("telegram agent stopped")
 	return nil
 }
 
