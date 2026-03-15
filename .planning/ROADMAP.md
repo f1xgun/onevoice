@@ -21,7 +21,7 @@
 
 ### Plans
 - [ ] PLAN-1.1: httpOnly cookie migration for refresh token (SEC-01, SEC-06)
-- [ ] PLAN-1.2: Typed JWT claims with full validation (SEC-02)
+- [x] PLAN-1.2: Typed JWT claims with full validation (SEC-02)
 - [ ] PLAN-1.3: Rate limiting on auth and chat endpoints (SEC-03, SEC-04)
 - [ ] PLAN-1.4: Security headers middleware (SEC-05)
 
