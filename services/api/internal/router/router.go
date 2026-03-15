@@ -43,6 +43,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+	r.Use(middleware.SecurityHeaders())
 
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
