@@ -98,7 +98,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	agentTaskRepo := repository.NewAgentTaskRepository(mongoDB)
 
 	// Initialize services
-	userService := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
+	userService, err := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
+	if err != nil {
+		return fmt.Errorf("init user service: %w", err)
+	}
 	businessService := service.NewBusinessService(businessRepo)
 	integrationService := service.NewIntegrationService(integrationRepo, enc)
 	oauthService := service.NewOAuthService(redisClient)
@@ -131,17 +134,46 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
 	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
 
+	authHandler, err := handler.NewAuthHandler(userService, cfg.SecureCookies)
+	if err != nil {
+		return fmt.Errorf("init auth handler: %w", err)
+	}
+	businessHandler, err := handler.NewBusinessHandler(businessService, platformSyncer, cfg.UploadDir)
+	if err != nil {
+		return fmt.Errorf("init business handler: %w", err)
+	}
+	integrationHandler, err := handler.NewIntegrationHandler(integrationService, businessService)
+	if err != nil {
+		return fmt.Errorf("init integration handler: %w", err)
+	}
+	conversationHandler, err := handler.NewConversationHandler(conversationRepo, messageRepo)
+	if err != nil {
+		return fmt.Errorf("init conversation handler: %w", err)
+	}
+	reviewHandler, err := handler.NewReviewHandler(reviewService)
+	if err != nil {
+		return fmt.Errorf("init review handler: %w", err)
+	}
+	postHandler, err := handler.NewPostHandler(postService)
+	if err != nil {
+		return fmt.Errorf("init post handler: %w", err)
+	}
+	agentTaskHandler, err := handler.NewAgentTaskHandler(agentTaskService)
+	if err != nil {
+		return fmt.Errorf("init agent task handler: %w", err)
+	}
+
 	handlers := &router.Handlers{
-		Auth:          handler.NewAuthHandler(userService, cfg.SecureCookies),
-		Business:      handler.NewBusinessHandler(businessService, platformSyncer, cfg.UploadDir),
-		Integration:   handler.NewIntegrationHandler(integrationService, businessService),
-		Conversation:  handler.NewConversationHandler(conversationRepo, messageRepo),
+		Auth:          authHandler,
+		Business:      businessHandler,
+		Integration:   integrationHandler,
+		Conversation:  conversationHandler,
 		OAuth:         oauthHandler,
 		InternalToken: internalTokenHandler,
 		ChatProxy:     chatProxyHandler,
-		Review:        handler.NewReviewHandler(reviewService),
-		Post:          handler.NewPostHandler(postService),
-		AgentTask:     handler.NewAgentTaskHandler(agentTaskService),
+		Review:        reviewHandler,
+		Post:          postHandler,
+		AgentTask:     agentTaskHandler,
 	}
 
 	// Setup router

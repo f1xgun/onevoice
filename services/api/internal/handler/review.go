@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -34,13 +35,13 @@ type ReviewHandler struct {
 }
 
 // NewReviewHandler creates a new review handler instance
-func NewReviewHandler(reviewService ReviewService) *ReviewHandler {
+func NewReviewHandler(reviewService ReviewService) (*ReviewHandler, error) {
 	if reviewService == nil {
-		panic("reviewService cannot be nil")
+		return nil, fmt.Errorf("NewReviewHandler: reviewService cannot be nil")
 	}
 	return &ReviewHandler{
 		reviewService: reviewService,
-	}
+	}, nil
 }
 
 // ReviewListResponse represents the review list response
