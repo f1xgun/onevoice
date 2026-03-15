@@ -2,6 +2,7 @@ package router
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -48,9 +49,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth)
-		r.Post("/auth/register", handlers.Auth.Register)
-		r.Post("/auth/login", handlers.Auth.Login)
-		r.Post("/auth/refresh", handlers.Auth.RefreshToken)
+		r.With(middleware.RateLimit(redisClient, 5, time.Minute)).Post("/auth/register", handlers.Auth.Register)
+		r.With(middleware.RateLimit(redisClient, 10, time.Minute)).Post("/auth/login", handlers.Auth.Login)
+		r.With(middleware.RateLimit(redisClient, 10, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
 
 		// OAuth callback routes (public — state parameter validates session)
 		r.Get("/oauth/vk/callback", handlers.OAuth.VKCallback)
@@ -84,7 +85,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 			r.Post("/integrations/telegram/connect", handlers.OAuth.ConnectTelegram)
 
 			// Chat proxy (replaces direct orchestrator access)
-			r.Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
+			r.With(middleware.RateLimitByUser(redisClient, 10, time.Minute)).Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
 
 			// Conversation routes
 			r.Get("/conversations", handlers.Conversation.ListConversations)
