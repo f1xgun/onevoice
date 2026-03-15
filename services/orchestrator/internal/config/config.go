@@ -4,15 +4,17 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 )
 
 // Config holds orchestrator configuration loaded from environment.
 type Config struct {
-	Port          string
-	LLMModel      string
-	LLMTier       string
-	MaxIterations int
-	NATSUrl       string
+	Port            string
+	LLMModel        string
+	LLMTier         string
+	MaxIterations   int
+	NATSUrl         string
+	ShutdownTimeout time.Duration
 
 	// LLM provider API keys (at least one must be set)
 	OpenRouterAPIKey string
@@ -43,12 +45,20 @@ func Load() (*Config, error) {
 		}
 	}
 
+	shutdownTimeout := 30 * time.Second
+	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			shutdownTimeout = d
+		}
+	}
+
 	return &Config{
-		Port:          getEnv("PORT", "8090"),
-		LLMModel:      model,
-		LLMTier:       getEnv("LLM_TIER", "free"),
-		MaxIterations: maxIter,
-		NATSUrl:       getEnv("NATS_URL", "nats://localhost:4222"),
+		Port:            getEnv("PORT", "8090"),
+		LLMModel:        model,
+		LLMTier:         getEnv("LLM_TIER", "free"),
+		MaxIterations:   maxIter,
+		NATSUrl:         getEnv("NATS_URL", "nats://localhost:4222"),
+		ShutdownTimeout: shutdownTimeout,
 
 		OpenRouterAPIKey: os.Getenv("OPENROUTER_API_KEY"),
 		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
