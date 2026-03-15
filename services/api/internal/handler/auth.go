@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -29,19 +30,63 @@ var validate = validator.New()
 
 // AuthHandler handles authentication endpoints
 type AuthHandler struct {
-	userService UserService
-	validate    *validator.Validate
+	userService   UserService
+	validate      *validator.Validate
+	secureCookies bool
 }
 
 // NewAuthHandler creates a new auth handler instance
-func NewAuthHandler(userService UserService) *AuthHandler {
+func NewAuthHandler(userService UserService, secureCookies bool) *AuthHandler {
 	if userService == nil {
 		panic("userService cannot be nil")
 	}
 	return &AuthHandler{
-		userService: userService,
-		validate:    validate,
+		userService:   userService,
+		validate:      validate,
+		secureCookies: secureCookies,
 	}
+}
+
+func (h *AuthHandler) cookieName() string {
+	if h.secureCookies {
+		return "__Host-refresh_token"
+	}
+	return "refresh_token"
+}
+
+func (h *AuthHandler) setRefreshTokenCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     h.cookieName(),
+		Value:    token,
+		Path:     "/",
+		MaxAge:   int(7 * 24 * time.Hour / time.Second), // 604800
+		HttpOnly: true,
+		Secure:   h.secureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (h *AuthHandler) clearRefreshTokenCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     h.cookieName(),
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   h.secureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (h *AuthHandler) readRefreshTokenCookie(r *http.Request) (string, error) {
+	// Try secure name first, then plain name (handles upgrade path)
+	for _, name := range []string{"__Host-refresh_token", "refresh_token"} {
+		c, err := r.Cookie(name)
+		if err == nil && c.Value != "" {
+			return c.Value, nil
+		}
+	}
+	return "", http.ErrNoCookie
 }
 
 // RegisterRequest represents the registration request payload
@@ -58,26 +103,14 @@ type LoginRequest struct {
 
 // LoginResponse represents the login response payload
 type LoginResponse struct {
-	User         *domain.User `json:"user"`
-	AccessToken  string       `json:"accessToken"`
-	RefreshToken string       `json:"refreshToken"`
-}
-
-// RefreshTokenRequest represents the refresh token request payload
-type RefreshTokenRequest struct {
-	RefreshToken string `json:"refreshToken" validate:"required"`
+	User        *domain.User `json:"user"`
+	AccessToken string       `json:"accessToken"`
 }
 
 // RefreshTokenResponse represents the refresh token response payload
 type RefreshTokenResponse struct {
-	User         *domain.User `json:"user"`
-	AccessToken  string       `json:"accessToken"`
-	RefreshToken string       `json:"refreshToken"`
-}
-
-// LogoutRequest represents the logout request payload
-type LogoutRequest struct {
-	RefreshToken string `json:"refreshToken" validate:"required"`
+	User        *domain.User `json:"user"`
+	AccessToken string       `json:"accessToken"`
 }
 
 // ChangePasswordRequest represents the password change request payload
@@ -122,10 +155,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setRefreshTokenCookie(w, refreshToken)
 	writeJSON(w, http.StatusCreated, LoginResponse{
-		User:         user,
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		User:        user,
+		AccessToken: accessToken,
 	})
 }
 
@@ -163,34 +196,25 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return user and tokens
+	h.setRefreshTokenCookie(w, refreshToken)
 	writeJSON(w, http.StatusOK, LoginResponse{
-		User:         user,
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		User:        user,
+		AccessToken: accessToken,
 	})
 }
 
 // RefreshToken handles token refresh
 func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
-	var req RefreshTokenRequest
-
-	// Parse request body
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+	refreshToken, err := h.readRefreshTokenCookie(r)
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "missing refresh token")
 		return
 	}
 
-	// Validate request
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, err)
-		return
-	}
-
-	// Call service
-	user, accessToken, newRefreshToken, err := h.userService.RefreshToken(r.Context(), req.RefreshToken)
+	user, accessToken, newRefreshToken, err := h.userService.RefreshToken(r.Context(), refreshToken)
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidToken) {
+			h.clearRefreshTokenCookie(w)
 			writeJSONError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
@@ -199,34 +223,26 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return user and new tokens
+	h.setRefreshTokenCookie(w, newRefreshToken)
 	writeJSON(w, http.StatusOK, RefreshTokenResponse{
-		User:         user,
-		AccessToken:  accessToken,
-		RefreshToken: newRefreshToken,
+		User:        user,
+		AccessToken: accessToken,
 	})
 }
 
 // Logout handles user logout by invalidating refresh token
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	var req LogoutRequest
-
-	// Parse request body
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+	refreshToken, err := h.readRefreshTokenCookie(r)
+	if err != nil {
+		// No cookie = already logged out, return success
+		writeJSON(w, http.StatusNoContent, nil)
 		return
 	}
 
-	// Validate request
-	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, err)
-		return
-	}
-
-	// Call service
-	err := h.userService.Logout(r.Context(), req.RefreshToken)
+	err = h.userService.Logout(r.Context(), refreshToken)
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidToken) {
+			h.clearRefreshTokenCookie(w)
 			writeJSONError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
@@ -235,7 +251,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return 204 No Content
+	h.clearRefreshTokenCookie(w)
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
