@@ -39,7 +39,7 @@
 4. Removing any `panic()` call from production handlers: sending a malformed request to previously panicking endpoints returns a 400/500 error response, not a process crash.
 
 ### Plans
-- [ ] PLAN-2.1: NonRetryableError type in pkg/a2a and withRetry integration (REL-03)
+- [x] PLAN-2.1: NonRetryableError type in pkg/a2a and withRetry integration (REL-03)
 - [ ] PLAN-2.2: Error taxonomy applied across all agents (REL-02)
 - [ ] PLAN-2.3: Graceful shutdown for all services (REL-01)
 - [ ] PLAN-2.4: Replace all panic() calls in production handlers (REL-04)
