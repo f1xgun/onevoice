@@ -132,7 +132,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
 
 	handlers := &router.Handlers{
-		Auth:          handler.NewAuthHandler(userService),
+		Auth:          handler.NewAuthHandler(userService, cfg.SecureCookies),
 		Business:      handler.NewBusinessHandler(businessService, platformSyncer, cfg.UploadDir),
 		Integration:   handler.NewIntegrationHandler(integrationService, businessService),
 		Conversation:  handler.NewConversationHandler(conversationRepo, messageRepo),
