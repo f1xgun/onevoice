@@ -19,13 +19,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     isMounted.current = true;
     const controller = new AbortController();
 
-    const refreshToken = localStorage.getItem('refreshToken');
-
-    if (!refreshToken) {
-      router.replace('/login');
-      return;
-    }
-
     const accessToken = useAuthStore.getState().accessToken;
     if (accessToken) {
       // Already have a valid token in memory — show the page
@@ -33,21 +26,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Have a refresh token but no access token — attempt silent refresh
-    let newRefreshToken = refreshToken;
-
+    // No access token in memory — attempt silent refresh via httpOnly cookie
     api
-      .post('/auth/refresh', { refreshToken }, { signal: controller.signal })
+      .post('/auth/refresh', {}, { signal: controller.signal })
       .then((res) => {
         if (!isMounted.current) return;
-        // Capture the new refresh token from rotation before it's lost
-        newRefreshToken = res.data.refreshToken ?? refreshToken;
         useAuthStore.getState().setAccessToken(res.data.accessToken);
         return api.get('/auth/me', { signal: controller.signal });
       })
       .then((res) => {
         if (!isMounted.current || !res) return;
-        setAuth(res.data, useAuthStore.getState().accessToken!, newRefreshToken);
+        setAuth(res.data, useAuthStore.getState().accessToken!);
         setReady(true);
       })
       .catch((_err: unknown) => {
