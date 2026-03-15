@@ -19,6 +19,7 @@ type Config struct {
 	RedisPort     string
 	JWTSecret     string
 	EncryptionKey string
+	SecureCookies bool
 
 	// OAuth credentials
 	VKClientID         string
@@ -60,6 +61,7 @@ func Load() (*Config, error) {
 		RedisPort:     getEnv("REDIS_PORT", "6379"),
 		JWTSecret:     getEnv("JWT_SECRET", ""),
 		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
+		SecureCookies: getEnv("SECURE_COOKIES", "true") == "true",
 
 		VKClientID:         os.Getenv("VK_CLIENT_ID"),
 		VKClientSecret:     os.Getenv("VK_CLIENT_SECRET"),
