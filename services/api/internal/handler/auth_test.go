@@ -72,7 +72,7 @@ func TestRegister(t *testing.T) {
 		requestBody   string
 		mockSetup     func(*MockUserService)
 		wantStatus    int
-		checkResponse func(t *testing.T, body string)
+		checkResponse func(t *testing.T, w *httptest.ResponseRecorder)
 	}{
 		{
 			name:        "successful registration",
@@ -96,14 +96,27 @@ func TestRegister(t *testing.T) {
 					}, "access-token", "refresh-token", nil)
 			},
 			wantStatus: http.StatusCreated,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				var resp LoginResponse
-				err := json.Unmarshal([]byte(body), &resp)
+				err := json.Unmarshal(w.Body.Bytes(), &resp)
 				require.NoError(t, err)
 				assert.Equal(t, "user@example.com", resp.User.Email)
 				assert.Equal(t, domain.RoleOwner, resp.User.Role)
 				assert.Equal(t, "access-token", resp.AccessToken)
-				assert.Equal(t, "refresh-token", resp.RefreshToken)
+
+				// Verify refresh token is in cookie, not in response body
+				cookies := w.Result().Cookies()
+				var refreshCookie *http.Cookie
+				for _, c := range cookies {
+					if c.Name == "refresh_token" {
+						refreshCookie = c
+						break
+					}
+				}
+				require.NotNil(t, refreshCookie, "refresh_token cookie should be set")
+				assert.Equal(t, "refresh-token", refreshCookie.Value)
+				assert.True(t, refreshCookie.HttpOnly)
+				assert.Equal(t, http.SameSiteLaxMode, refreshCookie.SameSite)
 			},
 		},
 		{
@@ -111,7 +124,8 @@ func TestRegister(t *testing.T) {
 			requestBody: `{"password":"password123"}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"validation failed"`)
 				assert.Contains(t, body, `"Email"`)
 			},
@@ -121,7 +135,8 @@ func TestRegister(t *testing.T) {
 			requestBody: `{"email":"user@example.com"}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"validation failed"`)
 				assert.Contains(t, body, `"Password"`)
 			},
@@ -131,7 +146,8 @@ func TestRegister(t *testing.T) {
 			requestBody: `{"email":"not-an-email","password":"password123"}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"validation failed"`)
 				assert.Contains(t, body, `"Email"`)
 			},
@@ -141,7 +157,8 @@ func TestRegister(t *testing.T) {
 			requestBody: `{"email":"user@example.com","password":"short"}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"validation failed"`)
 				assert.Contains(t, body, `"Password"`)
 			},
@@ -154,8 +171,8 @@ func TestRegister(t *testing.T) {
 					Return(nil, domain.ErrUserExists)
 			},
 			wantStatus: http.StatusConflict,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error"`)
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error"`)
 			},
 		},
 		{
@@ -163,8 +180,8 @@ func TestRegister(t *testing.T) {
 			requestBody: `{invalid json}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error"`)
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error"`)
 			},
 		},
 		{
@@ -175,7 +192,8 @@ func TestRegister(t *testing.T) {
 					Return(nil, errors.New("database connection failed"))
 			},
 			wantStatus: http.StatusInternalServerError,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"internal server error"`)
 				assert.NotContains(t, body, "database") // Should not leak internal details
 			},
@@ -187,7 +205,7 @@ func TestRegister(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService)
+			handler := NewAuthHandler(mockService, false)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
@@ -196,7 +214,7 @@ func TestRegister(t *testing.T) {
 			handler.Register(w, req)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
-			tt.checkResponse(t, w.Body.String())
+			tt.checkResponse(t, w)
 
 			mockService.AssertExpectations(t)
 		})
@@ -209,7 +227,7 @@ func TestLogin(t *testing.T) {
 		requestBody   string
 		mockSetup     func(*MockUserService)
 		wantStatus    int
-		checkResponse func(t *testing.T, body string)
+		checkResponse func(t *testing.T, w *httptest.ResponseRecorder)
 	}{
 		{
 			name:        "successful login",
@@ -230,19 +248,32 @@ func TestLogin(t *testing.T) {
 					)
 			},
 			wantStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				var response map[string]interface{}
-				err := json.Unmarshal([]byte(body), &response)
+				err := json.Unmarshal(w.Body.Bytes(), &response)
 				require.NoError(t, err)
 
 				assert.Contains(t, response, "user")
 				assert.Contains(t, response, "accessToken")
-				assert.Contains(t, response, "refreshToken")
+				assert.NotContains(t, response, "refreshToken", "refreshToken must not be in response body")
 				assert.Equal(t, "access.token.here", response["accessToken"])
-				assert.Equal(t, "refresh.token.here", response["refreshToken"])
 
 				userData := response["user"].(map[string]interface{})
 				assert.Equal(t, "user@example.com", userData["email"])
+
+				// Verify refresh token is in cookie
+				cookies := w.Result().Cookies()
+				var refreshCookie *http.Cookie
+				for _, c := range cookies {
+					if c.Name == "refresh_token" {
+						refreshCookie = c
+						break
+					}
+				}
+				require.NotNil(t, refreshCookie, "refresh_token cookie should be set")
+				assert.Equal(t, "refresh.token.here", refreshCookie.Value)
+				assert.True(t, refreshCookie.HttpOnly)
+				assert.Equal(t, http.SameSiteLaxMode, refreshCookie.SameSite)
 			},
 		},
 		{
@@ -253,8 +284,8 @@ func TestLogin(t *testing.T) {
 					Return(nil, "", "", domain.ErrInvalidCredentials)
 			},
 			wantStatus: http.StatusUnauthorized,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"invalid credentials"`)
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"invalid credentials"`)
 			},
 		},
 		{
@@ -262,7 +293,8 @@ func TestLogin(t *testing.T) {
 			requestBody: `{"password":"password123"}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"validation failed"`)
 				assert.Contains(t, body, `"Email"`)
 			},
@@ -272,7 +304,8 @@ func TestLogin(t *testing.T) {
 			requestBody: `{"email":"user@example.com"}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"validation failed"`)
 				assert.Contains(t, body, `"Password"`)
 			},
@@ -282,8 +315,8 @@ func TestLogin(t *testing.T) {
 			requestBody: `{invalid}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error"`)
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error"`)
 			},
 		},
 		{
@@ -294,7 +327,8 @@ func TestLogin(t *testing.T) {
 					Return(nil, "", "", errors.New("redis connection failed"))
 			},
 			wantStatus: http.StatusInternalServerError,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"internal server error"`)
 				assert.NotContains(t, body, "redis") // Should not leak internal details
 			},
@@ -306,7 +340,7 @@ func TestLogin(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService)
+			handler := NewAuthHandler(mockService, false)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
@@ -315,7 +349,7 @@ func TestLogin(t *testing.T) {
 			handler.Login(w, req)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
-			tt.checkResponse(t, w.Body.String())
+			tt.checkResponse(t, w)
 
 			mockService.AssertExpectations(t)
 		})
@@ -325,14 +359,14 @@ func TestLogin(t *testing.T) {
 func TestRefreshToken(t *testing.T) {
 	tests := []struct {
 		name          string
-		requestBody   string
+		cookie        *http.Cookie
 		mockSetup     func(*MockUserService)
 		wantStatus    int
-		checkResponse func(t *testing.T, body string)
+		checkResponse func(t *testing.T, w *httptest.ResponseRecorder)
 	}{
 		{
-			name:        "successful token refresh",
-			requestBody: `{"refreshToken":"valid.refresh.token"}`,
+			name:   "successful token refresh",
+			cookie: &http.Cookie{Name: "refresh_token", Value: "valid.refresh.token"},
 			mockSetup: func(m *MockUserService) {
 				m.On("RefreshToken", mock.Anything, "valid.refresh.token").
 					Return(
@@ -349,61 +383,74 @@ func TestRefreshToken(t *testing.T) {
 					)
 			},
 			wantStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				var response map[string]interface{}
-				err := json.Unmarshal([]byte(body), &response)
+				err := json.Unmarshal(w.Body.Bytes(), &response)
 				require.NoError(t, err)
 
 				assert.Contains(t, response, "user")
 				assert.Contains(t, response, "accessToken")
-				assert.Contains(t, response, "refreshToken")
+				assert.NotContains(t, response, "refreshToken", "refreshToken must not be in response body")
 				assert.Equal(t, "new.access.token", response["accessToken"])
-				assert.Equal(t, "new.refresh.token", response["refreshToken"])
 
 				userData := response["user"].(map[string]interface{})
 				assert.Equal(t, "user@example.com", userData["email"])
+
+				// Verify new refresh token is in cookie
+				cookies := w.Result().Cookies()
+				var refreshCookie *http.Cookie
+				for _, c := range cookies {
+					if c.Name == "refresh_token" {
+						refreshCookie = c
+						break
+					}
+				}
+				require.NotNil(t, refreshCookie, "refresh_token cookie should be set")
+				assert.Equal(t, "new.refresh.token", refreshCookie.Value)
 			},
 		},
 		{
-			name:        "invalid refresh token",
-			requestBody: `{"refreshToken":"invalid.token"}`,
+			name:   "invalid refresh token",
+			cookie: &http.Cookie{Name: "refresh_token", Value: "invalid.token"},
 			mockSetup: func(m *MockUserService) {
 				m.On("RefreshToken", mock.Anything, "invalid.token").
 					Return(nil, "", "", domain.ErrInvalidToken)
 			},
 			wantStatus: http.StatusUnauthorized,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"invalid token"`)
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"invalid token"`)
+				// Verify cookie is cleared on invalid token
+				cookies := w.Result().Cookies()
+				var refreshCookie *http.Cookie
+				for _, c := range cookies {
+					if c.Name == "refresh_token" {
+						refreshCookie = c
+						break
+					}
+				}
+				require.NotNil(t, refreshCookie, "refresh_token cookie should be cleared")
+				assert.Equal(t, -1, refreshCookie.MaxAge)
 			},
 		},
 		{
-			name:        "missing refresh token",
-			requestBody: `{}`,
-			mockSetup:   func(m *MockUserService) {},
-			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"validation failed"`)
-				assert.Contains(t, body, `"RefreshToken"`)
+			name:      "missing refresh token cookie",
+			cookie:    nil,
+			mockSetup: func(m *MockUserService) {},
+			wantStatus: http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"missing refresh token"`)
 			},
 		},
 		{
-			name:        "invalid json",
-			requestBody: `{invalid}`,
-			mockSetup:   func(m *MockUserService) {},
-			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error"`)
-			},
-		},
-		{
-			name:        "internal server error",
-			requestBody: `{"refreshToken":"valid.refresh.token"}`,
+			name:   "internal server error",
+			cookie: &http.Cookie{Name: "refresh_token", Value: "valid.refresh.token"},
 			mockSetup: func(m *MockUserService) {
 				m.On("RefreshToken", mock.Anything, "valid.refresh.token").
 					Return(nil, "", "", errors.New("redis lookup failed"))
 			},
 			wantStatus: http.StatusInternalServerError,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"internal server error"`)
 				assert.NotContains(t, body, "redis") // Should not leak internal details
 			},
@@ -415,16 +462,18 @@ func TestRefreshToken(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService)
+			handler := NewAuthHandler(mockService, false)
 
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBufferString(tt.requestBody))
-			req.Header.Set("Content-Type", "application/json")
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", http.NoBody)
+			if tt.cookie != nil {
+				req.AddCookie(tt.cookie)
+			}
 			w := httptest.NewRecorder()
 
 			handler.RefreshToken(w, req)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
-			tt.checkResponse(t, w.Body.String())
+			tt.checkResponse(t, w)
 
 			mockService.AssertExpectations(t)
 		})
@@ -434,63 +483,65 @@ func TestRefreshToken(t *testing.T) {
 func TestLogout(t *testing.T) {
 	tests := []struct {
 		name          string
-		requestBody   string
+		cookie        *http.Cookie
 		mockSetup     func(*MockUserService)
 		wantStatus    int
-		checkResponse func(t *testing.T, body string)
+		checkResponse func(t *testing.T, w *httptest.ResponseRecorder)
 	}{
 		{
-			name:        "successful logout",
-			requestBody: `{"refreshToken":"valid.refresh.token"}`,
+			name:   "successful logout",
+			cookie: &http.Cookie{Name: "refresh_token", Value: "valid.refresh.token"},
 			mockSetup: func(m *MockUserService) {
 				m.On("Logout", mock.Anything, "valid.refresh.token").
 					Return(nil)
 			},
 			wantStatus: http.StatusNoContent,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Empty(t, body)
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Empty(t, w.Body.String())
+				// Verify cookie is cleared
+				cookies := w.Result().Cookies()
+				var refreshCookie *http.Cookie
+				for _, c := range cookies {
+					if c.Name == "refresh_token" {
+						refreshCookie = c
+						break
+					}
+				}
+				require.NotNil(t, refreshCookie, "refresh_token cookie should be cleared")
+				assert.Equal(t, -1, refreshCookie.MaxAge)
 			},
 		},
 		{
-			name:        "invalid refresh token",
-			requestBody: `{"refreshToken":"invalid.token"}`,
+			name:   "invalid refresh token",
+			cookie: &http.Cookie{Name: "refresh_token", Value: "invalid.token"},
 			mockSetup: func(m *MockUserService) {
 				m.On("Logout", mock.Anything, "invalid.token").
 					Return(domain.ErrInvalidToken)
 			},
 			wantStatus: http.StatusUnauthorized,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"invalid token"`)
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"invalid token"`)
 			},
 		},
 		{
-			name:        "missing refresh token",
-			requestBody: `{}`,
-			mockSetup:   func(m *MockUserService) {},
-			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"validation failed"`)
-				assert.Contains(t, body, `"RefreshToken"`)
+			name:      "missing cookie returns success",
+			cookie:    nil,
+			mockSetup: func(m *MockUserService) {},
+			wantStatus: http.StatusNoContent,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Empty(t, w.Body.String())
 			},
 		},
 		{
-			name:        "invalid json",
-			requestBody: `{invalid}`,
-			mockSetup:   func(m *MockUserService) {},
-			wantStatus:  http.StatusBadRequest,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error"`)
-			},
-		},
-		{
-			name:        "internal server error",
-			requestBody: `{"refreshToken":"valid.refresh.token"}`,
+			name:   "internal server error",
+			cookie: &http.Cookie{Name: "refresh_token", Value: "valid.refresh.token"},
 			mockSetup: func(m *MockUserService) {
 				m.On("Logout", mock.Anything, "valid.refresh.token").
 					Return(errors.New("redis delete failed"))
 			},
 			wantStatus: http.StatusInternalServerError,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"internal server error"`)
 				assert.NotContains(t, body, "redis") // Should not leak internal details
 			},
@@ -502,16 +553,18 @@ func TestLogout(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService)
+			handler := NewAuthHandler(mockService, false)
 
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", bytes.NewBufferString(tt.requestBody))
-			req.Header.Set("Content-Type", "application/json")
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", http.NoBody)
+			if tt.cookie != nil {
+				req.AddCookie(tt.cookie)
+			}
 			w := httptest.NewRecorder()
 
 			handler.Logout(w, req)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
-			tt.checkResponse(t, w.Body.String())
+			tt.checkResponse(t, w)
 
 			mockService.AssertExpectations(t)
 		})
@@ -526,7 +579,7 @@ func TestMe(t *testing.T) {
 		setupContext  func(*http.Request) *http.Request
 		mockSetup     func(*MockUserService)
 		wantStatus    int
-		checkResponse func(t *testing.T, body string)
+		checkResponse func(t *testing.T, w *httptest.ResponseRecorder)
 	}{
 		{
 			name: "successful me request",
@@ -545,9 +598,9 @@ func TestMe(t *testing.T) {
 					}, nil)
 			},
 			wantStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				var user domain.User
-				err := json.Unmarshal([]byte(body), &user)
+				err := json.Unmarshal(w.Body.Bytes(), &user)
 				require.NoError(t, err)
 				assert.Equal(t, "user@example.com", user.Email)
 				assert.Equal(t, domain.RoleOwner, user.Role)
@@ -565,8 +618,8 @@ func TestMe(t *testing.T) {
 					Return(nil, domain.ErrUserNotFound)
 			},
 			wantStatus: http.StatusNotFound,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"user not found"`)
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"user not found"`)
 			},
 		},
 		{
@@ -576,8 +629,8 @@ func TestMe(t *testing.T) {
 			},
 			mockSetup:  func(m *MockUserService) {},
 			wantStatus: http.StatusUnauthorized,
-			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"unauthorized"`)
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"unauthorized"`)
 			},
 		},
 		{
@@ -591,7 +644,8 @@ func TestMe(t *testing.T) {
 					Return(nil, errors.New("database query failed"))
 			},
 			wantStatus: http.StatusInternalServerError,
-			checkResponse: func(t *testing.T, body string) {
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
 				assert.Contains(t, body, `"error":"internal server error"`)
 				assert.NotContains(t, body, "database") // Should not leak internal details
 			},
@@ -603,7 +657,7 @@ func TestMe(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService)
+			handler := NewAuthHandler(mockService, false)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", http.NoBody)
 			req = tt.setupContext(req)
@@ -612,7 +666,7 @@ func TestMe(t *testing.T) {
 			handler.Me(w, req)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
-			tt.checkResponse(t, w.Body.String())
+			tt.checkResponse(t, w)
 
 			mockService.AssertExpectations(t)
 		})
