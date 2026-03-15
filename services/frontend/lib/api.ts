@@ -5,6 +5,7 @@ import type { User } from './auth';
 export const api = axios.create({
   baseURL: '/api/v1',
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
 // Attach access token to every request
@@ -19,6 +20,11 @@ api.interceptors.request.use((config) => {
 // On 401: try refresh once, then logout
 let refreshing = false;
 let queue: Array<{ resolve: (v: string) => void; reject: (e: unknown) => void }> = [];
+
+interface RefreshResponse {
+  user: User;
+  accessToken: string;
+}
 
 api.interceptors.response.use(
   (res) => res,
@@ -49,23 +55,14 @@ api.interceptors.response.use(
     refreshing = true;
 
     try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (!refreshToken) throw new Error('no refresh token');
-
-      interface RefreshResponse {
-        user: User;
-        accessToken: string;
-        refreshToken: string;
-      }
-      const { data } = await axios.post<RefreshResponse>('/api/v1/auth/refresh', { refreshToken });
+      const { data } = await axios.post<RefreshResponse>('/api/v1/auth/refresh', {}, { withCredentials: true });
       if (!data.accessToken) throw new Error('invalid refresh response');
-      const { accessToken, refreshToken: newRefresh, user } = data;
+      const { accessToken, user } = data;
 
       if (user) {
-        useAuthStore.getState().setAuth(user, accessToken, newRefresh);
+        useAuthStore.getState().setAuth(user, accessToken);
       } else {
         useAuthStore.getState().setAccessToken(accessToken);
-        localStorage.setItem('refreshToken', newRefresh);
       }
 
       queue.forEach(({ resolve }) => resolve(accessToken));
