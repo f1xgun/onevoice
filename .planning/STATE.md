@@ -3,7 +3,7 @@
 **Project:** OneVoice
 **Milestone:** Hardening
 **Current Phase:** 1
-**Status:** Not started
+**Status:** In progress
 
 ## Project Reference
 See: .planning/PROJECT.md (updated 2026-03-15)
@@ -14,7 +14,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
-| 1 | Security Foundation | Pending | 0/4 |
+| 1 | Security Foundation | In progress | 1/4 |
 | 2 | Reliability Foundation | Pending | 0/4 |
 | 3 | VK Agent Completion | Pending | 0/5 |
 | 4 | Yandex.Business Agent | Pending | 0/5 |
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 - [ ] PLAN-1.1: httpOnly cookie migration for refresh token (SEC-01, SEC-06)
 - [ ] PLAN-1.2: Typed JWT claims with full validation (SEC-02)
 - [ ] PLAN-1.3: Rate limiting on auth and chat endpoints (SEC-03, SEC-04)
-- [ ] PLAN-1.4: Security headers middleware (SEC-05)
+- [x] PLAN-1.4: Security headers middleware (SEC-05)
 
 ### Phase 2: Reliability Foundation
 - [ ] PLAN-2.1: NonRetryableError type in pkg/a2a and withRetry integration (REL-03)
@@ -64,4 +64,4 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-15 after roadmap creation*
+*Last updated: 2026-03-15 after plan 01-01 (security headers middleware) completed*
