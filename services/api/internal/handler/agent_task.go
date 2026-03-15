@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -30,13 +31,13 @@ type AgentTaskHandler struct {
 }
 
 // NewAgentTaskHandler creates a new agent task handler instance
-func NewAgentTaskHandler(agentTaskService AgentTaskService) *AgentTaskHandler {
+func NewAgentTaskHandler(agentTaskService AgentTaskService) (*AgentTaskHandler, error) {
 	if agentTaskService == nil {
-		panic("agentTaskService cannot be nil")
+		return nil, fmt.Errorf("NewAgentTaskHandler: agentTaskService cannot be nil")
 	}
 	return &AgentTaskHandler{
 		agentTaskService: agentTaskService,
-	}
+	}, nil
 }
 
 // TaskListResponse represents the task list response

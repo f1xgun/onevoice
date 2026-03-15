@@ -43,15 +43,15 @@ type userService struct {
 var _ UserService = (*userService)(nil)
 
 // NewUserService creates a new user service instance
-func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSecret string) UserService {
+func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSecret string) (UserService, error) {
 	if len(jwtSecret) < 32 {
-		panic("jwt secret must be at least 32 bytes")
+		return nil, fmt.Errorf("NewUserService: jwt secret must be at least 32 bytes (got %d)", len(jwtSecret))
 	}
 	return &userService{
 		repo:      repo,
 		redis:     redisClient,
 		jwtSecret: []byte(jwtSecret),
-	}
+	}, nil
 }
 
 // Register creates a new user with encrypted password

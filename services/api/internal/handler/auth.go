@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -36,15 +37,15 @@ type AuthHandler struct {
 }
 
 // NewAuthHandler creates a new auth handler instance
-func NewAuthHandler(userService UserService, secureCookies bool) *AuthHandler {
+func NewAuthHandler(userService UserService, secureCookies bool) (*AuthHandler, error) {
 	if userService == nil {
-		panic("userService cannot be nil")
+		return nil, fmt.Errorf("NewAuthHandler: userService cannot be nil")
 	}
 	return &AuthHandler{
 		userService:   userService,
 		validate:      validate,
 		secureCookies: secureCookies,
-	}
+	}, nil
 }
 
 func (h *AuthHandler) cookieName() string {

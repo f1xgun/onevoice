@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -32,13 +33,13 @@ type PostHandler struct {
 }
 
 // NewPostHandler creates a new post handler instance
-func NewPostHandler(postService PostService) *PostHandler {
+func NewPostHandler(postService PostService) (*PostHandler, error) {
 	if postService == nil {
-		panic("postService cannot be nil")
+		return nil, fmt.Errorf("NewPostHandler: postService cannot be nil")
 	}
 	return &PostHandler{
 		postService: postService,
-	}
+	}, nil
 }
 
 // PostListResponse represents the post list response

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -61,16 +62,16 @@ type UpdateBusinessRequest struct {
 // NewBusinessHandler creates a new business handler instance.
 // syncer may be nil; if provided, it is called asynchronously after each successful update.
 // uploadDir is the directory where uploaded logo files are stored.
-func NewBusinessHandler(businessService BusinessService, syncer BusinessSyncer, uploadDir string) *BusinessHandler {
+func NewBusinessHandler(businessService BusinessService, syncer BusinessSyncer, uploadDir string) (*BusinessHandler, error) {
 	if businessService == nil {
-		panic("businessService cannot be nil")
+		return nil, fmt.Errorf("NewBusinessHandler: businessService cannot be nil")
 	}
 	return &BusinessHandler{
 		businessService: businessService,
 		syncer:          syncer,
 		validate:        validate,
 		uploadDir:       uploadDir,
-	}
+	}, nil
 }
 
 // GetBusiness returns the business profile for the authenticated user

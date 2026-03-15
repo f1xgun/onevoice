@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -27,17 +28,17 @@ type IntegrationHandler struct {
 }
 
 // NewIntegrationHandler creates a new integration handler instance
-func NewIntegrationHandler(integrationService IntegrationService, businessService BusinessService) *IntegrationHandler {
+func NewIntegrationHandler(integrationService IntegrationService, businessService BusinessService) (*IntegrationHandler, error) {
 	if integrationService == nil {
-		panic("integrationService cannot be nil")
+		return nil, fmt.Errorf("NewIntegrationHandler: integrationService cannot be nil")
 	}
 	if businessService == nil {
-		panic("businessService cannot be nil")
+		return nil, fmt.Errorf("NewIntegrationHandler: businessService cannot be nil")
 	}
 	return &IntegrationHandler{
 		integrationService: integrationService,
 		businessService:    businessService,
-	}
+	}, nil
 }
 
 // ListIntegrations returns all integrations for the authenticated user's business
