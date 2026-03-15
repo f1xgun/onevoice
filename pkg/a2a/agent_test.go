@@ -113,3 +113,44 @@ func TestAgent_HandlerError_ReturnsErrorResponse(t *testing.T) {
 		t.Fatal("no reply published within timeout")
 	}
 }
+
+func TestAgent_Stop_WaitsForInflight(t *testing.T) {
+	transport := &fakeTransport{}
+	var called atomic.Int32
+
+	handler := a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		time.Sleep(200 * time.Millisecond)
+		called.Add(1)
+		return &a2a.ToolResponse{TaskID: req.TaskID, Success: true}, nil
+	})
+
+	agent := a2a.NewAgent(a2a.AgentTelegram, transport, handler)
+	require.NoError(t, agent.Start(context.Background()))
+
+	req := a2a.ToolRequest{TaskID: "t-stop", Tool: "telegram__send_post"}
+	data, _ := json.Marshal(req)
+	transport.Trigger("tasks.telegram", "", data)
+
+	start := time.Now()
+	agent.Stop()
+	elapsed := time.Since(start)
+
+	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(200), "Stop() should block until handler completes")
+	assert.Equal(t, int32(1), called.Load(), "handler should have been called")
+}
+
+func TestAgent_Stop_NoInflight(t *testing.T) {
+	transport := &fakeTransport{}
+	handler := a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		return &a2a.ToolResponse{TaskID: req.TaskID, Success: true}, nil
+	})
+
+	agent := a2a.NewAgent(a2a.AgentTelegram, transport, handler)
+	require.NoError(t, agent.Start(context.Background()))
+
+	start := time.Now()
+	agent.Stop()
+	elapsed := time.Since(start)
+
+	assert.Less(t, elapsed.Milliseconds(), int64(50), "Stop() should return immediately when no in-flight handlers")
+}
