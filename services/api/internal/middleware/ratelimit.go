@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +12,11 @@ import (
 
 	"github.com/redis/go-redis/v9"
 )
+
+type rateLimitErrorResponse struct {
+	Error      string `json:"error"`
+	RetryAfter int    `json:"retryAfter"`
+}
 
 const (
 	DefaultRateLimit = 60          // 60 requests
@@ -67,7 +73,17 @@ func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(
 
 			// Check if limit exceeded
 			if count > int64(limit) {
-				writeJSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
+				retryAfter := int(ttl.Seconds())
+				if retryAfter <= 0 {
+					retryAfter = int(window.Seconds())
+				}
+				w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.NewEncoder(w).Encode(rateLimitErrorResponse{
+					Error:      "rate limit exceeded",
+					RetryAfter: retryAfter,
+				})
 				return
 			}
 
