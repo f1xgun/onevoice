@@ -101,42 +101,42 @@ Deferred to future milestone. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VK-01 | TBD | Pending |
-| VK-02 | TBD | Pending |
-| VK-03 | TBD | Pending |
-| VK-04 | TBD | Pending |
-| VK-05 | TBD | Pending |
-| VK-06 | TBD | Pending |
-| YBZ-01 | TBD | Pending |
-| YBZ-02 | TBD | Pending |
-| YBZ-03 | TBD | Pending |
-| YBZ-04 | TBD | Pending |
-| YBZ-05 | TBD | Pending |
-| YBZ-06 | TBD | Pending |
-| SEC-01 | TBD | Pending |
-| SEC-02 | TBD | Pending |
-| SEC-03 | TBD | Pending |
-| SEC-04 | TBD | Pending |
-| SEC-05 | TBD | Pending |
-| SEC-06 | TBD | Pending |
-| OBS-01 | TBD | Pending |
-| OBS-02 | TBD | Pending |
-| OBS-03 | TBD | Pending |
-| OBS-04 | TBD | Pending |
-| REL-01 | TBD | Pending |
-| REL-02 | TBD | Pending |
-| REL-03 | TBD | Pending |
-| REL-04 | TBD | Pending |
-| TST-01 | TBD | Pending |
-| TST-02 | TBD | Pending |
-| TST-03 | TBD | Pending |
-| TST-04 | TBD | Pending |
+| VK-01 | Phase 3 | Pending |
+| VK-02 | Phase 3 | Pending |
+| VK-03 | Phase 3 | Pending |
+| VK-04 | Phase 3 | Pending |
+| VK-05 | Phase 3 | Pending |
+| VK-06 | Phase 3 | Pending |
+| YBZ-01 | Phase 4 | Pending |
+| YBZ-02 | Phase 4 | Pending |
+| YBZ-03 | Phase 4 | Pending |
+| YBZ-04 | Phase 4 | Pending |
+| YBZ-05 | Phase 4 | Pending |
+| YBZ-06 | Phase 4 | Pending |
+| SEC-01 | Phase 1 | Pending |
+| SEC-02 | Phase 1 | Pending |
+| SEC-03 | Phase 1 | Pending |
+| SEC-04 | Phase 1 | Pending |
+| SEC-05 | Phase 1 | Pending |
+| SEC-06 | Phase 1 | Pending |
+| OBS-01 | Phase 5 | Pending |
+| OBS-02 | Phase 5 | Pending |
+| OBS-03 | Phase 5 | Pending |
+| OBS-04 | Phase 5 | Pending |
+| REL-01 | Phase 2 | Pending |
+| REL-02 | Phase 2 | Pending |
+| REL-03 | Phase 2 | Pending |
+| REL-04 | Phase 2 | Pending |
+| TST-01 | Phase 3 | Pending |
+| TST-02 | Phase 4 | Pending |
+| TST-03 | Phase 6 | Pending |
+| TST-04 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28 ⚠️
+- Mapped to phases: 28
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-15*
-*Last updated: 2026-03-15 after initial definition*
+*Last updated: 2026-03-15 after roadmap creation — all 28 requirements mapped*
