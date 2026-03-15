@@ -3,10 +3,12 @@ package yandex
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"time"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/playwright-community/playwright-go"
 )
 
@@ -105,6 +107,9 @@ func withRetry(ctx context.Context, maxAttempts int, fn func() error) error { //
 		lastErr = fn()
 		if lastErr == nil {
 			return nil
+		}
+		if errors.Is(lastErr, &a2a.NonRetryableError{}) {
+			return lastErr
 		}
 		if i < maxAttempts-1 {
 			time.Sleep(time.Duration(1<<uint(i)) * time.Second) //nolint:gosec // i is bounded by maxAttempts (small value), no overflow risk
