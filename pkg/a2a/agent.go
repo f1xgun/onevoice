@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 )
 
 // Transport abstracts the NATS connection for testability.
@@ -31,6 +32,7 @@ type Agent struct {
 	id        AgentID
 	transport Transport
 	handler   Handler
+	wg        sync.WaitGroup
 }
 
 // NewAgent creates a new Agent.
@@ -43,7 +45,11 @@ func NewAgent(id AgentID, transport Transport, handler Handler) *Agent {
 func (a *Agent) Start(ctx context.Context) error {
 	subject := Subject(a.id)
 	return a.transport.Subscribe(subject, func(subj, reply string, data []byte) {
-		go a.handle(ctx, reply, data)
+		a.wg.Add(1)
+		go func() {
+			defer a.wg.Done()
+			a.handle(ctx, reply, data)
+		}()
 	})
 }
 
@@ -74,4 +80,11 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 			slog.Error("a2a: failed to publish reply", "agent", a.id, "error", err)
 		}
 	}
+}
+
+// Stop waits for all in-flight message handlers to complete.
+// It should be called after the transport is closed/drained to ensure
+// no new messages arrive while waiting.
+func (a *Agent) Stop() {
+	a.wg.Wait()
 }
