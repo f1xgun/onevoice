@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -28,17 +29,17 @@ type ConversationHandler struct {
 }
 
 // NewConversationHandler creates a new conversation handler instance
-func NewConversationHandler(conversationRepo domain.ConversationRepository, messageRepo domain.MessageRepository) *ConversationHandler {
+func NewConversationHandler(conversationRepo domain.ConversationRepository, messageRepo domain.MessageRepository) (*ConversationHandler, error) {
 	if conversationRepo == nil {
-		panic("conversationRepo cannot be nil")
+		return nil, fmt.Errorf("NewConversationHandler: conversationRepo cannot be nil")
 	}
 	if messageRepo == nil {
-		panic("messageRepo cannot be nil")
+		return nil, fmt.Errorf("NewConversationHandler: messageRepo cannot be nil")
 	}
 	return &ConversationHandler{
 		conversationRepo: conversationRepo,
 		messageRepo:      messageRepo,
-	}
+	}, nil
 }
 
 // CreateConversationRequest represents the conversation creation request
