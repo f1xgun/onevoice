@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
@@ -54,16 +55,38 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 	}
 }
 
+// classifyTelegramError wraps permanent Telegram API errors as NonRetryableError.
+// Checks error message strings since tgbotapi returns errors with descriptions.
+func classifyTelegramError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	// Permanent: unauthorized, forbidden
+	if strings.Contains(msg, "Unauthorized") || strings.Contains(msg, "Forbidden") {
+		return a2a.NewNonRetryableError(err)
+	}
+	// Rate-limited: too many requests — non-retryable, surface to user
+	if strings.Contains(msg, "Too Many Requests") || strings.Contains(msg, "retry after") {
+		return a2a.NewNonRetryableError(fmt.Errorf("telegram rate limit: %w", err))
+	}
+	// Chat/channel not found — permanent
+	if strings.Contains(msg, "chat not found") || strings.Contains(msg, "Bad Request: chat_id is empty") {
+		return a2a.NewNonRetryableError(err)
+	}
+	return err // transient (network, 5xx, etc.)
+}
+
 // getSender retrieves a Sender and the resolved externalID for a tool request.
 // When externalID is empty, the first active integration for the business is used.
 func (h *Handler) getSender(ctx context.Context, req a2a.ToolRequest, externalID string) (Sender, string, error) {
 	info, err := h.tokens.GetToken(ctx, req.BusinessID, "telegram", externalID)
 	if err != nil {
-		return nil, "", fmt.Errorf("fetch token: %w", err)
+		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
 	sender, err := h.senderFactory(info.AccessToken)
 	if err != nil {
-		return nil, "", fmt.Errorf("create sender: %w", err)
+		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("create sender: %w", err))
 	}
 	return sender, info.ExternalID, nil
 }
@@ -89,7 +112,7 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 	}
 
 	if err := sender.SendMessage(chatID, text); err != nil {
-		return nil, fmt.Errorf("telegram: send message: %w", err)
+		return nil, fmt.Errorf("telegram: send message: %w", classifyTelegramError(err))
 	}
 
 	return &a2a.ToolResponse{
@@ -121,7 +144,7 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 	}
 
 	if err := sender.SendPhoto(chatID, photoURL, caption); err != nil {
-		return nil, fmt.Errorf("telegram: send photo: %w", err)
+		return nil, fmt.Errorf("telegram: send photo: %w", classifyTelegramError(err))
 	}
 
 	return &a2a.ToolResponse{
@@ -152,7 +175,7 @@ func (h *Handler) sendNotification(ctx context.Context, req a2a.ToolRequest) (*a
 	}
 
 	if err := sender.SendMessage(chatID, text); err != nil {
-		return nil, fmt.Errorf("telegram: send notification: %w", err)
+		return nil, fmt.Errorf("telegram: send notification: %w", classifyTelegramError(err))
 	}
 
 	return &a2a.ToolResponse{
