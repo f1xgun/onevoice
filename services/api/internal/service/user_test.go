@@ -86,7 +86,7 @@ func TestUserService_Register(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, err := svc.Register(ctx, "test@example.com", "password123")
 
 		require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestUserService_Register(t *testing.T) {
 
 	t.Run("invalid email - empty", func(t *testing.T) {
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		user, err := svc.Register(ctx, "", "password123")
 
@@ -116,7 +116,7 @@ func TestUserService_Register(t *testing.T) {
 
 	t.Run("invalid email - no @", func(t *testing.T) {
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		user, err := svc.Register(ctx, "notanemail", "password123")
 
@@ -127,7 +127,7 @@ func TestUserService_Register(t *testing.T) {
 
 	t.Run("invalid email - too short", func(t *testing.T) {
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		user, err := svc.Register(ctx, "a@", "password123")
 
@@ -138,7 +138,7 @@ func TestUserService_Register(t *testing.T) {
 
 	t.Run("empty password", func(t *testing.T) {
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		user, err := svc.Register(ctx, "test@example.com", "")
 
@@ -154,7 +154,7 @@ func TestUserService_Register(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, err := svc.Register(ctx, "test@example.com", "password123")
 
 		assert.ErrorIs(t, err, domain.ErrUserExists)
@@ -169,7 +169,7 @@ func TestUserService_Register(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, err := svc.Register(ctx, "test@example.com", "password123")
 
 		assert.Error(t, err)
@@ -206,7 +206,7 @@ func TestUserService_Login(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, accessToken, refreshToken, err := svc.Login(ctx, "test@example.com", "password123")
 
 		require.NoError(t, err)
@@ -261,7 +261,7 @@ func TestUserService_Login(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, accessToken, refreshToken, err := svc.Login(ctx, "nonexistent@example.com", "password123")
 
 		assert.ErrorIs(t, err, domain.ErrInvalidCredentials)
@@ -287,7 +287,7 @@ func TestUserService_Login(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, accessToken, refreshToken, err := svc.Login(ctx, "test@example.com", "wrongpassword")
 
 		assert.ErrorIs(t, err, domain.ErrInvalidCredentials)
@@ -304,7 +304,7 @@ func TestUserService_Login(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, accessToken, refreshToken, err := svc.Login(ctx, "test@example.com", "password123")
 
 		assert.Error(t, err)
@@ -334,7 +334,7 @@ func TestUserService_Login(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, accessToken, refreshToken, err := svc.Login(ctx, "test@example.com", "password123")
 
 		assert.Error(t, err)
@@ -367,7 +367,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		// Generate a valid refresh token
 		tokenID := uuid.New()
@@ -434,7 +434,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 
 	t.Run("invalid token format", func(t *testing.T) {
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		user, accessToken, refreshToken, err := svc.RefreshToken(ctx, "invalid-token")
 
@@ -449,7 +449,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 		tokenID := uuid.New()
 
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		// Generate expired refresh token
 		refreshClaims := &auth.RefreshTokenClaims{
@@ -480,7 +480,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 		tokenID := uuid.New()
 
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		// Generate valid token but don't store in Redis
 		refreshClaims := &auth.RefreshTokenClaims{
@@ -516,7 +516,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		// Generate valid token and store in Redis
 		refreshClaims := &auth.RefreshTokenClaims{
@@ -550,7 +550,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 		tokenID := uuid.New()
 
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		// Generate valid token
 		refreshClaims := &auth.RefreshTokenClaims{
@@ -588,7 +588,7 @@ func TestUserService_Logout(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		redisClient, _ := setupRedis(t)
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		tokenID := uuid.New()
 		userID := uuid.New()
@@ -626,7 +626,7 @@ func TestUserService_Logout(t *testing.T) {
 	t.Run("invalid token format", func(t *testing.T) {
 		redisClient, _ := setupRedis(t)
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		err := svc.Logout(ctx, "invalid-token")
 
@@ -636,7 +636,7 @@ func TestUserService_Logout(t *testing.T) {
 	t.Run("expired token", func(t *testing.T) {
 		redisClient, _ := setupRedis(t)
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		userID := uuid.New()
 		tokenID := uuid.New()
@@ -665,7 +665,7 @@ func TestUserService_Logout(t *testing.T) {
 	t.Run("redis error", func(t *testing.T) {
 		redisClient, mr := setupRedis(t)
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		userID := uuid.New()
 		tokenID := uuid.New()
@@ -697,7 +697,7 @@ func TestUserService_Logout(t *testing.T) {
 	t.Run("token not in redis - no error", func(t *testing.T) {
 		redisClient, _ := setupRedis(t)
 		repo := &mockUserRepository{}
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
 		userID := uuid.New()
 		tokenID := uuid.New()
@@ -749,7 +749,7 @@ func TestUserService_GetByID(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, err := svc.GetByID(ctx, userID)
 
 		require.NoError(t, err)
@@ -766,7 +766,7 @@ func TestUserService_GetByID(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, err := svc.GetByID(ctx, uuid.New())
 
 		assert.ErrorIs(t, err, domain.ErrUserNotFound)
@@ -781,7 +781,7 @@ func TestUserService_GetByID(t *testing.T) {
 			},
 		}
 
-		svc := NewUserService(repo, redisClient, jwtSecret)
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 		user, err := svc.GetByID(ctx, uuid.New())
 
 		assert.Error(t, err)

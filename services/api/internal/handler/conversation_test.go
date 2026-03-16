@@ -90,7 +90,7 @@ func TestCreateConversation_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	reqBody := CreateConversationRequest{
@@ -126,7 +126,7 @@ func TestCreateConversation_Success(t *testing.T) {
 func TestCreateConversation_MissingUserID(t *testing.T) {
 	// Setup
 	mockRepo := &MockConversationRepository{}
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request without user ID in context
 	reqBody := CreateConversationRequest{
@@ -171,7 +171,7 @@ func TestCreateConversation_ValidationError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
 			mockRepo := &MockConversationRepository{}
-			handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+			handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 			// Create request
 			body, _ := json.Marshal(tt.request)
@@ -206,7 +206,7 @@ func TestCreateConversation_RepositoryError(t *testing.T) {
 			return errors.New("database error")
 		},
 	}
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	reqBody := CreateConversationRequest{
@@ -233,11 +233,11 @@ func TestCreateConversation_RepositoryError(t *testing.T) {
 	assert.Equal(t, "internal server error", response.Error)
 }
 
-// TestNewConversationHandler_NilRepository tests panic on nil repository
+// TestNewConversationHandler_NilRepository tests error on nil repository
 func TestNewConversationHandler_NilRepository(t *testing.T) {
-	assert.Panics(t, func() {
-		NewConversationHandler(nil, &MockMessageRepository{})
-	})
+	h, err := NewConversationHandler(nil, &MockMessageRepository{})
+	assert.Error(t, err)
+	assert.Nil(t, h)
 }
 
 // TestListConversations_Success tests successful conversation list retrieval
@@ -270,7 +270,7 @@ func TestListConversations_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
@@ -305,7 +305,7 @@ func TestListConversations_EmptyList(t *testing.T) {
 		},
 	}
 
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
@@ -375,7 +375,7 @@ func TestListConversations_WithQueryParams(t *testing.T) {
 				},
 			}
 
-			handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+			handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 			// Create request
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations"+tt.queryParams, http.NoBody)
@@ -398,7 +398,7 @@ func TestListConversations_WithQueryParams(t *testing.T) {
 func TestListConversations_MissingUserID(t *testing.T) {
 	// Setup
 	mockRepo := &MockConversationRepository{}
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request without user ID in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
@@ -427,7 +427,7 @@ func TestListConversations_RepositoryError(t *testing.T) {
 		},
 	}
 
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
@@ -470,7 +470,7 @@ func TestGetConversation_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
@@ -521,7 +521,7 @@ func TestGetConversation_Unauthorized(t *testing.T) {
 		},
 	}
 
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
@@ -561,7 +561,7 @@ func TestGetConversation_NotFound(t *testing.T) {
 		},
 	}
 
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
@@ -594,7 +594,7 @@ func TestGetConversation_MissingUserID(t *testing.T) {
 	// Setup
 	conversationID := "507f1f77bcf86cd799439011"
 	mockRepo := &MockConversationRepository{}
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request without user ID in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
@@ -630,7 +630,7 @@ func TestGetConversation_RepositoryError(t *testing.T) {
 		},
 	}
 
-	handler := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)

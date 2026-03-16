@@ -205,7 +205,7 @@ func TestRegister(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
@@ -340,7 +340,7 @@ func TestLogin(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
@@ -462,7 +462,7 @@ func TestRefreshToken(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", http.NoBody)
 			if tt.cookie != nil {
@@ -553,7 +553,7 @@ func TestLogout(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", http.NoBody)
 			if tt.cookie != nil {
@@ -657,7 +657,7 @@ func TestMe(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", http.NoBody)
 			req = tt.setupContext(req)
