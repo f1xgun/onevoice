@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -147,4 +148,74 @@ func TestHandler_UnknownTool_ReturnsError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown tool")
+}
+
+// errSender is a Sender that always returns a configured error.
+type errSender struct {
+	err error
+}
+
+func (e *errSender) SendMessage(_ int64, _ string) error { return e.err }
+func (e *errSender) SendPhoto(_ int64, _, _ string) error { return e.err }
+
+func newHandlerWithErrSender(fetcher agent.TokenFetcher, sendErr error) *agent.Handler {
+	factory := func(_ string) (agent.Sender, error) {
+		return &errSender{err: sendErr}, nil
+	}
+	return agent.NewHandler(fetcher, factory)
+}
+
+func sendPostReq() a2a.ToolRequest {
+	return a2a.ToolRequest{
+		Tool:       "telegram__send_channel_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "channel_id": "123"},
+	}
+}
+
+func TestClassifyTelegramError_Unauthorized(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "tok", externalID: "123"}
+	h := newHandlerWithErrSender(fetcher, fmt.Errorf("Unauthorized"))
+
+	_, err := h.Handle(context.Background(), sendPostReq())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "Unauthorized should be NonRetryableError")
+}
+
+func TestClassifyTelegramError_Forbidden(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "tok", externalID: "123"}
+	h := newHandlerWithErrSender(fetcher, fmt.Errorf("Forbidden: bot was blocked by the user"))
+
+	_, err := h.Handle(context.Background(), sendPostReq())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "Forbidden should be NonRetryableError")
+}
+
+func TestClassifyTelegramError_RateLimit(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "tok", externalID: "123"}
+	h := newHandlerWithErrSender(fetcher, fmt.Errorf("Too Many Requests: retry after 30"))
+
+	_, err := h.Handle(context.Background(), sendPostReq())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "rate limit should be NonRetryableError")
+}
+
+func TestClassifyTelegramError_NetworkError(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "tok", externalID: "123"}
+	h := newHandlerWithErrSender(fetcher, fmt.Errorf("dial tcp: connection refused"))
+
+	_, err := h.Handle(context.Background(), sendPostReq())
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, &a2a.NonRetryableError{}), "network error should NOT be NonRetryableError")
+}
+
+func TestClassifyTelegramError_TokenFetchFailure(t *testing.T) {
+	fetcher := &fakeTokenFetcher{err: fmt.Errorf("integration not found")}
+	h := agent.NewHandler(fetcher, func(_ string) (agent.Sender, error) {
+		return &fakeSender{}, nil
+	})
+
+	_, err := h.Handle(context.Background(), sendPostReq())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "token fetch failure should be NonRetryableError")
 }
