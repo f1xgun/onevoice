@@ -42,7 +42,7 @@
 - [x] PLAN-2.1: NonRetryableError type in pkg/a2a and withRetry integration (REL-03)
 - [ ] PLAN-2.2: Error taxonomy applied across all agents (REL-02)
 - [x] PLAN-2.3: Graceful shutdown for all services (REL-01)
-- [ ] PLAN-2.4: Replace all panic() calls in production handlers (REL-04)
+- [x] PLAN-2.4: Replace all panic() calls in production handlers (REL-04)
 
 ---
 
