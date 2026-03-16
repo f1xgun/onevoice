@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
@@ -50,10 +51,27 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 	}
 }
 
+// classifyYandexError wraps permanent Yandex RPA errors as NonRetryableError.
+func classifyYandexError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	// Session expired — login redirect detected
+	if strings.Contains(msg, "session expired") || strings.Contains(msg, "login redirect") || strings.Contains(msg, "passport.yandex") {
+		return a2a.NewNonRetryableError(err)
+	}
+	// CAPTCHA — rate-limited, non-retryable
+	if strings.Contains(msg, "captcha") || strings.Contains(msg, "CAPTCHA") {
+		return a2a.NewNonRetryableError(fmt.Errorf("yandex captcha detected: %w", err))
+	}
+	return err // transient (timeout, network, etc.)
+}
+
 func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBrowser, error) {
 	token, err := h.tokens.GetToken(ctx, req.BusinessID, "yandex_business", "")
 	if err != nil {
-		return nil, fmt.Errorf("fetch token: %w", err)
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
 	return h.browserFactory(token), nil
 }
@@ -66,7 +84,7 @@ func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 
 	hours, _ := req.Args["hours"].(string)
 	if err := browser.UpdateHours(ctx, hours); err != nil {
-		return nil, fmt.Errorf("yandex: update hours: %w", err)
+		return nil, fmt.Errorf("yandex: update hours: %w", classifyYandexError(err))
 	}
 	return &a2a.ToolResponse{
 		TaskID:  req.TaskID,
@@ -88,7 +106,7 @@ func (h *Handler) updateInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 		}
 	}
 	if err := browser.UpdateInfo(ctx, info); err != nil {
-		return nil, fmt.Errorf("yandex: update info: %w", err)
+		return nil, fmt.Errorf("yandex: update info: %w", classifyYandexError(err))
 	}
 	return &a2a.ToolResponse{
 		TaskID:  req.TaskID,
@@ -111,7 +129,7 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 
 	reviews, err := browser.GetReviews(ctx, limit)
 	if err != nil {
-		return nil, fmt.Errorf("yandex: get reviews: %w", err)
+		return nil, fmt.Errorf("yandex: get reviews: %w", classifyYandexError(err))
 	}
 	return &a2a.ToolResponse{
 		TaskID:  req.TaskID,
@@ -130,7 +148,7 @@ func (h *Handler) replyReview(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 	text, _ := req.Args["text"].(string)
 
 	if err := browser.ReplyReview(ctx, reviewID, text); err != nil {
-		return nil, fmt.Errorf("yandex: reply review: %w", err)
+		return nil, fmt.Errorf("yandex: reply review: %w", classifyYandexError(err))
 	}
 	return &a2a.ToolResponse{
 		TaskID:  req.TaskID,
