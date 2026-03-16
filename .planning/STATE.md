@@ -4,12 +4,12 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 2
 status: in_progress
-last_updated: "2026-03-15"
+last_updated: "2026-03-16"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 4
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 | Phase | Name | Status | Plans |
 |-------|------|--------|-------|
 | 1 | Security Foundation | Complete | 4/4 |
-| 2 | Reliability Foundation | In Progress | 1/4 |
+| 2 | Reliability Foundation | In Progress | 2/4 |
 | 3 | VK Agent Completion | Pending | 0/5 |
 | 4 | Yandex.Business Agent | Pending | 0/5 |
 | 5 | Observability | Pending | 0/4 |
@@ -46,7 +46,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ### Phase 2: Reliability Foundation
 - [x] PLAN-2.1: NonRetryableError type in pkg/a2a and withRetry integration (REL-03)
 - [ ] PLAN-2.2: Error taxonomy applied across all agents (REL-02)
-- [ ] PLAN-2.3: Graceful shutdown for all services (REL-01)
+- [x] PLAN-2.3: Graceful shutdown for all services (REL-01)
 - [ ] PLAN-2.4: Replace all panic() calls in production handlers (REL-04)
 
 ### Phase 3: VK Agent Completion
