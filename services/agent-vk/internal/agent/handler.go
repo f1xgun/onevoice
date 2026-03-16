@@ -2,7 +2,10 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	vkapi "github.com/SevereCloud/vksdk/v3/api"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
@@ -47,11 +50,29 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 	}
 }
 
+// classifyVKError wraps permanent VK API errors as NonRetryableError.
+// VK error codes: 5=invalid token, 15=access denied, 100=invalid param, 113=invalid user,
+// 6=too many requests, 9=flood control (rate-limited, also non-retryable).
+func classifyVKError(err error) error {
+	var vkErr *vkapi.Error
+	if !errors.As(err, &vkErr) {
+		return err // network or non-VK error — transient, retryable
+	}
+	switch int(vkErr.Code) {
+	case 5, 15, 100, 113: // permanent
+		return a2a.NewNonRetryableError(err)
+	case 6, 9: // rate-limited — don't retry, surface to user
+		return a2a.NewNonRetryableError(fmt.Errorf("vk rate limit (code %d): %w", int(vkErr.Code), err))
+	default:
+		return err // transient
+	}
+}
+
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
 	token, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
 	if err != nil {
-		return nil, "", fmt.Errorf("fetch token: %w", err)
+		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
 	return h.clientFactory(token), groupID, nil
 }
@@ -65,7 +86,7 @@ func (h *Handler) publishPost(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 
 	postID, err := client.PublishPost(groupID, text)
 	if err != nil {
-		return nil, fmt.Errorf("vk: publish post: %w", err)
+		return nil, fmt.Errorf("vk: publish post: %w", classifyVKError(err))
 	}
 
 	return &a2a.ToolResponse{
@@ -84,7 +105,7 @@ func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2
 	description, _ := req.Args["description"].(string)
 
 	if err := client.UpdateGroupInfo(groupID, description); err != nil {
-		return nil, fmt.Errorf("vk: update group info: %w", err)
+		return nil, fmt.Errorf("vk: update group info: %w", classifyVKError(err))
 	}
 
 	return &a2a.ToolResponse{
@@ -108,7 +129,7 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 
 	comments, err := client.GetComments(groupID, count)
 	if err != nil {
-		return nil, fmt.Errorf("vk: get comments: %w", err)
+		return nil, fmt.Errorf("vk: get comments: %w", classifyVKError(err))
 	}
 
 	return &a2a.ToolResponse{
