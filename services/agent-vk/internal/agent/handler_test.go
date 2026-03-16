@@ -2,9 +2,11 @@ package agent_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
+	vkapi "github.com/SevereCloud/vksdk/v3/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -192,4 +194,91 @@ func TestHandler_UnknownTool_ReturnsError(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown tool")
+}
+
+// --- Error classification tests ---
+
+func TestClassifyVKError_PermanentCode5(t *testing.T) {
+	vkClient := &mockVKClient{
+		publishPostFn: func(_, _ string) (int64, error) {
+			return 0, &vkapi.Error{Code: 5, Message: "invalid token"}
+		},
+	}
+	tokens := &mockTokenFetcher{token: "tok"}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__publish_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "group_id": "-1"},
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "permanent code 5 should be NonRetryableError")
+}
+
+func TestClassifyVKError_RateLimitCode6(t *testing.T) {
+	vkClient := &mockVKClient{
+		publishPostFn: func(_, _ string) (int64, error) {
+			return 0, &vkapi.Error{Code: 6, Message: "too many requests"}
+		},
+	}
+	tokens := &mockTokenFetcher{token: "tok"}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__publish_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "group_id": "-1"},
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "rate limit code 6 should be NonRetryableError")
+}
+
+func TestClassifyVKError_TransientCode1(t *testing.T) {
+	vkClient := &mockVKClient{
+		publishPostFn: func(_, _ string) (int64, error) {
+			return 0, &vkapi.Error{Code: 1, Message: "unknown error"}
+		},
+	}
+	tokens := &mockTokenFetcher{token: "tok"}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__publish_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "group_id": "-1"},
+	})
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, &a2a.NonRetryableError{}), "transient code 1 should NOT be NonRetryableError")
+}
+
+func TestClassifyVKError_NetworkError(t *testing.T) {
+	vkClient := &mockVKClient{
+		publishPostFn: func(_, _ string) (int64, error) {
+			return 0, fmt.Errorf("connection refused")
+		},
+	}
+	tokens := &mockTokenFetcher{token: "tok"}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__publish_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "group_id": "-1"},
+	})
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, &a2a.NonRetryableError{}), "network error should NOT be NonRetryableError")
+}
+
+func TestClassifyVKError_TokenFetchFailure(t *testing.T) {
+	tokens := &mockTokenFetcher{err: fmt.Errorf("token not found")}
+	h := agent.NewHandler(tokens, nil)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__publish_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "g1"},
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "token fetch failure should be NonRetryableError")
 }
