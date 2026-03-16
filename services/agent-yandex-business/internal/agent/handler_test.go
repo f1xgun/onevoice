@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -168,4 +169,75 @@ func TestHandler_UnknownTool(t *testing.T) {
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{Tool: "yandex_business__unknown"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown tool")
+}
+
+// errBrowser is a YandexBrowser that always returns a configured error.
+type errBrowser struct {
+	err error
+}
+
+func (e *errBrowser) UpdateHours(_ context.Context, _ string) error                       { return e.err }
+func (e *errBrowser) UpdateInfo(_ context.Context, _ map[string]string) error              { return e.err }
+func (e *errBrowser) GetReviews(_ context.Context, _ int) ([]map[string]interface{}, error) { return nil, e.err }
+func (e *errBrowser) ReplyReview(_ context.Context, _, _ string) error                     { return e.err }
+
+func newErrHandler(fetcher agent.TokenFetcher, browserErr error) *agent.Handler {
+	factory := func(_ string) agent.YandexBrowser {
+		return &errBrowser{err: browserErr}
+	}
+	return agent.NewHandler(fetcher, factory)
+}
+
+func reviewReq() a2a.ToolRequest {
+	return a2a.ToolRequest{
+		Tool:       "yandex_business__get_reviews",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"limit": float64(10)},
+	}
+}
+
+func TestClassifyYandexError_SessionExpired(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "cookies"}
+	h := newErrHandler(fetcher, fmt.Errorf("session expired"))
+
+	_, err := h.Handle(context.Background(), reviewReq())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "session expired should be NonRetryableError")
+}
+
+func TestClassifyYandexError_LoginRedirect(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "cookies"}
+	h := newErrHandler(fetcher, fmt.Errorf("login redirect detected"))
+
+	_, err := h.Handle(context.Background(), reviewReq())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "login redirect should be NonRetryableError")
+}
+
+func TestClassifyYandexError_Captcha(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "cookies"}
+	h := newErrHandler(fetcher, fmt.Errorf("captcha required"))
+
+	_, err := h.Handle(context.Background(), reviewReq())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "captcha should be NonRetryableError")
+}
+
+func TestClassifyYandexError_PlaywrightTimeout(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "cookies"}
+	h := newErrHandler(fetcher, fmt.Errorf("timeout 30000ms exceeded"))
+
+	_, err := h.Handle(context.Background(), reviewReq())
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, &a2a.NonRetryableError{}), "timeout should NOT be NonRetryableError")
+}
+
+func TestClassifyYandexError_TokenFetchFailure(t *testing.T) {
+	fetcher := &fakeTokenFetcher{err: fmt.Errorf("integration not found")}
+	browser := &stubBrowser{}
+	h := newHandler(fetcher, browser)
+
+	_, err := h.Handle(context.Background(), reviewReq())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "token fetch failure should be NonRetryableError")
 }
