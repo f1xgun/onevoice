@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 )
 
 type Config struct {
@@ -45,9 +46,19 @@ type Config struct {
 	// File uploads
 	UploadDir string
 	PublicURL string
+
+	// Shutdown
+	ShutdownTimeout time.Duration
 }
 
 func Load() (*Config, error) {
+	shutdownTimeout := 30 * time.Second
+	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			shutdownTimeout = d
+		}
+	}
+
 	cfg := &Config{
 		Port:          getEnv("PORT", "8080"),
 		PostgresHost:  getEnv("POSTGRES_HOST", "localhost"),
@@ -76,6 +87,7 @@ func Load() (*Config, error) {
 		ReviewSyncInterval: getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30),
 		UploadDir:          getEnv("UPLOAD_DIR", "./uploads"),
 		PublicURL:          getEnv("PUBLIC_URL", "http://localhost:8080"),
+		ShutdownTimeout:    shutdownTimeout,
 	}
 
 	// Validate required fields

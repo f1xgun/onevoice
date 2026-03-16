@@ -59,7 +59,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("connect to postgres: %w", err)
 	}
-	defer pgPool.Close()
 	log.Info("connected to postgres")
 
 	// MongoDB
@@ -67,7 +66,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("connect to mongodb: %w", err)
 	}
-	defer func() { _ = mongoClient.Disconnect(ctx) }()
 	mongoDB := mongoClient.Database(cfg.MongoDB)
 	log.Info("connected to mongodb")
 
@@ -214,12 +212,14 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}()
 
 	// Review syncer — optional, requires NATS_URL
+	var nc *natslib.Conn
 	if cfg.NATSUrl != "" {
-		nc, natsErr := natslib.Connect(cfg.NATSUrl)
+		var natsErr error
+		nc, natsErr = natslib.Connect(cfg.NATSUrl)
 		if natsErr != nil {
 			log.Warn("NATS unavailable — review sync disabled", "url", cfg.NATSUrl, "error", natsErr)
+			nc = nil
 		} else {
-			defer nc.Close()
 			syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
 			syncer := service.NewReviewSyncer(nc, integrationRepo, reviewRepo, syncInterval)
 			syncCtx, syncCancel := context.WithCancel(ctx)
@@ -240,14 +240,26 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("server error: %w", err)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 
+	// 1. Stop HTTP servers
 	if err := internalSrv.Shutdown(shutdownCtx); err != nil {
 		log.Error("internal server forced to shutdown", "error", err)
 	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("server forced to shutdown: %w", err)
+		log.Error("server forced to shutdown", "error", err)
+	}
+
+	// 2. Drain NATS if connected
+	if nc != nil {
+		_ = nc.Drain()
+	}
+
+	// 3. Close database pools
+	pgPool.Close()
+	if err := mongoClient.Disconnect(shutdownCtx); err != nil {
+		log.Error("mongo disconnect error", "error", err)
 	}
 
 	log.Info("server stopped")
