@@ -43,10 +43,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Reliability
 
-- [ ] **REL-01**: All services implement graceful shutdown: stop HTTP → drain NATS → flush writes → close connections
-- [ ] **REL-02**: Error taxonomy applied across agents: transient (retry), permanent (fail fast), rate-limited (backoff + surface)
-- [ ] **REL-03**: NonRetryableError type in pkg/a2a so withRetry skips permanent failures
-- [ ] **REL-04**: All panic() calls in production handlers replaced with error returns
+- [x] **REL-01**: All services implement graceful shutdown: stop HTTP → drain NATS → flush writes → close connections
+- [x] **REL-02**: Error taxonomy applied across agents: transient (retry), permanent (fail fast), rate-limited (backoff + surface)
+- [x] **REL-03**: NonRetryableError type in pkg/a2a so withRetry skips permanent failures
+- [x] **REL-04**: All panic() calls in production handlers replaced with error returns
 
 ### Testing
 
@@ -123,10 +123,10 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | OBS-02 | Phase 5 | Pending |
 | OBS-03 | Phase 5 | Pending |
 | OBS-04 | Phase 5 | Pending |
-| REL-01 | Phase 2 | Pending |
-| REL-02 | Phase 2 | Pending |
-| REL-03 | Phase 2 | Pending |
-| REL-04 | Phase 2 | Pending |
+| REL-01 | Phase 2 | Complete |
+| REL-02 | Phase 2 | Complete |
+| REL-03 | Phase 2 | Complete |
+| REL-04 | Phase 2 | Complete |
 | TST-01 | Phase 3 | Pending |
 | TST-02 | Phase 4 | Pending |
 | TST-03 | Phase 6 | Pending |
