@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+
+	"github.com/f1xgun/onevoice/pkg/logger"
 )
 
 // Transport abstracts the NATS connection for testability.
@@ -58,6 +60,10 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 	if err := json.Unmarshal(data, &req); err != nil {
 		slog.Error("a2a: failed to decode tool request", "agent", a.id, "error", err)
 		return
+	}
+
+	if req.RequestID != "" {
+		ctx = logger.WithCorrelationID(ctx, req.RequestID)
 	}
 
 	resp, err := a.handler.Handle(ctx, req)
