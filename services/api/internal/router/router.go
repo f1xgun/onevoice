@@ -7,9 +7,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/f1xgun/onevoice/pkg/health"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
@@ -47,6 +49,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 		MaxAge:           300,
 	}))
 	r.Use(middleware.SecurityHeaders())
+	r.Use(metrics.HTTPMiddleware)
 
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -116,6 +119,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 
 	// Serve uploaded logo files
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadDir))))
+
+	// Prometheus metrics
+	r.Handle("/metrics", promhttp.Handler())
 
 	// Health check
 	r.Get("/health/live", hc.LiveHandler())
