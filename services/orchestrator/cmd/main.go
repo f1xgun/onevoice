@@ -71,6 +71,15 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			if corrID := r.Header.Get("X-Correlation-ID"); corrID != "" {
+				ctx = logger.WithCorrelationID(ctx, corrID)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 
