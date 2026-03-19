@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
@@ -161,6 +162,9 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	proxyReq.Header.Set("Content-Type", "application/json")
+	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
+		proxyReq.Header.Set("X-Correlation-ID", corrID)
+	}
 
 	resp, err := h.httpClient.Do(proxyReq)
 	if err != nil {
