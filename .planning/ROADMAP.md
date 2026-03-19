@@ -60,9 +60,9 @@
 6. All 6 VK tools pass integration tests against a mock VK API server covering success and error (permanent, transient, rate-limited) paths.
 
 ### Plans
-- [ ] PLAN-3.1: VK photo post tool — two-step upload flow (VK-01)
+- [x] PLAN-3.1: VK photo post tool — two-step upload flow (VK-01)
 - [ ] PLAN-3.2: VK scheduled post tool (VK-02)
-- [ ] PLAN-3.3: VK comment reply and delete tools (VK-03, VK-04)
+- [x] PLAN-3.3: VK comment reply and delete tools (VK-03, VK-04)
 - [ ] PLAN-3.4: VK community info and wall read tools (VK-05, VK-06)
 - [ ] PLAN-3.5: VK agent integration tests with mock server (TST-01)
 
