@@ -12,26 +12,34 @@ Business owners can manage their digital presence across multiple platforms thro
 
 ### Validated
 
-- ✓ User registration and JWT authentication — Phase 1
-- ✓ Business profile CRUD — Phase 1
-- ✓ Platform integration management (add/remove/encrypt tokens) — Phase 1
-- ✓ LLM-powered chat with tool calling (orchestrator agent loop) — Phase 2
-- ✓ SSE streaming for real-time chat responses — Phase 2
-- ✓ A2A framework for agent communication via NATS — Phase 3
-- ✓ Telegram agent: send posts, send photos, send notifications — Phase 4
-- ✓ VK agent: basic structure and NATS subscription — Phase 4
-- ✓ Yandex.Business agent: login via cookies, basic RPA scaffold — Phase 4
-- ✓ Frontend dashboard: chat UI, integrations page, posts/reviews/tasks/schedule pages — Phase 5
-- ✓ Tool call persistence and display in chat history — Phase 6
+- ✓ User registration and JWT authentication — pre-v1.0
+- ✓ Business profile CRUD — pre-v1.0
+- ✓ Platform integration management (add/remove/encrypt tokens) — pre-v1.0
+- ✓ LLM-powered chat with tool calling (orchestrator agent loop) — pre-v1.0
+- ✓ SSE streaming for real-time chat responses — pre-v1.0
+- ✓ A2A framework for agent communication via NATS — pre-v1.0
+- ✓ Telegram agent: send posts, send photos, send notifications — pre-v1.0
+- ✓ Frontend dashboard: chat UI, integrations page — pre-v1.0
+- ✓ Tool call persistence and display in chat history — pre-v1.0
+- ✓ httpOnly cookie auth, typed JWT, rate limiting, security headers — v1.0
+- ✓ NonRetryableError taxonomy, graceful shutdown, panic removal — v1.0
+- ✓ VK agent: 9 tools (posts, photos, scheduling, comments, reads) with integration tests — v1.0
+- ✓ Yandex.Business agent: BrowserPool, session canary, 4 RPA tools with mocked tests — v1.0
+- ✓ Health checks, Prometheus metrics, JSON logging, correlation IDs — v1.0
+- ✓ Auth flow tests, health check tests — v1.0
 
 ### Active
 
-- [ ] VK agent: end-to-end working (post to community, send photos, manage content)
-- [ ] Yandex.Business agent: implement stub tools (get_reviews, update_hours, update_info, reply_review)
-- [ ] Security hardening: fix refresh token storage (httpOnly cookies), CSRF protection, JWT validation, input sanitization
-- [ ] Monitoring: health check endpoints, structured logging, metrics (Prometheus)
-- [ ] Reliability: graceful shutdown, proper error recovery, retry differentiation (transient vs permanent)
-- [ ] Testing: fill coverage gaps, add integration tests for VK/Yandex agents, E2E tests for critical flows
+- [ ] VPS validation for Yandex.Business RPA (anti-bot spike deferred from v1.0)
+- [ ] Google Business integration
+- [ ] VK Stories, community chat, analytics
+- [ ] Content calendar UI
+
+### Out of Scope
+
+- Mobile app — web-first, mobile deferred
+- Multi-tenant SaaS features — single-owner deployment for now
+- Payment/billing — not needed for diploma or initial production
 
 ### Out of Scope
 
@@ -43,11 +51,11 @@ Business owners can manage their digital presence across multiple platforms thro
 
 ## Context
 
-- **Diploma (ВКР) + production path**: needs to be demo-quality for defense, then production-grade for real use
-- **Telegram is the only tested integration** — VK and Yandex.Business have code but haven't been validated against real APIs
-- **Yandex.Business uses RPA** (Playwright browser automation) — inherently fragile, DOM selectors may break
-- **Codebase mapper identified 30+ concerns** — see `.planning/codebase/CONCERNS.md` for full inventory
-- **Key fragilities**: stub Yandex tools, silent error swallowing in SSE proxy, panic() calls in handlers, missing health checks
+- **v1.0 Hardening shipped** — security, reliability, VK completion, Yandex RPA, observability, testing
+- **Diploma (ВКР) + production path**: demo-quality for defense, production-grade for real use
+- **All 3 platform agents have code** — Telegram tested in production, VK tested against mock server, Yandex.Business tested against mocked Playwright
+- **Yandex.Business VPS spike pending** — RPA code exists but anti-bot validation not performed
+- **28 requirements satisfied** across 6 phases, 24 plans
 
 ## Constraints
 
@@ -65,7 +73,11 @@ Business owners can manage their digital presence across multiple platforms thro
 | Playwright RPA for Yandex.Business | No public API available; browser automation only option | ⚠️ Revisit (fragile) |
 | MongoDB for conversations/messages | Flexible schema for tool calls, nested documents | ✓ Good |
 | LLM provider abstraction (multi-provider) | OpenRouter + OpenAI + Anthropic + self-hosted | ✓ Good |
-| Fix agents before hardening | Can't harden what doesn't work yet | — Pending |
+| Fix agents before hardening | Can't harden what doesn't work yet | ✓ Good — VK completed, Yandex stubs replaced |
+| httpOnly cookies for refresh tokens | XSS protection for auth tokens | ✓ Good — __Host-refresh_token with SameSite=Lax |
+| NonRetryableError for error taxonomy | Distinguish permanent vs transient failures | ✓ Good — all 3 agents classify errors |
+| BrowserPool for Yandex RPA | Shared Chromium instance, per-business isolation | ⚠️ Pending VPS validation |
+| Client-side VK rate limiter (3 req/sec) | Prevent VK API bans | ✓ Good — rate.Limiter wraps all SDK calls |
 
 ---
-*Last updated: 2026-03-15 after initialization*
+*Last updated: 2026-03-20 after v1.0 milestone*
