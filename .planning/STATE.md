@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 6
-status: planning
-last_updated: "2026-03-19T21:54:32.256Z"
+status: complete
+last_updated: "2026-03-20T00:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 5
-  total_plans: 22
-  completed_plans: 23
+  completed_phases: 6
+  total_plans: 24
+  completed_plans: 24
 ---
 
 # Project State
@@ -17,12 +17,12 @@ progress:
 **Project:** OneVoice
 **Milestone:** Hardening
 **Current Phase:** 6
-**Status:** Ready to plan
+**Status:** Complete
 
 ## Project Reference
 See: .planning/PROJECT.md (updated 2026-03-15)
 **Core value:** Business owners can manage digital presence across platforms through a single conversational interface
-**Current focus:** Phase 5 — Observability
+**Current focus:** Phase 6 — Testing Completion (complete)
 
 ## Phase Progress
 
@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 | 3 | VK Agent Completion | Complete | 5/5 |
 | 4 | Yandex.Business Agent | Complete | 5/5 |
 | 5 | Observability | Complete | 4/4 |
-| 6 | Testing Completion | In Progress | 1/2 |
+| 6 | Testing Completion | Complete | 2/2 |
 
 ## Plan Index
 
@@ -70,7 +70,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 - [x] PLAN-5.4: Correlation ID middleware and NATS propagation (OBS-04)
 
 ### Phase 6: Testing Completion
-- [ ] PLAN-6.1: Auth flow test suite (TST-03)
+- [x] PLAN-6.1: Auth flow test suite (TST-03)
 - [x] PLAN-6.2: Health check endpoint tests for all services (TST-04)
 
 ## Requirement Coverage
@@ -78,4 +78,4 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-20 after plan 06-02 (Health check endpoint tests) completed*
+*Last updated: 2026-03-20 after plan 06-01 (Auth flow test suite) completed — Phase 6 complete, all phases complete*
