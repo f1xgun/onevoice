@@ -1,6 +1,7 @@
 package vk
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -8,21 +9,35 @@ import (
 	"time"
 
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
+	"golang.org/x/time/rate"
 )
 
 // Client wraps the VK API for the OneVoice VK agent.
 type Client struct {
-	vk *vkapi.VK
+	vk      *vkapi.VK
+	limiter *rate.Limiter
 }
 
 // New creates a new Client with the given access token.
+// A rate limiter of 3 requests/sec (burst 1) is applied to all VK API calls.
 func New(accessToken string) *Client {
-	return &Client{vk: vkapi.NewVK(accessToken)}
+	return &Client{
+		vk:      vkapi.NewVK(accessToken),
+		limiter: rate.NewLimiter(3, 1),
+	}
+}
+
+// wait blocks until the rate limiter allows the next request.
+func (c *Client) wait() error {
+	return c.limiter.Wait(context.Background())
 }
 
 // PublishPost publishes a post to a VK community wall.
 // groupID should be the owner_id (negative for communities, e.g. "-123456").
 func (c *Client) PublishPost(groupID, text string) (int64, error) {
+	if err := c.wait(); err != nil {
+		return 0, err
+	}
 	resp, err := c.vk.WallPost(vkapi.Params{
 		"owner_id": groupID,
 		"message":  text,
@@ -36,6 +51,9 @@ func (c *Client) PublishPost(groupID, text string) (int64, error) {
 // PostPhoto downloads an image from photoURL, uploads it to VK via UploadGroupWallPhoto,
 // then publishes a wall post with the photo attachment and optional caption.
 func (c *Client) PostPhoto(groupID string, photoURL, caption string) (int64, error) {
+	if err := c.wait(); err != nil {
+		return 0, err
+	}
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	resp, err := httpClient.Get(photoURL)
 	if err != nil {
@@ -80,6 +98,9 @@ func (c *Client) PostPhoto(groupID string, photoURL, caption string) (int64, err
 // SchedulePost publishes a postponed post to a VK community wall.
 // VK holds the post and automatically publishes it at publishDate (Unix timestamp).
 func (c *Client) SchedulePost(groupID, text string, publishDate int64) (int64, error) {
+	if err := c.wait(); err != nil {
+		return 0, err
+	}
 	resp, err := c.vk.WallPost(vkapi.Params{
 		"owner_id":     groupID,
 		"message":      text,
@@ -94,6 +115,9 @@ func (c *Client) SchedulePost(groupID, text string, publishDate int64) (int64, e
 // UpdateGroupInfo updates the description of a VK community.
 // groupID may be negative (e.g. "-123456") or bare numeric string ("123456").
 func (c *Client) UpdateGroupInfo(groupID, description string) error {
+	if err := c.wait(); err != nil {
+		return err
+	}
 	numericID := strings.TrimPrefix(groupID, "-")
 	id, err := strconv.ParseInt(numericID, 10, 64)
 	if err != nil {
@@ -113,6 +137,9 @@ func (c *Client) UpdateGroupInfo(groupID, description string) error {
 // GetComments retrieves recent comments from a VK community wall.
 // groupID should be the owner_id (negative for communities, e.g. "-123456").
 func (c *Client) GetComments(groupID string, count int) ([]map[string]interface{}, error) {
+	if err := c.wait(); err != nil {
+		return nil, err
+	}
 	resp, err := c.vk.WallGetComments(vkapi.Params{
 		"owner_id": groupID,
 		"count":    count,
@@ -137,6 +164,9 @@ func (c *Client) GetComments(groupID string, count int) ([]map[string]interface{
 // ReplyComment creates a threaded reply to a wall comment.
 // groupID should be the owner_id (negative for communities, e.g. "-123456").
 func (c *Client) ReplyComment(groupID string, postID, commentID int, text string) (int, error) {
+	if err := c.wait(); err != nil {
+		return 0, err
+	}
 	resp, err := c.vk.WallCreateComment(vkapi.Params{
 		"owner_id":         groupID,
 		"post_id":          postID,
@@ -152,6 +182,9 @@ func (c *Client) ReplyComment(groupID string, postID, commentID int, text string
 // DeleteComment removes a comment from a wall post.
 // groupID should be the owner_id (negative for communities, e.g. "-123456").
 func (c *Client) DeleteComment(groupID string, commentID int) error {
+	if err := c.wait(); err != nil {
+		return err
+	}
 	_, err := c.vk.WallDeleteComment(vkapi.Params{
 		"owner_id":   groupID,
 		"comment_id": commentID,
@@ -165,6 +198,9 @@ func (c *Client) DeleteComment(groupID string, commentID int) error {
 // GetCommunityInfo fetches community metadata: name, description, members count, links.
 // groupID may be negative (e.g. "-123456") or bare numeric string ("123456").
 func (c *Client) GetCommunityInfo(groupID string) (map[string]interface{}, error) {
+	if err := c.wait(); err != nil {
+		return nil, err
+	}
 	numericID := strings.TrimPrefix(groupID, "-")
 
 	resp, err := c.vk.GroupsGetByID(vkapi.Params{
@@ -207,6 +243,9 @@ func (c *Client) GetCommunityInfo(groupID string) (map[string]interface{}, error
 // GetWallPosts fetches recent wall posts with engagement stats.
 // groupID should be the owner_id (negative for communities, e.g. "-123456").
 func (c *Client) GetWallPosts(groupID string, count int) ([]map[string]interface{}, int, error) {
+	if err := c.wait(); err != nil {
+		return nil, 0, err
+	}
 	resp, err := c.vk.WallGet(vkapi.Params{
 		"owner_id": groupID,
 		"count":    count,
