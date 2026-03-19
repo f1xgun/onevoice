@@ -9,8 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/playwright-community/playwright-go"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
 const defaultMaxIdle = 15 * time.Minute
@@ -29,12 +30,12 @@ func (pc *pooledContext) touch() {
 
 // BrowserPool manages a shared Chromium instance with per-business browser contexts.
 type BrowserPool struct {
-	pw       *playwright.Playwright
-	browser  playwright.Browser
-	contexts sync.Map // businessID -> *pooledContext
-	mu       sync.Mutex
-	maxIdle  time.Duration
-	closed   atomic.Bool
+	pw        *playwright.Playwright
+	browser   playwright.Browser
+	contexts  sync.Map // businessID -> *pooledContext
+	mu        sync.Mutex
+	maxIdle   time.Duration
+	closed    atomic.Bool
 	stopEvict chan struct{}
 }
 
@@ -76,7 +77,7 @@ func (p *BrowserPool) ensureBrowser() error {
 		},
 	})
 	if err != nil {
-		pw.Stop() //nolint:errcheck
+		pw.Stop() //nolint:errcheck // best-effort cleanup on launch failure
 		return fmt.Errorf("playwright: launch: %w", err)
 	}
 	p.pw = pw
@@ -337,7 +338,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 }
 
 // scrapeReviewCards extracts review data from visible review card elements.
-func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interface{}, error) {
+func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interface{}, error) { //nolint:unparam // error return reserved for future DOM validation errors
 	// Try multiple selectors for review cards
 	cardSelectors := []string{
 		"[data-testid='review-card']",

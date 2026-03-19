@@ -212,10 +212,14 @@ type errBrowser struct {
 	err error
 }
 
-func (e *errBrowser) UpdateHours(_ context.Context, _ string) error                          { return e.err }
-func (e *errBrowser) UpdateInfo(_ context.Context, _ map[string]string) error                { return e.err }
-func (e *errBrowser) GetReviews(_ context.Context, _ int) ([]map[string]interface{}, error)  { return nil, e.err }
-func (e *errBrowser) ReplyReview(_ context.Context, _, _ string) error                       { return e.err }
+func (e *errBrowser) UpdateHours(_ context.Context, _ string) error { return e.err }
+func (e *errBrowser) UpdateInfo(_ context.Context, _ map[string]string) error {
+	return e.err
+}
+func (e *errBrowser) GetReviews(_ context.Context, _ int) ([]map[string]interface{}, error) {
+	return nil, e.err
+}
+func (e *errBrowser) ReplyReview(_ context.Context, _, _ string) error { return e.err }
 
 func newErrHandler(fetcher agent.TokenFetcher, browserErr error) *agent.Handler {
 	return agent.NewHandler(fetcher, &stubPool{browser: &errBrowser{err: browserErr}})

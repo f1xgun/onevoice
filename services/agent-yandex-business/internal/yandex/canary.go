@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/playwright-community/playwright-go"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
 // ErrSessionExpired is a sentinel error returned when Yandex session cookies are expired.
@@ -42,7 +43,7 @@ func checkSession(page playwright.Page, expectedURLPrefix string) error {
 }
 
 // checkSessionAndEvict runs the canary check and evicts the business context from the pool on session expiry.
-func checkSessionAndEvict(page playwright.Page, expectedURLPrefix string, pool ContextEvictor, businessID string) error {
+func checkSessionAndEvict(page playwright.Page, expectedURLPrefix string, pool ContextEvictor, businessID string) error { //nolint:unparam // expectedURLPrefix is parameterized for testability
 	err := checkSession(page, expectedURLPrefix)
 	if err != nil && errors.Is(err, ErrSessionExpired) && pool != nil {
 		pool.EvictContext(businessID)
