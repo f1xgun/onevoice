@@ -33,9 +33,9 @@ func run() error {
 	}
 	tc := tokenclient.New(apiURL, nil)
 	tokens := &tokenAdapter{client: tc}
-	handler := agentpkg.NewHandler(tokens, func(cookies string) agentpkg.YandexBrowser {
-		return yandex.NewBrowser(cookies)
-	})
+	pool := yandex.NewBrowserPool()
+	defer pool.Close()
+	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool})
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentYandexBusiness, transport, handler)
 
@@ -65,6 +65,15 @@ func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, exter
 		return "", err
 	}
 	return resp.AccessToken, nil
+}
+
+// poolAdapter wraps *yandex.BrowserPool to satisfy agent.BrowserPool interface.
+type poolAdapter struct {
+	pool *yandex.BrowserPool
+}
+
+func (pa *poolAdapter) ForBusiness(businessID, cookiesJSON string) agentpkg.YandexBrowser {
+	return pa.pool.ForBusiness(businessID, cookiesJSON)
 }
 
 func getEnv(key, defaultValue string) string {
