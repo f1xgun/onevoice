@@ -78,4 +78,4 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-19 after plan 03-01 (VK photo post tool) completed*
+*Last updated: 2026-03-19 after plan 03-04 (VK community info and wall read tools) completed*
