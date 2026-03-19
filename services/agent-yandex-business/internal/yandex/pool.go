@@ -687,19 +687,205 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 	})
 }
 
+// hoursSchedule represents the parsed hours JSON.
+type hoursSchedule struct {
+	Monday    *dayHours `json:"monday"`
+	Tuesday   *dayHours `json:"tuesday"`
+	Wednesday *dayHours `json:"wednesday"`
+	Thursday  *dayHours `json:"thursday"`
+	Friday    *dayHours `json:"friday"`
+	Saturday  *dayHours `json:"saturday"`
+	Sunday    *dayHours `json:"sunday"`
+}
+
+type dayHours struct {
+	Open  string `json:"open"`
+	Close string `json:"close"`
+}
+
+// orderedDays maps schedule fields to their 0-indexed row position on the form.
+var orderedDays = []struct {
+	name string
+	get  func(s *hoursSchedule) *dayHours
+}{
+	{"monday", func(s *hoursSchedule) *dayHours { return s.Monday }},
+	{"tuesday", func(s *hoursSchedule) *dayHours { return s.Tuesday }},
+	{"wednesday", func(s *hoursSchedule) *dayHours { return s.Wednesday }},
+	{"thursday", func(s *hoursSchedule) *dayHours { return s.Thursday }},
+	{"friday", func(s *hoursSchedule) *dayHours { return s.Friday }},
+	{"saturday", func(s *hoursSchedule) *dayHours { return s.Saturday }},
+	{"sunday", func(s *hoursSchedule) *dayHours { return s.Sunday }},
+}
+
 // UpdateHours updates business operating hours in Yandex.Business via RPA.
 func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) error {
+	var schedule hoursSchedule
+	if err := json.Unmarshal([]byte(hoursJSON), &schedule); err != nil {
+		return a2a.NewNonRetryableError(fmt.Errorf("invalid hours JSON: %w", err))
+	}
+
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			if _, err := page.Goto(businessURL+"/settings/hours", playwright.PageGotoOptions{
+			hoursURL := businessURL + "/settings/hours"
+			if _, err := page.Goto(hoursURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
 			}); err != nil {
 				return fmt.Errorf("navigate to hours settings: %w", err)
 			}
+
+			// Session canary
+			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+				return err
+			}
 			humanDelay()
-			_ = hoursJSON
-			return fmt.Errorf("yandex.business hours RPA: not yet implemented")
+
+			// Wait for hours form to load
+			formSelectors := []string{
+				"[data-testid='hours-form']",
+				".hours-editor",
+				"[class*='HoursForm']",
+				"[class*='hours-form']",
+			}
+			formFound := false
+			for _, sel := range formSelectors {
+				err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
+					Timeout: playwright.Float(10000),
+				})
+				if err == nil {
+					formFound = true
+					break
+				}
+			}
+			if !formFound {
+				return fmt.Errorf("hours form not found — DOM may have changed")
+			}
+
+			// Process each day
+			for idx, day := range orderedDays {
+				hours := day.get(&schedule)
+				if err := setDayHours(page, idx, day.name, hours); err != nil {
+					return fmt.Errorf("set hours for %s: %w", day.name, err)
+				}
+				humanDelay()
+			}
+
+			// Click Save button
+			saveSelectors := []string{
+				"[data-testid='save-hours']",
+				"button:has-text('Сохранить')",
+				"button[type='submit']",
+				"[class*='SaveButton']",
+			}
+			saved := false
+			for _, sel := range saveSelectors {
+				btn := page.Locator(sel).First()
+				if err := btn.WaitFor(playwright.LocatorWaitForOptions{
+					Timeout: playwright.Float(5000),
+					State:   playwright.WaitForSelectorStateVisible,
+				}); err == nil {
+					if err := btn.Click(); err == nil {
+						saved = true
+						break
+					}
+				}
+			}
+			if !saved {
+				return fmt.Errorf("save button not found — changes may not have been saved")
+			}
+
+			humanDelay()
+			return nil
 		})
 	})
+}
+
+// setDayHours sets the hours for a specific day row (0-indexed) in the hours form.
+// If hours is nil, the day is marked as closed.
+func setDayHours(page playwright.Page, dayIndex int, dayName string, hours *dayHours) error {
+	// Locate the day row by index — rows are typically ordered Mon-Sun
+	rowSelectors := []string{
+		fmt.Sprintf("[data-testid='day-row-%s']", dayName),
+		fmt.Sprintf("[data-testid='day-row-%d']", dayIndex),
+		fmt.Sprintf("[class*='DayRow']:nth-child(%d)", dayIndex+1),
+		fmt.Sprintf("[class*='day-row']:nth-child(%d)", dayIndex+1),
+	}
+
+	var row playwright.Locator
+	for _, sel := range rowSelectors {
+		loc := page.Locator(sel).First()
+		if err := loc.WaitFor(playwright.LocatorWaitForOptions{
+			Timeout: playwright.Float(3000),
+		}); err == nil {
+			row = loc
+			break
+		}
+	}
+	if row == nil {
+		return fmt.Errorf("day row not found for %s (index %d)", dayName, dayIndex)
+	}
+
+	if hours == nil {
+		// Mark day as closed — toggle the closed checkbox/switch
+		closedSelectors := []string{
+			"[data-testid='day-closed']",
+			"input[type='checkbox']",
+			"[class*='Closed'] input",
+			"[class*='toggle']",
+		}
+		for _, sel := range closedSelectors {
+			toggle := row.Locator(sel).First()
+			if err := toggle.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(3000),
+			}); err == nil {
+				// Check if already in "closed" state; if not, click to toggle
+				checked, _ := toggle.IsChecked()
+				if !checked {
+					_ = toggle.Click()
+				}
+				return nil
+			}
+		}
+		return fmt.Errorf("closed toggle not found for %s", dayName)
+	}
+
+	// Fill open time
+	openSelectors := []string{
+		"[data-testid='open-time']",
+		"input[name*='open']",
+		"[class*='OpenTime'] input",
+	}
+	if err := fillTimeInput(row, openSelectors, hours.Open); err != nil {
+		return fmt.Errorf("set open time for %s: %w", dayName, err)
+	}
+
+	// Fill close time
+	closeSelectors := []string{
+		"[data-testid='close-time']",
+		"input[name*='close']",
+		"[class*='CloseTime'] input",
+	}
+	if err := fillTimeInput(row, closeSelectors, hours.Close); err != nil {
+		return fmt.Errorf("set close time for %s: %w", dayName, err)
+	}
+
+	return nil
+}
+
+// fillTimeInput fills a time input field using fallback selectors within a parent locator.
+func fillTimeInput(parent playwright.Locator, selectors []string, value string) error {
+	for _, sel := range selectors {
+		loc := parent.Locator(sel).First()
+		if err := loc.WaitFor(playwright.LocatorWaitForOptions{
+			Timeout: playwright.Float(3000),
+			State:   playwright.WaitForSelectorStateVisible,
+		}); err == nil {
+			if err := loc.Fill(""); err == nil {
+				if err := loc.Fill(value); err == nil {
+					return nil
+				}
+			}
+		}
+	}
+	return fmt.Errorf("time input not found")
 }
