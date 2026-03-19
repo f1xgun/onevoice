@@ -571,6 +571,282 @@ func TestLogout(t *testing.T) {
 	}
 }
 
+func TestNewAuthHandler_NilService(t *testing.T) {
+	handler, err := NewAuthHandler(nil, false)
+	assert.Nil(t, handler)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "userService cannot be nil")
+}
+
+func TestChangePassword(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+
+	tests := []struct {
+		name          string
+		setupContext  func(*http.Request) *http.Request
+		requestBody   string
+		mockSetup     func(*MockUserService)
+		wantStatus    int
+		checkResponse func(t *testing.T, w *httptest.ResponseRecorder)
+	}{
+		{
+			name: "successful password change",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"currentPassword":"oldpass123","newPassword":"newpass123"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("ChangePassword", mock.Anything, testUserID, "oldpass123", "newpass123").Return(nil)
+			},
+			wantStatus: http.StatusOK,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				var resp map[string]string
+				err := json.Unmarshal(w.Body.Bytes(), &resp)
+				require.NoError(t, err)
+				assert.Equal(t, "ok", resp["status"])
+			},
+		},
+		{
+			name: "missing userID in context",
+			setupContext: func(r *http.Request) *http.Request {
+				return r
+			},
+			requestBody: `{"currentPassword":"oldpass123","newPassword":"newpass123"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"unauthorized"`)
+			},
+		},
+		{
+			name: "invalid JSON body",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{invalid json`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"invalid request body"`)
+			},
+		},
+		{
+			name: "newPassword too short",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"currentPassword":"oldpass123","newPassword":"short"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"NewPassword"`)
+			},
+		},
+		{
+			name: "empty currentPassword",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"currentPassword":"","newPassword":"newpass123"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"CurrentPassword"`)
+			},
+		},
+		{
+			name: "wrong current password",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"currentPassword":"wrongpass","newPassword":"newpass123"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("ChangePassword", mock.Anything, testUserID, "wrongpass", "newpass123").
+					Return(domain.ErrInvalidCredentials)
+			},
+			wantStatus: http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"invalid current password"`)
+			},
+		},
+		{
+			name: "user not found",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"currentPassword":"oldpass123","newPassword":"newpass123"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("ChangePassword", mock.Anything, testUserID, "oldpass123", "newpass123").
+					Return(domain.ErrUserNotFound)
+			},
+			wantStatus: http.StatusNotFound,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"user not found"`)
+			},
+		},
+		{
+			name: "internal server error",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"currentPassword":"oldpass123","newPassword":"newpass123"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("ChangePassword", mock.Anything, testUserID, "oldpass123", "newpass123").
+					Return(errors.New("database failure"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"error":"internal server error"`)
+				assert.NotContains(t, body, "database") // no internal detail leak
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockUserService)
+			tt.mockSetup(mockService)
+
+			handler, _ := NewAuthHandler(mockService, false)
+
+			req := httptest.NewRequest(http.MethodPut, "/api/v1/auth/password", bytes.NewBufferString(tt.requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			req = tt.setupContext(req)
+			w := httptest.NewRecorder()
+
+			handler.ChangePassword(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			tt.checkResponse(t, w)
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+func TestSecureCookies(t *testing.T) {
+	t.Run("login with secureCookies sets __Host-refresh_token with Secure=true", func(t *testing.T) {
+		mockService := new(MockUserService)
+		mockService.On("Login", mock.Anything, "user@example.com", "password123").
+			Return(&domain.User{
+				ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+				Email:     "user@example.com",
+				Role:      domain.RoleOwner,
+				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			}, "access-token", "refresh-token", nil)
+
+		handler, err := NewAuthHandler(mockService, true)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"user@example.com","password":"password123"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.Login(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		cookies := w.Result().Cookies()
+		var refreshCookie *http.Cookie
+		for _, c := range cookies {
+			if c.Name == "__Host-refresh_token" {
+				refreshCookie = c
+				break
+			}
+		}
+		require.NotNil(t, refreshCookie, "__Host-refresh_token cookie should be set")
+		assert.Equal(t, "refresh-token", refreshCookie.Value)
+		assert.True(t, refreshCookie.Secure)
+		assert.True(t, refreshCookie.HttpOnly)
+
+		mockService.AssertExpectations(t)
+	})
+
+	t.Run("refresh with __Host-refresh_token cookie succeeds", func(t *testing.T) {
+		mockService := new(MockUserService)
+		mockService.On("RefreshToken", mock.Anything, "valid-refresh").
+			Return(&domain.User{
+				ID:    uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+				Email: "user@example.com",
+				Role:  domain.RoleOwner,
+			}, "new-access", "new-refresh", nil)
+
+		handler, err := NewAuthHandler(mockService, true)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", http.NoBody)
+		req.AddCookie(&http.Cookie{Name: "__Host-refresh_token", Value: "valid-refresh"})
+		w := httptest.NewRecorder()
+
+		handler.RefreshToken(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		mockService.AssertExpectations(t)
+	})
+
+	t.Run("refresh with plain refresh_token cookie succeeds (upgrade path)", func(t *testing.T) {
+		mockService := new(MockUserService)
+		mockService.On("RefreshToken", mock.Anything, "valid-refresh").
+			Return(&domain.User{
+				ID:    uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+				Email: "user@example.com",
+				Role:  domain.RoleOwner,
+			}, "new-access", "new-refresh", nil)
+
+		handler, err := NewAuthHandler(mockService, true)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", http.NoBody)
+		req.AddCookie(&http.Cookie{Name: "refresh_token", Value: "valid-refresh"})
+		w := httptest.NewRecorder()
+
+		handler.RefreshToken(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		mockService.AssertExpectations(t)
+	})
+}
+
+func TestRegister_AutoLoginFailure(t *testing.T) {
+	mockService := new(MockUserService)
+	mockService.On("Register", mock.Anything, "user@example.com", "password123").
+		Return(&domain.User{
+			ID:    uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+			Email: "user@example.com",
+			Role:  domain.RoleOwner,
+		}, nil)
+	mockService.On("Login", mock.Anything, "user@example.com", "password123").
+		Return(nil, "", "", errors.New("auto-login failed"))
+
+	handler, _ := NewAuthHandler(mockService, false)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"user@example.com","password":"password123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.Register(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, `"error":"internal server error"`)
+	assert.NotContains(t, body, "auto-login") // no internal detail leak
+
+	mockService.AssertExpectations(t)
+}
+
 func TestMe(t *testing.T) {
 	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
 
