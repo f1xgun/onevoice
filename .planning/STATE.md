@@ -9,7 +9,7 @@ progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 22
-  completed_plans: 22
+  completed_plans: 23
 ---
 
 # Project State
@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 | 3 | VK Agent Completion | Complete | 5/5 |
 | 4 | Yandex.Business Agent | Complete | 5/5 |
 | 5 | Observability | Complete | 4/4 |
-| 6 | Testing Completion | Pending | 0/2 |
+| 6 | Testing Completion | In Progress | 1/2 |
 
 ## Plan Index
 
@@ -71,11 +71,11 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ### Phase 6: Testing Completion
 - [ ] PLAN-6.1: Auth flow test suite (TST-03)
-- [ ] PLAN-6.2: Health check endpoint tests for all services (TST-04)
+- [x] PLAN-6.2: Health check endpoint tests for all services (TST-04)
 
 ## Requirement Coverage
 28 / 28 requirements mapped. See .planning/ROADMAP.md for full traceability table.
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-20 after plan 05-02 (Prometheus metrics on /metrics) completed — Phase 5 complete*
+*Last updated: 2026-03-20 after plan 06-02 (Health check endpoint tests) completed*
