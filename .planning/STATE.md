@@ -7,9 +7,9 @@ status: in_progress
 last_updated: "2026-03-20"
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 24
-  completed_plans: 21
+  completed_plans: 22
 ---
 
 # Project State
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 | 2 | Reliability Foundation | Complete | 4/4 |
 | 3 | VK Agent Completion | Complete | 5/5 |
 | 4 | Yandex.Business Agent | Complete | 5/5 |
-| 5 | Observability | In Progress | 3/4 |
+| 5 | Observability | Complete | 4/4 |
 | 6 | Testing Completion | Pending | 0/2 |
 
 ## Plan Index
@@ -65,7 +65,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ### Phase 5: Observability
 - [x] PLAN-5.1: Health check endpoints for all services (OBS-01)
-- [ ] PLAN-5.2: Prometheus metrics on API and orchestrator /metrics (OBS-02)
+- [x] PLAN-5.2: Prometheus metrics on API and orchestrator /metrics (OBS-02)
 - [x] PLAN-5.3: pkg/logger JSON output with service/env/version fields (OBS-03)
 - [x] PLAN-5.4: Correlation ID middleware and NATS propagation (OBS-04)
 
@@ -78,4 +78,4 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-20 after plan 05-01 (Health check endpoints for all services) completed*
+*Last updated: 2026-03-20 after plan 05-02 (Prometheus metrics on /metrics) completed — Phase 5 complete*
