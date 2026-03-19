@@ -14,10 +14,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/llm/providers"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
@@ -94,8 +96,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	})
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
+	r.Use(metrics.HTTPMiddleware)
 
 	r.Post("/chat/{conversationID}", chatHandler.Chat)
+	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health/live", hc.LiveHandler())
 	r.Get("/health/ready", hc.ReadyHandler())
 	r.Get("/health", hc.LiveHandler()) // backward compat
