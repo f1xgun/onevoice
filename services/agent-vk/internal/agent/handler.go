@@ -23,6 +23,8 @@ type VKClient interface {
 	SchedulePost(groupID, text string, publishDate int64) (int64, error)
 	UpdateGroupInfo(groupID, description string) error
 	GetComments(groupID string, count int) ([]map[string]interface{}, error)
+	ReplyComment(groupID string, postID, commentID int, text string) (int, error)
+	DeleteComment(groupID string, commentID int) error
 }
 
 // VKClientFactory creates a VK client from an access token.
@@ -50,6 +52,10 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		return h.schedulePost(ctx, req)
 	case "vk__get_comments":
 		return h.getComments(ctx, req)
+	case "vk__reply_comment":
+		return h.replyComment(ctx, req)
+	case "vk__delete_comment":
+		return h.deleteComment(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
@@ -186,5 +192,57 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		TaskID:  req.TaskID,
 		Success: true,
 		Result:  map[string]interface{}{"comments": comments, "count": len(comments)},
+	}, nil
+}
+
+func (h *Handler) replyComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	postIDf, _ := req.Args["post_id"].(float64)
+	postID := int(postIDf)
+	if postID == 0 {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: post_id is required and must be > 0"))
+	}
+	commentIDf, _ := req.Args["comment_id"].(float64)
+	commentID := int(commentIDf)
+	if commentID == 0 {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: comment_id is required and must be > 0"))
+	}
+	text, _ := req.Args["text"].(string)
+	if text == "" {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: text is required for reply"))
+	}
+
+	client, groupID, err := h.getClient(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	newCommentID, err := client.ReplyComment(groupID, postID, commentID, text)
+	if err != nil {
+		return nil, fmt.Errorf("vk: reply comment: %w", classifyVKError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"comment_id": float64(newCommentID)},
+	}, nil
+}
+
+func (h *Handler) deleteComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	commentIDf, _ := req.Args["comment_id"].(float64)
+	commentID := int(commentIDf)
+	if commentID == 0 {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: comment_id is required and must be > 0"))
+	}
+
+	client, groupID, err := h.getClient(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if err := client.DeleteComment(groupID, commentID); err != nil {
+		return nil, fmt.Errorf("vk: delete comment: %w", classifyVKError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"status": "deleted"},
 	}, nil
 }
