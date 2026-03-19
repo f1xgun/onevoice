@@ -678,3 +678,165 @@ func TestHandler_PostPhoto_VKError(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "VK error code 5 should be NonRetryableError")
 }
+
+// --- Community info tests ---
+
+func TestHandler_GetCommunityInfo(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	vkClient := &mockVKClient{
+		getCommunityInfoFn: func(groupID string) (map[string]interface{}, error) {
+			assert.Equal(t, "-123456", groupID)
+			return map[string]interface{}{
+				"name":          "Test Community",
+				"description":   "A test community",
+				"members_count": 1500,
+			}, nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-info",
+		Tool:       "vk__get_community_info",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id": "-123456",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, "Test Community", resp.Result["name"])
+	assert.Equal(t, "A test community", resp.Result["description"])
+	assert.Equal(t, 1500, resp.Result["members_count"])
+}
+
+func TestHandler_GetCommunityInfo_MissingGroupID(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__get_community_info",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "group_id is required")
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}))
+}
+
+func TestHandler_GetCommunityInfo_VKError(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	vkClient := &mockVKClient{
+		getCommunityInfoFn: func(groupID string) (map[string]interface{}, error) {
+			return nil, &vkapi.Error{Code: 100, Message: "invalid param"}
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__get_community_info",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id": "-123456",
+		},
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "VK error code 100 should be NonRetryableError")
+}
+
+// --- Wall posts tests ---
+
+func TestHandler_GetWallPosts(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	vkClient := &mockVKClient{
+		getWallPostsFn: func(groupID string, count int) ([]map[string]interface{}, int, error) {
+			assert.Equal(t, "-123456", groupID)
+			assert.Equal(t, 5, count)
+			return []map[string]interface{}{
+				{"id": 1, "text": "Post 1", "likes": 10},
+				{"id": 2, "text": "Post 2", "likes": 20},
+			}, 100, nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-wall",
+		Tool:       "vk__get_wall_posts",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id": "-123456",
+			"count":    float64(5),
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	posts := resp.Result["posts"].([]map[string]interface{})
+	assert.Len(t, posts, 2)
+	assert.Equal(t, 100, resp.Result["total"])
+}
+
+func TestHandler_GetWallPosts_DefaultCount(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	vkClient := &mockVKClient{
+		getWallPostsFn: func(groupID string, count int) ([]map[string]interface{}, int, error) {
+			assert.Equal(t, 10, count, "default count should be 10")
+			return nil, 0, nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-wall-def",
+		Tool:       "vk__get_wall_posts",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id": "-123456",
+		},
+	})
+
+	require.NoError(t, err)
+	assert.True(t, resp.Success)
+}
+
+func TestHandler_GetWallPosts_ClampCount(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	vkClient := &mockVKClient{
+		getWallPostsFn: func(groupID string, count int) ([]map[string]interface{}, int, error) {
+			assert.Equal(t, 100, count, "count > 100 should be clamped to 100")
+			return nil, 0, nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-wall-clamp",
+		Tool:       "vk__get_wall_posts",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id": "-123456",
+			"count":    float64(500),
+		},
+	})
+
+	require.NoError(t, err)
+	assert.True(t, resp.Success)
+}
+
+func TestHandler_GetWallPosts_MissingGroupID(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__get_wall_posts",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "group_id is required")
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}))
+}
