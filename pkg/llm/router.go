@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
 var (
@@ -156,12 +158,15 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		return nil, err
 	}
 
+	start := time.Now()
 	resp, err := provider.Chat(ctx, req)
 	if err != nil {
 		r.registry.RecordFailure(entry.Provider, req.Model)
+		metrics.RecordLLMRequest(req.Model, entry.Provider, "error", time.Since(start))
 		return nil, err
 	}
 
+	metrics.RecordLLMRequest(req.Model, entry.Provider, "success", time.Since(start))
 	r.registry.RecordSuccess(entry.Provider, req.Model, resp.Latency)
 	resp.Provider = entry.Provider
 
@@ -190,12 +195,15 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 		return nil, err
 	}
 
+	start := time.Now()
 	ch, err := provider.ChatStream(ctx, req)
 	if err != nil {
 		r.registry.RecordFailure(entry.Provider, req.Model)
+		metrics.RecordLLMRequest(req.Model, entry.Provider, "error", time.Since(start))
 		return nil, err
 	}
 
+	metrics.RecordLLMRequest(req.Model, entry.Provider, "success", time.Since(start))
 	// RecordSuccess with 0 latency — streaming latency is not available at channel-open time.
 	// Latency tracking for streaming must be handled at a higher layer.
 	r.registry.RecordSuccess(entry.Provider, req.Model, 0)
