@@ -163,7 +163,7 @@
 | OBS-03 | 5 |
 | OBS-04 | 5 |
 | TST-03 | 6 |
-| TST-04 | 6 |
+| Complete    | 2026-03-19 |
 
 **Total mapped: 28 / 28** ✓
 

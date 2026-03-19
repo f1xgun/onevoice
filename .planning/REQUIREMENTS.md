@@ -52,8 +52,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [x] **TST-01**: VK agent has integration tests with mock VK API server covering all 6 tools
 - [x] **TST-02**: Yandex agent has unit tests with mocked Playwright pages covering all 4 tools + canary check
-- [ ] **TST-03**: Auth flow has tests for JWT validation, token rotation, rate limiting, httpOnly cookie behavior
-- [ ] **TST-04**: Health check endpoints tested for all services (healthy + degraded scenarios)
+- [x] **TST-03**: Auth flow has tests for JWT validation, token rotation, rate limiting, httpOnly cookie behavior
+- [x] **TST-04**: Health check endpoints tested for all services (healthy + degraded scenarios)
 
 ## v2 Requirements
 
@@ -129,8 +129,8 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | REL-04 | Phase 2 | Complete |
 | TST-01 | Phase 3 | Complete |
 | TST-02 | Phase 4 | Complete |
-| TST-03 | Phase 6 | Pending |
-| TST-04 | Phase 6 | Pending |
+| TST-03 | Phase 6 | Complete |
+| TST-04 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 28 total
