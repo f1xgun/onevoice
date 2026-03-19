@@ -36,10 +36,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Observability
 
-- [ ] **OBS-01**: All services expose /health/live (always 200) and /health/ready (checks dependencies) endpoints
-- [ ] **OBS-02**: API and orchestrator export Prometheus metrics on /metrics (HTTP duration, request count, LLM calls, tool dispatch)
-- [ ] **OBS-03**: pkg/logger outputs JSON format with service/env/version fields for log aggregation
-- [ ] **OBS-04**: Correlation ID middleware generates X-Correlation-ID at API boundary and propagates through NATS ToolRequest.request_id
+- [x] **OBS-01**: All services expose /health/live (always 200) and /health/ready (checks dependencies) endpoints
+- [x] **OBS-02**: API and orchestrator export Prometheus metrics on /metrics (HTTP duration, request count, LLM calls, tool dispatch)
+- [x] **OBS-03**: pkg/logger outputs JSON format with service/env/version fields for log aggregation
+- [x] **OBS-04**: Correlation ID middleware generates X-Correlation-ID at API boundary and propagates through NATS ToolRequest.request_id
 
 ### Reliability
 
@@ -119,10 +119,10 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | SEC-04 | Phase 1 | Complete |
 | SEC-05 | Phase 1 | Complete |
 | SEC-06 | Phase 1 | Complete |
-| OBS-01 | Phase 5 | Pending |
-| OBS-02 | Phase 5 | Pending |
-| OBS-03 | Phase 5 | Pending |
-| OBS-04 | Phase 5 | Pending |
+| OBS-01 | Phase 5 | Complete |
+| OBS-02 | Phase 5 | Complete |
+| OBS-03 | Phase 5 | Complete |
+| OBS-04 | Phase 5 | Complete |
 | REL-01 | Phase 2 | Complete |
 | REL-02 | Phase 2 | Complete |
 | REL-03 | Phase 2 | Complete |
