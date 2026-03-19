@@ -16,6 +16,7 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/llm/providers"
 	"github.com/f1xgun/onevoice/pkg/logger"
@@ -61,6 +62,17 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		registerPlatformTools(toolRegistry, nc)
 	}
 
+	// Health checker
+	hc := health.New()
+	if nc != nil {
+		hc.AddCheck("nats", func(ctx context.Context) error {
+			if !nc.IsConnected() {
+				return fmt.Errorf("nats disconnected")
+			}
+			return nil
+		})
+	}
+
 	// Orchestrator
 	orch := orchestrator.NewWithOptions(router, toolRegistry, orchestrator.Options{
 		MaxIterations: cfg.MaxIterations,
@@ -84,9 +96,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	r.Use(chimiddleware.Recoverer)
 
 	r.Post("/chat/{conversationID}", chatHandler.Chat)
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	r.Get("/health/live", hc.LiveHandler())
+	r.Get("/health/ready", hc.ReadyHandler())
+	r.Get("/health", hc.LiveHandler()) // backward compat
 
 	addr := ":" + cfg.Port
 
