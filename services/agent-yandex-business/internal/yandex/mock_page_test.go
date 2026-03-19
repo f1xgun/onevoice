@@ -90,6 +90,17 @@ func (m *mockLocator) All() ([]playwright.Locator, error) {
 	return result, nil
 }
 
+// mockBrowserContext implements playwright.BrowserContext for testing.
+type mockBrowserContext struct {
+	playwright.BrowserContext
+	closeCalled bool
+}
+
+func (m *mockBrowserContext) Close(_ ...playwright.BrowserContextCloseOptions) error {
+	m.closeCalled = true
+	return nil
+}
+
 // mockPage implements playwright.Page for testing.
 type mockPage struct {
 	playwright.Page // embed for unused methods
