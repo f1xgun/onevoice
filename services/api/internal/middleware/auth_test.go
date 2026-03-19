@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -338,4 +340,136 @@ func TestGetUserRole_Missing(t *testing.T) {
 	_, err := GetUserRole(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "role not found")
+}
+
+func TestAuth_WrongSigningMethod(t *testing.T) {
+	userID := uuid.New()
+	claims := &auth.AccessTokenClaims{
+		UserID: userID,
+		Email:  "test@example.com",
+		Role:   "owner",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    auth.TokenIssuer,
+			Audience:  jwt.ClaimStrings{auth.TokenAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	// Sign with HS384 instead of HS256
+	token := jwt.NewWithClaims(jwt.SigningMethodHS384, claims)
+	tokenString, err := token.SignedString(testJWTSecret)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+
+	rr := httptest.NewRecorder()
+	handler := Auth(testJWTSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called")
+	}))
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	var errResp ErrorResponse
+	err = json.NewDecoder(rr.Body).Decode(&errResp)
+	require.NoError(t, err)
+	assert.Equal(t, "token_invalid", errResp.Error)
+}
+
+func TestAuth_WrongIssuer(t *testing.T) {
+	userID := uuid.New()
+	claims := &auth.AccessTokenClaims{
+		UserID: userID,
+		Email:  "test@example.com",
+		Role:   "owner",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "wrong-issuer",
+			Audience:  jwt.ClaimStrings{auth.TokenAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(testJWTSecret)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+
+	rr := httptest.NewRecorder()
+	handler := Auth(testJWTSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called")
+	}))
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	var errResp ErrorResponse
+	err = json.NewDecoder(rr.Body).Decode(&errResp)
+	require.NoError(t, err)
+	assert.Equal(t, "token_invalid", errResp.Error)
+}
+
+func TestAuth_WrongAudience(t *testing.T) {
+	userID := uuid.New()
+	claims := &auth.AccessTokenClaims{
+		UserID: userID,
+		Email:  "test@example.com",
+		Role:   "owner",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    auth.TokenIssuer,
+			Audience:  jwt.ClaimStrings{"wrong-audience"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(testJWTSecret)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+
+	rr := httptest.NewRecorder()
+	handler := Auth(testJWTSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called")
+	}))
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	var errResp ErrorResponse
+	err = json.NewDecoder(rr.Body).Decode(&errResp)
+	require.NoError(t, err)
+	assert.Equal(t, "token_invalid", errResp.Error)
+}
+
+func TestAuth_NoneAlgorithm(t *testing.T) {
+	// Manually construct an unsigned JWT (alg: none)
+	// Header: {"alg":"none","typ":"JWT"}
+	// Claims: valid-looking claims with correct issuer/audience
+	header := base64RawURL([]byte(`{"alg":"none","typ":"JWT"}`))
+	payload := base64RawURL([]byte(`{"user_id":"` + uuid.New().String() + `","email":"test@example.com","role":"owner","iss":"` + auth.TokenIssuer + `","aud":["` + auth.TokenAudience + `"],"exp":` + fmt.Sprintf("%d", time.Now().Add(15*time.Minute).Unix()) + `}`))
+	tokenString := header + "." + payload + "."
+
+	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+
+	rr := httptest.NewRecorder()
+	handler := Auth(testJWTSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called")
+	}))
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	var errResp ErrorResponse
+	err := json.NewDecoder(rr.Body).Decode(&errResp)
+	require.NoError(t, err)
+	assert.Equal(t, "token_invalid", errResp.Error)
+}
+
+// base64RawURL encodes bytes to base64url without padding (JWT standard encoding).
+func base64RawURL(data []byte) string {
+	return base64.RawURLEncoding.EncodeToString(data)
 }
