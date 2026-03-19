@@ -87,8 +87,8 @@
 
 ### Plans
 - [ ] PLAN-4.0: **Spike — Yandex RPA feasibility on VPS** (anti-bot detection, multi-user contexts, memory footprint)
-- [ ] PLAN-4.1: BrowserPool with per-business contexts — eliminate per-call playwright.Run() (YBZ-05)
-- [ ] PLAN-4.2: Session canary check and ErrSessionExpired (YBZ-06)
+- [x] PLAN-4.1: BrowserPool with per-business contexts — eliminate per-call playwright.Run() (YBZ-05)
+- [x] PLAN-4.2: Session canary check and ErrSessionExpired (YBZ-06)
 - [ ] PLAN-4.3: Implement get_reviews and reply_review RPA tools (YBZ-01, YBZ-02) — gated on PLAN-4.0
 - [ ] PLAN-4.4: Implement update_info and update_hours RPA tools (YBZ-03, YBZ-04) — gated on PLAN-4.0
 - [ ] PLAN-4.5: Yandex agent unit tests with mocked Playwright (TST-02)
