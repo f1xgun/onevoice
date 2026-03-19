@@ -27,6 +27,17 @@ func New(accessToken string) *Client {
 	}
 }
 
+// NewWithBaseURL creates a Client pointing at a custom API base URL (for testing).
+// The baseURL should end with a slash, e.g. "http://localhost:1234/method/".
+func NewWithBaseURL(accessToken, baseURL string) *Client {
+	vk := vkapi.NewVK(accessToken)
+	vk.MethodURL = baseURL
+	return &Client{
+		vk:      vk,
+		limiter: rate.NewLimiter(rate.Inf, 1), // no rate limit in tests
+	}
+}
+
 // wait blocks until the rate limiter allows the next request.
 func (c *Client) wait() error {
 	return c.limiter.Wait(context.Background())
