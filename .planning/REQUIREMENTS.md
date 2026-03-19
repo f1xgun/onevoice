@@ -9,12 +9,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### VK Agent
 
-- [ ] **VK-01**: User can publish a photo + caption post to VK community wall via chat
-- [ ] **VK-02**: User can schedule a VK community post for future publication via chat
-- [ ] **VK-03**: User can reply to a specific VK wall comment via chat
-- [ ] **VK-04**: User can delete a spam/toxic VK wall comment via chat
-- [ ] **VK-05**: User can ask about current VK community info (description, members, links) and get accurate data
-- [ ] **VK-06**: User can ask about recent VK wall posts and get actual post data with engagement stats
+- [x] **VK-01**: User can publish a photo + caption post to VK community wall via chat
+- [x] **VK-02**: User can schedule a VK community post for future publication via chat
+- [x] **VK-03**: User can reply to a specific VK wall comment via chat
+- [x] **VK-04**: User can delete a spam/toxic VK wall comment via chat
+- [x] **VK-05**: User can ask about current VK community info (description, members, links) and get accurate data
+- [x] **VK-06**: User can ask about recent VK wall posts and get actual post data with engagement stats
 
 ### Yandex.Business Agent
 
@@ -50,7 +50,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Testing
 
-- [ ] **TST-01**: VK agent has integration tests with mock VK API server covering all 6 tools
+- [x] **TST-01**: VK agent has integration tests with mock VK API server covering all 6 tools
 - [ ] **TST-02**: Yandex agent has unit tests with mocked Playwright pages covering all 4 tools + canary check
 - [ ] **TST-03**: Auth flow has tests for JWT validation, token rotation, rate limiting, httpOnly cookie behavior
 - [ ] **TST-04**: Health check endpoints tested for all services (healthy + degraded scenarios)
@@ -101,12 +101,12 @@ Deferred to future milestone. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VK-01 | Phase 3 | Pending |
-| VK-02 | Phase 3 | Pending |
-| VK-03 | Phase 3 | Pending |
-| VK-04 | Phase 3 | Pending |
-| VK-05 | Phase 3 | Pending |
-| VK-06 | Phase 3 | Pending |
+| VK-01 | Phase 3 | Complete |
+| VK-02 | Phase 3 | Complete |
+| VK-03 | Phase 3 | Complete |
+| VK-04 | Phase 3 | Complete |
+| VK-05 | Phase 3 | Complete |
+| VK-06 | Phase 3 | Complete |
 | YBZ-01 | Phase 4 | Pending |
 | YBZ-02 | Phase 4 | Pending |
 | YBZ-03 | Phase 4 | Pending |
@@ -127,7 +127,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | REL-02 | Phase 2 | Complete |
 | REL-03 | Phase 2 | Complete |
 | REL-04 | Phase 2 | Complete |
-| TST-01 | Phase 3 | Pending |
+| TST-01 | Phase 3 | Complete |
 | TST-02 | Phase 4 | Pending |
 | TST-03 | Phase 6 | Pending |
 | TST-04 | Phase 6 | Pending |
