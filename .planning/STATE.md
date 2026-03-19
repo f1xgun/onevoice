@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 |-------|------|--------|-------|
 | 1 | Security Foundation | Complete | 4/4 |
 | 2 | Reliability Foundation | Complete | 4/4 |
-| 3 | VK Agent Completion | In Progress | 1/5 |
+| 3 | VK Agent Completion | In Progress | 4/5 |
 | 4 | Yandex.Business Agent | Pending | 0/5 |
 | 5 | Observability | Pending | 0/4 |
 | 6 | Testing Completion | Pending | 0/2 |
@@ -50,10 +50,10 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 - [x] PLAN-2.4: Replace all panic() calls in production handlers (REL-04)
 
 ### Phase 3: VK Agent Completion
-- [ ] PLAN-3.1: VK photo post tool — two-step upload flow (VK-01)
+- [x] PLAN-3.1: VK photo post tool — two-step upload flow (VK-01)
 - [ ] PLAN-3.2: VK scheduled post tool (VK-02)
 - [x] PLAN-3.3: VK comment reply and delete tools (VK-03, VK-04)
-- [ ] PLAN-3.4: VK community info and wall read tools (VK-05, VK-06)
+- [x] PLAN-3.4: VK community info and wall read tools (VK-05, VK-06)
 - [ ] PLAN-3.5: VK agent integration tests with mock server (TST-01)
 
 ### Phase 4: Yandex.Business Agent
@@ -78,4 +78,4 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-19 after plan 03-03 (VK comment reply and delete tools) completed*
+*Last updated: 2026-03-19 after plan 03-01 (VK photo post tool) completed*
