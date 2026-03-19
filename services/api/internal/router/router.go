@@ -33,6 +33,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 
 	// Global middleware
 	r.Use(chimiddleware.RequestID)
+	r.Use(middleware.CorrelationID())
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
@@ -128,6 +129,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 func SetupInternal(handlers *Handlers) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
+	r.Use(middleware.CorrelationID())
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 
