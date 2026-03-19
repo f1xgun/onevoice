@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 )
 
@@ -108,4 +109,44 @@ func TestExecute_SetsBusinessIDFromContext(t *testing.T) {
 	var toolReq a2a.ToolRequest
 	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
 	assert.Equal(t, "biz-uuid-123", toolReq.BusinessID)
+}
+
+func TestExecute_SetsRequestIDFromCorrelationID(t *testing.T) {
+	fake := &fakeRequester{
+		response: &a2a.ToolResponse{
+			TaskID:  "t5",
+			Success: true,
+			Result:  map[string]interface{}{},
+		},
+	}
+
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+
+	ctx := logger.WithCorrelationID(context.Background(), "corr-abc-789")
+	_, err := exec.Execute(ctx, map[string]interface{}{"text": "hello"})
+	require.NoError(t, err)
+
+	var toolReq a2a.ToolRequest
+	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
+	assert.Equal(t, "corr-abc-789", toolReq.RequestID)
+}
+
+func TestExecute_EmptyCorrelationID(t *testing.T) {
+	fake := &fakeRequester{
+		response: &a2a.ToolResponse{
+			TaskID:  "t6",
+			Success: true,
+			Result:  map[string]interface{}{},
+		},
+	}
+
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+
+	// No correlation ID in context
+	_, err := exec.Execute(context.Background(), map[string]interface{}{"text": "hello"})
+	require.NoError(t, err)
+
+	var toolReq a2a.ToolRequest
+	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
+	assert.Empty(t, toolReq.RequestID)
 }
