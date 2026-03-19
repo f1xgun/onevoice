@@ -189,6 +189,19 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					},
 				}},
 				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "vk__schedule_post",
+					Description: "Планирует отложенный пост на стене сообщества ВКонтакте. Пост будет автоматически опубликован ВКонтакте в указанное время.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"text":         map[string]interface{}{"type": "string", "description": "Текст поста"},
+							"publish_date": map[string]interface{}{"type": "string", "description": "Дата и время публикации (Unix timestamp или ISO 8601 формат, например 2026-03-20T12:00:00Z)"},
+							"group_id":     map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+						},
+						"required": []string{"text", "publish_date"},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
 					Name:        "vk__update_group_info",
 					Description: "Обновляет информацию о сообществе ВКонтакте (описание, ссылки, контакты)",
 					Parameters: map[string]interface{}{
@@ -210,6 +223,32 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 							"count":    map[string]interface{}{"type": "integer", "description": "Количество комментариев (макс 100)"},
 						},
 						"required": []string{"group_id"},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "vk__reply_comment",
+					Description: "Отвечает на комментарий к посту на стене сообщества ВКонтакте. Создает ответ в ветке обсуждения.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"post_id":    map[string]interface{}{"type": "number", "description": "ID поста на стене"},
+							"comment_id": map[string]interface{}{"type": "number", "description": "ID комментария, на который нужно ответить"},
+							"text":       map[string]interface{}{"type": "string", "description": "Текст ответа на комментарий"},
+							"group_id":   map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+						},
+						"required": []string{"post_id", "comment_id", "text"},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "vk__delete_comment",
+					Description: "Удаляет комментарий к посту на стене сообщества ВКонтакте. Требуются права администратора или модератора сообщества.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"comment_id": map[string]interface{}{"type": "number", "description": "ID комментария для удаления"},
+							"group_id":   map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+						},
+						"required": []string{"comment_id"},
 					},
 				}},
 			},
