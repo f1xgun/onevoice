@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -270,4 +272,207 @@ func TestGetClientIP_Priority(t *testing.T) {
 	// X-Forwarded-For should take priority
 	ip := getClientIP(req)
 	assert.Equal(t, "203.0.113.1", ip)
+}
+
+func TestRateLimitByUser_WithinLimit(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 5
+	window := time.Minute
+	userID := uuid.New()
+
+	handler := RateLimitByUser(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+		req.RemoteAddr = "192.168.1.1:12345"
+		ctx := context.WithValue(req.Context(), UserIDKey, userID)
+		req = req.WithContext(ctx)
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, strconv.Itoa(limit), rr.Header().Get("X-RateLimit-Limit"))
+
+		remaining, err := strconv.Atoi(rr.Header().Get("X-RateLimit-Remaining"))
+		require.NoError(t, err)
+		assert.Equal(t, limit-i-1, remaining)
+	}
+}
+
+func TestRateLimitByUser_ExceedsLimit(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 3
+	window := time.Minute
+	userID := uuid.New()
+
+	handler := RateLimitByUser(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	// Exhaust the limit
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+		req.RemoteAddr = "192.168.1.1:12345"
+		ctx := context.WithValue(req.Context(), UserIDKey, userID)
+		req = req.WithContext(ctx)
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+	}
+
+	// 4th request should be rate limited
+	req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+	req.RemoteAddr = "192.168.1.1:12345"
+	ctx := context.WithValue(req.Context(), UserIDKey, userID)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusTooManyRequests, rr.Code)
+
+	var errResp rateLimitErrorResponse
+	err := json.NewDecoder(rr.Body).Decode(&errResp)
+	require.NoError(t, err)
+	assert.Equal(t, "rate limit exceeded", errResp.Error)
+	assert.NotEmpty(t, rr.Header().Get("Retry-After"))
+}
+
+func TestRateLimitByUser_FallbackToIP(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 2
+	window := time.Minute
+
+	handler := RateLimitByUser(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	// No UserIDKey in context — should fallback to IP-based limiting
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+		req.RemoteAddr = "192.168.1.1:12345"
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+	}
+
+	// 3rd request should be rate limited
+	req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+	req.RemoteAddr = "192.168.1.1:12345"
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusTooManyRequests, rr.Code)
+}
+
+func TestRateLimitByUser_DifferentUsers(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 2
+	window := time.Minute
+	user1 := uuid.New()
+	user2 := uuid.New()
+
+	handler := RateLimitByUser(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	// User 1: exhaust limit
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+		req.RemoteAddr = "192.168.1.1:12345"
+		ctx := context.WithValue(req.Context(), UserIDKey, user1)
+		req = req.WithContext(ctx)
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+	}
+
+	// User 2: should have independent counter
+	req := httptest.NewRequest("GET", "/api/v1/chat", http.NoBody)
+	req.RemoteAddr = "192.168.1.1:12345"
+	ctx := context.WithValue(req.Context(), UserIDKey, user2)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "1", rr.Header().Get("X-RateLimit-Remaining"))
+}
+
+func TestRateLimit_RedisDown(t *testing.T) {
+	redisClient, mr := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 5
+	window := time.Minute
+
+	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	// Close Redis before making request — should fail open
+	mr.Close()
+
+	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
+	req.RemoteAddr = "192.168.1.1:12345"
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "success", rr.Body.String())
+}
+
+func TestRateLimit_RetryAfterHeader(t *testing.T) {
+	redisClient, _ := setupTestRedis(t)
+	defer func() { _ = redisClient.Close() }()
+
+	limit := 1
+	window := time.Minute
+
+	handler := RateLimit(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	// First request — within limit
+	req := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
+	req.RemoteAddr = "192.168.1.1:12345"
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	// Second request — exceeds limit
+	req2 := httptest.NewRequest("GET", "/api/v1/test", http.NoBody)
+	req2.RemoteAddr = "192.168.1.1:12345"
+	rr2 := httptest.NewRecorder()
+	handler.ServeHTTP(rr2, req2)
+
+	assert.Equal(t, http.StatusTooManyRequests, rr2.Code)
+
+	retryAfter := rr2.Header().Get("Retry-After")
+	assert.NotEmpty(t, retryAfter)
+	retryAfterInt, err := strconv.Atoi(retryAfter)
+	require.NoError(t, err)
+	assert.Greater(t, retryAfterInt, 0)
 }
