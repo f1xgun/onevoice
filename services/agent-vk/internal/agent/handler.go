@@ -20,11 +20,14 @@ type TokenFetcher interface {
 // VKClient abstracts VK API operations for testability.
 type VKClient interface {
 	PublishPost(groupID, text string) (int64, error)
+	PostPhoto(groupID string, photoURL, caption string) (int64, error)
 	SchedulePost(groupID, text string, publishDate int64) (int64, error)
 	UpdateGroupInfo(groupID, description string) error
 	GetComments(groupID string, count int) ([]map[string]interface{}, error)
 	ReplyComment(groupID string, postID, commentID int, text string) (int, error)
 	DeleteComment(groupID string, commentID int) error
+	GetCommunityInfo(groupID string) (map[string]interface{}, error)
+	GetWallPosts(groupID string, count int) ([]map[string]interface{}, int, error)
 }
 
 // VKClientFactory creates a VK client from an access token.
@@ -46,6 +49,8 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 	switch req.Tool {
 	case "vk__publish_post":
 		return h.publishPost(ctx, req)
+	case "vk__post_photo":
+		return h.postPhoto(ctx, req)
 	case "vk__update_group_info":
 		return h.updateGroupInfo(ctx, req)
 	case "vk__schedule_post":
@@ -56,6 +61,10 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		return h.replyComment(ctx, req)
 	case "vk__delete_comment":
 		return h.deleteComment(ctx, req)
+	case "vk__get_community_info":
+		return h.getCommunityInfo(ctx, req)
+	case "vk__get_wall_posts":
+		return h.getWallPosts(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
@@ -100,6 +109,28 @@ func (h *Handler) publishPost(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		return nil, fmt.Errorf("vk: publish post: %w", classifyVKError(err))
 	}
 
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"post_id": float64(postID)},
+	}, nil
+}
+
+func (h *Handler) postPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	photoURL, _ := req.Args["photo_url"].(string)
+	if photoURL == "" {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: photo_url is required"))
+	}
+	caption, _ := req.Args["caption"].(string)
+
+	client, groupID, err := h.getClient(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	postID, err := client.PostPhoto(groupID, photoURL, caption)
+	if err != nil {
+		return nil, fmt.Errorf("vk: post photo: %w", classifyVKError(err))
+	}
 	return &a2a.ToolResponse{
 		TaskID:  req.TaskID,
 		Success: true,
@@ -244,5 +275,54 @@ func (h *Handler) deleteComment(ctx context.Context, req a2a.ToolRequest) (*a2a.
 		TaskID:  req.TaskID,
 		Success: true,
 		Result:  map[string]interface{}{"status": "deleted"},
+	}, nil
+}
+
+func (h *Handler) getCommunityInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	client, groupID, err := h.getClient(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if groupID == "" {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: group_id is required"))
+	}
+
+	info, err := client.GetCommunityInfo(groupID)
+	if err != nil {
+		return nil, fmt.Errorf("vk: get community info: %w", classifyVKError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  info,
+	}, nil
+}
+
+func (h *Handler) getWallPosts(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	client, groupID, err := h.getClient(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if groupID == "" {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: group_id is required"))
+	}
+
+	countF, _ := req.Args["count"].(float64)
+	count := int(countF)
+	if count <= 0 {
+		count = 10
+	}
+	if count > 100 {
+		count = 100
+	}
+
+	posts, total, err := client.GetWallPosts(groupID, count)
+	if err != nil {
+		return nil, fmt.Errorf("vk: get wall posts: %w", classifyVKError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"posts": posts, "total": total},
 	}, nil
 }
