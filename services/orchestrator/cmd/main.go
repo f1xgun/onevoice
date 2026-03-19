@@ -264,6 +264,29 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 						"required": []string{"comment_id"},
 					},
 				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "vk__get_community_info",
+					Description: "Получает информацию о сообществе ВКонтакте: название, описание, количество подписчиков, статус, ссылки. Используй для ответа на вопросы о сообществе.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте. Если не указан, используется группа из активной VK-интеграции."},
+						},
+						"required": []string{},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "vk__get_wall_posts",
+					Description: "Получает последние посты со стены сообщества ВКонтакте с данными о лайках, комментариях, репостах и просмотрах.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте. Если не указан, используется группа из активной VK-интеграции."},
+							"count":    map[string]interface{}{"type": "integer", "description": "Количество постов (по умолчанию 10, макс 100)"},
+						},
+						"required": []string{},
+					},
+				}},
 			},
 		},
 		{
