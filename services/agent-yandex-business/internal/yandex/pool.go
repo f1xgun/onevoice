@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -238,22 +239,208 @@ func (p *BrowserPool) ForBusiness(businessID, cookiesJSON string) *BusinessBrows
 
 // GetReviews scrapes reviews from Yandex.Business reviews page.
 func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
 	var reviews []map[string]interface{}
 	err := withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			if _, err := page.Goto(businessURL+"/reviews", playwright.PageGotoOptions{
+			reviewsURL := businessURL + "/reviews"
+			if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
 			}); err != nil {
 				return fmt.Errorf("navigate to reviews: %w", err)
 			}
+
+			// Session canary — bail immediately if cookies expired
+			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+				return err
+			}
 			humanDelay()
-			_ = limit
-			reviews = []map[string]interface{}{}
+
+			// Wait for reviews container with fallback selectors
+			// Selectors ordered: data-testid (stable) > class-based > structural
+			containerSelectors := []string{
+				"[data-testid='reviews-list']",
+				".reviews-list",
+				"[class*='ReviewsList']",
+				"[class*='reviews-list']",
+			}
+			containerFound := false
+			for _, sel := range containerSelectors {
+				err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
+					Timeout: playwright.Float(5000),
+				})
+				if err == nil {
+					containerFound = true
+					break
+				}
+			}
+			if !containerFound {
+				// No reviews container — might be empty or DOM changed
+				return fmt.Errorf("reviews container not found — DOM may have changed")
+			}
+
+			// Load more reviews if needed (pagination)
+			reviews = make([]map[string]interface{}, 0, limit)
+			for len(reviews) < limit {
+				cards, err := scrapeReviewCards(page, limit-len(reviews))
+				if err != nil {
+					return fmt.Errorf("scrape review cards: %w", err)
+				}
+				reviews = append(reviews, cards...)
+
+				if len(reviews) >= limit {
+					break
+				}
+
+				// Try to click "Load more" / "Show more" button
+				loadMoreSelectors := []string{
+					"[data-testid='load-more-reviews']",
+					"button:has-text('Показать ещё')",
+					"button:has-text('Ещё отзывы')",
+					"[class*='LoadMore'] button",
+				}
+				clicked := false
+				for _, sel := range loadMoreSelectors {
+					btn := page.Locator(sel).First()
+					if err := btn.WaitFor(playwright.LocatorWaitForOptions{
+						Timeout: playwright.Float(3000),
+						State:   playwright.WaitForSelectorStateVisible,
+					}); err == nil {
+						if err := btn.Click(); err == nil {
+							clicked = true
+							humanDelay()
+							break
+						}
+					}
+				}
+				if !clicked {
+					break // No more pages
+				}
+			}
+
+			// Trim to limit
+			if len(reviews) > limit {
+				reviews = reviews[:limit]
+			}
 			return nil
 		})
 	})
 	return reviews, err
+}
+
+// scrapeReviewCards extracts review data from visible review card elements.
+func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interface{}, error) {
+	// Try multiple selectors for review cards
+	cardSelectors := []string{
+		"[data-testid='review-card']",
+		".review-card",
+		"[class*='ReviewCard']",
+		"[class*='review-item']",
+	}
+
+	var cards []playwright.Locator
+	for _, sel := range cardSelectors {
+		all, err := page.Locator(sel).All()
+		if err == nil && len(all) > 0 {
+			cards = all
+			break
+		}
+	}
+	if len(cards) == 0 {
+		return nil, nil // No cards found — not an error, just empty
+	}
+
+	results := make([]map[string]interface{}, 0, maxCards)
+	for i, card := range cards {
+		if i >= maxCards {
+			break
+		}
+
+		review := map[string]interface{}{}
+
+		// Extract review ID from data attribute
+		if id, err := card.GetAttribute("data-review-id"); err == nil && id != "" {
+			review["id"] = id
+		} else {
+			review["id"] = fmt.Sprintf("review-%d", i)
+		}
+
+		// Extract rating — try data attribute, then star count, then aria-label
+		review["rating"] = extractRating(card)
+
+		// Extract author name
+		authorSelectors := []string{
+			"[data-testid='review-author']",
+			".review-author",
+			"[class*='Author']",
+			"[class*='author']",
+		}
+		review["author"] = extractText(card, authorSelectors, "Unknown")
+
+		// Extract review text
+		textSelectors := []string{
+			"[data-testid='review-text']",
+			".review-text",
+			"[class*='ReviewText']",
+			"[class*='review-body']",
+		}
+		review["text"] = extractText(card, textSelectors, "")
+
+		// Extract date
+		dateSelectors := []string{
+			"[data-testid='review-date']",
+			".review-date",
+			"[class*='Date']",
+			"time",
+		}
+		review["date"] = extractText(card, dateSelectors, "")
+
+		results = append(results, review)
+	}
+	return results, nil
+}
+
+// extractText tries multiple selectors on a parent locator and returns the first non-empty text.
+func extractText(parent playwright.Locator, selectors []string, fallback string) string {
+	for _, sel := range selectors {
+		loc := parent.Locator(sel).First()
+		text, err := loc.TextContent()
+		if err == nil && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+	return fallback
+}
+
+// extractRating extracts the rating number from a review card.
+func extractRating(card playwright.Locator) interface{} {
+	// Try data-rating attribute
+	ratingSelectors := []string{
+		"[data-testid='review-rating']",
+		"[class*='Rating']",
+		"[class*='rating']",
+		"[class*='stars']",
+	}
+	for _, sel := range ratingSelectors {
+		loc := card.Locator(sel).First()
+		if val, err := loc.GetAttribute("data-rating"); err == nil && val != "" {
+			return val
+		}
+		if val, err := loc.GetAttribute("aria-label"); err == nil && val != "" {
+			return val
+		}
+		if text, err := loc.TextContent(); err == nil && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+	return nil
 }
 
 // ReplyReview posts a reply to a Yandex.Business review via RPA.
