@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
 )
 
 // TokenFetcher retrieves an access token (cookies JSON) for a given business/platform combination.
@@ -21,18 +23,20 @@ type YandexBrowser interface {
 	ReplyReview(ctx context.Context, reviewID, text string) error
 }
 
-// BrowserFactory creates a YandexBrowser from a cookies JSON string.
-type BrowserFactory func(cookiesJSON string) YandexBrowser
+// BrowserPool abstracts the shared Playwright browser pool.
+type BrowserPool interface {
+	ForBusiness(businessID, cookiesJSON string) YandexBrowser
+}
 
 // Handler implements a2a.Handler for the Yandex.Business RPA agent.
 type Handler struct {
-	tokens         TokenFetcher
-	browserFactory BrowserFactory
+	tokens TokenFetcher
+	pool   BrowserPool
 }
 
-// NewHandler creates a Handler with the given TokenFetcher and BrowserFactory.
-func NewHandler(tokens TokenFetcher, factory BrowserFactory) *Handler {
-	return &Handler{tokens: tokens, browserFactory: factory}
+// NewHandler creates a Handler with the given TokenFetcher and BrowserPool.
+func NewHandler(tokens TokenFetcher, pool BrowserPool) *Handler {
+	return &Handler{tokens: tokens, pool: pool}
 }
 
 // Handle routes ToolRequests to the appropriate Yandex.Business operation.
@@ -56,6 +60,10 @@ func classifyYandexError(err error) error {
 	if err == nil {
 		return nil
 	}
+	// Sentinel check — canary already wrapped in NonRetryableError, propagate as-is
+	if errors.Is(err, yandex.ErrSessionExpired) {
+		return a2a.NewNonRetryableError(err)
+	}
 	msg := err.Error()
 	// Session expired — login redirect detected
 	if strings.Contains(msg, "session expired") || strings.Contains(msg, "login redirect") || strings.Contains(msg, "passport.yandex") {
@@ -65,6 +73,14 @@ func classifyYandexError(err error) error {
 	if strings.Contains(msg, "captcha") || strings.Contains(msg, "CAPTCHA") {
 		return a2a.NewNonRetryableError(fmt.Errorf("yandex captcha detected: %w", err))
 	}
+	// Review not found — no point retrying
+	if strings.Contains(msg, "review not found") {
+		return a2a.NewNonRetryableError(err)
+	}
+	// Reply form unavailable (already replied or reviews disabled)
+	if strings.Contains(msg, "reply form unavailable") || strings.Contains(msg, "reply button not found") {
+		return a2a.NewNonRetryableError(err)
+	}
 	return err // transient (timeout, network, etc.)
 }
 
@@ -73,7 +89,7 @@ func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBr
 	if err != nil {
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
-	return h.browserFactory(token), nil
+	return h.pool.ForBusiness(req.BusinessID, token), nil
 }
 
 func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
