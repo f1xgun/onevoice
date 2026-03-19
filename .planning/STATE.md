@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 | 1 | Security Foundation | Complete | 4/4 |
 | 2 | Reliability Foundation | Complete | 4/4 |
 | 3 | VK Agent Completion | Complete | 5/5 |
-| 4 | Yandex.Business Agent | In Progress | 2/5 |
+| 4 | Yandex.Business Agent | In Progress | 3/5 |
 | 5 | Observability | Pending | 0/4 |
 | 6 | Testing Completion | Pending | 0/2 |
 
@@ -59,7 +59,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 ### Phase 4: Yandex.Business Agent
 - [x] PLAN-4.1: BrowserPool shared instance — eliminate per-call playwright.Run() (YBZ-05)
 - [x] PLAN-4.2: Session canary check and ErrSessionExpired (YBZ-06)
-- [ ] PLAN-4.3: Implement get_reviews and reply_review RPA tools (YBZ-01, YBZ-02)
+- [x] PLAN-4.3: Implement get_reviews and reply_review RPA tools (YBZ-01, YBZ-02)
 - [ ] PLAN-4.4: Implement update_info and update_hours RPA tools (YBZ-03, YBZ-04)
 - [ ] PLAN-4.5: Yandex agent unit tests with mocked Playwright (TST-02)
 
@@ -78,4 +78,4 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-20 after plan 04-01 (BrowserPool with per-business contexts) completed*
+*Last updated: 2026-03-20 after plan 04-03 (get_reviews and reply_review RPA tools) completed*
