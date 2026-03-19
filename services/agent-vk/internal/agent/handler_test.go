@@ -609,3 +609,72 @@ func TestHandler_DeleteComment_VKError(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "VK error code 15 should be NonRetryableError")
 }
+
+// --- Post photo tests ---
+
+func TestHandler_PostPhoto(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	vkClient := &mockVKClient{
+		postPhotoFn: func(groupID string, photoURL, caption string) (int64, error) {
+			assert.Equal(t, "-123456", groupID)
+			assert.Equal(t, "https://example.com/image.jpg", photoURL)
+			assert.Equal(t, "Nice photo!", caption)
+			return 777, nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-photo",
+		Tool:       "vk__post_photo",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"photo_url": "https://example.com/image.jpg",
+			"caption":   "Nice photo!",
+			"group_id":  "-123456",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, float64(777), resp.Result["post_id"])
+}
+
+func TestHandler_PostPhoto_MissingURL(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__post_photo",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"caption":  "No URL",
+			"group_id": "-123456",
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "photo_url is required")
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}))
+}
+
+func TestHandler_PostPhoto_VKError(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "tok"}
+	vkClient := &mockVKClient{
+		postPhotoFn: func(groupID string, photoURL, caption string) (int64, error) {
+			return 0, &vkapi.Error{Code: 5, Message: "invalid token"}
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient))
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__post_photo",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"photo_url": "https://example.com/image.jpg",
+			"group_id":  "-123456",
+		},
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "VK error code 5 should be NonRetryableError")
+}
