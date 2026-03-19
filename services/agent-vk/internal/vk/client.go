@@ -87,3 +87,31 @@ func (c *Client) GetComments(groupID string, count int) ([]map[string]interface{
 	}
 	return comments, nil
 }
+
+// ReplyComment creates a threaded reply to a wall comment.
+// groupID should be the owner_id (negative for communities, e.g. "-123456").
+func (c *Client) ReplyComment(groupID string, postID, commentID int, text string) (int, error) {
+	resp, err := c.vk.WallCreateComment(vkapi.Params{
+		"owner_id":         groupID,
+		"post_id":          postID,
+		"message":          text,
+		"reply_to_comment": commentID,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("vk wall.createComment: %w", err)
+	}
+	return resp.CommentID, nil
+}
+
+// DeleteComment removes a comment from a wall post.
+// groupID should be the owner_id (negative for communities, e.g. "-123456").
+func (c *Client) DeleteComment(groupID string, commentID int) error {
+	_, err := c.vk.WallDeleteComment(vkapi.Params{
+		"owner_id":   groupID,
+		"comment_id": commentID,
+	})
+	if err != nil {
+		return fmt.Errorf("vk wall.deleteComment: %w", err)
+	}
+	return nil
+}
