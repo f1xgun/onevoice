@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/playwright-community/playwright-go"
 )
 
@@ -462,17 +463,128 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 
 // UpdateInfo updates business contact information in Yandex.Business via RPA.
 func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]string) error {
+	if len(info) == 0 {
+		return a2a.NewNonRetryableError(fmt.Errorf("no fields to update"))
+	}
+
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			if _, err := page.Goto(businessURL+"/settings/contacts", playwright.PageGotoOptions{
+			contactsURL := businessURL + "/settings/contacts"
+			if _, err := page.Goto(contactsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
 			}); err != nil {
 				return fmt.Errorf("navigate to contacts settings: %w", err)
 			}
+
+			// Session canary
+			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+				return err
+			}
 			humanDelay()
-			_ = info
-			return fmt.Errorf("yandex.business update info RPA: not yet implemented")
+
+			// Wait for the settings form to load
+			formSelectors := []string{
+				"[data-testid='contacts-form']",
+				".contacts-form",
+				"[class*='ContactsForm']",
+				"form",
+			}
+			formFound := false
+			for _, sel := range formSelectors {
+				err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
+					Timeout: playwright.Float(10000),
+				})
+				if err == nil {
+					formFound = true
+					break
+				}
+			}
+			if !formFound {
+				return fmt.Errorf("contacts form not found — DOM may have changed")
+			}
+
+			// Field mapping: info key -> candidate selectors for the input/textarea
+			fieldMap := map[string][]string{
+				"phone": {
+					"[data-testid='phone-input']",
+					"input[name='phone']",
+					"input[type='tel']",
+					"[class*='Phone'] input",
+				},
+				"website": {
+					"[data-testid='website-input']",
+					"input[name='website']",
+					"input[name='url']",
+					"input[type='url']",
+					"[class*='Website'] input",
+				},
+				"description": {
+					"[data-testid='description-input']",
+					"textarea[name='description']",
+					"[class*='Description'] textarea",
+					"[class*='description'] textarea",
+				},
+			}
+
+			for key, value := range info {
+				selectors, ok := fieldMap[key]
+				if !ok {
+					continue // Unknown field — skip
+				}
+
+				filled := false
+				for _, sel := range selectors {
+					loc := page.Locator(sel).First()
+					if err := loc.WaitFor(playwright.LocatorWaitForOptions{
+						Timeout: playwright.Float(5000),
+						State:   playwright.WaitForSelectorStateVisible,
+					}); err != nil {
+						continue
+					}
+					// Clear existing value and fill new one
+					if err := loc.Fill(""); err != nil {
+						continue
+					}
+					if err := loc.Fill(value); err != nil {
+						continue
+					}
+					filled = true
+					humanDelay()
+					break
+				}
+				if !filled {
+					return fmt.Errorf("field %q input not found — DOM may have changed", key)
+				}
+			}
+
+			// Click Save button
+			saveSelectors := []string{
+				"[data-testid='save-button']",
+				"button:has-text('Сохранить')",
+				"button[type='submit']",
+				"[class*='SaveButton']",
+			}
+			saved := false
+			for _, sel := range saveSelectors {
+				btn := page.Locator(sel).First()
+				if err := btn.WaitFor(playwright.LocatorWaitForOptions{
+					Timeout: playwright.Float(5000),
+					State:   playwright.WaitForSelectorStateVisible,
+				}); err == nil {
+					if err := btn.Click(); err == nil {
+						saved = true
+						break
+					}
+				}
+			}
+			if !saved {
+				return fmt.Errorf("save button not found — changes may not have been saved")
+			}
+
+			// Wait for save confirmation
+			humanDelay()
+			return nil
 		})
 	})
 }
