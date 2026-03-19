@@ -10,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 )
@@ -99,6 +100,9 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := a2a.WithBusinessID(r.Context(), req.BusinessID)
+	if corrID := r.Header.Get("X-Correlation-ID"); corrID != "" {
+		ctx = logger.WithCorrelationID(ctx, corrID)
+	}
 
 	// Build message history: prior turns + current user message
 	history := make([]llm.Message, 0, len(req.History)+1)
