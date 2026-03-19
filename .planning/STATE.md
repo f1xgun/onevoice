@@ -9,7 +9,7 @@ progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 24
-  completed_plans: 19
+  completed_plans: 20
 ---
 
 # Project State
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 | 2 | Reliability Foundation | Complete | 4/4 |
 | 3 | VK Agent Completion | Complete | 5/5 |
 | 4 | Yandex.Business Agent | Complete | 5/5 |
-| 5 | Observability | In Progress | 1/4 |
+| 5 | Observability | In Progress | 2/4 |
 | 6 | Testing Completion | Pending | 0/2 |
 
 ## Plan Index
@@ -67,7 +67,7 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 - [ ] PLAN-5.1: Health check endpoints for all services (OBS-01)
 - [ ] PLAN-5.2: Prometheus metrics on API and orchestrator /metrics (OBS-02)
 - [x] PLAN-5.3: pkg/logger JSON output with service/env/version fields (OBS-03)
-- [ ] PLAN-5.4: Correlation ID middleware and NATS propagation (OBS-04)
+- [x] PLAN-5.4: Correlation ID middleware and NATS propagation (OBS-04)
 
 ### Phase 6: Testing Completion
 - [ ] PLAN-6.1: Auth flow test suite (TST-03)
@@ -78,4 +78,4 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ---
 *State initialized: 2026-03-15*
-*Last updated: 2026-03-20 after plan 05-03 (pkg/logger JSON output) completed*
+*Last updated: 2026-03-20 after plan 05-04 (Correlation ID middleware and NATS propagation) completed*
