@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
 )
@@ -142,10 +145,22 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 				}
 
 				// Execute the tool
+				toolStart := time.Now()
 				result, execErr := o.tools.Execute(ctx, tc.Function.Name, args)
 				if execErr != nil {
 					result = map[string]interface{}{"error": execErr.Error(), "tool_name": tc.Function.Name}
 				}
+
+				// Record tool dispatch metrics
+				toolStatus := "success"
+				if execErr != nil {
+					toolStatus = "error"
+				}
+				toolAgent := tc.Function.Name
+				if sep := strings.Index(tc.Function.Name, "__"); sep != -1 {
+					toolAgent = tc.Function.Name[:sep]
+				}
+				metrics.RecordToolDispatch(tc.Function.Name, toolAgent, toolStatus, time.Since(toolStart))
 
 				// Emit tool result event for the frontend
 				toolResultEv := Event{
