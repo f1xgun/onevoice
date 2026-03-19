@@ -110,7 +110,7 @@
 - [ ] PLAN-5.1: Health check endpoints for all services — /health/live and /health/ready (OBS-01)
 - [ ] PLAN-5.2: Prometheus metrics on API and orchestrator /metrics (OBS-02)
 - [x] PLAN-5.3: pkg/logger JSON output with service/env/version fields (OBS-03)
-- [ ] PLAN-5.4: Correlation ID middleware and NATS propagation (OBS-04)
+- [x] PLAN-5.4: Correlation ID middleware and NATS propagation (OBS-04)
 
 ---
 
