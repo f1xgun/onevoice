@@ -178,7 +178,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			tools: []llm.ToolDefinition{
 				{Type: "function", Function: llm.FunctionDefinition{
 					Name:        "vk__publish_post",
-					Description: "Публикует пост в сообщество ВКонтакте",
+					Description: "Публикует текстовый пост (без фото) на стену сообщества ВКонтакте. Если нужно опубликовать пост с фото — используй vk__post_photo вместо этого.",
 					Parameters: map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
@@ -186,6 +186,19 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 							"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества"},
 						},
 						"required": []string{"text"},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "vk__post_photo",
+					Description: "Публикует пост с фото и текстовой подписью на стену сообщества ВКонтакте. Используй эту функцию вместо publish_post когда нужно опубликовать пост с изображением.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"photo_url": map[string]interface{}{"type": "string", "description": "Публичный URL изображения для загрузки"},
+							"caption":   map[string]interface{}{"type": "string", "description": "Текстовая подпись к фото"},
+							"group_id":  map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+						},
+						"required": []string{"photo_url"},
 					},
 				}},
 				{Type: "function", Function: llm.FunctionDefinition{
