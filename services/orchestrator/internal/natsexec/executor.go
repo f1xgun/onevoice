@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/logger"
 )
 
 // Requester abstracts NATS request-reply for testability.
@@ -37,6 +38,7 @@ func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{})
 		Tool:       e.toolName,
 		Args:       args,
 		BusinessID: a2a.BusinessIDFromContext(ctx),
+		RequestID:  logger.CorrelationIDFromContext(ctx),
 	}
 
 	data, err := json.Marshal(req)
