@@ -32,7 +32,7 @@ func withRetry(ctx context.Context, maxAttempts int, fn func() error) error { //
 			return lastErr
 		}
 		if i < maxAttempts-1 {
-			time.Sleep(time.Duration(1<<uint(i)) * time.Second) //nolint:gosec // i is bounded by maxAttempts (small value), no overflow risk
+			time.Sleep(time.Duration(1<<uint(i)) * time.Second)
 		}
 	}
 	return fmt.Errorf("all %d attempts failed: %w", maxAttempts, lastErr)

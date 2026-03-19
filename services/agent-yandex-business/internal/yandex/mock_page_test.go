@@ -32,6 +32,10 @@ type mockLocator struct {
 	firstItem   *mockLocator
 }
 
+// newMockLocator creates a mockLocator with initialized maps.
+// Used by test files that need to set up Playwright DOM mocks.
+var _ = newMockLocator // ensure it's not flagged as unused
+
 func newMockLocator() *mockLocator {
 	return &mockLocator{
 		attributes: make(map[string]string),
