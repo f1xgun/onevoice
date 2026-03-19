@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"time"
 
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
 
@@ -18,6 +20,7 @@ type TokenFetcher interface {
 // VKClient abstracts VK API operations for testability.
 type VKClient interface {
 	PublishPost(groupID, text string) (int64, error)
+	SchedulePost(groupID, text string, publishDate int64) (int64, error)
 	UpdateGroupInfo(groupID, description string) error
 	GetComments(groupID string, count int) ([]map[string]interface{}, error)
 }
@@ -43,6 +46,8 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		return h.publishPost(ctx, req)
 	case "vk__update_group_info":
 		return h.updateGroupInfo(ctx, req)
+	case "vk__schedule_post":
+		return h.schedulePost(ctx, req)
 	case "vk__get_comments":
 		return h.getComments(ctx, req)
 	default:
@@ -94,6 +99,51 @@ func (h *Handler) publishPost(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		Success: true,
 		Result:  map[string]interface{}{"post_id": float64(postID)},
 	}, nil
+}
+
+func (h *Handler) schedulePost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	text, _ := req.Args["text"].(string)
+	if text == "" {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: text is required for scheduled post"))
+	}
+	publishDateStr, _ := req.Args["publish_date"].(string)
+	if publishDateStr == "" {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: publish_date is required"))
+	}
+
+	publishDate, err := parsePublishDate(publishDateStr)
+	if err != nil {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: invalid publish_date: %w", err))
+	}
+	if publishDate <= time.Now().Unix() {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: publish_date must be in the future"))
+	}
+
+	client, groupID, err := h.getClient(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	postID, err := client.SchedulePost(groupID, text, publishDate)
+	if err != nil {
+		return nil, fmt.Errorf("vk: schedule post: %w", classifyVKError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"post_id": float64(postID), "scheduled": true},
+	}, nil
+}
+
+// parsePublishDate accepts a Unix timestamp string or RFC3339 formatted date.
+func parsePublishDate(s string) (int64, error) {
+	if ts, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return ts, nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return 0, fmt.Errorf("expected Unix timestamp or RFC3339 format, got %q", s)
+	}
+	return t.Unix(), nil
 }
 
 func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {

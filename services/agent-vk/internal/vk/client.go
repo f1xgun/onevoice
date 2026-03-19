@@ -31,6 +31,20 @@ func (c *Client) PublishPost(groupID, text string) (int64, error) {
 	return int64(resp.PostID), nil
 }
 
+// SchedulePost publishes a postponed post to a VK community wall.
+// VK holds the post and automatically publishes it at publishDate (Unix timestamp).
+func (c *Client) SchedulePost(groupID, text string, publishDate int64) (int64, error) {
+	resp, err := c.vk.WallPost(vkapi.Params{
+		"owner_id":     groupID,
+		"message":      text,
+		"publish_date": publishDate,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("vk wall.post (scheduled): %w", err)
+	}
+	return int64(resp.PostID), nil
+}
+
 // UpdateGroupInfo updates the description of a VK community.
 // groupID may be negative (e.g. "-123456") or bare numeric string ("123456").
 func (c *Client) UpdateGroupInfo(groupID, description string) error {
