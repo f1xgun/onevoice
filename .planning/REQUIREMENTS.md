@@ -18,12 +18,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Yandex.Business Agent
 
-- [ ] **YBZ-01**: User can fetch Yandex.Business reviews with rating, author, text, date via chat
-- [ ] **YBZ-02**: User can reply to a specific Yandex.Business review via chat
-- [ ] **YBZ-03**: User can update Yandex.Business profile info (phone, website, description) via chat
-- [ ] **YBZ-04**: User can update Yandex.Business opening hours via chat
-- [ ] **YBZ-05**: Yandex.Business agent uses shared browser instance (BrowserPool) eliminating per-call startup overhead
-- [ ] **YBZ-06**: Yandex.Business agent validates session before each action and returns clear ErrSessionExpired on cookie expiry
+- [x] **YBZ-01**: User can fetch Yandex.Business reviews with rating, author, text, date via chat
+- [x] **YBZ-02**: User can reply to a specific Yandex.Business review via chat
+- [x] **YBZ-03**: User can update Yandex.Business profile info (phone, website, description) via chat
+- [x] **YBZ-04**: User can update Yandex.Business opening hours via chat
+- [x] **YBZ-05**: Yandex.Business agent uses shared browser instance (BrowserPool) eliminating per-call startup overhead
+- [x] **YBZ-06**: Yandex.Business agent validates session before each action and returns clear ErrSessionExpired on cookie expiry
 
 ### Security
 
@@ -51,7 +51,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Testing
 
 - [x] **TST-01**: VK agent has integration tests with mock VK API server covering all 6 tools
-- [ ] **TST-02**: Yandex agent has unit tests with mocked Playwright pages covering all 4 tools + canary check
+- [x] **TST-02**: Yandex agent has unit tests with mocked Playwright pages covering all 4 tools + canary check
 - [ ] **TST-03**: Auth flow has tests for JWT validation, token rotation, rate limiting, httpOnly cookie behavior
 - [ ] **TST-04**: Health check endpoints tested for all services (healthy + degraded scenarios)
 
@@ -107,12 +107,12 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | VK-04 | Phase 3 | Complete |
 | VK-05 | Phase 3 | Complete |
 | VK-06 | Phase 3 | Complete |
-| YBZ-01 | Phase 4 | Pending |
-| YBZ-02 | Phase 4 | Pending |
-| YBZ-03 | Phase 4 | Pending |
-| YBZ-04 | Phase 4 | Pending |
-| YBZ-05 | Phase 4 | Pending |
-| YBZ-06 | Phase 4 | Pending |
+| YBZ-01 | Phase 4 | Complete |
+| YBZ-02 | Phase 4 | Complete |
+| YBZ-03 | Phase 4 | Complete |
+| YBZ-04 | Phase 4 | Complete |
+| YBZ-05 | Phase 4 | Complete |
+| YBZ-06 | Phase 4 | Complete |
 | SEC-01 | Phase 1 | Complete |
 | SEC-02 | Phase 1 | Complete |
 | SEC-03 | Phase 1 | Complete |
@@ -128,7 +128,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | REL-03 | Phase 2 | Complete |
 | REL-04 | Phase 2 | Complete |
 | TST-01 | Phase 3 | Complete |
-| TST-02 | Phase 4 | Pending |
+| TST-02 | Phase 4 | Complete |
 | TST-03 | Phase 6 | Pending |
 | TST-04 | Phase 6 | Pending |
 
