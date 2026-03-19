@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
@@ -28,7 +29,7 @@ type Handlers struct {
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
-func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uploadDir string) *chi.Mux {
+func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uploadDir string, hc *health.Checker) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -117,16 +118,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadDir))))
 
 	// Health check
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	})
+	r.Get("/health/live", hc.LiveHandler())
+	r.Get("/health/ready", hc.ReadyHandler())
+	r.Get("/health", hc.LiveHandler()) // backward compat
 
 	return r
 }
 
 // SetupInternal creates the internal mTLS-protected router.
-func SetupInternal(handlers *Handlers) *chi.Mux {
+func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.CorrelationID())
@@ -134,10 +134,9 @@ func SetupInternal(handlers *Handlers) *chi.Mux {
 	r.Use(chimiddleware.Recoverer)
 
 	r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	})
+	r.Get("/health/live", hc.LiveHandler())
+	r.Get("/health/ready", hc.ReadyHandler())
+	r.Get("/health", hc.LiveHandler()) // backward compat
 
 	return r
 }

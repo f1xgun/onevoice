@@ -19,6 +19,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
@@ -78,6 +79,18 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("connect to redis: %w", err)
 	}
 	log.Info("connected to redis")
+
+	// Health checker
+	hc := health.New()
+	hc.AddCheck("postgres", func(ctx context.Context) error {
+		return pgPool.Ping(ctx)
+	})
+	hc.AddCheck("mongodb", func(ctx context.Context) error {
+		return mongoClient.Ping(ctx, nil)
+	})
+	hc.AddCheck("redis", func(ctx context.Context) error {
+		return redisClient.Ping(ctx).Err()
+	})
 
 	// Initialize encryptor for token encryption
 	enc, err := crypto.NewEncryptor([]byte(cfg.EncryptionKey))
@@ -175,7 +188,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 
 	// Setup router
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, cfg.UploadDir)
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, cfg.UploadDir, hc)
 
 	// Start HTTP server
 	addr := ":" + cfg.Port
@@ -197,7 +210,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}()
 
 	// Internal server
-	internalRouter := router.SetupInternal(handlers)
+	internalRouter := router.SetupInternal(handlers, hc)
 	internalAddr := ":" + cfg.InternalPort
 	internalSrv := &http.Server{
 		Addr:              internalAddr,
