@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -47,19 +49,51 @@ func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{})
 	}
 
 	subject := a2a.Subject(e.agentID)
+
+	start := time.Now()
 	replyData, err := e.req.Request(ctx, subject, data)
+	elapsed := time.Since(start)
+
 	if err != nil {
+		slog.ErrorContext(ctx, "natsexec: tool request failed",
+			"tool", e.toolName,
+			"agent", string(e.agentID),
+			"business_id", req.BusinessID,
+			"duration_ms", elapsed.Milliseconds(),
+			"error", err,
+		)
 		return nil, fmt.Errorf("natsexec: request to %s: %w", subject, err)
 	}
 
 	var resp a2a.ToolResponse
 	if err := json.Unmarshal(replyData, &resp); err != nil {
+		slog.ErrorContext(ctx, "natsexec: decode response failed",
+			"tool", e.toolName,
+			"agent", string(e.agentID),
+			"business_id", req.BusinessID,
+			"duration_ms", elapsed.Milliseconds(),
+			"error", err,
+		)
 		return nil, fmt.Errorf("natsexec: decode response: %w", err)
 	}
 
 	if !resp.Success {
+		slog.WarnContext(ctx, "natsexec: tool returned error",
+			"tool", e.toolName,
+			"agent", string(e.agentID),
+			"business_id", req.BusinessID,
+			"duration_ms", elapsed.Milliseconds(),
+			"agent_error", resp.Error,
+		)
 		return nil, fmt.Errorf("natsexec: agent %s error: %s", e.agentID, resp.Error)
 	}
+
+	slog.InfoContext(ctx, "natsexec: tool request completed",
+		"tool", e.toolName,
+		"agent", string(e.agentID),
+		"business_id", req.BusinessID,
+		"duration_ms", elapsed.Milliseconds(),
+	)
 
 	return resp.Result, nil
 }
