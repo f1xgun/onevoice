@@ -9,7 +9,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Logging Infrastructure
 
-- [ ] **LOG-01**: Grafana + Loki + Promtail добавлены в docker-compose, логи всех сервисов агрегируются в Loki
+- [x] **LOG-01**: Grafana + Loki + Promtail добавлены в docker-compose, логи всех сервисов агрегируются в Loki
 - [ ] **LOG-02**: Grafana дашборд для поиска логов по correlation_id — один запрос виден через все сервисы
 - [ ] **LOG-03**: Prometheus datasource в Grafana с дашбордом: HTTP latency, error rate, tool dispatch metrics
 
@@ -55,7 +55,7 @@ Deferred to future milestone.
 | BLG-04 | Phase 7 | Complete |
 | BLG-05 | Phase 7 | Complete |
 | BLG-06 | Phase 7 | Complete |
-| LOG-01 | Phase 8 | Pending |
+| LOG-01 | Phase 8 | Complete |
 | LOG-02 | Phase 8 | Pending |
 | LOG-03 | Phase 8 | Pending |
 | FLG-01 | Phase 9 | Pending |

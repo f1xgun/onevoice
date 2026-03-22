@@ -49,7 +49,7 @@ Plans:
 
 **Requirements:** LOG-01, LOG-02, LOG-03
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 08-01-PLAN.md — Infrastructure stack: docker-compose.observability.yml overlay with Loki, Promtail, Prometheus, Grafana + all config files
@@ -86,8 +86,7 @@ Plans:
 | BLG-04 | 7 | ✅ |
 | BLG-05 | 7 | ✅ |
 | BLG-06 | 7 | ✅ |
-| LOG-01 | 8 | ✅ |
-| LOG-02 | 8 | ✅ |
+| LOG-01 | 8 | 1/2 | In Progress|  | 8 | ✅ |
 | LOG-03 | 8 | ✅ |
 | FLG-01 | 9 | ✅ |
 | FLG-02 | 9 | ✅ |
