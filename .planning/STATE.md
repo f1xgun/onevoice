@@ -10,7 +10,7 @@ progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
-| 7 | Backend Logging Gaps | BLG-01..06 | Not started |
+| 7 | Backend Logging Gaps | BLG-01..06 | In progress (2/2 plans) |
 | 8 | Grafana + Loki Stack | LOG-01..03 | Not started |
 | 9 | Frontend Telemetry | FLG-01..03 | Not started |
 
@@ -45,5 +45,11 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 - chi Recoverer middleware does NOT break Flusher (it was metrics middleware)
 - 16 logging gaps identified in v1.0 audit (4 critical, 6 medium, 6 low)
 
+### From Phase 07
+
+- slog.ErrorContext(ctx, ...) over slog.Error(...) for all error logging — preserves correlation_id via ContextHandler
+- Telegram sync functions return errors for per-operation AgentTask status tracking (sync_title, sync_description, sync_photo)
+- Rate limiter confirmed using r.Context() — no context.Background() (BLG-06)
+
 ---
-*State updated: 2026-03-22 — Roadmap created*
+*State updated: 2026-03-22 — Plan 07-01 complete*
