@@ -24,9 +24,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Frontend Logging
 
-- [ ] **FLG-01**: Фронтенд логирует действия пользователя (навигация, клики ключевых кнопок) и отправляет на API endpoint
-- [ ] **FLG-02**: API endpoint POST /api/v1/telemetry принимает фронтенд-логи с correlation_id, пишет в stdout (подхватывается Loki)
-- [ ] **FLG-03**: Ошибки API-запросов на фронтенде логируются с X-Correlation-ID из response headers для сопоставления с бэком
+- [x] **FLG-01**: Фронтенд логирует действия пользователя (навигация, клики ключевых кнопок) и отправляет на API endpoint
+- [x] **FLG-02**: API endpoint POST /api/v1/telemetry принимает фронтенд-логи с correlation_id, пишет в stdout (подхватывается Loki)
+- [x] **FLG-03**: Ошибки API-запросов на фронтенде логируются с X-Correlation-ID из response headers для сопоставления с бэком
 
 ## v2 Requirements
 
@@ -58,9 +58,9 @@ Deferred to future milestone.
 | LOG-01 | Phase 8 | Complete |
 | LOG-02 | Phase 8 | Complete |
 | LOG-03 | Phase 8 | Complete |
-| FLG-01 | Phase 9 | Pending |
-| FLG-02 | Phase 9 | Pending |
-| FLG-03 | Phase 9 | Pending |
+| FLG-01 | Phase 9 | Complete |
+| FLG-02 | Phase 9 | Complete |
+| FLG-03 | Phase 9 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 12 total

@@ -2,23 +2,23 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Observability & Debugging
-current_phase: 9
-status: planning
-last_updated: "2026-03-22T08:58:10.326Z"
+current_phase: 09
+status: executing
+last_updated: "2026-03-22T09:09:12.067Z"
 last_activity: 2026-03-22
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 6
+  completed_plans: 5
 ---
 
 # Project State
 
 **Project:** OneVoice
 **Milestone:** v1.1 Observability & Debugging
-**Current Phase:** 9
-**Status:** Ready to plan
+**Current Phase:** 09
+**Status:** Executing Phase 09
 **Last activity:** 2026-03-22
 
 ## Project Reference
@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 |-------|------|-------------|--------|
 | 7 | Backend Logging Gaps | BLG-01..06 | Complete (2/2 plans) |
 | 8 | Grafana + Loki Stack | LOG-01..03 | Complete (2/2 plans) |
-| 9 | Frontend Telemetry | FLG-01..03 | Not started |
+| 9 | Frontend Telemetry | FLG-01..03 | In Progress (1/2 plans) |
 
 ## Accumulated Context
 
@@ -60,5 +60,11 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 - Grafana dashboards provisioned as JSON: Request Trace (Loki) and Metrics Overview (Prometheus)
 - Datasource referenced by name string ("Loki", "Prometheus") for provisioned datasources
 
+### From Phase 09
+
+- Lazy dynamic import in api.ts to break circular dependency with telemetry.ts
+- Frontend telemetry is fire-and-forget: errors silently swallowed, never breaks user flow
+- sendBeacon used for page unload flush (more reliable than async fetch during navigation)
+
 ---
-*State updated: 2026-03-22 — Plan 08-02 complete, Phase 08 complete*
+*State updated: 2026-03-22 — Plan 09-01 complete (telemetry pipeline)*
