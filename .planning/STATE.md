@@ -4,35 +4,35 @@ milestone: v1.1
 milestone_name: Observability & Debugging
 current_phase: 08
 status: executing
-last_updated: "2026-03-22T08:51:31.392Z"
+last_updated: "2026-03-22T08:54:42.116Z"
 last_activity: 2026-03-22
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
 
 **Project:** OneVoice
 **Milestone:** v1.1 Observability & Debugging
-**Current Phase:** 08
-**Status:** Executing Phase 08
+**Current Phase:** 09
+**Status:** Phase 08 complete, ready for Phase 09
 **Last activity:** 2026-03-22
 
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-03-22)
 **Core value:** Business owners can manage digital presence across platforms through a single conversational interface
-**Current focus:** Phase 08 — grafana-+-loki-stack
+**Current focus:** Phase 09 — frontend-telemetry
 
 ## Phase Progress
 
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
 | 7 | Backend Logging Gaps | BLG-01..06 | Complete (2/2 plans) |
-| 8 | Grafana + Loki Stack | LOG-01..03 | In progress (1/2 plans) |
+| 8 | Grafana + Loki Stack | LOG-01..03 | Complete (2/2 plans) |
 | 9 | Frontend Telemetry | FLG-01..03 | Not started |
 
 ## Accumulated Context
@@ -57,6 +57,8 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 - Observability stack as docker-compose overlay: `docker compose -f docker-compose.yml -f docker-compose.observability.yml up`
 - Promtail uses Docker socket service discovery for automatic container log collection
 - Grafana provisioning via YAML files in observability/grafana/provisioning/
+- Grafana dashboards provisioned as JSON: Request Trace (Loki) and Metrics Overview (Prometheus)
+- Datasource referenced by name string ("Loki", "Prometheus") for provisioned datasources
 
 ---
-*State updated: 2026-03-22 — Plan 08-01 complete*
+*State updated: 2026-03-22 — Plan 08-02 complete, Phase 08 complete*
