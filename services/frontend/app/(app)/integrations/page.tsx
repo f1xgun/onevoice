@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { trackClick } from '@/lib/telemetry';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
+import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
 
 interface Integration {
   id: string;
@@ -40,7 +43,32 @@ const DISABLED_PLATFORMS = [
 
 export default function IntegrationsPage() {
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
   const [telegramOpen, setTelegramOpen] = useState(false);
+  const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
+
+  // Handle OAuth callback results
+  useEffect(() => {
+    const connected = searchParams.get('connected');
+    const error = searchParams.get('error');
+
+    if (connected === 'vk') {
+      toast.success('VK сообщество подключено!');
+      qc.invalidateQueries({ queryKey: ['integrations'] });
+      window.history.replaceState({}, '', '/integrations');
+    }
+    if (error) {
+      const messages: Record<string, string> = {
+        missing_params: 'Ошибка авторизации: отсутствуют параметры',
+        invalid_state: 'Ошибка авторизации: невалидная сессия',
+        token_exchange: 'Ошибка обмена токена',
+        connect_failed: 'Ошибка подключения интеграции',
+        no_community_token: 'Не удалось получить токен сообщества',
+      };
+      toast.error(messages[error] || `Ошибка: ${error}`);
+      window.history.replaceState({}, '', '/integrations');
+    }
+  }, [searchParams, qc]);
 
   const { data: integrations = [] } = useQuery<Integration[]>({
     queryKey: ['integrations'],
@@ -51,6 +79,7 @@ export default function IntegrationsPage() {
   const disconnectMutation = useMutation({
     mutationFn: (integrationId: string) => api.delete(`/integrations/${integrationId}`),
     onSuccess: () => {
+      trackClick('disconnect_integration');
       qc.invalidateQueries({ queryKey: ['integrations'] });
       toast.success('Отключено');
     },
@@ -61,12 +90,18 @@ export default function IntegrationsPage() {
     integrations.filter((i) => i.platform === platformId);
 
   const handleConnect = async (platformId: string) => {
+    trackClick('connect_integration', { platform: platformId });
     if (platformId === 'telegram') {
       setTelegramOpen(true);
       return;
     }
 
-    // VK and Yandex.Business: OAuth redirect flow
+    if (platformId === 'vk') {
+      setVkCommunityOpen(true);
+      return;
+    }
+
+    // Yandex.Business: OAuth redirect flow
     try {
       const { data } = await api.get(`/integrations/${platformId}/auth-url`);
       window.location.href = data.url;
@@ -114,6 +149,14 @@ export default function IntegrationsPage() {
         open={telegramOpen}
         onClose={() => {
           setTelegramOpen(false);
+          qc.invalidateQueries({ queryKey: ['integrations'] });
+        }}
+      />
+
+      <VKCommunityModal
+        open={vkCommunityOpen}
+        onClose={() => {
+          setVkCommunityOpen(false);
           qc.invalidateQueries({ queryKey: ['integrations'] });
         }}
       />

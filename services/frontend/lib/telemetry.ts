@@ -54,6 +54,13 @@ export function trackEvent(
 }
 
 /**
+ * Convenience wrapper for button_click events.
+ */
+export function trackClick(action: string, metadata?: Record<string, string>): void {
+  trackEvent('button_click', action, { metadata });
+}
+
+/**
  * Flush all buffered telemetry events to the backend.
  * Fire-and-forget: errors are silently swallowed so telemetry never breaks the app.
  */

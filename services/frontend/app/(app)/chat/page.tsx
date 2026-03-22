@@ -7,6 +7,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { MessageCircle, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -151,6 +152,7 @@ export default function ChatListPage() {
   const { mutate: createConversation, isPending } = useMutation({
     mutationFn: () => api.post('/conversations', { title: 'Новый диалог' }).then((r) => r.data),
     onSuccess: (conv: Conversation) => {
+      trackClick('create_conversation');
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       router.push(`/chat/${conv.id}`);
     },
@@ -165,6 +167,7 @@ export default function ChatListPage() {
   const { mutate: deleteConversation } = useMutation({
     mutationFn: (id: string) => api.delete(`/conversations/${id}`),
     onSuccess: () => {
+      trackClick('delete_conversation');
       setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
