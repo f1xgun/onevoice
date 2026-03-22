@@ -49,7 +49,7 @@ Plans:
 
 **Requirements:** LOG-01, LOG-02, LOG-03
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 08-01-PLAN.md — Infrastructure stack: docker-compose.observability.yml overlay with Loki, Promtail, Prometheus, Grafana + all config files
@@ -68,6 +68,12 @@ Plans:
 **Goal:** Add user action logging on the frontend and correlate frontend events with backend traces via correlation_id.
 
 **Requirements:** FLG-01, FLG-02, FLG-03
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Backend telemetry endpoint + frontend telemetry module with batching + correlation_id error capture
+- [ ] 09-02-PLAN.md — Wire telemetry into app: page navigation, chat sends, key button clicks
 
 **Success Criteria:**
 1. Frontend sends structured telemetry events (page navigation, key button clicks, chat sends) to the API (FLG-01)
