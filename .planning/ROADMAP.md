@@ -49,6 +49,12 @@ Plans:
 
 **Requirements:** LOG-01, LOG-02, LOG-03
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Infrastructure stack: docker-compose.observability.yml overlay with Loki, Promtail, Prometheus, Grafana + all config files
+- [ ] 08-02-PLAN.md — Grafana dashboards: Request Trace (correlation_id log search) + Metrics Overview (HTTP latency, error rate, tool dispatch)
+
 **Success Criteria:**
 1. `docker-compose.observability.yml` adds Grafana, Loki, and Promtail; `docker compose up` starts the full stack with all service logs flowing into Loki (LOG-01)
 2. Grafana has a "Request Trace" dashboard where entering a correlation_id shows logs from API, orchestrator, and agents in chronological order (LOG-02)
