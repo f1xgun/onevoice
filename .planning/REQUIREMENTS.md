@@ -49,23 +49,23 @@ Deferred to future milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LOG-01 | TBD | Pending |
-| LOG-02 | TBD | Pending |
-| LOG-03 | TBD | Pending |
-| BLG-01 | TBD | Pending |
-| BLG-02 | TBD | Pending |
-| BLG-03 | TBD | Pending |
-| BLG-04 | TBD | Pending |
-| BLG-05 | TBD | Pending |
-| BLG-06 | TBD | Pending |
-| FLG-01 | TBD | Pending |
-| FLG-02 | TBD | Pending |
-| FLG-03 | TBD | Pending |
+| BLG-01 | Phase 7 | Pending |
+| BLG-02 | Phase 7 | Pending |
+| BLG-03 | Phase 7 | Pending |
+| BLG-04 | Phase 7 | Pending |
+| BLG-05 | Phase 7 | Pending |
+| BLG-06 | Phase 7 | Pending |
+| LOG-01 | Phase 8 | Pending |
+| LOG-02 | Phase 8 | Pending |
+| LOG-03 | Phase 8 | Pending |
+| FLG-01 | Phase 9 | Pending |
+| FLG-02 | Phase 9 | Pending |
+| FLG-03 | Phase 9 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 12 total
-- Mapped to phases: 0
-- Unmapped: 12
+- Mapped to phases: 12
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-22*
