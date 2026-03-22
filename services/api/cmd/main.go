@@ -131,6 +131,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		nil,
 		cfg.PublicURL,
 	)
+	platformSyncer.SetTaskRecorder(agentTaskRepo)
 
 	// Initialize handlers
 	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
@@ -141,7 +142,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		YandexClientSecret: cfg.YandexClientSecret,
 		YandexRedirectURI:  cfg.YandexRedirectURI,
 		TelegramBotToken:   cfg.TelegramBotToken,
-	}, nil)
+	}, nil, redisClient)
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
 	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
 
@@ -174,6 +175,8 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("init agent task handler: %w", err)
 	}
 
+	telemetryHandler := handler.NewTelemetryHandler()
+
 	handlers := &router.Handlers{
 		Auth:          authHandler,
 		Business:      businessHandler,
@@ -185,6 +188,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		Review:        reviewHandler,
 		Post:          postHandler,
 		AgentTask:     agentTaskHandler,
+		Telemetry:     telemetryHandler,
 	}
 
 	// Setup router
