@@ -27,13 +27,16 @@ Business owners can manage their digital presence across multiple platforms thro
 - ✓ Yandex.Business agent: BrowserPool, session canary, 4 RPA tools with mocked tests — v1.0
 - ✓ Health checks, Prometheus metrics, JSON logging, correlation IDs — v1.0
 - ✓ Auth flow tests, health check tests — v1.0
+- ✓ Backend logging gap closure: context-aware slog, NATS timing, per-op sync tasks — v1.1
+- ✓ Grafana + Loki + Promtail + Prometheus observability stack — v1.1
+- ✓ Request Trace + Metrics Overview Grafana dashboards — v1.1
+- ✓ Frontend telemetry: batched events, correlation_id capture, click/nav tracking — v1.1
 
 ### Active
 
-- [ ] Full request tracing across all services (Grafana + Loki)
-- [ ] Logging gap closure — silent errors, missing context, lost correlation IDs
 - [ ] VK read operations via proper service key (old VK app)
-- [ ] Prometheus dashboards in Grafana
+- [ ] OpenTelemetry distributed tracing (spans) across NATS messages
+- [ ] Alerting rules in Grafana for critical errors
 
 ### Deferred
 
@@ -58,11 +61,13 @@ Business owners can manage their digital presence across multiple platforms thro
 
 ## Context
 
+- **v1.1 Observability shipped** — full request tracing, Grafana dashboards, frontend telemetry
 - **v1.0 Hardening shipped** — security, reliability, VK completion, Yandex RPA, observability, testing
 - **Diploma (ВКР) + production path**: demo-quality for defense, production-grade for real use
 - **All 3 platform agents have code** — Telegram tested in production, VK tested against mock server, Yandex.Business tested against mocked Playwright
 - **Yandex.Business VPS spike pending** — RPA code exists but anti-bot validation not performed
-- **28 requirements satisfied** across 6 phases, 24 plans
+- **40 requirements satisfied** across 9 phases, 30 plans (v1.0 + v1.1)
+- **Tech debt**: VK sync uses bare slog.Error (5 calls); sendBeacon drops events for logged-out users
 
 ## Constraints
 
@@ -86,15 +91,10 @@ Business owners can manage their digital presence across multiple platforms thro
 | BrowserPool for Yandex RPA | Shared Chromium instance, per-business isolation | ⚠️ Pending VPS validation |
 | Client-side VK rate limiter (3 req/sec) | Prevent VK API bans | ✓ Good — rate.Limiter wraps all SDK calls |
 
-## Current Milestone: v1.1 Observability & Debugging
+## Completed Milestones
 
-**Goal:** Make every request fully traceable across all services, close logging gaps, add Grafana dashboards.
-
-**Target features:**
-- Grafana + Loki + Promtail for centralized log aggregation and search
-- Prometheus dashboards for metrics visualization
-- Close all 16 logging/observability gaps from v1.0 audit
-- Fix VK read operations (proper VK API service key)
+- **v1.0 Hardening** — Security, reliability, VK agent, Yandex RPA, observability foundation, testing (shipped 2026-03-20)
+- **v1.1 Observability & Debugging** — Backend logging gaps, Grafana + Loki stack, frontend telemetry (shipped 2026-03-22)
 
 ---
-*Last updated: 2026-03-22 after v1.1 milestone start*
+*Last updated: 2026-03-22 after v1.1 milestone*
