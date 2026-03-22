@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -40,7 +39,8 @@ func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(
 			// Build rate limit key: ratelimit:{ip}:{path}
 			key := fmt.Sprintf("ratelimit:%s:%s", clientIP, r.URL.Path)
 
-			ctx := context.Background()
+			// Note: ctx is derived from r.Context() to preserve request cancellation and correlation_id (BLG-06).
+			ctx := r.Context()
 
 			// Increment counter
 			count, err := redisClient.Incr(ctx, key).Result()
@@ -118,7 +118,8 @@ func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration)
 				key = fmt.Sprintf("ratelimit:ip:%s:chat", getClientIP(r))
 			}
 
-			ctx := context.Background()
+			// Note: ctx is derived from r.Context() to preserve request cancellation and correlation_id (BLG-06).
+			ctx := r.Context()
 
 			count, err := redisClient.Incr(ctx, key).Result()
 			if err != nil {
