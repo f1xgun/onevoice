@@ -27,6 +27,12 @@
 
 **Requirements:** BLG-01, BLG-02, BLG-03, BLG-04, BLG-05, BLG-06
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — API service: context-aware logging in chat_proxy, per-op sync tasks, rate limiter confirmation
+- [ ] 07-02-PLAN.md — Orchestrator service: SSE write error logging, NATS tool dispatch timing
+
 **Success Criteria:**
 1. SSE parsing errors in `chat_proxy` are logged with correlation_id; `scanner.Err()` is checked after the event loop (BLG-01)
 2. All `context.Background()` calls in persistence paths are replaced with the request context carrying correlation_id (BLG-02)
