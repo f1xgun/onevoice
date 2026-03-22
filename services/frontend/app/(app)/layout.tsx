@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { trackEvent } from '@/lib/telemetry';
 import { Sidebar } from '@/components/sidebar';
 import type { ReactNode } from 'react';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { setAuth } = useAuthStore();
   // Start as true so we always show a loading state until the effect has run
   // This prevents the brief flash of protected content
@@ -52,6 +54,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount-only: reads auth state once on load
+
+  useEffect(() => {
+    if (ready) {
+      trackEvent('page_view', pathname, { page: pathname });
+    }
+  }, [pathname, ready]);
 
   if (!ready) {
     return null;

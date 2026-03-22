@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/lib/auth';
+import { trackEvent } from '@/lib/telemetry';
 import type { Message, ToolCall } from '@/types/chat';
 
 // Exported for unit testing
@@ -154,6 +155,10 @@ export function useChat(conversationId: string) {
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
       setIsStreaming(true);
       isStreamingRef.current = true;
+
+      trackEvent('chat_send', 'send_message', {
+        metadata: { conversationId: conversationId ?? '' },
+      });
 
       const controller = new AbortController();
       abortRef.current = controller;
