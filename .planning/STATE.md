@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Observability & Debugging
 current_phase: 09
-status: executing
-last_updated: "2026-03-22T09:09:12.067Z"
+status: complete
+last_updated: "2026-03-22T09:12:56.874Z"
 last_activity: 2026-03-22
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -18,7 +18,7 @@ progress:
 **Project:** OneVoice
 **Milestone:** v1.1 Observability & Debugging
 **Current Phase:** 09
-**Status:** Executing Phase 09
+**Status:** Milestone v1.1 Complete
 **Last activity:** 2026-03-22
 
 ## Project Reference
@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 |-------|------|-------------|--------|
 | 7 | Backend Logging Gaps | BLG-01..06 | Complete (2/2 plans) |
 | 8 | Grafana + Loki Stack | LOG-01..03 | Complete (2/2 plans) |
-| 9 | Frontend Telemetry | FLG-01..03 | In Progress (1/2 plans) |
+| 9 | Frontend Telemetry | FLG-01..03 | Complete (2/2 plans) |
 
 ## Accumulated Context
 
@@ -65,6 +65,8 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 - Lazy dynamic import in api.ts to break circular dependency with telemetry.ts
 - Frontend telemetry is fire-and-forget: errors silently swallowed, never breaks user flow
 - sendBeacon used for page unload flush (more reliable than async fetch during navigation)
+- page_view tracking gated on auth ready state to avoid tracking pre-redirect navigations
+- trackClick in mutation onSuccess callbacks for accurate tracking of successful actions only
 
 ---
-*State updated: 2026-03-22 — Plan 09-01 complete (telemetry pipeline)*
+*State updated: 2026-03-22 — Plan 09-02 complete (frontend telemetry wiring). Milestone v1.1 complete.*
