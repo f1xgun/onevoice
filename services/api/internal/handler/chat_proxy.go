@@ -90,6 +90,16 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	conversationID := chi.URLParam(r, "conversationID")
 
+	// Capture correlation ID for async persistence operations (request ctx may be cancelled by then)
+	corrID := logger.CorrelationIDFromContext(r.Context())
+	persistCtx := func() (context.Context, context.CancelFunc) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if corrID != "" {
+			ctx = logger.WithCorrelationID(ctx, corrID)
+		}
+		return ctx, cancel
+	}
+
 	var req chatProxyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -106,14 +116,14 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return
 		}
-		slog.Error("failed to get business", "error", err)
+		slog.ErrorContext(r.Context(), "failed to get business", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	integrations, err := h.integrationService.ListByBusinessID(r.Context(), business.ID)
 	if err != nil {
-		slog.Error("failed to list integrations", "error", err)
+		slog.ErrorContext(r.Context(), "failed to list integrations", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -137,7 +147,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Content:        req.Message,
 	}
 	if err := h.messageRepo.Create(r.Context(), userMsg); err != nil {
-		slog.Error("failed to save user message", "error", err)
+		slog.ErrorContext(r.Context(), "failed to save user message", "error", err)
 	}
 
 	orchReq := map[string]interface{}{
@@ -168,7 +178,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.httpClient.Do(proxyReq)
 	if err != nil {
-		slog.Error("orchestrator request failed", "error", err)
+		slog.ErrorContext(r.Context(), "orchestrator request failed", "error", err)
 		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
 		return
 	}
@@ -213,6 +223,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			ToolError  string                 `json:"error"`
 		}
 		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
+			slog.WarnContext(r.Context(), "chat proxy: malformed SSE event", "error", err, "line", line[:min(len(line), 200)])
 			continue
 		}
 		switch ev.Type {
@@ -242,9 +253,13 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		slog.ErrorContext(r.Context(), "chat proxy: SSE scanner error", "error", err, "conversation_id", conversationID)
+	}
+
 	// Persist assistant response after stream ends
 	if assistantText.Len() > 0 || len(toolCalls) > 0 {
-		saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		saveCtx, cancel := persistCtx()
 		defer cancel()
 		assistantMsg := &domain.Message{
 			ConversationID: conversationID,
@@ -254,7 +269,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			ToolResults:    toolResults,
 		}
 		if err := h.messageRepo.Create(saveCtx, assistantMsg); err != nil {
-			slog.Error("failed to save assistant message", "error", err)
+			slog.ErrorContext(saveCtx, "failed to save assistant message", "error", err)
 		}
 	}
 
@@ -265,7 +280,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			toolCallByID[tc.ID] = tc
 		}
 
-		taskCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		taskCtx, cancel := persistCtx()
 		defer cancel()
 
 		now := time.Now()
@@ -305,7 +320,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 				CompletedAt: &now,
 			}
 			if err := h.agentTaskRepo.Create(taskCtx, agentTask); err != nil {
-				slog.Error("failed to create agent task record", "tool", tc.Name, "error", err)
+				slog.ErrorContext(taskCtx, "failed to create agent task record", "tool", tc.Name, "error", err)
 			}
 		}
 	}
@@ -317,7 +332,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			toolCallByID[tc.ID] = tc
 		}
 
-		postCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		postCtx, cancel := persistCtx()
 		defer cancel()
 
 		for _, tr := range toolResults {
@@ -363,7 +378,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 				PublishedAt: publishedAt,
 			}
 			if err := h.postRepo.Create(postCtx, post); err != nil {
-				slog.Error("failed to create post record", "tool", tc.Name, "error", err)
+				slog.ErrorContext(postCtx, "failed to create post record", "tool", tc.Name, "error", err)
 			}
 		}
 	}
@@ -375,7 +390,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			toolCallByID[tc.ID] = tc
 		}
 
-		reviewCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		reviewCtx, cancel := persistCtx()
 		defer cancel()
 
 		for _, tr := range toolResults {
@@ -410,7 +425,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				if err := h.reviewRepo.Upsert(reviewCtx, review); err != nil {
-					slog.Error("failed to upsert review", "tool", tc.Name, "error", err)
+					slog.ErrorContext(reviewCtx, "failed to upsert review", "tool", tc.Name, "error", err)
 				}
 			}
 		}
@@ -464,7 +479,7 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID string) []map[string]string {
 	msgs, err := h.messageRepo.ListByConversationID(ctx, conversationID, 100, 0)
 	if err != nil {
-		slog.Error("failed to load conversation history", "error", err)
+		slog.ErrorContext(ctx, "failed to load conversation history", "error", err)
 		return nil
 	}
 
