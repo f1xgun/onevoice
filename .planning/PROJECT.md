@@ -30,6 +30,13 @@ Business owners can manage their digital presence across multiple platforms thro
 
 ### Active
 
+- [ ] Full request tracing across all services (Grafana + Loki)
+- [ ] Logging gap closure — silent errors, missing context, lost correlation IDs
+- [ ] VK read operations via proper service key (old VK app)
+- [ ] Prometheus dashboards in Grafana
+
+### Deferred
+
 - [ ] VPS validation for Yandex.Business RPA (anti-bot spike deferred from v1.0)
 - [ ] Google Business integration
 - [ ] VK Stories, community chat, analytics
@@ -79,5 +86,15 @@ Business owners can manage their digital presence across multiple platforms thro
 | BrowserPool for Yandex RPA | Shared Chromium instance, per-business isolation | ⚠️ Pending VPS validation |
 | Client-side VK rate limiter (3 req/sec) | Prevent VK API bans | ✓ Good — rate.Limiter wraps all SDK calls |
 
+## Current Milestone: v1.1 Observability & Debugging
+
+**Goal:** Make every request fully traceable across all services, close logging gaps, add Grafana dashboards.
+
+**Target features:**
+- Grafana + Loki + Promtail for centralized log aggregation and search
+- Prometheus dashboards for metrics visualization
+- Close all 16 logging/observability gaps from v1.0 audit
+- Fix VK read operations (proper VK API service key)
+
 ---
-*Last updated: 2026-03-20 after v1.0 milestone*
+*Last updated: 2026-03-22 after v1.1 milestone start*
