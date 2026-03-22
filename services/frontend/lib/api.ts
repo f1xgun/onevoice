@@ -33,6 +33,31 @@ api.interceptors.response.use(
 
     // Don't intercept 401 from auth endpoints — let the caller handle it
     const url = original?.url ?? '';
+
+    // Track API errors with correlation ID (skip telemetry endpoint to prevent loops)
+    if (error.response && !url.includes('/telemetry')) {
+      const correlationId =
+        error.response.headers?.['x-correlation-id'] as string | undefined;
+      if (correlationId) {
+        // Lazy import to avoid circular dependency (telemetry.ts imports api)
+        import('./telemetry').then(({ trackEvent }) => {
+          trackEvent(
+            'api_error',
+            `${error.response.status} ${original?.method?.toUpperCase()} ${url}`,
+            {
+              correlationId,
+              metadata: {
+                status: String(error.response.status),
+                url,
+              },
+            },
+          );
+        }).catch(() => {
+          // Silently ignore — telemetry must never break the app
+        });
+      }
+    }
+
     const isAuthEndpoint =
       url.includes('/auth/login') ||
       url.includes('/auth/register') ||
