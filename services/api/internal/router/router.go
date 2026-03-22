@@ -28,6 +28,7 @@ type Handlers struct {
 	Review        *handler.ReviewHandler
 	Post          *handler.PostHandler
 	AgentTask     *handler.AgentTaskHandler
+	Telemetry     *handler.TelemetryHandler
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
@@ -44,7 +45,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 		AllowedOrigins:   []string{"http://localhost:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-		ExposedHeaders:   []string{"Link"},
+		ExposedHeaders:   []string{"Link", "X-Correlation-ID"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -60,6 +61,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 
 		// OAuth callback routes (public — state parameter validates session)
 		r.Get("/oauth/vk/callback", handlers.OAuth.VKCallback)
+		r.Get("/oauth/vk/community-callback", handlers.OAuth.VKCommunityCallback)
 		r.Get("/oauth/yandex_business/callback", handlers.OAuth.YandexCallback)
 
 		// Protected routes (require auth)
@@ -83,7 +85,12 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 
 			// OAuth auth-url routes (need JWT to generate state with user context)
 			r.Get("/integrations/vk/auth-url", handlers.OAuth.GetVKAuthURL)
+			r.Get("/integrations/vk/communities", handlers.OAuth.VKCommunities)
+			r.Get("/integrations/vk/community-auth-url", handlers.OAuth.VKCommunityAuthURL)
 			r.Get("/integrations/yandex_business/auth-url", handlers.OAuth.GetYandexAuthURL)
+
+			// VK community token route
+			r.Post("/integrations/vk/connect", handlers.OAuth.ConnectVK)
 
 			// Telegram routes
 			r.Post("/integrations/telegram/verify", handlers.OAuth.VerifyTelegramLogin)
@@ -114,6 +121,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 
 			// Agent task routes
 			r.Get("/tasks", handlers.AgentTask.ListTasks)
+
+			// Telemetry
+			r.Post("/telemetry", handlers.Telemetry.Ingest)
 		})
 	})
 
