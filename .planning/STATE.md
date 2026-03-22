@@ -2,9 +2,9 @@
 
 **Project:** OneVoice
 **Milestone:** v1.1 Observability & Debugging
-**Current Phase:** Not started (defining requirements)
-**Status:** Defining requirements
-**Last activity:** 2026-03-22 — Milestone v1.1 started
+**Current Phase:** Phase 7 — Backend Logging Gaps (not started)
+**Status:** Roadmap created, ready to plan Phase 7
+**Last activity:** 2026-03-22 — Roadmap created
 
 ## Project Reference
 See: .planning/PROJECT.md (updated 2026-03-22)
@@ -13,7 +13,11 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 
 ## Phase Progress
 
-(Phases not yet defined — awaiting roadmap creation)
+| Phase | Name | Requirements | Status |
+|-------|------|-------------|--------|
+| 7 | Backend Logging Gaps | BLG-01..06 | Not started |
+| 8 | Grafana + Loki Stack | LOG-01..03 | Not started |
+| 9 | Frontend Telemetry | FLG-01..03 | Not started |
 
 ## Accumulated Context
 
@@ -25,4 +29,4 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 - 16 logging gaps identified in v1.0 audit (4 critical, 6 medium, 6 low)
 
 ---
-*State initialized: 2026-03-22*
+*State updated: 2026-03-22 — Roadmap created*
