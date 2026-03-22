@@ -27,9 +27,15 @@ type integrationProvider interface {
 	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (accessToken string, err error)
 }
 
+// taskRecorder creates AgentTask records for sync operations.
+type taskRecorder interface {
+	Create(ctx context.Context, task *domain.AgentTask) error
+}
+
 // Syncer pushes business data updates to connected platform channels.
 type Syncer struct {
 	integrations integrationProvider
+	tasks        taskRecorder // optional; may be nil
 	httpClient   *http.Client
 	telegramBase string
 	publicURL    string
@@ -49,6 +55,33 @@ func NewSyncer(integrations integrationProvider, httpClient *http.Client, public
 	}
 }
 
+// SetTaskRecorder sets the optional AgentTask recorder for tracking sync operations.
+func (s *Syncer) SetTaskRecorder(tasks taskRecorder) {
+	s.tasks = tasks
+}
+
+// recordTask creates an AgentTask record if a recorder is configured.
+func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform, taskType, status string, input interface{}, errMsg string) {
+	if s.tasks == nil {
+		return
+	}
+	now := time.Now()
+	task := &domain.AgentTask{
+		BusinessID:  businessID.String(),
+		Type:        taskType,
+		Status:      status,
+		Platform:    platform,
+		Input:       input,
+		StartedAt:   &now,
+		CompletedAt: &now,
+		CreatedAt:   now,
+		Error:       errMsg,
+	}
+	if err := s.tasks.Create(ctx, task); err != nil {
+		slog.ErrorContext(ctx, "platform sync: failed to record task", "error", err)
+	}
+}
+
 // SyncBusiness pushes the updated business info to all active connected platforms.
 // Designed to run in a goroutine (fire-and-forget); errors are only logged.
 func (s *Syncer) SyncBusiness(business *domain.Business) {
@@ -57,7 +90,7 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 
 	integrations, err := s.integrations.ListByBusinessID(ctx, business.ID)
 	if err != nil {
-		slog.Error("platform sync: failed to list integrations", "business_id", business.ID, "error", err)
+		slog.ErrorContext(ctx, "platform sync: failed to list integrations", "business_id", business.ID, "error", err)
 		return
 	}
 
@@ -65,13 +98,35 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 		if integ.Status != "active" {
 			continue
 		}
-		// VK: external_id is "default" (no real group_id stored at connect time), skip for now
-		if integ.Platform == "telegram" {
-			s.syncTelegramTitle(ctx, business.ID, integ.ExternalID, business.Name)
-			s.syncTelegramDescription(ctx, business.ID, integ.ExternalID, formatTelegramDescription(business))
-			if business.LogoURL != "" {
-				s.syncTelegramPhoto(ctx, business.ID, integ.ExternalID, business.LogoURL)
+		switch integ.Platform {
+		case "telegram":
+			if err := s.syncTelegramTitle(ctx, business.ID, integ.ExternalID, business.Name); err != nil {
+				s.recordTask(ctx, business.ID, "telegram", "sync_title", "error",
+					map[string]string{"channel_id": integ.ExternalID}, err.Error())
+			} else {
+				s.recordTask(ctx, business.ID, "telegram", "sync_title", "done",
+					map[string]string{"channel_id": integ.ExternalID, "name": business.Name}, "")
 			}
+
+			if err := s.syncTelegramDescription(ctx, business.ID, integ.ExternalID, formatTelegramDescription(business)); err != nil {
+				s.recordTask(ctx, business.ID, "telegram", "sync_description", "error",
+					map[string]string{"channel_id": integ.ExternalID}, err.Error())
+			} else {
+				s.recordTask(ctx, business.ID, "telegram", "sync_description", "done",
+					map[string]string{"channel_id": integ.ExternalID}, "")
+			}
+
+			if business.LogoURL != "" {
+				if err := s.syncTelegramPhoto(ctx, business.ID, integ.ExternalID, business.LogoURL); err != nil {
+					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "error",
+						map[string]string{"channel_id": integ.ExternalID}, err.Error())
+				} else {
+					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "done",
+						map[string]string{"channel_id": integ.ExternalID}, "")
+				}
+			}
+		case "vk":
+			s.syncVKInfo(ctx, business, integ.ExternalID)
 		}
 	}
 }
@@ -191,11 +246,11 @@ func formatSchedule(settings map[string]interface{}) string {
 	return "⏰ " + strings.Join(segments, ", ")
 }
 
-func (s *Syncer) syncTelegramTitle(ctx context.Context, businessID uuid.UUID, channelID, title string) {
+func (s *Syncer) syncTelegramTitle(ctx context.Context, businessID uuid.UUID, channelID, title string) error {
 	botToken, err := s.integrations.GetDecryptedToken(ctx, businessID, "telegram", channelID)
 	if err != nil {
-		slog.Error("platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("get token: %w", err)
 	}
 
 	apiURL := fmt.Sprintf("%s/bot%s/setChatTitle?chat_id=%s&title=%s",
@@ -207,13 +262,13 @@ func (s *Syncer) syncTelegramTitle(ctx context.Context, businessID uuid.UUID, ch
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
-		slog.Error("platform sync: telegram setChatTitle build request failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram setChatTitle build request failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("build request: %w", err)
 	}
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		slog.Error("platform sync: telegram setChatTitle request failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram setChatTitle request failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -221,21 +276,22 @@ func (s *Syncer) syncTelegramTitle(ctx context.Context, businessID uuid.UUID, ch
 		OK bool `json:"ok"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		slog.Error("platform sync: telegram setChatTitle response parse failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram setChatTitle response parse failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("parse response: %w", err)
 	}
 	if !result.OK {
-		slog.Warn("platform sync: telegram setChatTitle returned not ok", "channel_id", channelID)
-		return
+		slog.WarnContext(ctx, "platform sync: telegram setChatTitle returned not ok", "channel_id", channelID)
+		return fmt.Errorf("setChatTitle returned not ok")
 	}
 	slog.Info("platform sync: telegram title updated", "channel_id", channelID)
+	return nil
 }
 
-func (s *Syncer) syncTelegramDescription(ctx context.Context, businessID uuid.UUID, channelID, description string) {
+func (s *Syncer) syncTelegramDescription(ctx context.Context, businessID uuid.UUID, channelID, description string) error {
 	botToken, err := s.integrations.GetDecryptedToken(ctx, businessID, "telegram", channelID)
 	if err != nil {
-		slog.Error("platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("get token: %w", err)
 	}
 
 	apiURL := fmt.Sprintf("%s/bot%s/setChatDescription?chat_id=%s&description=%s",
@@ -247,13 +303,13 @@ func (s *Syncer) syncTelegramDescription(ctx context.Context, businessID uuid.UU
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
-		slog.Error("platform sync: telegram setChatDescription build request failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram setChatDescription build request failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("build request: %w", err)
 	}
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		slog.Error("platform sync: telegram setChatDescription request failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram setChatDescription request failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -261,21 +317,22 @@ func (s *Syncer) syncTelegramDescription(ctx context.Context, businessID uuid.UU
 		OK bool `json:"ok"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		slog.Error("platform sync: telegram setChatDescription response parse failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram setChatDescription response parse failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("parse response: %w", err)
 	}
 	if !result.OK {
-		slog.Warn("platform sync: telegram setChatDescription returned not ok", "channel_id", channelID)
-		return
+		slog.WarnContext(ctx, "platform sync: telegram setChatDescription returned not ok", "channel_id", channelID)
+		return fmt.Errorf("setChatDescription returned not ok")
 	}
 	slog.Info("platform sync: telegram description updated", "channel_id", channelID)
+	return nil
 }
 
-func (s *Syncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, channelID, logoURL string) {
+func (s *Syncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, channelID, logoURL string) error {
 	botToken, err := s.integrations.GetDecryptedToken(ctx, businessID, "telegram", channelID)
 	if err != nil {
-		slog.Error("platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("get token: %w", err)
 	}
 
 	// Resolve relative paths to absolute URL using publicURL
@@ -287,13 +344,13 @@ func (s *Syncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, ch
 	// Download the image
 	imgReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, http.NoBody)
 	if err != nil {
-		slog.Error("platform sync: telegram: build image download request failed", "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: build image download request failed", "error", err)
+		return fmt.Errorf("build image download request: %w", err)
 	}
 	imgResp, err := s.httpClient.Do(imgReq)
 	if err != nil {
-		slog.Error("platform sync: telegram: download image failed", "url", fullURL, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: download image failed", "url", fullURL, "error", err)
+		return fmt.Errorf("download image: %w", err)
 	}
 	defer func() { _ = imgResp.Body.Close() }()
 
@@ -301,35 +358,35 @@ func (s *Syncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, ch
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	if err := mw.WriteField("chat_id", channelID); err != nil {
-		slog.Error("platform sync: telegram: write chat_id field failed", "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: write chat_id field failed", "error", err)
+		return fmt.Errorf("write chat_id field: %w", err)
 	}
 	fw, err := mw.CreateFormFile("photo", path.Base(logoURL))
 	if err != nil {
-		slog.Error("platform sync: telegram: create form file failed", "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: create form file failed", "error", err)
+		return fmt.Errorf("create form file: %w", err)
 	}
 	if _, err := io.Copy(fw, imgResp.Body); err != nil {
-		slog.Error("platform sync: telegram: copy image data failed", "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: copy image data failed", "error", err)
+		return fmt.Errorf("copy image data: %w", err)
 	}
 	if err := mw.Close(); err != nil {
-		slog.Error("platform sync: telegram: close multipart writer failed", "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: close multipart writer failed", "error", err)
+		return fmt.Errorf("close multipart writer: %w", err)
 	}
 
 	apiURL := fmt.Sprintf("%s/bot%s/setChatPhoto", s.telegramBase, botToken)
 	photoReq, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, &body)
 	if err != nil {
-		slog.Error("platform sync: telegram: build setChatPhoto request failed", "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram: build setChatPhoto request failed", "error", err)
+		return fmt.Errorf("build setChatPhoto request: %w", err)
 	}
 	photoReq.Header.Set("Content-Type", mw.FormDataContentType())
 
 	resp, err := s.httpClient.Do(photoReq)
 	if err != nil {
-		slog.Error("platform sync: telegram setChatPhoto request failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram setChatPhoto request failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("setChatPhoto request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -337,12 +394,89 @@ func (s *Syncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, ch
 		OK bool `json:"ok"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		slog.Error("platform sync: telegram setChatPhoto response parse failed", "channel_id", channelID, "error", err)
-		return
+		slog.ErrorContext(ctx, "platform sync: telegram setChatPhoto response parse failed", "channel_id", channelID, "error", err)
+		return fmt.Errorf("parse response: %w", err)
 	}
 	if !result.OK {
-		slog.Warn("platform sync: telegram setChatPhoto returned not ok", "channel_id", channelID)
-		return
+		slog.WarnContext(ctx, "platform sync: telegram setChatPhoto returned not ok", "channel_id", channelID)
+		return fmt.Errorf("setChatPhoto returned not ok")
 	}
 	slog.Info("platform sync: telegram photo updated", "channel_id", channelID)
+	return nil
+}
+
+// syncVKInfo pushes business data to VK community using dedicated API fields.
+func (s *Syncer) syncVKInfo(ctx context.Context, business *domain.Business, groupID string) {
+	token, err := s.integrations.GetDecryptedToken(ctx, business.ID, "vk", groupID)
+	if err != nil {
+		slog.Error("platform sync: vk: get token failed", "group_id", groupID, "error", err)
+		s.recordTask(ctx, business.ID, "vk", "sync_info", "error", map[string]string{"group_id": groupID}, "token fetch failed: "+err.Error())
+		return
+	}
+
+	// groups.edit supports: description, phone, website
+	params := url.Values{
+		"group_id":     {groupID},
+		"access_token": {token},
+		"v":            {"5.199"},
+	}
+	params.Set("description", business.Description)
+	if business.Phone != "" {
+		params.Set("phone", business.Phone)
+	}
+	if business.Website != nil && *business.Website != "" {
+		params.Set("website", *business.Website)
+	}
+
+	input := map[string]string{
+		"group_id":    groupID,
+		"description": business.Description,
+		"phone":       business.Phone,
+	}
+	if business.Website != nil {
+		input["website"] = *business.Website
+	}
+
+	apiErr := s.callVKAPI(ctx, "groups.edit", params, groupID)
+	if apiErr != "" {
+		s.recordTask(ctx, business.ID, "vk", "sync_info", "error", input, apiErr)
+	} else {
+		s.recordTask(ctx, business.ID, "vk", "sync_info", "done", input, "")
+	}
+}
+
+// callVKAPI makes a VK API request and logs the result. Returns error message or empty string on success.
+func (s *Syncer) callVKAPI(ctx context.Context, method string, params url.Values, groupID string) string {
+	apiURL := "https://api.vk.com/method/" + method + "?" + params.Encode()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		slog.Error("platform sync: vk "+method+" build request failed", "group_id", groupID, "error", err)
+		return err.Error()
+	}
+	resp, err := s.httpClient.Do(httpReq)
+	if err != nil {
+		slog.Error("platform sync: vk "+method+" request failed", "group_id", groupID, "error", err)
+		return err.Error()
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Response interface{} `json:"response"`
+		Error    *struct {
+			ErrorCode int    `json:"error_code"`
+			ErrorMsg  string `json:"error_msg"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		slog.Error("platform sync: vk "+method+" response parse failed", "group_id", groupID, "error", err, "body", string(respBody))
+		return err.Error()
+	}
+	if result.Error != nil {
+		slog.Error("platform sync: vk "+method+" API error", "group_id", groupID, "code", result.Error.ErrorCode, "msg", result.Error.ErrorMsg)
+		return result.Error.ErrorMsg
+	}
+	slog.Info("platform sync: vk "+method+" success", "group_id", groupID)
+	return ""
 }
