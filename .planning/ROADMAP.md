@@ -27,7 +27,7 @@
 
 **Requirements:** BLG-01, BLG-02, BLG-03, BLG-04, BLG-05, BLG-06
 
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 07-01-PLAN.md — API service: context-aware logging in chat_proxy, per-op sync tasks, rate limiter confirmation
@@ -75,8 +75,7 @@ Plans:
 
 | Requirement | Phase | Covered |
 |-------------|-------|---------|
-| BLG-01 | 7 | ✅ |
-| BLG-02 | 7 | ✅ |
+| BLG-01 | 7 | 2/2 | Complete   | 2026-03-22 | 7 | ✅ |
 | BLG-03 | 7 | ✅ |
 | BLG-04 | 7 | ✅ |
 | BLG-05 | 7 | ✅ |

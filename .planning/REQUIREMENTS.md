@@ -15,12 +15,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Backend Logging Gaps
 
-- [ ] **BLG-01**: SSE parsing ошибки логируются в chat_proxy + scanner.Err() обрабатывается после event loop
-- [ ] **BLG-02**: Correlation ID сохраняется в persistence-контекстах (не теряется через context.Background)
+- [x] **BLG-01**: SSE parsing ошибки логируются в chat_proxy + scanner.Err() обрабатывается после event loop
+- [x] **BLG-02**: Correlation ID сохраняется в persistence-контекстах (не теряется через context.Background)
 - [x] **BLG-03**: NATS tool request/response логируется с timing, tool name, business_id, correlation_id в a2a.Agent
-- [ ] **BLG-04**: Platform sync результаты создают AgentTask записи со статусом done/error
+- [x] **BLG-04**: Platform sync результаты создают AgentTask записи со статусом done/error
 - [x] **BLG-05**: SSE write ошибки логируются в оркестраторе (fmt.Fprintf failures)
-- [ ] **BLG-06**: Rate limiter использует request context (r.Context()) вместо context.Background()
+- [x] **BLG-06**: Rate limiter использует request context (r.Context()) вместо context.Background()
 
 ### Frontend Logging
 
@@ -49,12 +49,12 @@ Deferred to future milestone.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BLG-01 | Phase 7 | Pending |
-| BLG-02 | Phase 7 | Pending |
+| BLG-01 | Phase 7 | Complete |
+| BLG-02 | Phase 7 | Complete |
 | BLG-03 | Phase 7 | Complete |
-| BLG-04 | Phase 7 | Pending |
+| BLG-04 | Phase 7 | Complete |
 | BLG-05 | Phase 7 | Complete |
-| BLG-06 | Phase 7 | Pending |
+| BLG-06 | Phase 7 | Complete |
 | LOG-01 | Phase 8 | Pending |
 | LOG-02 | Phase 8 | Pending |
 | LOG-03 | Phase 8 | Pending |
