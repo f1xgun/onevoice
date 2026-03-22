@@ -120,7 +120,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	events, err := h.runner.Run(ctx, runReq)
 	if err != nil {
-		writeSSE(w, flusher, sseEvent{Type: "error", Content: err.Error()})
+		writeSSE(ctx, w, flusher, sseEvent{Type: "error", Content: err.Error()})
 		return
 	}
 
@@ -135,16 +135,22 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			sse.ToolResult = event.ToolResult
 			sse.ToolError = event.ToolError
 		}
-		writeSSE(w, flusher, sse)
+		writeSSE(ctx, w, flusher, sse)
 	}
 }
 
-func writeSSE(w http.ResponseWriter, flusher http.Flusher, event sseEvent) {
+func writeSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, event sseEvent) {
 	data, err := json.Marshal(event)
 	if err != nil {
-		slog.Error("failed to marshal SSE event", "error", err)
+		slog.ErrorContext(ctx, "failed to marshal SSE event", "error", err)
 		return
 	}
-	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		slog.ErrorContext(ctx, "SSE write failed",
+			"error", err,
+			"event_type", event.Type,
+		)
+		return
+	}
 	flusher.Flush()
 }
