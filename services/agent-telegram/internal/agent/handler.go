@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,8 @@ type TokenFetcher interface {
 type Sender interface {
 	SendMessage(chatID int64, text string) error
 	SendPhoto(chatID int64, photoURL, caption string) error
+	SendReply(chatID int64, messageID int, text string) error
+	GetReviews(limit int) ([]map[string]interface{}, error)
 }
 
 // SenderFactory creates a Sender from a bot token.
@@ -50,6 +53,10 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		return h.sendChannelPhoto(ctx, req)
 	case "telegram__send_notification":
 		return h.sendNotification(ctx, req)
+	case "telegram__get_reviews":
+		return h.getReviews(ctx, req)
+	case "telegram__reply_to_comment":
+		return h.replyToComment(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
@@ -182,5 +189,75 @@ func (h *Handler) sendNotification(ctx context.Context, req a2a.ToolRequest) (*a
 		TaskID:  req.TaskID,
 		Success: true,
 		Result:  map[string]interface{}{"status": "sent"},
+	}, nil
+}
+
+func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	limitF, _ := req.Args["limit"].(float64)
+	limit := int(limitF)
+	if limit == 0 {
+		limit = 20
+	}
+
+	sender, _, err := h.getSender(ctx, req, "")
+	if err != nil {
+		return nil, err
+	}
+
+	reviews, err := sender.GetReviews(limit)
+	if err != nil {
+		return nil, fmt.Errorf("telegram: get reviews: %w", err)
+	}
+
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"reviews": reviews, "count": len(reviews)},
+	}, nil
+}
+
+func (h *Handler) replyToComment(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	text, _ := req.Args["text"].(string)
+	chatIDStr, _ := req.Args["chat_id"].(string)
+	channelIDStr, _ := req.Args["channel_id"].(string)
+
+	var messageID int
+	switch v := req.Args["message_id"].(type) {
+	case float64:
+		messageID = int(v)
+	case string:
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("telegram: invalid message_id %q: %w", v, err)
+		}
+		messageID = parsed
+	}
+
+	slog.Info("telegram agent: reply_to_comment", "chat_id", chatIDStr, "message_id", messageID, "text_len", len(text))
+
+	sender, resolvedID, err := h.getSender(ctx, req, channelIDStr)
+	if err != nil {
+		return nil, err
+	}
+
+	if chatIDStr == "" {
+		chatIDStr = resolvedID
+	}
+	chatID, parseErr := strconv.ParseInt(chatIDStr, 10, 64)
+	if parseErr != nil {
+		chatID, err = strconv.ParseInt(resolvedID, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("telegram: invalid chat_id %q: %w", chatIDStr, parseErr)
+		}
+	}
+
+	if err := sender.SendReply(chatID, messageID, text); err != nil {
+		return nil, fmt.Errorf("telegram: reply to comment: %w", classifyTelegramError(err))
+	}
+
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"status": "replied"},
 	}, nil
 }
