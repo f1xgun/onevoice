@@ -58,6 +58,11 @@ func (f *fakeSender) SendPhoto(chatID int64, photoURL, caption string) error {
 	return nil
 }
 
+func (f *fakeSender) SendReply(_ int64, _ int, _ string) error { return nil }
+func (f *fakeSender) GetReviews(_ int) ([]map[string]interface{}, error) {
+	return []map[string]interface{}{}, nil
+}
+
 func newHandlerWithSender(fetcher agent.TokenFetcher, sender *fakeSender) *agent.Handler {
 	factory := func(_ string) (agent.Sender, error) {
 		return sender, nil
@@ -157,6 +162,10 @@ type errSender struct {
 
 func (e *errSender) SendMessage(_ int64, _ string) error { return e.err }
 func (e *errSender) SendPhoto(_ int64, _, _ string) error { return e.err }
+func (e *errSender) SendReply(_ int64, _ int, _ string) error { return e.err }
+func (e *errSender) GetReviews(_ int) ([]map[string]interface{}, error) {
+	return nil, e.err
+}
 
 func newHandlerWithErrSender(fetcher agent.TokenFetcher, sendErr error) *agent.Handler {
 	factory := func(_ string) (agent.Sender, error) {

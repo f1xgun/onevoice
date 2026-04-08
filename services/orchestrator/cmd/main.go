@@ -196,6 +196,30 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 						"required": []string{"text"},
 					},
 				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "telegram__get_reviews",
+					Description: "Получает последние сообщения/отзывы, отправленные боту или в канал через Telegram. Каждое сообщение содержит поля message_id и chat_id — используй их для ответа через telegram__reply_to_comment.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"limit": map[string]interface{}{"type": "integer", "description": "Количество сообщений (макс 100)"},
+						},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "telegram__reply_to_comment",
+					Description: "Отвечает на конкретный комментарий или сообщение в Telegram. Используй эту функцию когда нужно ответить на комментарий — НЕ используй telegram__send_channel_post для ответов на комментарии.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"message_id": map[string]interface{}{"type": "integer", "description": "ID сообщения/комментария, на который отвечаем (поле message_id из telegram__get_reviews)"},
+							"chat_id":    map[string]interface{}{"type": "string", "description": "ID чата/группы обсуждений, где находится комментарий (поле chat_id из telegram__get_reviews)"},
+							"text":       map[string]interface{}{"type": "string", "description": "Текст ответа"},
+							"channel_id": map[string]interface{}{"type": "string", "description": "ID канала (необязательно, для выбора интеграции)"},
+						},
+						"required": []string{"message_id", "chat_id", "text"},
+					},
+				}},
 			},
 		},
 		{
@@ -253,7 +277,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				}},
 				{Type: "function", Function: llm.FunctionDefinition{
 					Name:        "vk__get_comments",
-					Description: "Получает комментарии к постам сообщества ВКонтакте",
+					Description: "Получает комментарии и отзывы к постам сообщества ВКонтакте. Используй при запросе 'получить отзывы' для VK.",
 					Parameters: map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{

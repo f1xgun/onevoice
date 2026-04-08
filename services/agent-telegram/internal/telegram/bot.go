@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -66,4 +67,88 @@ func (b *Bot) SendPhoto(chatID int64, photoURL, caption string) error {
 	photo.Caption = caption
 	_, err = b.api.Send(photo)
 	return err
+}
+
+// SendReply sends a text message as a reply to a specific message in a chat.
+func (b *Bot) SendReply(chatID int64, messageID int, text string) error {
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ReplyToMessageID = messageID
+	_, err := b.api.Send(msg)
+	return err
+}
+
+// GetReviews fetches recent messages received by the bot (direct messages and
+// channel comments) and returns them as review-like entries.
+// Telegram has no star-rating concept, so rating is always 0.
+func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
+	const batchSize = 100
+	if limit <= 0 {
+		limit = 500
+	}
+
+	var allUpdates []tgbotapi.Update
+	offset := 0
+	for {
+		batch, err := b.api.GetUpdates(tgbotapi.UpdateConfig{
+			Offset:         offset,
+			Limit:          batchSize,
+			AllowedUpdates: []string{"message", "channel_post", "edited_message", "edited_channel_post"},
+		})
+		if err != nil {
+			if len(allUpdates) == 0 {
+				return nil, fmt.Errorf("get updates: %w", err)
+			}
+			break
+		}
+		if len(batch) == 0 {
+			break
+		}
+		allUpdates = append(allUpdates, batch...)
+		offset = batch[len(batch)-1].UpdateID + 1
+		if len(allUpdates) >= limit {
+			break
+		}
+	}
+
+	if offset > 0 {
+		_, _ = b.api.GetUpdates(tgbotapi.UpdateConfig{Offset: offset, Limit: 1})
+	}
+
+	reviews := make([]map[string]interface{}, 0, len(allUpdates))
+	for _, u := range allUpdates {
+		msg := u.Message
+		if msg == nil {
+			msg = u.ChannelPost
+		}
+		if msg == nil || msg.Text == "" {
+			continue
+		}
+
+		author := ""
+		if msg.From != nil {
+			author = msg.From.FirstName
+			if msg.From.LastName != "" {
+				author += " " + msg.From.LastName
+			}
+			if author == "" {
+				author = msg.From.UserName
+			}
+		}
+		if author == "" && msg.Chat != nil {
+			author = msg.Chat.Title
+		}
+
+		review := map[string]interface{}{
+			"id":         fmt.Sprintf("%d_%d", msg.Chat.ID, msg.MessageID),
+			"message_id": msg.MessageID,
+			"chat_id":    msg.Chat.ID,
+			"author":     author,
+			"rating":     0,
+			"text":       msg.Text,
+			"reply":      "",
+			"created_at": time.Unix(int64(msg.Date), 0).UTC().Format(time.RFC3339),
+		}
+		reviews = append(reviews, review)
+	}
+	return reviews, nil
 }
