@@ -253,18 +253,41 @@ func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2
 }
 
 func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	// Use community token (getClient), not service key — wall.getComments
-	// is not available with service keys but works with community tokens.
+	// wall.getComments needs community token (service key can't call it).
+	// But wall.get (to find latest post) needs service key (community token can't call it).
+	// So we use two clients when post_id is not provided.
 	client, groupID, err := h.getClient(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	postIDf, _ := req.Args["post_id"].(float64)
-	postID := int(postIDf) // 0 = latest post
+	postID := int(postIDf)
 	countF, _ := req.Args["count"].(float64)
 	count := int(countF)
 	if count == 0 {
 		count = 20
+	}
+
+	// If no post_id, fetch latest post via readClient (service key can call wall.get)
+	if postID == 0 {
+		readClient, readGroupID, readErr := h.getReadClient(ctx, req)
+		if readErr != nil {
+			return nil, readErr
+		}
+		posts, _, postsErr := readClient.GetWallPosts(readGroupID, 1)
+		if postsErr != nil {
+			return nil, fmt.Errorf("vk: get latest post: %w", classifyVKError(postsErr))
+		}
+		if len(posts) == 0 {
+			return &a2a.ToolResponse{
+				TaskID:  req.TaskID,
+				Success: true,
+				Result:  map[string]interface{}{"comments": []interface{}{}, "count": 0},
+			}, nil
+		}
+		if id, ok := posts[0]["id"].(int); ok {
+			postID = id
+		}
 	}
 
 	comments, err := client.GetComments(groupID, postID, count)

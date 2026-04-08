@@ -203,6 +203,7 @@ func TestHandler_GetComments(t *testing.T) {
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id": "-123456",
+			"post_id":  float64(42),
 			"count":    float64(10),
 		},
 	})
@@ -968,7 +969,7 @@ func TestReadClient_ExternalIDFallback(t *testing.T) {
 }
 
 func TestGetComments_UsesResolvedGroupID(t *testing.T) {
-	// getComments now uses the resolved groupID from getReadClient (with negative sign).
+	// getComments uses getClient which resolves groupID with negative sign.
 	tokens := &mockTokenFetcher{token: "tok", extID: "999888"}
 	var capturedGroupID string
 	factory := func(_ string) agent.VKClient {
@@ -984,7 +985,7 @@ func TestGetComments_UsesResolvedGroupID(t *testing.T) {
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_comments",
 		BusinessID: "biz-1",
-		Args:       map[string]interface{}{}, // no group_id — resolved from ExternalID
+		Args:       map[string]interface{}{"post_id": float64(1)}, // provide post_id to skip auto-fetch
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "-999888", capturedGroupID, "getComments should use resolved groupID with negative sign")

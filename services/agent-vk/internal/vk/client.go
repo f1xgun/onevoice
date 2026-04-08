@@ -147,25 +147,10 @@ func (c *Client) UpdateGroupInfo(groupID, description string) error {
 
 // GetComments retrieves comments from a specific VK wall post.
 // groupID should be the owner_id (negative for communities, e.g. "-123456").
-// postID is required by VK API — pass 0 to fetch comments from the latest post.
+// postID is required by VK API.
 func (c *Client) GetComments(groupID string, postID, count int) ([]map[string]interface{}, error) {
 	if err := c.wait(); err != nil {
 		return nil, err
-	}
-
-	// If no post_id given, fetch the latest post and use its ID
-	if postID == 0 {
-		wallResp, err := c.vk.WallGet(vkapi.Params{
-			"owner_id": groupID,
-			"count":    1,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("vk wall.get (for latest post): %w", err)
-		}
-		if len(wallResp.Items) == 0 {
-			return []map[string]interface{}{}, nil
-		}
-		postID = wallResp.Items[0].ID
 	}
 
 	resp, err := c.vk.WallGetComments(vkapi.Params{
