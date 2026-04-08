@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -88,6 +89,37 @@ func TestExecute_SetsToolNameInRequest(t *testing.T) {
 	var toolReq a2a.ToolRequest
 	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
 	assert.Equal(t, a2a.AgentID("telegram__send_channel_post"), toolReq.Tool)
+}
+
+func TestNATSExecutor_ContextTimeout(t *testing.T) {
+	// Simulate a slow agent: the requester blocks for longer than the context deadline.
+	slowRequester := &fakeRequester{
+		response: &a2a.ToolResponse{TaskID: "t-slow", Success: true, Result: map[string]interface{}{}},
+	}
+	// Override Request to add a delay
+	exec := natsexec.New(a2a.AgentVK, "vk__publish_post", &delayedRequester{delay: 5 * time.Second})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := exec.Execute(ctx, map[string]interface{}{"text": "test"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "request to tasks.vk")
+	_ = slowRequester // suppress unused
+}
+
+// delayedRequester simulates a slow agent that doesn't respond before context deadline.
+type delayedRequester struct {
+	delay time.Duration
+}
+
+func (d *delayedRequester) Request(ctx context.Context, _ string, _ []byte) ([]byte, error) {
+	select {
+	case <-time.After(d.delay):
+		return []byte(`{"task_id":"x","success":true,"result":{}}`), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func TestExecute_SetsBusinessIDFromContext(t *testing.T) {
