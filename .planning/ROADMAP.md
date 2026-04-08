@@ -50,7 +50,13 @@
   2. After OAuth completes, the system automatically discovers and stores the user's business account and location IDs
   3. When a Google access token expires (1hr), the next API request transparently refreshes it without user action
   4. The agent-google-business service starts, connects to NATS, and responds to `tasks.google_business` subjects
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — Token refresh infrastructure + Google OAuth handlers
+- [ ] 10-02-PLAN.md — Agent scaffold + infrastructure glue (docker, go.work, protocol)
+- [ ] 10-03-PLAN.md — Frontend integrations page (Google connect + location modal)
+
 **UI hint**: yes
 
 ### Phase 11: Review Management + End-to-End Wiring
@@ -110,7 +116,7 @@
 | 7. Backend Logging Gaps | v1.1 | 2/2 | Complete | 2026-03-22 |
 | 8. Grafana + Loki Stack | v1.1 | 2/2 | Complete | 2026-03-22 |
 | 9. Frontend Telemetry | v1.1 | 2/2 | Complete | 2026-03-22 |
-| 10. OAuth + Token Infrastructure + Agent Scaffold | v1.2 | 0/0 | Not started | - |
+| 10. OAuth + Token Infrastructure + Agent Scaffold | v1.2 | 0/3 | In progress | - |
 | 11. Review Management + End-to-End Wiring | v1.2 | 0/0 | Not started | - |
 | 12. Business Information Management | v1.2 | 0/0 | Not started | - |
 | 13. Post Management | v1.2 | 0/0 | Not started | - |
