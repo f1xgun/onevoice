@@ -37,9 +37,13 @@ func run() error {
 	}
 	tc := tokenclient.New(apiURL, nil)
 	tokens := &tokenAdapter{client: tc}
+	serviceKey := os.Getenv("VK_SERVICE_KEY")
+	if serviceKey != "" {
+		slog.Info("VK service key configured — read operations will use it")
+	}
 	handler := agentpkg.NewHandler(tokens, func(token string) agentpkg.VKClient {
 		return vk.New(token)
-	})
+	}, serviceKey)
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentVK, transport, handler)
 
@@ -88,12 +92,16 @@ type tokenAdapter struct {
 	client *tokenclient.Client
 }
 
-func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (string, error) {
+func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (agentpkg.TokenInfo, error) {
 	resp, err := a.client.GetToken(ctx, businessID, platform, externalID)
 	if err != nil {
-		return "", err
+		return agentpkg.TokenInfo{}, err
 	}
-	return resp.AccessToken, nil
+	return agentpkg.TokenInfo{
+		AccessToken: resp.AccessToken,
+		UserToken:   resp.UserToken,
+		ExternalID:  resp.ExternalID,
+	}, nil
 }
 
 func getEnv(key, defaultValue string) string {

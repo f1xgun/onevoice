@@ -1,193 +1,301 @@
-# Features Research
+# Feature Landscape: Google Business Profile API Integration
 
-**Date:** 2026-03-15
-**Context:** OneVoice is a multi-agent digital presence platform. Telegram integration is working end-to-end. This document covers what features are needed to bring VK and Yandex.Business to the same functional level, and what hardening is required for production-grade operation.
+**Domain:** Google Business Profile management via API for OneVoice multi-agent platform
+**Researched:** 2026-04-08
+**Confidence:** HIGH (based on official Google developer documentation)
 
----
+## API Landscape Overview
 
-## VK Community Management — Table Stakes vs Differentiators
+Google Business Profile is managed through a **federated set of APIs**, not a single unified endpoint. This is the most important architectural fact: different operations live on different API hosts and versions.
 
-### Current State
-The VK agent (`services/agent-vk/`) has three working tools: `vk__publish_post`, `vk__update_group_info`, `vk__get_comments`. There is no photo support, no reply-to-comment, no stories, no stats, and no message handling.
+| API | Host | Version | Go Package | Status |
+|-----|------|---------|------------|--------|
+| Account Management | mybusinessaccountmanagement.googleapis.com | v1 | `mybusinessaccountmanagement/v1` | Active, maintenance mode |
+| Business Information | mybusinessbusinessinformation.googleapis.com | v1 | `mybusinessbusinessinformation/v1` | Active, maintenance mode |
+| Business Performance | businessprofileperformance.googleapis.com | v1 | `businessprofileperformance/v1` | Active, maintenance mode |
+| Reviews (v4) | mybusiness.googleapis.com | v4 | **No Go client** -- direct HTTP | Active, no announced sunset |
+| Local Posts (v4) | mybusiness.googleapis.com | v4 | **No Go client** -- direct HTTP | Active, no announced sunset |
+| Media (v4) | mybusiness.googleapis.com | v4 | **No Go client** -- direct HTTP | Active, no announced sunset |
+| Q&A | N/A | N/A | N/A | **Discontinued** Nov 3, 2025 |
+| Place Actions | mybusinessplaceactions.googleapis.com | v1 | `mybusinessplaceactions/v1` | Active |
+| Verifications | mybusinessverifications.googleapis.com | v1 | `mybusinessverifications/v1` | Active |
 
-### Table Stakes (must have before calling VK "done")
+**Critical finding:** Reviews, Local Posts, and Media remain on the legacy v4 API with no announced migration path or sunset date. There are no auto-generated Go client libraries for these v4 endpoints. The agent must use direct HTTP REST calls with OAuth2 tokens for these operations.
 
-**Content Publishing**
-- `vk__publish_post` — text wall post. Already implemented.
-- `vk__publish_photo_post` — photo + caption on community wall. Analogous to Telegram's `telegram__send_channel_photo`. Without this, photo content requires manual VK login.
-- `vk__schedule_post` — scheduled publication via `publish_date` parameter on `wall.post`. Required for any realistic social media workflow.
+## Table Stakes
 
-**Comment Management**
-- `vk__get_comments` — already implemented (gets wall comments). Table stakes.
-- `vk__reply_comment` — respond to a specific comment. This is a primary engagement action for business community managers. Without it, the agent can read but not act.
-- `vk__delete_comment` — remove spam/toxic comments from wall.
+Features users expect from a Google Business Profile management tool. Missing = the integration feels incomplete.
 
-**Community Information**
-- `vk__update_group_info` — already implemented (updates description). Table stakes.
-- `vk__get_community_info` — read current community status (description, member count, links). Needed for the LLM to answer "what does our VK page say?" without hallucinating.
+| Feature | Why Expected | Complexity | API | Dependencies |
+|---------|--------------|------------|-----|--------------|
+| **List reviews** | Core value of GBP management; business owners check reviews daily | Low | v4 Reviews | OAuth2 flow, account/location resolution |
+| **Reply to review** | #1 use case for GBP tools; timely responses improve SEO and trust | Low | v4 Reviews | OAuth2, review listing |
+| **Read business info** | Must see current state before editing | Low | Business Information v1 | OAuth2, location resolution |
+| **Update business hours** | Seasonal changes, holiday hours are frequent ops tasks | Medium | Business Information v1 | OAuth2, location resolution, field mask handling |
+| **Update business description** | Profile optimization is table stakes | Low | Business Information v1 | OAuth2, location resolution |
+| **Create standard post (What's New)** | Content publishing is core platform promise | Medium | v4 LocalPosts | OAuth2, location resolution, optional media |
+| **List posts** | Need to see existing content to avoid duplicates | Low | v4 LocalPosts | OAuth2, location resolution |
+| **Delete review reply** | Correct mistakes in automated/manual replies | Low | v4 Reviews | OAuth2, review resolution |
+| **OAuth2 connection flow** | User must authorize Google account access | High | Google OAuth2 | Frontend integration page, token storage, refresh handling |
 
-**Wall Reading**
-- `vk__get_wall_posts` — list recent posts with engagement stats. Required for the LLM to avoid re-posting duplicate content and to report on recent activity.
+### Notes on Table Stakes
 
-### Differentiators (competitive advantage, build later)
+- **Review listing + reply** is the single most valuable feature for business owners. Every GBP management tool starts here.
+- **OAuth2 flow** is high complexity because Google requires the `business.manage` scope which is a restricted scope -- the application must pass Google's verification process. For a diploma project, development/testing can use an unverified app with test users (up to 100).
+- **Business info reads** validate the connection is working and give the LLM context about what the business currently looks like.
 
-**Stories**
-- `vk__publish_story` — VK Stories API (`stories.getPhotoUploadServer` → upload → publish). High engagement for business promotions but complex implementation. VK's story API requires two-step upload flow.
+## Differentiators
 
-**Messages (Community Chat)**
-- `vk__send_message` — reply to incoming messages in VK community chat. Requires `messages.send` with community access token (separate from wall token). High value but requires users to grant a different permission scope.
+Features that add value beyond basic management. Not expected, but appreciated.
 
-**Analytics**
-- `vk__get_stats` — community reach, views, followers (via `stats.get`). Useful for "how did our posts perform this week?" questions. Read-only, low risk.
+| Feature | Value Proposition | Complexity | API | Dependencies |
+|---------|-------------------|------------|-----|--------------|
+| **Create offer post** | Promotions with coupon codes, redemption links, T&C | Medium | v4 LocalPosts | Standard post support, offer-specific fields |
+| **Create event post** | Announce events with dates/times, CTA buttons | Medium | v4 LocalPosts | Standard post support, event-specific fields |
+| **Update special hours** | Holiday/exception hours separate from regular hours | Medium | Business Information v1 | Business hours update support |
+| **Upload business photos** | Visual content management through chat | High | v4 Media | Photo upload flow (startUpload + upload + create), category enum |
+| **Get performance insights** | View impressions, calls, website clicks, direction requests | Medium | Performance v1 | Go client exists, date range handling |
+| **Search keyword impressions** | What search terms drive customers to the listing | Medium | Performance v1 | Performance API access |
+| **Update categories** | Change primary/additional business categories | Low | Business Information v1 | Category ID lookup (categories.list/batchGet) |
+| **Update attributes** | Manage business attributes (wheelchair accessible, Wi-Fi, etc.) | Medium | Business Information v1 | Attribute metadata lookup |
+| **Delete post** | Clean up outdated or incorrect posts | Low | v4 LocalPosts | Post listing support |
+| **Batch review retrieval** | Get reviews across multiple locations at once | Medium | v4 Reviews | Multi-location support |
 
-**Advertising**
-- VK Ads integration — out of scope entirely. Requires separate ad account credentials and a different API family.
+### Notes on Differentiators
 
-### Anti-Features (deliberately skip for VK)
+- **Offer and event posts** are natural extensions of standard posts. The LLM orchestrator can decide which post type to use based on user intent ("announce a sale" -> offer post, "we have a meetup" -> event post).
+- **Performance insights** provide a read-only analytics view. The Go client library `businessprofileperformance/v1` exists and works, making this relatively straightforward.
+- **Photo upload** is high complexity because it requires a multi-step flow: `media.startUpload` to get a data reference, then `media.upload` to send binary data, then optionally associate with a category. This is significantly more complex than a URL-based photo reference in posts.
 
-- **VK Live** — no API, streaming-only; requires native VK apps.
-- **Clip/Reel uploads** — video processing pipeline is a separate product concern.
-- **Mass DM campaigns** — violates VK terms of service; will get community banned.
-- **Follower scraping** — not a management feature; privacy risk.
-- **Poll creation** (`vk__create_poll`) — low business value, complex argument schema; skip until explicitly requested.
+## Anti-Features
 
----
+Features to explicitly NOT build.
 
-## Yandex.Business Management — Table Stakes vs Differentiators
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| **Delete reviews** | Impossible via API. You cannot delete reviews, only reply to them or flag them through the GBP UI. Building this would mislead users. | Clearly document in tool descriptions that review deletion is not possible. Offer "reply to review" and suggest flagging via the GBP dashboard for policy violations. |
+| **Q&A management** | API was **discontinued** on November 3, 2025. Building Q&A features would fail at runtime. | Do not register any Q&A tools. If users ask, explain that Google removed this API capability. |
+| **Product posts** | Google explicitly states "Product Posts cannot be created via the Google My Business API at this time." | Use standard posts with product information in the text/media instead. |
+| **Video upload in posts** | Videos are not supported for posts via the API. | Support photo media only in posts. Clearly state text+photo in tool descriptions. |
+| **Location creation/verification** | Extremely complex flow (verification codes, phone calls, postcard). Not a chat-appropriate operation. Requires Google's full verification process. | Assume locations are already verified. The agent operates on existing verified locations only. |
+| **Multi-account management** | OneVoice is single-owner deployment. Building multi-account GBP would add authentication complexity with no immediate value. | Support one Google account per business. The OAuth token maps to one account. |
+| **FoodMenu management** | Niche feature (restaurants only), adds complexity with limited audience. | Defer unless explicitly requested. Not part of general business presence management. |
+| **Lodging-specific features** | Lodging API is for hotels/hospitality only. Niche audience. | Out of scope for general-purpose agent. |
 
-### Current State
-All four tools (`yandex_business__get_reviews`, `yandex_business__reply_review`, `yandex_business__update_hours`, `yandex_business__update_info`) are stubs returning errors or empty results. The browser automation scaffolding (pool, `withPage`, `withRetry`, `humanDelay`) exists in `browser.go` but the DOM-level implementations are missing.
+## Feature Dependencies
 
-### Table Stakes (must have — these are the stubs that need real implementations)
+```
+OAuth2 Connection Flow
+  |
+  +-> Account/Location Resolution (list accounts, list locations)
+  |     |
+  |     +-> Review Management
+  |     |     +-> List Reviews
+  |     |     +-> Reply to Review
+  |     |     +-> Delete Review Reply
+  |     |
+  |     +-> Business Info Management
+  |     |     +-> Read Business Info
+  |     |     +-> Update Description
+  |     |     +-> Update Hours (regular)
+  |     |     +-> Update Special Hours
+  |     |     +-> Update Categories
+  |     |     +-> Update Attributes
+  |     |
+  |     +-> Post Management
+  |     |     +-> List Posts
+  |     |     +-> Create Standard Post
+  |     |     +-> Create Offer Post
+  |     |     +-> Create Event Post
+  |     |     +-> Delete Post
+  |     |
+  |     +-> Media Management
+  |     |     +-> Upload Photo
+  |     |     +-> List Media
+  |     |     +-> Delete Media
+  |     |
+  |     +-> Performance Insights (read-only)
+  |           +-> Daily Metrics (impressions, calls, clicks)
+  |           +-> Search Keyword Impressions
+```
 
-**Reviews (highest business priority)**
-- `yandex_business__get_reviews` — fetch reviews with rating, author, text, date, and review ID. This is the #1 reason a business would connect Yandex.Business: to know what customers are saying. Stub must be replaced with actual Playwright navigation to `/reviews` page and DOM extraction.
-- `yandex_business__reply_review` — post a text reply to a specific review. Unanswered reviews hurt business ranking on Yandex Maps. This is the primary write action. Requires: navigate to review, click reply, fill text, submit, handle moderation confirmation.
+**Root dependency:** Everything requires OAuth2 + account/location resolution first. No GBP operation works without knowing `accounts/{accountId}/locations/{locationId}`.
 
-**Business Info**
-- `yandex_business__update_info` — update phone, website, description. Currently a stub. Required for "update our website link on Yandex" use case. Implementation: navigate to profile edit form, fill fields, submit, handle Yandex moderation delay.
-- `yandex_business__update_hours` — update opening hours. Currently returns "not yet implemented". Most common operational update (holidays, schedule changes). Requires parsing a structured hours JSON into Yandex's per-day form fields.
+## API-Specific Constraints
 
-**Session Reliability**
-- Canary check before each action — verify session still valid before attempting write; return a specific `ErrSessionExpired` error type so the caller can prompt the user to re-authenticate instead of retrying endlessly.
-- Stale cookie detection — validate cookie expiry fields at browser startup, not silently discard.
+### Rate Limits
+| Limit | Value | Notes |
+|-------|-------|-------|
+| Default QPM (all APIs) | 300 requests/min | Per Google Cloud project |
+| Edit limit per profile | 10 edits/min | Non-negotiable, cannot be increased |
+| User rate limit | 2,400 queries/min/user/project | Additional constraint |
 
-### Differentiators (build after stubs are working)
+### OAuth2 Scope
+- **Required scope:** `https://www.googleapis.com/auth/business.manage`
+- This is a **restricted scope** requiring Google's OAuth app verification
+- For development/testing: unverified app allows up to 100 test users
+- For production: requires brand verification (2-3 days) + security assessment (weeks)
 
-**Photo Management**
-- `yandex_business__add_photo` — upload a photo to the business profile on Yandex Maps. High visual impact for restaurants, retail. Requires file upload via RPA (find file input, inject file path, submit).
+### API Access Prerequisites
+1. Google Account with verified GBP active for 60+ days
+2. Submit GBP API contact form ("Application for Basic API Access")
+3. Wait for approval (up to 14 days)
+4. Receive 300 QPM quota (0 QPM = not approved)
+5. Enable all required APIs in Google Cloud Console (8 APIs)
 
-**Analytics**
-- `yandex_business__get_stats` — views, clicks, route requests from Yandex Maps dashboard. Read-only scrape of the analytics section. Useful for weekly reporting but fragile (DOM-heavy).
+### v4 API Considerations
+- Reviews, LocalPosts, Media remain on v4 with no Go client library
+- Must implement direct HTTP REST client with OAuth2 bearer tokens
+- Base URL: `https://mybusiness.googleapis.com/v4/`
+- Same OAuth scope covers all APIs
 
-**Q&A**
-- `yandex_business__get_questions` — fetch customer questions on the business listing. Niche feature; Yandex Q&A is not prominently used.
+## MVP Recommendation
 
-### Anti-Features (deliberately skip for Yandex.Business)
+### Phase 1: Foundation (must-have)
 
-- **Yandex Direct (ads)** — entirely separate product, different authentication, not a business profile feature.
-- **Automated review filtering/flagging** — Yandex has internal spam detection; attempting to mass-flag reviews will trigger account review.
-- **Booking/reservation management** — Yandex has a separate "Yandex Booking" product; no stable API or predictable DOM.
-- **Yandex Maps navigation promotion** — pay-to-promote features require Yandex Direct account linkage; out of scope.
-- **Bulk info updates** — Yandex moderation queue makes bulk changes unreliable; only single-field updates are dependable via RPA.
+Build the OAuth2 flow and core agent scaffold:
 
----
+1. **OAuth2 connection flow** -- Google OAuth2 with `business.manage` scope, token encryption, refresh handling. Reuse existing OAuth patterns from VK agent integration page.
+2. **Account/location resolution** -- On connect, discover the user's accounts and locations. Cache the `accounts/{id}/locations/{id}` path needed for all subsequent calls.
+3. **List reviews** -- First functional tool. Proves the integration works end-to-end.
+4. **Reply to review** -- Highest-value write operation. Business owners care about this most.
 
-## Monitoring & Observability — Table Stakes
+### Phase 2: Business Presence (high-value)
 
-These apply across all Go services (`services/api`, `services/orchestrator`, `services/agent-telegram`, `services/agent-vk`, `services/agent-yandex-business`).
+5. **Read business info** -- Gives LLM context about the business.
+6. **Update description** -- Simple write, validates update flow works.
+7. **Update business hours** -- Frequent operation, validates field mask handling.
+8. **Create standard post** -- Content publishing, core platform promise.
 
-### Health Checks (must have)
+### Phase 3: Extended (nice-to-have for demo)
 
-Every service must expose `GET /health` returning `200 OK` with a JSON body indicating:
-- PostgreSQL reachability (api service)
-- MongoDB reachability (api service)
-- NATS subscription status (orchestrator, all agents)
-- Redis reachability (api service)
+9. **List posts** -- Context for post management.
+10. **Delete post** -- Cleanup capability.
+11. **Create offer/event posts** -- Richer content types.
+12. **Performance insights** -- Analytics read, uses Go client library (easier).
 
-Return `503 Service Unavailable` with detail if any dependency is down. This is required for any container orchestration (Docker Compose healthcheck, Kubernetes liveness probe).
+### Defer
 
-### Metrics (must have for production)
+- **Photo upload**: Multi-step binary upload flow, disproportionate complexity for demo value.
+- **Attribute/category updates**: Low-frequency operations, add after core works.
+- **Special hours**: Extension of hours management, not critical path.
+- **Batch review retrieval**: Multi-location feature, single-owner deployment does not need it.
 
-Minimum viable Prometheus metrics exported on `GET /metrics`:
-- `http_request_duration_seconds` histogram by endpoint and status code
-- `http_requests_total` counter by endpoint and status code
-- NATS task dispatch count and latency (orchestrator)
-- LLM call count and duration by provider and model (orchestrator)
-- Active SSE connections (api)
+## Tool Naming Convention
 
-Prometheus scrape + Grafana dashboard is table stakes for any multi-service Go system in 2026. Without it, incidents are invisible until users complain.
+Following existing OneVoice convention (`{platform}__{action}`):
 
-### Structured Logging (must have)
+| Tool Name | API | Operation |
+|-----------|-----|-----------|
+| `google_business__list_reviews` | v4 Reviews | List reviews for location |
+| `google_business__reply_to_review` | v4 Reviews | Reply to a specific review |
+| `google_business__delete_review_reply` | v4 Reviews | Delete own reply to a review |
+| `google_business__get_business_info` | Business Info v1 | Read location details |
+| `google_business__update_description` | Business Info v1 | Update business description |
+| `google_business__update_hours` | Business Info v1 | Update regular business hours |
+| `google_business__create_post` | v4 LocalPosts | Create standard/offer/event post |
+| `google_business__list_posts` | v4 LocalPosts | List existing posts |
+| `google_business__delete_post` | v4 LocalPosts | Delete a post |
+| `google_business__get_insights` | Performance v1 | Fetch daily metrics |
 
-- All services already use `slog`; add JSON output format (`slog.NewJSONHandler`) for log aggregation compatibility.
-- Add a correlation/request ID to each HTTP request in middleware; propagate it through NATS message metadata so a single user chat turn can be traced across api → orchestrator → agent.
-- Tag every log line with `service`, `env`, and `version`.
+**Platform ID:** `google_business` (maps to NATS subject `tasks.google_business`)
 
-### Distributed Tracing (differentiator)
+## Competitive Landscape
 
-- OpenTelemetry trace propagation across NATS messages would allow end-to-end latency breakdown (api → orchestrator → VK agent → api). Valuable for debugging slow tool calls. Not required for MVP production but worth instrumenting early if adding otel middleware is low cost.
+Tools like Birdeye, EmbedSocial, Ayrshare, and SocialPilot offer GBP management. Their table stakes are:
+- Review monitoring and reply
+- Post scheduling and creation
+- Business info updates
+- Multi-location analytics
 
-### Anti-Features (monitoring)
+OneVoice differentiator: conversational interface ("reply to that negative review professionally" vs clicking through a dashboard). The LLM can draft review replies, generate post content, and execute updates -- all in one chat thread alongside Telegram and VK management.
 
-- **Full APM (Datadog, New Relic)** — expensive, unnecessary for current scale; Prometheus + Grafana is sufficient.
-- **Log aggregation infrastructure (ELK, Loki)** — useful but operational overhead; rely on stdout + structured JSON until deployment needs it.
-- **Synthetic monitoring** — not needed until real users depend on SLAs.
+## Available Daily Metrics (Performance API)
 
----
+For reference when building insights tools:
 
-## Security Features — Table Stakes
+| Metric Enum | Description |
+|-------------|-------------|
+| BUSINESS_IMPRESSIONS_DESKTOP_MAPS | Views on Google Maps (desktop) |
+| BUSINESS_IMPRESSIONS_DESKTOP_SEARCH | Views on Google Search (desktop) |
+| BUSINESS_IMPRESSIONS_MOBILE_MAPS | Views on Google Maps (mobile) |
+| BUSINESS_IMPRESSIONS_MOBILE_SEARCH | Views on Google Search (mobile) |
+| BUSINESS_CONVERSATIONS | Message conversations received |
+| BUSINESS_DIRECTION_REQUESTS | Direction requests to location |
+| CALL_CLICKS | Call button clicks |
+| WEBSITE_CLICKS | Website link clicks |
+| BUSINESS_BOOKINGS | Reserve with Google bookings |
+| BUSINESS_FOOD_ORDERS | Food orders received |
+| BUSINESS_FOOD_MENU_CLICKS | Menu interaction clicks |
 
-These are not optional for a SaaS that stores OAuth tokens and handles LLM-generated content.
+## Post Types Reference
 
-### Authentication & Token Storage
+For the LLM tool dispatch and tool descriptions:
 
-- **Refresh token in HttpOnly cookie** — move from localStorage (current state, vulnerable to XSS) to `Set-Cookie: refresh_token=...; HttpOnly; Secure; SameSite=Strict`. Requires API to set cookie on `/auth/refresh` and frontend to stop reading from localStorage.
-- **Typed JWT claims** — replace `jwt.MapClaims` with a typed struct using `jwt.ParseWithClaims()`. Prevents type confusion on `user_id` field.
-- **JWT secret minimum entropy** — already enforced via panic on short secret; keep this guard but convert panic to startup error return.
+| Topic Type | Required Fields | Optional Fields | CTA Options |
+|------------|----------------|-----------------|-------------|
+| STANDARD | summary | media[], languageCode | Book, Order, Shop, Learn More, Sign Up, Call |
+| EVENT | summary, event.title, event.schedule | media[], callToAction | Same as STANDARD |
+| OFFER | summary, event (schedule) | offer.couponCode, offer.redeemOnlineUrl, offer.termsConditions, media[] | Same as STANDARD |
+| ALERT | summary, alertType | media[] | N/A (system-generated) |
 
-### CSRF Protection
+## Review Data Fields
 
-- **SameSite=Strict on session cookies** — covers the majority of CSRF attack vectors once refresh token is in a cookie.
-- **CSRF token on state-changing requests** — add `X-CSRF-Token` header validation on POST/PUT/DELETE if frontend makes cross-origin requests; can skip if same-origin only.
+Fields available when listing reviews:
 
-### Rate Limiting
+| Field | Type | Notes |
+|-------|------|-------|
+| reviewId | string | Unique identifier |
+| reviewer.displayName | string | Reviewer's display name |
+| reviewer.profilePhotoUrl | string | Reviewer's photo URL |
+| starRating | enum | ONE through FIVE |
+| comment | string | Review text (may be empty for rating-only reviews) |
+| createTime | timestamp | When the review was posted |
+| updateTime | timestamp | When the review was last updated |
+| reviewReply.comment | string | Business owner's reply text |
+| reviewReply.updateTime | timestamp | When the reply was posted/updated |
 
-- **Chat endpoint rate limiting** — `POST /chat/{id}` must be rate-limited per user (e.g., 10 requests/minute) to prevent LLM billing abuse. Redis sliding window counter using the already-available Redis pool.
-- **Auth endpoint rate limiting** — `/auth/login`, `/auth/refresh` need brute-force protection (e.g., 5 attempts/minute per IP).
+## Location Schema (Key Updatable Fields)
 
-### Input Validation & Content Security
+Fields the agent can read/write through Business Information API v1:
 
-- **Tool argument validation** — LLM-generated tool arguments must be bounded before reaching agents: max string length per field, required field presence checks. Prevents memory exhaustion and prompt injection cascades.
-- **Markdown sanitization in chat** — `rehype-sanitize` plugin on react-markdown to strip injected HTML from assistant messages.
-- **Content Security Policy headers** — `script-src 'self'` minimum; prevents XSS escalation if a dependency is compromised.
+| Field | Readable | Writable | Notes |
+|-------|----------|----------|-------|
+| title (business name) | Yes | Yes | Must match real-world name |
+| phone_numbers | Yes | Yes | Primary + up to 2 additional |
+| website_uri | Yes | Yes | Business website URL |
+| categories (primary + additional) | Yes | Yes | Uses category IDs from categories.list |
+| profile.description | Yes | Yes | Business description text |
+| storefront_address | Yes | Yes | Physical address |
+| regular_hours | Yes | Yes | Standard operating hours |
+| special_hours | Yes | Yes | Holiday/exception overrides |
+| more_hours | Yes | Yes | Department-specific hours |
+| open_info | Yes | Yes | Open, temporarily closed, permanently closed |
+| service_area | Yes | Yes | For service-area businesses |
+| service_items | Yes | Yes | Services offered with pricing |
+| labels | Yes | Yes | Internal tags |
+| latlng | Yes | Yes (immutable after create) | Coordinates |
+| metadata (place_id, maps_uri) | Yes | No | Read-only Google-generated |
+| store_code | Yes | Yes | External reference ID |
 
-### Secrets & Encryption
+## Sources
 
-- **Encryption key rotation** — the platform-token encryption key (`ENCRYPTION_KEY`) needs a rotation path without invalidating all stored tokens. Table stakes before onboarding real business users whose OAuth tokens would be locked out on rotation.
-- **OAuth state HMAC** — current state validation only checks Redis key existence. Add HMAC signature over `(timestamp + session_id)` to prevent state fixation attacks.
-- **Cookie domain validation in Yandex agent** — whitelist `business.yandex.ru` and `yandex.ru` domains when loading cookies from env; reject anything else.
-
-### Anti-Features (security)
-
-- **WAF (Web Application Firewall)** — infrastructure-level; not a code concern at current scale.
-- **Secret management system (Vault, AWS Secrets Manager)** — operationally valuable but heavy; environment variables with documented rotation policy is sufficient for diploma/early production.
-- **Penetration testing** — deferred until real users with real data are onboarded.
-- **SOC 2 / GDPR compliance tooling** — out of scope for diploma and initial production phase.
-- **IP-based token binding** — mobile users change IPs; binding refresh tokens to IP would cause excessive logouts with minimal security gain.
-
----
-
-## Anti-Features (Don't Build — Cross-Cutting)
-
-These features come up naturally in digital presence platforms but are explicitly out of scope:
-
-- **Content calendar UI** — the LLM + chat interface is the scheduling mechanism; a separate calendar UI duplicates that with high frontend cost.
-- **Bulk import/export of posts** — not a management operation; a data pipeline concern.
-- **Multi-language content generation** — the LLM already handles this on demand; no explicit feature needed.
-- **Competitor monitoring** — scraping competitor profiles violates platform terms of service.
-- **AI-generated image creation** — image generation pipeline (DALL-E, Stable Diffusion) is a separate product; the agents handle photo upload, not generation.
-- **Mobile app** — already in PROJECT.md as out of scope; web-first.
-- **Multi-tenant SaaS** — single-owner deployment per PROJECT.md; multi-tenancy requires auth model changes.
-- **Payment/billing** — explicitly out of scope per PROJECT.md.
-- **Webhook ingestion** — receiving real-time events from VK/Yandex (new reviews, comments) is a pull-not-push model; the LLM queries on demand rather than maintaining persistent webhooks.
+- [Google Business Profile APIs Overview](https://developers.google.com/my-business) -- HIGH confidence
+- [API Reference (REST)](https://developers.google.com/my-business/reference/rest) -- HIGH confidence
+- [Review Data Guide](https://developers.google.com/my-business/content/review-data) -- HIGH confidence
+- [Posts Data Guide](https://developers.google.com/my-business/content/posts-data) -- HIGH confidence
+- [Business Information API v1 RPC Reference](https://developers.google.com/my-business/reference/businessinformation/rpc/google.mybusiness.businessinformation.v1) -- HIGH confidence
+- [Performance API Reference](https://developers.google.com/my-business/reference/performance/rest) -- HIGH confidence
+- [DailyMetric Enum](https://developers.google.com/my-business/reference/performance/rest/v1/DailyMetric) -- HIGH confidence
+- [Media API (v4)](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.media) -- HIGH confidence
+- [LocalPosts API (v4)](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.localPosts) -- HIGH confidence
+- [Reviews API (v4)](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews) -- HIGH confidence
+- [Deprecation Schedule](https://developers.google.com/my-business/content/sunset-dates) -- HIGH confidence
+- [Rate Limits](https://developers.google.com/my-business/content/limits) -- HIGH confidence
+- [Prerequisites](https://developers.google.com/my-business/content/prereqs) -- HIGH confidence
+- [Best Practices](https://developers.google.com/my-business/content/best-practices) -- HIGH confidence
+- [FAQ](https://developers.google.com/my-business/content/faq) -- HIGH confidence
+- [Go Client: mybusinessbusinessinformation/v1](https://pkg.go.dev/google.golang.org/api/mybusinessbusinessinformation/v1) -- HIGH confidence
+- [Go Client: mybusinessaccountmanagement/v1](https://pkg.go.dev/google.golang.org/api/mybusinessaccountmanagement/v1) -- HIGH confidence
+- [Go Client: businessprofileperformance/v1](https://pkg.go.dev/google.golang.org/api/businessprofileperformance/v1) -- HIGH confidence
+- [deleteReply Method](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews/deleteReply) -- HIGH confidence
