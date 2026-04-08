@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -100,7 +104,17 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// Initialize services
 	userService := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
 	businessService := service.NewBusinessService(businessRepo)
-	integrationService := service.NewIntegrationService(integrationRepo, enc)
+
+	// Build Google token refresher if credentials are configured
+	var refresher service.TokenRefresher
+	if cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "" {
+		refresher = &googleTokenRefresher{
+			clientID:     cfg.GoogleClientID,
+			clientSecret: cfg.GoogleClientSecret,
+			httpClient:   &http.Client{Timeout: 10 * time.Second},
+		}
+	}
+	integrationService := service.NewIntegrationService(integrationRepo, enc, refresher)
 	oauthService := service.NewOAuthService(redisClient)
 	reviewService := service.NewReviewService(reviewRepo, businessService)
 	postService := service.NewPostService(postRepo, businessService)
@@ -127,7 +141,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		YandexClientSecret: cfg.YandexClientSecret,
 		YandexRedirectURI:  cfg.YandexRedirectURI,
 		TelegramBotToken:   cfg.TelegramBotToken,
-	}, nil)
+		GoogleClientID:     cfg.GoogleClientID,
+		GoogleClientSecret: cfg.GoogleClientSecret,
+		GoogleRedirectURI:  cfg.GoogleRedirectURI,
+	}, nil, redisClient)
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
 	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
 
@@ -220,6 +237,52 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	log.Info("server stopped")
 	return nil
+}
+
+// googleTokenRefresher implements service.TokenRefresher for Google OAuth2.
+type googleTokenRefresher struct {
+	clientID     string
+	clientSecret string
+	httpClient   *http.Client
+}
+
+func (r *googleTokenRefresher) RefreshToken(ctx context.Context, refreshToken string) (string, string, int64, error) {
+	form := url.Values{
+		"client_id":     {r.clientID},
+		"client_secret": {r.clientSecret},
+		"refresh_token": {refreshToken},
+		"grant_type":    {"refresh_token"},
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://oauth2.googleapis.com/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", "", 0, fmt.Errorf("build refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("refresh request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	var tokenResp struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+		Error        string `json:"error"`
+		ErrorDesc    string `json:"error_description"`
+	}
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return "", "", 0, fmt.Errorf("parse refresh response: %w", err)
+	}
+	if tokenResp.Error != "" {
+		return "", "", 0, fmt.Errorf("google token refresh error: %s — %s", tokenResp.Error, tokenResp.ErrorDesc)
+	}
+	if tokenResp.AccessToken == "" {
+		return "", "", 0, fmt.Errorf("google token refresh returned empty access token")
+	}
+	return tokenResp.AccessToken, tokenResp.RefreshToken, tokenResp.ExpiresIn, nil
 }
 
 // integrationSyncAdapter bridges service.IntegrationService to platform.integrationProvider.

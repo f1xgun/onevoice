@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	goredis "github.com/redis/go-redis/v9"
+
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -43,11 +45,17 @@ type OAuthConfig struct {
 	YandexRedirectURI  string
 	TelegramBotToken   string
 	FrontendURL        string // for redirects, defaults to "/"
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURI  string
 
 	// Overridable base URLs for testing
-	vkTokenBaseURL     string
-	yandexTokenBaseURL string
-	telegramAPIBaseURL string
+	vkTokenBaseURL        string
+	yandexTokenBaseURL    string
+	telegramAPIBaseURL    string
+	googleTokenBaseURL    string // test override
+	googleAccountsBaseURL string // test override for account management API
+	googleBusinessInfoURL string // test override for business information API
 }
 
 // OAuthHandler handles all OAuth-related endpoints.
@@ -57,6 +65,7 @@ type OAuthHandler struct {
 	businessService    BusinessService
 	cfg                OAuthConfig
 	httpClient         *http.Client
+	redis              *goredis.Client
 }
 
 // NewOAuthHandler creates a new OAuthHandler.
@@ -66,6 +75,7 @@ func NewOAuthHandler(
 	businessService BusinessService,
 	cfg OAuthConfig,
 	httpClient *http.Client,
+	redisClient *goredis.Client,
 ) *OAuthHandler {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 10 * time.Second}
@@ -76,6 +86,7 @@ func NewOAuthHandler(
 		businessService:    businessService,
 		cfg:                cfg,
 		httpClient:         httpClient,
+		redis:              redisClient,
 	}
 }
 
