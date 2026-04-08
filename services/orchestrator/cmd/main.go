@@ -277,10 +277,11 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				}},
 				{Type: "function", Function: llm.FunctionDefinition{
 					Name:        "vk__get_comments",
-					Description: "Получает комментарии и отзывы к постам сообщества ВКонтакте. Используй при запросе 'получить отзывы' для VK.",
+					Description: "Получает комментарии к конкретному посту на стене сообщества ВКонтакте. Если post_id не указан, возвращает комментарии к последнему посту.",
 					Parameters: map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
+							"post_id":  map[string]interface{}{"type": "integer", "description": "ID поста на стене. Если не указан — берётся последний пост."},
 							"group_id": map[string]interface{}{"type": "string", "description": "Числовой ID сообщества ВКонтакте. Необязателен — берётся из активной интеграции."},
 							"count":    map[string]interface{}{"type": "integer", "description": "Количество комментариев (макс 100)"},
 						},

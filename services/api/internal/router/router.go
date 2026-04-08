@@ -63,6 +63,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 		r.Get("/oauth/vk/callback", handlers.OAuth.VKCallback)
 		r.Get("/oauth/vk/community-callback", handlers.OAuth.VKCommunityCallback)
 		r.Get("/oauth/yandex_business/callback", handlers.OAuth.YandexCallback)
+		r.Get("/oauth/google_business/callback", handlers.OAuth.GoogleCallback)
 
 		// Protected routes (require auth)
 		r.Group(func(r chi.Router) {
@@ -95,6 +96,11 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 			// Telegram routes
 			r.Post("/integrations/telegram/verify", handlers.OAuth.VerifyTelegramLogin)
 			r.Post("/integrations/telegram/connect", handlers.OAuth.ConnectTelegram)
+
+			// Google Business routes
+			r.Get("/integrations/google_business/auth-url", handlers.OAuth.GetGoogleAuthURL)
+			r.Get("/integrations/google_business/locations", handlers.OAuth.GoogleLocations)
+			r.Post("/integrations/google_business/select-location", handlers.OAuth.GoogleSelectLocation)
 
 			// Chat proxy (replaces direct orchestrator access)
 			r.With(middleware.RateLimitByUser(redisClient, 10, time.Minute)).Post("/chat/{conversationID}", handlers.ChatProxy.Chat)

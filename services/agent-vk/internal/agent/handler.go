@@ -31,7 +31,7 @@ type VKClient interface {
 	PostPhoto(groupID string, photoURL, caption string) (int64, error)
 	SchedulePost(groupID, text string, publishDate int64) (int64, error)
 	UpdateGroupInfo(groupID, description string) error
-	GetComments(groupID string, count int) ([]map[string]interface{}, error)
+	GetComments(groupID string, postID, count int) ([]map[string]interface{}, error)
 	ReplyComment(groupID string, postID, commentID int, text string) (int, error)
 	DeleteComment(groupID string, commentID int) error
 	GetCommunityInfo(groupID string) (map[string]interface{}, error)
@@ -257,13 +257,15 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 	if err != nil {
 		return nil, err
 	}
+	postIDf, _ := req.Args["post_id"].(float64)
+	postID := int(postIDf) // 0 = latest post
 	countF, _ := req.Args["count"].(float64)
 	count := int(countF)
 	if count == 0 {
 		count = 20
 	}
 
-	comments, err := client.GetComments(groupID, count)
+	comments, err := client.GetComments(groupID, postID, count)
 	if err != nil {
 		return nil, fmt.Errorf("vk: get comments: %w", classifyVKError(err))
 	}
