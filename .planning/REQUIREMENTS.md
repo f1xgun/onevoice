@@ -83,31 +83,31 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Pending | Pending |
-| INFRA-02 | Pending | Pending |
-| INFRA-03 | Pending | Pending |
-| REV-01 | Pending | Pending |
-| REV-02 | Pending | Pending |
-| REV-03 | Pending | Pending |
-| BINFO-01 | Pending | Pending |
-| BINFO-02 | Pending | Pending |
-| BINFO-03 | Pending | Pending |
-| POST-01 | Pending | Pending |
-| POST-02 | Pending | Pending |
-| POST-03 | Pending | Pending |
-| POST-04 | Pending | Pending |
-| POST-05 | Pending | Pending |
-| MEDIA-01 | Pending | Pending |
-| PERF-01 | Pending | Pending |
-| INTEG-01 | Pending | Pending |
-| INTEG-02 | Pending | Pending |
-| INTEG-03 | Pending | Pending |
+| INFRA-01 | Phase 10 | Pending |
+| INFRA-02 | Phase 10 | Pending |
+| INFRA-03 | Phase 10 | Pending |
+| REV-01 | Phase 11 | Pending |
+| REV-02 | Phase 11 | Pending |
+| REV-03 | Phase 11 | Pending |
+| BINFO-01 | Phase 12 | Pending |
+| BINFO-02 | Phase 12 | Pending |
+| BINFO-03 | Phase 12 | Pending |
+| POST-01 | Phase 13 | Pending |
+| POST-02 | Phase 13 | Pending |
+| POST-03 | Phase 13 | Pending |
+| POST-04 | Phase 13 | Pending |
+| POST-05 | Phase 13 | Pending |
+| MEDIA-01 | Phase 14 | Pending |
+| PERF-01 | Phase 14 | Pending |
+| INTEG-01 | Phase 10 | Pending |
+| INTEG-02 | Phase 11 | Pending |
+| INTEG-03 | Phase 11 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19 ⚠️
+- Mapped to phases: 19
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-08*
-*Last updated: 2026-04-08 after initial definition*
+*Last updated: 2026-04-08 after roadmap creation*
