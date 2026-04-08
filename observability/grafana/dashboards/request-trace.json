@@ -49,7 +49,7 @@
       "targets": [
         {
           "datasource": "Loki",
-          "expr": "{job=\"docker\"} |= \"${correlation_id}\" | json",
+          "expr": "{container=~\"onevoice-.*\"} |= \"${correlation_id}\" | json",
           "refId": "A"
         }
       ],
@@ -115,7 +115,7 @@
       "targets": [
         {
           "datasource": "Loki",
-          "expr": "sum by (container) (count_over_time({job=\"docker\"} |= \"${correlation_id}\" | json [1m]))",
+          "expr": "sum by (container) (count_over_time({container=~\"onevoice-.*\"} |= \"${correlation_id}\" | json [1m]))",
           "legendFormat": "{{container}}",
           "refId": "A"
         }
