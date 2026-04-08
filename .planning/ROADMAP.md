@@ -116,7 +116,7 @@ Plans:
 | 7. Backend Logging Gaps | v1.1 | 2/2 | Complete | 2026-03-22 |
 | 8. Grafana + Loki Stack | v1.1 | 2/2 | Complete | 2026-03-22 |
 | 9. Frontend Telemetry | v1.1 | 2/2 | Complete | 2026-03-22 |
-| 10. OAuth + Token Infrastructure + Agent Scaffold | v1.2 | 0/3 | In progress | - |
+| 10. OAuth + Token Infrastructure + Agent Scaffold | v1.2 | 1/3 | In progress | - |
 | 11. Review Management + End-to-End Wiring | v1.2 | 0/0 | Not started | - |
 | 12. Business Information Management | v1.2 | 0/0 | Not started | - |
 | 13. Post Management | v1.2 | 0/0 | Not started | - |

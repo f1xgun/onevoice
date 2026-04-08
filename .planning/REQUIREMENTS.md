@@ -43,7 +43,7 @@ Requirements for Google Business Profile integration. Each maps to roadmap phase
 
 ### System Integration
 
-- [ ] **INTEG-01**: Google Business agent runs as standalone Go microservice with NATS dispatch
+- [x] **INTEG-01**: Google Business agent runs as standalone Go microservice with NATS dispatch
 - [ ] **INTEG-02**: Orchestrator registers `google_business__*` tools for LLM dispatch
 - [ ] **INTEG-03**: Frontend shows Google Business on integrations page with connect/disconnect
 
@@ -99,7 +99,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | POST-05 | Phase 13 | Pending |
 | MEDIA-01 | Phase 14 | Pending |
 | PERF-01 | Phase 14 | Pending |
-| INTEG-01 | Phase 10 | Pending |
+| INTEG-01 | Phase 10 | Complete (10-02) |
 | INTEG-02 | Phase 11 | Pending |
 | INTEG-03 | Phase 11 | Pending |
 
