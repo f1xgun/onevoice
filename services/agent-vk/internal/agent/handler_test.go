@@ -18,12 +18,21 @@ import (
 
 // mockTokenFetcher is a test double for TokenFetcher.
 type mockTokenFetcher struct {
-	token string
-	err   error
+	token     string
+	userToken string
+	extID     string
+	err       error
 }
 
-func (m *mockTokenFetcher) GetToken(_ context.Context, _, _, _ string) (string, error) {
-	return m.token, m.err
+func (m *mockTokenFetcher) GetToken(_ context.Context, _, _, _ string) (agent.TokenInfo, error) {
+	if m.err != nil {
+		return agent.TokenInfo{}, m.err
+	}
+	return agent.TokenInfo{
+		AccessToken: m.token,
+		UserToken:   m.userToken,
+		ExternalID:  m.extID,
+	}, nil
 }
 
 // mockVKClient is a test double for VKClient.
@@ -96,7 +105,7 @@ func TestHandler_PublishPost(t *testing.T) {
 			return 123, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t1",
@@ -124,7 +133,7 @@ func TestHandler_PublishPost_FetchesToken(t *testing.T) {
 		}
 	}
 
-	h := agent.NewHandler(tokens, factory)
+	h := agent.NewHandler(tokens, factory, "")
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t2",
 		Tool:       "vk__publish_post",
@@ -139,7 +148,7 @@ func TestHandler_PublishPost_FetchesToken(t *testing.T) {
 
 func TestHandler_TokenError(t *testing.T) {
 	tokens := &mockTokenFetcher{err: fmt.Errorf("token not found")}
-	h := agent.NewHandler(tokens, nil)
+	h := agent.NewHandler(tokens, nil, "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -159,7 +168,7 @@ func TestHandler_UpdateGroupInfo(t *testing.T) {
 			return nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t3",
@@ -186,7 +195,7 @@ func TestHandler_GetComments(t *testing.T) {
 			return []map[string]interface{}{{"id": "1", "text": "nice!"}}, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t4",
@@ -212,7 +221,7 @@ func TestHandler_GetComments_DefaultCount(t *testing.T) {
 			return nil, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t5",
@@ -227,7 +236,7 @@ func TestHandler_GetComments_DefaultCount(t *testing.T) {
 
 func TestHandler_UnknownTool_ReturnsError(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, nil)
+	h := agent.NewHandler(tokens, nil, "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID: "t6",
@@ -246,7 +255,7 @@ func TestClassifyVKError_PermanentCode5(t *testing.T) {
 		},
 	}
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -264,7 +273,7 @@ func TestClassifyVKError_RateLimitCode6(t *testing.T) {
 		},
 	}
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -282,7 +291,7 @@ func TestClassifyVKError_TransientCode1(t *testing.T) {
 		},
 	}
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -300,7 +309,7 @@ func TestClassifyVKError_NetworkError(t *testing.T) {
 		},
 	}
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -313,7 +322,7 @@ func TestClassifyVKError_NetworkError(t *testing.T) {
 
 func TestClassifyVKError_TokenFetchFailure(t *testing.T) {
 	tokens := &mockTokenFetcher{err: fmt.Errorf("token not found")}
-	h := agent.NewHandler(tokens, nil)
+	h := agent.NewHandler(tokens, nil, "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -337,7 +346,7 @@ func TestHandler_SchedulePost(t *testing.T) {
 			return 999, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-sched",
@@ -367,7 +376,7 @@ func TestHandler_SchedulePost_RFC3339(t *testing.T) {
 			return 888, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-rfc",
@@ -388,7 +397,7 @@ func TestHandler_SchedulePost_RFC3339(t *testing.T) {
 
 func TestHandler_SchedulePost_MissingText(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__schedule_post",
@@ -405,7 +414,7 @@ func TestHandler_SchedulePost_MissingText(t *testing.T) {
 
 func TestHandler_SchedulePost_MissingDate(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__schedule_post",
@@ -422,7 +431,7 @@ func TestHandler_SchedulePost_MissingDate(t *testing.T) {
 
 func TestHandler_SchedulePost_PastDate(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	pastTS := time.Now().Add(-1 * time.Hour).Unix()
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
@@ -441,7 +450,7 @@ func TestHandler_SchedulePost_PastDate(t *testing.T) {
 
 func TestHandler_SchedulePost_InvalidDate(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__schedule_post",
@@ -470,7 +479,7 @@ func TestHandler_ReplyComment(t *testing.T) {
 			return 99, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-reply",
@@ -492,7 +501,7 @@ func TestHandler_ReplyComment(t *testing.T) {
 
 func TestHandler_ReplyComment_MissingPostID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__reply_comment",
@@ -510,7 +519,7 @@ func TestHandler_ReplyComment_MissingPostID(t *testing.T) {
 
 func TestHandler_ReplyComment_MissingCommentID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__reply_comment",
@@ -528,7 +537,7 @@ func TestHandler_ReplyComment_MissingCommentID(t *testing.T) {
 
 func TestHandler_ReplyComment_MissingText(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__reply_comment",
@@ -555,7 +564,7 @@ func TestHandler_DeleteComment(t *testing.T) {
 			return nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-del",
@@ -575,7 +584,7 @@ func TestHandler_DeleteComment(t *testing.T) {
 
 func TestHandler_DeleteComment_MissingCommentID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__delete_comment",
@@ -596,7 +605,7 @@ func TestHandler_DeleteComment_VKError(t *testing.T) {
 			return &vkapi.Error{Code: 15, Message: "access denied"}
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__delete_comment",
@@ -622,7 +631,7 @@ func TestHandler_PostPhoto(t *testing.T) {
 			return 777, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-photo",
@@ -643,7 +652,7 @@ func TestHandler_PostPhoto(t *testing.T) {
 
 func TestHandler_PostPhoto_MissingURL(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__post_photo",
@@ -665,7 +674,7 @@ func TestHandler_PostPhoto_VKError(t *testing.T) {
 			return 0, &vkapi.Error{Code: 5, Message: "invalid token"}
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__post_photo",
@@ -693,7 +702,7 @@ func TestHandler_GetCommunityInfo(t *testing.T) {
 			}, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-info",
@@ -714,7 +723,7 @@ func TestHandler_GetCommunityInfo(t *testing.T) {
 
 func TestHandler_GetCommunityInfo_MissingGroupID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_community_info",
@@ -733,7 +742,7 @@ func TestHandler_GetCommunityInfo_VKError(t *testing.T) {
 			return nil, &vkapi.Error{Code: 100, Message: "invalid param"}
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_community_info",
@@ -760,7 +769,7 @@ func TestHandler_GetWallPosts(t *testing.T) {
 			}, 100, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-wall",
@@ -788,7 +797,7 @@ func TestHandler_GetWallPosts_DefaultCount(t *testing.T) {
 			return nil, 0, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-wall-def",
@@ -811,7 +820,7 @@ func TestHandler_GetWallPosts_ClampCount(t *testing.T) {
 			return nil, 0, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient))
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-wall-clamp",
@@ -829,7 +838,7 @@ func TestHandler_GetWallPosts_ClampCount(t *testing.T) {
 
 func TestHandler_GetWallPosts_MissingGroupID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}))
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_wall_posts",
@@ -839,4 +848,147 @@ func TestHandler_GetWallPosts_MissingGroupID(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "group_id is required")
 	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}))
+}
+
+// --- getReadClient token priority tests ---
+// Read operations (getComments, getCommunityInfo, getWallPosts) use getReadClient
+// which has priority: user token > service key > community token.
+
+func TestReadClient_PrefersUserToken(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "community-tok", userToken: "user-tok", extID: "-123456"}
+	var capturedToken string
+	factory := func(token string) agent.VKClient {
+		capturedToken = token
+		return &mockVKClient{
+			getCommentsFn: func(_ string, _ int) ([]map[string]interface{}, error) {
+				return nil, nil
+			},
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "service-key-tok")
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__get_comments",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "-123456"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "user-tok", capturedToken, "getReadClient should prefer user token over service key and community token")
+}
+
+func TestReadClient_FallsBackToServiceKey(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "community-tok", userToken: "", extID: "-123456"}
+	var capturedToken string
+	factory := func(token string) agent.VKClient {
+		capturedToken = token
+		return &mockVKClient{
+			getCommunityInfoFn: func(_ string) (map[string]interface{}, error) {
+				return map[string]interface{}{"name": "Test"}, nil
+			},
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "service-key-tok")
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__get_community_info",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "-123456"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "service-key-tok", capturedToken, "getReadClient should use service key when user token is empty")
+}
+
+func TestReadClient_FallsBackToCommunityToken(t *testing.T) {
+	tokens := &mockTokenFetcher{token: "community-tok", userToken: "", extID: "-123456"}
+	var capturedToken string
+	factory := func(token string) agent.VKClient {
+		capturedToken = token
+		return &mockVKClient{
+			getWallPostsFn: func(_ string, _ int) ([]map[string]interface{}, int, error) {
+				return nil, 0, nil
+			},
+		}
+	}
+	// No service key set
+	h := agent.NewHandler(tokens, factory, "")
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__get_wall_posts",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "-123456"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "community-tok", capturedToken, "getReadClient should fallback to community token when no user token and no service key")
+}
+
+func TestWriteClient_AlwaysUsesCommunityToken(t *testing.T) {
+	// Write operations (publishPost, updateGroupInfo, etc.) should always use community token,
+	// even when user token and service key are available.
+	tokens := &mockTokenFetcher{token: "community-tok", userToken: "user-tok", extID: "-123456"}
+	var capturedToken string
+	factory := func(token string) agent.VKClient {
+		capturedToken = token
+		return &mockVKClient{
+			publishPostFn: func(_, _ string) (int64, error) { return 1, nil },
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "service-key-tok")
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__publish_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hello", "group_id": "-123456"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "community-tok", capturedToken, "write operations must use community token (AccessToken), not user token or service key")
+}
+
+func TestReadClient_ExternalIDFallback(t *testing.T) {
+	// When group_id is empty, getReadClient should use ExternalID from TokenInfo.
+	// getCommunityInfo properly uses the resolved group_id from getReadClient.
+	tokens := &mockTokenFetcher{token: "tok", extID: "-999888"}
+	var capturedGroupID string
+	factory := func(_ string) agent.VKClient {
+		return &mockVKClient{
+			getCommunityInfoFn: func(groupID string) (map[string]interface{}, error) {
+				capturedGroupID = groupID
+				return map[string]interface{}{"name": "Test"}, nil
+			},
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "")
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__get_community_info",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{}, // no group_id — should resolve from ExternalID
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "-999888", capturedGroupID, "should resolve group_id from TokenInfo.ExternalID")
+}
+
+func TestGetComments_IgnoresResolvedGroupID(t *testing.T) {
+	// BUG: getComments discards resolved groupID from getReadClient and re-reads from Args.
+	// When group_id is not in Args, the VK client receives an empty string.
+	// This test documents the current behavior; the fix is to use the resolved groupID.
+	tokens := &mockTokenFetcher{token: "tok", extID: "-999888"}
+	var capturedGroupID string
+	factory := func(_ string) agent.VKClient {
+		return &mockVKClient{
+			getCommentsFn: func(groupID string, _ int) ([]map[string]interface{}, error) {
+				capturedGroupID = groupID
+				return nil, nil
+			},
+		}
+	}
+	h := agent.NewHandler(tokens, factory, "")
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       "vk__get_comments",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{}, // no group_id
+	})
+	require.NoError(t, err)
+	// Documents current (buggy) behavior: getComments re-reads group_id from Args, getting ""
+	assert.Equal(t, "", capturedGroupID, "getComments re-reads group_id from Args (bug: should use resolved groupID)")
 }
