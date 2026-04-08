@@ -9,9 +9,9 @@ Requirements for Google Business Profile integration. Each maps to roadmap phase
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: User can connect Google account via OAuth2 on integrations page
-- [ ] **INFRA-02**: System auto-discovers user's business locations after OAuth connection
-- [ ] **INFRA-03**: System auto-refreshes expired Google tokens (1hr expiry) without user intervention
+- [x] **INFRA-01**: User can connect Google account via OAuth2 on integrations page
+- [x] **INFRA-02**: System auto-discovers user's business locations after OAuth connection
+- [x] **INFRA-03**: System auto-refreshes expired Google tokens (1hr expiry) without user intervention
 
 ### Review Management
 
@@ -83,9 +83,9 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 10 | Pending |
-| INFRA-02 | Phase 10 | Pending |
-| INFRA-03 | Phase 10 | Pending |
+| INFRA-01 | Phase 10 | Complete |
+| INFRA-02 | Phase 10 | Complete |
+| INFRA-03 | Phase 10 | Complete |
 | REV-01 | Phase 11 | Pending |
 | REV-02 | Phase 11 | Pending |
 | REV-03 | Phase 11 | Pending |
