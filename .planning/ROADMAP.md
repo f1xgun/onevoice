@@ -33,7 +33,7 @@
 
 **Milestone Goal:** Add Google Business Profile as a fully integrated platform agent — users connect their Google account and manage reviews, business info, posts, photos, and performance through the conversational chat interface.
 
-- [ ] **Phase 10: OAuth + Token Infrastructure + Agent Scaffold** - Google OAuth2 flow, automatic token refresh, agent service skeleton with NATS dispatch
+- [x] **Phase 10: OAuth + Token Infrastructure + Agent Scaffold** - Google OAuth2 flow, automatic token refresh, agent service skeleton with NATS dispatch (completed 2026-04-08)
 - [ ] **Phase 11: Review Management + End-to-End Wiring** - First working tools (list/reply/delete reviews), orchestrator registration, frontend integration page
 - [ ] **Phase 12: Business Information Management** - Read and update business description, hours via v1 API
 - [ ] **Phase 13: Post Management** - Create, list, delete posts (standard, offer, event types) via v4 API
@@ -110,7 +110,7 @@
 | 7. Backend Logging Gaps | v1.1 | 2/2 | Complete | 2026-03-22 |
 | 8. Grafana + Loki Stack | v1.1 | 2/2 | Complete | 2026-03-22 |
 | 9. Frontend Telemetry | v1.1 | 2/2 | Complete | 2026-03-22 |
-| 10. OAuth + Token Infrastructure + Agent Scaffold | v1.2 | 2/3 | In Progress | |
+| 10. OAuth + Token Infrastructure + Agent Scaffold | v1.2 | 3/3 | Complete   | 2026-04-08 |
 | 11. Review Management + End-to-End Wiring | v1.2 | 0/0 | Not started | - |
 | 12. Business Information Management | v1.2 | 0/0 | Not started | - |
 | 13. Post Management | v1.2 | 0/0 | Not started | - |
