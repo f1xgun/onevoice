@@ -40,17 +40,17 @@ func TestListByBusinessAndPlatform(t *testing.T) {
 
 	rows := pgxmock.NewRows([]string{
 		"id", "business_id", "platform", "status",
-		"encrypted_access_token", "encrypted_refresh_token",
-		"external_id", "metadata", "token_expires_at",
+		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
+		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
 	}).
 		AddRow(id1, businessID, platform, "active",
-			[]byte("tok1"), []byte(nil),
-			extID1, map[string]interface{}{}, &now,
+			[]byte("tok1"), []byte(nil), []byte(nil),
+			extID1, map[string]interface{}{}, &now, (*time.Time)(nil),
 			now, now).
 		AddRow(id2, businessID, platform, "active",
-			[]byte("tok2"), []byte(nil),
-			extID2, map[string]interface{}{}, &now,
+			[]byte("tok2"), []byte(nil), []byte(nil),
+			extID2, map[string]interface{}{}, &now, (*time.Time)(nil),
 			now, now)
 
 	// squirrel Eq map sorts keys alphabetically: business_id, platform
@@ -81,13 +81,13 @@ func TestGetByBusinessPlatformExternal_Found(t *testing.T) {
 
 	rows := pgxmock.NewRows([]string{
 		"id", "business_id", "platform", "status",
-		"encrypted_access_token", "encrypted_refresh_token",
-		"external_id", "metadata", "token_expires_at",
+		"encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token",
+		"external_id", "metadata", "token_expires_at", "user_token_expires_at",
 		"created_at", "updated_at",
 	}).
 		AddRow(integrationID, businessID, platform, "active",
-			[]byte("tok"), []byte(nil),
-			externalID, map[string]interface{}{}, &now,
+			[]byte("tok"), []byte(nil), []byte(nil),
+			externalID, map[string]interface{}{}, &now, (*time.Time)(nil),
 			now, now)
 
 	// squirrel Eq map sorts keys alphabetically: business_id, external_id, platform
