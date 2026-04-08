@@ -178,6 +178,23 @@ services:
       - onevoice-network
     restart: unless-stopped
 
+  # Google Business agent
+  agent-google-business:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-google-business
+    container_name: onevoice-agent-google-business
+    environment:
+      NATS_URL: nats://nats:4222
+      API_INTERNAL_URL: http://api:8443
+      HEALTH_PORT: "8083"
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
   # Yandex.Business RPA agent
   agent-yandex-business:
     build:
