@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Google Business Profile
 current_phase: "10"
-status: defining requirements
+status: ready to plan
 last_updated: "2026-04-08"
 last_activity: 2026-04-08
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,54 +17,59 @@ progress:
 
 **Project:** OneVoice
 **Milestone:** v1.2 Google Business Profile
-**Current Phase:** Not started (defining requirements)
-**Status:** Defining requirements
-**Last activity:** 2026-04-08 — Milestone v1.2 started
+**Current Phase:** 10 of 14 (OAuth + Token Infrastructure + Agent Scaffold)
+**Status:** Ready to plan
+**Last activity:** 2026-04-08 — Roadmap created for v1.2
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-04-08)
 **Core value:** Business owners can manage digital presence across platforms through a single conversational interface
-**Current focus:** Google Business Profile API integration
+**Current focus:** Google Business Profile API integration — OAuth + token refresh foundation
 
 ## Phase Progress
 
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
-| (pending roadmap) | | | |
+| 10 | OAuth + Token Infrastructure + Agent Scaffold | INFRA-01, INFRA-02, INFRA-03, INTEG-01 | Not started |
+| 11 | Review Management + End-to-End Wiring | REV-01, REV-02, REV-03, INTEG-02, INTEG-03 | Not started |
+| 12 | Business Information Management | BINFO-01, BINFO-02, BINFO-03 | Not started |
+| 13 | Post Management | POST-01, POST-02, POST-03, POST-04, POST-05 | Not started |
+| 14 | Media Upload + Performance Insights | MEDIA-01, PERF-01 | Not started |
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: -
+- Total execution time: 0 hours
 
 ## Accumulated Context
 
 ### From v1.0
 
-- VK ID tokens (both user and service key) cannot call VK API methods — need old-style VK app
-- Community tokens can write (wall.post, groups.edit) but cannot read (wall.get, wall.getComments)
+- VK ID tokens cannot call VK API methods — need old-style VK app
 - metrics.responseWriter must implement http.Flusher for SSE streaming
-- chi Recoverer middleware does NOT break Flusher (it was metrics middleware)
-- 16 logging gaps identified in v1.0 audit (4 critical, 6 medium, 6 low)
 
-### From Phase 07
+### From v1.1
 
-- slog.ErrorContext(ctx, ...) over slog.Error(...) for all error logging — preserves correlation_id via ContextHandler
-- Telegram sync functions return errors for per-operation AgentTask status tracking (sync_title, sync_description, sync_photo)
-- Rate limiter confirmed using r.Context() — no context.Background() (BLG-06)
-
-### From Phase 08
-
+- slog.ErrorContext(ctx, ...) over slog.Error(...) for all error logging
 - Grafana on port 3001 to avoid conflict with frontend on 3000
-- Observability stack as docker-compose overlay: `docker compose -f docker-compose.yml -f docker-compose.observability.yml up`
-- Promtail uses Docker socket service discovery for automatic container log collection
-- Grafana provisioning via YAML files in observability/grafana/provisioning/
-- Grafana dashboards provisioned as JSON: Request Trace (Loki) and Metrics Overview (Prometheus)
-- Datasource referenced by name string ("Loki", "Prometheus") for provisioned datasources
+- Observability stack as docker-compose overlay
+- Frontend telemetry is fire-and-forget: errors silently swallowed
 
-### From Phase 09
+### Blockers/Concerns
 
-- Lazy dynamic import in api.ts to break circular dependency with telemetry.ts
-- Frontend telemetry is fire-and-forget: errors silently swallowed, never breaks user flow
-- sendBeacon used for page unload flush (more reliable than async fetch during navigation)
-- page_view tracking gated on auth ready state to avoid tracking pre-redirect navigations
-- trackClick in mutation onSuccess callbacks for accurate tracking of successful actions only
+- Google API access requires pre-approval (60+ day old business profile). Develop against mocks, validate when approved.
+- OAuth consent screen in Testing mode: refresh tokens expire after 7 days. Switch to Production early.
+
+## Session Continuity
+
+Last session: 2026-04-08
+Stopped at: Roadmap created for v1.2 milestone
+Resume file: None
 
 ---
-*State updated: 2026-04-08 — Milestone v1.2 Google Business Profile started.*
+*State updated: 2026-04-08 — Roadmap created.*
