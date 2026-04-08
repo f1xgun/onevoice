@@ -1,499 +1,473 @@
-# Pitfalls Research
+# Domain Pitfalls: Google Business Profile API Integration
 
-OneVoice — common mistakes and how to prevent them across VK API, Yandex RPA, JWT/auth, monitoring, and multi-service testing.
-
----
-
-## VK API Integration Pitfalls
-
-### 1. Rate Limiting Misconfiguration
-
-**What goes wrong:** VK API enforces per-user and per-app rate limits (approximately 3 requests/second per user token, lower for batch calls). The VK SDK (`SevereCloud/vksdk/v3`) does not automatically throttle or retry on 429. The current `vk__create_wall_post` implementation makes no attempt to track or back off from rate limits. Under moderate load (e.g., LLM making multiple tool calls in a single session), consecutive wall posts trigger `Error 9: Flood control enabled`. The orchestrator interprets this as a permanent tool failure and reports it to the LLM, which may try the same call again — doubling the flood.
-
-**Warning signs:**
-- `VK API Error 9` in logs after rapid successive tool calls
-- LLM retrying a tool call that already hit rate limits
-- Multiple business users sharing one VK app getting collectively throttled
-
-**Prevention strategy:**
-1. Add per-businessID sliding window rate limiter for VK calls in the agent (Redis-backed, reuse existing pattern from `pkg/llm/ratelimit.go`).
-2. Parse VK API error codes (`err.Code == 9`) and return a `NonRetryableError` with a backoff hint. The orchestrator should surface "VK is rate-limiting; wait 30s" to the user rather than silently failing.
-3. VK's `execute` batch method bundles up to 25 operations in one API call — evaluate for bulk operations.
-
-**Phase:** Address in the VK agent completion phase (current active work).
+**Domain:** Adding Google Business Profile (GBP) agent to an existing Go microservices multi-agent platform
+**Researched:** 2026-04-08
+**Overall confidence:** MEDIUM-HIGH (Google's official docs are authoritative but access approval process is opaque)
 
 ---
 
-### 2. Token Expiry and Revocation
+## Critical Pitfalls
 
-**What goes wrong:** VK access tokens with `offline` scope do not technically expire, but they are revoked when: the user changes their VK password, the app is deauthorized in VK settings, or VK detects abuse. The current `oauth.go` refresh logic checks `token_expires_at` but does not handle the revoked-token case (`Error 5: User authorization failed`). A revoked token will cause every tool call to fail permanently, but the system will keep trying (and logging the same error) until a human notices.
+Mistakes that cause rewrites, blocked progress, or broken production systems.
 
-**Warning signs:**
-- Steady stream of `Error 5` or `Error 15` (Access denied) in VK agent logs
-- Tool calls returning error but orchestrator not surfacing it to user clearly
-- Integration shows `active` status in database despite all calls failing
+### Pitfall 1: No Automatic Token Refresh -- Google Access Tokens Expire in 1 Hour
 
-**Prevention strategy:**
-1. In the VK agent, detect `Error 5` and `Error 15` and publish a status update to the API service (via internal endpoint) to mark the integration as `expired` or `revoked`. The integration list page should surface this state.
-2. Add a VK token validation check on agent startup: call `users.get` with the stored token; if it fails with `Error 5`, log a critical warning and mark integration inactive.
-3. The orchestrator should include integration status in the available tools list and exclude tools for expired integrations (already exists via `activeIntegrations` filter — ensure the filter is kept up-to-date).
+**What goes wrong:** Google OAuth2 access tokens expire after exactly 1 hour. The current system has **no automatic token refresh** -- `GetDecryptedToken()` in `services/api/internal/service/integration.go` line 225 explicitly says `// No automatic refresh for now -- return expired error`. For VK and Telegram this was not a problem: VK community tokens with `offline` scope never expire, and Telegram uses a static bot token. Google is the first platform where tokens expire frequently and a refresh token must be used proactively.
 
-**Phase:** VK agent completion + security hardening phase.
+Without automatic refresh, every Google tool call will start failing 1 hour after the user connects their account. The tokenclient returns `ErrTokenExpired`, the agent gets a `NonRetryableError`, and the user sees "token expired" errors in chat. The user must reconnect Google every hour -- completely unacceptable.
 
----
+**Why it happens:** The existing OAuth integration pattern was designed for platforms with long-lived or permanent tokens. Google's 1-hour access token expiry was never accounted for in the architecture.
 
-### 3. API Version Drift
+**Consequences:**
+- Google integration appears broken to users after 1 hour
+- All GBP tool calls fail with `ErrTokenExpired` until manual reconnection
+- If the refresh token itself expires (see Pitfall 2), user must re-authorize entirely
+- The tokenclient has a 5-minute cache -- a refreshed token must invalidate this cache
 
-**What goes wrong:** The codebase pins `v5.131` of the VK API (via `vksdk/v3`). VK periodically deprecates older API versions. Fields in responses may change format or disappear without a 400 error — VK often returns empty strings or zero values for deprecated fields. Code that assumes `post.CopyHistory[0].Text` exists will panic silently on zero-value access when the field format changes.
+**Prevention:**
+1. **Implement token refresh in `GetDecryptedToken()`**: When `TokenExpiresAt` is within 5 minutes of now, decrypt the refresh token, call Google's token endpoint (`https://oauth2.googleapis.com/token` with `grant_type=refresh_token`), store the new access token (encrypted) and new expiry, and return the fresh token. This must be atomic (use a database transaction or row-level lock to prevent concurrent refresh races).
+2. **Use Go's `x/oauth2` TokenSource wrapper**: Create a custom `oauth2.TokenSource` that wraps the database-stored token. The `Token()` method checks expiry, refreshes if needed, and persists the new token. This integrates cleanly with Google's client libraries which accept a `TokenSource`.
+3. **Invalidate tokenclient cache on refresh**: The `tokenclient.Client` caches tokens for 5 minutes. After a refresh, the API service should either: (a) expose a cache-invalidation endpoint, or (b) reduce cache TTL for Google tokens to be shorter than the token's remaining lifetime. The `tokenExpiringSoon()` check already exists in tokenclient -- it returns true when `ExpiresAt` is within 1 minute. This needs to trigger a fresh fetch, not serve stale cache.
+4. **Handle refresh token rotation**: Google may rotate the refresh token during a refresh. When the token response includes a new `refresh_token`, persist it. If the old refresh token is used after rotation, Google returns `invalid_grant`.
 
-**Warning signs:**
-- VK tool returns empty results without any error
-- VK changelog announces deprecation of fields used in the integration
-- Test accounts return different data shapes than production accounts
+**Detection:**
+- `ErrTokenExpired` errors for Google platform in API logs exactly 1 hour after connection
+- tokenclient returning `StatusGone` (410) for Google integrations
+- Users reporting "works at first, stops working later"
 
-**Prevention strategy:**
-1. Set `vksdk` to use the latest stable API version supported by the SDK. Check sdk release notes before upgrading.
-2. Use defensive access patterns: never index into slices from VK responses without length checks. All type assertions from `interface{}` should use the comma-ok form.
-3. Add a scheduled canary test that calls `wall.get` on a test community and validates response shape. Run weekly in CI.
+**Phase:** Must be addressed in the first phase (OAuth/token infrastructure), before any agent tool work begins. This is a prerequisite for all GBP functionality.
 
-**Phase:** VK agent completion, with ongoing maintenance.
-
----
-
-### 4. Community vs. User Wall Permissions
-
-**What goes wrong:** `wall.post` behaves differently depending on whether `owner_id` is negative (community) or positive (user). Posting to a community requires that the OAuth token belongs to a community manager/admin. If the business owner authorized via OAuth as a regular member, `wall.post` returns `Error 7: Permission denied` or silently posts to the user's wall instead of the community wall. The LLM may not distinguish between these two cases and the user sees no post where they expected one.
-
-**Warning signs:**
-- `owner_id` is negative but the post appears on a personal wall
-- `Error 7` or `Error 15` on community posts
-- LLM tool result shows `post_id > 0` but community has no new post
-
-**Prevention strategy:**
-1. At integration setup time (OAuth callback), call `groups.getById` with the connected token to verify the user has `editor` or `administrator` role for the target community. Store the verified community ID as `external_id` in the integrations table.
-2. In the tool definition for `vk__create_wall_post`, require `owner_id` to be a negative number (validate in the agent handler before the API call).
-3. Distinguish `Error 7` as a permanent configuration error (not retryable), surfaced to the user as "VK integration requires community admin permissions."
-
-**Phase:** VK agent completion.
+**Confidence:** HIGH -- verified from official Google OAuth2 docs and existing codebase analysis.
 
 ---
 
-## Yandex.Business RPA Pitfalls
+### Pitfall 2: Refresh Token Expiry in Testing Mode (7-Day Silent Death)
 
-### 1. Memory Leaks from Browser Instance Accumulation
+**What goes wrong:** A Google Cloud project with OAuth consent screen in "Testing" publishing status issues refresh tokens that **expire after exactly 7 days**. This is documented but frequently overlooked. During development, the integration works perfectly for a week, then all tokens silently stop working. The error is `invalid_grant: Token has been expired or revoked` -- which looks identical to a revoked token, making debugging confusing.
 
-**What goes wrong:** The current `browser.go` uses a single Playwright browser instance reused across operations via `withPage`. If a Playwright operation hangs (e.g., page load timeout waiting for a slow Yandex CDN), the page is not released back to the pool properly. Over time, multiple hung pages accumulate in the browser process. Each page consumes roughly 50–150MB of browser memory. After enough operations, the agent pod OOM-kills, losing any in-progress tool calls silently.
+Additionally, even after switching to "Production" status, tokens generated while in Testing mode remain on the 7-day clock. You must generate **new** OAuth credentials and re-authorize users after switching to Production.
 
-**Warning signs:**
-- Agent pod memory grows monotonically; never plateaus
-- RSS memory of `chromium` subprocess climbs over hours
-- `withPage` calls start timing out without network errors
+**Why it happens:** Google restricts Testing-mode apps to 100 test users with 7-day token lifetimes to prevent abuse of unverified apps. Developers often forget to switch to Production before deploying, or switch but reuse old credentials.
 
-**Prevention strategy:**
-1. Enforce a hard timeout on every `withPage` call (currently missing). Set `page.SetDefaultTimeout(30000)` at page creation time, not per-action.
-2. Use `defer page.Close()` inside `withPage` to guarantee page cleanup even on panic.
-3. Add a memory watchdog: if the Chromium subprocess RSS exceeds a configurable threshold (e.g., 1GB), restart it gracefully before the next tool call. Log the restart event.
-4. Use Playwright's `BrowserContext` isolation per operation (create and destroy context per tool call) rather than sharing one browser context. Slightly more overhead but eliminates state leaks between operations.
+**Consequences:**
+- Integration works for exactly 7 days, then silently breaks
+- `invalid_grant` error is ambiguous -- could be revocation, password change, or testing-mode expiry
+- Switching to Production requires new OAuth credentials AND re-authorization of all users
+- Development/testing workflow is disrupted every 7 days
 
-**Phase:** Yandex agent implementation phase.
+**Prevention:**
+1. **Switch to Production publishing status immediately** after basic OAuth flow works. For apps using only `business.manage` scope, Google requires consent screen verification (brand verification, domain verification). Start this process early -- it takes 2-3 business days for brand verification.
+2. **After switching to Production, create NEW OAuth client credentials** (Client ID + Client Secret). Do not reuse Testing-mode credentials.
+3. **In the agent error handler, distinguish `invalid_grant` subtypes**: Log the full error response from Google's token endpoint. If the error is `invalid_grant`, mark the integration as `needs_reauth` rather than just `expired`. Surface a user-facing message: "Your Google connection has expired. Please reconnect your account."
+4. **Add a startup check**: On API service boot, query all Google integrations and attempt a token refresh for each. Log warnings for any that fail. This catches silent 7-day expirations before users hit them.
 
----
+**Detection:**
+- Google integrations that worked last week now return `invalid_grant`
+- Console shows OAuth consent screen in "Testing" status
+- QPM quota shows 0 (not yet approved) or credentials are from Testing phase
 
-### 2. Zombie Browser Processes After Agent Crash
+**Phase:** Address during OAuth setup phase. Switch to Production status before any development begins.
 
-**What goes wrong:** If the Go agent process panics or is killed by SIGKILL (OOM), the Playwright-spawned Chromium subprocess is not cleaned up — it becomes a zombie or orphan process. On the next agent restart, a new Chromium process is launched. After several crash-restart cycles, multiple Chromium processes run simultaneously, consuming CPU and memory. The OS may eventually block new process creation.
-
-**Warning signs:**
-- `ps aux | grep chromium` shows multiple processes after several agent restarts
-- Disk full errors in `/tmp/playwright-*` temp directories
-- Agent fails to launch Playwright with `executable not found` after file descriptor exhaustion
-
-**Prevention strategy:**
-1. On agent startup, scan for and kill orphaned Chromium processes before launching a new one. Use `pkill -f chromium` before `playwright.Run()` (acceptable in containerized environments where the agent is the only Chromium user).
-2. Implement graceful shutdown: register SIGTERM handler that calls `browser.Close()` before exit. The current `main.go` exit path needs this.
-3. Run the agent in a container with `--init` (tini) so orphan child processes are properly reaped when the agent exits.
-4. Set a maximum restart count in the container orchestrator (Kubernetes `restartPolicy: OnFailure` with backoff).
-
-**Phase:** Yandex agent implementation + deployment hardening.
+**Confidence:** HIGH -- verified from multiple Google developer forum threads and official docs.
 
 ---
 
-### 3. Selector Drift from Yandex DOM Changes
+### Pitfall 3: API Access Requires Pre-Approval Application (Not Just Enable)
 
-**What goes wrong:** Yandex.Business is a closed platform with no stability guarantees on its DOM structure. A CSS class rename or React component refactor silently breaks all selectors. The current stub implementations have no selectors yet, but once written they will need active maintenance. The most common failure mode is: selectors match the wrong element (e.g., a button that is still present but now has different behavior), the action "succeeds" (no error thrown), but the wrong data is submitted.
+**What goes wrong:** Unlike most Google APIs where you simply click "Enable" in the Cloud Console, Google Business Profile APIs require a **separate application for access**. You must submit a request via the GBP API contact form, selecting "Application for Basic API Access." Until approved, your quota is 0 QPM -- all API calls return 403. Approval requires:
 
-**Warning signs:**
-- Tool reports success but no change is visible in Yandex.Business UI
-- `page.Locator(selector).Click()` completes but the expected form doesn't open
-- Playwright screenshots show a different page state than expected
+- A Google Business Profile that is **verified and active for 60+ days**
+- A website representing the business listed on the GBP
+- The applicant email must be listed as owner/manager on the GBP
 
-**Prevention strategy:**
-1. Use Playwright's `getByRole`, `getByText`, and `getByLabel` selectors where possible — they are more resilient to class renames than CSS selectors.
-2. After every action that should produce a change (e.g., submit hours form), add an explicit assertion: wait for a success toast or confirmation element. Treat the absence of confirmation as a failure, not a success.
-3. Capture a screenshot at the end of every tool call and attach it to the tool response as a debug artifact. Log to structured storage (even local disk) for post-mortem analysis.
-4. Schedule a weekly smoke test that opens the Yandex.Business dashboard in headful mode (locally) and checks that key selectors still resolve. Alert if they fail.
+**Why it happens:** Google restricts GBP API access to prevent spam and abuse of business listings. This is a gatekeeper, not a bug.
 
-**Phase:** Yandex agent implementation, with ongoing maintenance.
+**Consequences:**
+- Cannot make any API calls until approved (quota = 0)
+- Approval timeline is opaque -- could be days or weeks
+- Development is completely blocked without approval
+- If the test Google Business Profile is less than 60 days old, the application will be rejected
 
----
+**Prevention:**
+1. **Apply for API access immediately** -- before writing any code. This is a blocking dependency with an unpredictable timeline.
+2. **Ensure the GBP account used for the application meets all prerequisites**: verified, 60+ days active, with the applicant email as owner/manager.
+3. **Check quota after application**: In the Google Cloud Console, navigate to APIs & Services > Credentials. If QPM shows 0, access has not been granted yet. If QPM shows 300, you are approved.
+4. **Have a fallback plan**: If approval is delayed, develop against mocked API responses (use `httptest` server with recorded responses). The agent handler and tool dispatch can be fully tested without real API access.
 
-### 4. Anti-Bot Detection Triggering CAPTCHA
+**Detection:**
+- All GBP API calls return HTTP 403
+- Cloud Console shows 0 QPM for GBP APIs
+- No approval confirmation email received
 
-**What goes wrong:** Yandex uses behavioral fingerprinting and CAPTCHA to detect automation. The `humanDelay` helper adds 500–1500ms random delays, but this is insufficient by itself. Patterns that trigger detection: perfect mouse trajectories (Playwright clicks at exact element centers), missing mouse movement between actions, identical timing distributions across sessions, and missing browser entropy (fonts, canvas fingerprint, timezone mismatches).
+**Phase:** This must happen before any development phase begins. Apply during planning/setup, not during implementation.
 
-**Warning signs:**
-- Yandex.Business redirects to a CAPTCHA page mid-session
-- `canary check` fails with unexpected redirect to `/showcaptcha`
-- Sessions expire much faster than expected (minutes instead of hours)
-
-**Prevention strategy:**
-1. Use `page.Mouse.Move()` with intermediate waypoints before clicks to simulate realistic mouse movement.
-2. Launch Playwright with a realistic user agent and full browser profile (timezone, language, screen resolution matching a real business user's setup). Avoid headless detection markers: set `--disable-blink-features=AutomationControlled`.
-3. Maintain session cookies from an actual real logged-in session and refresh them regularly (weekly or before each run). Do not use programmatic login flows — they are the highest-risk detection vector.
-4. Implement CAPTCHA detection in the canary check: if the page URL contains `showcaptcha` or the title contains "Я не робот", return a specific error type (`ErrCaptchaDetected`) so the user is notified and manual intervention can refresh the session.
-
-**Phase:** Yandex agent implementation.
+**Confidence:** HIGH -- verified from official prerequisites page.
 
 ---
 
-### 5. Stale Cookie Handling and Session Recovery
+### Pitfall 4: Eight Separate APIs Must Be Enabled (Not One)
 
-**What goes wrong:** Already identified in CONCERNS.md — `setCookies()` silently discards invalid cookie fields. Beyond that, even valid cookies expire. The current `withRetry` will retry a failed action up to 3 times, but if the session is expired, all 3 attempts will fail the same way. This wastes 3 × exponential backoff time (7+ seconds) before returning an error to the user. Worse, the canary check navigates to the dashboard but may not detect a soft expiry (Yandex sometimes shows a partial dashboard to expired sessions before redirecting to login).
+**What goes wrong:** "Google Business Profile API" is not a single API. It is a federation of **eight separate APIs**, each with its own endpoint and each needing to be individually enabled in the Cloud Console:
 
-**Warning signs:**
-- All tool calls fail with page redirect to login page
-- Retry attempts all produce identical errors
-- `YANDEX_COOKIES_JSON` was set more than 30 days ago (Yandex session cookies typically last 30–90 days)
+1. Google My Business API (`mybusiness.googleapis.com`) -- legacy v4, still used for reviews and posts
+2. My Business Account Management API (`mybusinessaccountmanagement.googleapis.com`)
+3. My Business Business Information API (`mybusinessbusinessinformation.googleapis.com`)
+4. My Business Verifications API (`mybusinessverifications.googleapis.com`)
+5. My Business Lodging API (`mybusinesslodging.googleapis.com`)
+6. My Business Place Actions API (`mybusinessplaceactions.googleapis.com`)
+7. My Business Notifications API (`mybusinessnotifications.googleapis.com`)
+8. My Business Q&A API (deprecated November 2025 -- do NOT enable)
+9. Business Profile Performance API (`businessprofileperformance.googleapis.com`)
 
-**Prevention strategy:**
-1. Implement a robust canary check: after navigation, assert that a specific authenticated element is present (e.g., the business name heading). Use `page.Locator(".business-name").IsVisible()` with a short timeout (5s). If not visible, return `ErrSessionExpired` immediately without retrying.
-2. Log cookie expiry times at agent startup so operators can predict and proactively refresh sessions. Alert 7 days before the earliest cookie expiry.
-3. In `withRetry`, check if the error is `ErrSessionExpired` and skip all retry attempts — session expiry is not a transient error.
-4. Consider building a cookie refresh helper: a separate script that logs in interactively (with human CAPTCHA solving) and outputs fresh cookies to be passed as the new env variable value.
+Missing any required API results in `403 Forbidden` errors that look identical to authentication failures, not "API not enabled" errors.
 
-**Phase:** Yandex agent implementation + security hardening.
+**Why it happens:** Google split the monolithic My Business API v4 into separate microservices. The documentation buries this across multiple pages.
 
----
+**Consequences:**
+- Mysterious 403 errors that look like OAuth problems but are actually missing API enablement
+- Hours wasted debugging "authentication" when the real issue is a missing API toggle
+- Different features (reviews vs. business info vs. posts) use different API endpoints and different Go client libraries
 
-## JWT/Auth Security Pitfalls
+**Prevention:**
+1. **Enable all required APIs in one go during project setup**: At minimum, enable: Account Management, Business Information, Verifications, and the legacy My Business API (for reviews and posts). Skip Q&A (deprecated Nov 2025) and Lodging (not needed).
+2. **Test each API independently**: After enabling, make a simple test call to each endpoint to confirm it returns data, not 403.
+3. **Document which API serves which feature**:
+   - Reviews: `mybusiness.googleapis.com/v4` (legacy v4 -- NOT the new v1 APIs)
+   - Business Info: `mybusinessbusinessinformation.googleapis.com/v1`
+   - Account/Location listing: `mybusinessaccountmanagement.googleapis.com/v1`
+   - Posts (localPosts): `mybusiness.googleapis.com/v4` (legacy v4)
+4. **In the Go agent, use separate client instances** for v4 and v1 APIs. Do not assume one client covers all endpoints.
 
-### 1. Algorithm Confusion (alg:none and RS256/HS256 Confusion)
+**Detection:**
+- 403 errors mentioning "API has not been used in project" or "API is disabled"
+- Different tool calls failing on different endpoints despite the same OAuth token working
 
-**What goes wrong:** The codebase uses `jwt.Parse()` with `jwt.MapClaims`. If the parser does not explicitly validate the `alg` header field, a crafted JWT with `"alg":"none"` and no signature passes validation in some JWT library versions. Additionally, if the application ever adds RSA-based tokens (e.g., for a third-party integration), an attacker can craft a JWT signed with the RSA public key using HS256 — if the verifier uses the public key as the HMAC secret, the signature validates.
+**Phase:** Address during GCP project setup phase, before any agent code.
 
-**Warning signs:**
-- JWT validation does not explicitly specify expected algorithms
-- `jwt.Parse()` is called without a `jwt.WithValidMethods()` option
-- Different token issuers use different algorithms with the same validation code path
-
-**Prevention strategy:**
-1. Always use `jwt.WithValidMethods([]string{"HS256"})` when parsing. The `golang-jwt/jwt/v5` library supports this via `ParseOptions`.
-2. Use typed claims (`CustomClaims` struct with `jwt.RegisteredClaims` embedded) and `jwt.ParseWithClaims()` — already recommended in CONCERNS.md. Typed claims also prevent type confusion attacks where `user_id` is sent as an integer.
-3. Add a test that attempts to validate a `alg:none` token and asserts it returns an error.
-
-**Phase:** Security hardening phase (active).
-
----
-
-### 2. Refresh Token Replay and Revocation Races
-
-**What goes wrong:** The current refresh token implementation stores a hash in PostgreSQL with a 7-day TTL. The refresh endpoint does a lookup + delete + issue (non-atomic). Under race conditions with concurrent requests (e.g., a mobile client with reconnect logic sending two refresh requests simultaneously), both requests may read the old token before either deletes it. Both receive new tokens. One of those new tokens is then "orphaned" — the user has two valid sessions, neither aware of the other. If an attacker also had the original refresh token (e.g., stolen from localStorage), the attacker can also exchange it simultaneously.
-
-**Warning signs:**
-- User reports being logged in on multiple devices after they expected single-session behavior
-- Two valid refresh tokens visible in the `refresh_tokens` table for the same user
-- Refresh endpoint occasionally returns 401 for a token that was valid a moment ago (the concurrent delete race)
-
-**Prevention strategy:**
-1. Make the refresh operation atomic using a PostgreSQL `DELETE ... RETURNING` query: delete the old token and return it in one statement. If 0 rows returned, the token was already used — return 401. This eliminates the read-then-delete race.
-2. Implement refresh token rotation: when a refresh token is used, issue a new one and revoke the old. If the old token is presented again after rotation, treat it as a token theft signal and revoke all tokens for that user.
-3. Track the `family` of refresh tokens (a UUID shared across all rotations from the original login). If a revoked family member is presented, revoke all tokens in the family.
-
-**Phase:** Security hardening phase (active).
+**Confidence:** HIGH -- verified from official basic setup page and API library documentation.
 
 ---
 
-### 3. JWT Secret Rotation Without Downtime
+### Pitfall 5: Reviews and Posts Remain on Legacy v4 API (Not v1)
 
-**What goes wrong:** The `JWT_SECRET` is a single static value. If it must be rotated (compromise, scheduled rotation), all currently valid access tokens immediately become invalid. Every active user is logged out simultaneously. This creates a support incident and is a disincentive to rotate secrets regularly.
+**What goes wrong:** Google migrated account management and business information to new v1 APIs (`mybusinessaccountmanagement`, `mybusinessbusinessinformation`), but **reviews and local posts remain on the legacy v4 API** (`mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews`). There is no announced migration date for reviews.
 
-**Warning signs:**
-- JWT_SECRET has never been rotated since initial deployment
-- No rotation procedure documented
-- Secret rotation == mass logout
+Developers who follow the "new API" documentation for business information may assume reviews also use v1 endpoints. They do not. The Go client libraries are also split:
+- `google.golang.org/api/mybusinessbusinessinformation/v1` -- for business info (v1)
+- `google.golang.org/api/mybusiness/v4` -- for reviews and posts (v4, may not exist as auto-generated lib)
 
-**Prevention strategy:**
-1. Support multiple valid JWT secrets simultaneously: primary + previous. Validation tries primary first, then falls back to previous. New tokens always use primary. After the access token TTL (1 hour), all tokens are signed by the new primary.
-2. Store the key identifier in the JWT `kid` header field. The validator selects the correct key by `kid`. This also works for RS256/ES256 with a JWKS endpoint.
-3. Define a rotation procedure in the runbook: rotate primary → old primary becomes secondary → after 2 hours (2× access token TTL) remove secondary.
+The v4 reviews API may require **direct HTTP calls** rather than a generated Go client, because Google's auto-generated Go client for v4 is in maintenance mode and may not include all review methods.
 
-**Phase:** Security hardening phase.
+**Why it happens:** Google's API migration is incomplete. They migrated the easy parts (CRUD on locations) but left reviews and posts on v4 with no timeline.
 
----
+**Consequences:**
+- Using v1 endpoints for reviews returns 404 or unexpected errors
+- Auto-generated Go client for v4 may be missing methods or have stale types
+- Must maintain two different API calling patterns in the same agent (v4 for reviews/posts, v1 for business info)
 
-### 4. Refresh Token in localStorage (Already in CONCERNS.md — Extended Analysis)
+**Prevention:**
+1. **For reviews and posts, use direct HTTP calls** with `x/oauth2` token source, not the auto-generated client library. Build a thin wrapper around `net/http` that adds the OAuth2 bearer token. This gives full control over the request and avoids library version issues.
+2. **For business information and account management, use the v1 Go client libraries** (`google.golang.org/api/mybusinessbusinessinformation/v1` and `google.golang.org/api/mybusinessaccountmanagement/v1`). These are actively maintained.
+3. **Abstract the API version difference behind the agent's tool handler**: Each tool handler (e.g., `google_business__list_reviews` vs `google_business__update_info`) calls the appropriate API version internally. The caller (orchestrator/NATS) never needs to know.
+4. **Pin the v4 base URL**: `https://mybusiness.googleapis.com/v4/` -- this has been stable for years.
 
-**What goes wrong:** XSS is the primary attack vector, but the threat surface is wider than just inline scripts. In Next.js 14, third-party analytics scripts (if ever added), compromised npm packages (supply chain), and browser extensions with broad permissions can all read `localStorage`. The refresh token has a 7-day window — far longer than an access token — giving attackers an extended window for impersonation.
+**Detection:**
+- 404 errors when calling review endpoints on v1 URLs
+- Auto-generated client missing `UpdateReply` or `ListReviews` methods
+- Confusion in code reviews about "which API version to use"
 
-**Warning signs:**
-- Application adding any third-party JavaScript (analytics, chat widgets, A/B testing)
-- `localStorage` accessed from any code path other than the auth library
-- CSP headers missing or set to `unsafe-inline`
+**Phase:** Address during agent implementation phase. Design the client abstraction before writing tool handlers.
 
-**Prevention strategy:**
-1. Move refresh token to an `HttpOnly; Secure; SameSite=Strict` cookie. This requires API changes to set/clear the cookie on login/logout and frontend changes to remove localStorage access. The API already sets cookies in some paths — extend to refresh token.
-2. Add `Content-Security-Policy: script-src 'self'` header to block third-party script execution. Enforce via Next.js `headers()` config.
-3. For the diploma demo, at minimum add `SameSite=Strict` to all cookies and document the localStorage risk in the security section of the thesis.
-
-**Phase:** Security hardening phase (active).
+**Confidence:** HIGH -- verified from official review data documentation, deprecation schedule, and Go package docs.
 
 ---
 
-### 5. Missing JWT Audience and Issuer Validation
+## Moderate Pitfalls
 
-**What goes wrong:** The current JWT validation checks signature and expiry but not `iss` (issuer) or `aud` (audience) claims. If another service in the ecosystem (or a future integration) also issues JWTs signed with a similar HS256 key, a token from that service could be replayed against the OneVoice API. More concretely: the orchestrator service and the API service both exist — if either ever issues JWTs, they must not be interchangeable.
+Mistakes that cause significant delays or subtle bugs but are recoverable.
 
-**Warning signs:**
-- JWT `iss` claim is not set at token creation time
-- JWT validation does not assert `iss == "onevoice-api"`
-- Multiple services using JWT without namespace separation
+### Pitfall 6: Account/Location Hierarchy Discovery Is Required Before Any Operations
 
-**Prevention strategy:**
-1. Set `Issuer: "onevoice-api"` in `RegisteredClaims` at token creation.
-2. Set `Audience: jwt.ClaimStrings{"onevoice-frontend"}` to scope tokens to their intended consumer.
-3. Add `jwt.WithIssuers("onevoice-api")` and `jwt.WithAudiences("onevoice-frontend")` to all `ParseWithClaims` calls.
+**What goes wrong:** All GBP API operations require a `location` resource name in the format `locations/{locationId}` (v1) or `accounts/{accountId}/locations/{locationId}` (v4). The user does not know these IDs. After OAuth consent, you must:
 
-**Phase:** Security hardening phase.
+1. List accounts via Account Management API to get `accountId`
+2. List locations under that account to get `locationId`(s)
+3. Store the selected location as the integration's `external_id`
 
----
+This is analogous to the VK OAuth flow where the user selects a community after initial auth (the existing `VKCommunities` and `VKCommunityAuthURL` endpoints). Google requires a similar multi-step flow.
 
-## Monitoring Anti-Patterns
+**Why it happens:** A Google account can own/manage multiple business profiles. The API cannot assume which one the user wants to manage.
 
-### 1. Alert Fatigue from Low-Threshold Rate Alerts
+**Prevention:**
+1. **Implement a location selection step** in the OAuth callback flow, mirroring the existing VK community selection pattern:
+   - Step 1: User authorizes Google OAuth (stores tokens temporarily in Redis, like VK's `vk_temp_token`)
+   - Step 2: Frontend calls `GET /oauth/google/locations` to list available business profiles
+   - Step 3: User selects a location
+   - Step 4: Backend stores the selected `locationId` (and `accountId`) as the integration's `external_id` and metadata
+2. **Store both `accountId` and `locationId` in metadata**: The v4 API needs `accounts/{accountId}/locations/{locationId}` while v1 needs just `locations/{locationId}`. Store both to avoid re-fetching.
+3. **Handle the case where the user has zero locations**: Display a helpful error ("No Google Business Profiles found for this account") rather than a generic failure.
 
-**What goes wrong:** The first instinct when adding Prometheus metrics is to alert on every non-zero error count. In a multi-agent system with external API calls (VK, Telegram, Yandex), transient errors are expected and normal. Alerting on "any 5xx from any service" produces constant noise from VK rate limits, Telegram API hiccups, and network blips. On-call engineers begin ignoring alerts. The one real incident — a database connection pool exhaustion — is lost in the noise.
+**Phase:** OAuth flow implementation phase.
 
-**Warning signs:**
-- Alerts fire daily or more frequently
-- Engineers acknowledge alerts without investigating
-- Alert history shows long periods between "resolved" and next "firing" with no human action
-- No documented alert runbook exists
-
-**Prevention strategy:**
-1. Alert on rates and trends, not raw counts: `rate(http_requests_total{status=~"5.."}[5m]) > 0.05` (5% error rate over 5 minutes), not `http_requests_total{status="500"} > 0`.
-2. Separate alerts by severity: page for database down or NATS disconnected; ticket/Slack for elevated error rates; dashboard-only for individual transient errors.
-3. Every alert must have a linked runbook with: "what this means," "likely causes," "immediate actions." If you can't write the runbook, the alert is not ready.
-4. Use Prometheus `for: 5m` on all alerts to require the condition to persist before firing. One spike should not wake anyone up.
-
-**Phase:** Monitoring phase (active).
+**Confidence:** HIGH -- verified from official location data documentation and v4 REST reference.
 
 ---
 
-### 2. Cardinality Explosion in Metric Labels
+### Pitfall 7: Location Must Be Verified for Review Replies to Work
 
-**What goes wrong:** Adding high-cardinality labels to metrics is the most common Prometheus mistake. In OneVoice, the tempting but catastrophic label choices are: `business_id` (every user gets a unique ID — 10,000 businesses = 10,000 time series per metric), `conversation_id`, `tool_name` with arbitrary user-supplied values, or `user_id`. Prometheus stores all time series in memory. At high cardinality, the Prometheus server OOM-kills long before any business value is extracted.
+**What goes wrong:** The `accounts.locations.reviews.updateReply` method only works on **verified** locations. If the Google Business Profile is claimed but not verified (or verification is pending), review reply calls return a permission error. The API does not clearly distinguish "location not verified" from "insufficient OAuth scope."
 
-**Warning signs:**
-- Prometheus memory grows continuously as user count grows
-- `prometheus_tsdb_head_series` metric climbs steadily
-- Query performance degrades: `rate()` queries timeout
-- Label value sets include UUIDs, email addresses, or raw text
+**Why it happens:** Google requires business verification (postcard, phone, email) before allowing management actions. API access does not bypass this requirement.
 
-**Prevention strategy:**
-1. Only use low-cardinality labels: `service`, `platform` (telegram/vk/yandex_business), `tool_name` (known set of ~10 tools), `status` (success/error), `http_method`, `endpoint` (route pattern not URL).
-2. Never use `business_id`, `user_id`, `conversation_id`, or any free-form string as a label.
-3. For per-business metrics, use application-level aggregation (e.g., a daily job that writes aggregate stats to PostgreSQL) rather than Prometheus.
-4. Set `metric_relabel_configs` in Prometheus to drop or hash high-cardinality labels if they sneak in via middleware.
+**Prevention:**
+1. **Check location verification status during the location selection step**: When listing locations, include the `verification_state` field. Only allow selection of verified locations.
+2. **In tool handlers, return a clear error**: If a review reply fails with a permission error, check if the location is unverified and return `NonRetryableError("Google Business Profile is not verified -- verify it at business.google.com before managing reviews")`.
+3. **Store verification status in integration metadata**: Display it on the frontend integrations page so the user knows why some operations are unavailable.
 
-**Phase:** Monitoring phase.
+**Phase:** OAuth flow + agent implementation phase.
+
+**Confidence:** MEDIUM -- verified from official updateReply docs ("only valid if the specified location is verified"), but exact error format unverified without API access.
 
 ---
 
-### 3. Missing Distributed Trace Correlation
+### Pitfall 8: Rate Limits Are Shared Across All Eight APIs (300 QPM Total)
 
-**What goes wrong:** The system has structured logging (`slog`) but no request correlation across service boundaries. A chat request flows: Frontend → API (`chat_proxy.go`) → Orchestrator → NATS → Telegram Agent → Telegram API. When a tool call fails, logs exist in 3+ services. Without a shared `request_id` or `trace_id` threading through all logs, diagnosing "why did this specific user's post fail at 14:32?" requires manually correlating timestamps across multiple log files — which fails when clocks drift or when logs are interleaved from concurrent requests.
+**What goes wrong:** The 300 QPM (queries per minute) quota is shared across **all** GBP APIs for a given GCP project. Additionally, there is a hard limit of **10 edits per minute per individual Google Business Profile** that cannot be increased. If the LLM makes rapid successive tool calls (list reviews, reply to 5 reviews, update business info), it can easily exceed the per-location edit limit.
 
-**Warning signs:**
-- Debugging a production issue requires SSH into multiple containers and manual timestamp correlation
-- NATS messages have no tracing metadata
-- SSE events have no correlation to the originating HTTP request
+**Why it happens:** Google enforces conservative rate limits on GBP APIs. The per-location edit limit is designed to prevent spam.
 
-**Prevention strategy:**
-1. Generate a `trace_id` (UUID) at the API layer for every chat request. Propagate it in all downstream calls: as an HTTP header (`X-Trace-ID`) to the orchestrator, and as a field in the A2A `TaskRequest` struct.
-2. Log the `trace_id` in every log line related to that request (use `slog.With("trace_id", traceID)` to create a child logger).
-3. For a lightweight implementation without OpenTelemetry: add `request_id` field to `TaskRequest` (already has a stub) and log it in every agent handler.
-4. If adding OpenTelemetry: instrument the NATS transport in `pkg/a2a/nats_transport.go` to propagate W3C trace context headers in NATS message headers.
+**Consequences:**
+- 429 errors that halt the orchestrator's agent loop
+- Per-location edit limit means a user cannot bulk-reply to many reviews in one chat session
+- The LLM may attempt more operations than the quota allows in a single conversation turn
 
-**Phase:** Monitoring phase + ongoing.
+**Prevention:**
+1. **Add a per-location rate limiter in the Google agent**: Use Go's `rate.Limiter` (like the VK agent's client-side limiter) set to 8 edits/minute (leaving 2/min headroom). For read-only operations (list reviews, get info), use a separate limiter at 250 QPM.
+2. **In tool descriptions, state the rate limit explicitly**: "Can reply to at most 8 reviews per minute. If more replies are needed, the assistant will process them across multiple turns." This prevents the LLM from attempting 20 review replies in one turn.
+3. **Return rate limit errors as `NonRetryableError` with a user-facing message**: "Google rate limit reached. Please wait 1 minute before making more changes." Do not let the orchestrator retry -- it will just hit the same limit.
+4. **Consider batching read operations**: Use `batchGetReviews` to fetch reviews across locations in one call instead of individual calls per review.
 
----
+**Phase:** Agent implementation phase.
 
-### 4. Health Checks That Pass When Service Is Degraded
-
-**What goes wrong:** A simple `/health` endpoint that returns 200 if the HTTP server is running misses all the interesting failures. In OneVoice, a service can be "up" (HTTP server running) but effectively dead: NATS connection dropped (no tool calls will work), PostgreSQL pool exhausted (no DB operations), or MongoDB replica set primary election (writes fail). A load balancer that routes traffic to a degraded service amplifies the problem.
-
-**Warning signs:**
-- Health check says UP but tool calls return errors
-- NATS disconnect is not detected for minutes (until the next tool call fails)
-- Database pool exhaustion not surfaced until requests start failing
-
-**Prevention strategy:**
-1. Implement a deep health check that tests each dependency: PostgreSQL (`db.Ping()`), MongoDB (`client.Ping()`), Redis (`client.Ping()`), NATS (check `nc.IsConnected()`). Return 503 if any required dependency is unhealthy.
-2. Separate liveness (is the process alive?) from readiness (can it handle traffic?) probes for Kubernetes. Liveness: simple 200. Readiness: deep check.
-3. Cache health check results for 5 seconds to avoid `Ping()` on every Kubernetes probe (probes run every 10s by default).
-4. Return structured JSON from the health endpoint: `{"status":"degraded","checks":{"postgres":"ok","nats":"error: connection refused"}}`. This makes debugging much faster.
-
-**Phase:** Monitoring phase (active).
+**Confidence:** HIGH -- verified from official limits page.
 
 ---
 
-### 5. No Visibility Into NATS Queue Depth or Timeout Rate
+### Pitfall 9: `prompt=consent` Required for Refresh Token on Re-authorization
 
-**What goes wrong:** NATS request/reply is the nervous system of the multi-agent system. If agents are slow, NATS queues build up. If an agent is down, requests time out silently (after the 30s timeout). Without metrics on NATS behavior, the first sign of an agent being overwhelmed is user complaints. By the time a human investigates, the queue has grown further.
+**What goes wrong:** Google only returns a `refresh_token` in the token exchange response when `prompt=consent` and `access_type=offline` are both set in the authorization URL. On subsequent re-authorizations (user reconnecting after token revocation), if `prompt=consent` is omitted, Google skips the consent screen and returns only an access token with no refresh token. The integration then has no way to refresh, and it silently expires after 1 hour.
 
-**Warning signs:**
-- Users report slow tool execution without any error
-- Agent logs show processing time > 20s for routine operations
-- No metrics exist for NATS message counts, timeouts, or latency
+Additionally, there is a limit of **50 refresh tokens per Google Account per OAuth client ID**. Creating a 51st refresh token silently invalidates the oldest one.
 
-**Prevention strategy:**
-1. Instrument the NATS executor (`natsexec/executor.go`) to record: request latency (histogram), timeout count (counter by `tool_name`), and error count.
-2. Record agent-side processing time in the `TaskResponse` and log it in the orchestrator when receiving the reply.
-3. Alert on NATS timeout rate exceeding 1% over 10 minutes — this indicates an agent is struggling.
-4. Add a NATS-specific metric: subscribe count per subject (using NATS server's `/varz` HTTP endpoint) to detect agent disconnects.
+**Why it happens:** Google's OAuth2 implementation only provides the refresh token on explicit consent grants, not on cached consent reuse.
 
-**Phase:** Monitoring phase.
+**Prevention:**
+1. **Always include `prompt=consent&access_type=offline`** in the Google OAuth authorization URL. This forces the consent screen to appear every time, ensuring a refresh token is always returned.
+2. **Validate the token response includes a `refresh_token`**: In the callback handler, if `refresh_token` is empty, log a critical error and redirect the user with an error message. Do not create an integration without a refresh token.
+3. **Store the refresh token on every successful exchange**: Even if the refresh token looks the same, Google may rotate it silently. Always overwrite the stored refresh token.
+4. **Be aware of the 50-token limit**: For a single-user deployment (diploma project), this is not an issue. For multi-tenant, track refresh token count per Google account.
 
----
+**Phase:** OAuth flow implementation phase.
 
-## Testing Gaps That Cause Incidents
-
-### 1. No Chaos/Failure Tests for NATS Disconnects
-
-**What goes wrong:** The orchestrator's NATS executor has a 30-second timeout, but what happens when NATS is unavailable (restart, network partition)? The current code attempts the request and waits the full timeout. If NATS is down during a chat session with multiple tool calls, each tool call adds 30 seconds before failing. A 5-tool-call session hangs for 2.5 minutes. This is a production incident waiting to happen — and it has never been tested.
-
-**Warning signs:**
-- No test for "NATS unavailable" code path
-- Orchestrator code does not check `nc.IsConnected()` before publishing
-- Agent tests only cover the happy path (request received, response sent)
-
-**Prevention strategy:**
-1. Add an integration test that starts the orchestrator with a NATS connection, sends a chat request that triggers a tool call, then kills NATS mid-request. Assert that the error is returned to the frontend within a reasonable time (not 30s per tool call).
-2. Add a check in `NATSExecutor.Execute()`: if `nc.IsConnected()` is false, return an error immediately rather than waiting for timeout.
-3. Implement circuit breaker per agent: after 3 consecutive NATS timeouts for a given agent ID, fail fast for the next 60 seconds rather than waiting the full timeout each time.
-
-**Phase:** Testing/reliability phase.
+**Confidence:** HIGH -- verified from official Google OAuth2 docs and multiple developer forum threads.
 
 ---
 
-### 2. Missing Tests for SSE Stream Interruption
+### Pitfall 10: Google OAuth Scope Requires Consent Screen Verification for Production
 
-**What goes wrong:** Already identified in CONCERNS.md — no tests for mid-stream errors. The deeper issue: the `chat_proxy.go` accumulates tool calls in memory and saves them to MongoDB only on stream completion (`done` event). If the client disconnects mid-stream (mobile network switch, browser tab closed), the tool calls and results are never persisted. The conversation shows the user message with no reply. On reconnect, the LLM lacks context of what tools were already called, potentially repeating actions (double-posting to Telegram).
+**What goes wrong:** The `https://www.googleapis.com/auth/business.manage` scope is classified by Google as a **sensitive scope**. Apps requesting sensitive scopes must pass Google's OAuth consent screen verification process before they can be used in production. This involves:
 
-**Warning signs:**
-- No test for `context.Done()` during SSE streaming
-- Tool call persistence relies on receiving the `done` event
-- No idempotency checks on agent tool execution
+- Brand verification (2-3 business days)
+- Domain verification via Google Search Console
+- Privacy policy URL
+- Terms of service URL
+- Homepage URL matching the verified domain
 
-**Prevention strategy:**
-1. Decouple tool call persistence from stream completion: save each `tool_call` and `tool_result` event to MongoDB as it arrives, not only on `done`. Use the SSE event's `tool_call_id` as the document key.
-2. Add a test that simulates client disconnect (cancel request context) after receiving 2 tool_call events but before `done`. Assert that the 2 tool calls are persisted in MongoDB.
-3. For agent idempotency: add a `task_id` (already exists in `TaskRequest`) to Telegram/VK operations. Check if a post with that `task_id` was already submitted before making the API call. Store the mapping in Redis (TTL: 1 hour).
+Without verification, the app is limited to 100 test users, 7-day refresh tokens, and shows a scary "This app isn't verified" warning screen that most users will refuse to click through.
 
-**Phase:** Testing/reliability phase.
+**Why it happens:** Google's security review process for sensitive scopes protects users from malicious apps.
 
----
+**Prevention:**
+1. **Start the verification process early** -- it is a multi-day process and blocks production deployment.
+2. **Prepare all required materials before submitting**: Domain ownership verification in Search Console, hosted privacy policy, terms of service, and accurate app branding.
+3. **For the diploma demo**: If verification is not completed in time, add the demo user's Google account as a test user in the OAuth consent screen. This bypasses verification for up to 100 specific accounts. Document this limitation.
+4. **The "unverified app" warning screen can be bypassed** by clicking "Advanced" > "Go to [app name] (unsafe)" -- but this is a poor user experience. Document it as a known limitation if verification is not complete.
 
-### 3. Integration Tests Absent for Platform Agents
+**Phase:** GCP project setup phase -- start verification process on day 1.
 
-**What goes wrong:** VK and Yandex.Business agents have never been tested against real APIs. The agent code compiles, but the only "test" is whether it runs. VK's `wall.post` API response includes nested objects that the current handler may not parse correctly. The Playwright selectors in Yandex tools (once written) will not be validated until a human opens the browser and watches. Production is the first integration test.
-
-**Warning signs:**
-- Agent tests directory is empty or contains only compilation checks
-- No VK sandbox/test community set up for automated testing
-- Yandex.Business agent tests depend entirely on mocked Playwright interfaces
-
-**Prevention strategy:**
-1. Set up a VK test community with a long-lived admin token (use offline scope). Add integration tests to the CI pipeline that post to and delete from this community using the real VK API. Mark these tests with a build tag (`//go:build integration`) and run them in a scheduled job, not on every PR.
-2. For Yandex RPA: record a Playwright test session against a test Yandex.Business account. Use Playwright's code generation (`playwright codegen`) to capture selectors. Store the test session as a smoke test that runs weekly.
-3. Use `httptest` server to mock VK API responses for unit tests, covering error codes 5, 7, 9, 15, and rate limit responses. This does not require real credentials.
-
-**Phase:** Testing/reliability phase + VK agent completion.
+**Confidence:** HIGH -- verified from official sensitive scope verification docs.
 
 ---
 
-### 4. Race Condition Tests Missing for Concurrent Chat Sessions
+## Integration-Specific Pitfalls (OneVoice System)
 
-**What goes wrong:** The orchestrator handles each chat request in a request goroutine. If two requests arrive for the same `conversationID` simultaneously (e.g., user rapidly submits two messages), both goroutines read the same conversation history from MongoDB, run LLM inference in parallel, and both try to save tool results. MongoDB document-level locking prevents a data race, but both LLM calls may produce conflicting tool calls (e.g., two Telegram posts instead of one). The second LLM call's context is stale (missing the results from the first call's tool execution).
+Pitfalls specific to adding a 4th agent to the existing multi-agent architecture.
 
-**Warning signs:**
-- No test for concurrent requests to the same conversation
-- `go test -race ./...` not run in CI (or run but with many suppressed races)
-- Conversation history is loaded once at the start of the agent loop, not re-fetched between iterations
+### Pitfall 11: AgentID and Tool Naming Must Follow Existing Convention
 
-**Prevention strategy:**
-1. Add a per-`conversationID` mutex in the orchestrator handler to serialize requests to the same conversation. Redis-based distributed lock (using `SETNX`) is needed if the orchestrator is horizontally scaled.
-2. Add a test that fires two concurrent requests to the same conversation endpoint and asserts only one LLM call is processed (the second waits or returns 429).
-3. Run `go test -race ./...` on every CI run and fix all detected races. Do not suppress warnings.
+**What goes wrong:** The existing system uses `AgentID` constants in `pkg/a2a/protocol.go`: `"telegram"`, `"vk"`, `"yandex_business"`. The tool registry in `orchestrator/internal/tools/registry.go` extracts the platform from tool names using `strings.Index(name, "__")` -- everything before `__` is the platform. The `Available()` method filters tools by matching these platform names against `activeIntegrations`. If the new Google agent uses an inconsistent name (e.g., `"google"` vs `"google_business"` vs `"gbp"`), tools will not be filtered correctly and may appear for users who have not connected Google.
 
-**Phase:** Testing/reliability phase.
+**Why it happens:** No central registry enforces naming conventions. Each agent defines its own AgentID string.
 
----
+**Prevention:**
+1. **Define the AgentID constant consistently**: Add `AgentGoogleBusiness AgentID = "google_business"` to `pkg/a2a/protocol.go`. Use this exact string everywhere: tool names (`google_business__list_reviews`), NATS subject (`tasks.google_business`), integration platform name in the database, and frontend integration page.
+2. **Verify the naming works with `Available()` filter**: The tool registry splits on `__` and checks `active[platform]`. Confirm that the API service returns `"google_business"` in the active integrations list.
+3. **Match the platform name in the `integrations` table**: The `ConnectParams.Platform` must be `"google_business"` -- the same string used for tool filtering and NATS routing.
 
-### 5. Test Coverage Metrics Mislead (High Line Coverage, Zero Behavior Coverage)
+**Phase:** Phase 1 -- define before writing any agent code.
 
-**What goes wrong:** The codebase has repository tests that are `assert.True(t, true)` placeholders. These count toward line coverage metrics. A 60% line coverage number that includes placeholder tests is meaningless. Meanwhile, the most critical paths — token encryption/decryption, JWT validation edge cases, NATS timeout handling — may have zero actual behavior tests despite being marked as "covered."
-
-**Warning signs:**
-- Repository test files exist but contain no assertions
-- Coverage report looks acceptable but critical code paths (crypto, JWT validation, error handling) are not in coverage
-- Coverage is measured per file, not per branch
-
-**Prevention strategy:**
-1. Replace placeholder tests with real behavior tests using `miniredis` for Redis, `pgxmock` for PostgreSQL, and `mongotest` for MongoDB. Start with the most critical: token encryption, refresh token lifecycle, integration token lookup.
-2. Measure branch coverage, not just line coverage. A function with an `if err != nil` branch needs two test cases: one where the error occurs and one where it does not. Use `go test -covermode=atomic` with `cover -func` to identify untested branches.
-3. Add a CI quality gate: PRs that reduce coverage on critical packages (`pkg/crypto`, `services/api/internal/middleware`) below a threshold are blocked. Do not apply this gate to stub packages.
-
-**Phase:** Testing/reliability phase.
+**Confidence:** HIGH -- verified from codebase analysis of `protocol.go` and `registry.go`.
 
 ---
 
-## Prevention Strategies
+### Pitfall 12: Token Refresh Race Condition with Concurrent Tool Calls
 
-### Categorized by When to Apply
+**What goes wrong:** The orchestrator's agent loop can fire multiple tool calls within seconds (e.g., `google_business__list_reviews` followed immediately by `google_business__reply_review`). Both calls hit the tokenclient, which checks expiry. If the token is about to expire, both calls may attempt to refresh simultaneously. Without coordination:
 
-**Before writing agent code (design phase):**
-- Define error taxonomy: transient (retry), permanent (user-action needed), rate-limited (backoff). Apply consistently across all agents and the orchestrator retry logic.
-- Design idempotency into all tool calls using `task_id`. Store task results with the ID before making external API calls to prevent double-execution on retry.
-- Define metric label vocabulary upfront: agree on `service`, `platform`, `tool_name`, `status` as the only metric dimensions. Reject PRs that add high-cardinality labels.
+- Both calls read the same refresh token from the database
+- Both call Google's token endpoint with the same refresh token
+- Google may accept both (returning the same new access token) or reject the second (if rotation occurred)
+- Both calls try to update the database with the new token -- one overwrites the other
+- If Google rotated the refresh token, the second call stores an outdated refresh token, breaking future refreshes permanently
 
-**During VK agent implementation:**
-- Handle VK error codes 5, 7, 9, 15 with distinct error types before shipping.
-- Validate community admin permissions at OAuth time, not at first post time.
-- Write VK integration tests against a real test community before marking the agent as complete.
+**Why it happens:** The current `GetDecryptedToken()` has no locking mechanism. For VK/Telegram this was safe because tokens do not refresh. Google's 1-hour tokens create a new concurrency concern.
 
-**During Yandex agent implementation:**
-- Build the cookie expiry alert and canary check before writing any business logic selectors.
-- After every selector, add an explicit post-action assertion.
-- Test memory behavior: run 10 sequential tool calls and measure Chromium RSS before and after.
+**Prevention:**
+1. **Add a per-integration mutex for token refresh**: Use a Redis-based lock (`SETNX` with TTL) keyed by integration ID. Before refreshing, acquire the lock. If already locked, wait for the other goroutine to complete the refresh and use the newly stored token.
+2. **Use optimistic concurrency in the database**: Add a `token_version` column to the integrations table. Refresh only updates the token if `token_version` matches the read version. If it does not match (another goroutine already refreshed), re-read the fresh token from the database.
+3. **Proactive refresh**: Refresh the token 5-10 minutes before expiry (not at expiry time). This reduces the chance of concurrent refresh during actual API calls. The tokenclient's `tokenExpiringSoon()` check (currently 1 minute) should be extended to 5 minutes for Google.
+4. **Single-flight pattern**: Use `golang.org/x/sync/singleflight` to deduplicate concurrent refresh calls for the same integration ID.
 
-**During security hardening:**
-- Move refresh token to HttpOnly cookie first — this unblocks all other security improvements.
-- Implement atomic refresh token rotation (DELETE ... RETURNING) before adding multi-device support.
-- Add JWT algorithm validation (`WithValidMethods`) in the same PR that adds typed claims.
+**Phase:** Token infrastructure phase -- must be solved before agent goes live.
 
-**During monitoring setup:**
-- Instrument NATS executor latency histogram before adding any business metrics.
-- Write the alert runbook before deploying the alert. No runbook = no alert.
-- Test health checks by actually killing each dependency and verifying the endpoint returns 503.
+**Confidence:** MEDIUM -- the race condition is architecturally certain, but the exact behavior of Google's token endpoint under concurrent refresh is not fully documented. Multiple sources confirm Google may rotate refresh tokens on refresh.
 
-**During testing phase:**
-- Write the NATS disconnect integration test before hardening retry logic — you need the test to validate the fix.
-- Add VK integration tests to a scheduled CI job (not PR checks) to avoid token expiry disrupting PRs.
-- Track branch coverage for crypto and middleware packages specifically.
+---
 
-**Ongoing maintenance:**
-- Monitor VK API changelog monthly. Subscribe to Yandex.Business developer blog.
-- Run the Yandex.Business smoke test weekly in a local environment (requires manual cookie refresh).
-- Rotate JWT_SECRET quarterly using the dual-key rotation procedure. Document the last rotation date in the runbook.
-- Review Prometheus cardinality monthly: `prometheus_tsdb_head_series` should not grow faster than the user count.
+### Pitfall 13: Google's `x/oauth2` TokenSource Conflicts with Custom Token Storage
+
+**What goes wrong:** Go's `golang.org/x/oauth2` package provides automatic token refresh via `TokenSource`. The standard pattern is `conf.TokenSource(ctx, token)` which returns a `TokenSource` that auto-refreshes. However, this `TokenSource` stores the refreshed token **in memory only**. If the process restarts, the refreshed token is lost, and the original (now possibly invalid) refresh token from the database is used. The `x/oauth2` library has no built-in callback for "token was refreshed, please persist it" -- this is a known gap (Go issue #77502 is an open proposal to add `OnTokenChange`).
+
+**Why it happens:** `x/oauth2` was designed for single-process, in-memory token management. Our system stores tokens encrypted in PostgreSQL across multiple service instances.
+
+**Prevention:**
+1. **Do NOT use `x/oauth2.TokenSource` for automatic refresh in the agent**. Instead, implement refresh explicitly in the API service's `GetDecryptedToken()` method with database persistence.
+2. **If using Google's Go client libraries** (which require a `TokenSource`), create a custom `TokenSource` wrapper that delegates to `GetDecryptedToken()` via the tokenclient HTTP call. This ensures the agent always gets a fresh, database-backed token.
+3. **Pattern**: Create a `dbTokenSource` struct implementing `oauth2.TokenSource` that:
+   - Calls tokenclient to get the current token
+   - If tokenclient returns `StatusGone` (expired and refresh failed), returns an error
+   - If the token is valid, wraps it as an `oauth2.Token`
+   This bridges Google's client library expectations with our database-backed token storage.
+
+**Phase:** Agent implementation phase.
+
+**Confidence:** MEDIUM -- the `x/oauth2` limitation is well-documented. The custom `TokenSource` wrapper pattern is widely used but needs careful implementation to avoid races.
+
+---
+
+### Pitfall 14: Product Posts Cannot Be Created via API
+
+**What goes wrong:** The GBP API explicitly states: "Product Posts cannot be created using the Google My Business API at this time." If the LLM tries to create a product-type post (e.g., showcasing a specific product with price), the API call will fail. The tool description must be precise about what post types are supported (Event, Offer, Call-to-Action) to prevent the LLM from attempting unsupported operations.
+
+**Prevention:**
+1. **In tool descriptions, explicitly list supported post types**: "Creates a Google Business post. Supported types: Update (general), Event (with date/time), Offer (with coupon code), Call-to-Action (with button). Product posts are NOT supported."
+2. **Validate post type in the agent handler**: If the LLM passes `type: "product"`, return `NonRetryableError` with a clear message.
+
+**Phase:** Agent tool definition phase.
+
+**Confidence:** HIGH -- explicitly stated in official posts documentation.
+
+---
+
+### Pitfall 15: Tokenclient Cache Serves Stale Google Tokens
+
+**What goes wrong:** The `tokenclient.Client` in `pkg/tokenclient/client.go` caches tokens for 5 minutes (`cacheTTL: 5 * time.Minute`). The `tokenExpiringSoon()` function only checks if the token expires within 1 minute. For Google's 1-hour tokens, this means:
+
+- Token refreshed at T=0, cached until T=5min
+- At T=4min, agent gets cached token (55 minutes remaining -- fine)
+- At T=59min, `tokenExpiringSoon()` returns true, forces fresh fetch
+- The 1-minute window is narrow -- if the API service takes >1min to refresh, the agent may get a stale expired token
+
+More critically: after a refresh, the API service updates the database, but the agent's tokenclient still has the OLD token cached for up to 5 minutes. During that window, API calls fail with expired tokens.
+
+**Prevention:**
+1. **Reduce cache TTL for Google tokens**: Either make cache TTL configurable per-platform, or reduce the global TTL to 1 minute (acceptable overhead for other platforms).
+2. **Extend the `tokenExpiringSoon()` threshold to 5 minutes**: This ensures the agent requests a fresh token well before expiry.
+3. **On refresh, the API service should proactively invalidate the agent's cache**: Either via an internal notification mechanism or by having the agent's tokenclient always validate the cached token's `ExpiresAt` before using it (which it already partially does).
+
+**Phase:** Token infrastructure phase.
+
+**Confidence:** HIGH -- verified from codebase analysis of `tokenclient/client.go`.
+
+---
+
+## Minor Pitfalls
+
+### Pitfall 16: Google's OAuth Error Responses Differ from VK/Yandex
+
+**What goes wrong:** Google returns OAuth errors as JSON with `error` and `error_description` fields at the token endpoint, but error formats differ from VK and Yandex. The existing `VKCallback` and `YandexCallback` handlers parse platform-specific error formats. The Google callback must handle Google's specific error codes: `invalid_grant`, `invalid_client`, `invalid_scope`, `access_denied`. These error codes carry important diagnostic information that should be logged.
+
+**Prevention:** Parse Google's error response explicitly. Log the full `error_description`. Map `invalid_grant` to "token expired or revoked" and `access_denied` to "user denied consent."
+
+**Phase:** OAuth callback implementation.
+
+---
+
+### Pitfall 17: Google Business Profile Q&A API Was Deprecated November 2025
+
+**What goes wrong:** Developers searching for GBP API features may find Q&A API documentation. This API was **discontinued on November 3, 2025**. Any code targeting Q&A endpoints will fail silently. Do not enable or use this API.
+
+**Prevention:** Do not include Q&A in the feature set. If the LLM is asked about Q&A management, the system prompt should note this is not available via API.
+
+**Phase:** Feature scoping -- already excluded.
+
+**Confidence:** HIGH -- verified from official deprecation schedule.
+
+---
+
+### Pitfall 18: `localPosts` Call-to-Action Button Types Are Fixed
+
+**What goes wrong:** The GBP API supports only 6 call-to-action types for local posts: `BOOK`, `ORDER`, `SHOP`, `LEARN_MORE`, `SIGN_UP`, `CALL`. The LLM may attempt to create a post with a custom button text or an unsupported action type, causing a 400 error.
+
+**Prevention:** Enumerate the valid action types in the tool parameter schema as an enum. Validate in the agent handler before making the API call.
+
+**Phase:** Agent tool definition phase.
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| GCP Project Setup | API access not approved (Pitfall 3) | Apply on day 1, develop against mocks |
+| GCP Project Setup | 8 APIs not all enabled (Pitfall 4) | Checklist + test each endpoint |
+| GCP Project Setup | Consent screen in Testing mode (Pitfall 2) | Switch to Production + new credentials |
+| GCP Project Setup | Consent screen verification delay (Pitfall 10) | Start verification on day 1 |
+| OAuth Implementation | No token refresh (Pitfall 1) | Build refresh into GetDecryptedToken |
+| OAuth Implementation | Missing refresh token (Pitfall 9) | Always use prompt=consent&access_type=offline |
+| OAuth Implementation | Location discovery needed (Pitfall 6) | Mirror VK community selection pattern |
+| Agent Implementation | Reviews on v4, info on v1 (Pitfall 5) | Separate clients per API version |
+| Agent Implementation | Rate limits (Pitfall 8) | Per-location rate limiter in agent |
+| Agent Implementation | Concurrent refresh race (Pitfall 12) | singleflight + optimistic DB concurrency |
+| Agent Implementation | Product posts unsupported (Pitfall 14) | Explicit tool descriptions |
+| Agent Implementation | x/oauth2 TokenSource conflict (Pitfall 13) | Custom dbTokenSource wrapper |
+| Orchestrator Wiring | AgentID naming mismatch (Pitfall 11) | Define constant in protocol.go first |
+| Orchestrator Wiring | Stale cached tokens (Pitfall 15) | Shorter TTL or cache invalidation |
+| Post-deployment | Location not verified (Pitfall 7) | Check verification during location selection |
+
+## Sources
+
+- [Google Business Profile APIs - Official](https://developers.google.com/my-business) -- HIGH confidence
+- [Deprecation Schedule](https://developers.google.com/my-business/content/sunset-dates) -- HIGH confidence
+- [Rate Limits](https://developers.google.com/my-business/content/limits) -- HIGH confidence
+- [Prerequisites](https://developers.google.com/my-business/content/prereqs) -- HIGH confidence
+- [OAuth Implementation](https://developers.google.com/my-business/content/implement-oauth) -- HIGH confidence
+- [Basic Setup (8 APIs)](https://developers.google.com/my-business/content/basic-setup) -- HIGH confidence
+- [Review Data API](https://developers.google.com/my-business/content/review-data) -- HIGH confidence
+- [Local Posts API](https://developers.google.com/my-business/content/posts-data) -- HIGH confidence
+- [Google OAuth2 Documentation](https://developers.google.com/identity/protocols/oauth2) -- HIGH confidence
+- [Sensitive Scope Verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification) -- HIGH confidence
+- [Go x/oauth2 OnTokenChange proposal](https://github.com/golang/go/issues/77502) -- HIGH confidence
+- [mybusinessbusinessinformation Go package](https://pkg.go.dev/google.golang.org/api/mybusinessbusinessinformation/v1) -- HIGH confidence
+- [mybusinessaccountmanagement Go package](https://pkg.go.dev/google.golang.org/api/mybusinessaccountmanagement/v1) -- HIGH confidence
+- OneVoice codebase analysis: `tokenclient/client.go`, `service/integration.go`, `a2a/protocol.go`, `tools/registry.go`, `handler/oauth.go` -- HIGH confidence
