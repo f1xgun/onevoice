@@ -4,6 +4,18 @@
 
 A platform-agnostic multi-agent system for automating digital presence management across social platforms. Business owners connect their Telegram, VK, and Yandex.Business accounts, then interact through an AI-powered chat interface that dispatches actions to platform-specific agents. Built with Go 1.24 microservices, Next.js 14 frontend, PostgreSQL, MongoDB, NATS messaging, and Playwright RPA.
 
+## Current Milestone: v1.2 Google Business Profile
+
+**Goal:** Add Google Business Profile as a new platform agent with API-based integration for managing business presence on Google Maps.
+
+**Target features:**
+- Google Business Profile API integration (OAuth2 + API client)
+- Agent service with NATS tool dispatch (reviews, business info, posts)
+- Orchestrator integration (tools registered, dispatch working)
+- Frontend integration page for connecting Google account
+- Review management (read, reply)
+- Business info management (description, hours, attributes)
+
 ## Core Value
 
 Business owners can manage their digital presence across multiple platforms through a single conversational interface — one chat to post content, reply to reviews, update business info, and monitor activity everywhere.
@@ -34,14 +46,17 @@ Business owners can manage their digital presence across multiple platforms thro
 
 ### Active
 
-- [ ] VK read operations via proper service key (old VK app)
-- [ ] OpenTelemetry distributed tracing (spans) across NATS messages
-- [ ] Alerting rules in Grafana for critical errors
+- [ ] Google Business Profile API agent (OAuth2, reviews, business info, posts)
+- [ ] Google Business Profile tools in orchestrator
+- [ ] Frontend Google account connection flow
 
 ### Deferred
 
+- [ ] VK read operations via proper service key (old VK app)
+- [ ] OpenTelemetry distributed tracing (spans) across NATS messages
+- [ ] Alerting rules in Grafana for critical errors
 - [ ] VPS validation for Yandex.Business RPA (anti-bot spike deferred from v1.0)
-- [ ] Google Business integration
+- [ ] Yandex Maps RPA integration (deep integration, no open API)
 - [ ] VK Stories, community chat, analytics
 - [ ] Content calendar UI
 
@@ -49,15 +64,9 @@ Business owners can manage their digital presence across multiple platforms thro
 
 - Mobile app — web-first, mobile deferred
 - Multi-tenant SaaS features — single-owner deployment for now
-- Payment/billing — not needed for diploma or initial production
-
-### Out of Scope
-
-- Google Business integration — not MVP, different API paradigm
-- Mobile app — web-first, mobile deferred
-- Multi-tenant SaaS features — single-owner deployment for now
 - Real-time push notifications — SSE for chat is sufficient
 - Payment/billing — not needed for diploma or initial production
+- Google Maps embed/display in frontend — not needed, only API management
 
 ## Context
 
@@ -68,6 +77,7 @@ Business owners can manage their digital presence across multiple platforms thro
 - **Yandex.Business VPS spike pending** — RPA code exists but anti-bot validation not performed
 - **40 requirements satisfied** across 9 phases, 30 plans (v1.0 + v1.1)
 - **Tech debt**: VK sync uses bare slog.Error (5 calls); sendBeacon drops events for logged-out users
+- **v1.2 focus**: Google Business Profile API as quick map-service integration while Yandex Maps RPA is developed separately
 
 ## Constraints
 
@@ -90,11 +100,29 @@ Business owners can manage their digital presence across multiple platforms thro
 | NonRetryableError for error taxonomy | Distinguish permanent vs transient failures | ✓ Good — all 3 agents classify errors |
 | BrowserPool for Yandex RPA | Shared Chromium instance, per-business isolation | ⚠️ Pending VPS validation |
 | Client-side VK rate limiter (3 req/sec) | Prevent VK API bans | ✓ Good — rate.Limiter wraps all SDK calls |
+| Google Business Profile API before Yandex Maps | Google has open API, Yandex requires RPA — quick win for map-service demo | — Pending |
 
 ## Completed Milestones
 
 - **v1.0 Hardening** — Security, reliability, VK agent, Yandex RPA, observability foundation, testing (shipped 2026-03-20)
 - **v1.1 Observability & Debugging** — Backend logging gaps, Grafana + Loki stack, frontend telemetry (shipped 2026-03-22)
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-03-22 after v1.1 milestone*
+*Last updated: 2026-04-08 after v1.2 milestone started*
