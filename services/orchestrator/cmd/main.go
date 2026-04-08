@@ -265,14 +265,14 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				}},
 				{Type: "function", Function: llm.FunctionDefinition{
 					Name:        "vk__update_group_info",
-					Description: "Обновляет информацию о сообществе ВКонтакте (описание, ссылки, контакты)",
+					Description: "Обновляет информацию о сообществе ВКонтакте (описание, ссылки, контакты). Если group_id не указан, используется сообщество из активной VK-интеграции.",
 					Parameters: map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
-							"group_id":    map[string]interface{}{"type": "string", "description": "ID сообщества"},
+							"group_id":    map[string]interface{}{"type": "string", "description": "Числовой ID сообщества ВКонтакте. Необязателен — берётся из активной интеграции."},
 							"description": map[string]interface{}{"type": "string", "description": "Новое описание"},
 						},
-						"required": []string{"group_id"},
+						"required": []string{},
 					},
 				}},
 				{Type: "function", Function: llm.FunctionDefinition{
@@ -281,10 +281,10 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					Parameters: map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
-							"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества"},
+							"group_id": map[string]interface{}{"type": "string", "description": "Числовой ID сообщества ВКонтакте. Необязателен — берётся из активной интеграции."},
 							"count":    map[string]interface{}{"type": "integer", "description": "Количество комментариев (макс 100)"},
 						},
-						"required": []string{"group_id"},
+						"required": []string{},
 					},
 				}},
 				{Type: "function", Function: llm.FunctionDefinition{
