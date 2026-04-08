@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -134,7 +135,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 		result, err := svc.ListByBusinessID(ctx, businessID)
 
 		require.NoError(t, err)
@@ -152,7 +153,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 		result, err := svc.ListByBusinessID(ctx, businessID)
 
 		require.NoError(t, err)
@@ -162,7 +163,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 
 	t.Run("error - nil business id", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 
 		result, err := svc.ListByBusinessID(ctx, uuid.Nil)
 
@@ -176,7 +177,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 		cancel()
 
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 
 		result, err := svc.ListByBusinessID(cancelledCtx, uuid.New())
 
@@ -193,7 +194,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 		result, err := svc.ListByBusinessID(ctx, uuid.New())
 
 		assert.Error(t, err)
@@ -229,7 +230,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 		result, err := svc.GetByBusinessAndPlatform(ctx, businessID, platform)
 
 		require.NoError(t, err)
@@ -247,7 +248,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 		result, err := svc.GetByBusinessAndPlatform(ctx, uuid.New(), "google")
 
 		assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
@@ -256,7 +257,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 
 	t.Run("error - nil business id", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 
 		result, err := svc.GetByBusinessAndPlatform(ctx, uuid.Nil, "google")
 
@@ -267,7 +268,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 
 	t.Run("error - empty platform", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 
 		result, err := svc.GetByBusinessAndPlatform(ctx, uuid.New(), "")
 
@@ -281,7 +282,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 		cancel()
 
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 
 		result, err := svc.GetByBusinessAndPlatform(cancelledCtx, uuid.New(), "google")
 
@@ -298,7 +299,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 		result, err := svc.GetByBusinessAndPlatform(ctx, uuid.New(), "google")
 
 		assert.Error(t, err)
@@ -321,7 +322,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 		err := svc.Delete(ctx, integrationID)
 
 		require.NoError(t, err)
@@ -335,7 +336,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 		err := svc.Delete(ctx, uuid.New())
 
 		assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
@@ -343,7 +344,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 
 	t.Run("error - nil integration id", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 
 		err := svc.Delete(ctx, uuid.Nil)
 
@@ -356,7 +357,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 		cancel()
 
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 
 		err := svc.Delete(cancelledCtx, uuid.New())
 
@@ -372,7 +373,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t))
+		svc := NewIntegrationService(repo, testEncryptor(t), nil)
 		err := svc.Delete(ctx, uuid.New())
 
 		assert.Error(t, err)
@@ -397,7 +398,7 @@ func TestConnect_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc)
+	svc := NewIntegrationService(repo, enc, nil)
 	params := ConnectParams{
 		BusinessID:  businessID,
 		Platform:    "telegram",
@@ -435,7 +436,7 @@ func TestConnect_Duplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc)
+	svc := NewIntegrationService(repo, enc, nil)
 	params := ConnectParams{
 		BusinessID:  uuid.New(),
 		Platform:    "telegram",
@@ -453,7 +454,7 @@ func TestConnect_MissingBusinessID(t *testing.T) {
 	enc := testEncryptor(t)
 
 	repo := &mockIntegrationRepository{}
-	svc := NewIntegrationService(repo, enc)
+	svc := NewIntegrationService(repo, enc, nil)
 	params := ConnectParams{
 		BusinessID:  uuid.Nil,
 		Platform:    "telegram",
@@ -472,7 +473,7 @@ func TestConnect_MissingPlatform(t *testing.T) {
 	enc := testEncryptor(t)
 
 	repo := &mockIntegrationRepository{}
-	svc := NewIntegrationService(repo, enc)
+	svc := NewIntegrationService(repo, enc, nil)
 	params := ConnectParams{
 		BusinessID:  uuid.New(),
 		Platform:    "",
@@ -518,7 +519,7 @@ func TestGetDecryptedToken_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc)
+	svc := NewIntegrationService(repo, enc, nil)
 	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
 
 	require.NoError(t, err)
@@ -539,7 +540,7 @@ func TestGetDecryptedToken_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc)
+	svc := NewIntegrationService(repo, enc, nil)
 	resp, err := svc.GetDecryptedToken(ctx, uuid.New(), "telegram", "ext_999")
 
 	assert.Nil(t, resp)
@@ -573,7 +574,7 @@ func TestGetDecryptedToken_Expired(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc)
+	svc := NewIntegrationService(repo, enc, nil)
 	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
 
 	assert.Nil(t, resp)
@@ -612,7 +613,7 @@ func TestListByBusinessAndPlatform_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc)
+	svc := NewIntegrationService(repo, enc, nil)
 	result, err := svc.ListByBusinessAndPlatform(ctx, businessID, platform)
 
 	require.NoError(t, err)
@@ -626,11 +627,355 @@ func TestListByBusinessAndPlatform_NilBusinessID(t *testing.T) {
 	enc := testEncryptor(t)
 
 	repo := &mockIntegrationRepository{}
-	svc := NewIntegrationService(repo, enc)
+	svc := NewIntegrationService(repo, enc, nil)
 
 	result, err := svc.ListByBusinessAndPlatform(ctx, uuid.Nil, "telegram")
 
 	assert.Nil(t, result)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "business id is required")
+}
+
+// --- mockTokenRefresher ---
+
+type mockTokenRefresher struct {
+	refreshFunc func(ctx context.Context, refreshToken string) (string, string, int64, error)
+	callCount   int
+}
+
+func (m *mockTokenRefresher) RefreshToken(ctx context.Context, refreshToken string) (string, string, int64, error) {
+	m.callCount++
+	if m.refreshFunc != nil {
+		return m.refreshFunc(ctx, refreshToken)
+	}
+	return "", "", 0, fmt.Errorf("not implemented")
+}
+
+// --- Token refresh tests ---
+
+func TestGetDecryptedToken_RefreshesExpiredGoogleToken(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	integrationID := uuid.New()
+	platform := "google_business"
+	externalID := "locations/12345"
+
+	oldAccess := "old_access_token"
+	refreshTokenPlain := "my_refresh_token"
+	newAccess := "new_access_token"
+
+	encOldAccess, err := enc.Encrypt([]byte(oldAccess))
+	require.NoError(t, err)
+	encRefresh, err := enc.Encrypt([]byte(refreshTokenPlain))
+	require.NoError(t, err)
+
+	past := time.Now().Add(-1 * time.Hour)
+	integration := &domain.Integration{
+		ID:                    integrationID,
+		BusinessID:            businessID,
+		Platform:              platform,
+		ExternalID:            externalID,
+		Status:                "active",
+		EncryptedAccessToken:  encOldAccess,
+		EncryptedRefreshToken: encRefresh,
+		TokenExpiresAt:        &past,
+	}
+
+	var updatedIntegration *domain.Integration
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(ctx context.Context, bid uuid.UUID, plat string, extID string) (*domain.Integration, error) {
+			return integration, nil
+		},
+		getByIDFunc: func(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
+			// Return the same expired integration for double-check after lock
+			return integration, nil
+		},
+		updateFunc: func(ctx context.Context, i *domain.Integration) error {
+			updatedIntegration = i
+			return nil
+		},
+	}
+
+	refresher := &mockTokenRefresher{
+		refreshFunc: func(ctx context.Context, rt string) (string, string, int64, error) {
+			assert.Equal(t, refreshTokenPlain, rt)
+			return newAccess, "", 3600, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, enc, refresher)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, newAccess, resp.AccessToken)
+	assert.Equal(t, 1, refresher.callCount)
+
+	// Verify tokens were persisted
+	require.NotNil(t, updatedIntegration)
+	decAccess, err := enc.Decrypt(updatedIntegration.EncryptedAccessToken)
+	require.NoError(t, err)
+	assert.Equal(t, newAccess, string(decAccess))
+
+	// Verify expiry was updated
+	require.NotNil(t, updatedIntegration.TokenExpiresAt)
+	assert.True(t, updatedIntegration.TokenExpiresAt.After(time.Now()))
+}
+
+func TestGetDecryptedToken_RefreshRotatesRefreshToken(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	integrationID := uuid.New()
+
+	refreshTokenPlain := "old_refresh_token"
+	newRefreshPlain := "new_rotated_refresh_token"
+	newAccess := "refreshed_access"
+
+	encAccess, err := enc.Encrypt([]byte("expired_access"))
+	require.NoError(t, err)
+	encRefresh, err := enc.Encrypt([]byte(refreshTokenPlain))
+	require.NoError(t, err)
+
+	past := time.Now().Add(-30 * time.Minute)
+	integration := &domain.Integration{
+		ID:                    integrationID,
+		BusinessID:            businessID,
+		Platform:              "google_business",
+		ExternalID:            "locations/99",
+		Status:                "active",
+		EncryptedAccessToken:  encAccess,
+		EncryptedRefreshToken: encRefresh,
+		TokenExpiresAt:        &past,
+	}
+
+	var updatedIntegration *domain.Integration
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(ctx context.Context, bid uuid.UUID, plat string, extID string) (*domain.Integration, error) {
+			return integration, nil
+		},
+		getByIDFunc: func(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
+			return integration, nil
+		},
+		updateFunc: func(ctx context.Context, i *domain.Integration) error {
+			updatedIntegration = i
+			return nil
+		},
+	}
+
+	refresher := &mockTokenRefresher{
+		refreshFunc: func(ctx context.Context, rt string) (string, string, int64, error) {
+			return newAccess, newRefreshPlain, 3600, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, enc, refresher)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "locations/99")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, newAccess, resp.AccessToken)
+
+	// Verify rotated refresh token was persisted
+	require.NotNil(t, updatedIntegration)
+	decRefresh, err := enc.Decrypt(updatedIntegration.EncryptedRefreshToken)
+	require.NoError(t, err)
+	assert.Equal(t, newRefreshPlain, string(decRefresh))
+}
+
+func TestGetDecryptedToken_ExpiredNoRefresher_ReturnsError(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+
+	encAccess, err := enc.Encrypt([]byte("some_token"))
+	require.NoError(t, err)
+	encRefresh, err := enc.Encrypt([]byte("refresh"))
+	require.NoError(t, err)
+
+	past := time.Now().Add(-1 * time.Hour)
+	integration := &domain.Integration{
+		ID:                    uuid.New(),
+		BusinessID:            businessID,
+		Platform:              "google_business",
+		ExternalID:            "loc/1",
+		Status:                "active",
+		EncryptedAccessToken:  encAccess,
+		EncryptedRefreshToken: encRefresh,
+		TokenExpiresAt:        &past,
+	}
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(ctx context.Context, bid uuid.UUID, plat string, extID string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	// nil refresher
+	svc := NewIntegrationService(repo, enc, nil)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+
+	assert.Nil(t, resp)
+	assert.ErrorIs(t, err, domain.ErrTokenExpired)
+}
+
+func TestGetDecryptedToken_ExpiredNoRefreshToken_ReturnsError(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+
+	past := time.Now().Add(-1 * time.Hour)
+	integration := &domain.Integration{
+		ID:                    uuid.New(),
+		BusinessID:            businessID,
+		Platform:              "google_business",
+		ExternalID:            "loc/1",
+		Status:                "active",
+		EncryptedAccessToken:  []byte("some_encrypted_bytes"),
+		EncryptedRefreshToken: nil, // no refresh token
+		TokenExpiresAt:        &past,
+	}
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(ctx context.Context, bid uuid.UUID, plat string, extID string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	refresher := &mockTokenRefresher{}
+	svc := NewIntegrationService(repo, enc, refresher)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+
+	assert.Nil(t, resp)
+	assert.ErrorIs(t, err, domain.ErrTokenExpired)
+	assert.Equal(t, 0, refresher.callCount, "refresher should not be called when no refresh token")
+}
+
+func TestGetDecryptedToken_NotExpired_NoRefresh(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	plaintext := "valid_access_token"
+
+	encAccess, err := enc.Encrypt([]byte(plaintext))
+	require.NoError(t, err)
+
+	future := time.Now().Add(1 * time.Hour)
+	integration := &domain.Integration{
+		ID:                   uuid.New(),
+		BusinessID:           businessID,
+		Platform:             "google_business",
+		ExternalID:           "loc/2",
+		Status:               "active",
+		EncryptedAccessToken: encAccess,
+		TokenExpiresAt:       &future,
+	}
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(ctx context.Context, bid uuid.UUID, plat string, extID string) (*domain.Integration, error) {
+			return integration, nil
+		},
+	}
+
+	refresher := &mockTokenRefresher{}
+	svc := NewIntegrationService(repo, enc, refresher)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/2")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, plaintext, resp.AccessToken)
+	assert.Equal(t, 0, refresher.callCount, "should not refresh non-expired token")
+}
+
+func TestGetDecryptedToken_ConcurrentRefresh_OnlyOneCall(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	integrationID := uuid.New()
+
+	refreshTokenPlain := "my_refresh"
+	newAccess := "refreshed_token"
+
+	encAccess, err := enc.Encrypt([]byte("old"))
+	require.NoError(t, err)
+	encRefresh, err := enc.Encrypt([]byte(refreshTokenPlain))
+	require.NoError(t, err)
+
+	past := time.Now().Add(-1 * time.Hour)
+
+	// After first refresh, return updated integration from DB
+	refreshed := false
+	newEncAccess, _ := enc.Encrypt([]byte(newAccess))
+	future := time.Now().Add(1 * time.Hour)
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(ctx context.Context, bid uuid.UUID, plat string, extID string) (*domain.Integration, error) {
+			return &domain.Integration{
+				ID:                    integrationID,
+				BusinessID:            businessID,
+				Platform:              "google_business",
+				ExternalID:            "loc/1",
+				Status:                "active",
+				EncryptedAccessToken:  encAccess,
+				EncryptedRefreshToken: encRefresh,
+				TokenExpiresAt:        &past,
+			}, nil
+		},
+		getByIDFunc: func(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
+			if refreshed {
+				// Second concurrent call sees already-refreshed token
+				return &domain.Integration{
+					ID:                    integrationID,
+					BusinessID:            businessID,
+					Platform:              "google_business",
+					ExternalID:            "loc/1",
+					Status:                "active",
+					EncryptedAccessToken:  newEncAccess,
+					EncryptedRefreshToken: encRefresh,
+					TokenExpiresAt:        &future,
+				}, nil
+			}
+			return &domain.Integration{
+				ID:                    integrationID,
+				BusinessID:            businessID,
+				Platform:              "google_business",
+				ExternalID:            "loc/1",
+				Status:                "active",
+				EncryptedAccessToken:  encAccess,
+				EncryptedRefreshToken: encRefresh,
+				TokenExpiresAt:        &past,
+			}, nil
+		},
+		updateFunc: func(ctx context.Context, i *domain.Integration) error {
+			refreshed = true
+			return nil
+		},
+	}
+
+	refresher := &mockTokenRefresher{
+		refreshFunc: func(ctx context.Context, rt string) (string, string, int64, error) {
+			return newAccess, "", 3600, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, enc, refresher)
+
+	// Make two sequential calls (serialized by mutex)
+	resp1, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	require.NoError(t, err)
+	assert.Equal(t, newAccess, resp1.AccessToken)
+
+	resp2, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
+	require.NoError(t, err)
+	assert.Equal(t, newAccess, resp2.AccessToken)
+
+	// Only one actual refresh should have happened (second call sees fresh token after re-read)
+	assert.Equal(t, 1, refresher.callCount, "should only refresh once due to mutex + double-check")
 }
