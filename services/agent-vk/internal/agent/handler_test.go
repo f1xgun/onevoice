@@ -860,15 +860,15 @@ func TestReadClient_PrefersUserToken(t *testing.T) {
 	factory := func(token string) agent.VKClient {
 		capturedToken = token
 		return &mockVKClient{
-			getCommentsFn: func(_ string, _, _ int) ([]map[string]interface{}, error) {
-				return nil, nil
+			getCommunityInfoFn: func(_ string) (map[string]interface{}, error) {
+				return map[string]interface{}{"name": "Test"}, nil
 			},
 		}
 	}
 	h := agent.NewHandler(tokens, factory, "service-key-tok")
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__get_comments",
+		Tool:       "vk__get_community_info",
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"group_id": "-123456"},
 	})
