@@ -11,12 +11,14 @@ import (
 )
 
 type TokenResponse struct {
-	IntegrationID string                 `json:"integration_id"`
-	Platform      string                 `json:"platform"`
-	ExternalID    string                 `json:"external_id"`
-	AccessToken   string                 `json:"access_token"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
-	ExpiresAt     *time.Time             `json:"expires_at,omitempty"`
+	IntegrationID    string                 `json:"integration_id"`
+	Platform         string                 `json:"platform"`
+	ExternalID       string                 `json:"external_id"`
+	AccessToken      string                 `json:"access_token"`
+	UserToken        string                 `json:"user_token,omitempty"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
+	ExpiresAt        *time.Time             `json:"expires_at,omitempty"`
+	UserTokenExpires *time.Time             `json:"user_token_expires_at,omitempty"`
 }
 
 type cacheEntry struct {
