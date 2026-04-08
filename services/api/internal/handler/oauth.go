@@ -471,3 +471,408 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, "/integrations?connected=yandex_business", http.StatusFound)
 }
+
+// --- Google Business Profile OAuth ---
+
+// googleTokenURL returns the Google OAuth2 token endpoint (supports test override).
+func (h *OAuthHandler) googleTokenURL() string {
+	if h.cfg.googleTokenBaseURL != "" {
+		return h.cfg.googleTokenBaseURL + "/token"
+	}
+	return "https://oauth2.googleapis.com/token"
+}
+
+// googleAccountsURL returns the Google Business Account Management API base URL.
+func (h *OAuthHandler) googleAccountsURL() string {
+	if h.cfg.googleAccountsBaseURL != "" {
+		return h.cfg.googleAccountsBaseURL
+	}
+	return "https://mybusinessaccountmanagement.googleapis.com"
+}
+
+// googleBusinessInfoURL returns the Google Business Information API base URL.
+func (h *OAuthHandler) googleBusinessInfoURL() string {
+	if h.cfg.googleBusinessInfoURL != "" {
+		return h.cfg.googleBusinessInfoURL
+	}
+	return "https://mybusinessbusinessinformation.googleapis.com"
+}
+
+// googleTempData holds temporary token data stored in Redis during multi-location selection.
+type googleTempData struct {
+	AccessToken  string              `json:"access_token"`
+	RefreshToken string              `json:"refresh_token"`
+	ExpiresIn    int64               `json:"expires_in"`
+	BusinessID   string              `json:"business_id"`
+	Locations    []googleLocationRef `json:"locations"`
+}
+
+// googleLocationRef holds a discovered Google Business location reference.
+type googleLocationRef struct {
+	AccountName  string `json:"account_name"`
+	LocationName string `json:"location_name"`
+	Title        string `json:"title"`
+}
+
+// GetGoogleAuthURL generates a Google OAuth2 authorization URL (JWT required).
+func (h *OAuthHandler) GetGoogleAuthURL(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to get business for Google OAuth", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
+		UserID:     userID,
+		BusinessID: business.ID,
+		Platform:   "google_business",
+	})
+	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to generate OAuth state for Google", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	authURL := fmt.Sprintf(
+		"https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&access_type=offline&prompt=consent&state=%s",
+		url.QueryEscape(h.cfg.GoogleClientID),
+		url.QueryEscape(h.cfg.GoogleRedirectURI),
+		url.QueryEscape("https://www.googleapis.com/auth/business.manage"),
+		url.QueryEscape(state),
+	)
+
+	writeJSON(w, http.StatusOK, map[string]string{"url": authURL})
+}
+
+// GoogleCallback handles the Google OAuth callback (public -- state validates identity).
+func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+
+	if code == "" || state == "" {
+		http.Redirect(w, r, "/integrations?error=missing_params", http.StatusFound)
+		return
+	}
+
+	stateData, err := h.oauthService.ValidateState(r.Context(), state)
+	if err != nil {
+		slog.Warn("invalid Google OAuth state", "error", err)
+		http.Redirect(w, r, "/integrations?error=invalid_state", http.StatusFound)
+		return
+	}
+
+	// Exchange authorization code for tokens
+	form := url.Values{
+		"code":          {code},
+		"client_id":     {h.cfg.GoogleClientID},
+		"client_secret": {h.cfg.GoogleClientSecret},
+		"redirect_uri":  {h.cfg.GoogleRedirectURI},
+		"grant_type":    {"authorization_code"},
+	}
+	resp, err := h.httpClient.PostForm(h.googleTokenURL(), form)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "Google token exchange failed", "error", err)
+		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	var tokenResp struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+		Error        string `json:"error"`
+		ErrorDesc    string `json:"error_description"`
+	}
+	if err := json.Unmarshal(body, &tokenResp); err != nil || tokenResp.AccessToken == "" {
+		slog.ErrorContext(r.Context(), "Google token response invalid", "error", err)
+		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
+		return
+	}
+
+	// CRITICAL: refresh_token is only returned on first consent. If missing, the user
+	// did not grant offline access (prompt=consent was missing from auth URL).
+	if tokenResp.RefreshToken == "" {
+		http.Redirect(w, r, "/integrations?error=no_refresh_token", http.StatusFound)
+		return
+	}
+
+	// Discover accounts
+	accounts, err := h.googleDiscoverAccounts(r.Context(), tokenResp.AccessToken)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "Google account discovery failed", "error", err)
+		http.Redirect(w, r, "/integrations?error=discovery_failed", http.StatusFound)
+		return
+	}
+
+	if len(accounts) == 0 {
+		http.Redirect(w, r, "/integrations?error=no_locations", http.StatusFound)
+		return
+	}
+
+	// Discover locations for the first account
+	var allLocations []googleLocationRef
+	for _, acct := range accounts {
+		locations, locErr := h.googleDiscoverLocations(r.Context(), tokenResp.AccessToken, acct.Name)
+		if locErr != nil {
+			slog.ErrorContext(r.Context(), "Google location discovery failed", "account", acct.Name, "error", locErr)
+			continue
+		}
+		for _, loc := range locations {
+			allLocations = append(allLocations, googleLocationRef{
+				AccountName:  acct.Name,
+				LocationName: loc.Name,
+				Title:        loc.Title,
+			})
+		}
+	}
+
+	if len(allLocations) == 0 {
+		http.Redirect(w, r, "/integrations?error=no_locations", http.StatusFound)
+		return
+	}
+
+	// Single location: auto-connect
+	if len(allLocations) == 1 {
+		loc := allLocations[0]
+		expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+		_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
+			BusinessID:   stateData.BusinessID,
+			Platform:     "google_business",
+			ExternalID:   loc.LocationName,
+			AccessToken:  tokenResp.AccessToken,
+			RefreshToken: tokenResp.RefreshToken,
+			ExpiresAt:    &expiresAt,
+			Metadata: map[string]interface{}{
+				"account_id":     loc.AccountName,
+				"location_id":    loc.LocationName,
+				"location_title": loc.Title,
+			},
+		})
+		if err != nil {
+			slog.ErrorContext(r.Context(), "failed to connect Google Business integration", "error", err)
+			http.Redirect(w, r, "/integrations?error=connect_failed", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/integrations?connected=google_business", http.StatusFound)
+		return
+	}
+
+	// Multiple locations: store temp data in Redis for selection step
+	tempData := googleTempData{
+		AccessToken:  tokenResp.AccessToken,
+		RefreshToken: tokenResp.RefreshToken,
+		ExpiresIn:    tokenResp.ExpiresIn,
+		BusinessID:   stateData.BusinessID.String(),
+		Locations:    allLocations,
+	}
+	tempJSON, _ := json.Marshal(tempData)
+	redisKey := "google_temp:" + stateData.BusinessID.String()
+	if err := h.redis.Set(r.Context(), redisKey, tempJSON, 5*time.Minute).Err(); err != nil {
+		slog.ErrorContext(r.Context(), "failed to store Google temp data in Redis", "error", err)
+		http.Redirect(w, r, "/integrations?error=internal_error", http.StatusFound)
+		return
+	}
+
+	http.Redirect(w, r, "/integrations?google_step=select_location", http.StatusFound)
+}
+
+// googleAccount represents a Google Business account from the API.
+type googleAccount struct {
+	Name string `json:"name"`
+}
+
+// googleLocation represents a Google Business location from the API.
+type googleLocation struct {
+	Name  string `json:"name"`
+	Title string `json:"title"`
+}
+
+// googleDiscoverAccounts calls the Google Business Account Management API.
+func (h *OAuthHandler) googleDiscoverAccounts(ctx context.Context, accessToken string) ([]googleAccount, error) {
+	reqURL := h.googleAccountsURL() + "/v1/accounts"
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("build accounts request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("accounts request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Accounts []googleAccount `json:"accounts"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse accounts response: %w", err)
+	}
+	return result.Accounts, nil
+}
+
+// googleDiscoverLocations calls the Google Business Information API for a given account.
+func (h *OAuthHandler) googleDiscoverLocations(ctx context.Context, accessToken, accountName string) ([]googleLocation, error) {
+	reqURL := fmt.Sprintf("%s/v1/%s/locations?readMask=name,title,storefrontAddress", h.googleBusinessInfoURL(), accountName)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("build locations request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("locations request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Locations []googleLocation `json:"locations"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse locations response: %w", err)
+	}
+	return result.Locations, nil
+}
+
+// GoogleLocations returns discovered locations from temp token data in Redis (JWT required).
+func (h *OAuthHandler) GoogleLocations(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to get business for Google locations", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	redisKey := "google_temp:" + business.ID.String()
+	val, err := h.redis.Get(r.Context(), redisKey).Result()
+	if err != nil {
+		writeJSONError(w, http.StatusGone, "Google session expired, please reconnect")
+		return
+	}
+
+	var tempData googleTempData
+	if err := json.Unmarshal([]byte(val), &tempData); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "invalid temp data")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"locations": tempData.Locations,
+	})
+}
+
+// googleSelectLocationRequest is the request body for GoogleSelectLocation.
+type googleSelectLocationRequest struct {
+	AccountID  string `json:"account_id"`
+	LocationID string `json:"location_id"`
+}
+
+// GoogleSelectLocation connects the selected Google Business location (JWT required, POST).
+func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req googleSelectLocationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.AccountID == "" || req.LocationID == "" {
+		writeJSONError(w, http.StatusBadRequest, "account_id and location_id are required")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to get business for Google select location", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	redisKey := "google_temp:" + business.ID.String()
+	val, err := h.redis.Get(r.Context(), redisKey).Result()
+	if err != nil {
+		writeJSONError(w, http.StatusGone, "Google session expired, please reconnect")
+		return
+	}
+
+	var tempData googleTempData
+	if err := json.Unmarshal([]byte(val), &tempData); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "invalid temp data")
+		return
+	}
+
+	// Find the matching location to get its title
+	var locationTitle string
+	found := false
+	for _, loc := range tempData.Locations {
+		if loc.AccountName == req.AccountID && loc.LocationName == req.LocationID {
+			locationTitle = loc.Title
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeJSONError(w, http.StatusBadRequest, "location not found in discovered locations")
+		return
+	}
+
+	expiresAt := time.Now().Add(time.Duration(tempData.ExpiresIn) * time.Second)
+	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
+		BusinessID:   business.ID,
+		Platform:     "google_business",
+		ExternalID:   req.LocationID,
+		AccessToken:  tempData.AccessToken,
+		RefreshToken: tempData.RefreshToken,
+		ExpiresAt:    &expiresAt,
+		Metadata: map[string]interface{}{
+			"account_id":     req.AccountID,
+			"location_id":    req.LocationID,
+			"location_title": locationTitle,
+		},
+	})
+	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to connect Google Business integration", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to connect")
+		return
+	}
+
+	// Clean up temp data
+	_ = h.redis.Del(r.Context(), redisKey).Err()
+
+	writeJSON(w, http.StatusCreated, integration)
+}
