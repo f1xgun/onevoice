@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +13,13 @@ import (
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
+
+// TokenRefresher abstracts the HTTP call to refresh an expired OAuth token.
+type TokenRefresher interface {
+	// RefreshToken exchanges a refresh token for a new access token.
+	// Returns new access token, optional new refresh token (empty string if not rotated), expires_in seconds, error.
+	RefreshToken(ctx context.Context, refreshToken string) (accessToken string, newRefreshToken string, expiresIn int64, err error)
+}
 
 // ConnectParams holds parameters for connecting a new platform integration
 type ConnectParams struct {
@@ -45,19 +54,29 @@ type IntegrationService interface {
 }
 
 type integrationService struct {
-	repo domain.IntegrationRepository
-	enc  *crypto.Encryptor
+	repo      domain.IntegrationRepository
+	enc       *crypto.Encryptor
+	refreshMu sync.Map          // map[uuid.UUID]*sync.Mutex — per-integration refresh lock
+	refresher TokenRefresher    // nil for platforms that don't need refresh
 }
 
 // Compile-time check that integrationService implements IntegrationService
 var _ IntegrationService = (*integrationService)(nil)
 
-// NewIntegrationService creates a new integration service instance
-func NewIntegrationService(repo domain.IntegrationRepository, enc *crypto.Encryptor) IntegrationService {
+// NewIntegrationService creates a new integration service instance.
+// refresher can be nil for platforms that don't use token refresh.
+func NewIntegrationService(repo domain.IntegrationRepository, enc *crypto.Encryptor, refresher TokenRefresher) IntegrationService {
 	return &integrationService{
-		repo: repo,
-		enc:  enc,
+		repo:      repo,
+		enc:       enc,
+		refresher: refresher,
 	}
+}
+
+// getRefreshMutex returns a per-integration mutex for serializing refresh calls.
+func (s *integrationService) getRefreshMutex(id uuid.UUID) *sync.Mutex {
+	val, _ := s.refreshMu.LoadOrStore(id, &sync.Mutex{})
+	return val.(*sync.Mutex)
 }
 
 // ListByBusinessID retrieves all integrations for a business
@@ -203,10 +222,67 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 		}
 	}
 
-	// Check expiration
+	// Check expiration — attempt refresh if possible
 	if integration.TokenExpiresAt != nil && integration.TokenExpiresAt.Before(time.Now()) {
-		// No automatic refresh for now — return expired error
-		return nil, domain.ErrTokenExpired
+		if len(integration.EncryptedRefreshToken) == 0 || s.refresher == nil {
+			return nil, domain.ErrTokenExpired
+		}
+
+		mu := s.getRefreshMutex(integration.ID)
+		mu.Lock()
+		defer mu.Unlock()
+
+		// Re-read from DB — another goroutine may have refreshed while we waited
+		integration, err = s.repo.GetByID(ctx, integration.ID)
+		if err != nil {
+			return nil, fmt.Errorf("re-read integration after lock: %w", err)
+		}
+
+		// Check if still expired after re-read
+		if integration.TokenExpiresAt != nil && integration.TokenExpiresAt.Before(time.Now()) {
+			refreshToken, err := s.enc.Decrypt(integration.EncryptedRefreshToken)
+			if err != nil {
+				return nil, fmt.Errorf("decrypt refresh token: %w", err)
+			}
+
+			newAccess, newRefresh, expiresIn, err := s.refresher.RefreshToken(ctx, string(refreshToken))
+			if err != nil {
+				slog.ErrorContext(ctx, "token refresh failed",
+					"integration_id", integration.ID,
+					"platform", integration.Platform,
+					"error", err,
+				)
+				return nil, domain.ErrTokenExpired
+			}
+
+			// Encrypt and persist new tokens
+			encAccess, err := s.enc.Encrypt([]byte(newAccess))
+			if err != nil {
+				return nil, fmt.Errorf("encrypt refreshed access token: %w", err)
+			}
+			integration.EncryptedAccessToken = encAccess
+
+			if newRefresh != "" {
+				encRefresh, err := s.enc.Encrypt([]byte(newRefresh))
+				if err != nil {
+					return nil, fmt.Errorf("encrypt rotated refresh token: %w", err)
+				}
+				integration.EncryptedRefreshToken = encRefresh
+			}
+
+			expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
+			integration.TokenExpiresAt = &expiresAt
+
+			if err := s.repo.Update(ctx, integration); err != nil {
+				return nil, fmt.Errorf("persist refreshed tokens: %w", err)
+			}
+
+			slog.InfoContext(ctx, "token refreshed successfully",
+				"integration_id", integration.ID,
+				"platform", integration.Platform,
+				"new_expiry", expiresAt.Format(time.RFC3339),
+			)
+		}
 	}
 
 	var accessToken string

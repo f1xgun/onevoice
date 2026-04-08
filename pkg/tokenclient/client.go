@@ -105,5 +105,5 @@ func tokenExpiringSoon(t *TokenResponse) bool {
 	if t.ExpiresAt == nil {
 		return false
 	}
-	return time.Until(*t.ExpiresAt) < time.Minute
+	return time.Until(*t.ExpiresAt) < 5*time.Minute
 }
