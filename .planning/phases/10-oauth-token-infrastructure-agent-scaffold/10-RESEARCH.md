@@ -335,22 +335,16 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 | A3 | `readMask` parameter is required for Business Information `locations` endpoint | Code Examples | If optional, can be omitted for simpler code. MINIMAL risk. |
 | A4 | Integration repository `Update()` method correctly persists refreshed tokens with no schema changes needed | Architecture Pattern 2 | If Update fails or schema mismatch exists, refresh persistence breaks. LOW risk -- verified repo code handles all Integration fields. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`tokenExpiringSoon()` threshold: global or per-platform?**
-   - What we know: Currently 1 minute globally. Google needs 5 minutes. VK/Telegram don't expire.
-   - What's unclear: Whether changing to 5 minutes globally has side effects for non-expiring platforms.
-   - Recommendation: Change to 5 minutes globally. For non-expiring tokens (`ExpiresAt == nil`), the function already returns `false`. For VK (no expiry set), no behavior change. Safe to make global.
+   - RESOLVED: 5 minutes globally. For non-expiring tokens (`ExpiresAt == nil`), the function already returns `false`. For VK (no expiry set), no behavior change. Safe to make global.
 
 2. **TokenRefresher dependency injection approach**
-   - What we know: `integrationService` currently has no HTTP client. Refresh requires calling Google endpoint.
-   - What's unclear: Best way to inject this without breaking the existing constructor signature.
-   - Recommendation: Add optional `RefreshConfig` to `NewIntegrationService()` or add `SetRefresher(TokenRefresher)` method. Claude's discretion per CONTEXT.md.
+   - RESOLVED: TokenRefresher interface passed to NewIntegrationService(); nil-safe for non-Google platforms. Claude's discretion on exact injection pattern per CONTEXT.md.
 
 3. **Google API access approval timeline**
-   - What we know: Requires 60+ day old verified Google Business Profile. Timeline is opaque.
-   - What's unclear: Whether the project has an eligible GBP account ready.
-   - Recommendation: Develop entirely against httptest mocks. Real API testing deferred. Flagged in STATE.md blockers.
+   - RESOLVED: Develop entirely against httptest mocks. Real API testing deferred to post-approval. Flagged in STATE.md blockers.
 
 ## Environment Availability
 
