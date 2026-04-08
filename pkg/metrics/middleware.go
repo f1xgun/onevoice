@@ -43,6 +43,13 @@ func (rw *responseWriter) Unwrap() http.ResponseWriter {
 	return rw.ResponseWriter
 }
 
+// Flush implements http.Flusher so SSE streaming works through metrics middleware.
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // HTTPMiddleware returns a chi-compatible middleware that records HTTP metrics.
 // It uses chi's RouteContext to get the URL pattern (not the actual URL) to
 // prevent cardinality explosion from path parameters.

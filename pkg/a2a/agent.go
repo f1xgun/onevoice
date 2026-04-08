@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/f1xgun/onevoice/pkg/logger"
 )
@@ -66,24 +67,37 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 		ctx = logger.WithCorrelationID(ctx, req.RequestID)
 	}
 
+	log := slog.With("agent", a.id, "tool", req.Tool, "business_id", req.BusinessID)
+	if req.RequestID != "" {
+		log = log.With("correlation_id", req.RequestID)
+	}
+
+	log.Info("a2a: tool request received")
+	start := time.Now()
+
 	resp, err := a.handler.Handle(ctx, req)
+	duration := time.Since(start)
+
 	if err != nil {
+		log.Error("a2a: tool request failed", "error", err, "duration_ms", duration.Milliseconds())
 		resp = &ToolResponse{
 			TaskID:  req.TaskID,
 			Success: false,
 			Error:   err.Error(),
 		}
+	} else {
+		log.Info("a2a: tool request completed", "success", resp.Success, "duration_ms", duration.Milliseconds())
 	}
 
 	respData, err := json.Marshal(resp)
 	if err != nil {
-		slog.Error("a2a: failed to encode tool response", "agent", a.id, "error", err)
+		log.Error("a2a: failed to encode tool response", "error", err)
 		return
 	}
 
 	if reply != "" {
 		if err := a.transport.Publish(reply, respData); err != nil {
-			slog.Error("a2a: failed to publish reply", "agent", a.id, "error", err)
+			log.Error("a2a: failed to publish reply", "error", err)
 		}
 	}
 }

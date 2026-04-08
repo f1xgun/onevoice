@@ -47,9 +47,11 @@ type Integration struct {
 	Status                string                 `json:"status" db:"status"`
 	EncryptedAccessToken  []byte                 `json:"-" db:"encrypted_access_token"`
 	EncryptedRefreshToken []byte                 `json:"-" db:"encrypted_refresh_token"`
+	EncryptedUserToken    []byte                 `json:"-" db:"encrypted_user_token"`
 	ExternalID            string                 `json:"externalId" db:"external_id"`
 	Metadata              map[string]interface{} `json:"metadata" db:"metadata"`
 	TokenExpiresAt        *time.Time             `json:"tokenExpiresAt,omitempty" db:"token_expires_at"`
+	UserTokenExpiresAt    *time.Time             `json:"-" db:"user_token_expires_at"`
 	CreatedAt             time.Time              `json:"createdAt" db:"created_at"`
 	UpdatedAt             time.Time              `json:"updatedAt" db:"updated_at"`
 }
