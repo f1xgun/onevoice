@@ -9,6 +9,7 @@ const (
 	AgentTelegram       AgentID = "telegram"
 	AgentVK             AgentID = "vk"
 	AgentYandexBusiness AgentID = "yandex_business"
+	AgentGoogleBusiness AgentID = "google_business"
 )
 
 // Subject returns the NATS subject for sending tasks to an agent.
