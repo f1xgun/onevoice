@@ -1,670 +1,569 @@
-# Architecture Research
+# Architecture: Google Business Profile Agent Integration
 
-Research scope: hardening and integration patterns for OneVoice — a Go 1.24 microservice system
-with NATS message bus, Playwright RPA, and multi-provider LLM routing.
+**Domain:** Platform agent for Google Business Profile (Google Maps business management)
+**Researched:** 2026-04-08
+**Overall confidence:** HIGH (existing patterns well-established, Google API well-documented)
 
----
+## Executive Summary
 
-## OAuth Token Lifecycle Management
+The Google Business Profile (GBP) agent follows the exact same architectural pattern as the existing Telegram and VK agents. It is a standalone Go microservice that subscribes to NATS subject `tasks.google_business`, implements A2A ToolRequest handling, and uses the `tokenclient` package to fetch decrypted OAuth2 tokens from the API service. The key difference from existing agents is that Google OAuth2 requires **automatic token refresh** (access tokens expire in 1 hour), which the existing `Integration` model already supports via `encrypted_refresh_token` + `token_expires_at` fields but currently lacks a refresh-on-expiry flow in the token endpoint.
 
-### Problem Statement
+The integration touches **four services** (new agent, API, orchestrator, frontend) but the vast majority of changes are additive, not modifications. The only structural change is adding Google token refresh logic to the API service's internal token endpoint.
 
-VK uses OAuth 2.0 with access tokens that may expire (24h short-lived or "offline" long-lived).
-Yandex.Business access tokens expire after ~1 year and require refresh. The current codebase stores
-encrypted tokens in PostgreSQL and decrypts them at agent request time via
-`GET /internal/tokens/{businessID}`. There is no proactive refresh path — tokens are only refreshed
-if `token_expires_at` is within 1 hour at request time (per `services/api/internal/service/oauth.go`).
+## Recommended Architecture
 
-### VK Token Specifics
-
-VK grants tokens in two modes:
-- `offline` scope: non-expiring token (no refresh needed, but can be revoked)
-- Without `offline`: short-lived, typically 24h, no refresh token provided
-
-The current VK OAuth flow requests `offline` scope, so VK tokens should not require
-refresh under normal operation. However, VK can revoke tokens (user deauthorizes the app,
-password change, suspicious activity). This means the agent must detect 403/invalid_token
-errors and propagate them as a permanent failure rather than retrying.
-
-### Yandex.Business Token Specifics
-
-Yandex issues access + refresh token pairs. Access tokens expire in 1 year. The refresh token
-is valid indefinitely but is single-use — each refresh rotates both tokens.
-
-### Standard Pattern for Microservice Token Lifecycle
-
-**Component boundary:** Token lifecycle management lives entirely in the API service.
-Agents never hold tokens beyond a single request — they fetch fresh tokens via the internal
-token endpoint on every tool invocation. This means all refresh logic is centralized.
-
-**Data flow for token refresh:**
+### Component Overview
 
 ```
-Agent → GET /internal/tokens/{businessID}?platform=vk
-                     ↓
-         IntegrationService.GetDecryptedToken()
-                     ↓
-         Check token_expires_at
-         If within refresh window (< 1h remaining):
-                     ↓
-         OAuthService.RefreshToken(platform, refresh_token)
-                     ↓
-         POST {provider_token_endpoint}
-                     ↓
-         Update integrations row (new tokens, new expiry)
-                     ↓
-         Return decrypted access token to agent
+Frontend (Next.js)
+  |
+  | 1. GET /integrations/google_business/auth-url (JWT)
+  v
+API Service
+  |
+  | 2. Redirect to Google OAuth consent
+  | 3. Google redirects to /oauth/google_business/callback
+  | 4. Exchange code -> store encrypted access+refresh tokens
+  | 5. GET /internal/v1/tokens (refresh if expired)
+  |
+  | NATS tasks.google_business
+  v
+Agent Google Business (NEW)
+  |
+  | 6. Call Google Business Profile APIs
+  v
+Google APIs (mybusiness.googleapis.com, mybusinessbusinessinformation.googleapis.com)
 ```
 
-**Concurrency hazard:** Multiple agents hitting the token endpoint simultaneously can
-trigger parallel refresh requests for the same integration. This is a double-spend
-problem — a single-use Yandex refresh token consumed twice will make one request fail.
+### Component Boundaries
 
-**Solution — advisory lock pattern in PostgreSQL:**
+| Component | Responsibility | Communicates With |
+|-----------|---------------|-------------------|
+| `services/agent-google-business/` (NEW) | NATS subscriber, GBP API client, tool dispatch | NATS (subscribe), API internal endpoint (tokens), Google APIs (HTTP) |
+| `services/api/` (MODIFIED) | Google OAuth2 flow, token storage, **token refresh** | PostgreSQL (integrations table), Redis (OAuth state), Google OAuth endpoints |
+| `services/orchestrator/` (MODIFIED) | Register `google_business__*` tools with NATS executors | NATS (publish tool requests) |
+| `services/frontend/` (MODIFIED) | Google account connection UI, platform card | API service (OAuth URL, integrations CRUD) |
+| `pkg/a2a/` (MODIFIED) | Add `AgentGoogleBusiness` constant | Imported by agent + orchestrator |
 
-```sql
--- In the token refresh transaction:
-SELECT pg_try_advisory_xact_lock(hashtext(business_id || platform))
+### Data Flow
+
+**Connection Flow (OAuth2):**
+1. User clicks "Connect Google Business" on frontend
+2. Frontend calls `GET /api/v1/integrations/google_business/auth-url`
+3. API generates OAuth state (Redis), returns Google consent URL with scope `https://www.googleapis.com/auth/business.manage`
+4. User authorizes on Google, Google redirects to `/api/v1/oauth/google_business/callback?code=...&state=...`
+5. API validates state, exchanges code for access_token + refresh_token via `POST https://oauth2.googleapis.com/token`
+6. API calls Google Account Management API to list accounts, picks the first account
+7. API calls Business Information API to list locations under that account
+8. If single location: auto-connect. If multiple: redirect to frontend for location selection
+9. Store encrypted tokens + location ID as `external_id` + account info in metadata
+
+**Tool Execution Flow (identical to existing agents):**
+1. Orchestrator receives chat with `active_integrations: ["google_business"]`
+2. Tool registry returns `google_business__*` tools
+3. LLM calls tool, e.g., `google_business__get_reviews`
+4. Orchestrator NATS-publishes to `tasks.google_business` with ToolRequest
+5. Agent receives request, fetches token via tokenclient
+6. Agent calls Google API, returns ToolResponse via NATS reply
+7. Orchestrator feeds result back to LLM
+
+**Token Refresh Flow (NEW capability):**
+1. Agent requests token from API internal endpoint
+2. API checks `token_expires_at` -- if expired and refresh_token exists
+3. API calls Google token endpoint with refresh_token
+4. API updates encrypted tokens + new expires_at in DB
+5. Returns fresh access_token to agent
+
+## New Components
+
+### 1. `services/agent-google-business/` (NEW SERVICE)
+
+Follows the VK agent pattern exactly.
+
+```
+services/agent-google-business/
+├── go.mod                        # module, replace pkg => ../../pkg
+├── cmd/
+│   └── main.go                   # Wiring: NATS, tokenclient, handler, health server
+└── internal/
+    ├── agent/
+    │   ├── handler.go            # A2A Handler: tool dispatch switch
+    │   └── handler_test.go       # Unit tests with mocked GBP client
+    └── gbp/
+        └── client.go             # Google Business Profile API client wrapper
 ```
 
-If the lock is acquired, perform refresh and commit. If not acquired (another goroutine is
-refreshing), wait briefly and re-read the row — the other goroutine will have written fresh
-tokens. This pattern requires no Redis and avoids distributed lock complexity.
+**AgentID:** `google_business`
+**NATS subject:** `tasks.google_business`
+**Platform string:** `"google_business"` (used in integrations table, token lookups)
 
-Implementation shape:
-
+**Handler pattern (mirrors VK handler):**
 ```go
-func (s *OAuthService) RefreshIfNeeded(ctx context.Context, integration *domain.Integration) error {
-    if time.Until(integration.TokenExpiresAt) > refreshThreshold {
-        return nil // still valid
-    }
-    // Advisory lock scoped to this integration
-    locked, err := s.db.TryAdvisoryLock(ctx, integration.ID)
-    if err != nil {
-        return err
-    }
-    if !locked {
-        // Another goroutine is refreshing — re-read after brief wait
-        time.Sleep(200 * time.Millisecond)
-        return s.reloadToken(ctx, integration) // reads updated row
-    }
-    defer s.db.ReleaseAdvisoryLock(ctx, integration.ID)
-    return s.doRefresh(ctx, integration)
+type TokenInfo struct {
+    AccessToken string
+    ExternalID  string // location ID: "12345678901234567"
+    Metadata    map[string]interface{} // contains account_name
 }
-```
 
-**Error taxonomy for VK/Yandex token errors:**
-
-| Error | Type | Agent action |
-|-------|------|-------------|
-| 401 / invalid_token | Permanent | Return error to orchestrator, do not retry |
-| 429 / rate_limited | Transient | Retry with exponential backoff |
-| 500 / provider_error | Transient | Retry once, then fail |
-| Token expired (detected in API) | Handled by API | Transparent to agent after refresh |
-| Refresh token invalid | Permanent | Return error; user must re-authorize |
-
-**Build order for OneVoice:**
-
-1. Add `token_expires_at` and `refresh_token` columns if not present (migration exists per INTEGRATIONS.md)
-2. Implement `OAuthService.RefreshIfNeeded` with advisory lock
-3. Call it inside `GetDecryptedToken` before returning to agent
-4. Add `ErrTokenExpired` domain error; propagate as 401 from token endpoint
-5. In agent handlers: detect permanent errors, return `ToolResponse{Success: false}` without retrying
-6. Add integration test: simulate expired token, verify refresh happens exactly once
-
----
-
-## RPA Session Management
-
-### Problem Statement
-
-The Yandex.Business agent uses Playwright with session cookies loaded from `YANDEX_COOKIES_JSON`
-at runtime. Each tool call creates a new Playwright instance, launches Chromium, injects cookies,
-and navigates to the target page. This is correct for isolation but introduces:
-- High per-request latency (~2-4s Chromium startup)
-- No session validation before action execution
-- Retry logic that retries all errors including permanent ones (expired session, missing selector)
-
-The `withPage` function in `browser.go` spawns a new `playwright.Run()` on every call, which
-initializes the entire Playwright node process. This is extremely expensive.
-
-### Recommended Session Pool Architecture
-
-**Single Playwright instance, persistent browser context per agent lifecycle:**
-
-```
-Agent startup:
-  playwright.Run() → pw instance (shared)
-  pw.Chromium.Launch() → browser (shared)
-  browser.NewContext(cookies) → bCtx (shared, reused across requests)
-
-Per tool call:
-  bCtx.NewPage() → page (created per call, closed after)
-  canary check (navigate to /profile, assert not login page)
-  execute action
-  page.Close()
-```
-
-**Why context-level sharing (not page-level):** Browser contexts isolate cookies and local
-storage. A context created once with cookies remains valid until Yandex invalidates the session.
-Creating new contexts per request forces re-injection of cookies every time.
-
-**Canary check before action:** Before each tool operation, verify the session is valid:
-
-```go
-func (b *BrowserPool) canaryCheck(page playwright.Page) error {
-    if _, err := page.Goto("https://business.yandex.ru/", playwright.PageGotoOptions{
-        WaitUntil: playwright.WaitUntilStateNetworkidle,
-        Timeout:   playwright.Float(10000),
-    }); err != nil {
-        return err
-    }
-    // If redirected to login, session is invalid
-    if strings.Contains(page.URL(), "passport.yandex.ru") {
-        return ErrSessionExpired
-    }
-    return nil
+type TokenFetcher interface {
+    GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error)
 }
+
+type GBPClient interface {
+    GetReviews(accountName, locationName string, pageSize int) ([]map[string]interface{}, error)
+    ReplyReview(accountName, locationName, reviewID, text string) error
+    GetBusinessInfo(locationName string) (map[string]interface{}, error)
+    UpdateBusinessInfo(locationName string, fields map[string]interface{}) error
+    GetHours(locationName string) (map[string]interface{}, error)
+    UpdateHours(locationName, hoursJSON string) error
+    CreatePost(accountName, locationName, summary string) (map[string]interface{}, error)
+    ListPosts(accountName, locationName string, pageSize int) ([]map[string]interface{}, error)
+}
+
+type GBPClientFactory func(accessToken string) GBPClient
 ```
 
-**Non-retryable error classification:**
+**Error classification (mirrors VK/Telegram pattern):**
+- HTTP 401 Unauthorized -> NonRetryableError (token revoked)
+- HTTP 403 Forbidden -> NonRetryableError (no access)
+- HTTP 404 Not Found -> NonRetryableError (location/review not found)
+- HTTP 429 Rate Limit -> NonRetryableError (surface to user)
+- HTTP 5xx -> transient (retryable)
+
+### 2. `services/agent-google-business/internal/gbp/client.go` (NEW)
+
+**Approach: Direct HTTP calls to Google REST APIs, NOT using generated Go SDK.**
+
+Rationale:
+- The Google-generated Go packages (`google.golang.org/api/mybusinessbusinessinformation/v1`, etc.) are in maintenance mode
+- Reviews API has no official Go SDK package -- it is only available via legacy v4 REST
+- Direct HTTP is simpler, fully testable (mock HTTP server), matches existing agent patterns (VK uses vksdk wrapper, but the agent itself is testable via interface)
+- All agents abstract their API client behind an interface for testability
+
+**API endpoints used:**
+
+| Operation | API | Endpoint |
+|-----------|-----|----------|
+| List accounts | Account Management v1 | `GET https://mybusinessaccountmanagement.googleapis.com/v1/accounts` |
+| List locations | Business Information v1 | `GET https://mybusinessbusinessinformation.googleapis.com/v1/accounts/{accountId}/locations?readMask=name,title,storefrontAddress` |
+| Get location | Business Information v1 | `GET https://mybusinessbusinessinformation.googleapis.com/v1/locations/{locationId}?readMask=...` |
+| Patch location | Business Information v1 | `PATCH https://mybusinessbusinessinformation.googleapis.com/v1/locations/{locationId}?updateMask=...` |
+| List reviews | Legacy v4 | `GET https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews` |
+| Reply to review | Legacy v4 | `PUT https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews/{reviewId}/reply` |
+| Create post | Legacy v4 | `POST https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/localPosts` |
+| List posts | Legacy v4 | `GET https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/localPosts` |
+
+**Token handling:** The GBP client receives an access token per-request (via factory pattern). It does NOT handle refresh -- that is the API service's responsibility via the internal token endpoint.
+
+### 3. Tool Definitions (orchestrator registration)
+
+Following `{platform}__{action}` naming convention:
+
+| Tool Name | Description | Key Args |
+|-----------|-------------|----------|
+| `google_business__get_reviews` | Get reviews from Google Maps | `limit` (int, default 20) |
+| `google_business__reply_review` | Reply to a Google review | `review_id` (string, required), `text` (string, required) |
+| `google_business__get_business_info` | Get business information from Google | (none) |
+| `google_business__update_business_info` | Update business description on Google | `description` (string) |
+| `google_business__get_hours` | Get business hours from Google Maps | (none) |
+| `google_business__update_hours` | Update business hours on Google Maps | `hours` (string, JSON format) |
+| `google_business__create_post` | Create a Google Business post/update | `summary` (string, required) |
+| `google_business__list_posts` | List recent Google Business posts | `limit` (int, default 10) |
+
+## Modifications to Existing Services
+
+### A. `pkg/a2a/protocol.go` -- Add constant
 
 ```go
-type RPAErrorKind int
-
 const (
-    RPAErrorTransient RPAErrorKind = iota // network, timeout — retry
-    RPAErrorSessionExpired                // cookie invalidated — do not retry
-    RPAErrorSelectorNotFound              // DOM changed — do not retry, alert
-    RPAErrorPermission                    // business access denied — do not retry
+    AgentTelegram        AgentID = "telegram"
+    AgentVK              AgentID = "vk"
+    AgentYandexBusiness  AgentID = "yandex_business"
+    AgentGoogleBusiness  AgentID = "google_business"  // NEW
 )
-
-type RPAError struct {
-    Kind    RPAErrorKind
-    Message string
-    Cause   error
-}
 ```
 
-`withRetry` must check `RPAError.Kind` before sleeping:
+Impact: Zero -- additive constant, no behavioral change.
+
+### B. `services/api/` -- OAuth handler + token refresh
+
+**New files:**
+- None needed -- extend existing `OAuthHandler` and `OAuthConfig`
+
+**Modified files:**
+
+1. **`internal/handler/oauth.go`** -- Add Google OAuth methods:
+   - `GetGoogleAuthURL(w, r)` -- Generate Google consent URL
+   - `GoogleCallback(w, r)` -- Exchange code, list accounts/locations, store integration
+   - `GoogleLocations(w, r)` -- List locations for account selection (if multi-location)
+   - `GoogleSelectLocation(w, r)` -- Confirm location selection and finalize integration
+
+2. **`internal/handler/oauth.go` `OAuthConfig`** -- Add fields:
+   ```go
+   GoogleClientID     string
+   GoogleClientSecret string
+   GoogleRedirectURI  string
+   ```
+
+3. **`internal/service/integration.go` `GetDecryptedToken()`** -- Add auto-refresh:
+   Currently returns `domain.ErrTokenExpired` when token is expired. Must add:
+   - Check if refresh_token exists
+   - Call Google token endpoint: `POST https://oauth2.googleapis.com/token` with `grant_type=refresh_token`
+   - Update encrypted tokens + expires_at in DB
+   - Return fresh access_token
+   
+   **Important:** This refresh logic should be platform-aware (Google uses `oauth2.googleapis.com/token`, Yandex uses `oauth.yandex.net/token`). Best approach: add a `RefreshConfig` map keyed by platform to `IntegrationService`, or a simple switch statement since we only have 2 platforms with refresh tokens.
+
+4. **`internal/router/router.go`** -- Add routes:
+   ```go
+   // OAuth callback (public)
+   r.Get("/oauth/google_business/callback", handlers.OAuth.GoogleCallback)
+   
+   // Protected routes
+   r.Get("/integrations/google_business/auth-url", handlers.OAuth.GetGoogleAuthURL)
+   r.Get("/integrations/google_business/locations", handlers.OAuth.GoogleLocations)
+   r.Post("/integrations/google_business/select-location", handlers.OAuth.GoogleSelectLocation)
+   ```
+
+5. **`cmd/main.go`** -- Wire Google OAuth config from env vars.
+
+6. **`docker-compose.yml`** -- Add env vars:
+   ```yaml
+   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+   GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost/api/v1/oauth/google_business/callback}
+   ```
+
+### C. `services/orchestrator/cmd/main.go` -- Register tools
+
+Add `google_business` agent tools to `registerPlatformTools()` function, following the exact pattern of existing agents. This is a purely additive change -- add a new entry to the `agents` slice.
+
+### D. `services/frontend/` -- UI changes
+
+1. **`app/(app)/integrations/page.tsx`** -- Move `google` from `DISABLED_PLATFORMS` to `PLATFORMS`:
+   ```typescript
+   { id: 'google_business', label: 'Google Business', description: 'Отзывы, информация, посты', color: '#4285F4' },
+   ```
+
+2. **Add `handleConnect` branch** for `google_business` -- standard OAuth redirect flow (same as `yandex_business`):
+   ```typescript
+   // google_business: OAuth redirect flow (same as yandex_business)
+   try {
+     const { data } = await api.get(`/integrations/google_business/auth-url`);
+     window.location.href = data.url;
+   } catch {
+     toast.error('Error getting authorization URL');
+   }
+   ```
+
+3. **Handle callback params** in `useEffect` -- add `connected=google_business` success handling.
+
+4. **Optional: GoogleLocationModal** -- If the user's Google account has multiple locations, show a selection dialog (similar to `VKCommunityModal`). If single location, auto-connect.
+
+### E. `docker-compose.yml` -- Add agent service
+
+```yaml
+agent-google-business:
+  build:
+    context: .
+    dockerfile: Dockerfile.agent-google-business
+  container_name: onevoice-agent-google-business
+  environment:
+    NATS_URL: nats://nats:4222
+    API_INTERNAL_URL: http://api:8443
+  volumes:
+    - ./certs/ca.crt:/certs/ca.crt:ro
+    - ./certs/google-business.crt:/certs/client.crt:ro
+    - ./certs/google-business.key:/certs/client.key:ro
+  depends_on:
+    nats:
+      condition: service_healthy
+  networks:
+    - onevoice-network
+  restart: unless-stopped
+```
+
+### F. `go.work` -- Add module
 
 ```go
-func withRetry(ctx context.Context, maxAttempts int, fn func() error) error {
-    for i := range maxAttempts {
-        err := fn()
-        if err == nil {
-            return nil
-        }
-        var rpaErr *RPAError
-        if errors.As(err, &rpaErr) && rpaErr.Kind != RPAErrorTransient {
-            return err // permanent — do not retry
-        }
-        if i < maxAttempts-1 {
-            time.Sleep(time.Duration(1<<uint(i)) * time.Second)
-        }
-    }
-    return fmt.Errorf("all %d attempts failed", maxAttempts)
-}
+use (
+    ./pkg
+    ./services/api
+    ./services/orchestrator
+    ./services/agent-telegram
+    ./services/agent-vk
+    ./services/agent-yandex-business
+    ./services/agent-google-business  // NEW
+)
 ```
 
-**Cookie rotation strategy:**
+## Key Design Decisions
 
-Yandex session cookies expire when the user's Yandex session expires (logout, password change,
-30-day idle). There is no programmatic refresh path — fresh cookies must be obtained by
-re-authenticating via a browser and exporting cookies (e.g., via a browser extension).
+### Decision 1: `google_business` as platform identifier (not `google` or `gbp`)
 
-Operational approach:
-- Store cookies in API's `integrations` table (encrypted) rather than env var
-- Add `YANDEX_COOKIE_EXPIRES_AT` metadata alongside cookies
-- Set alert (log.Warn) when `time.Until(expiresAt) < 7 days`
-- The "token endpoint" already handles Yandex credentials — cookies are just the `access_token`
-  value stored as JSON string
+Matches existing pattern: `yandex_business` (not `yandex` or `ybiz`). The platform string appears in:
+- Integration DB records (`platform` column)
+- NATS subject (`tasks.google_business`)
+- Tool names (`google_business__get_reviews`)
+- Frontend platform ID
+- A2A AgentID constant
 
-**Headless vs headed:** Use headless for production. Add `PLAYWRIGHT_HEADLESS=false` env override
-for local debugging. The `--disable-blink-features=AutomationControlled` flag already present in
-the codebase is the correct anti-detection approach.
+Consistency with `yandex_business` naming makes this clear.
 
-**Build order for OneVoice:**
+### Decision 2: Direct HTTP client, not Google SDK
 
-1. Refactor `browser.go`: extract `BrowserPool` struct that holds `pw`, `browser`, `bCtx`
-2. Initialize pool in `cmd/main.go` at startup, pass to `NewBrowser()`
-3. Add `canaryCheck()` method, call before each tool action
-4. Add `RPAError` types; update `withRetry` to distinguish transient vs permanent
-5. Move cookie storage from env var to API integrations table; update token endpoint
-6. Add cookie expiry warning: log at startup if `expiresAt < 7 days`
-7. Implement stub tools: `GetReviews`, `ReplyReview`, `UpdateHours`, `UpdateInfo` using
-   `page.Locator()` selectors — these are the HIGH severity TODOs in CONCERNS.md
+The Google-generated Go SDK packages are in maintenance mode and split across 8+ packages for different API surfaces. The reviews API and posts API remain on legacy v4 only. A thin HTTP client wrapper behind a testable interface is simpler, requires fewer dependencies, and matches the architectural pattern where agents abstract their platform client.
 
----
+### Decision 3: Token refresh in API service, not in agent
 
-## Health Check Patterns
+The agent should not know how to refresh tokens. The API service's internal token endpoint already handles decryption and expiry checks. Adding refresh there keeps token management centralized and means all agents benefit from the same refresh logic (Google now, Yandex later if needed).
 
-### Problem Statement
+### Decision 4: Location selection flow (multi-location support)
 
-No service in OneVoice exposes health endpoints. Kubernetes, Docker Swarm, and load balancers
-need liveness and readiness probes. Without them, requests route to dead or degraded services.
+A Google account can manage multiple business locations. The OAuth flow must handle this:
+- After OAuth, API lists locations via Business Information API
+- If 1 location: auto-connect with location ID as `external_id`
+- If 2+ locations: store temp token in Redis (like VK community flow), redirect to frontend for selection
+- Frontend shows GoogleLocationModal, user picks location, POST back to API
 
-### Liveness vs Readiness
+This mirrors the VK community selection flow exactly.
 
-**Liveness probe** (`/health/live`): Is the process alive and not deadlocked?
-- Should always return 200 unless the process is stuck
-- Check: goroutine count reasonable, no internal deadlock indicators
-- For OneVoice: always return 200 (process-level; OS kills stuck processes)
+### Decision 5: Account name stored in metadata
 
-**Readiness probe** (`/health/ready`): Can the service handle traffic?
-- Check all critical dependencies
-- Return 503 if any dependency is unhealthy
-- This is the important one for OneVoice
+The Google API requires `accounts/{accountId}/locations/{locationId}` paths. We store:
+- `external_id`: location ID (e.g., `12345678901234567`)
+- `metadata.account_name`: account resource name (e.g., `accounts/12345678901234567`)
+- `metadata.location_title`: human-readable business name from Google
 
-### Dependency Check Matrix
+The agent reconstructs full resource paths from these stored values.
 
-| Service | Dependencies to check |
-|---------|----------------------|
-| API (8080) | PostgreSQL ping, MongoDB ping, Redis ping |
-| Orchestrator (8090) | NATS connection, Redis (rate limiter), LLM provider reachable |
-| Telegram Agent | NATS subscription active |
-| VK Agent | NATS subscription active |
-| Yandex Agent | NATS subscription active, Playwright process running |
+## Google API Access Requirements
 
-### Implementation Pattern
+**CRITICAL PREREQUISITE:** Google Business Profile API requires application and approval:
+1. Create Google Cloud project
+2. Submit GBP API access request form with project number
+3. Wait for approval (may take days/weeks)
+4. After approval, enable all 8 Business Profile APIs in Cloud Console
+5. Create OAuth2 credentials (Client ID + Client Secret)
+6. Configure consent screen with `business.manage` scope
 
-```go
-// pkg/health/checker.go
-type CheckFn func(ctx context.Context) error
+**Requirements for approval:**
+- Verified, active Google Business Profile for 60+ days
+- Business website listed on the profile
+- Application email must be owner/manager on the GBP
 
-type Checker struct {
-    checks map[string]CheckFn
-}
+**Quota:** 300 QPM (queries per minute) for approved projects.
 
-func (c *Checker) Handler() http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-        defer cancel()
+This is a blocking prerequisite -- development can proceed with test mocks, but real API testing requires approval.
 
-        results := make(map[string]string)
-        healthy := true
-        for name, check := range c.checks {
-            if err := check(ctx); err != nil {
-                results[name] = err.Error()
-                healthy = false
-            } else {
-                results[name] = "ok"
-            }
-        }
+## Google OAuth2 Specifics
 
-        status := http.StatusOK
-        if !healthy {
-            status = http.StatusServiceUnavailable
-        }
-        w.Header().Set("Content-Type", "application/json")
-        w.WriteHeader(status)
-        _ = json.NewEncoder(w).Encode(results)
-    }
-}
-```
+**Authorization URL:** `https://accounts.google.com/o/oauth2/v2/auth`
+**Token endpoint:** `https://oauth2.googleapis.com/token`
+**Scope:** `https://www.googleapis.com/auth/business.manage`
+**Access token lifetime:** 1 hour (3600 seconds)
+**Refresh token:** Long-lived, returned on first authorization with `access_type=offline`
 
-**PostgreSQL check:**
-```go
-func PostgresCheck(pool *pgxpool.Pool) CheckFn {
-    return func(ctx context.Context) error {
-        return pool.Ping(ctx)
-    }
-}
-```
+**Authorization URL parameters:**
+- `client_id` -- OAuth Client ID
+- `redirect_uri` -- Must match registered redirect URI
+- `response_type=code`
+- `scope=https://www.googleapis.com/auth/business.manage`
+- `access_type=offline` -- Required to get refresh token
+- `prompt=consent` -- Force consent to ensure refresh token is issued
+- `state` -- CSRF token (from Redis, same as VK/Yandex)
 
-**MongoDB check:**
-```go
-func MongoCheck(client *mongo.Client) CheckFn {
-    return func(ctx context.Context) error {
-        return client.Ping(ctx, nil)
-    }
-}
-```
+**Token exchange parameters (POST form):**
+- `code` -- Authorization code
+- `client_id`
+- `client_secret`
+- `redirect_uri`
+- `grant_type=authorization_code`
 
-**NATS check:**
-```go
-func NATSCheck(nc *nats.Conn) CheckFn {
-    return func(ctx context.Context) error {
-        if !nc.IsConnected() {
-            return fmt.Errorf("NATS disconnected")
-        }
-        return nil
-    }
-}
-```
+**Token refresh parameters (POST form):**
+- `refresh_token`
+- `client_id`
+- `client_secret`
+- `grant_type=refresh_token`
 
-### Cascade Health Check
-
-The orchestrator depends on NATS (agent connectivity). If NATS is down, the orchestrator
-should still be reachable for SSE but will fail on tool dispatch. Readiness check for
-orchestrator should check NATS but not fail hard — instead return a degraded status:
+## Integration Metadata Schema
 
 ```json
 {
-  "nats": "ok",
-  "redis": "ok",
-  "llm_provider": "degraded: openrouter timeout, fallback to openai"
+  "account_name": "accounts/12345678901234567",
+  "account_id": "12345678901234567",
+  "location_title": "My Business Name",
+  "location_address": "123 Main St, City"
 }
 ```
 
-### Router Integration (chi)
+The `external_id` field stores the location ID (e.g., `12345678901234567`), and the agent reconstructs full resource paths:
+- Account path: `metadata.account_name`
+- Location path: `locations/{external_id}`
+- Reviews path: `{account_name}/locations/{external_id}/reviews`
+
+## Token Storage Schema
+
+Uses existing `integrations` table columns with no schema changes:
+
+| Column | Value for Google |
+|--------|-----------------|
+| `platform` | `"google_business"` |
+| `encrypted_access_token` | AES-256-GCM encrypted Google access token |
+| `encrypted_refresh_token` | AES-256-GCM encrypted Google refresh token |
+| `token_expires_at` | Current time + 3600s (Google tokens expire in 1 hour) |
+| `external_id` | Location ID (e.g., `"12345678901234567"`) |
+| `metadata` | `{"account_name": "accounts/...", "location_title": "..."}` |
+
+No database migrations needed.
+
+## Patterns to Follow
+
+### Pattern 1: TokenAdapter (from VK agent main.go)
+
+Each agent defines a `tokenAdapter` that wraps `tokenclient.Client` and maps its response to the agent-specific `TokenInfo` type.
 
 ```go
-// In router/setup.go, add health routes outside auth middleware:
-r.Get("/health/live", health.LiveHandler())
-r.Get("/health/ready", healthChecker.Handler())
-```
-
-**Build order for OneVoice:**
-
-1. Create `pkg/health/checker.go` with `Checker`, `CheckFn`, and standard check factories
-2. Add `/health/live` and `/health/ready` to API router (no auth required)
-3. Add `/health/ready` to orchestrator (check NATS + Redis)
-4. Add `/health/ready` to each agent (check NATS connection status)
-5. Wire checks in each `cmd/main.go` after dependency initialization
-6. Update docker-compose.yml healthcheck directives to use HTTP endpoints
-
----
-
-## Structured Logging & Tracing
-
-### Problem Statement
-
-All services use `slog` via `pkg/logger/logger.go`. Logs go to stdout as text. There are no
-correlation IDs flowing across service boundaries. When a chat request fails after traversing
-API → orchestrator → NATS → agent, there is no way to correlate log lines across services.
-
-### Correlation ID Strategy
-
-Each inbound HTTP request gets a unique correlation ID. It propagates:
-- As `X-Correlation-ID` HTTP header (API → orchestrator)
-- As `request_id` field in A2A `ToolRequest` (already defined in the protocol: `request_id` field)
-- As a structured log field at every log site
-
-**Middleware (already has foundation in chi):**
-
-```go
-// middleware/correlation.go
-func CorrelationID(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        id := r.Header.Get("X-Correlation-ID")
-        if id == "" {
-            id = uuid.New().String()
-        }
-        ctx := context.WithValue(r.Context(), ctxKeyCorrelationID, id)
-        w.Header().Set("X-Correlation-ID", id)
-        next.ServeHTTP(w, r.WithContext(ctx))
-    })
+type tokenAdapter struct {
+    client *tokenclient.Client
 }
 
-func CorrelationIDFromCtx(ctx context.Context) string {
-    if id, ok := ctx.Value(ctxKeyCorrelationID).(string); ok {
-        return id
-    }
-    return ""
-}
-```
-
-**Logger with correlation ID:**
-
-```go
-// pkg/logger/logger.go enhancement
-func WithCorrelationID(ctx context.Context, base *slog.Logger) *slog.Logger {
-    if id := CorrelationIDFromCtx(ctx); id != "" {
-        return base.With("correlation_id", id)
-    }
-    return base
-}
-```
-
-**JSON format for production:**
-
-```go
-func New(service string) *slog.Logger {
-    handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-        Level: slog.LevelInfo,
-    })
-    return slog.New(handler).With("service", service)
-}
-```
-
-This enables log aggregation (ELK, Datadog, Loki) by parsing JSON lines.
-
-### A2A Request Tracing
-
-The `ToolRequest` protocol already has a `request_id` field. Wire it:
-
-1. Orchestrator: set `request_id = correlationID` when creating `ToolRequest`
-2. Agent: log `request_id` on every tool execution
-3. Agent: include `request_id` in `ToolResponse` for round-trip correlation
-
-This makes it possible to grep across service logs by a single ID:
-```
-grep '"request_id":"abc-123"' /var/log/onevoice/*.log
-```
-
-### Log Levels by Use Case
-
-| Event | Level | Fields |
-|-------|-------|--------|
-| Request start/end | INFO | method, path, status, duration_ms, correlation_id |
-| Tool dispatched | INFO | tool_name, agent_id, request_id, business_id |
-| Tool result | INFO | tool_name, success, duration_ms, request_id |
-| Token refresh | INFO | platform, business_id, expires_at |
-| Session expired (RPA) | WARN | platform, business_id |
-| NATS timeout | WARN | subject, timeout_ms, request_id |
-| Provider fallback | WARN | from_provider, to_provider, reason |
-| Parse error (SSE) | ERROR | line_index, raw_content, correlation_id |
-| DB error | ERROR | operation, table, correlation_id |
-
-### Build Order for OneVoice
-
-1. Update `pkg/logger/New()` to use `slog.NewJSONHandler` with `LOG_FORMAT` env toggle
-2. Add `middleware/correlation.go` to API and orchestrator chi routers
-3. Add correlation ID propagation to orchestrator's HTTP call to agents (via `X-Correlation-ID`)
-4. Wire `request_id` in `ToolRequest` from correlation ID
-5. Update all `slog.Error/Warn/Info` call sites to include context-derived fields
-6. Document log schema for log aggregator ingestion
-
----
-
-## Graceful Shutdown
-
-### Problem Statement
-
-The API service (`cmd/main.go`) has partial graceful shutdown: it calls `srv.Shutdown()` with
-30s timeout after receiving SIGINT/SIGTERM. However:
-- NATS connection is closed via `defer nc.Close()` which is not graceful (in-flight messages dropped)
-- Agent services (`agent-vk`, `agent-yandex-business`) use `signal.NotifyContext` but do not
-  drain NATS subscriptions before exit
-- In-flight SSE streams are dropped when the HTTP server shuts down
-
-### Full Graceful Shutdown Sequence
-
-The correct order for a Go microservice with NATS + HTTP:
-
-```
-SIGTERM received
-    │
-    ├── 1. Stop accepting new HTTP requests (server.Shutdown begins)
-    │        HTTP server stops accepting; existing connections drain up to timeout
-    │
-    ├── 2. Stop accepting new NATS messages (unsubscribe)
-    │        Existing in-flight NATS handlers complete
-    │
-    ├── 3. Wait for in-flight work to complete (WaitGroup)
-    │
-    ├── 4. Flush pending writes (MongoDB message saves, billing logs)
-    │
-    ├── 5. Close database connections
-    │        pgPool.Close(), mongoClient.Disconnect(), redisClient.Close()
-    │
-    └── 6. Close NATS connection (nc.Drain() not nc.Close())
-             NATS Drain: sends remaining outbound messages, then closes
-```
-
-### NATS Drain vs Close
-
-`nc.Close()` is immediate and drops in-flight messages. `nc.Drain()` waits for pending
-outbound messages and subscriptions to finish. Always use `nc.Drain()` in shutdown:
-
-```go
-ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-defer stop()
-
-<-ctx.Done() // wait for signal
-
-slog.Info("drain NATS connection")
-if err := nc.Drain(); err != nil {
-    slog.Error("NATS drain error", "error", err)
-}
-```
-
-### Agent Graceful Shutdown Pattern
-
-The `a2a.Agent.Start(ctx)` blocks until `ctx` is cancelled. After cancellation, the agent
-should stop accepting new messages and wait for the current handler to finish.
-
-Current A2A agent (`pkg/a2a/agent.go`) should be updated to:
-
-```go
-func (a *Agent) Start(ctx context.Context) error {
-    sub, err := a.transport.Subscribe(a.subject(), a.handleMessage)
+func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (agent.TokenInfo, error) {
+    resp, err := a.client.GetToken(ctx, businessID, platform, externalID)
     if err != nil {
-        return err
+        return agent.TokenInfo{}, err
     }
-    <-ctx.Done()
-    sub.Drain() // stop new messages, allow current to finish
-    a.wg.Wait() // wait for in-flight handlers
-    return nil
+    return agent.TokenInfo{
+        AccessToken: resp.AccessToken,
+        ExternalID:  resp.ExternalID,
+        Metadata:    resp.Metadata,
+    }, nil
 }
 ```
 
-### HTTP Server Shutdown (API Service — already partially implemented)
+### Pattern 2: Interface-Based API Client
 
-The API's `cmd/main.go` already has:
-```go
-shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-defer cancel()
-srv.Shutdown(shutdownCtx)
-```
+All agent API clients are abstracted behind interfaces. This enables:
+- Unit testing with mock implementations
+- No real API calls in CI
+- Consistent testability across all agents
 
-This is correct. SSE streams are long-lived — the 30s timeout may cut them short. For chat
-endpoints, a longer timeout (60s) or a separate drain signal to the chat handler is preferable.
+### Pattern 3: Error Classification
 
-**Enhancement:** Track active SSE streams with a WaitGroup:
+All agents must classify platform API errors into NonRetryable (permanent) vs transient:
 
 ```go
-type chatProxy struct {
-    activeStreams sync.WaitGroup
-    // ...
+func classifyGoogleError(statusCode int, err error) error {
+    switch statusCode {
+    case 401, 403:
+        return a2a.NewNonRetryableError(err)
+    case 404:
+        return a2a.NewNonRetryableError(err)
+    case 429:
+        return a2a.NewNonRetryableError(fmt.Errorf("google rate limit: %w", err))
+    default:
+        if statusCode >= 500 {
+            return err // transient
+        }
+        return a2a.NewNonRetryableError(err) // 4xx = permanent
+    }
 }
-
-func (h *chatProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    h.activeStreams.Add(1)
-    defer h.activeStreams.Done()
-    // ... existing SSE logic
-}
-
-// In shutdown:
-h.chatProxy.activeStreams.Wait() // drain active chats first
-srv.Shutdown(ctx)
 ```
 
-### Review Syncer Shutdown
+### Pattern 4: Tool Name Routing
 
-`service.NewReviewSyncer` uses `syncCtx` which is cancelled by `defer syncCancel()`. The
-syncer's goroutine must respect context cancellation and flush any pending work before returning.
+The tool registry extracts platform from tool name (`google_business__get_reviews` -> `google_business`), which maps to active integrations. The `Available()` method filters tools based on which platforms the business has active integrations for.
 
-### Build Order for OneVoice
+## Anti-Patterns to Avoid
 
-1. Update `pkg/a2a/agent.go`: add `sync.WaitGroup` for in-flight handlers, drain subscription on ctx cancel
-2. Update all agent `cmd/main.go`: replace `defer nc.Close()` with post-signal `nc.Drain()`
-3. Add `activeStreams sync.WaitGroup` to `ChatProxyHandler`, wait on shutdown
-4. Verify `ReviewSyncer` exits cleanly on context cancellation
-5. Integration test: send SIGTERM during active SSE stream, verify message is saved to MongoDB
+### Anti-Pattern 1: Using Google SDK Packages Directly in Handler
 
----
+**Why bad:** Creates tight coupling to Google API types, makes testing require Google SDK mocks.
+**Instead:** Wrap Google API calls in a `GBPClient` interface, test handler with mock client.
 
-## Recommendations for OneVoice
+### Anti-Pattern 2: Token Refresh in Agent
 
-### Priority Order (aligned with PROJECT.md active requirements)
+**Why bad:** Distributes token management across services, agent would need client_id/client_secret.
+**Instead:** API service handles all token operations (encrypt, decrypt, refresh). Agent only receives ready-to-use access tokens.
 
-**Phase A — VK/Yandex Agent Hardening (prerequisite for validation)**
+### Anti-Pattern 3: Hardcoding Account/Location Paths
 
-1. Implement all four Yandex RPA stub tools (`GetReviews`, `ReplyReview`, `UpdateHours`,
-   `UpdateInfo`) using `page.Locator()` selectors
-2. Refactor `browser.go` into a `BrowserPool` with shared Playwright instance
-3. Add `canaryCheck()` before each RPA action; distinguish `RPAErrorSessionExpired` vs
-   `RPAErrorTransient` in `withRetry`
-4. Move Yandex cookie storage from env var to API integrations table
-5. Add VK `ErrTokenRevoked` detection: if VK API returns error_code 5 (invalid token),
-   return permanent failure without retry
+**Why bad:** Google resource names follow `accounts/{id}/locations/{id}` pattern. Hardcoding assumptions about ID format breaks if Google changes format.
+**Instead:** Store full resource names in metadata and reconstruct paths from stored values.
 
-**Phase B — Health Checks (prerequisite for production readiness)**
+### Anti-Pattern 4: Blocking on API Approval
 
-6. Add `pkg/health/` package with standard check factories
-7. Add `/health/live` + `/health/ready` to all six services
-8. Update docker-compose.yml healthchecks to use HTTP endpoints
-9. Add health check to NATS subscription monitoring in orchestrator
+**Why bad:** Google API approval can take weeks, blocking all development.
+**Instead:** Build and test against mock HTTP server. Design client interface to be testable without real API calls. Validate with real API only in final integration testing.
 
-**Phase C — Graceful Shutdown (prevents data loss)**
+## Build Order (Dependency-Aware)
 
-10. Update `pkg/a2a/agent.go` to drain subscriptions on context cancellation
-11. Replace `nc.Close()` with `nc.Drain()` in all agent `cmd/main.go` files
-12. Add `sync.WaitGroup` to `ChatProxyHandler` for active SSE stream tracking
-13. Verify review syncer shuts down cleanly
+### Phase 1: Foundation (no external dependencies)
+1. Add `AgentGoogleBusiness` constant to `pkg/a2a/protocol.go`
+2. Create `services/agent-google-business/` module scaffold (go.mod, cmd/main.go skeleton)
+3. Add module to `go.work`
 
-**Phase D — Structured Logging & Tracing**
+### Phase 2: API Service Changes (depends on Phase 1)
+4. Add Google OAuth config fields to `OAuthConfig`
+5. Implement `GetGoogleAuthURL`, `GoogleCallback` handlers
+6. Implement token refresh logic in `GetDecryptedToken`
+7. Add routes to router
+8. Add Google location listing + selection endpoints
+9. Write OAuth handler tests (mock Google token endpoint)
 
-14. Update `pkg/logger/New()` to output JSON with `service` field
-15. Add `X-Correlation-ID` middleware to API and orchestrator
-16. Wire correlation ID into NATS `ToolRequest.request_id`
-17. Update high-traffic log sites to include correlation ID
+### Phase 3: Agent Service (depends on Phase 1)
+10. Implement `gbp/client.go` -- HTTP client for Google APIs
+11. Implement `agent/handler.go` -- tool dispatch
+12. Write handler tests with mock GBP client
+13. Wire cmd/main.go (NATS, tokenclient, health server)
 
-**Phase E — Token Lifecycle (for Yandex long-term reliability)**
+### Phase 4: Orchestrator Integration (depends on Phase 1)
+14. Add `google_business__*` tool definitions to `registerPlatformTools()`
 
-18. Implement `OAuthService.RefreshIfNeeded` with PostgreSQL advisory lock
-19. Add `ErrTokenExpired` domain error; propagate correctly from token endpoint
-20. Add proactive token refresh for Yandex (7-day advance warning in logs)
+### Phase 5: Frontend (depends on Phase 2)
+15. Move Google from disabled to active in integrations page
+16. Add OAuth redirect handling for `google_business`
+17. Add GoogleLocationModal for multi-location selection
+18. Handle callback success/error params
 
-### Component Boundary Summary
+### Phase 6: Infrastructure
+19. Create `Dockerfile.agent-google-business`
+20. Add service to `docker-compose.yml`
+21. Generate TLS certs for agent
 
-```
-pkg/health/         → shared health check primitives (new)
-pkg/a2a/agent.go    → add WaitGroup + Drain on shutdown
-pkg/logger/         → add JSON handler, CorrelationIDFromCtx helper
+### Phase 7: End-to-End Testing
+22. Integration test: OAuth flow -> token storage -> agent tool call -> Google API mock
+23. Manual test with real Google API (requires approved Cloud project)
 
-services/api/
-  internal/middleware/correlation.go  → new: X-Correlation-ID propagation
-  internal/service/oauth.go           → add RefreshIfNeeded + advisory lock
-  internal/handler/chat_proxy.go      → add activeStreams WaitGroup
-  cmd/main.go                         → wire health checks, extend shutdown
+## Scalability Considerations
 
-services/orchestrator/
-  internal/handler/chat.go            → propagate X-Correlation-ID to agents
-  cmd/main.go                         → add health check, NATS drain
+| Concern | Current (1 business) | At 100 businesses | Notes |
+|---------|---------------------|-------------------|-------|
+| Google API quota | 300 QPM shared | May hit limits | Monitor; request quota increase if needed |
+| Token refresh | On-demand per request | Concurrent refreshes | Add refresh mutex per integration to prevent thundering herd |
+| NATS throughput | Trivial | Trivial | Single subject, low volume |
+| Token cache TTL | 5 min (tokenclient) | Fine | Google tokens last 1 hour; 5-min cache is appropriate |
 
-services/agent-yandex-business/
-  internal/yandex/browser.go          → BrowserPool, canaryCheck, RPAError types
-  internal/yandex/get_reviews.go      → implement stub
-  internal/yandex/reply_review.go     → implement stub
-  internal/yandex/update_hours.go     → implement stub
-  internal/yandex/update_info.go      → implement stub
-  cmd/main.go                         → initialize BrowserPool, NATS drain
+## Confidence Assessment
 
-services/agent-vk/
-  internal/agent/handler.go           → add VK error code detection (permanent vs transient)
-  cmd/main.go                         → NATS drain on shutdown
-```
+| Area | Confidence | Notes |
+|------|------------|-------|
+| Agent architecture | HIGH | Exact pattern as VK/Telegram agents -- proven |
+| Google OAuth2 flow | HIGH | Standard Google OAuth2, well-documented |
+| Google API endpoints | HIGH | Official docs + REST reference verified |
+| Token refresh in API | MEDIUM | Logic is straightforward but needs careful concurrency handling |
+| Multi-location flow | MEDIUM | Mirrors VK community flow, but Google location listing API specifics need validation |
+| API access approval | HIGH | Well-documented prerequisite, known timeline risk |
 
-### Key Invariants to Preserve
+## Sources
 
-- Agents never hold long-lived tokens — always fetch from API token endpoint per request
-- NATS request/reply timeout (30s) must be shorter than HTTP server shutdown timeout (30s)
-  to avoid NATS timeout masking clean shutdown
-- Health check endpoints must not require auth (bypass JWT middleware)
-- Correlation IDs must be generated at the API boundary, not inside the orchestrator,
-  so they match what the client sees in `X-Correlation-ID` response headers
-- `nc.Drain()` blocks until all pending outbound messages are flushed — ensure it is called
-  with a timeout context to avoid hanging shutdown indefinitely
+- [Google Business Profile APIs overview](https://developers.google.com/my-business)
+- [Google OAuth2 implementation for Business Profile](https://developers.google.com/my-business/content/implement-oauth)
+- [GBP API prerequisites](https://developers.google.com/my-business/content/prereqs)
+- [Business Information API REST reference](https://developers.google.com/my-business/reference/businessinformation/rest)
+- [Reviews API REST reference](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews)
+- [Local Posts API REST reference](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.localPosts)
+- [Go mybusinessbusinessinformation package](https://pkg.go.dev/google.golang.org/api/mybusinessbusinessinformation/v1)
+- [Go mybusinessaccountmanagement package](https://pkg.go.dev/google.golang.org/api/mybusinessaccountmanagement/v1)
+- [golang.org/x/oauth2 package](https://pkg.go.dev/golang.org/x/oauth2)
+- [Google OAuth2 scopes](https://developers.google.com/identity/protocols/oauth2/scopes)
