@@ -1,39 +1,37 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Observability & Debugging
-current_phase: 09
-status: completed
-last_updated: "2026-03-22T09:21:20.701Z"
-last_activity: 2026-03-22
+milestone: v1.2
+milestone_name: Google Business Profile
+current_phase: "10"
+status: defining requirements
+last_updated: "2026-04-08"
+last_activity: 2026-04-08
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 **Project:** OneVoice
-**Milestone:** v1.1 Observability & Debugging
-**Current Phase:** 09
-**Status:** v1.1 milestone complete
-**Last activity:** 2026-03-22
+**Milestone:** v1.2 Google Business Profile
+**Current Phase:** Not started (defining requirements)
+**Status:** Defining requirements
+**Last activity:** 2026-04-08 — Milestone v1.2 started
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-22)
+See: .planning/PROJECT.md (updated 2026-04-08)
 **Core value:** Business owners can manage digital presence across platforms through a single conversational interface
-**Current focus:** Phase 09 — frontend-telemetry
+**Current focus:** Google Business Profile API integration
 
 ## Phase Progress
 
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
-| 7 | Backend Logging Gaps | BLG-01..06 | Complete (2/2 plans) |
-| 8 | Grafana + Loki Stack | LOG-01..03 | Complete (2/2 plans) |
-| 9 | Frontend Telemetry | FLG-01..03 | Complete (2/2 plans) |
+| (pending roadmap) | | | |
 
 ## Accumulated Context
 
@@ -69,4 +67,4 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 - trackClick in mutation onSuccess callbacks for accurate tracking of successful actions only
 
 ---
-*State updated: 2026-03-22 — Plan 09-02 complete (frontend telemetry wiring). Milestone v1.1 complete.*
+*State updated: 2026-04-08 — Milestone v1.2 Google Business Profile started.*
