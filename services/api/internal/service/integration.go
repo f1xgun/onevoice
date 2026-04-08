@@ -14,23 +14,27 @@ import (
 
 // ConnectParams holds parameters for connecting a new platform integration
 type ConnectParams struct {
-	BusinessID   uuid.UUID
-	Platform     string
-	ExternalID   string
-	AccessToken  string
-	RefreshToken string
-	Metadata     map[string]interface{}
-	ExpiresAt    *time.Time
+	BusinessID        uuid.UUID
+	Platform          string
+	ExternalID        string
+	AccessToken       string
+	RefreshToken      string
+	UserToken         string     // VK user token for read operations (optional)
+	UserTokenExpires  *time.Time // VK user token expiration (optional)
+	Metadata          map[string]interface{}
+	ExpiresAt         *time.Time
 }
 
 // TokenResponse holds decrypted token data for a platform integration
 type TokenResponse struct {
-	IntegrationID uuid.UUID              `json:"integration_id"`
-	Platform      string                 `json:"platform"`
-	ExternalID    string                 `json:"external_id"`
-	AccessToken   string                 `json:"access_token"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
-	ExpiresAt     *time.Time             `json:"expires_at,omitempty"`
+	IntegrationID    uuid.UUID              `json:"integration_id"`
+	Platform         string                 `json:"platform"`
+	ExternalID       string                 `json:"external_id"`
+	AccessToken      string                 `json:"access_token"`
+	UserToken        string                 `json:"user_token,omitempty"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
+	ExpiresAt        *time.Time             `json:"expires_at,omitempty"`
+	UserTokenExpires *time.Time             `json:"user_token_expires_at,omitempty"`
 }
 
 // IntegrationService defines the interface for platform integration management
@@ -140,7 +144,7 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, fmt.Errorf("platform is required")
 	}
 
-	var encAccess, encRefresh []byte
+	var encAccess, encRefresh, encUser []byte
 	var err error
 	if params.AccessToken != "" {
 		encAccess, err = s.enc.Encrypt([]byte(params.AccessToken))
@@ -154,6 +158,17 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 			return nil, fmt.Errorf("encrypt refresh token: %w", err)
 		}
 	}
+	if params.UserToken != "" {
+		encUser, err = s.enc.Encrypt([]byte(params.UserToken))
+		if err != nil {
+			return nil, fmt.Errorf("encrypt user token: %w", err)
+		}
+	}
+
+	metadata := params.Metadata
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
 
 	integration := &domain.Integration{
 		BusinessID:            params.BusinessID,
@@ -162,8 +177,10 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		ExternalID:            params.ExternalID,
 		EncryptedAccessToken:  encAccess,
 		EncryptedRefreshToken: encRefresh,
-		Metadata:              params.Metadata,
+		EncryptedUserToken:    encUser,
+		Metadata:              metadata,
 		TokenExpiresAt:        params.ExpiresAt,
+		UserTokenExpiresAt:    params.UserTokenExpires,
 	}
 
 	if err := s.repo.Create(ctx, integration); err != nil {
@@ -218,13 +235,27 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 		accessToken = string(decrypted)
 	}
 
+	var userToken string
+	if len(integration.EncryptedUserToken) > 0 {
+		decrypted, err := s.enc.Decrypt(integration.EncryptedUserToken)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt user token: %w", err)
+		}
+		// Check user token expiration
+		if integration.UserTokenExpiresAt == nil || integration.UserTokenExpiresAt.After(time.Now()) {
+			userToken = string(decrypted)
+		}
+	}
+
 	return &TokenResponse{
-		IntegrationID: integration.ID,
-		Platform:      integration.Platform,
-		ExternalID:    integration.ExternalID,
-		AccessToken:   accessToken,
-		Metadata:      integration.Metadata,
-		ExpiresAt:     integration.TokenExpiresAt,
+		IntegrationID:    integration.ID,
+		Platform:         integration.Platform,
+		ExternalID:       integration.ExternalID,
+		AccessToken:      accessToken,
+		UserToken:        userToken,
+		Metadata:         integration.Metadata,
+		ExpiresAt:        integration.TokenExpiresAt,
+		UserTokenExpires: integration.UserTokenExpiresAt,
 	}, nil
 }
 

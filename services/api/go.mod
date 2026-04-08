@@ -6,7 +6,7 @@ replace github.com/f1xgun/onevoice/pkg => ../../pkg
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/alicebob/miniredis/v2 v2.36.1
+	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/f1xgun/onevoice/pkg v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
