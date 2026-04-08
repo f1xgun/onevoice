@@ -253,7 +253,9 @@ func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2
 }
 
 func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	client, groupID, err := h.getReadClient(ctx, req)
+	// Use community token (getClient), not service key — wall.getComments
+	// is not available with service keys but works with community tokens.
+	client, groupID, err := h.getClient(ctx, req)
 	if err != nil {
 		return nil, err
 	}
