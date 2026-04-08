@@ -12,9 +12,16 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
+// TokenInfo holds the resolved tokens for an integration.
+type TokenInfo struct {
+	AccessToken string // community token (for write operations)
+	UserToken   string // user token (for read operations on private data)
+	ExternalID  string // resolved external ID (group_id)
+}
+
 // TokenFetcher abstracts token retrieval for testability.
 type TokenFetcher interface {
-	GetToken(ctx context.Context, businessID, platform, externalID string) (accessToken string, err error)
+	GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error)
 }
 
 // VKClient abstracts VK API operations for testability.
@@ -37,11 +44,13 @@ type VKClientFactory func(accessToken string) VKClient
 type Handler struct {
 	tokens        TokenFetcher
 	clientFactory VKClientFactory
+	serviceKey    string // VK API service key for read-only operations (public data)
 }
 
 // NewHandler creates a Handler with per-request token fetching.
-func NewHandler(tokens TokenFetcher, factory VKClientFactory) *Handler {
-	return &Handler{tokens: tokens, clientFactory: factory}
+// serviceKey is optional — if provided, read operations use it instead of community token.
+func NewHandler(tokens TokenFetcher, factory VKClientFactory, serviceKey string) *Handler {
+	return &Handler{tokens: tokens, clientFactory: factory, serviceKey: serviceKey}
 }
 
 // Handle routes the ToolRequest to the appropriate VK API operation.
@@ -90,11 +99,37 @@ func classifyVKError(err error) error {
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
-	token, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
 	if err != nil {
 		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
-	return h.clientFactory(token), groupID, nil
+	if groupID == "" {
+		groupID = info.ExternalID
+	}
+	return h.clientFactory(info.AccessToken), groupID, nil
+}
+
+// getReadClient returns a client for read-only operations.
+// Priority: user token (can access private data) > service key (public data only) > community token (limited).
+func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
+	groupID, _ := req.Args["group_id"].(string)
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
+	if err != nil {
+		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
+	}
+	if groupID == "" {
+		groupID = info.ExternalID
+	}
+	// User token has broadest read access (can read private community data)
+	if info.UserToken != "" {
+		return h.clientFactory(info.UserToken), groupID, nil
+	}
+	// Service key can read public data
+	if h.serviceKey != "" {
+		return h.clientFactory(h.serviceKey), groupID, nil
+	}
+	// Fallback to community token
+	return h.clientFactory(info.AccessToken), groupID, nil
 }
 
 func (h *Handler) publishPost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -203,7 +238,7 @@ func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2
 }
 
 func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	client, _, err := h.getClient(ctx, req)
+	client, _, err := h.getReadClient(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +314,7 @@ func (h *Handler) deleteComment(ctx context.Context, req a2a.ToolRequest) (*a2a.
 }
 
 func (h *Handler) getCommunityInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	client, groupID, err := h.getClient(ctx, req)
+	client, groupID, err := h.getReadClient(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +334,7 @@ func (h *Handler) getCommunityInfo(ctx context.Context, req a2a.ToolRequest) (*a
 }
 
 func (h *Handler) getWallPosts(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	client, groupID, err := h.getClient(ctx, req)
+	client, groupID, err := h.getReadClient(ctx, req)
 	if err != nil {
 		return nil, err
 	}

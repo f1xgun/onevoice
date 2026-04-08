@@ -634,3 +634,148 @@ func TestListByBusinessAndPlatform_NilBusinessID(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "business id is required")
 }
+
+// --- GetDecryptedToken fallback tests ---
+
+func TestGetDecryptedToken_EmptyExternalID_FallsBackToFirstActive(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	plaintext := "community_token_abc"
+	encryptedToken, err := enc.Encrypt([]byte(plaintext))
+	require.NoError(t, err)
+
+	activeIntegration := domain.Integration{
+		ID:                   uuid.New(),
+		BusinessID:           businessID,
+		Platform:             "vk",
+		ExternalID:           "-123456",
+		Status:               "active",
+		EncryptedAccessToken: encryptedToken,
+	}
+
+	repo := &mockIntegrationRepository{
+		// GetByBusinessPlatformExternal should NOT be called when externalID is empty
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, _ string) (*domain.Integration, error) {
+			t.Error("should not call GetByBusinessPlatformExternal when externalID is empty")
+			return nil, domain.ErrIntegrationNotFound
+		},
+		listByBusinessAndPlatformFunc: func(_ context.Context, bid uuid.UUID, plat string) ([]domain.Integration, error) {
+			if bid == businessID && plat == "vk" {
+				return []domain.Integration{activeIntegration}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, enc)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "vk", "") // empty externalID
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, plaintext, resp.AccessToken)
+	assert.Equal(t, "-123456", resp.ExternalID)
+	assert.Equal(t, activeIntegration.ID, resp.IntegrationID)
+}
+
+func TestGetDecryptedToken_ExternalIDNotFound_FallsBackToFirstActive(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	plaintext := "fallback_token"
+	encryptedToken, err := enc.Encrypt([]byte(plaintext))
+	require.NoError(t, err)
+
+	fallbackIntegration := domain.Integration{
+		ID:                   uuid.New(),
+		BusinessID:           businessID,
+		Platform:             "vk",
+		ExternalID:           "-default",
+		Status:               "active",
+		EncryptedAccessToken: encryptedToken,
+	}
+
+	repo := &mockIntegrationRepository{
+		getByBusinessPlatformExternalFunc: func(_ context.Context, _ uuid.UUID, _, extID string) (*domain.Integration, error) {
+			// LLM passed a wrong/hallucinated external ID
+			return nil, domain.ErrIntegrationNotFound
+		},
+		listByBusinessAndPlatformFunc: func(_ context.Context, bid uuid.UUID, plat string) ([]domain.Integration, error) {
+			return []domain.Integration{fallbackIntegration}, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, enc)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "vk", "wrong_group_id")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, plaintext, resp.AccessToken)
+	assert.Equal(t, "-default", resp.ExternalID, "should fall back to first active integration")
+}
+
+func TestGetDecryptedToken_SkipsInactiveIntegrations(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	businessID := uuid.New()
+	plaintext := "active_token"
+	encryptedToken, err := enc.Encrypt([]byte(plaintext))
+	require.NoError(t, err)
+
+	repo := &mockIntegrationRepository{
+		listByBusinessAndPlatformFunc: func(_ context.Context, _ uuid.UUID, _ string) ([]domain.Integration, error) {
+			return []domain.Integration{
+				{ID: uuid.New(), Platform: "vk", Status: "revoked", ExternalID: "-111"},
+				{ID: uuid.New(), Platform: "vk", Status: "expired", ExternalID: "-222"},
+				{ID: uuid.New(), Platform: "vk", Status: "active", ExternalID: "-333", EncryptedAccessToken: encryptedToken},
+			}, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, enc)
+	resp, err := svc.GetDecryptedToken(ctx, businessID, "vk", "")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "-333", resp.ExternalID, "should skip revoked/expired and use first active")
+	assert.Equal(t, plaintext, resp.AccessToken)
+}
+
+func TestGetDecryptedToken_NoActiveIntegrations(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	repo := &mockIntegrationRepository{
+		listByBusinessAndPlatformFunc: func(_ context.Context, _ uuid.UUID, _ string) ([]domain.Integration, error) {
+			return []domain.Integration{
+				{ID: uuid.New(), Platform: "vk", Status: "revoked", ExternalID: "-111"},
+			}, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, enc)
+	resp, err := svc.GetDecryptedToken(ctx, uuid.New(), "vk", "")
+
+	assert.Nil(t, resp)
+	assert.ErrorIs(t, err, domain.ErrIntegrationNotFound, "should return ErrIntegrationNotFound when no active integrations")
+}
+
+func TestGetDecryptedToken_EmptyTokenList(t *testing.T) {
+	ctx := context.Background()
+	enc := testEncryptor(t)
+
+	repo := &mockIntegrationRepository{
+		listByBusinessAndPlatformFunc: func(_ context.Context, _ uuid.UUID, _ string) ([]domain.Integration, error) {
+			return []domain.Integration{}, nil
+		},
+	}
+
+	svc := NewIntegrationService(repo, enc)
+	resp, err := svc.GetDecryptedToken(ctx, uuid.New(), "vk", "")
+
+	assert.Nil(t, resp)
+	assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
+}
