@@ -41,7 +41,7 @@ type mockVKClient struct {
 	schedulePostFn    func(groupID, text string, publishDate int64) (int64, error)
 	postPhotoFn       func(groupID string, photoURL, caption string) (int64, error)
 	updateGroupInfoFn func(groupID, description string) error
-	getCommentsFn     func(groupID string, count int) ([]map[string]interface{}, error)
+	getCommentsFn     func(groupID string, postID, count int) ([]map[string]interface{}, error)
 	replyCommentFn    func(groupID string, postID, commentID int, text string) (int, error)
 	deleteCommentFn    func(groupID string, commentID int) error
 	getCommunityInfoFn func(groupID string) (map[string]interface{}, error)
@@ -63,8 +63,8 @@ func (m *mockVKClient) PostPhoto(groupID string, photoURL, caption string) (int6
 func (m *mockVKClient) UpdateGroupInfo(groupID, description string) error {
 	return m.updateGroupInfoFn(groupID, description)
 }
-func (m *mockVKClient) GetComments(groupID string, count int) ([]map[string]interface{}, error) {
-	return m.getCommentsFn(groupID, count)
+func (m *mockVKClient) GetComments(groupID string, postID, count int) ([]map[string]interface{}, error) {
+	return m.getCommentsFn(groupID, postID, count)
 }
 func (m *mockVKClient) ReplyComment(groupID string, postID, commentID int, text string) (int, error) {
 	if m.replyCommentFn != nil {
@@ -189,7 +189,7 @@ func TestHandler_UpdateGroupInfo(t *testing.T) {
 func TestHandler_GetComments(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
 	vkClient := &mockVKClient{
-		getCommentsFn: func(groupID string, count int) ([]map[string]interface{}, error) {
+		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
 			assert.Equal(t, "-123456", groupID)
 			assert.Equal(t, 10, count)
 			return []map[string]interface{}{{"id": "1", "text": "nice!"}}, nil
@@ -216,7 +216,7 @@ func TestHandler_GetComments(t *testing.T) {
 func TestHandler_GetComments_DefaultCount(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
 	vkClient := &mockVKClient{
-		getCommentsFn: func(groupID string, count int) ([]map[string]interface{}, error) {
+		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
 			assert.Equal(t, 20, count)
 			return nil, nil
 		},
@@ -860,7 +860,7 @@ func TestReadClient_PrefersUserToken(t *testing.T) {
 	factory := func(token string) agent.VKClient {
 		capturedToken = token
 		return &mockVKClient{
-			getCommentsFn: func(_ string, _ int) ([]map[string]interface{}, error) {
+			getCommentsFn: func(_ string, _, _ int) ([]map[string]interface{}, error) {
 				return nil, nil
 			},
 		}
@@ -973,7 +973,7 @@ func TestGetComments_UsesResolvedGroupID(t *testing.T) {
 	var capturedGroupID string
 	factory := func(_ string) agent.VKClient {
 		return &mockVKClient{
-			getCommentsFn: func(groupID string, _ int) ([]map[string]interface{}, error) {
+			getCommentsFn: func(groupID string, _, _ int) ([]map[string]interface{}, error) {
 				capturedGroupID = groupID
 				return nil, nil
 			},

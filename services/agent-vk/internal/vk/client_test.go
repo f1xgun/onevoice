@@ -186,7 +186,7 @@ func TestClient_GetComments_Success(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv)
-	comments, err := c.GetComments("-123456", 10)
+	comments, err := c.GetComments("-123456", 42, 10)
 
 	require.NoError(t, err)
 	require.Len(t, comments, 1)
@@ -194,6 +194,7 @@ func TestClient_GetComments_Success(t *testing.T) {
 	assert.Equal(t, "Nice!", comments[0]["text"])
 	assert.Equal(t, 1700000000, comments[0]["date"])
 	assert.Equal(t, 12345, comments[0]["from_id"])
+	assert.Equal(t, 42, comments[0]["post_id"])
 }
 
 // --- Error path tests ---
@@ -390,7 +391,7 @@ func TestClient_GetComments_Error(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv)
-	_, err := c.GetComments("-123456", 10)
+	_, err := c.GetComments("-123456", 1, 10)
 
 	require.Error(t, err)
 }

@@ -31,6 +31,11 @@ type Config struct {
 	YandexRedirectURI  string
 	TelegramBotToken   string
 
+	// Google OAuth
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURI  string
+
 	// Internal server
 	InternalPort string
 
@@ -81,6 +86,9 @@ func Load() (*Config, error) {
 		YandexClientSecret: os.Getenv("YANDEX_CLIENT_SECRET"),
 		YandexRedirectURI:  getEnv("YANDEX_REDIRECT_URI", "http://localhost/api/v1/oauth/yandex_business/callback"),
 		TelegramBotToken:   os.Getenv("TELEGRAM_BOT_TOKEN"),
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleRedirectURI:  getEnv("GOOGLE_REDIRECT_URI", "http://localhost/api/v1/oauth/google_business/callback"),
 		InternalPort:       getEnv("INTERNAL_PORT", "8443"),
 		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", "http://localhost:8090"),
 		NATSUrl:            os.Getenv("NATS_URL"),

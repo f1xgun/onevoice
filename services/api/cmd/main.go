@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,7 +23,6 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
@@ -60,6 +63,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("connect to postgres: %w", err)
 	}
+	defer pgPool.Close()
 	log.Info("connected to postgres")
 
 	// MongoDB
@@ -67,6 +71,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("connect to mongodb: %w", err)
 	}
+	defer func() { _ = mongoClient.Disconnect(ctx) }()
 	mongoDB := mongoClient.Database(cfg.MongoDB)
 	log.Info("connected to mongodb")
 
@@ -79,18 +84,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("connect to redis: %w", err)
 	}
 	log.Info("connected to redis")
-
-	// Health checker
-	hc := health.New()
-	hc.AddCheck("postgres", func(ctx context.Context) error {
-		return pgPool.Ping(ctx)
-	})
-	hc.AddCheck("mongodb", func(ctx context.Context) error {
-		return mongoClient.Ping(ctx, nil)
-	})
-	hc.AddCheck("redis", func(ctx context.Context) error {
-		return redisClient.Ping(ctx).Err()
-	})
 
 	// Initialize encryptor for token encryption
 	enc, err := crypto.NewEncryptor([]byte(cfg.EncryptionKey))
@@ -109,12 +102,19 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	agentTaskRepo := repository.NewAgentTaskRepository(mongoDB)
 
 	// Initialize services
-	userService, err := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
-	if err != nil {
-		return fmt.Errorf("init user service: %w", err)
-	}
+	userService := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
 	businessService := service.NewBusinessService(businessRepo)
-	integrationService := service.NewIntegrationService(integrationRepo, enc)
+
+	// Build Google token refresher if credentials are configured
+	var refresher service.TokenRefresher
+	if cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "" {
+		refresher = &googleTokenRefresher{
+			clientID:     cfg.GoogleClientID,
+			clientSecret: cfg.GoogleClientSecret,
+			httpClient:   &http.Client{Timeout: 10 * time.Second},
+		}
+	}
+	integrationService := service.NewIntegrationService(integrationRepo, enc, refresher)
 	oauthService := service.NewOAuthService(redisClient)
 	reviewService := service.NewReviewService(reviewRepo, businessService)
 	postService := service.NewPostService(postRepo, businessService)
@@ -131,7 +131,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		nil,
 		cfg.PublicURL,
 	)
-	platformSyncer.SetTaskRecorder(agentTaskRepo)
 
 	// Initialize handlers
 	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
@@ -142,57 +141,28 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		YandexClientSecret: cfg.YandexClientSecret,
 		YandexRedirectURI:  cfg.YandexRedirectURI,
 		TelegramBotToken:   cfg.TelegramBotToken,
+		GoogleClientID:     cfg.GoogleClientID,
+		GoogleClientSecret: cfg.GoogleClientSecret,
+		GoogleRedirectURI:  cfg.GoogleRedirectURI,
 	}, nil, redisClient)
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
 	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
 
-	authHandler, err := handler.NewAuthHandler(userService, cfg.SecureCookies)
-	if err != nil {
-		return fmt.Errorf("init auth handler: %w", err)
-	}
-	businessHandler, err := handler.NewBusinessHandler(businessService, platformSyncer, cfg.UploadDir)
-	if err != nil {
-		return fmt.Errorf("init business handler: %w", err)
-	}
-	integrationHandler, err := handler.NewIntegrationHandler(integrationService, businessService)
-	if err != nil {
-		return fmt.Errorf("init integration handler: %w", err)
-	}
-	conversationHandler, err := handler.NewConversationHandler(conversationRepo, messageRepo)
-	if err != nil {
-		return fmt.Errorf("init conversation handler: %w", err)
-	}
-	reviewHandler, err := handler.NewReviewHandler(reviewService)
-	if err != nil {
-		return fmt.Errorf("init review handler: %w", err)
-	}
-	postHandler, err := handler.NewPostHandler(postService)
-	if err != nil {
-		return fmt.Errorf("init post handler: %w", err)
-	}
-	agentTaskHandler, err := handler.NewAgentTaskHandler(agentTaskService)
-	if err != nil {
-		return fmt.Errorf("init agent task handler: %w", err)
-	}
-
-	telemetryHandler := handler.NewTelemetryHandler()
-
 	handlers := &router.Handlers{
-		Auth:          authHandler,
-		Business:      businessHandler,
-		Integration:   integrationHandler,
-		Conversation:  conversationHandler,
+		Auth:          handler.NewAuthHandler(userService),
+		Business:      handler.NewBusinessHandler(businessService, platformSyncer, cfg.UploadDir),
+		Integration:   handler.NewIntegrationHandler(integrationService, businessService),
+		Conversation:  handler.NewConversationHandler(conversationRepo, messageRepo),
 		OAuth:         oauthHandler,
 		InternalToken: internalTokenHandler,
 		ChatProxy:     chatProxyHandler,
-		Review:        reviewHandler,
-		Post:          postHandler,
-		AgentTask:     agentTaskHandler,
-		Telemetry:     telemetryHandler,
+		Review:        handler.NewReviewHandler(reviewService),
+		Post:          handler.NewPostHandler(postService),
+		AgentTask:     handler.NewAgentTaskHandler(agentTaskService),
 	}
 
 	// Setup router
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, cfg.UploadDir, hc)
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, cfg.UploadDir)
 
 	// Start HTTP server
 	addr := ":" + cfg.Port
@@ -214,7 +184,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}()
 
 	// Internal server
-	internalRouter := router.SetupInternal(handlers, hc)
+	internalRouter := router.SetupInternal(handlers)
 	internalAddr := ":" + cfg.InternalPort
 	internalSrv := &http.Server{
 		Addr:              internalAddr,
@@ -229,14 +199,12 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}()
 
 	// Review syncer — optional, requires NATS_URL
-	var nc *natslib.Conn
 	if cfg.NATSUrl != "" {
-		var natsErr error
-		nc, natsErr = natslib.Connect(cfg.NATSUrl)
+		nc, natsErr := natslib.Connect(cfg.NATSUrl)
 		if natsErr != nil {
 			log.Warn("NATS unavailable — review sync disabled", "url", cfg.NATSUrl, "error", natsErr)
-			nc = nil
 		} else {
+			defer nc.Close()
 			syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
 			syncer := service.NewReviewSyncer(nc, integrationRepo, reviewRepo, syncInterval)
 			syncCtx, syncCancel := context.WithCancel(ctx)
@@ -257,30 +225,64 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("server error: %w", err)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// 1. Stop HTTP servers
 	if err := internalSrv.Shutdown(shutdownCtx); err != nil {
 		log.Error("internal server forced to shutdown", "error", err)
 	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Error("server forced to shutdown", "error", err)
-	}
-
-	// 2. Drain NATS if connected
-	if nc != nil {
-		_ = nc.Drain()
-	}
-
-	// 3. Close database pools
-	pgPool.Close()
-	if err := mongoClient.Disconnect(shutdownCtx); err != nil {
-		log.Error("mongo disconnect error", "error", err)
+		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
 
 	log.Info("server stopped")
 	return nil
+}
+
+// googleTokenRefresher implements service.TokenRefresher for Google OAuth2.
+type googleTokenRefresher struct {
+	clientID     string
+	clientSecret string
+	httpClient   *http.Client
+}
+
+func (r *googleTokenRefresher) RefreshToken(ctx context.Context, refreshToken string) (string, string, int64, error) {
+	form := url.Values{
+		"client_id":     {r.clientID},
+		"client_secret": {r.clientSecret},
+		"refresh_token": {refreshToken},
+		"grant_type":    {"refresh_token"},
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://oauth2.googleapis.com/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", "", 0, fmt.Errorf("build refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("refresh request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	var tokenResp struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+		Error        string `json:"error"`
+		ErrorDesc    string `json:"error_description"`
+	}
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return "", "", 0, fmt.Errorf("parse refresh response: %w", err)
+	}
+	if tokenResp.Error != "" {
+		return "", "", 0, fmt.Errorf("google token refresh error: %s — %s", tokenResp.Error, tokenResp.ErrorDesc)
+	}
+	if tokenResp.AccessToken == "" {
+		return "", "", 0, fmt.Errorf("google token refresh returned empty access token")
+	}
+	return tokenResp.AccessToken, tokenResp.RefreshToken, tokenResp.ExpiresIn, nil
 }
 
 // integrationSyncAdapter bridges service.IntegrationService to platform.integrationProvider.
