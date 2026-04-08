@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
@@ -97,6 +98,18 @@ func classifyVKError(err error) error {
 	}
 }
 
+// ensureNegativeGroupID normalizes community ID for VK wall.* API methods.
+// VK requires negative owner_id for communities (e.g. "-236912172").
+func ensureNegativeGroupID(groupID string) string {
+	if groupID == "" || strings.HasPrefix(groupID, "-") {
+		return groupID
+	}
+	if _, err := strconv.ParseInt(groupID, 10, 64); err == nil {
+		return "-" + groupID
+	}
+	return groupID
+}
+
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
 	info, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
@@ -106,11 +119,13 @@ func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient,
 	if groupID == "" {
 		groupID = info.ExternalID
 	}
+	groupID = ensureNegativeGroupID(groupID)
 	return h.clientFactory(info.AccessToken), groupID, nil
 }
 
 // getReadClient returns a client for read-only operations.
-// Priority: user token (can access private data) > service key (public data only) > community token (limited).
+// Priority: user token > service key (open walls) > community token (limited reads).
+// Community wall must be open/limited for service key reads to work.
 func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
 	info, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
@@ -120,15 +135,16 @@ func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKCli
 	if groupID == "" {
 		groupID = info.ExternalID
 	}
-	// User token has broadest read access (can read private community data)
+	groupID = ensureNegativeGroupID(groupID)
+	// User token has broadest read access
 	if info.UserToken != "" {
 		return h.clientFactory(info.UserToken), groupID, nil
 	}
-	// Service key can read public data
+	// Service key can read public/open community walls
 	if h.serviceKey != "" {
 		return h.clientFactory(h.serviceKey), groupID, nil
 	}
-	// Fallback to community token
+	// Community token — limited read access (groups.getById works, wall.get does not)
 	return h.clientFactory(info.AccessToken), groupID, nil
 }
 
@@ -219,11 +235,10 @@ func parsePublishDate(s string) (int64, error) {
 }
 
 func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	client, _, err := h.getClient(ctx, req)
+	client, groupID, err := h.getClient(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	groupID, _ := req.Args["group_id"].(string)
 	description, _ := req.Args["description"].(string)
 
 	if err := client.UpdateGroupInfo(groupID, description); err != nil {
@@ -238,11 +253,10 @@ func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2
 }
 
 func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	client, _, err := h.getReadClient(ctx, req)
+	client, groupID, err := h.getReadClient(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	groupID, _ := req.Args["group_id"].(string)
 	countF, _ := req.Args["count"].(float64)
 	count := int(countF)
 	if count == 0 {
