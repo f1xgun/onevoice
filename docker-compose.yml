@@ -166,6 +166,7 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: http://api:8443
+      VK_SERVICE_KEY: ${VK_SERVICE_KEY:-}
     volumes:
       - ./certs/ca.crt:/certs/ca.crt:ro
       - ./certs/vk.crt:/certs/client.crt:ro
