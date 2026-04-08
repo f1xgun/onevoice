@@ -101,7 +101,7 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 		VKClientID:    "my_vk_client",
 		VKRedirectURI: "https://example.com/callback/vk",
 	}
-	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil)
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", http.NoBody)
 	req = req.WithContext(ctxWithUser(userID))
@@ -138,7 +138,7 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 }
 
 func TestGetVKAuthURL_Unauthorized(t *testing.T) {
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", http.NoBody)
 	// no user in context
@@ -158,7 +158,7 @@ func TestGetVKAuthURL_BusinessNotFound(t *testing.T) {
 	mockBusiness := new(MockBusinessService)
 	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(nil, domain.ErrBusinessNotFound)
 
-	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, OAuthConfig{}, nil)
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk", http.NoBody)
 	req = req.WithContext(ctxWithUser(userID))
@@ -206,7 +206,7 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 		vkTokenBaseURL: vkServer.URL,
 	}
 
-	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, vkServer.Client())
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, vkServer.Client(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback?code=auth_code&state=valid-state", http.NoBody)
 	rr := httptest.NewRecorder()
@@ -230,7 +230,7 @@ func TestVKCallback_InvalidState(t *testing.T) {
 	mockOAuth := new(MockOAuthStateService)
 	mockOAuth.On("ValidateState", mock.Anything, "bad-state").Return(nil, fmt.Errorf("invalid or expired oauth state"))
 
-	h := NewOAuthHandler(mockOAuth, new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
+	h := NewOAuthHandler(mockOAuth, new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback?code=somecode&state=bad-state", http.NoBody)
 	rr := httptest.NewRecorder()
@@ -248,7 +248,7 @@ func TestVKCallback_InvalidState(t *testing.T) {
 }
 
 func TestVKCallback_MissingParams(t *testing.T) {
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback", http.NoBody)
 	rr := httptest.NewRecorder()
@@ -286,7 +286,7 @@ func TestVerifyTelegramLogin_ValidHash(t *testing.T) {
 	}
 
 	cfg := OAuthConfig{TelegramBotToken: botToken}
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, nil, nil)
 
 	body, _ := json.Marshal(payload)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/verify", strings.NewReader(string(body)))
@@ -322,7 +322,7 @@ func TestVerifyTelegramLogin_InvalidHash(t *testing.T) {
 	}
 
 	cfg := OAuthConfig{TelegramBotToken: botToken}
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, nil, nil)
 
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/verify", strings.NewReader(string(bodyBytes)))
@@ -348,7 +348,7 @@ func TestVerifyTelegramLogin_ExpiredAuthDate(t *testing.T) {
 	fields["hash"] = hash
 
 	cfg := OAuthConfig{TelegramBotToken: botToken}
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, nil, nil)
 
 	bodyBytes, _ := json.Marshal(fields)
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/verify", strings.NewReader(string(bodyBytes)))
@@ -403,7 +403,7 @@ func TestConnectTelegram_Success(t *testing.T) {
 		TelegramBotToken:   "bot_token_123",
 		telegramAPIBaseURL: tgServer.URL,
 	}
-	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, tgServer.Client())
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, tgServer.Client(), nil)
 
 	reqBody := `{"channel_id":"@mychannel","telegram_user_id":"12345"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
@@ -438,7 +438,7 @@ func TestConnectTelegram_BotNoAccess(t *testing.T) {
 		TelegramBotToken:   "bot_token_123",
 		telegramAPIBaseURL: tgServer.URL,
 	}
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), mockBusiness, cfg, tgServer.Client())
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), mockBusiness, cfg, tgServer.Client(), nil)
 
 	reqBody := `{"channel_id":"-1001234567890"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
@@ -471,7 +471,7 @@ func TestConnectTelegram_MissingChannelID(t *testing.T) {
 		UserID: userID,
 	}, nil)
 
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), mockBusiness, OAuthConfig{}, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), mockBusiness, OAuthConfig{}, nil, nil)
 
 	reqBody := `{"telegram_user_id":"12345"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
@@ -487,7 +487,7 @@ func TestConnectTelegram_MissingChannelID(t *testing.T) {
 }
 
 func TestConnectTelegram_Unauthorized(t *testing.T) {
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(`{"channel_id":"@ch"}`))
 	// no user in context
@@ -523,7 +523,7 @@ func TestGetYandexAuthURL_ReturnsURL(t *testing.T) {
 		YandexClientID:    "my_yandex_client",
 		YandexRedirectURI: "https://example.com/callback/yandex",
 	}
-	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil)
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", http.NoBody)
 	req = req.WithContext(ctxWithUser(userID))
@@ -560,7 +560,7 @@ func TestGetYandexAuthURL_ReturnsURL(t *testing.T) {
 }
 
 func TestGetYandexAuthURL_Unauthorized(t *testing.T) {
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", http.NoBody)
 	rr := httptest.NewRecorder()
@@ -612,7 +612,7 @@ func TestYandexCallback_ExchangesCode(t *testing.T) {
 		yandexTokenBaseURL: yandexServer.URL,
 	}
 
-	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, yandexServer.Client())
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, yandexServer.Client(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback?code=auth_code&state=valid-yandex-state", http.NoBody)
 	rr := httptest.NewRecorder()
@@ -636,7 +636,7 @@ func TestYandexCallback_InvalidState(t *testing.T) {
 	mockOAuth := new(MockOAuthStateService)
 	mockOAuth.On("ValidateState", mock.Anything, "bad-state").Return(nil, fmt.Errorf("invalid state"))
 
-	h := NewOAuthHandler(mockOAuth, new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
+	h := NewOAuthHandler(mockOAuth, new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback?code=code&state=bad-state", http.NoBody)
 	rr := httptest.NewRecorder()
@@ -654,7 +654,7 @@ func TestYandexCallback_InvalidState(t *testing.T) {
 }
 
 func TestYandexCallback_MissingParams(t *testing.T) {
-	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex/callback", http.NoBody)
 	rr := httptest.NewRecorder()
