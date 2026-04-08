@@ -967,11 +967,9 @@ func TestReadClient_ExternalIDFallback(t *testing.T) {
 	assert.Equal(t, "-999888", capturedGroupID, "should resolve group_id from TokenInfo.ExternalID")
 }
 
-func TestGetComments_IgnoresResolvedGroupID(t *testing.T) {
-	// BUG: getComments discards resolved groupID from getReadClient and re-reads from Args.
-	// When group_id is not in Args, the VK client receives an empty string.
-	// This test documents the current behavior; the fix is to use the resolved groupID.
-	tokens := &mockTokenFetcher{token: "tok", extID: "-999888"}
+func TestGetComments_UsesResolvedGroupID(t *testing.T) {
+	// getComments now uses the resolved groupID from getReadClient (with negative sign).
+	tokens := &mockTokenFetcher{token: "tok", extID: "999888"}
 	var capturedGroupID string
 	factory := func(_ string) agent.VKClient {
 		return &mockVKClient{
@@ -986,9 +984,8 @@ func TestGetComments_IgnoresResolvedGroupID(t *testing.T) {
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_comments",
 		BusinessID: "biz-1",
-		Args:       map[string]interface{}{}, // no group_id
+		Args:       map[string]interface{}{}, // no group_id — resolved from ExternalID
 	})
 	require.NoError(t, err)
-	// Documents current (buggy) behavior: getComments re-reads group_id from Args, getting ""
-	assert.Equal(t, "", capturedGroupID, "getComments re-reads group_id from Args (bug: should use resolved groupID)")
+	assert.Equal(t, "-999888", capturedGroupID, "getComments should use resolved groupID with negative sign")
 }
