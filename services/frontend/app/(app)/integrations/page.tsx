@@ -9,6 +9,7 @@ import { trackClick } from '@/lib/telemetry';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
+import { GoogleLocationModal } from '@/components/integrations/GoogleLocationModal';
 
 interface Integration {
   id: string;
@@ -33,12 +34,17 @@ const PLATFORMS = [
     description: 'Отзывы и информация',
     color: '#FC3F1D',
   },
+  {
+    id: 'google_business',
+    label: 'Google Business',
+    description: 'Отзывы и информация о бизнесе',
+    color: '#4285F4',
+  },
 ];
 
 const DISABLED_PLATFORMS = [
-  { id: '2gis', label: '2ГИС', description: 'Скоро (Phase 2)', color: '#1DA045' },
-  { id: 'avito', label: 'Авито', description: 'Скоро (Phase 2)', color: '#00AAFF' },
-  { id: 'google', label: 'Google Business', description: 'Скоро (Phase 3)', color: '#4285F4' },
+  { id: '2gis', label: '2ГИС', description: 'Скоро', color: '#1DA045' },
+  { id: 'avito', label: 'Авито', description: 'Скоро', color: '#00AAFF' },
 ];
 
 export default function IntegrationsPage() {
@@ -46,6 +52,7 @@ export default function IntegrationsPage() {
   const searchParams = useSearchParams();
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
+  const [googleLocationOpen, setGoogleLocationOpen] = useState(false);
 
   // Handle OAuth callback results
   useEffect(() => {
@@ -57,6 +64,18 @@ export default function IntegrationsPage() {
       qc.invalidateQueries({ queryKey: ['integrations'] });
       window.history.replaceState({}, '', '/integrations');
     }
+    if (connected === 'google_business') {
+      toast.success('Google Business Profile подключен!');
+      qc.invalidateQueries({ queryKey: ['integrations'] });
+      window.history.replaceState({}, '', '/integrations');
+    }
+
+    const googleStep = searchParams.get('google_step');
+    if (googleStep === 'select_location') {
+      setGoogleLocationOpen(true);
+      window.history.replaceState({}, '', '/integrations');
+    }
+
     if (error) {
       const messages: Record<string, string> = {
         missing_params: 'Ошибка авторизации: отсутствуют параметры',
@@ -64,6 +83,8 @@ export default function IntegrationsPage() {
         token_exchange: 'Ошибка обмена токена',
         connect_failed: 'Ошибка подключения интеграции',
         no_community_token: 'Не удалось получить токен сообщества',
+        no_refresh_token: 'Ошибка авторизации Google: не получен refresh token. Попробуйте снова.',
+        no_locations: 'Не найдены бизнес-локации в вашем аккаунте Google.',
       };
       toast.error(messages[error] || `Ошибка: ${error}`);
       window.history.replaceState({}, '', '/integrations');
@@ -98,6 +119,16 @@ export default function IntegrationsPage() {
 
     if (platformId === 'vk') {
       setVkCommunityOpen(true);
+      return;
+    }
+
+    if (platformId === 'google_business') {
+      try {
+        const { data } = await api.get('/integrations/google_business/auth-url');
+        window.location.href = data.url;
+      } catch {
+        toast.error('Ошибка получения ссылки авторизации Google');
+      }
       return;
     }
 
@@ -157,6 +188,14 @@ export default function IntegrationsPage() {
         open={vkCommunityOpen}
         onClose={() => {
           setVkCommunityOpen(false);
+          qc.invalidateQueries({ queryKey: ['integrations'] });
+        }}
+      />
+
+      <GoogleLocationModal
+        open={googleLocationOpen}
+        onClose={() => {
+          setGoogleLocationOpen(false);
           qc.invalidateQueries({ queryKey: ['integrations'] });
         }}
       />
