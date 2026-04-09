@@ -67,6 +67,7 @@ linters:
     gosec:
       excludes:
         - G104
+        - G118
 
     misspell:
       locale: US
