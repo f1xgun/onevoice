@@ -1,0 +1,69 @@
+@startuml sequence-diagram
+!theme plain
+skinparam backgroundColor white
+skinparam defaultFontName "Sans-serif"
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 200
+skinparam responseMessageBelowArrow true
+
+actor "Пользователь" as User
+participant "Веб-приложение" as Frontend
+participant "API-сервис" as API
+participant "Оркестратор" as Orch
+participant "LLM" as LLM
+queue "NATS" as NATS
+participant "Telegram-\nагент" as TG
+participant "VK-\nагент" as VK
+participant "YaBiz-\nагент" as YB
+
+== Сценарий 1: Обновление информации о бизнесе ==
+
+User -> Frontend : "Обнови описание\nна всех площадках"
+Frontend -> API : POST /chat/{id}\n(SSE)
+API -> Orch : HTTP Proxy
+
+Orch -> LLM : Контекст + инструменты
+LLM --> Orch : tool_call:\nvk__update_community_info
+
+Orch -> NATS : ToolRequest\n(tasks.vk)
+NATS -> VK : Доставка задачи
+VK --> NATS : ToolResponse (OK)
+NATS --> Orch : Результат
+
+Orch -> LLM : Результат инструмента
+LLM --> Orch : tool_call:\nyandex_business__update_info
+
+Orch -> NATS : ToolRequest\n(tasks.yandex_business)
+NATS -> YB : Доставка задачи
+YB --> NATS : ToolResponse (OK)
+NATS --> Orch : Результат
+
+Orch -> LLM : Результат инструмента
+LLM --> Orch : Текстовый ответ
+Orch --> API : SSE: text + done
+API --> Frontend : SSE: text + done
+Frontend --> User : Ответ ассистента
+
+== Сценарий 2: Сбор отзывов ==
+
+User -> Frontend : "Покажи новые отзывы"
+Frontend -> API : POST /chat/{id}\n(SSE)
+API -> Orch : HTTP Proxy
+
+Orch -> LLM : Контекст + инструменты
+LLM --> Orch : tool_call:\nyandex_business__get_reviews
+
+Orch -> NATS : ToolRequest\n(tasks.yandex_business)
+NATS -> YB : Доставка задачи
+YB --> NATS : ToolResponse\n(reviews[])
+NATS --> Orch : Результат
+
+Orch -> LLM : Результат инструмента
+LLM --> Orch : Текстовый ответ\nс анализом отзывов
+Orch --> API : SSE: text + done
+API --> Frontend : SSE: text + done
+Frontend --> User : Сводка по отзывам
+
+@enduml

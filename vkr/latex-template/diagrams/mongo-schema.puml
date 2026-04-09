@@ -1,0 +1,72 @@
+@startuml mongo-schema
+!theme plain
+skinparam backgroundColor white
+skinparam defaultFontName "Sans-serif"
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam nodesep 50
+skinparam ranksep 50
+
+entity "Диалог (conversations)" as Conv {
+  * _id : ObjectID
+  --
+  * user_id : String
+  title : String
+  created_at : DateTime
+  updated_at : DateTime
+}
+
+entity "Сообщение (messages)" as Msg {
+  * _id : ObjectID
+  --
+  * conversation_id : String
+  * role : String
+  content : String
+  attachments : Array
+  tool_calls : Array<ToolCall>
+  tool_results : Array<ToolResult>
+  created_at : DateTime
+}
+
+entity "Публикация (posts)" as Post {
+  * _id : ObjectID
+  --
+  * business_id : String
+  content : String
+  media_urls : Array
+  platform_results : Map
+  status : String
+  scheduled_at : DateTime
+  published_at : DateTime
+}
+
+entity "Отзыв (reviews)" as Review {
+  * _id : ObjectID
+  --
+  * business_id : String
+  * platform : String
+  external_id : String
+  author_name : String
+  rating : Int
+  text : String
+  reply_text : String
+  reply_status : String
+}
+
+entity "Задача агента (agent_tasks)" as Task {
+  * _id : ObjectID
+  --
+  * business_id : String
+  * type : String
+  * status : String
+  platform : String
+  input : Map
+  output : Map
+  error : String
+  created_at : DateTime
+  completed_at : DateTime
+}
+
+Conv ||--o{ Msg : "содержит"
+
+@enduml

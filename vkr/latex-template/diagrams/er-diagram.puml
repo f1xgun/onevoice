@@ -1,0 +1,71 @@
+@startuml er-diagram
+!theme plain
+skinparam backgroundColor white
+skinparam defaultFontName "Sans-serif"
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam nodesep 50
+skinparam ranksep 60
+
+entity "Пользователь (users)" as User {
+  * id : UUID <<PK>>
+  --
+  * email : TEXT <<UNIQUE>>
+  * password_hash : TEXT
+  * role : TEXT
+  created_at : TIMESTAMPTZ
+  updated_at : TIMESTAMPTZ
+}
+
+entity "Бизнес (businesses)" as Business {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  name : TEXT
+  category : TEXT
+  phone : TEXT
+  website : TEXT
+  address : TEXT
+  description : TEXT
+  logo_url : TEXT
+  settings : JSONB
+}
+
+entity "Интеграция (integrations)" as Integration {
+  * id : UUID <<PK>>
+  --
+  * business_id : UUID <<FK>>
+  * platform : TEXT
+  status : TEXT
+  encrypted_access_token : BYTEA
+  encrypted_refresh_token : BYTEA
+  external_id : TEXT
+  metadata : JSONB
+  token_expires_at : TIMESTAMPTZ
+}
+
+entity "Расписание (business_schedules)" as Schedule {
+  * id : UUID <<PK>>
+  --
+  * business_id : UUID <<FK>>
+  * day_of_week : INT
+  is_open : BOOLEAN
+  open_time : TIME
+  close_time : TIME
+  special_date : DATE
+}
+
+entity "Токен обновления (refresh_tokens)" as RefreshToken {
+  * id : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  * token_hash : TEXT
+  expires_at : TIMESTAMPTZ
+}
+
+User ||--|| Business : "владеет"
+User ||--o{ RefreshToken : "имеет"
+Business ||--o{ Integration : "подключает"
+Business ||--o{ Schedule : "имеет расписание"
+
+@enduml
