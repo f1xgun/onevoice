@@ -57,7 +57,7 @@ func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		slog.ErrorContext(ctx, "natsexec: tool request failed",
 			"tool", e.toolName,
-			"agent", string(e.agentID),
+			"agent", e.agentID,
 			"business_id", req.BusinessID,
 			"duration_ms", elapsed.Milliseconds(),
 			"error", err,
@@ -69,7 +69,7 @@ func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{})
 	if err := json.Unmarshal(replyData, &resp); err != nil {
 		slog.ErrorContext(ctx, "natsexec: decode response failed",
 			"tool", e.toolName,
-			"agent", string(e.agentID),
+			"agent", e.agentID,
 			"business_id", req.BusinessID,
 			"duration_ms", elapsed.Milliseconds(),
 			"error", err,
@@ -80,7 +80,7 @@ func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{})
 	if !resp.Success {
 		slog.WarnContext(ctx, "natsexec: tool returned error",
 			"tool", e.toolName,
-			"agent", string(e.agentID),
+			"agent", e.agentID,
 			"business_id", req.BusinessID,
 			"duration_ms", elapsed.Milliseconds(),
 			"agent_error", resp.Error,
@@ -90,7 +90,7 @@ func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{})
 
 	slog.InfoContext(ctx, "natsexec: tool request completed",
 		"tool", e.toolName,
-		"agent", string(e.agentID),
+		"agent", e.agentID,
 		"business_id", req.BusinessID,
 		"duration_ms", elapsed.Milliseconds(),
 	)
