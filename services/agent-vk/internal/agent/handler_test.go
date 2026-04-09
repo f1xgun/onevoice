@@ -37,12 +37,12 @@ func (m *mockTokenFetcher) GetToken(_ context.Context, _, _, _ string) (agent.To
 
 // mockVKClient is a test double for VKClient.
 type mockVKClient struct {
-	publishPostFn     func(groupID, text string) (int64, error)
-	schedulePostFn    func(groupID, text string, publishDate int64) (int64, error)
-	postPhotoFn       func(groupID string, photoURL, caption string) (int64, error)
-	updateGroupInfoFn func(groupID, description string) error
-	getCommentsFn     func(groupID string, postID, count int) ([]map[string]interface{}, error)
-	replyCommentFn    func(groupID string, postID, commentID int, text string) (int, error)
+	publishPostFn      func(groupID, text string) (int64, error)
+	schedulePostFn     func(groupID, text string, publishDate int64) (int64, error)
+	postPhotoFn        func(groupID string, photoURL, caption string) (int64, error)
+	updateGroupInfoFn  func(groupID, description string) error
+	getCommentsFn      func(groupID string, postID, count int) ([]map[string]interface{}, error)
+	replyCommentFn     func(groupID string, postID, commentID int, text string) (int, error)
 	deleteCommentFn    func(groupID string, commentID int) error
 	getCommunityInfoFn func(groupID string) (map[string]interface{}, error)
 	getWallPostsFn     func(groupID string, count int) ([]map[string]interface{}, int, error)
@@ -54,7 +54,7 @@ func (m *mockVKClient) PublishPost(groupID, text string) (int64, error) {
 func (m *mockVKClient) SchedulePost(groupID, text string, publishDate int64) (int64, error) {
 	return m.schedulePostFn(groupID, text, publishDate)
 }
-func (m *mockVKClient) PostPhoto(groupID string, photoURL, caption string) (int64, error) {
+func (m *mockVKClient) PostPhoto(groupID, photoURL, caption string) (int64, error) {
 	if m.postPhotoFn != nil {
 		return m.postPhotoFn(groupID, photoURL, caption)
 	}
@@ -84,7 +84,7 @@ func (m *mockVKClient) GetCommunityInfo(groupID string) (map[string]interface{},
 	}
 	return nil, nil
 }
-func (m *mockVKClient) GetWallPosts(groupID string, count int) ([]map[string]interface{}, int, error) {
+func (m *mockVKClient) GetWallPosts(groupID string, count int) (posts []map[string]interface{}, total int, err error) {
 	if m.getWallPostsFn != nil {
 		return m.getWallPostsFn(groupID, count)
 	}

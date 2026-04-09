@@ -63,6 +63,8 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 			toolCalls = append(toolCalls, e)
 		case orchestrator.EventToolResult:
 			toolResults = append(toolResults, e)
+		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
+			// ignore in this test
 		}
 	}
 
@@ -121,6 +123,8 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 			toolResults = append(toolResults, e)
 		case orchestrator.EventText:
 			texts = append(texts, e)
+		case orchestrator.EventToolCall, orchestrator.EventError, orchestrator.EventDone:
+			// ignore in this test
 		}
 	}
 
@@ -133,10 +137,10 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 	assert.Contains(t, texts[0].Content, "не сработал")
 }
 
-// TestRun_ContextCancel_StopsLoop verifies that cancelling the context
+// TestRun_ContextCancel_StopsLoop verifies that canceling the context
 // stops the agent loop promptly.
 func TestRun_ContextCancel_StopsLoop(t *testing.T) {
-	// LLM that blocks until context is cancelled
+	// LLM that blocks until context is canceled
 	blockingLLM := &stubLLM{responses: []*llm.ChatResponse{}}
 	// stubLLM returns "done" when idx >= len(responses), which is fine
 

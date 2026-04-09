@@ -28,7 +28,7 @@ type TokenFetcher interface {
 // VKClient abstracts VK API operations for testability.
 type VKClient interface {
 	PublishPost(groupID, text string) (int64, error)
-	PostPhoto(groupID string, photoURL, caption string) (int64, error)
+	PostPhoto(groupID, photoURL, caption string) (int64, error)
 	SchedulePost(groupID, text string, publishDate int64) (int64, error)
 	UpdateGroupInfo(groupID, description string) error
 	GetComments(groupID string, postID, count int) ([]map[string]interface{}, error)

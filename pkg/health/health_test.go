@@ -15,7 +15,7 @@ import (
 
 func TestLiveHandler_Always200(t *testing.T) {
 	c := New()
-	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/live", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	c.LiveHandler().ServeHTTP(rec, req)
@@ -38,7 +38,7 @@ func TestReadyHandler_AllHealthy(t *testing.T) {
 	c.AddCheck("db", func(ctx context.Context) error { return nil })
 	c.AddCheck("cache", func(ctx context.Context) error { return nil })
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	c.ReadyHandler().ServeHTTP(rec, req)
@@ -74,7 +74,7 @@ func TestReadyHandler_OneFailing(t *testing.T) {
 		return errors.New("connection refused")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	c.ReadyHandler().ServeHTTP(rec, req)
@@ -103,7 +103,7 @@ func TestReadyHandler_OneFailing(t *testing.T) {
 func TestReadyHandler_NoChecks(t *testing.T) {
 	c := New()
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	c.ReadyHandler().ServeHTTP(rec, req)
@@ -130,7 +130,7 @@ func TestReadyHandler_AllFailing(t *testing.T) {
 		return errors.New("cache timeout")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	c.ReadyHandler().ServeHTTP(rec, req)
@@ -170,7 +170,7 @@ func TestReadyHandler_ContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody).WithContext(ctx)
 	rec := httptest.NewRecorder()
 
 	c.ReadyHandler().ServeHTTP(rec, req)
@@ -202,7 +202,7 @@ func TestReadyHandler_ContextTimeout(t *testing.T) {
 
 func TestLiveHandler_ContentType(t *testing.T) {
 	c := New()
-	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/live", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	c.LiveHandler().ServeHTTP(rec, req)
@@ -217,7 +217,7 @@ func TestReadyHandler_ContentType(t *testing.T) {
 	c := New()
 	c.AddCheck("db", func(ctx context.Context) error { return nil })
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	c.ReadyHandler().ServeHTTP(rec, req)
@@ -242,7 +242,7 @@ func TestAddCheck_ConcurrentSafety(t *testing.T) {
 	}
 	wg.Wait()
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	c.ReadyHandler().ServeHTTP(rec, req)
@@ -277,7 +277,7 @@ func TestReadyHandler_MixedResults(t *testing.T) {
 		return errors.New("queue down")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	c.ReadyHandler().ServeHTTP(rec, req)

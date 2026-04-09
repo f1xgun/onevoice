@@ -23,6 +23,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
@@ -102,7 +103,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	agentTaskRepo := repository.NewAgentTaskRepository(mongoDB)
 
 	// Initialize services
-	userService := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
+	userService, err := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
+	if err != nil {
+		return fmt.Errorf("create user service: %w", err)
+	}
 	businessService := service.NewBusinessService(businessRepo)
 
 	// Build Google token refresher if credentials are configured
@@ -148,21 +152,55 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
 	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
 
+	authHandler, err := handler.NewAuthHandler(userService, cfg.SecureCookies)
+	if err != nil {
+		return fmt.Errorf("create auth handler: %w", err)
+	}
+	businessHandler, err := handler.NewBusinessHandler(businessService, platformSyncer, cfg.UploadDir)
+	if err != nil {
+		return fmt.Errorf("create business handler: %w", err)
+	}
+	integrationHandler, err := handler.NewIntegrationHandler(integrationService, businessService)
+	if err != nil {
+		return fmt.Errorf("create integration handler: %w", err)
+	}
+	conversationHandler, err := handler.NewConversationHandler(conversationRepo, messageRepo)
+	if err != nil {
+		return fmt.Errorf("create conversation handler: %w", err)
+	}
+	reviewHandler, err := handler.NewReviewHandler(reviewService)
+	if err != nil {
+		return fmt.Errorf("create review handler: %w", err)
+	}
+	postHandler, err := handler.NewPostHandler(postService)
+	if err != nil {
+		return fmt.Errorf("create post handler: %w", err)
+	}
+	agentTaskHandler, err := handler.NewAgentTaskHandler(agentTaskService)
+	if err != nil {
+		return fmt.Errorf("create agent task handler: %w", err)
+	}
+
 	handlers := &router.Handlers{
-		Auth:          handler.NewAuthHandler(userService),
-		Business:      handler.NewBusinessHandler(businessService, platformSyncer, cfg.UploadDir),
-		Integration:   handler.NewIntegrationHandler(integrationService, businessService),
-		Conversation:  handler.NewConversationHandler(conversationRepo, messageRepo),
+		Auth:          authHandler,
+		Business:      businessHandler,
+		Integration:   integrationHandler,
+		Conversation:  conversationHandler,
 		OAuth:         oauthHandler,
 		InternalToken: internalTokenHandler,
 		ChatProxy:     chatProxyHandler,
-		Review:        handler.NewReviewHandler(reviewService),
-		Post:          handler.NewPostHandler(postService),
-		AgentTask:     handler.NewAgentTaskHandler(agentTaskService),
+		Review:        reviewHandler,
+		Post:          postHandler,
+		AgentTask:     agentTaskHandler,
 	}
 
+	// Health checker
+	hc := health.New()
+	hc.AddCheck("postgres", func(ctx context.Context) error { return pgPool.Ping(ctx) })
+	hc.AddCheck("redis", func(ctx context.Context) error { return redisClient.Ping(ctx).Err() })
+
 	// Setup router
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, cfg.UploadDir)
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, cfg.UploadDir, hc)
 
 	// Start HTTP server
 	addr := ":" + cfg.Port
@@ -184,7 +222,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}()
 
 	// Internal server
-	internalRouter := router.SetupInternal(handlers)
+	internalRouter := router.SetupInternal(handlers, hc)
 	internalAddr := ":" + cfg.InternalPort
 	internalSrv := &http.Server{
 		Addr:              internalAddr,
@@ -246,7 +284,7 @@ type googleTokenRefresher struct {
 	httpClient   *http.Client
 }
 
-func (r *googleTokenRefresher) RefreshToken(ctx context.Context, refreshToken string) (string, string, int64, error) {
+func (r *googleTokenRefresher) RefreshToken(ctx context.Context, refreshToken string) (accessToken, newRefreshToken string, expiresIn int64, err error) {
 	form := url.Values{
 		"client_id":     {r.clientID},
 		"client_secret": {r.clientSecret},

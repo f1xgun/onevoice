@@ -160,8 +160,8 @@ type errSender struct {
 	err error
 }
 
-func (e *errSender) SendMessage(_ int64, _ string) error { return e.err }
-func (e *errSender) SendPhoto(_ int64, _, _ string) error { return e.err }
+func (e *errSender) SendMessage(_ int64, _ string) error      { return e.err }
+func (e *errSender) SendPhoto(_ int64, _, _ string) error     { return e.err }
 func (e *errSender) SendReply(_ int64, _ int, _ string) error { return e.err }
 func (e *errSender) GetReviews(_ int) ([]map[string]interface{}, error) {
 	return nil, e.err

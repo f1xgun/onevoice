@@ -23,15 +23,15 @@ type TokenRefresher interface {
 
 // ConnectParams holds parameters for connecting a new platform integration
 type ConnectParams struct {
-	BusinessID        uuid.UUID
-	Platform          string
-	ExternalID        string
-	AccessToken       string
-	RefreshToken      string
-	UserToken         string     // VK user token for read operations (optional)
-	UserTokenExpires  *time.Time // VK user token expiration (optional)
-	Metadata          map[string]interface{}
-	ExpiresAt         *time.Time
+	BusinessID       uuid.UUID
+	Platform         string
+	ExternalID       string
+	AccessToken      string
+	RefreshToken     string
+	UserToken        string     // VK user token for read operations (optional)
+	UserTokenExpires *time.Time // VK user token expiration (optional)
+	Metadata         map[string]interface{}
+	ExpiresAt        *time.Time
 }
 
 // TokenResponse holds decrypted token data for a platform integration
@@ -60,8 +60,8 @@ type IntegrationService interface {
 type integrationService struct {
 	repo      domain.IntegrationRepository
 	enc       *crypto.Encryptor
-	refreshMu sync.Map          // map[uuid.UUID]*sync.Mutex — per-integration refresh lock
-	refresher TokenRefresher    // nil for platforms that don't need refresh
+	refreshMu sync.Map       // map[uuid.UUID]*sync.Mutex — per-integration refresh lock
+	refresher TokenRefresher // nil for platforms that don't need refresh
 }
 
 // Compile-time check that integrationService implements IntegrationService
