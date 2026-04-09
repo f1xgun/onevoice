@@ -1,6 +1,6 @@
 module github.com/f1xgun/onevoice/services/agent-vk
 
-go 1.24
+go 1.25.0
 
 replace github.com/f1xgun/onevoice/pkg => ../../pkg
 
