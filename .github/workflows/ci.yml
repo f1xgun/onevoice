@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.24"
+  GO_VERSION: "1.25"
   NODE_VERSION: "20"
   PNPM_VERSION: "9"
 
@@ -36,7 +36,7 @@ jobs:
       - name: Lint pkg
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1
+          version: v2.11
           args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: pkg
         env:
@@ -45,7 +45,7 @@ jobs:
       - name: Lint api
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1
+          version: v2.11
           args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/api
         env:
@@ -54,7 +54,7 @@ jobs:
       - name: Lint orchestrator
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1
+          version: v2.11
           args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/orchestrator
         env:
@@ -63,7 +63,7 @@ jobs:
       - name: Lint agent-telegram
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1
+          version: v2.11
           args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-telegram
         env:
@@ -72,7 +72,7 @@ jobs:
       - name: Lint agent-vk
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1
+          version: v2.11
           args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-vk
         env:
@@ -81,7 +81,7 @@ jobs:
       - name: Lint agent-yandex-business
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1
+          version: v2.11
           args: --config ${{ github.workspace }}/.golangci.yml
           working-directory: services/agent-yandex-business
         env:

@@ -36,25 +36,26 @@ api.interceptors.response.use(
 
     // Track API errors with correlation ID (skip telemetry endpoint to prevent loops)
     if (error.response && !url.includes('/telemetry')) {
-      const correlationId =
-        error.response.headers?.['x-correlation-id'] as string | undefined;
+      const correlationId = error.response.headers?.['x-correlation-id'] as string | undefined;
       if (correlationId) {
         // Lazy import to avoid circular dependency (telemetry.ts imports api)
-        import('./telemetry').then(({ trackEvent }) => {
-          trackEvent(
-            'api_error',
-            `${error.response.status} ${original?.method?.toUpperCase()} ${url}`,
-            {
-              correlationId,
-              metadata: {
-                status: String(error.response.status),
-                url,
-              },
-            },
-          );
-        }).catch(() => {
-          // Silently ignore — telemetry must never break the app
-        });
+        import('./telemetry')
+          .then(({ trackEvent }) => {
+            trackEvent(
+              'api_error',
+              `${error.response.status} ${original?.method?.toUpperCase()} ${url}`,
+              {
+                correlationId,
+                metadata: {
+                  status: String(error.response.status),
+                  url,
+                },
+              }
+            );
+          })
+          .catch(() => {
+            // Silently ignore — telemetry must never break the app
+          });
       }
     }
 
@@ -80,7 +81,11 @@ api.interceptors.response.use(
     refreshing = true;
 
     try {
-      const { data } = await axios.post<RefreshResponse>('/api/v1/auth/refresh', {}, { withCredentials: true });
+      const { data } = await axios.post<RefreshResponse>(
+        '/api/v1/auth/refresh',
+        {},
+        { withCredentials: true }
+      );
       if (!data.accessToken) throw new Error('invalid refresh response');
       const { accessToken, user } = data;
 

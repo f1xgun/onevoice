@@ -643,7 +643,7 @@ type mockTokenRefresher struct {
 	callCount   int
 }
 
-func (m *mockTokenRefresher) RefreshToken(ctx context.Context, refreshToken string) (string, string, int64, error) {
+func (m *mockTokenRefresher) RefreshToken(ctx context.Context, refreshToken string) (accessToken, newRefreshToken string, expiresIn int64, err error) {
 	m.callCount++
 	if m.refreshFunc != nil {
 		return m.refreshFunc(ctx, refreshToken)

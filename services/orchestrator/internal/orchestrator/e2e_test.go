@@ -24,10 +24,10 @@ import (
 func startEmbeddedNATS(t *testing.T) *natsserver.Server {
 	t.Helper()
 	opts := &natsserver.Options{
-		Host:     "127.0.0.1",
-		Port:     -1, // random free port
-		NoLog:    true,
-		NoSigs:   true,
+		Host:       "127.0.0.1",
+		Port:       -1, // random free port
+		NoLog:      true,
+		NoSigs:     true,
 		MaxPending: 64 << 20,
 	}
 	srv, err := natsserver.NewServer(opts)
@@ -137,6 +137,8 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 			texts = append(texts, e)
 		case orchestrator.EventDone:
 			gotDone = true
+		case orchestrator.EventError:
+			// ignore in this test
 		}
 	}
 
