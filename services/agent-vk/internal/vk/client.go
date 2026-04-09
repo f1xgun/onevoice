@@ -61,7 +61,7 @@ func (c *Client) PublishPost(groupID, text string) (int64, error) {
 
 // PostPhoto downloads an image from photoURL, uploads it to VK via UploadGroupWallPhoto,
 // then publishes a wall post with the photo attachment and optional caption.
-func (c *Client) PostPhoto(groupID string, photoURL, caption string) (int64, error) {
+func (c *Client) PostPhoto(groupID, photoURL, caption string) (int64, error) {
 	if err := c.wait(); err != nil {
 		return 0, err
 	}
@@ -70,7 +70,7 @@ func (c *Client) PostPhoto(groupID string, photoURL, caption string) (int64, err
 	if err != nil {
 		return 0, fmt.Errorf("vk: download image: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("vk: download image: status %d", resp.StatusCode)
@@ -257,9 +257,9 @@ func (c *Client) GetCommunityInfo(groupID string) (map[string]interface{}, error
 
 // GetWallPosts fetches recent wall posts with engagement stats.
 // groupID should be the owner_id (negative for communities, e.g. "-123456").
-func (c *Client) GetWallPosts(groupID string, count int) ([]map[string]interface{}, int, error) {
-	if err := c.wait(); err != nil {
-		return nil, 0, err
+func (c *Client) GetWallPosts(groupID string, count int) (posts []map[string]interface{}, total int, err error) {
+	if waitErr := c.wait(); waitErr != nil {
+		return nil, 0, waitErr
 	}
 	resp, err := c.vk.WallGet(vkapi.Params{
 		"owner_id": groupID,
@@ -269,7 +269,7 @@ func (c *Client) GetWallPosts(groupID string, count int) ([]map[string]interface
 		return nil, 0, fmt.Errorf("vk wall.get: %w", err)
 	}
 
-	posts := make([]map[string]interface{}, 0, len(resp.Items))
+	posts = make([]map[string]interface{}, 0, len(resp.Items))
 	for _, item := range resp.Items {
 		post := map[string]interface{}{
 			"id":       item.ID,

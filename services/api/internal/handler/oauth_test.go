@@ -93,11 +93,9 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 		ID:     businessID,
 		UserID: userID,
 	}, nil)
-	mockOAuth.On("GenerateState", mock.Anything, service.OAuthStateData{
-		UserID:     userID,
-		BusinessID: businessID,
-		Platform:   "vk",
-	}).Return("test-state-token", nil)
+	mockOAuth.On("GenerateState", mock.Anything, mock.MatchedBy(func(data service.OAuthStateData) bool {
+		return data.UserID == userID && data.BusinessID == businessID && data.Platform == "vk" && data.CodeVerifier != ""
+	})).Return("test-state-token", nil)
 
 	cfg := OAuthConfig{
 		VKClientID:    "my_vk_client",
@@ -125,7 +123,7 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 		t.Fatal("expected 'url' in response")
 	}
 
-	if !strings.Contains(authURL, "oauth.vk.com") {
+	if !strings.Contains(authURL, "id.vk.com") {
 		t.Errorf("expected VK OAuth URL, got: %s", authURL)
 	}
 	if !strings.Contains(authURL, "my_vk_client") {
@@ -187,6 +185,9 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 	}))
 	defer vkServer.Close()
 
+	mr := miniredis.RunT(t)
+	redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+
 	mockOAuth := new(MockOAuthStateService)
 	mockIntegration := new(MockOAuthIntegrationService)
 	mockBusiness := new(MockBusinessService)
@@ -197,9 +198,6 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 		Platform:   "vk",
 	}
 	mockOAuth.On("ValidateState", mock.Anything, "valid-state").Return(stateData, nil)
-	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
-		return p.BusinessID == businessID && p.Platform == "vk" && p.AccessToken == "vk_access_token_123"
-	})).Return(&domain.Integration{ID: uuid.New(), Platform: "vk"}, nil)
 
 	cfg := OAuthConfig{
 		VKClientID:     "client_id",
@@ -208,7 +206,7 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 		vkTokenBaseURL: vkServer.URL,
 	}
 
-	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, vkServer.Client(), nil)
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, vkServer.Client(), redisClient)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/vk/callback?code=auth_code&state=valid-state", http.NoBody)
 	rr := httptest.NewRecorder()
@@ -220,12 +218,21 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 	}
 
 	location := rr.Header().Get("Location")
-	if !strings.Contains(location, "connected=vk") {
-		t.Errorf("expected redirect to /integrations?connected=vk, got: %s", location)
+	if !strings.Contains(location, "vk_step=select_community") {
+		t.Errorf("expected redirect to /integrations?vk_step=select_community, got: %s", location)
+	}
+
+	// Verify temp token was stored in Redis
+	tempKey := fmt.Sprintf("vk_temp_token:%s", businessID.String())
+	storedToken, err := redisClient.Get(context.Background(), tempKey).Result()
+	if err != nil {
+		t.Fatalf("expected temp token in redis: %v", err)
+	}
+	if storedToken != "vk_access_token_123" {
+		t.Errorf("expected stored token vk_access_token_123, got %s", storedToken)
 	}
 
 	mockOAuth.AssertExpectations(t)
-	mockIntegration.AssertExpectations(t)
 }
 
 func TestVKCallback_InvalidState(t *testing.T) {
@@ -675,7 +682,7 @@ func TestYandexCallback_MissingParams(t *testing.T) {
 
 // --- Google OAuth Tests ---
 
-func newGoogleMockServer(t *testing.T, tokenResp map[string]interface{}, accounts []map[string]interface{}, locations []map[string]interface{}) *httptest.Server {
+func newGoogleMockServer(t *testing.T, tokenResp map[string]interface{}, accounts, locations []map[string]interface{}) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1011,7 +1018,7 @@ func TestGoogleLocations_ReturnsTempData(t *testing.T) {
 
 	// Store temp data
 	tempData := `{"access_token":"tok","refresh_token":"ref","expires_in":3600,"business_id":"` + businessID.String() + `","locations":[{"account_name":"accounts/1","location_name":"locations/2","title":"Test Shop"}]}`
-	mr.Set("google_temp:"+businessID.String(), tempData)
+	_ = mr.Set("google_temp:"+businessID.String(), tempData)
 
 	mockBusiness := new(MockBusinessService)
 	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
@@ -1084,7 +1091,7 @@ func TestGoogleSelectLocation_ConnectsAndCleansUp(t *testing.T) {
 
 	// Store temp data
 	tempData := `{"access_token":"tok","refresh_token":"ref","expires_in":3600,"business_id":"` + businessID.String() + `","locations":[{"account_name":"accounts/1","location_name":"locations/2","title":"Test Shop"},{"account_name":"accounts/1","location_name":"locations/3","title":"Other Shop"}]}`
-	mr.Set("google_temp:"+businessID.String(), tempData)
+	_ = mr.Set("google_temp:"+businessID.String(), tempData)
 
 	mockBusiness := new(MockBusinessService)
 	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{

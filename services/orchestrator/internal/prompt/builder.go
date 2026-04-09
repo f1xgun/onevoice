@@ -36,35 +36,35 @@ func buildSystemContent(ctx BusinessContext) string {
 
 	sb.WriteString("Ты — AI-ассистент для управления цифровым присутствием бизнеса.\n\n")
 
-	sb.WriteString(fmt.Sprintf("## Бизнес: %s\n", ctx.Name))
+	fmt.Fprintf(&sb, "## Бизнес: %s\n", ctx.Name)
 	if ctx.Category != "" {
-		sb.WriteString(fmt.Sprintf("Категория: %s\n", ctx.Category))
+		fmt.Fprintf(&sb, "Категория: %s\n", ctx.Category)
 	}
 	if ctx.Address != "" {
-		sb.WriteString(fmt.Sprintf("Адрес: %s\n", ctx.Address))
+		fmt.Fprintf(&sb, "Адрес: %s\n", ctx.Address)
 	}
 	if ctx.Phone != "" {
-		sb.WriteString(fmt.Sprintf("Телефон: %s\n", ctx.Phone))
+		fmt.Fprintf(&sb, "Телефон: %s\n", ctx.Phone)
 	}
 	if ctx.Website != "" {
-		sb.WriteString(fmt.Sprintf("Сайт: %s\n", ctx.Website))
+		fmt.Fprintf(&sb, "Сайт: %s\n", ctx.Website)
 	}
 	if ctx.Description != "" {
-		sb.WriteString(fmt.Sprintf("Описание: %s\n", ctx.Description))
+		fmt.Fprintf(&sb, "Описание: %s\n", ctx.Description)
 	}
 
 	tone := ctx.Tone
 	if tone == "" {
 		tone = "профессиональный"
 	}
-	sb.WriteString(fmt.Sprintf("\nТон общения: %s\n", tone))
+	fmt.Fprintf(&sb, "\nТон общения: %s\n", tone)
 
-	sb.WriteString(fmt.Sprintf("\nТекущая дата и время: %s\n", ctx.Now.Format("2006-01-02 15:04 MST")))
+	fmt.Fprintf(&sb, "\nТекущая дата и время: %s\n", ctx.Now.Format("2006-01-02 15:04 MST"))
 
 	if len(ctx.ActiveIntegrations) > 0 {
 		sb.WriteString("\n## Активные интеграции\n")
 		for _, integration := range ctx.ActiveIntegrations {
-			sb.WriteString(fmt.Sprintf("- %s\n", integration))
+			fmt.Fprintf(&sb, "- %s\n", integration)
 		}
 		sb.WriteString("\nТы можешь управлять этими платформами через доступные инструменты.\n")
 	} else {

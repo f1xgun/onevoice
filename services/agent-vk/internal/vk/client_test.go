@@ -40,12 +40,12 @@ func newMockVKServer() *httptest.Server {
 
 	mux.HandleFunc("/method/wall.post", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse(map[string]interface{}{"post_id": 12345}))
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{"post_id": 12345}))
 	})
 
 	mux.HandleFunc("/method/wall.get", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse(map[string]interface{}{
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{
 			"count": 2,
 			"items": []map[string]interface{}{
 				{
@@ -68,7 +68,7 @@ func newMockVKServer() *httptest.Server {
 
 	mux.HandleFunc("/method/wall.createComment", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse(map[string]interface{}{
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{
 			"comment_id":    777,
 			"parents_stack": []int{},
 		}))
@@ -76,12 +76,12 @@ func newMockVKServer() *httptest.Server {
 
 	mux.HandleFunc("/method/wall.deleteComment", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse(1))
+		_, _ = fmt.Fprint(w, vkResponse(1))
 	})
 
 	mux.HandleFunc("/method/wall.getComments", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse(map[string]interface{}{
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{
 			"count": 1,
 			"items": []map[string]interface{}{
 				{"id": 1, "text": "Nice!", "date": 1700000000, "from_id": 12345},
@@ -91,7 +91,7 @@ func newMockVKServer() *httptest.Server {
 
 	mux.HandleFunc("/method/groups.getById", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse(map[string]interface{}{
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{
 			"groups": []map[string]interface{}{
 				{
 					"id":            123456,
@@ -109,12 +109,12 @@ func newMockVKServer() *httptest.Server {
 
 	mux.HandleFunc("/method/groups.edit", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse(1))
+		_, _ = fmt.Fprint(w, vkResponse(1))
 	})
 
 	mux.HandleFunc("/method/photos.saveWallPhoto", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse([]map[string]interface{}{
+		_, _ = fmt.Fprint(w, vkResponse([]map[string]interface{}{
 			{"id": 99, "owner_id": -123456},
 		}))
 	})
@@ -124,7 +124,7 @@ func newMockVKServer() *httptest.Server {
 
 	mux.HandleFunc("/method/photos.getWallUploadServer", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse(map[string]interface{}{
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{
 			"upload_url": srv.URL + "/upload",
 		}))
 	})
@@ -133,7 +133,7 @@ func newMockVKServer() *httptest.Server {
 		// Parse multipart (upload from vksdk)
 		_ = r.ParseMultipartForm(10 << 20)
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"server": 1, "photo": "[]", "hash": "abc123"}`)
+		_, _ = fmt.Fprint(w, `{"server": 1, "photo": "[]", "hash": "abc123"}`)
 	})
 
 	srv = httptest.NewServer(mux)
@@ -144,13 +144,8 @@ func newMockVKServer() *httptest.Server {
 func newErrorServer(code int, msg string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkError(code, msg))
+		_, _ = fmt.Fprint(w, vkError(code, msg))
 	}))
-}
-
-// newTimeoutServer creates a server that immediately closes connections.
-func newTimeoutServer() *httptest.Server {
-	return httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 }
 
 // newClient creates a VK client pointing at the test server.
@@ -226,7 +221,7 @@ func TestClient_NetworkError(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := l.Addr().String()
-	l.Close()
+	_ = l.Close()
 
 	c := vk.NewWithBaseURL("test-token", "http://"+addr+"/method/")
 	_, pubErr := c.PublishPost("-123456", "Hello")
@@ -253,7 +248,7 @@ func TestClient_PostPhoto_Success(t *testing.T) {
 			0xbc, 0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
 			0x42, 0x60, 0x82,
 		}
-		w.Write(png1x1)
+		_, _ = w.Write(png1x1)
 	}))
 	defer imgServer.Close()
 
@@ -283,7 +278,7 @@ func TestClient_SchedulePost_Success(t *testing.T) {
 		_ = r.ParseForm()
 		capturedPublishDate = r.FormValue("publish_date")
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, vkResponse(map[string]interface{}{"post_id": 54321}))
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{"post_id": 54321}))
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -424,8 +419,8 @@ func TestClient_PostPhoto_InvalidGroupID(t *testing.T) {
 
 	imgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
-		w.Write([]byte{0x89, 0x50, 0x4e, 0x47}) // minimal PNG header
-		io.WriteString(w, "fake")
+		_, _ = w.Write([]byte{0x89, 0x50, 0x4e, 0x47}) // minimal PNG header
+		_, _ = io.WriteString(w, "fake")
 	}))
 	defer imgServer.Close()
 
