@@ -90,7 +90,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	conversationID := chi.URLParam(r, "conversationID")
 
-	// Capture correlation ID for async persistence operations (request ctx may be cancelled by then)
+	// Capture correlation ID for async persistence operations (request ctx may be canceled by then)
 	corrID := logger.CorrelationIDFromContext(r.Context())
 	persistCtx := func() (context.Context, context.CancelFunc) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

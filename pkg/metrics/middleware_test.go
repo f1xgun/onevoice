@@ -47,7 +47,7 @@ func TestHTTPMiddleware_RecordsMetrics(t *testing.T) {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test-metrics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test-metrics", http.NoBody)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -93,7 +93,7 @@ func TestHTTPMiddleware_UsesRoutePattern(t *testing.T) {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/items/123", nil)
+	req := httptest.NewRequest(http.MethodGet, "/items/123", http.NoBody)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

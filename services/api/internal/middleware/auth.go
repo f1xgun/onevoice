@@ -35,7 +35,7 @@ func Auth(jwtSecret []byte) func(http.Handler) http.Handler {
 			// Extract token from Authorization header
 			tokenString, err := extractToken(r)
 			if err != nil {
-				writeJSONError(w, http.StatusUnauthorized, err.Error())
+				writeJSONError(w, err.Error())
 				return
 			}
 
@@ -50,18 +50,18 @@ func Auth(jwtSecret []byte) func(http.Handler) http.Handler {
 			if err != nil {
 				switch {
 				case errors.Is(err, jwt.ErrTokenExpired):
-					writeJSONError(w, http.StatusUnauthorized, "token_expired")
+					writeJSONError(w, "token_expired")
 				case errors.Is(err, jwt.ErrSignatureInvalid):
-					writeJSONError(w, http.StatusUnauthorized, "token_invalid")
+					writeJSONError(w, "token_invalid")
 				default:
-					writeJSONError(w, http.StatusUnauthorized, "token_invalid")
+					writeJSONError(w, "token_invalid")
 				}
 				return
 			}
 
 			claims, ok := token.Claims.(*auth.AccessTokenClaims)
 			if !ok || !token.Valid {
-				writeJSONError(w, http.StatusUnauthorized, "token_invalid")
+				writeJSONError(w, "token_invalid")
 				return
 			}
 
@@ -121,9 +121,9 @@ func GetUserRole(ctx context.Context) (string, error) {
 	return role, nil
 }
 
-// writeJSONError writes a JSON error response
-func writeJSONError(w http.ResponseWriter, status int, message string) {
+// writeJSONError writes a 401 JSON error response.
+func writeJSONError(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusUnauthorized)
 	_ = json.NewEncoder(w).Encode(ErrorResponse{Error: message})
 }

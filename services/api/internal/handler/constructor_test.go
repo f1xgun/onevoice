@@ -31,7 +31,7 @@ func (s *stubConversationRepo) ListByUserID(_ context.Context, _ string, _, _ in
 	return nil, nil
 }
 func (s *stubConversationRepo) Update(_ context.Context, _ *domain.Conversation) error { return nil }
-func (s *stubConversationRepo) Delete(_ context.Context, _ string) error                { return nil }
+func (s *stubConversationRepo) Delete(_ context.Context, _ string) error               { return nil }
 
 // --- Tests ---
 
