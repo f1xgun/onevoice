@@ -1,6 +1,6 @@
 module github.com/f1xgun/onevoice/services/agent-google-business
 
-go 1.25.0
+go 1.24
 
 require (
 	github.com/f1xgun/onevoice/pkg v0.0.0
