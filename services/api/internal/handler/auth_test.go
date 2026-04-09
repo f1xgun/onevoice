@@ -433,9 +433,9 @@ func TestRefreshToken(t *testing.T) {
 			},
 		},
 		{
-			name:      "missing refresh token cookie",
-			cookie:    nil,
-			mockSetup: func(m *MockUserService) {},
+			name:       "missing refresh token cookie",
+			cookie:     nil,
+			mockSetup:  func(m *MockUserService) {},
 			wantStatus: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				assert.Contains(t, w.Body.String(), `"error":"missing refresh token"`)
@@ -524,9 +524,9 @@ func TestLogout(t *testing.T) {
 			},
 		},
 		{
-			name:      "missing cookie returns success",
-			cookie:    nil,
-			mockSetup: func(m *MockUserService) {},
+			name:       "missing cookie returns success",
+			cookie:     nil,
+			mockSetup:  func(m *MockUserService) {},
 			wantStatus: http.StatusNoContent,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				assert.Empty(t, w.Body.String())
