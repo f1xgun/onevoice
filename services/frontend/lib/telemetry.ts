@@ -25,14 +25,12 @@ export function trackEvent(
     page?: string;
     correlationId?: string;
     metadata?: Record<string, string>;
-  },
+  }
 ): void {
   const event: TelemetryEvent = {
     eventType,
     action,
-    page:
-      opts?.page ??
-      (typeof window !== 'undefined' ? window.location.pathname : ''),
+    page: opts?.page ?? (typeof window !== 'undefined' ? window.location.pathname : ''),
     correlationId: opts?.correlationId,
     metadata: opts?.metadata,
     timestamp: new Date().toISOString(),

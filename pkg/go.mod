@@ -1,6 +1,6 @@
 module github.com/f1xgun/onevoice/pkg
 
-go 1.25.0
+go 1.24
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.22.1

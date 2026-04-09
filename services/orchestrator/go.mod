@@ -1,6 +1,6 @@
 module github.com/f1xgun/onevoice/services/orchestrator
 
-go 1.25.0
+go 1.24
 
 replace github.com/f1xgun/onevoice/pkg => ../../pkg
 
