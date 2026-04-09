@@ -1,0 +1,65 @@
+@startuml deployment-diagram
+!theme plain
+skinparam backgroundColor white
+skinparam defaultFontName "Sans-serif"
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam nodesep 40
+skinparam ranksep 40
+
+node "Клиент" as Client {
+  artifact "Браузер" as Browser
+}
+
+node "Docker Host" as Docker {
+  node "frontend" as FE {
+    artifact "Next.js 14" as NextApp
+  }
+
+  node "api" as APISrv {
+    artifact "API-сервис (Go)" as GoAPI
+  }
+
+  node "orchestrator" as OrchSrv {
+    artifact "Оркестратор (Go)" as GoOrch
+  }
+
+  database "PostgreSQL" as PG
+  database "MongoDB" as Mongo
+  queue "NATS" as NATS
+
+  node "agent-telegram" as TGSrv {
+    artifact "Telegram-агент" as GoTG
+  }
+
+  node "agent-vk" as VKSrv {
+    artifact "VK-агент" as GoVK
+  }
+
+  node "agent-yandex-business" as YBSrv {
+    artifact "YaBiz-агент" as GoYB
+  }
+}
+
+cloud "Внешние API" as External {
+  artifact "LLM-провайдеры" as LLMExt
+  artifact "Telegram Bot API" as TGExt
+  artifact "VK API" as VKExt
+  artifact "Yandex.Business" as YBExt
+}
+
+Browser -down-> NextApp : HTTPS
+NextApp -down-> GoAPI : HTTP
+GoAPI -down-> GoOrch : HTTP (SSE)
+GoAPI -down-> PG
+GoAPI -down-> Mongo
+GoOrch -down-> NATS
+GoOrch -right-> LLMExt : HTTPS
+NATS -down-> GoTG
+NATS -down-> GoVK
+NATS -down-> GoYB
+GoTG -down-> TGExt : HTTPS
+GoVK -down-> VKExt : HTTPS
+GoYB -down-> YBExt : HTTPS
+
+@enduml

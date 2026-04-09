@@ -1,0 +1,55 @@
+@startuml component-diagram
+!theme plain
+skinparam backgroundColor white
+skinparam componentStyle rectangle
+skinparam defaultFontName "Sans-serif"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam nodesep 60
+skinparam ranksep 50
+skinparam padding 5
+
+hide stereotype
+
+package "Клиентский уровень" as ClientLayer {
+  [Веб-приложение\n(Next.js 14)] as Frontend
+}
+
+package "Серверный уровень" as ServerLayer {
+  [API-сервис\n(Go, Chi)] as API
+  [Оркестратор\n(Go, Chi)] as Orchestrator
+  database "PostgreSQL" as PG
+  database "MongoDB" as Mongo
+}
+
+package "Брокер сообщений" as MsgBroker {
+  queue "NATS" as NATS
+}
+
+package "Платформенные агенты" as Agents {
+  [Telegram-агент\n(Go, Bot API)] as TG
+  [VK-агент\n(Go, VK API)] as VK
+  [YaBiz-агент\n(Go, Playwright)] as YaBiz
+}
+
+package "Внешние сервисы" as External {
+  cloud "LLM-провайдеры" as LLM
+  cloud "Telegram API" as TGApi
+  cloud "VK API" as VKApi
+  cloud "Yandex.Business" as YaBizApi
+}
+
+Frontend -down-> API : REST / SSE (JWT)
+API -down-> PG : SQL
+API -down-> Mongo : BSON
+API -right-> Orchestrator : HTTP Proxy (SSE)
+Orchestrator -down-> NATS : Request / Reply
+Orchestrator --> LLM : HTTPS (Tool Use)
+NATS -down-> TG
+NATS -down-> VK
+NATS -down-> YaBiz
+TG -down-> TGApi : HTTPS
+VK -down-> VKApi : HTTPS
+YaBiz -down-> YaBizApi : RPA (Playwright)
+
+@enduml

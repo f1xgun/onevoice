@@ -35,11 +35,11 @@ Requirements for Google Business Profile integration. Each maps to roadmap phase
 
 ### Media
 
-- [ ] **MEDIA-01**: User can upload business photos via chat
+- [x] **MEDIA-01**: User can upload business photos via chat
 
 ### Performance
 
-- [ ] **PERF-01**: User can view business performance metrics (impressions, clicks, calls) via chat
+- [x] **PERF-01**: User can view business performance metrics (impressions, clicks, calls) via chat
 
 ### System Integration
 
@@ -97,8 +97,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | POST-03 | Phase 13 | Pending |
 | POST-04 | Phase 13 | Pending |
 | POST-05 | Phase 13 | Pending |
-| MEDIA-01 | Phase 14 | Pending |
-| PERF-01 | Phase 14 | Pending |
+| MEDIA-01 | Phase 14 | Complete |
+| PERF-01 | Phase 14 | Complete |
 | INTEG-01 | Phase 10 | Complete (10-02) |
 | INTEG-02 | Phase 11 | Pending |
 | INTEG-03 | Phase 11 | Pending |

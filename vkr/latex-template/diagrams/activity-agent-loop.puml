@@ -1,0 +1,38 @@
+@startuml activity-agent-loop
+skinparam activityFontSize 12
+skinparam activityDiamondFontSize 11
+skinparam shadowing false
+
+title Алгоритм агентного цикла оркестратора
+
+start
+
+:Получить сообщение пользователя;
+:Сформировать контекст\n(профиль бизнеса, интеграции,\nистория диалога);
+:Добавить системный промпт\nс описанием инструментов;
+:iteration = 0;
+
+repeat
+  :Отправить запрос к LLM;
+  :Получить ответ LLM;
+
+  if (Ответ содержит\nвызовы инструментов?) then (да)
+    :Извлечь имя инструмента\nи аргументы;
+    :Определить целевого агента\nпо префиксу имени;
+    :Отправить ToolRequest\nчерез NATS;
+    :Получить ToolResponse\nот агента;
+    :Отправить SSE-событие\ntool_result клиенту;
+    :Добавить результат\nв контекст диалога;
+    :iteration = iteration + 1;
+  else (нет)
+    :Отправить SSE-событие\ntext клиенту;
+  endif
+
+repeat while (Есть вызовы инструментов\nИ iteration < MAX_ITERATIONS?) is (да)
+->нет;
+
+:Отправить SSE-событие done;
+
+stop
+
+@enduml
