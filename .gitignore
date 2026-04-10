@@ -12,8 +12,8 @@ bin/
 vendor/
 
 # Node
-web/node_modules/
-web/.next/
+services/frontend/node_modules/
+services/frontend/.next/
 
 # Environment
 .env
@@ -43,3 +43,16 @@ certs/
 # Temporary
 tmp/
 *.log
+
+# LaTeX artifacts
+*.aux
+*.out
+*.toc
+*.synctex.gz
+
+# Test coverage
+*.coverage
+coverage_integration.out
+
+# GSD planning workspace
+.planning/
