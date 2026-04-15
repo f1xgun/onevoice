@@ -155,9 +155,11 @@ func (r *integrationRepository) ListByBusinessID(ctx context.Context, businessID
 			&integration.Status,
 			&integration.EncryptedAccessToken,
 			&integration.EncryptedRefreshToken,
+			&integration.EncryptedUserToken,
 			&integration.ExternalID,
 			&integration.Metadata,
 			&integration.TokenExpiresAt,
+			&integration.UserTokenExpiresAt,
 			&integration.CreatedAt,
 			&integration.UpdatedAt,
 		)
@@ -286,9 +288,11 @@ func (r *integrationRepository) ListAllActiveByPlatforms(ctx context.Context, pl
 			&integration.Status,
 			&integration.EncryptedAccessToken,
 			&integration.EncryptedRefreshToken,
+			&integration.EncryptedUserToken,
 			&integration.ExternalID,
 			&integration.Metadata,
 			&integration.TokenExpiresAt,
+			&integration.UserTokenExpiresAt,
 			&integration.CreatedAt,
 			&integration.UpdatedAt,
 		)
