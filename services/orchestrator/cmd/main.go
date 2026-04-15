@@ -389,6 +389,33 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				}},
 			},
 		},
+		{
+			id: a2a.AgentGoogleBusiness,
+			tools: []llm.ToolDefinition{
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "google_business__get_reviews",
+					Description: "Получает отзывы о локации из Google Business Profile. Возвращает список отзывов с рейтингами, комментариями и ответами владельца.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"limit": map[string]interface{}{"type": "integer", "description": "Количество отзывов (макс 50)"},
+						},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "google_business__reply_review",
+					Description: "Отвечает на отзыв в Google Business Profile от имени владельца бизнеса.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"review_name": map[string]interface{}{"type": "string", "description": "Полное имя ресурса отзыва (поле name из google_business__get_reviews)"},
+							"text":        map[string]interface{}{"type": "string", "description": "Текст ответа на отзыв"},
+						},
+						"required": []string{"review_name", "text"},
+					},
+				}},
+			},
+		},
 	}
 
 	conn := natsexec.NewNATSConn(nc)
