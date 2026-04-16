@@ -54,5 +54,14 @@ tmp/
 *.coverage
 coverage_integration.out
 
-# GSD planning workspace
+# GSD planning artifacts
 .planning/
+
+# RPA debug screenshots
+rpa-screenshots/
+
+# Playwright artifacts
+.playwright-mcp/
+
+# Claude worktrees
+.claude/worktrees/
