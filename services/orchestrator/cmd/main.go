@@ -395,6 +395,17 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 						"required": []string{"review_id", "text"},
 					},
 				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "yandex_business__create_post",
+					Description: "Создаёт публикацию (пост) в Яндекс Бизнес. Публикация появится в Поиске Яндекса и Яндекс Картах.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"text": map[string]interface{}{"type": "string", "description": "Текст публикации"},
+						},
+						"required": []string{"text"},
+					},
+				}},
 			},
 		},
 		{
