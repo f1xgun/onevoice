@@ -1094,3 +1094,66 @@ func fillTimeInput(parent playwright.Locator, selectors []string, value string) 
 	}
 	return fmt.Errorf("time input not found")
 }
+
+// CreatePost publishes a text post on Yandex.Business via RPA.
+// Uses the PostAddForm on the /p/edit/posts/ page.
+func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
+	if text == "" {
+		return a2a.NewNonRetryableError(fmt.Errorf("post text is required"))
+	}
+
+	return withRetry(ctx, 3, func() error {
+		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
+			postsURL := bb.baseURL() + "/posts/"
+			if _, err := page.Goto(postsURL, playwright.PageGotoOptions{
+				WaitUntil: playwright.WaitUntilStateNetworkidle,
+				Timeout:   playwright.Float(30000),
+			}); err != nil {
+				debugScreenshot(page, "post_navigate_error")
+				return fmt.Errorf("navigate to posts page: %w", err)
+			}
+			closePopups(page)
+			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+				return err
+			}
+			humanDelay()
+			debugScreenshot(page, "post_after_navigate")
+
+			// Find the post textarea
+			textarea := page.Locator(".PostAddForm-Textarea textarea").First()
+			if err := textarea.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(10000),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err != nil {
+				debugScreenshot(page, "post_textarea_not_found")
+				return fmt.Errorf("post textarea not found")
+			}
+
+			// Click and type the post text
+			if err := textarea.Click(); err != nil {
+				return fmt.Errorf("click textarea: %w", err)
+			}
+			if err := page.Keyboard().Type(text, playwright.KeyboardTypeOptions{Delay: playwright.Float(20)}); err != nil {
+				return fmt.Errorf("type post text: %w", err)
+			}
+			debugScreenshot(page, "post_after_type")
+			humanDelay()
+
+			// Click "Создать" (Submit) button
+			submitBtn := page.Locator(".PostAddForm-Submit").First()
+			if err := submitBtn.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(5000),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err != nil {
+				debugScreenshot(page, "post_submit_not_found")
+				return fmt.Errorf("submit button not found")
+			}
+			if err := submitBtn.Click(); err != nil {
+				return fmt.Errorf("click submit: %w", err)
+			}
+			time.Sleep(3 * time.Second)
+			debugScreenshot(page, "post_after_submit")
+			return nil
+		})
+	})
+}

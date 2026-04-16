@@ -67,6 +67,10 @@ func (s *stubBrowser) ReplyReview(_ context.Context, reviewID, text string) erro
 	return nil
 }
 
+func (s *stubBrowser) CreatePost(_ context.Context, text string) error {
+	return nil
+}
+
 // stubPool implements agent.BrowserPool for testing.
 type stubPool struct {
 	browser agent.YandexBrowser
@@ -228,6 +232,7 @@ func (e *errBrowser) GetReviews(_ context.Context, _ int) ([]map[string]interfac
 	return nil, e.err
 }
 func (e *errBrowser) ReplyReview(_ context.Context, _, _ string) error { return e.err }
+func (e *errBrowser) CreatePost(_ context.Context, _ string) error    { return e.err }
 
 func newErrHandler(fetcher agent.TokenFetcher, browserErr error) *agent.Handler {
 	return agent.NewHandler(fetcher, &stubPool{browser: &errBrowser{err: browserErr}})
