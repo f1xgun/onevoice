@@ -29,6 +29,7 @@ type YandexBrowser interface {
 	GetReviews(ctx context.Context, limit int) ([]map[string]interface{}, error)
 	ReplyReview(ctx context.Context, reviewID, text string) error
 	CreatePost(ctx context.Context, text string) error
+	UploadPhoto(ctx context.Context, photoURL, category string) error
 }
 
 // BrowserPool abstracts the shared Playwright browser pool.
@@ -62,6 +63,8 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		return h.replyReview(ctx, req)
 	case "yandex_business__create_post":
 		return h.createPost(ctx, req)
+	case "yandex_business__upload_photo":
+		return h.uploadPhoto(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
@@ -174,6 +177,27 @@ func (h *Handler) createPost(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 		TaskID:  req.TaskID,
 		Success: true,
 		Result:  map[string]interface{}{"status": "published"},
+	}, nil
+}
+
+func (h *Handler) uploadPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	photoURL, _ := req.Args["photo_url"].(string)
+	category, _ := req.Args["category"].(string)
+	if category == "" {
+		category = "general"
+	}
+	if err := browser.UploadPhoto(ctx, photoURL, category); err != nil {
+		return nil, fmt.Errorf("yandex: upload photo: %w", classifyYandexError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"status": "uploaded", "note": "photo pending Yandex moderation"},
 	}, nil
 }
 

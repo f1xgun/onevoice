@@ -396,6 +396,18 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					},
 				}},
 				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "yandex_business__upload_photo",
+					Description: "Загружает фото в Яндекс Бизнес. Категория: general (общее), logo (логотип), services, interior, exterior, enter (вход), goods (товары).",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"photo_url": map[string]interface{}{"type": "string", "description": "Публичный URL изображения для загрузки"},
+							"category":  map[string]interface{}{"type": "string", "description": "Категория фото: general, logo, services, interior, exterior, enter, goods"},
+						},
+						"required": []string{"photo_url"},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
 					Name:        "yandex_business__create_post",
 					Description: "Создаёт публикацию (пост) в Яндекс Бизнес. Публикация появится в Поиске Яндекса и Яндекс Картах.",
 					Parameters: map[string]interface{}{
