@@ -21,10 +21,13 @@ type fakeTokenFetcher struct {
 	lastPlatform string
 }
 
-func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, _ string) (string, error) {
+func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, _ string) (agent.TokenInfo, error) {
 	f.lastBizID = businessID
 	f.lastPlatform = platform
-	return f.token, f.err
+	if f.err != nil {
+		return agent.TokenInfo{}, f.err
+	}
+	return agent.TokenInfo{AccessToken: f.token, ExternalID: "12345"}, nil
 }
 
 // stubBrowser records operations performed on it.
@@ -65,7 +68,7 @@ type stubPool struct {
 	browser agent.YandexBrowser
 }
 
-func (p *stubPool) ForBusiness(_, _ string) agent.YandexBrowser {
+func (p *stubPool) ForBusiness(_, _, _ string) agent.YandexBrowser {
 	return p.browser
 }
 

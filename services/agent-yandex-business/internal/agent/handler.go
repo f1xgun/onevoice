@@ -10,9 +10,15 @@ import (
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
 )
 
+// TokenInfo holds the resolved token and external ID for an integration.
+type TokenInfo struct {
+	AccessToken string
+	ExternalID  string // Yandex Sprav permalink
+}
+
 // TokenFetcher retrieves an access token (cookies JSON) for a given business/platform combination.
 type TokenFetcher interface {
-	GetToken(ctx context.Context, businessID, platform, externalID string) (accessToken string, err error)
+	GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error)
 }
 
 // YandexBrowser abstracts Playwright browser operations for testability.
@@ -25,7 +31,7 @@ type YandexBrowser interface {
 
 // BrowserPool abstracts the shared Playwright browser pool.
 type BrowserPool interface {
-	ForBusiness(businessID, cookiesJSON string) YandexBrowser
+	ForBusiness(businessID, cookiesJSON, permalink string) YandexBrowser
 }
 
 // Handler implements a2a.Handler for the Yandex.Business RPA agent.
@@ -85,11 +91,11 @@ func classifyYandexError(err error) error {
 }
 
 func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBrowser, error) {
-	token, err := h.tokens.GetToken(ctx, req.BusinessID, "yandex_business", "")
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, "yandex_business", "")
 	if err != nil {
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
-	return h.pool.ForBusiness(req.BusinessID, token), nil
+	return h.pool.ForBusiness(req.BusinessID, info.AccessToken, info.ExternalID), nil
 }
 
 func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {

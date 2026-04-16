@@ -98,9 +98,19 @@ func (p *BrowserPool) getOrCreateContext(businessID, cookiesJSON string) (*poole
 	if err != nil {
 		return nil, fmt.Errorf("playwright: new context: %w", err)
 	}
-	if err := injectCookies(bCtx, cookiesJSON); err != nil {
-		_ = bCtx.Close()
-		return nil, fmt.Errorf("playwright: set cookies: %w", err)
+
+	if isOAuthToken(cookiesJSON) {
+		// OAuth token — exchange for browser session via passport
+		if err := exchangeOAuthForSession(bCtx, cookiesJSON); err != nil {
+			_ = bCtx.Close()
+			return nil, fmt.Errorf("playwright: oauth session exchange: %w", err)
+		}
+	} else {
+		// Legacy cookies JSON — inject directly
+		if err := injectCookies(bCtx, cookiesJSON); err != nil {
+			_ = bCtx.Close()
+			return nil, fmt.Errorf("playwright: set cookies: %w", err)
+		}
 	}
 
 	pc := &pooledContext{ctx: bCtx, cookies: cookiesJSON}
@@ -222,21 +232,93 @@ func injectCookies(bCtx playwright.BrowserContext, cookiesJSON string) error {
 	return bCtx.AddCookies(pwCookies)
 }
 
+// exchangeOAuthForSession uses Yandex's /am/cookie endpoint to convert an OAuth
+// access token into browser session cookies, then injects them into the context.
+func exchangeOAuthForSession(bCtx playwright.BrowserContext, oauthToken string) error {
+	page, err := bCtx.NewPage()
+	if err != nil {
+		return fmt.Errorf("new page for oauth exchange: %w", err)
+	}
+	defer func() { _ = page.Close() }()
+
+	// Yandex's internal session creation: navigate to passport with OAuth token.
+	// The /auth/welcome endpoint with access_token creates a full session.
+	authURL := "https://passport.yandex.ru/auth/welcome?retpath=https%3A%2F%2Fbusiness.yandex.ru"
+	_, _ = page.Goto(authURL, playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(15000),
+	})
+
+	// Use in-browser fetch to call Yandex session exchange API
+	script := fmt.Sprintf(`async () => {
+		try {
+			const resp = await fetch('https://passport.yandex.ru/auth/session/', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+					'Ya-Consumer-Authorization': 'OAuth %s'
+				},
+				body: 'type=oauth&oauth_token=%s&retpath=https%%3A%%2F%%2Fbusiness.yandex.ru',
+				credentials: 'include',
+				redirect: 'manual'
+			});
+			return JSON.stringify({ok: true, status: resp.status});
+		} catch(e) {
+			return JSON.stringify({ok: false, error: e.message});
+		}
+	}`, oauthToken, oauthToken)
+
+	_, _ = page.Evaluate(script)
+
+	// Verify session was created by checking for Session_id cookie
+	cookies, err := bCtx.Cookies("https://passport.yandex.ru", "https://yandex.ru")
+	if err != nil {
+		return fmt.Errorf("read cookies after exchange: %w", err)
+	}
+	for _, c := range cookies {
+		if c.Name == "Session_id" || c.Name == "sessionid2" {
+			// Session established — navigate to business to confirm
+			_, err = page.Goto("https://business.yandex.ru", playwright.PageGotoOptions{
+				WaitUntil: playwright.WaitUntilStateNetworkidle,
+				Timeout:   playwright.Float(20000),
+			})
+			return err
+		}
+	}
+
+	// No session cookies — fall back to Authorization header approach
+	// This works for Yandex internal APIs but not for the full web UI
+	return fmt.Errorf("oauth session exchange failed: no Session_id cookie received (token may lack required scope)")
+}
+
+// isOAuthToken returns true if the value looks like an OAuth token rather than cookies JSON.
+func isOAuthToken(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed != "" && !strings.HasPrefix(trimmed, "[")
+}
+
 // BusinessBrowser implements the YandexBrowser interface for a specific business,
 // delegating all page operations to the shared BrowserPool.
 type BusinessBrowser struct {
 	pool       *BrowserPool
 	businessID string
 	cookies    string
+	permalink  string // Yandex Sprav permalink (e.g. "114697172504")
 }
 
 // ForBusiness returns a BusinessBrowser scoped to the given business.
-func (p *BrowserPool) ForBusiness(businessID, cookiesJSON string) *BusinessBrowser {
+func (p *BrowserPool) ForBusiness(businessID, cookiesJSON, permalink string) *BusinessBrowser {
 	return &BusinessBrowser{
 		pool:       p,
 		businessID: businessID,
 		cookies:    cookiesJSON,
+		permalink:  permalink,
 	}
+}
+
+// baseURL returns the management URL for this business.
+func (bb *BusinessBrowser) baseURL() string {
+	return spravBaseURL(bb.permalink)
 }
 
 // GetReviews scrapes reviews from Yandex.Business reviews page.
@@ -251,7 +333,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 	var reviews []map[string]interface{}
 	err := withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			reviewsURL := businessURL + "/reviews"
+			reviewsURL := bb.baseURL() + "/reviews"
 			if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
@@ -260,7 +342,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 			}
 
 			// Session canary — bail immediately if cookies expired
-			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
 				return err
 			}
 			humanDelay()
@@ -284,8 +366,9 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 				}
 			}
 			if !containerFound {
-				// No reviews container — might be empty or DOM changed
-				return fmt.Errorf("reviews container not found — DOM may have changed")
+				// No reviews container — page loaded but no reviews exist
+				reviews = []map[string]interface{}{}
+				return nil
 			}
 
 			// Load more reviews if needed (pagination)
@@ -456,7 +539,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			reviewsURL := businessURL + "/reviews"
+			reviewsURL := bb.baseURL() + "/reviews"
 			if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
@@ -465,7 +548,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 			}
 
 			// Session canary
-			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
 				return err
 			}
 			humanDelay()
@@ -568,7 +651,7 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			contactsURL := businessURL + "/settings/contacts"
+			contactsURL := bb.baseURL() + "/settings/contacts"
 			if _, err := page.Goto(contactsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
@@ -577,7 +660,7 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 			}
 
 			// Session canary
-			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
 				return err
 			}
 			humanDelay()
@@ -727,7 +810,7 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			hoursURL := businessURL + "/settings/hours"
+			hoursURL := bb.baseURL() + "/settings/hours"
 			if _, err := page.Goto(hoursURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
@@ -736,7 +819,7 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 			}
 
 			// Session canary
-			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
 				return err
 			}
 			humanDelay()

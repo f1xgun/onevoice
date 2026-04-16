@@ -10,7 +10,13 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
-const businessURL = "https://business.yandex.ru"
+// spravBaseURL builds the Yandex.Business management URL for a given permalink.
+func spravBaseURL(permalink string) string {
+	if permalink == "" || permalink == "default" {
+		return "https://business.yandex.ru"
+	}
+	return "https://yandex.ru/sprav/" + permalink + "/p/edit"
+}
 
 // humanDelay waits 1-4 seconds to mimic human browsing behavior.
 func humanDelay() {
