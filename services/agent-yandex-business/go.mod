@@ -7,7 +7,7 @@ replace github.com/f1xgun/onevoice/pkg => ../../pkg
 require (
 	github.com/f1xgun/onevoice/pkg v0.0.0
 	github.com/nats-io/nats.go v1.49.0
-	github.com/playwright-community/playwright-go v0.4501.1
+	github.com/playwright-community/playwright-go v0.5001.0
 	github.com/stretchr/testify v1.11.1
 )
 

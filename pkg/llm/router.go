@@ -110,6 +110,18 @@ func (r *Router) pickProvider(model string, strategy Strategy) (*ModelProviderEn
 	}
 
 	if best == nil {
+		// Fallback: if all providers are unhealthy, try the first enabled one anyway
+		// to avoid permanent deadlock when a single provider recovers.
+		for _, e := range entries {
+			if !e.Enabled {
+				continue
+			}
+			p, ok := r.providers[e.Provider]
+			if !ok {
+				continue
+			}
+			return e, p, nil
+		}
 		return nil, nil, ErrNoProvider
 	}
 	return best, bestProvider, nil

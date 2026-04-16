@@ -15,9 +15,14 @@ RUN cd pkg && go mod download
 RUN cd services/agent-yandex-business && go mod download
 
 RUN cd services/agent-yandex-business && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/agent ./cmd/main.go
+RUN cd services/agent-yandex-business && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/pw-install ./cmd/install/main.go
 
-# Runtime stage — Playwright requires a full browser environment
+# Runtime stage — Playwright v1.50.0 has browsers pre-installed
 FROM mcr.microsoft.com/playwright:v1.50.0-jammy
+
+# Pre-install playwright-go driver (small ~50MB binary, not browsers)
+COPY --from=builder /app/bin/pw-install /tmp/pw-install
+RUN /tmp/pw-install && rm /tmp/pw-install
 
 COPY --from=builder /app/bin/agent /agent
 
