@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -1199,14 +1201,18 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 			}
 			humanDelay()
 
-			// Download the image to a temp file
-			resp, err := page.Request().Get(photoURL)
+			// Download the image to a temp file using standard HTTP
+			httpResp, err := http.Get(photoURL) //nolint:gosec // URL comes from LLM/user, external fetch is intentional
 			if err != nil {
 				return fmt.Errorf("download photo from %s: %w", photoURL, err)
 			}
-			body, err := resp.Body()
+			body, err := io.ReadAll(httpResp.Body)
+			httpResp.Body.Close()
 			if err != nil {
 				return fmt.Errorf("read photo body: %w", err)
+			}
+			if len(body) == 0 {
+				return fmt.Errorf("downloaded empty file from %s", photoURL)
 			}
 
 			tmpFile := fmt.Sprintf("/tmp/upload_%d.jpg", time.Now().UnixMilli())
@@ -1222,9 +1228,20 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 				return fmt.Errorf("set file input (%s): %w", inputSelector, err)
 			}
 
-			// Wait for upload to complete
-			time.Sleep(5 * time.Second)
+			// Wait for upload processing
+			time.Sleep(3 * time.Second)
 			debugScreenshot(page, "photo_after_upload")
+
+			// Handle crop dialog if it appears (logo uploads show a crop modal)
+			cropSaveBtn := page.Locator("button:has-text('Сохранить')").First()
+			if err := cropSaveBtn.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(5000),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err == nil {
+				cropSaveBtn.Click()
+				time.Sleep(3 * time.Second)
+				debugScreenshot(page, "photo_after_crop_save")
+			}
 			return nil
 		})
 	})
