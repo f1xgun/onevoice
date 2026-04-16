@@ -338,11 +338,17 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
 			}); err != nil {
+				debugScreenshot(page, "reviews_navigate_error")
 				return fmt.Errorf("navigate to reviews: %w", err)
 			}
+			debugScreenshot(page, "reviews_after_navigate")
+
+			// Close popups that may overlay the page
+			closePopups(page)
 
 			// Session canary — bail immediately if cookies expired
 			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+				debugScreenshot(page, "reviews_session_expired")
 				return err
 			}
 			humanDelay()
@@ -367,6 +373,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 			}
 			if !containerFound {
 				// No reviews container — page loaded but no reviews exist
+				debugScreenshot(page, "reviews_no_container")
 				reviews = []map[string]interface{}{}
 				return nil
 			}
@@ -651,13 +658,15 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			contactsURL := bb.baseURL() + "/settings/contacts"
-			if _, err := page.Goto(contactsURL, playwright.PageGotoOptions{
+			editURL := bb.baseURL() + "/"
+			if _, err := page.Goto(editURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
 			}); err != nil {
-				return fmt.Errorf("navigate to contacts settings: %w", err)
+				debugScreenshot(page, "info_navigate_error")
+				return fmt.Errorf("navigate to edit page: %w", err)
 			}
+			debugScreenshot(page, "info_after_navigate")
 
 			// Session canary
 			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
@@ -802,21 +811,31 @@ var orderedDays = []struct {
 }
 
 // UpdateHours updates business operating hours in Yandex.Business via RPA.
+// The Yandex.Business edit page has a single text input for hours with
+// placeholder "Введите в формате «Пн-Пт 9:00-18:00»".
+// hoursJSON is passed from the LLM — we convert it to the Yandex text format.
 func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) error {
-	var schedule hoursSchedule
-	if err := json.Unmarshal([]byte(hoursJSON), &schedule); err != nil {
-		return a2a.NewNonRetryableError(fmt.Errorf("invalid hours JSON: %w", err))
+	// Convert whatever JSON the LLM sends into a simple text string
+	// for the Yandex input field (e.g. "Пн-Пт 9:00-18:00, Сб 10:00-15:00")
+	hoursText := formatHoursForYandex(hoursJSON)
+	if hoursText == "" {
+		return a2a.NewNonRetryableError(fmt.Errorf("could not parse hours from: %s", hoursJSON))
 	}
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			hoursURL := bb.baseURL() + "/settings/hours"
-			if _, err := page.Goto(hoursURL, playwright.PageGotoOptions{
+			editURL := bb.baseURL() + "/"
+			if _, err := page.Goto(editURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
 			}); err != nil {
-				return fmt.Errorf("navigate to hours settings: %w", err)
+				debugScreenshot(page, "hours_navigate_error")
+				return fmt.Errorf("navigate to edit page: %w", err)
 			}
+			debugScreenshot(page, "hours_after_navigate")
+
+			// Close popups (e.g. "Будьте в курсе")
+			closePopups(page)
 
 			// Session canary
 			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
@@ -824,64 +843,168 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 			}
 			humanDelay()
 
-			// Wait for hours form to load
-			formSelectors := []string{
-				"[data-testid='hours-form']",
-				".hours-editor",
-				"[class*='HoursForm']",
-				"[class*='hours-form']",
-			}
-			formFound := false
-			for _, sel := range formSelectors {
-				err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(10000),
-				})
-				if err == nil {
-					formFound = true
-					break
-				}
-			}
-			if !formFound {
-				return fmt.Errorf("hours form not found — DOM may have changed")
+			// Find the hours input field by its placeholder or container class
+			hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
+			if err := hoursInput.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(10000),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err != nil {
+				debugScreenshot(page, "hours_input_not_found")
+				return fmt.Errorf("hours input not found — DOM may have changed")
 			}
 
-			// Process each day
-			for idx, day := range orderedDays {
-				hours := day.get(&schedule)
-				if err := setDayHours(page, idx, day.name, hours); err != nil {
-					return fmt.Errorf("set hours for %s: %w", day.name, err)
-				}
-				humanDelay()
+			// Clear and type hours using keyboard (Fill doesn't trigger React events)
+			if err := hoursInput.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
+				return fmt.Errorf("click hours input: %w", err)
 			}
+			if err := page.Keyboard().Type(hoursText, playwright.KeyboardTypeOptions{Delay: playwright.Float(30)}); err != nil {
+				return fmt.Errorf("type hours: %w", err)
+			}
+			if err := page.Keyboard().Press("Enter"); err != nil {
+				return fmt.Errorf("confirm hours: %w", err)
+			}
+			time.Sleep(1 * time.Second)
+			debugScreenshot(page, "hours_after_fill")
+			humanDelay()
 
 			// Click Save button
-			saveSelectors := []string{
-				"[data-testid='save-hours']",
-				"button:has-text('Сохранить')",
-				"button[type='submit']",
-				"[class*='SaveButton']",
-			}
 			saved := false
-			for _, sel := range saveSelectors {
-				btn := page.Locator(sel).First()
-				if err := btn.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(5000),
-					State:   playwright.WaitForSelectorStateVisible,
-				}); err == nil {
-					if err := btn.Click(); err == nil {
-						saved = true
-						break
-					}
+			saveBtn := page.Locator(".SaveButton-Button").First()
+			if err := saveBtn.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(5000),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err == nil {
+				if err := saveBtn.Click(); err == nil {
+					saved = true
 				}
 			}
 			if !saved {
-				return fmt.Errorf("save button not found — changes may not have been saved")
+				debugScreenshot(page, "hours_save_not_found")
+				return fmt.Errorf("save button not found")
 			}
 
+			debugScreenshot(page, "hours_after_save")
 			humanDelay()
 			return nil
 		})
 	})
+}
+
+// closePopups dismisses common Yandex popups that overlay the page.
+func closePopups(page playwright.Page) {
+	closeBtnSelectors := []string{
+		".InfoModal-IconClose",
+		".CrossPlatformModal-Close",
+		"button[aria-label='Закрыть']",
+		".Modal-Close",
+	}
+	for _, sel := range closeBtnSelectors {
+		btn := page.Locator(sel).First()
+		if err := btn.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(2000)}); err == nil {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+}
+
+// formatHoursForYandex converts LLM-generated hours JSON into the text format
+// that Yandex.Business expects: "Пн-Пт 9:00-18:00, Сб 10:00-15:00"
+func formatHoursForYandex(hoursJSON string) string {
+	// Try parsing as structured JSON first
+	var structured map[string]interface{}
+	if err := json.Unmarshal([]byte(hoursJSON), &structured); err != nil {
+		// If not valid JSON, assume it's already a text string
+		return hoursJSON
+	}
+
+	// Map day names to Russian abbreviations
+	dayMap := map[string]string{
+		"monday": "Пн", "tuesday": "Вт", "wednesday": "Ср",
+		"thursday": "Чт", "friday": "Пт", "saturday": "Сб", "sunday": "Вс",
+		"пн": "Пн", "вт": "Вт", "ср": "Ср", "чт": "Чт",
+		"пт": "Пт", "сб": "Сб", "вс": "Вс",
+		"Пн": "Пн", "Вт": "Вт", "Ср": "Ср", "Чт": "Чт",
+		"Пт": "Пт", "Сб": "Сб", "Вс": "Вс",
+	}
+	dayOrder := []string{"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"}
+
+	// Build per-day hours
+	type dayHrs struct {
+		open, close string
+	}
+	days := make(map[string]*dayHrs)
+
+	for key, val := range structured {
+		ruDay, ok := dayMap[key]
+		if !ok {
+			continue
+		}
+		switch v := val.(type) {
+		case string:
+			if v == "closed" || v == "" {
+				continue
+			}
+			days[ruDay] = &dayHrs{open: v}
+		case map[string]interface{}:
+			o, _ := v["open"].(string)
+			c, _ := v["close"].(string)
+			if o == "" && c == "" {
+				o, _ = v["start"].(string)
+				c, _ = v["end"].(string)
+			}
+			if o != "" && c != "" {
+				days[ruDay] = &dayHrs{open: o, close: c}
+			}
+		case []interface{}:
+			if len(v) > 0 {
+				if m, ok := v[0].(map[string]interface{}); ok {
+					o, _ := m["open"].(string)
+					c, _ := m["close"].(string)
+					if o == "" && c == "" {
+						o, _ = m["start"].(string)
+						c, _ = m["end"].(string)
+					}
+					if o != "" && c != "" {
+						days[ruDay] = &dayHrs{open: o, close: c}
+					}
+				}
+			}
+		}
+	}
+
+	// Group consecutive days with same hours
+	var parts []string
+	i := 0
+	for i < len(dayOrder) {
+		d := dayOrder[i]
+		h, ok := days[d]
+		if !ok {
+			i++
+			continue
+		}
+		// Find consecutive days with same hours
+		j := i + 1
+		for j < len(dayOrder) {
+			nextH, ok := days[dayOrder[j]]
+			if !ok || nextH.open != h.open || nextH.close != h.close {
+				break
+			}
+			j++
+		}
+		var dayRange string
+		if j-i == 1 {
+			dayRange = d
+		} else {
+			dayRange = d + "-" + dayOrder[j-1]
+		}
+		if h.close != "" {
+			parts = append(parts, fmt.Sprintf("%s %s-%s", dayRange, h.open, h.close))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s %s", dayRange, h.open))
+		}
+		i = j
+	}
+
+	return strings.Join(parts, ", ")
 }
 
 // setDayHours sets the hours for a specific day row (0-indexed) in the hours form.
