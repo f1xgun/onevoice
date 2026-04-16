@@ -860,10 +860,12 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 			if err := page.Keyboard().Type(hoursText, playwright.KeyboardTypeOptions{Delay: playwright.Float(30)}); err != nil {
 				return fmt.Errorf("type hours: %w", err)
 			}
-			if err := page.Keyboard().Press("Enter"); err != nil {
-				return fmt.Errorf("confirm hours: %w", err)
-			}
-			time.Sleep(1 * time.Second)
+			// Click outside the input to trigger blur — Yandex auto-formats on blur
+			// and shows the "Сохранить изменения" button
+			page.Locator("h1, .InfoWorkIntervals, body").First().Click(playwright.LocatorClickOptions{
+				Timeout: playwright.Float(3000),
+			})
+			time.Sleep(2 * time.Second)
 			debugScreenshot(page, "hours_after_fill")
 			humanDelay()
 
