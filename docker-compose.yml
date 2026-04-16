@@ -204,10 +204,12 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: http://api:8443
+      RPA_DEBUG_SCREENSHOTS: "1"
     volumes:
       - ./certs/ca.crt:/certs/ca.crt:ro
       - ./certs/yandex-business.crt:/certs/client.crt:ro
       - ./certs/yandex-business.key:/certs/client.key:ro
+      - ./rpa-screenshots:/tmp:rw
     depends_on:
       nats:
         condition: service_healthy
