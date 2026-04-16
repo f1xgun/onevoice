@@ -650,7 +650,105 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 	})
 }
 
+// navigateToEditPage loads the main edit page and dismisses popups.
+func (bb *BusinessBrowser) navigateToEditPage(page playwright.Page) error {
+	editURL := bb.baseURL() + "/"
+	if _, err := page.Goto(editURL, playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateNetworkidle,
+		Timeout:   playwright.Float(30000),
+	}); err != nil {
+		debugScreenshot(page, "edit_navigate_error")
+		return fmt.Errorf("navigate to edit page: %w", err)
+	}
+	closePopups(page)
+	if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+		return err
+	}
+	humanDelay()
+	return nil
+}
+
+// clickSave clicks the "Сохранить изменения" button.
+func clickSave(page playwright.Page) error {
+	saveBtn := page.Locator(".SaveButton-Button").First()
+	if err := saveBtn.WaitFor(playwright.LocatorWaitForOptions{
+		Timeout: playwright.Float(5000),
+		State:   playwright.WaitForSelectorStateVisible,
+	}); err != nil {
+		debugScreenshot(page, "save_not_found")
+		return fmt.Errorf("save button not found")
+	}
+	if err := saveBtn.Click(); err != nil {
+		return fmt.Errorf("click save: %w", err)
+	}
+	humanDelay()
+	return nil
+}
+
+// GetInfo scrapes current business info from the Yandex.Business edit page.
+func (bb *BusinessBrowser) GetInfo(ctx context.Context) (map[string]interface{}, error) {
+	var result map[string]interface{}
+	err := withRetry(ctx, 3, func() error {
+		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
+			if err := bb.navigateToEditPage(page); err != nil {
+				return err
+			}
+			debugScreenshot(page, "getinfo_after_navigate")
+
+			info := make(map[string]interface{})
+
+			// Business name from sidebar
+			nameEl := page.Locator("[class*='CompanyName'], [class*='company-name'], .SidebarCompanyInfo span").First()
+			if name, err := nameEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(3000)}); err == nil {
+				info["name"] = strings.TrimSpace(name)
+			}
+
+			// Hours — from WorkIntervalsUnificationInput
+			hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
+			if val, err := hoursInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+				info["hours"] = val
+			}
+
+			// Phone — from InfoPhones section
+			phoneInput := page.Locator(".InfoPhones input.ya-business-input__control").First()
+			if val, err := phoneInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+				info["phone"] = val
+			}
+
+			// Email — from InfoEmails section
+			emailInput := page.Locator(".InfoEmails input.ya-business-input__control").First()
+			if val, err := emailInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+				info["email"] = val
+			}
+
+			// Description
+			descInput := page.Locator("input.ya-business-input__control[placeholder*='Описание'], .ya-business-input__label:has-text('Описание') ~ input, span:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input").First()
+			if val, err := descInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+				info["description"] = val
+			}
+
+			// Address from sidebar/page
+			addrEl := page.Locator(".InfoAddress, [class*='Address']").First()
+			if text, err := addrEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(3000)}); err == nil {
+				info["address"] = strings.TrimSpace(text)
+			}
+
+			// Status
+			statusEl := page.Locator(".InfoWorkIntervals-StatusWrapper .ya-business-select__button-content").First()
+			if text, err := statusEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(3000)}); err == nil {
+				info["status"] = strings.TrimSpace(text)
+			}
+
+			debugScreenshot(page, "getinfo_result")
+			result = info
+			return nil
+		})
+	})
+	return result, err
+}
+
 // UpdateInfo updates business contact information in Yandex.Business via RPA.
+// Uses real DOM selectors: InfoPhones, InfoEmails, and description input.
 func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]string) error {
 	if len(info) == 0 {
 		return a2a.NewNonRetryableError(fmt.Errorf("no fields to update"))
@@ -658,123 +756,52 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			editURL := bb.baseURL() + "/"
-			if _, err := page.Goto(editURL, playwright.PageGotoOptions{
-				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(30000),
-			}); err != nil {
-				debugScreenshot(page, "info_navigate_error")
-				return fmt.Errorf("navigate to edit page: %w", err)
-			}
-			debugScreenshot(page, "info_after_navigate")
-
-			// Session canary
-			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+			if err := bb.navigateToEditPage(page); err != nil {
 				return err
 			}
-			humanDelay()
+			debugScreenshot(page, "updateinfo_after_navigate")
 
-			// Wait for the settings form to load
-			formSelectors := []string{
-				"[data-testid='contacts-form']",
-				".contacts-form",
-				"[class*='ContactsForm']",
-				"form",
-			}
-			formFound := false
-			for _, sel := range formSelectors {
-				err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(10000),
-				})
-				if err == nil {
-					formFound = true
-					break
-				}
-			}
-			if !formFound {
-				return fmt.Errorf("contacts form not found — DOM may have changed")
-			}
-
-			// Field mapping: info key -> candidate selectors for the input/textarea
-			fieldMap := map[string][]string{
-				"phone": {
-					"[data-testid='phone-input']",
-					"input[name='phone']",
-					"input[type='tel']",
-					"[class*='Phone'] input",
-				},
-				"website": {
-					"[data-testid='website-input']",
-					"input[name='website']",
-					"input[name='url']",
-					"input[type='url']",
-					"[class*='Website'] input",
-				},
-				"description": {
-					"[data-testid='description-input']",
-					"textarea[name='description']",
-					"[class*='Description'] textarea",
-					"[class*='description'] textarea",
-				},
+			// Field mapping: key -> CSS selector for input within the section
+			fieldMap := map[string]string{
+				"phone":       ".InfoPhones input.ya-business-input__control",
+				"description": ".ya-business-input__label:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input",
 			}
 
 			for key, value := range info {
-				selectors, ok := fieldMap[key]
+				sel, ok := fieldMap[key]
 				if !ok {
-					continue // Unknown field — skip
+					continue
 				}
 
-				filled := false
-				for _, sel := range selectors {
-					loc := page.Locator(sel).First()
-					if err := loc.WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: playwright.Float(5000),
-						State:   playwright.WaitForSelectorStateVisible,
-					}); err != nil {
-						continue
-					}
-					// Clear existing value and fill new one
-					if err := loc.Fill(""); err != nil {
-						continue
-					}
-					if err := loc.Fill(value); err != nil {
-						continue
-					}
-					filled = true
-					humanDelay()
-					break
-				}
-				if !filled {
-					return fmt.Errorf("field %q input not found — DOM may have changed", key)
-				}
-			}
-
-			// Click Save button
-			saveSelectors := []string{
-				"[data-testid='save-button']",
-				"button:has-text('Сохранить')",
-				"button[type='submit']",
-				"[class*='SaveButton']",
-			}
-			saved := false
-			for _, sel := range saveSelectors {
-				btn := page.Locator(sel).First()
-				if err := btn.WaitFor(playwright.LocatorWaitForOptions{
+				input := page.Locator(sel).First()
+				if err := input.WaitFor(playwright.LocatorWaitForOptions{
 					Timeout: playwright.Float(5000),
 					State:   playwright.WaitForSelectorStateVisible,
-				}); err == nil {
-					if err := btn.Click(); err == nil {
-						saved = true
-						break
-					}
+				}); err != nil {
+					debugScreenshot(page, "updateinfo_field_not_found_"+key)
+					return fmt.Errorf("field %q input not found", key)
 				}
-			}
-			if !saved {
-				return fmt.Errorf("save button not found — changes may not have been saved")
+
+				// Triple-click to select all, then type new value
+				if err := input.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
+					return fmt.Errorf("click %q input: %w", key, err)
+				}
+				if err := page.Keyboard().Type(value, playwright.KeyboardTypeOptions{Delay: playwright.Float(30)}); err != nil {
+					return fmt.Errorf("type %q: %w", key, err)
+				}
+				// Blur to trigger validation
+				page.Locator("h1, .InfoBlockCarcass, body").First().Click(playwright.LocatorClickOptions{Timeout: playwright.Float(2000)})
+				time.Sleep(1 * time.Second)
+				humanDelay()
 			}
 
-			// Wait for save confirmation
-			humanDelay()
+			debugScreenshot(page, "updateinfo_after_fill")
+
+			// Click Save
+			if err := clickSave(page); err != nil {
+				return err
+			}
+			debugScreenshot(page, "updateinfo_after_save")
 			return nil
 		})
 	})
@@ -824,26 +851,11 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			editURL := bb.baseURL() + "/"
-			if _, err := page.Goto(editURL, playwright.PageGotoOptions{
-				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(30000),
-			}); err != nil {
-				debugScreenshot(page, "hours_navigate_error")
-				return fmt.Errorf("navigate to edit page: %w", err)
-			}
-			debugScreenshot(page, "hours_after_navigate")
-
-			// Close popups (e.g. "Будьте в курсе")
-			closePopups(page)
-
-			// Session canary
-			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+			if err := bb.navigateToEditPage(page); err != nil {
 				return err
 			}
-			humanDelay()
 
-			// Find the hours input field by its placeholder or container class
+			// Find the hours input field
 			hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
 			if err := hoursInput.WaitFor(playwright.LocatorWaitForOptions{
 				Timeout: playwright.Float(10000),
@@ -853,40 +865,24 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 				return fmt.Errorf("hours input not found — DOM may have changed")
 			}
 
-			// Clear and type hours using keyboard (Fill doesn't trigger React events)
+			// Triple-click to select all, then type new value
 			if err := hoursInput.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
 				return fmt.Errorf("click hours input: %w", err)
 			}
 			if err := page.Keyboard().Type(hoursText, playwright.KeyboardTypeOptions{Delay: playwright.Float(30)}); err != nil {
 				return fmt.Errorf("type hours: %w", err)
 			}
-			// Click outside the input to trigger blur — Yandex auto-formats on blur
-			// and shows the "Сохранить изменения" button
+			// Blur to trigger Yandex auto-format and show save button
 			page.Locator("h1, .InfoWorkIntervals, body").First().Click(playwright.LocatorClickOptions{
 				Timeout: playwright.Float(3000),
 			})
 			time.Sleep(2 * time.Second)
 			debugScreenshot(page, "hours_after_fill")
-			humanDelay()
 
-			// Click Save button
-			saved := false
-			saveBtn := page.Locator(".SaveButton-Button").First()
-			if err := saveBtn.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(5000),
-				State:   playwright.WaitForSelectorStateVisible,
-			}); err == nil {
-				if err := saveBtn.Click(); err == nil {
-					saved = true
-				}
+			if err := clickSave(page); err != nil {
+				return err
 			}
-			if !saved {
-				debugScreenshot(page, "hours_save_not_found")
-				return fmt.Errorf("save button not found")
-			}
-
 			debugScreenshot(page, "hours_after_save")
-			humanDelay()
 			return nil
 		})
 	})

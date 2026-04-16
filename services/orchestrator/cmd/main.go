@@ -343,8 +343,16 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			id: a2a.AgentYandexBusiness,
 			tools: []llm.ToolDefinition{
 				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "yandex_business__get_info",
+					Description: "Получает текущую информацию об организации в Яндекс Бизнес: название, телефон, email, часы работы, адрес, статус.",
+					Parameters: map[string]interface{}{
+						"type":       "object",
+						"properties": map[string]interface{}{},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
 					Name:        "yandex_business__update_hours",
-					Description: "Обновляет часы работы в Яндекс Бизнес (включая праздничные дни)",
+					Description: "Обновляет часы работы в Яндекс Бизнес. Принимает описание расписания в свободном формате.",
 					Parameters: map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{

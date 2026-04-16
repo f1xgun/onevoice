@@ -40,6 +40,10 @@ type stubBrowser struct {
 	getReviewsFn func(ctx context.Context, limit int) ([]map[string]interface{}, error)
 }
 
+func (s *stubBrowser) GetInfo(_ context.Context) (map[string]interface{}, error) {
+	return map[string]interface{}{"name": "Test Business", "phone": "+7 999 123 45 67", "status": "Работает"}, nil
+}
+
 func (s *stubBrowser) UpdateHours(_ context.Context, hoursJSON string) error {
 	s.updatedHours = hoursJSON
 	return nil
@@ -215,7 +219,8 @@ type errBrowser struct {
 	err error
 }
 
-func (e *errBrowser) UpdateHours(_ context.Context, _ string) error { return e.err }
+func (e *errBrowser) GetInfo(_ context.Context) (map[string]interface{}, error) { return nil, e.err }
+func (e *errBrowser) UpdateHours(_ context.Context, _ string) error               { return e.err }
 func (e *errBrowser) UpdateInfo(_ context.Context, _ map[string]string) error {
 	return e.err
 }

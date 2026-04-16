@@ -23,6 +23,7 @@ type TokenFetcher interface {
 
 // YandexBrowser abstracts Playwright browser operations for testability.
 type YandexBrowser interface {
+	GetInfo(ctx context.Context) (map[string]interface{}, error)
 	UpdateHours(ctx context.Context, hoursJSON string) error
 	UpdateInfo(ctx context.Context, info map[string]string) error
 	GetReviews(ctx context.Context, limit int) ([]map[string]interface{}, error)
@@ -48,6 +49,8 @@ func NewHandler(tokens TokenFetcher, pool BrowserPool) *Handler {
 // Handle routes ToolRequests to the appropriate Yandex.Business operation.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	switch req.Tool {
+	case "yandex_business__get_info":
+		return h.getInfo(ctx, req)
 	case "yandex_business__update_hours":
 		return h.updateHours(ctx, req)
 	case "yandex_business__update_info":
@@ -96,6 +99,23 @@ func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBr
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
 	return h.pool.ForBusiness(req.BusinessID, info.AccessToken, info.ExternalID), nil
+}
+
+func (h *Handler) getInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := browser.GetInfo(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("yandex: get info: %w", classifyYandexError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  info,
+	}, nil
 }
 
 func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
