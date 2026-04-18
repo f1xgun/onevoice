@@ -18,8 +18,8 @@ import (
 
 // mockAgentTaskService implements AgentTaskService for tests.
 type mockAgentTaskService struct {
-	listFn     func(ctx context.Context, userID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
-	resolveFn  func(ctx context.Context, userID uuid.UUID) (string, error)
+	listFn    func(ctx context.Context, userID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
+	resolveFn func(ctx context.Context, userID uuid.UUID) (string, error)
 }
 
 func (m *mockAgentTaskService) List(ctx context.Context, userID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {

@@ -22,11 +22,11 @@ import (
 
 // spyAgentTaskRepo records Create/Update/GetByID calls for assertions.
 type spyAgentTaskRepo struct {
-	mu       sync.Mutex
-	created  []domain.AgentTask
-	updated  []domain.AgentTask
-	nextID   int
-	byID     map[string]domain.AgentTask
+	mu      sync.Mutex
+	created []domain.AgentTask
+	updated []domain.AgentTask
+	nextID  int
+	byID    map[string]domain.AgentTask
 }
 
 func newSpyAgentTaskRepo() *spyAgentTaskRepo {

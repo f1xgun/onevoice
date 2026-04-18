@@ -216,7 +216,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	agentTaskIDByCallID := make(map[string]string)
 
 	// Long-lived context for in-stream task persistence/publishing. The
-	// request context may be cancelled when the client disconnects, but we
+	// request context may be canceled when the client disconnects, but we
 	// still want to finish recording the task row so the history is intact.
 	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), 2*time.Minute)
 	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
