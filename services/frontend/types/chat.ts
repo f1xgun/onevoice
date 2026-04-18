@@ -1,4 +1,7 @@
-export type ToolCallStatus = 'pending' | 'done' | 'error';
+// 'aborted' marks a tool_call that was persisted without a matching
+// tool_result — e.g., the user refreshed mid-run and the tool was canceled
+// before emitting its result.
+export type ToolCallStatus = 'pending' | 'done' | 'error' | 'aborted';
 
 export interface ToolCall {
   id: string;

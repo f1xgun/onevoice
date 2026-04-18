@@ -15,6 +15,9 @@ type Config struct {
 	MaxIterations   int
 	NATSUrl         string
 	ShutdownTimeout time.Duration
+	// ToolExecTimeout bounds a single tool call. Zero disables the per-tool
+	// deadline — the request context still governs overall cancellation.
+	ToolExecTimeout time.Duration
 
 	// LLM provider API keys (at least one must be set)
 	OpenRouterAPIKey string
@@ -52,6 +55,13 @@ func Load() (*Config, error) {
 		}
 	}
 
+	var toolExecTimeout time.Duration
+	if v := os.Getenv("TOOL_EXEC_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			toolExecTimeout = d
+		}
+	}
+
 	return &Config{
 		Port:            getEnv("PORT", "8090"),
 		LLMModel:        model,
@@ -59,6 +69,7 @@ func Load() (*Config, error) {
 		MaxIterations:   maxIter,
 		NATSUrl:         getEnv("NATS_URL", "nats://localhost:4222"),
 		ShutdownTimeout: shutdownTimeout,
+		ToolExecTimeout: toolExecTimeout,
 
 		OpenRouterAPIKey: os.Getenv("OPENROUTER_API_KEY"),
 		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
