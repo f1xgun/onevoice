@@ -20,13 +20,17 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
+// ptr is a helper for building *string literals in test tables.
+func ptr[T any](v T) *T { return &v }
+
 // MockConversationRepository is a mock implementation of ConversationRepository for testing
 type MockConversationRepository struct {
-	CreateFunc       func(ctx context.Context, conv *domain.Conversation) error
-	GetByIDFunc      func(ctx context.Context, id string) (*domain.Conversation, error)
-	ListByUserIDFunc func(ctx context.Context, userID string, limit, offset int) ([]domain.Conversation, error)
-	UpdateFunc       func(ctx context.Context, conv *domain.Conversation) error
-	DeleteFunc       func(ctx context.Context, id string) error
+	CreateFunc                  func(ctx context.Context, conv *domain.Conversation) error
+	GetByIDFunc                 func(ctx context.Context, id string) (*domain.Conversation, error)
+	ListByUserIDFunc            func(ctx context.Context, userID string, limit, offset int) ([]domain.Conversation, error)
+	UpdateFunc                  func(ctx context.Context, conv *domain.Conversation) error
+	DeleteFunc                  func(ctx context.Context, id string) error
+	UpdateProjectAssignmentFunc func(ctx context.Context, id string, projectID *string) error
 }
 
 func (m *MockConversationRepository) Create(ctx context.Context, conv *domain.Conversation) error {
@@ -60,6 +64,13 @@ func (m *MockConversationRepository) Update(ctx context.Context, conv *domain.Co
 func (m *MockConversationRepository) Delete(ctx context.Context, id string) error {
 	if m.DeleteFunc != nil {
 		return m.DeleteFunc(ctx, id)
+	}
+	return nil
+}
+
+func (m *MockConversationRepository) UpdateProjectAssignment(ctx context.Context, id string, projectID *string) error {
+	if m.UpdateProjectAssignmentFunc != nil {
+		return m.UpdateProjectAssignmentFunc(ctx, id, projectID)
 	}
 	return nil
 }
@@ -656,4 +667,132 @@ func TestGetConversation_RepositoryError(t *testing.T) {
 	err := json.NewDecoder(w.Body).Decode(&response)
 	require.NoError(t, err)
 	assert.Equal(t, "internal server error", response.Error)
+}
+
+// TestConversation_JSONShape_PopulatedFields asserts that json.Marshal of a
+// fully populated domain.Conversation produces the camelCase keys the Phase 15
+// frontend (Plan 06 sidebar) relies on for grouping, pinning, and empty-state
+// filtering. This is the Plan 15-04 Task 1 JSON-shape contract (five keys
+// guaranteed when values are non-zero).
+func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
+	lastMsg := time.Now().UTC()
+	conv := domain.Conversation{
+		ID:            "c1",
+		UserID:        "u1",
+		BusinessID:    "b1",
+		ProjectID:     ptr("p1"),
+		Title:         "Ошибки после обновления",
+		TitleStatus:   domain.TitleStatusAutoPending,
+		Pinned:        true,
+		LastMessageAt: &lastMsg,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	raw, err := json.Marshal(conv)
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(raw, &m))
+
+	// The five keys Plan 06 sidebar relies on.
+	for _, key := range []string{"projectId", "businessId", "pinned", "titleStatus", "lastMessageAt"} {
+		_, ok := m[key]
+		assert.Truef(t, ok, "expected key %q in JSON shape; got keys: %v", key, keysOf(m))
+	}
+	assert.Equal(t, "p1", m["projectId"])
+	assert.Equal(t, "b1", m["businessId"])
+	assert.Equal(t, true, m["pinned"])
+	assert.Equal(t, string(domain.TitleStatusAutoPending), m["titleStatus"])
+}
+
+// TestConversation_JSONShape_NilProjectIDElided documents that when ProjectID
+// is nil, the `json:"projectId,omitempty"` tag elides the key. The frontend
+// must treat "missing projectId" as "null / Без проекта" per Plan 15-04.
+func TestConversation_JSONShape_NilProjectIDElided(t *testing.T) {
+	conv := domain.Conversation{
+		ID:          "c2",
+		UserID:      "u2",
+		BusinessID:  "b2",
+		ProjectID:   nil, // virtual "Без проекта" bucket
+		Title:       "t",
+		TitleStatus: domain.TitleStatusAutoPending,
+	}
+	raw, err := json.Marshal(conv)
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(raw, &m))
+
+	_, present := m["projectId"]
+	assert.False(t, present, "projectId must be elided when ProjectID is nil (omitempty); got: %v", m)
+	// businessId/pinned/titleStatus remain present.
+	_, ok := m["businessId"]
+	assert.True(t, ok)
+	_, ok = m["pinned"]
+	assert.True(t, ok)
+	_, ok = m["titleStatus"]
+	assert.True(t, ok)
+}
+
+// TestListConversations_JSONShape verifies that GET /api/v1/conversations
+// serializes every list item with the five Phase 15 keys the sidebar depends
+// on. Nil LastMessageAt is elided (documented as expected).
+func TestListConversations_JSONShape(t *testing.T) {
+	userID := uuid.New()
+	projID := "proj-1"
+	lastMsg := time.Now().UTC()
+
+	conversations := []domain.Conversation{
+		{
+			ID:            "507f1f77bcf86cd799439011",
+			UserID:        userID.String(),
+			BusinessID:    "biz-1",
+			ProjectID:     &projID,
+			Title:         "Pinned",
+			TitleStatus:   domain.TitleStatusAuto,
+			Pinned:        true,
+			LastMessageAt: &lastMsg,
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+		},
+	}
+
+	mockRepo := &MockConversationRepository{
+		ListByUserIDFunc: func(_ context.Context, _ string, _, _ int) ([]domain.Conversation, error) {
+			return conversations, nil
+		},
+	}
+	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	handler.ListConversations(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var items []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &items))
+	require.Len(t, items, 1)
+
+	item := items[0]
+	for _, key := range []string{"projectId", "businessId", "pinned", "titleStatus", "lastMessageAt"} {
+		_, ok := item[key]
+		assert.Truef(t, ok, "GET /api/v1/conversations item must carry key %q; got: %v", key, keysOf(item))
+	}
+	assert.Equal(t, "biz-1", item["businessId"])
+	assert.Equal(t, "proj-1", item["projectId"])
+	assert.Equal(t, true, item["pinned"])
+	assert.Equal(t, string(domain.TitleStatusAuto), item["titleStatus"])
+}
+
+// keysOf returns the keys of m (used only in test failure messages).
+func keysOf(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
