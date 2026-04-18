@@ -87,12 +87,15 @@ type tokenAdapter struct {
 	client *tokenclient.Client
 }
 
-func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (string, error) {
+func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (agentpkg.TokenInfo, error) {
 	resp, err := a.client.GetToken(ctx, businessID, platform, externalID)
 	if err != nil {
-		return "", err
+		return agentpkg.TokenInfo{}, err
 	}
-	return resp.AccessToken, nil
+	return agentpkg.TokenInfo{
+		AccessToken: resp.AccessToken,
+		ExternalID:  resp.ExternalID,
+	}, nil
 }
 
 // poolAdapter wraps *yandex.BrowserPool to satisfy agent.BrowserPool interface.
@@ -100,8 +103,8 @@ type poolAdapter struct {
 	pool *yandex.BrowserPool
 }
 
-func (pa *poolAdapter) ForBusiness(businessID, cookiesJSON string) agentpkg.YandexBrowser {
-	return pa.pool.ForBusiness(businessID, cookiesJSON)
+func (pa *poolAdapter) ForBusiness(businessID, cookiesJSON, permalink string) agentpkg.YandexBrowser {
+	return pa.pool.ForBusiness(businessID, cookiesJSON, permalink)
 }
 
 func getEnv(key, defaultValue string) string {

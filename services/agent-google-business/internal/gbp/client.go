@@ -1,6 +1,7 @@
 package gbp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ type Client struct {
 	// Base URLs - overridable for testing.
 	AccountsBaseURL     string
 	BusinessInfoBaseURL string
+	ReviewsBaseURL      string
 }
 
 // New creates a GBP client for the given access token.
@@ -25,6 +27,7 @@ func New(token string) *Client {
 		httpClient:          &http.Client{Timeout: 15 * time.Second},
 		AccountsBaseURL:     "https://mybusinessaccountmanagement.googleapis.com",
 		BusinessInfoBaseURL: "https://mybusinessbusinessinformation.googleapis.com",
+		ReviewsBaseURL:      "https://mybusiness.googleapis.com",
 	}
 }
 
@@ -87,4 +90,40 @@ func (c *Client) ListLocations(ctx context.Context, accountName string) ([]Locat
 		return nil, fmt.Errorf("parse locations response: %w", err)
 	}
 	return resp.Locations, nil
+}
+
+// GetReviews fetches reviews for a location (accountName format: "accounts/X/locations/Y").
+func (c *Client) GetReviews(ctx context.Context, locationName string, limit int) (*ListReviewsResponse, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 50
+	}
+	url := fmt.Sprintf("%s/v4/%s/reviews?pageSize=%d", c.ReviewsBaseURL, locationName, limit)
+	body, err := c.doRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get reviews: %w", err)
+	}
+	var resp ListReviewsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse reviews response: %w", err)
+	}
+	return &resp, nil
+}
+
+// ReplyReview posts or updates a reply to a review.
+func (c *Client) ReplyReview(ctx context.Context, reviewName, comment string) (*ReviewReply, error) {
+	payload := map[string]string{"comment": comment}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal reply: %w", err)
+	}
+	url := fmt.Sprintf("%s/v4/%s/reply", c.ReviewsBaseURL, reviewName)
+	body, err := c.doRequest(ctx, "PUT", url, bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("reply review: %w", err)
+	}
+	var reply ReviewReply
+	if err := json.Unmarshal(body, &reply); err != nil {
+		return nil, fmt.Errorf("parse reply response: %w", err)
+	}
+	return &reply, nil
 }

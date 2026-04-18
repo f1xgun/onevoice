@@ -74,13 +74,6 @@ func (h *IntegrationHandler) ListIntegrations(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, integrations)
 }
 
-// ConnectIntegration is a stub for future OAuth flow implementation
-// Platform parameter will be available via chi.URLParam(r, "platform") when implemented
-func (h *IntegrationHandler) ConnectIntegration(w http.ResponseWriter, r *http.Request) {
-	// Return 501 Not Implemented
-	writeJSONError(w, http.StatusNotImplemented, "OAuth flow not implemented yet")
-}
-
 // DeleteIntegration deletes an integration by ID
 func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from context

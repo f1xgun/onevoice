@@ -38,7 +38,7 @@ func run() error {
 	tc := tokenclient.New(cfg.APIInternalURL, nil)
 	tokens := &tokenAdapter{client: tc}
 	handler := agentpkg.NewHandler(tokens, func(token string) agentpkg.GBPClient {
-		return gbp.New(token)
+		return gbp.New(token) //nolint:typecheck // gbp.Client implements GBPClient
 	})
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentGoogleBusiness, transport, handler)
