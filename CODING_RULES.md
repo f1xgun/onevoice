@@ -546,16 +546,20 @@ Before deployment, verify:
 - `zustand` — State management
 - `react-hook-form` — Forms
 - `zod` — Validation
-- `@tanstack/react-query` — Server state (optional)
+- `@tanstack/react-query` — Server state (fetching, caching)
 
 ---
 
 ## Documentation
 
-- **README.md** — Setup instructions, architecture overview
-- **API.md** — API endpoints, authentication, examples
-- **DEPLOYMENT.md** — Docker Compose, Kubernetes, environment variables
-- **SECURITY.md** — Threat model, encryption details, audit trail
+Current docs:
+
+- `README.md` — setup instructions, architecture overview
+- `docs/architecture.md` — system diagrams, module map, data flow
+- `docs/golden-principles.md` — top-level rules enforced by linters/CI
+- `docs/patterns.md` — approved code patterns with examples
+- `docs/anti-patterns.md` — mistakes to avoid
+- `pkg/CLAUDE.md` + per-service `services/*/CLAUDE.md` — scoped module guidance
 
 Inline code comments should explain:
 - **Why** decisions were made (not what the code does)
