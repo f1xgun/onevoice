@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
 const maxTelegramDescription = 255
@@ -36,6 +37,7 @@ type taskRecorder interface {
 type Syncer struct {
 	integrations integrationProvider
 	tasks        taskRecorder // optional; may be nil
+	hub          *taskhub.Hub // optional; may be nil
 	httpClient   *http.Client
 	telegramBase string
 	publicURL    string
@@ -60,25 +62,39 @@ func (s *Syncer) SetTaskRecorder(tasks taskRecorder) {
 	s.tasks = tasks
 }
 
-// recordTask creates an AgentTask record if a recorder is configured.
-func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform, taskType, status string, input interface{}, errMsg string) {
+// SetTaskHub sets the optional TaskHub that fans out task lifecycle events
+// to SSE subscribers on the Tasks page.
+func (s *Syncer) SetTaskHub(hub *taskhub.Hub) {
+	s.hub = hub
+}
+
+// recordTask creates an AgentTask record (if a recorder is configured) for a
+// sync operation that has already completed. startedAt is captured before the
+// operation so the stored duration is meaningful. displayName is the human
+// label shown on the Tasks page — callers pass the Russian string directly.
+func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform, taskType, displayName, status string, input interface{}, errMsg string, startedAt time.Time) {
 	if s.tasks == nil {
 		return
 	}
-	now := time.Now()
+	completedAt := time.Now()
 	task := &domain.AgentTask{
 		BusinessID:  businessID.String(),
 		Type:        taskType,
+		DisplayName: displayName,
 		Status:      status,
 		Platform:    platform,
 		Input:       input,
-		StartedAt:   &now,
-		CompletedAt: &now,
-		CreatedAt:   now,
+		StartedAt:   &startedAt,
+		CompletedAt: &completedAt,
+		CreatedAt:   completedAt,
 		Error:       errMsg,
 	}
 	if err := s.tasks.Create(ctx, task); err != nil {
 		slog.ErrorContext(ctx, "platform sync: failed to record task", "error", err)
+		return
+	}
+	if s.hub != nil {
+		s.hub.Publish(businessID.String(), taskhub.Event{Kind: taskhub.KindCreated, Task: *task})
 	}
 }
 
@@ -100,29 +116,32 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 		}
 		switch integ.Platform {
 		case "telegram":
+			titleStart := time.Now()
 			if err := s.syncTelegramTitle(ctx, business.ID, integ.ExternalID, business.Name); err != nil {
-				s.recordTask(ctx, business.ID, "telegram", "sync_title", "error",
-					map[string]string{"channel_id": integ.ExternalID}, err.Error())
+				s.recordTask(ctx, business.ID, "telegram", "sync_title", "Синхронизация названия", "error",
+					map[string]string{"channel_id": integ.ExternalID}, err.Error(), titleStart)
 			} else {
-				s.recordTask(ctx, business.ID, "telegram", "sync_title", "done",
-					map[string]string{"channel_id": integ.ExternalID, "name": business.Name}, "")
+				s.recordTask(ctx, business.ID, "telegram", "sync_title", "Синхронизация названия", "done",
+					map[string]string{"channel_id": integ.ExternalID, "name": business.Name}, "", titleStart)
 			}
 
+			descStart := time.Now()
 			if err := s.syncTelegramDescription(ctx, business.ID, integ.ExternalID, formatTelegramDescription(business)); err != nil {
-				s.recordTask(ctx, business.ID, "telegram", "sync_description", "error",
-					map[string]string{"channel_id": integ.ExternalID}, err.Error())
+				s.recordTask(ctx, business.ID, "telegram", "sync_description", "Синхронизация описания", "error",
+					map[string]string{"channel_id": integ.ExternalID}, err.Error(), descStart)
 			} else {
-				s.recordTask(ctx, business.ID, "telegram", "sync_description", "done",
-					map[string]string{"channel_id": integ.ExternalID}, "")
+				s.recordTask(ctx, business.ID, "telegram", "sync_description", "Синхронизация описания", "done",
+					map[string]string{"channel_id": integ.ExternalID}, "", descStart)
 			}
 
 			if business.LogoURL != "" {
+				photoStart := time.Now()
 				if err := s.syncTelegramPhoto(ctx, business.ID, integ.ExternalID, business.LogoURL); err != nil {
-					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "error",
-						map[string]string{"channel_id": integ.ExternalID}, err.Error())
+					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "Синхронизация фото", "error",
+						map[string]string{"channel_id": integ.ExternalID}, err.Error(), photoStart)
 				} else {
-					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "done",
-						map[string]string{"channel_id": integ.ExternalID}, "")
+					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "Синхронизация фото", "done",
+						map[string]string{"channel_id": integ.ExternalID}, "", photoStart)
 				}
 			}
 		case "vk":
@@ -407,10 +426,11 @@ func (s *Syncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, ch
 
 // syncVKInfo pushes business data to VK community using dedicated API fields.
 func (s *Syncer) syncVKInfo(ctx context.Context, business *domain.Business, groupID string) {
+	started := time.Now()
 	token, err := s.integrations.GetDecryptedToken(ctx, business.ID, "vk", groupID)
 	if err != nil {
 		slog.Error("platform sync: vk: get token failed", "group_id", groupID, "error", err)
-		s.recordTask(ctx, business.ID, "vk", "sync_info", "error", map[string]string{"group_id": groupID}, "token fetch failed: "+err.Error())
+		s.recordTask(ctx, business.ID, "vk", "sync_info", "Синхронизация данных", "error", map[string]string{"group_id": groupID}, "token fetch failed: "+err.Error(), started)
 		return
 	}
 
@@ -439,9 +459,9 @@ func (s *Syncer) syncVKInfo(ctx context.Context, business *domain.Business, grou
 
 	apiErr := s.callVKAPI(ctx, "groups.edit", params, groupID)
 	if apiErr != "" {
-		s.recordTask(ctx, business.ID, "vk", "sync_info", "error", input, apiErr)
+		s.recordTask(ctx, business.ID, "vk", "sync_info", "Синхронизация данных", "error", input, apiErr, started)
 	} else {
-		s.recordTask(ctx, business.ID, "vk", "sync_info", "done", input, "")
+		s.recordTask(ctx, business.ID, "vk", "sync_info", "Синхронизация данных", "done", input, "", started)
 	}
 }
 

@@ -53,12 +53,14 @@ type chatRequest struct {
 
 // sseEvent matches the JSON shape written to the SSE stream.
 type sseEvent struct {
-	Type       string                 `json:"type"`
-	Content    string                 `json:"content,omitempty"`
-	ToolName   string                 `json:"tool_name,omitempty"`
-	ToolArgs   map[string]interface{} `json:"tool_args,omitempty"`
-	ToolResult interface{}            `json:"result,omitempty"`
-	ToolError  string                 `json:"error,omitempty"`
+	Type            string                 `json:"type"`
+	Content         string                 `json:"content,omitempty"`
+	ToolCallID      string                 `json:"tool_call_id,omitempty"`
+	ToolName        string                 `json:"tool_name,omitempty"`
+	ToolDisplayName string                 `json:"tool_display_name,omitempty"`
+	ToolArgs        map[string]interface{} `json:"tool_args,omitempty"`
+	ToolResult      interface{}            `json:"result,omitempty"`
+	ToolError       string                 `json:"error,omitempty"`
 }
 
 // Chat handles POST /chat/{conversationID} and streams SSE events.
@@ -127,11 +129,15 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	for event := range events {
 		sse := sseEvent{Type: string(event.Type), Content: event.Content}
 		if event.Type == orchestrator.EventToolCall {
+			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
+			sse.ToolDisplayName = event.ToolDisplayName
 			sse.ToolArgs = event.ToolArgs
 		}
 		if event.Type == orchestrator.EventToolResult {
+			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
+			sse.ToolDisplayName = event.ToolDisplayName
 			sse.ToolResult = event.ToolResult
 			sse.ToolError = event.ToolError
 		}

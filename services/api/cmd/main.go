@@ -32,6 +32,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
+	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
 func main() {
@@ -103,6 +104,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	postRepo := repository.NewPostRepository(mongoDB)
 	agentTaskRepo := repository.NewAgentTaskRepository(mongoDB)
 
+	// In-process hub that fans out task lifecycle events to SSE subscribers.
+	taskHub := taskhub.New()
+
 	// Initialize services
 	userService, err := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
 	if err != nil {
@@ -145,6 +149,8 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		nil,
 		cfg.PublicURL,
 	)
+	platformSyncer.SetTaskRecorder(agentTaskRepo)
+	platformSyncer.SetTaskHub(taskHub)
 
 	// Initialize handlers
 	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
@@ -160,7 +166,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		GoogleRedirectURI:  cfg.GoogleRedirectURI,
 	}, nil, redisClient)
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
-	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
+	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, taskHub, cfg.OrchestratorURL, nil)
 
 	authHandler, err := handler.NewAuthHandler(userService, cfg.SecureCookies)
 	if err != nil {
@@ -186,7 +192,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("create post handler: %w", err)
 	}
-	agentTaskHandler, err := handler.NewAgentTaskHandler(agentTaskService)
+	agentTaskHandler, err := handler.NewAgentTaskHandler(agentTaskService, taskHub)
 	if err != nil {
 		return fmt.Errorf("create agent task handler: %w", err)
 	}
