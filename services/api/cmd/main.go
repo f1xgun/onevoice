@@ -77,6 +77,18 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	mongoDB := mongoClient.Database(cfg.MongoDB)
 	log.Info("connected to mongodb")
 
+	// Phase 15 Mongo backfill — idempotent, marker-gated. Must complete
+	// before we serve traffic so every pre-existing conversation has the
+	// fields the sidebar and move-chat rely on. Bounded to 30s so a
+	// broken Mongo does not hang startup forever.
+	backfillCtx, backfillCancel := context.WithTimeout(ctx, 30*time.Second)
+	if err := repository.BackfillConversationsV15(backfillCtx, mongoDB); err != nil {
+		backfillCancel()
+		slog.ErrorContext(backfillCtx, "phase 15 backfill failed", "error", err)
+		return fmt.Errorf("phase 15 backfill: %w", err)
+	}
+	backfillCancel()
+
 	// Redis
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
