@@ -14,8 +14,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { MoveChatMenuItem } from '@/components/chat/MoveChatMenuItem';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +33,7 @@ interface Conversation {
   id: string;
   title: string;
   createdAt: string;
+  projectId?: string | null;
 }
 
 function ConversationItem({
@@ -122,6 +125,12 @@ function ConversationItem({
               <Pencil size={14} className="mr-2" />
               Переименовать
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <MoveChatMenuItem
+              conversationId={conv.id}
+              currentProjectId={conv.projectId ?? null}
+            />
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-red-600 focus:text-red-600"
               onClick={(e) => {

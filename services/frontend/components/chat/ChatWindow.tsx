@@ -1,18 +1,52 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import { Send } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { MessageBubble } from './MessageBubble';
+import { ProjectChip } from './ProjectChip';
+import { ProjectPickerChip } from './ProjectPickerChip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useChat } from '@/hooks/useChat';
+import { useProjectsQuery } from '@/hooks/useProjects';
+import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
+import { DEFAULT_QUICK_ACTIONS } from '@/lib/quick-actions';
+import { api } from '@/lib/api';
+import type { Conversation } from '@/lib/conversations';
 
-const QUICK_ACTIONS = ['Проверить отзывы', 'Обновить часы работы', 'Опубликовать пост'];
+async function fetchConversation(id: string): Promise<Conversation> {
+  const { data } = await api.get<Conversation>(`/conversations/${id}`);
+  return data;
+}
 
 export function ChatWindow({ conversationId }: { conversationId: string }) {
   const { messages, isLoading, isStreaming, sendMessage } = useChat(conversationId);
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
+
+  const { data: conversation } = useQuery<Conversation>({
+    queryKey: ['conversations', conversationId],
+    queryFn: () => fetchConversation(conversationId),
+    enabled: !!conversationId,
+  });
+
+  const { data: projects } = useProjectsQuery();
+  const move = useMoveConversation();
+
+  const currentProject = useMemo(() => {
+    if (!conversation?.projectId || !projects) return null;
+    return projects.find((p) => p.id === conversation.projectId) ?? null;
+  }, [conversation?.projectId, projects]);
+
+  const quickActions =
+    currentProject?.quickActions && currentProject.quickActions.length > 0
+      ? currentProject.quickActions
+      : DEFAULT_QUICK_ACTIONS;
+
+  const showEmptyState = messages.length === 0 && !isLoading;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -25,8 +59,42 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
     await sendMessage(text);
   };
 
+  const handlePickerChange = (projectId: string | null) => {
+    if (!conversation) return;
+    if ((conversation.projectId ?? null) === projectId) return;
+    move.mutate(
+      {
+        id: conversationId,
+        projectId,
+        previousProjectId: conversation.projectId ?? null,
+      },
+      {
+        onSuccess: () => {
+          void qc.invalidateQueries({ queryKey: ['conversations', conversationId] });
+          void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+        },
+        onError: () => {
+          toast.error('Не удалось переместить чат');
+        },
+      }
+    );
+  };
+
   return (
     <div className="flex h-full flex-col">
+      {/* Chat header */}
+      {!showEmptyState && (
+        <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-4">
+          <span className="truncate text-sm font-medium">
+            {conversation?.title ?? ''}
+          </span>
+          <ProjectChip
+            projectId={currentProject?.id ?? null}
+            projectName={currentProject?.name}
+          />
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
@@ -35,9 +103,13 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
+            <ProjectPickerChip
+              value={conversation?.projectId ?? null}
+              onChange={handlePickerChange}
+            />
             <p className="text-lg text-gray-400">Чем могу помочь?</p>
             <div className="flex flex-wrap justify-center gap-2">
-              {QUICK_ACTIONS.map((action) => (
+              {quickActions.map((action) => (
                 <button
                   key={action}
                   type="button"
