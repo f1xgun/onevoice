@@ -126,6 +126,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			// Agent task routes
 			r.Get("/tasks", handlers.AgentTask.ListTasks)
+			r.Get("/tasks/stream", handlers.AgentTask.StreamTasks)
 
 			// Telemetry
 			r.Post("/telemetry", handlers.Telemetry.Ingest)

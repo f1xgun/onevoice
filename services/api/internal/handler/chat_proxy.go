@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
 // postingToolInfo describes how to extract post data from a platform tool call.
@@ -43,12 +44,14 @@ type ChatProxyHandler struct {
 	postRepo           domain.PostRepository
 	reviewRepo         domain.ReviewRepository
 	agentTaskRepo      domain.AgentTaskRepository
+	taskHub            *taskhub.Hub
 	orchestratorURL    string
 	httpClient         *http.Client
 }
 
 // NewChatProxyHandler creates a new ChatProxyHandler. If httpClient is nil,
-// http.DefaultClient is used. postRepo, reviewRepo and agentTaskRepo may be nil to skip persistence.
+// http.DefaultClient is used. postRepo, reviewRepo, agentTaskRepo and taskHub
+// may be nil to skip persistence / realtime publishing.
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
@@ -56,6 +59,7 @@ func NewChatProxyHandler(
 	postRepo domain.PostRepository,
 	reviewRepo domain.ReviewRepository,
 	agentTaskRepo domain.AgentTaskRepository,
+	taskHub *taskhub.Hub,
 	orchestratorURL string,
 	httpClient *http.Client,
 ) *ChatProxyHandler {
@@ -69,6 +73,7 @@ func NewChatProxyHandler(
 		postRepo:           postRepo,
 		reviewRepo:         reviewRepo,
 		agentTaskRepo:      agentTaskRepo,
+		taskHub:            taskHub,
 		orchestratorURL:    orchestratorURL,
 		httpClient:         httpClient,
 	}
