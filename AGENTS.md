@@ -7,7 +7,7 @@ Go 1.24 + Next.js 14 + PostgreSQL + NATS + Playwright RPA.
 
 - **Architecture:** [docs/architecture.md](docs/architecture.md)
 - **Golden Principles:** [docs/golden-principles.md](docs/golden-principles.md)
-- **Patterns / Anti-patterns:** [docs/patterns.md](docs/patterns.md) · [docs/anti-patterns.md](docs/anti-patterns.md)
+- **Patterns / Anti-patterns:** Go ([patterns](docs/go-patterns.md) · [anti](docs/go-antipatterns.md)) · Frontend ([patterns](docs/frontend-patterns.md) · [anti](docs/frontend-antipatterns.md))
 - **Dev workflow:** managed via GSD slash commands (`/gsd:help`)
 - **UI Reviewer:** [.claude/agents/ui-reviewer.md](.claude/agents/ui-reviewer.md)
 
@@ -17,8 +17,8 @@ The agent should read only the topic docs relevant to the current task. Each lin
 
 | Scope | Rules |
 |---|---|
-| Go backend (`pkg/`, `services/api/`, `services/orchestrator/`, `services/agent-*/`) | [docs/go-style.md](docs/go-style.md) |
-| Frontend (`services/frontend/`) | [docs/frontend-style.md](docs/frontend-style.md) |
+| Go backend (`pkg/`, `services/api/`, `services/orchestrator/`, `services/agent-*/`) | [go-style.md](docs/go-style.md) · [go-patterns.md](docs/go-patterns.md) · [go-antipatterns.md](docs/go-antipatterns.md) |
+| Frontend (`services/frontend/`) | [frontend-style.md](docs/frontend-style.md) · [frontend-patterns.md](docs/frontend-patterns.md) · [frontend-antipatterns.md](docs/frontend-antipatterns.md) |
 | REST API endpoints (`services/api/`) | [docs/api-design.md](docs/api-design.md) |
 | Secrets, auth, rate limiting, perf targets | [docs/security.md](docs/security.md) |
 | Commits, branches, PRs | [docs/git-workflow.md](docs/git-workflow.md) |
