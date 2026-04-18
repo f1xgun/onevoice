@@ -1,7 +1,6 @@
 package router
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,7 +31,7 @@ type Handlers struct {
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
-func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uploadDir string, hc *health.Checker) *chi.Mux {
+func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -132,9 +131,6 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, uplo
 			r.Post("/telemetry", handlers.Telemetry.Ingest)
 		})
 	})
-
-	// Serve uploaded logo files
-	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadDir))))
 
 	// Prometheus metrics
 	r.Handle("/metrics", promhttp.Handler())

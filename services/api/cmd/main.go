@@ -31,6 +31,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/storage"
 )
 
 func main() {
@@ -124,10 +125,19 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	postService := service.NewPostService(postRepo, businessService)
 	agentTaskService := service.NewAgentTaskService(agentTaskRepo, businessService)
 
-	// Ensure upload directory exists
-	if err := os.MkdirAll(cfg.UploadDir, 0o750); err != nil {
-		return fmt.Errorf("create upload dir: %w", err)
+	// Initialize object storage (MinIO / S3) for user uploads
+	objectStorage, err := storage.NewMinioClient(ctx, storage.Config{
+		Endpoint:        cfg.S3Endpoint,
+		AccessKey:       cfg.S3AccessKey,
+		SecretKey:       cfg.S3SecretKey,
+		Bucket:          cfg.S3Bucket,
+		UseSSL:          cfg.S3UseSSL,
+		PublicURLPrefix: cfg.S3PublicURLPrefix,
+	})
+	if err != nil {
+		return fmt.Errorf("init object storage: %w", err)
 	}
+	log.Info("connected to object storage", "endpoint", cfg.S3Endpoint, "bucket", cfg.S3Bucket)
 
 	// Platform syncer: pushes business info updates to connected platforms
 	platformSyncer := platform.NewSyncer(
@@ -156,7 +166,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("create auth handler: %w", err)
 	}
-	businessHandler, err := handler.NewBusinessHandler(businessService, platformSyncer, cfg.UploadDir)
+	businessHandler, err := handler.NewBusinessHandler(businessService, platformSyncer, objectStorage)
 	if err != nil {
 		return fmt.Errorf("create business handler: %w", err)
 	}
@@ -200,7 +210,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	hc.AddCheck("redis", func(ctx context.Context) error { return redisClient.Ping(ctx).Err() })
 
 	// Setup router
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, cfg.UploadDir, hc)
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, hc)
 
 	// Start HTTP server
 	addr := ":" + cfg.Port
