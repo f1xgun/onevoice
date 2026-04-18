@@ -2,12 +2,32 @@ package domain
 
 import "time"
 
+// TitleStatus values carried by Conversation.TitleStatus. Phase 18 flips
+// "auto_pending" → "auto" when the auto-titler succeeds; user overrides
+// set the value to "manual".
+const (
+	TitleStatusAutoPending = "auto_pending"
+	TitleStatusAuto        = "auto"
+	TitleStatusManual      = "manual"
+)
+
+// Conversation is a chat thread stored in MongoDB. Phase 15 adds
+// BusinessID, ProjectID, TitleStatus, Pinned, and LastMessageAt.
+// ProjectID intentionally omits bson `omitempty` so nil serializes as
+// explicit `null` (the virtual "Без проекта" bucket in UI-11) rather
+// than as a missing field — matters for the move-chat endpoint in
+// Plan 04 which must be able to clear the field.
 type Conversation struct {
-	ID        string    `json:"id" bson:"_id,omitempty"`
-	UserID    string    `json:"userId" bson:"user_id"`
-	Title     string    `json:"title" bson:"title"`
-	CreatedAt time.Time `json:"createdAt" bson:"created_at"`
-	UpdatedAt time.Time `json:"updatedAt" bson:"updated_at"`
+	ID            string     `json:"id" bson:"_id,omitempty"`
+	UserID        string     `json:"userId" bson:"user_id"`
+	BusinessID    string     `json:"businessId" bson:"business_id"`
+	ProjectID     *string    `json:"projectId,omitempty" bson:"project_id"`
+	Title         string     `json:"title" bson:"title"`
+	TitleStatus   string     `json:"titleStatus" bson:"title_status"`
+	Pinned        bool       `json:"pinned" bson:"pinned"`
+	LastMessageAt *time.Time `json:"lastMessageAt,omitempty" bson:"last_message_at,omitempty"`
+	CreatedAt     time.Time  `json:"createdAt" bson:"created_at"`
+	UpdatedAt     time.Time  `json:"updatedAt" bson:"updated_at"`
 }
 
 type Message struct {
