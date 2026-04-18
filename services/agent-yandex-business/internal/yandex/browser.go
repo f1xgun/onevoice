@@ -4,13 +4,43 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
+	"os"
 	"time"
+
+	"github.com/playwright-community/playwright-go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
-const businessURL = "https://business.yandex.ru"
+// debugScreenshots is true when RPA_DEBUG_SCREENSHOTS env is set.
+var debugScreenshots = os.Getenv("RPA_DEBUG_SCREENSHOTS") != ""
+
+// debugScreenshot saves a screenshot to /tmp/rpa_debug_{label}_{timestamp}.png
+// when RPA_DEBUG_SCREENSHOTS is enabled.
+func debugScreenshot(page playwright.Page, label string) {
+	if !debugScreenshots {
+		return
+	}
+	filename := fmt.Sprintf("/tmp/rpa_debug_%s_%d.png", label, time.Now().UnixMilli())
+	if _, err := page.Screenshot(playwright.PageScreenshotOptions{
+		Path:     playwright.String(filename),
+		FullPage: playwright.Bool(true),
+	}); err != nil {
+		slog.Warn("debug screenshot failed", "label", label, "error", err)
+		return
+	}
+	slog.Info("debug screenshot saved", "label", label, "path", filename)
+}
+
+// spravBaseURL builds the Yandex.Business management URL for a given permalink.
+func spravBaseURL(permalink string) string {
+	if permalink == "" || permalink == "default" {
+		return "https://business.yandex.ru"
+	}
+	return "https://yandex.ru/sprav/" + permalink + "/p/edit"
+}
 
 // humanDelay waits 1-4 seconds to mimic human browsing behavior.
 func humanDelay() {
