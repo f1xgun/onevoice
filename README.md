@@ -103,7 +103,7 @@ make fmt-fix         # Auto-format everything
 
 - [Architecture](docs/architecture.md) — system diagrams + module map
 - [Golden Principles](docs/golden-principles.md) — top-level rules enforced by linters
-- [Code Patterns](docs/patterns.md) / [Anti-patterns](docs/anti-patterns.md) — good/bad examples
+- Patterns / Anti-patterns: Go ([patterns](docs/go-patterns.md) · [anti](docs/go-antipatterns.md)) · Frontend ([patterns](docs/frontend-patterns.md) · [anti](docs/frontend-antipatterns.md))
 - Rules by topic: [Go style](docs/go-style.md) · [Frontend style](docs/frontend-style.md) · [API design](docs/api-design.md) · [Security & perf](docs/security.md) · [Git workflow](docs/git-workflow.md)
 - [CODING_RULES.md](CODING_RULES.md) — human-friendly index into the topic docs above
 

@@ -11,7 +11,7 @@ The detailed coding rules have been split by topic. Open the one relevant to wha
 ## Quick Reference
 
 - Top-level invariants enforced by linters: [docs/golden-principles.md](docs/golden-principles.md)
-- Approved patterns with examples: [docs/patterns.md](docs/patterns.md)
-- Mistakes to avoid: [docs/anti-patterns.md](docs/anti-patterns.md)
+- Approved patterns: [go-patterns.md](docs/go-patterns.md) · [frontend-patterns.md](docs/frontend-patterns.md)
+- Mistakes to avoid: [go-antipatterns.md](docs/go-antipatterns.md) · [frontend-antipatterns.md](docs/frontend-antipatterns.md)
 - Architecture & module map: [docs/architecture.md](docs/architecture.md)
 - Per-module guidance: `pkg/AGENTS.md` and each `services/*/AGENTS.md`
