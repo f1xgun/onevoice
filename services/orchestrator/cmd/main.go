@@ -343,8 +343,16 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			id: a2a.AgentYandexBusiness,
 			tools: []llm.ToolDefinition{
 				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "yandex_business__get_info",
+					Description: "Получает текущую информацию об организации в Яндекс Бизнес: название, телефон, email, часы работы, адрес, статус.",
+					Parameters: map[string]interface{}{
+						"type":       "object",
+						"properties": map[string]interface{}{},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
 					Name:        "yandex_business__update_hours",
-					Description: "Обновляет часы работы в Яндекс Бизнес (включая праздничные дни)",
+					Description: "Обновляет часы работы в Яндекс Бизнес. Принимает описание расписания в свободном формате.",
 					Parameters: map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
@@ -385,6 +393,56 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 							"text":      map[string]interface{}{"type": "string", "description": "Текст ответа"},
 						},
 						"required": []string{"review_id", "text"},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "yandex_business__upload_photo",
+					Description: "Загружает фото в Яндекс Бизнес. Категория: general (общее), logo (логотип), services, interior, exterior, enter (вход), goods (товары).",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"photo_url": map[string]interface{}{"type": "string", "description": "Публичный URL изображения для загрузки"},
+							"category":  map[string]interface{}{"type": "string", "description": "Категория фото: general, logo, services, interior, exterior, enter, goods"},
+						},
+						"required": []string{"photo_url"},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "yandex_business__create_post",
+					Description: "Создаёт публикацию (пост) в Яндекс Бизнес. Публикация появится в Поиске Яндекса и Яндекс Картах.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"text": map[string]interface{}{"type": "string", "description": "Текст публикации"},
+						},
+						"required": []string{"text"},
+					},
+				}},
+			},
+		},
+		{
+			id: a2a.AgentGoogleBusiness,
+			tools: []llm.ToolDefinition{
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "google_business__get_reviews",
+					Description: "Получает отзывы о локации из Google Business Profile. Возвращает список отзывов с рейтингами, комментариями и ответами владельца.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"limit": map[string]interface{}{"type": "integer", "description": "Количество отзывов (макс 50)"},
+						},
+					},
+				}},
+				{Type: "function", Function: llm.FunctionDefinition{
+					Name:        "google_business__reply_review",
+					Description: "Отвечает на отзыв в Google Business Profile от имени владельца бизнеса.",
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"review_name": map[string]interface{}{"type": "string", "description": "Полное имя ресурса отзыва (поле name из google_business__get_reviews)"},
+							"text":        map[string]interface{}{"type": "string", "description": "Текст ответа на отзыв"},
+						},
+						"required": []string{"review_name", "text"},
 					},
 				}},
 			},

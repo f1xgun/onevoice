@@ -10,22 +10,31 @@ import (
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
 )
 
+// TokenInfo holds the resolved token and external ID for an integration.
+type TokenInfo struct {
+	AccessToken string
+	ExternalID  string // Yandex Sprav permalink
+}
+
 // TokenFetcher retrieves an access token (cookies JSON) for a given business/platform combination.
 type TokenFetcher interface {
-	GetToken(ctx context.Context, businessID, platform, externalID string) (accessToken string, err error)
+	GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error)
 }
 
 // YandexBrowser abstracts Playwright browser operations for testability.
 type YandexBrowser interface {
+	GetInfo(ctx context.Context) (map[string]interface{}, error)
 	UpdateHours(ctx context.Context, hoursJSON string) error
 	UpdateInfo(ctx context.Context, info map[string]string) error
 	GetReviews(ctx context.Context, limit int) ([]map[string]interface{}, error)
 	ReplyReview(ctx context.Context, reviewID, text string) error
+	CreatePost(ctx context.Context, text string) error
+	UploadPhoto(ctx context.Context, photoURL, category string) error
 }
 
 // BrowserPool abstracts the shared Playwright browser pool.
 type BrowserPool interface {
-	ForBusiness(businessID, cookiesJSON string) YandexBrowser
+	ForBusiness(businessID, cookiesJSON, permalink string) YandexBrowser
 }
 
 // Handler implements a2a.Handler for the Yandex.Business RPA agent.
@@ -42,6 +51,8 @@ func NewHandler(tokens TokenFetcher, pool BrowserPool) *Handler {
 // Handle routes ToolRequests to the appropriate Yandex.Business operation.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	switch req.Tool {
+	case "yandex_business__get_info":
+		return h.getInfo(ctx, req)
 	case "yandex_business__update_hours":
 		return h.updateHours(ctx, req)
 	case "yandex_business__update_info":
@@ -50,6 +61,10 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		return h.getReviews(ctx, req)
 	case "yandex_business__reply_review":
 		return h.replyReview(ctx, req)
+	case "yandex_business__create_post":
+		return h.createPost(ctx, req)
+	case "yandex_business__upload_photo":
+		return h.uploadPhoto(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
@@ -85,11 +100,28 @@ func classifyYandexError(err error) error {
 }
 
 func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBrowser, error) {
-	token, err := h.tokens.GetToken(ctx, req.BusinessID, "yandex_business", "")
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, "yandex_business", "")
 	if err != nil {
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
-	return h.pool.ForBusiness(req.BusinessID, token), nil
+	return h.pool.ForBusiness(req.BusinessID, info.AccessToken, info.ExternalID), nil
+}
+
+func (h *Handler) getInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := browser.GetInfo(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("yandex: get info: %w", classifyYandexError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  info,
+	}, nil
 }
 
 func (h *Handler) updateHours(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -128,6 +160,44 @@ func (h *Handler) updateInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 		TaskID:  req.TaskID,
 		Success: true,
 		Result:  map[string]interface{}{"status": "updated", "note": "changes pending Yandex moderation"},
+	}, nil
+}
+
+func (h *Handler) createPost(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	text, _ := req.Args["text"].(string)
+	if err := browser.CreatePost(ctx, text); err != nil {
+		return nil, fmt.Errorf("yandex: create post: %w", classifyYandexError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"status": "published"},
+	}, nil
+}
+
+func (h *Handler) uploadPhoto(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	photoURL, _ := req.Args["photo_url"].(string)
+	category, _ := req.Args["category"].(string)
+	if category == "" {
+		category = "general"
+	}
+	if err := browser.UploadPhoto(ctx, photoURL, category); err != nil {
+		return nil, fmt.Errorf("yandex: upload photo: %w", classifyYandexError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"status": "uploaded", "note": "photo pending Yandex moderation"},
 	}, nil
 }
 
