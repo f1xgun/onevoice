@@ -171,13 +171,26 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	orchURL := fmt.Sprintf("%s/chat/%s", h.orchestratorURL, conversationID)
 	body, _ := json.Marshal(orchReq)
-	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, orchURL, bytes.NewReader(body))
+
+	// Detach the orchestrator request from the client's request context: if
+	// the user refreshes or navigates away mid-run, the orchestrator keeps
+	// executing tools, chat_proxy keeps persisting tool_results, and
+	// AgentTask rows transition to done/error as they finish. Bounded by a
+	// generous upper limit so a truly stuck agent can't pin the connection
+	// forever.
+	orchCtx, orchCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	if corrID != "" {
+		orchCtx = logger.WithCorrelationID(orchCtx, corrID)
+	}
+	defer orchCancel()
+
+	proxyReq, err := http.NewRequestWithContext(orchCtx, http.MethodPost, orchURL, bytes.NewReader(body))
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	proxyReq.Header.Set("Content-Type", "application/json")
-	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
+	if corrID != "" {
 		proxyReq.Header.Set("X-Correlation-ID", corrID)
 	}
 
@@ -213,19 +226,31 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// names in a single batch correlate correctly.
 	agentTaskIDByCallID := make(map[string]string)
 
-	// Long-lived context for in-stream task persistence/publishing. The
-	// request context may be canceled when the client disconnects, but we
-	// still want to finish recording the task row so the history is intact.
-	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), 2*time.Minute)
-	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
+	// Long-lived context for in-stream task persistence/publishing. Must
+	// match the orchestrator budget: we need to keep recording tool results
+	// even after the client disconnects (refresh, navigate away).
+	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), 10*time.Minute)
+	if corrID != "" {
 		taskOpsCtx = logger.WithCorrelationID(taskOpsCtx, corrID)
 	}
 	defer cancelTaskOps()
 
+	// Client connection may vanish before the stream ends. Track it once so
+	// we stop forwarding SSE bytes after disconnect — reading and
+	// persistence continue regardless.
+	clientGone := r.Context().Done()
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		_, _ = fmt.Fprintf(w, "%s\n", line)
-		flusher.Flush()
+		select {
+		case <-clientGone:
+			// Skip writes to a dead socket, but keep scanning to drain the
+			// orchestrator stream so tool_results land in Mongo and
+			// AgentTask rows reach a terminal state.
+		default:
+			_, _ = fmt.Fprintf(w, "%s\n", line)
+			flusher.Flush()
+		}
 
 		if !strings.HasPrefix(line, "data: ") {
 			continue
