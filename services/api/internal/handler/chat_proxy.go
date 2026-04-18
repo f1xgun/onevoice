@@ -35,10 +35,16 @@ var postingTools = map[string]postingToolInfo{
 }
 
 // ChatProxyHandler enriches chat requests with business context and proxies
-// them to the orchestrator service.
+// them to the orchestrator service. Phase 15 adds project enrichment — the
+// handler resolves the conversation's project_id (if any) via projectService
+// and forwards five project_* fields on the outbound orchestrator request so
+// prompt.Build (Plan 15-02) can layer the project system prompt and the tool
+// registry can apply the project's whitelist (PROJ-09).
 type ChatProxyHandler struct {
 	businessService    BusinessService
 	integrationService IntegrationService
+	projectService     ProjectService                // Phase 15 — enrichment path
+	conversationRepo   domain.ConversationRepository // Phase 15 — read-only lookup of conv.ProjectID
 	messageRepo        domain.MessageRepository
 	postRepo           domain.PostRepository
 	reviewRepo         domain.ReviewRepository
@@ -48,10 +54,16 @@ type ChatProxyHandler struct {
 }
 
 // NewChatProxyHandler creates a new ChatProxyHandler. If httpClient is nil,
-// http.DefaultClient is used. postRepo, reviewRepo and agentTaskRepo may be nil to skip persistence.
+// http.DefaultClient is used. postRepo, reviewRepo and agentTaskRepo may be
+// nil to skip persistence. projectService and conversationRepo are REQUIRED
+// (Phase 15) — the proxy must resolve the conversation's project to enrich
+// the orchestrator request (PROJ-09 layering). Passing nil for either panics
+// at construction time — they are wiring-time invariants, not runtime state.
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
+	projectService ProjectService,
+	conversationRepo domain.ConversationRepository,
 	messageRepo domain.MessageRepository,
 	postRepo domain.PostRepository,
 	reviewRepo domain.ReviewRepository,
@@ -59,12 +71,20 @@ func NewChatProxyHandler(
 	orchestratorURL string,
 	httpClient *http.Client,
 ) *ChatProxyHandler {
+	if projectService == nil {
+		panic("NewChatProxyHandler: projectService cannot be nil")
+	}
+	if conversationRepo == nil {
+		panic("NewChatProxyHandler: conversationRepo cannot be nil")
+	}
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
 	return &ChatProxyHandler{
 		businessService:    businessService,
 		integrationService: integrationService,
+		projectService:     projectService,
+		conversationRepo:   conversationRepo,
 		messageRepo:        messageRepo,
 		postRepo:           postRepo,
 		reviewRepo:         reviewRepo,
@@ -150,18 +170,72 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(r.Context(), "failed to save user message", "error", err)
 	}
 
+	// Phase 15 (PROJ-09): resolve the conversation's project (if any) so the
+	// orchestrator can layer the project system prompt and apply the project
+	// whitelist. A stale or invalid project_id falls back to the no-project
+	// path — the chat must still succeed (best-effort enrichment).
+	var (
+		projectID            string
+		projectName          string
+		projectSystemPrompt  string
+		projectWhitelistMode string
+		projectAllowedTools  []string
+	)
+
+	conv, convErr := h.conversationRepo.GetByID(r.Context(), conversationID)
+	switch {
+	case convErr != nil:
+		// Missing/errored conversation: log and fall through to no-project
+		// enrichment. Other handlers (GetConversation, move) enforce
+		// existence; here we must not break the chat flow.
+		slog.WarnContext(r.Context(), "chat proxy: conversation lookup failed, no project enrichment",
+			"conversation_id", conversationID, "error", convErr)
+	case conv.ProjectID != nil && *conv.ProjectID != "":
+		projUUID, parseErr := uuid.Parse(*conv.ProjectID)
+		if parseErr != nil {
+			slog.WarnContext(r.Context(), "chat proxy: invalid project_id on conversation, falling back to no-project",
+				"conversation_id", conversationID, "project_id", *conv.ProjectID, "error", parseErr)
+		} else {
+			proj, projErr := h.projectService.GetByID(r.Context(), business.ID, projUUID)
+			switch {
+			case projErr == nil:
+				projectID = proj.ID.String()
+				projectName = proj.Name
+				projectSystemPrompt = proj.SystemPrompt
+				projectWhitelistMode = string(proj.WhitelistMode)
+				projectAllowedTools = proj.AllowedTools
+			case errors.Is(projErr, domain.ErrProjectNotFound):
+				slog.WarnContext(r.Context(), "chat proxy: stale project_id, falling back to no-project",
+					"conversation_id", conversationID, "project_id", *conv.ProjectID)
+			default:
+				slog.WarnContext(r.Context(), "chat proxy: failed to resolve project, falling back to no-project",
+					"conversation_id", conversationID, "project_id", *conv.ProjectID, "error", projErr)
+			}
+		}
+	}
+	// Normalize nil slices so the outbound JSON serializes as `[]` not `null`
+	// (matches the orchestrator's expectation from Plan 15-02 handler tests).
+	if projectAllowedTools == nil {
+		projectAllowedTools = []string{}
+	}
+
 	orchReq := map[string]interface{}{
-		"model":                req.Model,
-		"message":              req.Message,
-		"business_id":          business.ID.String(),
-		"business_name":        business.Name,
-		"business_category":    business.Category,
-		"business_address":     business.Address,
-		"business_phone":       business.Phone,
-		"business_website":     derefString(business.Website),
-		"business_description": business.Description,
-		"active_integrations":  activeIntegrations,
-		"history":              history,
+		"model":                  req.Model,
+		"message":                req.Message,
+		"business_id":            business.ID.String(),
+		"business_name":          business.Name,
+		"business_category":      business.Category,
+		"business_address":       business.Address,
+		"business_phone":         business.Phone,
+		"business_website":       derefString(business.Website),
+		"business_description":   business.Description,
+		"active_integrations":    activeIntegrations,
+		"history":                history,
+		"project_id":             projectID,
+		"project_name":           projectName,
+		"project_system_prompt":  projectSystemPrompt,
+		"project_whitelist_mode": projectWhitelistMode,
+		"project_allowed_tools":  projectAllowedTools,
 	}
 
 	orchURL := fmt.Sprintf("%s/chat/%s", h.orchestratorURL, conversationID)

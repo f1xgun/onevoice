@@ -172,7 +172,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		GoogleRedirectURI:  cfg.GoogleRedirectURI,
 	}, nil, redisClient)
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
-	chatProxyHandler := handler.NewChatProxyHandler(businessService, integrationService, messageRepo, postRepo, reviewRepo, agentTaskRepo, cfg.OrchestratorURL, nil)
+	// chatProxyHandler is constructed after the Phase 15 project service is
+	// wired below (the proxy enriches each request with the conversation's
+	// project_* fields for orchestrator prompt layering + whitelist).
 
 	authHandler, err := handler.NewAuthHandler(userService, cfg.SecureCookies)
 	if err != nil {
@@ -219,6 +221,22 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("create conversation handler: %w", err)
 	}
+
+	// Chat proxy enriches each /chat/{id} request with the conversation's
+	// project_* fields (PROJ-09 layering) — requires projectService and
+	// conversationRepo per Plan 15-04 Task 3.
+	chatProxyHandler := handler.NewChatProxyHandler(
+		businessService,
+		integrationService,
+		projectService,
+		conversationRepo,
+		messageRepo,
+		postRepo,
+		reviewRepo,
+		agentTaskRepo,
+		cfg.OrchestratorURL,
+		nil,
+	)
 
 	handlers := &router.Handlers{
 		Auth:          authHandler,
