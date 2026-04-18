@@ -149,6 +149,8 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		nil,
 		cfg.PublicURL,
 	)
+	platformSyncer.SetTaskRecorder(agentTaskRepo)
+	platformSyncer.SetTaskHub(taskHub)
 
 	// Initialize handlers
 	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
