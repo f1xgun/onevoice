@@ -93,20 +93,25 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 	events, err := orch.Run(context.Background(), req)
 	require.NoError(t, err)
 
-	var toolEvents, textEvents []orchestrator.Event
+	var toolEvents, toolResultEvents, textEvents []orchestrator.Event
 	for e := range events {
 		switch e.Type {
 		case orchestrator.EventToolCall:
 			toolEvents = append(toolEvents, e)
+		case orchestrator.EventToolResult:
+			toolResultEvents = append(toolResultEvents, e)
 		case orchestrator.EventText:
 			textEvents = append(textEvents, e)
-		case orchestrator.EventError, orchestrator.EventDone, orchestrator.EventToolResult:
+		case orchestrator.EventError, orchestrator.EventDone:
 			// not relevant for this test
 		}
 	}
 
 	assert.Len(t, toolEvents, 1, "expected one tool call event")
 	assert.Equal(t, "get_business_info", toolEvents[0].ToolName)
+	assert.Equal(t, "call_1", toolEvents[0].ToolCallID, "tool_call_id must be propagated to EventToolCall")
+	assert.Len(t, toolResultEvents, 1, "expected one tool result event")
+	assert.Equal(t, "call_1", toolResultEvents[0].ToolCallID, "tool_call_id must match between EventToolCall and EventToolResult")
 	assert.NotEmpty(t, textEvents, "expected text response after tool execution")
 }
 
