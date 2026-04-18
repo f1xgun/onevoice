@@ -15,3 +15,9 @@ pre-commit:
       root: "services/frontend/"
       glob: "*.{ts,tsx}"
       run: pnpm exec eslint {staged_files}
+    docs-tool-drift:
+      # Runs whenever a commit touches Markdown (doc might cite a stale tool name)
+      # or Go (a tool might have been renamed/removed). Scope is the whole repo,
+      # not just staged files, because the check compares across the two sets.
+      glob: "*.{md,go}"
+      run: ./scripts/check-doc-tool-drift.sh
