@@ -77,7 +77,8 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	// Orchestrator
 	orch := orchestrator.NewWithOptions(router, toolRegistry, orchestrator.Options{
-		MaxIterations: cfg.MaxIterations,
+		MaxIterations:   cfg.MaxIterations,
+		ToolExecTimeout: cfg.ToolExecTimeout,
 	})
 
 	// HTTP handler — business context is now provided per-request in the body

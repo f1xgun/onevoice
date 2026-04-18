@@ -68,21 +68,26 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 		}
 	}
 
-	// Both tool calls should be emitted
+	// tool_call events fire before goroutines start — preserve original order.
 	require.Len(t, toolCalls, 2)
 	assert.Equal(t, "telegram__send_channel_post", toolCalls[0].ToolName)
 	assert.Equal(t, "vk__publish_post", toolCalls[1].ToolName)
 
-	// Both results should be emitted
+	// tool_result events arrive in completion order — correlate by ID.
 	require.Len(t, toolResults, 2)
-	assert.Empty(t, toolResults[0].ToolError)
-	assert.Empty(t, toolResults[1].ToolError)
+	byID := map[string]orchestrator.Event{}
+	for _, r := range toolResults {
+		byID[r.ToolCallID] = r
+	}
+	require.Contains(t, byID, "call_tg")
+	require.Contains(t, byID, "call_vk")
+	assert.Empty(t, byID["call_tg"].ToolError)
+	assert.Empty(t, byID["call_vk"].ToolError)
 
-	// Verify results came from correct tools
-	r0, _ := toolResults[0].ToolResult.(map[string]interface{})
-	r1, _ := toolResults[1].ToolResult.(map[string]interface{})
-	assert.Equal(t, "telegram", r0["platform"])
-	assert.Equal(t, "vk", r1["platform"])
+	tgResult, _ := byID["call_tg"].ToolResult.(map[string]interface{})
+	vkResult, _ := byID["call_vk"].ToolResult.(map[string]interface{})
+	assert.Equal(t, "telegram", tgResult["platform"])
+	assert.Equal(t, "vk", vkResult["platform"])
 }
 
 // TestRun_ToolExecutionError_ContinuesLoop verifies that when one tool fails,
