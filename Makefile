@@ -1,5 +1,5 @@
 .PHONY: help build run test test-all test-coverage test-integration
-.PHONY: lint lint-frontend lint-all fmt fmt-fix
+.PHONY: lint lint-frontend lint-all fmt fmt-fix docs-check
 .PHONY: migrate-up migrate-down migrate-create db-seed
 .PHONY: up down logs restart restart-service docker-up docker-down docker-logs docker-clean
 .PHONY: clean certs
@@ -86,7 +86,10 @@ lint-frontend: ## Run frontend linters (ESLint + Prettier)
 	@cd services/frontend && pnpm exec prettier --check .
 	@echo "Frontend lint clean"
 
-lint-all: lint lint-frontend ## Run all linters (Go + frontend)
+lint-all: lint lint-frontend docs-check ## Run all linters (Go + frontend + docs)
+
+docs-check: ## Fail if docs reference tool names absent from Go code
+	@./scripts/check-doc-tool-drift.sh
 
 # Format
 fmt: ## Check Go formatting
