@@ -51,6 +51,11 @@ type ConversationRepository interface {
 	ListByUserID(ctx context.Context, userID string, limit, offset int) ([]Conversation, error)
 	Update(ctx context.Context, conv *Conversation) error
 	Delete(ctx context.Context, id string) error
+	// UpdateProjectAssignment atomically updates only project_id (+ updated_at).
+	// Passing nil clears the assignment ("Без проекта" bucket) — move-chat in
+	// Plan 15-04 relies on the `bson:"project_id"` tag (no omitempty) so the
+	// Mongo field becomes explicit null rather than missing.
+	UpdateProjectAssignment(ctx context.Context, id string, projectID *string) error
 }
 
 type MessageRepository interface {

@@ -110,3 +110,24 @@ func (r *conversationRepository) Delete(ctx context.Context, id string) error {
 
 	return nil
 }
+
+// UpdateProjectAssignment atomically updates project_id and updated_at.
+// Passing projectID = nil persists `project_id: null` (not a missing field)
+// because Conversation.ProjectID's BSON tag deliberately omits omitempty.
+// This is the write path used by the move-chat endpoint in Plan 15-04.
+func (r *conversationRepository) UpdateProjectAssignment(ctx context.Context, id string, projectID *string) error {
+	update := bson.M{
+		"$set": bson.M{
+			"project_id": projectID,
+			"updated_at": time.Now(),
+		},
+	}
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, update)
+	if err != nil {
+		return fmt.Errorf("update project assignment: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return domain.ErrConversationNotFound
+	}
+	return nil
+}

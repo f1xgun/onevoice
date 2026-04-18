@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
@@ -269,6 +270,137 @@ func TestConversationRepository_Delete(t *testing.T) {
 
 	t.Run("returns ErrConversationNotFound when not exists", func(t *testing.T) {
 		err := repo.Delete(ctx, "nonexistent-id")
+		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
+	})
+}
+
+// TestConversationRepository_CreatePersistsPhase15Fields verifies the Plan 15-01
+// fields (BusinessID, ProjectID, TitleStatus, Pinned, LastMessageAt) round-trip
+// through Create → GetByID without loss. Behavior 1 & 2 from Plan 15-04 Task 1.
+func TestConversationRepository_CreatePersistsPhase15Fields(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewConversationRepository(db)
+	ctx := context.Background()
+
+	t.Run("persists all new fields when ProjectID is set", func(t *testing.T) {
+		projID := "proj-uuid-a"
+		lastMsg := time.Now().UTC().Truncate(time.Millisecond)
+		conv := &domain.Conversation{
+			UserID:        "user-p15-1",
+			BusinessID:    "biz-uuid-1",
+			ProjectID:     &projID,
+			Title:         "Test",
+			TitleStatus:   domain.TitleStatusAutoPending,
+			Pinned:        true,
+			LastMessageAt: &lastMsg,
+		}
+		err := repo.Create(ctx, conv)
+		require.NoError(t, err)
+
+		found, err := repo.GetByID(ctx, conv.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "biz-uuid-1", found.BusinessID)
+		require.NotNil(t, found.ProjectID)
+		assert.Equal(t, "proj-uuid-a", *found.ProjectID)
+		assert.Equal(t, domain.TitleStatusAutoPending, found.TitleStatus)
+		assert.True(t, found.Pinned)
+		require.NotNil(t, found.LastMessageAt)
+		assert.WithinDuration(t, lastMsg, *found.LastMessageAt, time.Second)
+	})
+
+	t.Run("persists project_id as explicit null when ProjectID is nil", func(t *testing.T) {
+		conv := &domain.Conversation{
+			UserID:      "user-p15-2",
+			BusinessID:  "biz-uuid-2",
+			ProjectID:   nil,
+			Title:       "No Project",
+			TitleStatus: domain.TitleStatusAutoPending,
+		}
+		err := repo.Create(ctx, conv)
+		require.NoError(t, err)
+
+		// Verify stored document has project_id: null (present but nil), not missing.
+		var raw bson.M
+		err = db.Collection("conversations").FindOne(ctx, bson.M{"_id": conv.ID}).Decode(&raw)
+		require.NoError(t, err)
+		v, keyPresent := raw["project_id"]
+		assert.True(t, keyPresent, "project_id key should be present (explicit null)")
+		assert.Nil(t, v, "project_id should be null, not missing")
+
+		found, err := repo.GetByID(ctx, conv.ID)
+		require.NoError(t, err)
+		assert.Nil(t, found.ProjectID)
+	})
+}
+
+// TestConversationRepository_UpdateProjectAssignment covers Behaviors 3–5 from
+// Plan 15-04 Task 1.
+func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewConversationRepository(db)
+	ctx := context.Background()
+
+	t.Run("updates only project_id and updated_at", func(t *testing.T) {
+		origProj := "proj-orig"
+		conv := &domain.Conversation{
+			UserID:      "user-move-1",
+			BusinessID:  "biz-move-1",
+			ProjectID:   &origProj,
+			Title:       "Immutable Title",
+			TitleStatus: domain.TitleStatusManual,
+			Pinned:      true,
+		}
+		require.NoError(t, repo.Create(ctx, conv))
+		origUpdatedAt := conv.UpdatedAt
+		time.Sleep(10 * time.Millisecond)
+
+		newProj := "proj-new"
+		err := repo.UpdateProjectAssignment(ctx, conv.ID, &newProj)
+		require.NoError(t, err)
+
+		found, err := repo.GetByID(ctx, conv.ID)
+		require.NoError(t, err)
+		require.NotNil(t, found.ProjectID)
+		assert.Equal(t, "proj-new", *found.ProjectID)
+		// Untouched fields stay the same
+		assert.Equal(t, "Immutable Title", found.Title)
+		assert.Equal(t, domain.TitleStatusManual, found.TitleStatus)
+		assert.True(t, found.Pinned)
+		assert.Equal(t, "biz-move-1", found.BusinessID)
+		assert.Equal(t, "user-move-1", found.UserID)
+		// updated_at bumped
+		assert.True(t, found.UpdatedAt.After(origUpdatedAt))
+	})
+
+	t.Run("clearing project_id sets it to null", func(t *testing.T) {
+		projID := "proj-to-clear"
+		conv := &domain.Conversation{
+			UserID:     "user-move-2",
+			BusinessID: "biz-move-2",
+			ProjectID:  &projID,
+			Title:      "Clear Me",
+		}
+		require.NoError(t, repo.Create(ctx, conv))
+
+		err := repo.UpdateProjectAssignment(ctx, conv.ID, nil)
+		require.NoError(t, err)
+
+		found, err := repo.GetByID(ctx, conv.ID)
+		require.NoError(t, err)
+		assert.Nil(t, found.ProjectID)
+
+		// Mongo stored explicit null.
+		var raw bson.M
+		err = db.Collection("conversations").FindOne(ctx, bson.M{"_id": conv.ID}).Decode(&raw)
+		require.NoError(t, err)
+		v, keyPresent := raw["project_id"]
+		assert.True(t, keyPresent, "project_id key should still be present after clear")
+		assert.Nil(t, v)
+	})
+
+	t.Run("returns ErrConversationNotFound for missing id", func(t *testing.T) {
+		projID := "whatever"
+		err := repo.UpdateProjectAssignment(ctx, "nonexistent-id", &projID)
 		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
 	})
 }
