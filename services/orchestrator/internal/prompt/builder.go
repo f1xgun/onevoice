@@ -24,7 +24,7 @@ type BusinessContext struct {
 // ProjectContext carries the optional project prompt layer that is appended
 // after the business rules block when a chat lives inside a project. When nil,
 // the builder emits the legacy business-only system message (pre-Phase-15
-// behaviour).
+// behavior).
 //
 // Scope: see .planning/phases/15-projects-foundation/15-CONTEXT.md (D-09 —
 // prompt layering order is business context → project system prompt →

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
@@ -49,6 +50,16 @@ type chatRequest struct {
 	BusinessDesc       string         `json:"business_description"`
 	ActiveIntegrations []string       `json:"active_integrations"`
 	History            []historyEntry `json:"history"`
+
+	// Phase 15 project enrichment fields — all optional. When ProjectID is
+	// empty, the orchestrator behaves identically to pre-Phase-15. Populated
+	// by the API's chat_proxy.go in Plan 15-04 after resolving the chat's
+	// project_id against the Postgres projects table.
+	ProjectID            string   `json:"project_id"`
+	ProjectName          string   `json:"project_name"`
+	ProjectSystemPrompt  string   `json:"project_system_prompt"`
+	ProjectWhitelistMode string   `json:"project_whitelist_mode"`
+	ProjectAllowedTools  []string `json:"project_allowed_tools"`
 }
 
 // sseEvent matches the JSON shape written to the SSE stream.
@@ -104,6 +115,29 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		ctx = logger.WithCorrelationID(ctx, corrID)
 	}
 
+	// Phase 15 project enrichment: build *prompt.ProjectContext only when the
+	// proxy sent a project_id. An empty project_id means "Без проекта" — the
+	// orchestrator runs with no project prompt layer, identical to pre-Phase-15.
+	var projCtx *prompt.ProjectContext
+	if req.ProjectID != "" {
+		projCtx = &prompt.ProjectContext{
+			ID:           req.ProjectID,
+			Name:         req.ProjectName,
+			SystemPrompt: req.ProjectSystemPrompt,
+		}
+	}
+
+	// Deserialise whitelist mode. Empty string means "inherit" (v1.3 = all per
+	// D-18). Any other value that is not one of the four defined modes is
+	// logged and coerced back to inherit — never crash on bad proxy input.
+	mode := domain.WhitelistMode(req.ProjectWhitelistMode)
+	if mode != "" && !domain.ValidWhitelistMode(mode) {
+		slog.WarnContext(ctx, "invalid whitelist mode from proxy, falling back to inherit",
+			"mode", req.ProjectWhitelistMode,
+		)
+		mode = ""
+	}
+
 	// Build message history: prior turns + current user message
 	history := make([]llm.Message, 0, len(req.History)+1)
 	for _, h := range req.History {
@@ -114,6 +148,9 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	runReq := orchestrator.RunRequest{
 		Model:              req.Model,
 		BusinessContext:    biz,
+		ProjectContext:     projCtx,
+		WhitelistMode:      mode,
+		AllowedTools:       req.ProjectAllowedTools,
 		ActiveIntegrations: req.ActiveIntegrations,
 		Messages:           history,
 	}
