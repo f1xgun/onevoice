@@ -15,11 +15,26 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-// reviewSupportedPlatforms lists the platforms that expose a get_reviews tool.
-var reviewSupportedPlatforms = []string{
-	a2a.AgentTelegram,
-	a2a.AgentYandexBusiness,
+// reviewToolByPlatform maps a platform ID to the tool name that returns
+// review/comment-like entries. Not every platform follows the __get_reviews
+// suffix — VK uses __get_comments because wall.getComments is the native VK
+// API method name and the tool was originally registered for on-demand LLM
+// access.
+var reviewToolByPlatform = map[string]string{
+	a2a.AgentTelegram:       "telegram__get_reviews",
+	a2a.AgentYandexBusiness: "yandex_business__get_reviews",
+	a2a.AgentVK:             "vk__get_comments",
 }
+
+// reviewSupportedPlatforms lists the platforms the syncer should poll.
+// Derived from reviewToolByPlatform.
+var reviewSupportedPlatforms = func() []string {
+	out := make([]string, 0, len(reviewToolByPlatform))
+	for p := range reviewToolByPlatform {
+		out = append(out, p)
+	}
+	return out
+}()
 
 // ReviewSyncer periodically fetches reviews from all active integrations
 // that support reviews and upserts them into MongoDB.
@@ -104,7 +119,10 @@ func (s *ReviewSyncer) SyncAll(ctx context.Context) error {
 // syncOne fetches reviews for a single (businessID, platform) pair via NATS
 // and upserts them into MongoDB.
 func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platform string) error {
-	toolName := platform + "__get_reviews"
+	toolName, ok := reviewToolByPlatform[platform]
+	if !ok {
+		return fmt.Errorf("no review tool registered for platform %q", platform)
+	}
 
 	req := a2a.ToolRequest{
 		TaskID:     uuid.NewString(),
@@ -136,9 +154,14 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 		return fmt.Errorf("agent error: %s", resp.Error)
 	}
 
+	// Different tools return the list under different keys:
+	// telegram/yandex_business use "reviews"; VK's get_comments returns "comments".
 	reviewsRaw, ok := resp.Result["reviews"]
 	if !ok {
-		return nil // no reviews field — nothing to persist
+		reviewsRaw, ok = resp.Result["comments"]
+	}
+	if !ok {
+		return nil // no review-like field — nothing to persist
 	}
 	reviewsList, ok := reviewsRaw.([]interface{})
 	if !ok {
@@ -170,11 +193,21 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 }
 
 // reviewFromMap converts a raw map from a tool result into a domain.Review.
+// Handles two shapes:
+//   - native review shape (Telegram, Yandex.Business): id, author, rating,
+//     text, reply, created_at.
+//   - VK comment shape: id (int), from_id, text, date (unix), post_id.
 func reviewFromMap(m map[string]interface{}, businessID, platform string) *domain.Review {
-	externalID, _ := m["id"].(string)
-	author, _ := m["author"].(string)
+	externalID := externalIDFromMap(m, platform)
 	text, _ := m["text"].(string)
 	reply, _ := m["reply"].(string)
+
+	author, _ := m["author"].(string)
+	if author == "" {
+		if fromID, ok := intFromMap(m, "from_id"); ok {
+			author = fmt.Sprintf("vk_user_%d", fromID)
+		}
+	}
 
 	rating := 0
 	switch v := m["rating"].(type) {
@@ -189,6 +222,8 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 		if t, err := time.Parse(time.RFC3339, ts); err == nil {
 			createdAt = t
 		}
+	} else if unix, ok := intFromMap(m, "date"); ok && unix > 0 {
+		createdAt = time.Unix(unix, 0).UTC()
 	}
 
 	replyStatus := "pending"
@@ -208,4 +243,37 @@ func reviewFromMap(m map[string]interface{}, businessID, platform string) *domai
 		ReplyStatus: replyStatus,
 		CreatedAt:   createdAt,
 	}
+}
+
+// externalIDFromMap returns a stable, unique-per-platform identifier for the
+// comment/review. For VK the native id is an int scoped to a post, so it must
+// be composed with post_id to avoid collisions across posts.
+func externalIDFromMap(m map[string]interface{}, platform string) string {
+	if s, ok := m["id"].(string); ok && s != "" {
+		return s
+	}
+	id, hasID := intFromMap(m, "id")
+	if !hasID {
+		return ""
+	}
+	if platform == a2a.AgentVK {
+		if postID, ok := intFromMap(m, "post_id"); ok {
+			return fmt.Sprintf("%d_%d", postID, id)
+		}
+	}
+	return fmt.Sprintf("%d", id)
+}
+
+// intFromMap extracts an integer from a JSON-unmarshalled map, tolerating the
+// float64 representation Go uses by default.
+func intFromMap(m map[string]interface{}, key string) (int64, bool) {
+	switch v := m[key].(type) {
+	case float64:
+		return int64(v), true
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	}
+	return 0, false
 }
