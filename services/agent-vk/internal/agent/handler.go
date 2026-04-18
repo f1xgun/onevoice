@@ -253,13 +253,28 @@ func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2
 }
 
 func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	// wall.getComments needs community token (service key can't call it).
-	// But wall.get (to find latest post) needs service key (community token can't call it).
-	// So we use two clients when post_id is not provided.
-	client, groupID, err := h.getClient(ctx, req)
+	// wall.getComments requires a user OAuth token. Empirically verified:
+	// neither the community token nor the service key can call this method —
+	// VK returns "Group authorization failed: method is unavailable with
+	// group auth". The integration must have UserToken populated via the
+	// user-authorization OAuth flow (scope=wall,offline).
+	groupID, _ := req.Args["group_id"].(string)
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
 	if err != nil {
-		return nil, err
+		return nil, a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
+	if info.UserToken == "" {
+		return nil, a2a.NewNonRetryableError(fmt.Errorf(
+			"vk: user OAuth token not available for this integration — " +
+				"re-authorize the VK connection with 'wall' scope so that " +
+				"wall.getComments can be called"))
+	}
+	if groupID == "" {
+		groupID = info.ExternalID
+	}
+	groupID = ensureNegativeGroupID(groupID)
+	client := h.clientFactory(info.UserToken)
+
 	postIDf, _ := req.Args["post_id"].(float64)
 	postID := int(postIDf)
 	countF, _ := req.Args["count"].(float64)
@@ -268,15 +283,22 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		count = 20
 	}
 
-	// If no post_id, fetch latest post via readClient (service key can call wall.get)
+	// If post_id missing, locate the latest post. wall.get accepts a user
+	// token for any wall the user can see, so we can use the same client.
+	// Fall back to the read client (service key for public walls) only if
+	// the user-token wall.get fails — this preserves behavior for users
+	// who only authorized a minimal scope.
 	if postID == 0 {
-		readClient, readGroupID, readErr := h.getReadClient(ctx, req)
-		if readErr != nil {
-			return nil, readErr
-		}
-		posts, _, postsErr := readClient.GetWallPosts(readGroupID, 1)
+		posts, _, postsErr := client.GetWallPosts(groupID, 1)
 		if postsErr != nil {
-			return nil, fmt.Errorf("vk: get latest post: %w", classifyVKError(postsErr))
+			readClient, readGroupID, readErr := h.getReadClient(ctx, req)
+			if readErr != nil {
+				return nil, fmt.Errorf("vk: get latest post: %w", classifyVKError(postsErr))
+			}
+			posts, _, postsErr = readClient.GetWallPosts(readGroupID, 1)
+			if postsErr != nil {
+				return nil, fmt.Errorf("vk: get latest post: %w", classifyVKError(postsErr))
+			}
 		}
 		if len(posts) == 0 {
 			return &a2a.ToolResponse{
