@@ -39,14 +39,13 @@ const MAX_SYSTEM_PROMPT_CHARS = 4000;
 const schema = z
   .object({
     name: z.string().trim().min(1, 'Укажите название проекта.').max(200),
-    description: z.string().max(2000).default(''),
+    description: z.string().max(2000),
     systemPrompt: z
       .string()
-      .max(MAX_SYSTEM_PROMPT_CHARS, 'Системный промпт слишком длинный (максимум 4000 символов).')
-      .default(''),
+      .max(MAX_SYSTEM_PROMPT_CHARS, 'Системный промпт слишком длинный (максимум 4000 символов).'),
     whitelistMode: z.enum(['inherit', 'all', 'explicit', 'none']),
-    allowedTools: z.array(z.string()).default([]),
-    quickActions: z.array(z.string().trim().min(1)).max(MAX_QUICK_ACTIONS).default([]),
+    allowedTools: z.array(z.string()),
+    quickActions: z.array(z.string().trim().min(1)).max(MAX_QUICK_ACTIONS),
   })
   .refine((d) => d.whitelistMode !== 'explicit' || d.allowedTools.length > 0, {
     path: ['allowedTools'],
