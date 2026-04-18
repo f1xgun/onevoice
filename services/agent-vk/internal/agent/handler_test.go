@@ -187,7 +187,7 @@ func TestHandler_UpdateGroupInfo(t *testing.T) {
 }
 
 func TestHandler_GetComments(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
 	vkClient := &mockVKClient{
 		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
 			assert.Equal(t, "-123456", groupID)
@@ -214,8 +214,37 @@ func TestHandler_GetComments(t *testing.T) {
 	assert.Equal(t, 1, resp.Result["count"])
 }
 
+func TestHandler_GetComments_RejectsWithoutUserToken(t *testing.T) {
+	// wall.getComments requires a user OAuth token; integrations that only
+	// have a community token must surface a clear, non-retryable error so
+	// the caller can prompt re-authorization instead of silently failing.
+	tokens := &mockTokenFetcher{token: "community-tok", userToken: ""}
+	vkClient := &mockVKClient{
+		getCommentsFn: func(string, int, int) ([]map[string]interface{}, error) {
+			t.Fatal("GetComments must not be called when UserToken is empty")
+			return nil, nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-no-user-token",
+		Tool:       "vk__get_comments",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id": "-123456",
+			"post_id":  float64(42),
+		},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "user OAuth token")
+	var nonRetryable *a2a.NonRetryableError
+	assert.ErrorAs(t, err, &nonRetryable, "missing user token is a permanent config error, not a transient failure")
+}
+
 func TestHandler_GetComments_DefaultCount(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
 	vkClient := &mockVKClient{
 		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
 			assert.Equal(t, 20, count)
@@ -969,8 +998,8 @@ func TestReadClient_ExternalIDFallback(t *testing.T) {
 }
 
 func TestGetComments_UsesResolvedGroupID(t *testing.T) {
-	// getComments uses getClient which resolves groupID with negative sign.
-	tokens := &mockTokenFetcher{token: "tok", extID: "999888"}
+	// getComments now requires a user OAuth token for wall.getComments.
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok", extID: "999888"}
 	var capturedGroupID string
 	factory := func(_ string) agent.VKClient {
 		return &mockVKClient{
