@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -71,8 +70,9 @@ func (s *Syncer) SetTaskHub(hub *taskhub.Hub) {
 
 // recordTask creates an AgentTask record (if a recorder is configured) for a
 // sync operation that has already completed. startedAt is captured before the
-// operation so the stored duration is meaningful.
-func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform, taskType, status string, input interface{}, errMsg string, startedAt time.Time) {
+// operation so the stored duration is meaningful. displayName is the human
+// label shown on the Tasks page — callers pass the Russian string directly.
+func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform, taskType, displayName, status string, input interface{}, errMsg string, startedAt time.Time) {
 	if s.tasks == nil {
 		return
 	}
@@ -80,7 +80,7 @@ func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform,
 	task := &domain.AgentTask{
 		BusinessID:  businessID.String(),
 		Type:        taskType,
-		DisplayName: tools.DisplayName(taskType),
+		DisplayName: displayName,
 		Status:      status,
 		Platform:    platform,
 		Input:       input,
@@ -118,29 +118,29 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 		case "telegram":
 			titleStart := time.Now()
 			if err := s.syncTelegramTitle(ctx, business.ID, integ.ExternalID, business.Name); err != nil {
-				s.recordTask(ctx, business.ID, "telegram", "sync_title", "error",
+				s.recordTask(ctx, business.ID, "telegram", "sync_title", "Синхронизация названия", "error",
 					map[string]string{"channel_id": integ.ExternalID}, err.Error(), titleStart)
 			} else {
-				s.recordTask(ctx, business.ID, "telegram", "sync_title", "done",
+				s.recordTask(ctx, business.ID, "telegram", "sync_title", "Синхронизация названия", "done",
 					map[string]string{"channel_id": integ.ExternalID, "name": business.Name}, "", titleStart)
 			}
 
 			descStart := time.Now()
 			if err := s.syncTelegramDescription(ctx, business.ID, integ.ExternalID, formatTelegramDescription(business)); err != nil {
-				s.recordTask(ctx, business.ID, "telegram", "sync_description", "error",
+				s.recordTask(ctx, business.ID, "telegram", "sync_description", "Синхронизация описания", "error",
 					map[string]string{"channel_id": integ.ExternalID}, err.Error(), descStart)
 			} else {
-				s.recordTask(ctx, business.ID, "telegram", "sync_description", "done",
+				s.recordTask(ctx, business.ID, "telegram", "sync_description", "Синхронизация описания", "done",
 					map[string]string{"channel_id": integ.ExternalID}, "", descStart)
 			}
 
 			if business.LogoURL != "" {
 				photoStart := time.Now()
 				if err := s.syncTelegramPhoto(ctx, business.ID, integ.ExternalID, business.LogoURL); err != nil {
-					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "error",
+					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "Синхронизация фото", "error",
 						map[string]string{"channel_id": integ.ExternalID}, err.Error(), photoStart)
 				} else {
-					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "done",
+					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "Синхронизация фото", "done",
 						map[string]string{"channel_id": integ.ExternalID}, "", photoStart)
 				}
 			}
@@ -430,7 +430,7 @@ func (s *Syncer) syncVKInfo(ctx context.Context, business *domain.Business, grou
 	token, err := s.integrations.GetDecryptedToken(ctx, business.ID, "vk", groupID)
 	if err != nil {
 		slog.Error("platform sync: vk: get token failed", "group_id", groupID, "error", err)
-		s.recordTask(ctx, business.ID, "vk", "sync_info", "error", map[string]string{"group_id": groupID}, "token fetch failed: "+err.Error(), started)
+		s.recordTask(ctx, business.ID, "vk", "sync_info", "Синхронизация данных", "error", map[string]string{"group_id": groupID}, "token fetch failed: "+err.Error(), started)
 		return
 	}
 
@@ -459,9 +459,9 @@ func (s *Syncer) syncVKInfo(ctx context.Context, business *domain.Business, grou
 
 	apiErr := s.callVKAPI(ctx, "groups.edit", params, groupID)
 	if apiErr != "" {
-		s.recordTask(ctx, business.ID, "vk", "sync_info", "error", input, apiErr, started)
+		s.recordTask(ctx, business.ID, "vk", "sync_info", "Синхронизация данных", "error", input, apiErr, started)
 	} else {
-		s.recordTask(ctx, business.ID, "vk", "sync_info", "done", input, "", started)
+		s.recordTask(ctx, business.ID, "vk", "sync_info", "Синхронизация данных", "done", input, "", started)
 	}
 }
 

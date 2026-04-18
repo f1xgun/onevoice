@@ -20,10 +20,10 @@ func makeDef(name string) llm.ToolDefinition {
 
 func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_post"), nil)
-	reg.Register(makeDef("vk__publish_post"), nil)
-	reg.Register(makeDef("google_business__update_hours"), nil)
-	reg.Register(makeDef("get_business_info"), nil) // internal tool, always available
+	reg.Register(makeDef("telegram__send_post"), "", nil)
+	reg.Register(makeDef("vk__publish_post"), "", nil)
+	reg.Register(makeDef("google_business__update_hours"), "", nil)
+	reg.Register(makeDef("get_business_info"), "", nil) // internal tool, always available
 
 	active := []string{"telegram"}
 	defs := reg.Available(active)
@@ -40,8 +40,8 @@ func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 
 func TestRegistry_NoActiveIntegrations_OnlyInternalTools(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_post"), nil)
-	reg.Register(makeDef("get_business_info"), nil)
+	reg.Register(makeDef("telegram__send_post"), "", nil)
+	reg.Register(makeDef("get_business_info"), "", nil)
 
 	defs := reg.Available(nil)
 
@@ -56,7 +56,7 @@ func TestRegistry_Execute_CallsExecutor(t *testing.T) {
 		called = true
 		return map[string]interface{}{"ok": true}, nil
 	})
-	reg.Register(makeDef("telegram__send_post"), executor)
+	reg.Register(makeDef("telegram__send_post"), "", executor)
 
 	result, err := reg.Execute(context.Background(), "telegram__send_post", map[string]interface{}{})
 	require.NoError(t, err)
