@@ -28,6 +28,7 @@ type Handlers struct {
 	Post          *handler.PostHandler
 	AgentTask     *handler.AgentTaskHandler
 	Telemetry     *handler.TelemetryHandler
+	Project       *handler.ProjectHandler
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
@@ -111,6 +112,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Put("/conversations/{id}", handlers.Conversation.UpdateConversation)
 			r.Delete("/conversations/{id}", handlers.Conversation.DeleteConversation)
 			r.Get("/conversations/{id}/messages", handlers.Conversation.ListMessages)
+
+			// Project routes (Phase 15 — projects foundation)
+			r.Get("/projects", handlers.Project.List)
+			r.Post("/projects", handlers.Project.Create)
+			r.Get("/projects/{id}", handlers.Project.Get)
+			r.Put("/projects/{id}", handlers.Project.Update)
+			r.Delete("/projects/{id}", handlers.Project.Delete)
+			r.Get("/projects/{id}/conversation-count", handlers.Project.ConversationCount)
 
 			// Password change
 			r.Put("/auth/password", handlers.Auth.ChangePassword)

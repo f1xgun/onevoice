@@ -18,6 +18,6 @@ type ProjectService interface {
 	GetByID(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error)
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Project, error)
 	Update(ctx context.Context, businessID, id uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error)
-	DeleteCascade(ctx context.Context, businessID, id uuid.UUID) (int, int, error)
+	DeleteCascade(ctx context.Context, businessID, id uuid.UUID) (deletedConversations, deletedMessages int, err error)
 	CountConversations(ctx context.Context, businessID, id uuid.UUID) (int, error)
 }

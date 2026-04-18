@@ -211,14 +211,14 @@ func (r *projectRepository) CountConversationsByID(ctx context.Context, id uuid.
 // already gone on the second attempt, so the counts reset to 0, but the
 // Postgres row still vanishes). This is the "best-effort atomic" guarantee
 // documented in 15-CONTEXT D-05.
-func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID) (int, int, error) {
+func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	projectIDStr := id.String()
 
 	// 1. Find conversation IDs so we can scope the messages delete.
 	var convIDs []string
-	cursor, err := r.convColl.Find(ctx, bson.M{"project_id": projectIDStr})
-	if err != nil {
-		return 0, 0, fmt.Errorf("find conversations for cascade: %w", err)
+	cursor, findErr := r.convColl.Find(ctx, bson.M{"project_id": projectIDStr})
+	if findErr != nil {
+		return 0, 0, fmt.Errorf("find conversations for cascade: %w", findErr)
 	}
 	for cursor.Next(ctx) {
 		var doc struct {
@@ -231,24 +231,24 @@ func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID)
 	_ = cursor.Close(ctx)
 
 	// 2. Delete messages whose conversation_id is in the cascade set.
-	var deletedMessages int64
+	var msgCount int64
 	if len(convIDs) > 0 {
-		msgRes, err := r.msgColl.DeleteMany(ctx, bson.M{"conversation_id": bson.M{"$in": convIDs}})
-		if err != nil {
-			return 0, 0, fmt.Errorf("delete cascade messages: %w", err)
+		msgRes, msgErr := r.msgColl.DeleteMany(ctx, bson.M{"conversation_id": bson.M{"$in": convIDs}})
+		if msgErr != nil {
+			return 0, 0, fmt.Errorf("delete cascade messages: %w", msgErr)
 		}
-		deletedMessages = msgRes.DeletedCount
+		msgCount = msgRes.DeletedCount
 	}
 
 	// 3. Delete conversations.
-	convRes, err := r.convColl.DeleteMany(ctx, bson.M{"project_id": projectIDStr})
-	if err != nil {
-		return 0, int(deletedMessages), fmt.Errorf("delete cascade conversations: %w", err)
+	convRes, convErr := r.convColl.DeleteMany(ctx, bson.M{"project_id": projectIDStr})
+	if convErr != nil {
+		return 0, int(msgCount), fmt.Errorf("delete cascade conversations: %w", convErr)
 	}
 
 	// 4. Finally, the Postgres project row.
-	if err := r.Delete(ctx, id); err != nil {
-		return int(convRes.DeletedCount), int(deletedMessages), fmt.Errorf("delete project row: %w", err)
+	if delErr := r.Delete(ctx, id); delErr != nil {
+		return int(convRes.DeletedCount), int(msgCount), fmt.Errorf("delete project row: %w", delErr)
 	}
-	return int(convRes.DeletedCount), int(deletedMessages), nil
+	return int(convRes.DeletedCount), int(msgCount), nil
 }

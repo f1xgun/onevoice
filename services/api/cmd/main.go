@@ -203,6 +203,17 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("create agent task handler: %w", err)
 	}
 
+	// Phase 15 Projects — three-line wiring through a single
+	// domain.ProjectRepository interface value (HardDeleteCascade is part of
+	// the interface per Plan 15-01). No type assertion, no anonymous
+	// interface widening.
+	projectRepo := repository.NewProjectRepository(pgPool, mongoDB)
+	projectService := service.NewProjectService(projectRepo)
+	projectHandler, err := handler.NewProjectHandler(projectService, businessService)
+	if err != nil {
+		return fmt.Errorf("create project handler: %w", err)
+	}
+
 	handlers := &router.Handlers{
 		Auth:          authHandler,
 		Business:      businessHandler,
@@ -214,6 +225,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		Review:        reviewHandler,
 		Post:          postHandler,
 		AgentTask:     agentTaskHandler,
+		Project:       projectHandler,
 	}
 
 	// Health checker
