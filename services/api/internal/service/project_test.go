@@ -64,7 +64,7 @@ func (m *mockProjectRepository) CountConversationsByID(ctx context.Context, id u
 	}
 	return 0, nil
 }
-func (m *mockProjectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID) (int, int, error) {
+func (m *mockProjectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	if m.hardDeleteCascadeFunc != nil {
 		return m.hardDeleteCascadeFunc(ctx, id)
 	}
@@ -136,7 +136,7 @@ func TestProjectService_Create(t *testing.T) {
 			SystemPrompt:  "you reply",
 			WhitelistMode: domain.WhitelistModeAll,
 			// AllowedTools + QuickActions intentionally nil — service must
-			// normalise to empty slices so JSON serialises as `[]` not `null`.
+			// normalize to empty slices so JSON serializes as `[]` not `null`.
 		})
 		require.NoError(t, err)
 		require.NotNil(t, got)

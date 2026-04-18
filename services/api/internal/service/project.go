@@ -125,7 +125,7 @@ func (s *ProjectService) Update(ctx context.Context, businessID, id uuid.UUID, i
 // DeleteCascade hard-deletes the project plus every Mongo conversation/message
 // assigned to it, returning the counts. Cross-business attempts map to
 // ErrProjectNotFound.
-func (s *ProjectService) DeleteCascade(ctx context.Context, businessID, id uuid.UUID) (int, int, error) {
+func (s *ProjectService) DeleteCascade(ctx context.Context, businessID, id uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	p, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return 0, 0, err
