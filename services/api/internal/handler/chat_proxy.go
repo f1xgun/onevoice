@@ -17,7 +17,6 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
-	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -233,13 +232,14 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		var ev struct {
-			Type       string                 `json:"type"`
-			Content    string                 `json:"content"`
-			ToolCallID string                 `json:"tool_call_id"`
-			ToolName   string                 `json:"tool_name"`
-			ToolArgs   map[string]interface{} `json:"tool_args"`
-			ToolResult interface{}            `json:"result"`
-			ToolError  string                 `json:"error"`
+			Type            string                 `json:"type"`
+			Content         string                 `json:"content"`
+			ToolCallID      string                 `json:"tool_call_id"`
+			ToolName        string                 `json:"tool_name"`
+			ToolDisplayName string                 `json:"tool_display_name"`
+			ToolArgs        map[string]interface{} `json:"tool_args"`
+			ToolResult      interface{}            `json:"result"`
+			ToolError       string                 `json:"error"`
 		}
 		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
 			slog.WarnContext(r.Context(), "chat proxy: malformed SSE event", "error", err, "line", line[:min(len(line), 200)])
@@ -256,7 +256,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			}
 			toolCalls = append(toolCalls, tc)
 			toolCallIDByName[ev.ToolName] = tc.ID
-			h.onToolCall(taskOpsCtx, business.ID.String(), ev.ToolCallID, ev.ToolName, ev.ToolArgs, agentTaskIDByCallID)
+			h.onToolCall(taskOpsCtx, business.ID.String(), ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolArgs, agentTaskIDByCallID)
 		case "tool_result":
 			var content map[string]interface{}
 			if m, ok := ev.ToolResult.(map[string]interface{}); ok {
@@ -451,7 +451,7 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 // has finished executing. Internal (non-platform) tools are skipped.
 func (h *ChatProxyHandler) onToolCall(
 	ctx context.Context,
-	businessID, toolCallID, toolName string,
+	businessID, toolCallID, toolName, displayName string,
 	args map[string]interface{},
 	agentTaskIDByCallID map[string]string,
 ) {
@@ -471,7 +471,7 @@ func (h *ChatProxyHandler) onToolCall(
 		BusinessID:  businessID,
 		Type:        toolName[sep+2:],
 		Platform:    toolName[:sep],
-		DisplayName: tools.DisplayName(toolName),
+		DisplayName: displayName,
 		Status:      "running",
 		Input:       args,
 		StartedAt:   &now,

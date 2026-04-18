@@ -100,7 +100,7 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, _ := w.(http.Flusher)
-		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"call_abc","tool_name":"telegram__send_channel_post","tool_args":{"text":"hi"}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"call_abc","tool_name":"telegram__send_channel_post","tool_display_name":"Отправить пост","tool_args":{"text":"hi"}}` + "\n\n"))
 		flusher.Flush()
 		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"call_abc","tool_name":"telegram__send_channel_post","result":{"ok":true}}` + "\n\n"))
 		flusher.Flush()

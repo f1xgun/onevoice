@@ -21,8 +21,9 @@ func (f ExecutorFunc) Execute(ctx context.Context, args map[string]interface{}) 
 }
 
 type entry struct {
-	def      llm.ToolDefinition
-	executor Executor
+	def         llm.ToolDefinition
+	displayName string
+	executor    Executor
 }
 
 // Registry holds tool definitions and their executors.
@@ -36,8 +37,19 @@ func NewRegistry() *Registry {
 }
 
 // Register adds a tool definition with its executor (may be nil for stub tools).
-func (r *Registry) Register(def llm.ToolDefinition, exec Executor) {
-	r.tools[def.Function.Name] = entry{def: def, executor: exec}
+// displayName is the human-readable label surfaced on the Tasks page.
+func (r *Registry) Register(def llm.ToolDefinition, displayName string, exec Executor) {
+	r.tools[def.Function.Name] = entry{def: def, displayName: displayName, executor: exec}
+}
+
+// DisplayName returns the human-readable label registered for the named tool.
+// Returns an empty string for unknown tools.
+func (r *Registry) DisplayName(name string) string {
+	e, ok := r.tools[name]
+	if !ok {
+		return ""
+	}
+	return e.displayName
 }
 
 // Available returns tool definitions available for the given active integrations.

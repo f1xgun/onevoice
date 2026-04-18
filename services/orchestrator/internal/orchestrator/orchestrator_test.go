@@ -77,7 +77,7 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "get info", Parameters: map[string]interface{}{}},
-	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"name": "Кофейня Уют"}, nil
 	}))
 
@@ -134,7 +134,7 @@ func TestRun_MaxIterations_Stops(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "d", Parameters: map[string]interface{}{}},
-	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}))
 

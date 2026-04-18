@@ -37,13 +37,13 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "telegram__send_channel_post", Description: "d", Parameters: map[string]interface{}{}},
-	}, tools.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	}, "", tools.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"message_id": "tg_42", "platform": "telegram"}, nil
 	}))
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "vk__publish_post", Description: "d", Parameters: map[string]interface{}{}},
-	}, tools.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	}, "", tools.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"post_id": "vk_99", "platform": "vk"}, nil
 	}))
 
@@ -104,7 +104,7 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "failing_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, context.DeadlineExceeded
 	}))
 

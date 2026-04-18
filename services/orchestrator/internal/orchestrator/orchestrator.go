@@ -28,13 +28,14 @@ const (
 
 // Event is emitted on the output channel during agent execution.
 type Event struct {
-	Type       EventType
-	Content    string
-	ToolCallID string
-	ToolName   string
-	ToolArgs   map[string]interface{}
-	ToolResult interface{}
-	ToolError  string
+	Type            EventType
+	Content         string
+	ToolCallID      string
+	ToolName        string
+	ToolDisplayName string
+	ToolArgs        map[string]interface{}
+	ToolResult      interface{}
+	ToolError       string
 }
 
 // LLMClient abstracts the Router for testability.
@@ -138,9 +139,11 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 					}
 				}
 
+				displayName := o.tools.DisplayName(tc.Function.Name)
+
 				// Emit tool call event
 				select {
-				case ch <- Event{Type: EventToolCall, ToolCallID: tc.ID, ToolName: tc.Function.Name, ToolArgs: args}:
+				case ch <- Event{Type: EventToolCall, ToolCallID: tc.ID, ToolName: tc.Function.Name, ToolDisplayName: displayName, ToolArgs: args}:
 				case <-ctx.Done():
 					return
 				}
@@ -165,10 +168,11 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 
 				// Emit tool result event for the frontend
 				toolResultEv := Event{
-					Type:       EventToolResult,
-					ToolCallID: tc.ID,
-					ToolName:   tc.Function.Name,
-					ToolResult: result,
+					Type:            EventToolResult,
+					ToolCallID:      tc.ID,
+					ToolName:        tc.Function.Name,
+					ToolDisplayName: displayName,
+					ToolResult:      result,
 				}
 				if execErr != nil {
 					toolResultEv.ToolError = execErr.Error()
