@@ -142,7 +142,7 @@ export default function TasksPage() {
     (_: TaskStreamEvent) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
-    [queryClient],
+    [queryClient]
   );
   useTasksStream(onStreamEvent);
 
@@ -241,8 +241,8 @@ export default function TasksPage() {
                             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                           )}
                           <span className="text-sm font-medium">
-                          {task.displayName || task.type}
-                        </span>
+                            {task.displayName || task.type}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
