@@ -67,7 +67,7 @@ func (s *stubBrowser) ReplyReview(_ context.Context, reviewID, text string) erro
 	return nil
 }
 
-func (s *stubBrowser) CreatePost(_ context.Context, _ string) error  { return nil }
+func (s *stubBrowser) CreatePost(_ context.Context, _ string) error     { return nil }
 func (s *stubBrowser) UploadPhoto(_ context.Context, _, _ string) error { return nil }
 
 // stubPool implements agent.BrowserPool for testing.
@@ -223,7 +223,7 @@ type errBrowser struct {
 }
 
 func (e *errBrowser) GetInfo(_ context.Context) (map[string]interface{}, error) { return nil, e.err }
-func (e *errBrowser) UpdateHours(_ context.Context, _ string) error               { return e.err }
+func (e *errBrowser) UpdateHours(_ context.Context, _ string) error             { return e.err }
 func (e *errBrowser) UpdateInfo(_ context.Context, _ map[string]string) error {
 	return e.err
 }
@@ -231,7 +231,7 @@ func (e *errBrowser) GetReviews(_ context.Context, _ int) ([]map[string]interfac
 	return nil, e.err
 }
 func (e *errBrowser) ReplyReview(_ context.Context, _, _ string) error { return e.err }
-func (e *errBrowser) CreatePost(_ context.Context, _ string) error      { return e.err }
+func (e *errBrowser) CreatePost(_ context.Context, _ string) error     { return e.err }
 func (e *errBrowser) UploadPhoto(_ context.Context, _, _ string) error { return e.err }
 
 func newErrHandler(fetcher agent.TokenFetcher, browserErr error) *agent.Handler {
