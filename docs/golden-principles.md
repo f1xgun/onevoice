@@ -12,7 +12,7 @@ These are the laws of the codebase. Each is enforced mechanically by linters, CI
 | 6 | Handler → Service → Repository (no layer skipping) | structural convention |
 | 7 | Shared code in `pkg/`, service code in `services/*/internal/` | Go module boundaries |
 | 8 | Tool naming: `{platform}__{action}` | orchestrator tool registry |
-| 9 | Tests before code (TDD) | `WORKFLOW.md` process |
+| 9 | Tests before code (TDD) | code review |
 | 10 | All forms: react-hook-form + zod | ESLint, code review |
 | 11 | Tailwind classes only, no inline styles | code review |
 | 12 | Use `t.Setenv` in tests, not `os.Setenv` | code review |
@@ -43,8 +43,7 @@ Key linter groups:
 
 ### Process
 
-**`WORKFLOW.md`** enforces:
-- Design before code (brainstorming → plan → implement)
-- TDD cycle (RED → GREEN → REFACTOR)
-- Code review after each task
+- TDD cycle (RED → GREEN → REFACTOR) — tests before production code
+- Code review after each meaningful change
 - No merge without passing lint + tests
+- Development managed via GSD (`.claude/commands/gsd/`)

@@ -97,7 +97,6 @@ make fmt-fix         # Auto-format everything
 
 - [Architecture](docs/architecture.md)
 - [Coding Rules](CODING_RULES.md)
-- [Dev Workflow](WORKFLOW.md)
 - [Code Patterns](docs/patterns.md)
 - [Anti-patterns](docs/anti-patterns.md)
 - [Golden Principles](docs/golden-principles.md)
