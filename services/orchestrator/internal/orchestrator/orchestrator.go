@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
@@ -43,9 +44,17 @@ type LLMClient interface {
 
 // RunRequest holds everything needed to start an agent run.
 type RunRequest struct {
-	UserID             uuid.UUID
-	Model              string
-	BusinessContext    prompt.BusinessContext
+	UserID          uuid.UUID
+	Model           string
+	BusinessContext prompt.BusinessContext
+	// ProjectContext is the optional project prompt layer (Phase 15).
+	// nil means "Без проекта" — legacy pre-Phase-15 behavior.
+	ProjectContext *prompt.ProjectContext
+	// WhitelistMode is the project's typed tool-whitelist mode (Phase 15).
+	// "" = inherit (v1.3 baseline per 15-CONTEXT.md D-18).
+	WhitelistMode domain.WhitelistMode
+	// AllowedTools is consulted only when WhitelistMode == explicit.
+	AllowedTools       []string
 	Messages           []llm.Message // conversation history (excluding system)
 	ActiveIntegrations []string
 	Tier               string
@@ -84,8 +93,8 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 	go func() {
 		defer close(ch)
 
-		availableTools := o.tools.Available(req.ActiveIntegrations)
-		messages := prompt.Build(req.BusinessContext, nil, req.Messages)
+		availableTools := o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools)
+		messages := prompt.Build(req.BusinessContext, req.ProjectContext, req.Messages)
 
 		for iter := 0; iter < o.options.MaxIterations; iter++ {
 			llmReq := llm.ChatRequest{

@@ -70,7 +70,7 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 
 // AvailableForWhitelist applies Phase 15's typed WhitelistMode filter on top
 // of Available. Unknown tool names in `allowed` are logged (slog WARN) and
-// silently dropped — the safe-default behaviour documented in
+// silently dropped — the safe-default behavior documented in
 // .planning/research/PITFALLS.md §9 (whitelist drift: a renamed or missing
 // tool is treated as denied rather than surfaced as an error).
 //
