@@ -8,8 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -17,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/storage"
 )
 
 const maxUploadSize = 5 << 20 // 5 MB
@@ -46,7 +45,7 @@ type BusinessHandler struct {
 	businessService BusinessService
 	syncer          BusinessSyncer // optional; may be nil
 	validate        *validator.Validate
-	uploadDir       string
+	storage         storage.Uploader // optional; required only for UploadLogo
 }
 
 // UpdateBusinessRequest represents the business update request
@@ -61,8 +60,8 @@ type UpdateBusinessRequest struct {
 
 // NewBusinessHandler creates a new business handler instance.
 // syncer may be nil; if provided, it is called asynchronously after each successful update.
-// uploadDir is the directory where uploaded logo files are stored.
-func NewBusinessHandler(businessService BusinessService, syncer BusinessSyncer, uploadDir string) (*BusinessHandler, error) {
+// objectStorage may be nil in tests that do not exercise UploadLogo.
+func NewBusinessHandler(businessService BusinessService, syncer BusinessSyncer, objectStorage storage.Uploader) (*BusinessHandler, error) {
 	if businessService == nil {
 		return nil, fmt.Errorf("NewBusinessHandler: businessService cannot be nil")
 	}
@@ -70,7 +69,7 @@ func NewBusinessHandler(businessService BusinessService, syncer BusinessSyncer, 
 		businessService: businessService,
 		syncer:          syncer,
 		validate:        validate,
-		uploadDir:       uploadDir,
+		storage:         objectStorage,
 	}, nil
 }
 
@@ -227,11 +226,18 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, updated)
 }
 
-// UploadLogo handles multipart logo upload, saves the file, and updates the business logo_url.
+// UploadLogo handles multipart logo upload, stores the file in object storage,
+// and updates the business logo_url to the public URL.
 func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if h.storage == nil {
+		slog.Error("upload logo: object storage is not configured")
+		writeJSONError(w, http.StatusInternalServerError, "storage unavailable")
 		return
 	}
 
@@ -241,7 +247,7 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, _, err := r.FormFile("logo")
+	file, header, err := r.FormFile("logo")
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "logo field is required")
 		return
@@ -277,23 +283,15 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := business.ID.String() + "_logo" + ext
-	filePath := filepath.Join(h.uploadDir, filename)
-	dst, err := os.Create(filePath) //nolint:gosec // filePath is constructed from uploadDir+businessID+ext, not user-controlled
-	if err != nil {
-		slog.Error("upload logo: create file failed", "path", filePath, "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-	defer func() { _ = dst.Close() }()
-
-	if _, err := io.Copy(dst, file); err != nil {
-		slog.Error("upload logo: write file failed", "path", filePath, "error", err)
+	// Cache-bust on re-upload by including UpdatedAt nanos in the key.
+	key := fmt.Sprintf("businesses/%s/logo-%d%s", business.ID, time.Now().UnixNano(), ext)
+	if err := h.storage.Upload(r.Context(), key, file, header.Size, mimeType); err != nil {
+		slog.Error("upload logo: storage upload failed", "key", key, "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	business.LogoURL = "/uploads/" + filename
+	business.LogoURL = h.storage.PublicURL(key)
 	business.UpdatedAt = time.Now()
 	updatedBusiness, err := h.businessService.Update(r.Context(), business)
 	if err != nil {

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -146,7 +148,7 @@ func TestGetBusiness(t *testing.T) {
 			mockService := new(MockBusinessService)
 			tt.mockSetup(mockService)
 
-			handler, _ := NewBusinessHandler(mockService, nil, "")
+			handler, _ := NewBusinessHandler(mockService, nil, nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/business", http.NoBody)
 			req = tt.setupContext(req)
@@ -345,7 +347,7 @@ func TestUpdateBusiness(t *testing.T) {
 			mockService := new(MockBusinessService)
 			tt.mockSetup(mockService)
 
-			handler, _ := NewBusinessHandler(mockService, nil, "")
+			handler, _ := NewBusinessHandler(mockService, nil, nil)
 
 			req := httptest.NewRequest(http.MethodPut, "/api/v1/business", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
@@ -360,4 +362,133 @@ func TestUpdateBusiness(t *testing.T) {
 			mockService.AssertExpectations(t)
 		})
 	}
+}
+
+// mockUploader is a test double for storage.Uploader.
+type mockUploader struct {
+	mock.Mock
+}
+
+func (m *mockUploader) Upload(ctx context.Context, key string, reader io.Reader, size int64, contentType string) error {
+	body, _ := io.ReadAll(reader)
+	args := m.Called(ctx, key, body, size, contentType)
+	return args.Error(0)
+}
+
+func (m *mockUploader) PublicURL(key string) string {
+	args := m.Called(key)
+	return args.String(0)
+}
+
+// pngMagic is the 8-byte PNG signature — enough for http.DetectContentType to identify image/png.
+var pngMagic = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+
+func buildLogoMultipart(t *testing.T, body []byte) (buf *bytes.Buffer, contentType string) {
+	t.Helper()
+	buf = &bytes.Buffer{}
+	w := multipart.NewWriter(buf)
+	fw, err := w.CreateFormFile("logo", "logo.png")
+	require.NoError(t, err)
+	_, err = fw.Write(body)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	return buf, w.FormDataContentType()
+}
+
+func TestUploadLogo(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")
+
+	t.Run("successful upload writes to storage and updates business", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockUp := new(mockUploader)
+
+		existing := &domain.Business{
+			ID:        testBusinessID,
+			UserID:    testUserID,
+			Name:      "Cafe",
+			CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		}
+		mockSvc.On("GetByUserID", mock.Anything, testUserID).Return(existing, nil)
+
+		prefix := "businesses/" + testBusinessID.String()
+		mockUp.On("Upload",
+			mock.Anything,
+			mock.MatchedBy(func(key string) bool {
+				return len(key) >= len(prefix) && key[:len(prefix)] == prefix
+			}),
+			pngMagic,
+			int64(len(pngMagic)),
+			"image/png",
+		).Return(nil)
+		mockUp.On("PublicURL", mock.Anything).Return("/media/businesses/x/logo.png")
+
+		mockSvc.On("Update", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
+			return b.LogoURL == "/media/businesses/x/logo.png"
+		})).Return(&domain.Business{
+			ID:      testBusinessID,
+			UserID:  testUserID,
+			Name:    "Cafe",
+			LogoURL: "/media/businesses/x/logo.png",
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, mockUp)
+		require.NoError(t, err)
+
+		body, contentType := buildLogoMultipart(t, pngMagic)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/business/logo", body)
+		req.Header.Set("Content-Type", contentType)
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, testUserID)
+		req = req.WithContext(ctx)
+		w := httptest.NewRecorder()
+
+		h.UploadLogo(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var got domain.Business
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		assert.Equal(t, "/media/businesses/x/logo.png", got.LogoURL)
+
+		mockSvc.AssertExpectations(t)
+		mockUp.AssertExpectations(t)
+	})
+
+	t.Run("nil storage returns 500", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		body, contentType := buildLogoMultipart(t, pngMagic)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/business/logo", body)
+		req.Header.Set("Content-Type", contentType)
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, testUserID)
+		req = req.WithContext(ctx)
+		w := httptest.NewRecorder()
+
+		h.UploadLogo(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "storage unavailable")
+	})
+
+	t.Run("unsupported mime type rejected", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockUp := new(mockUploader)
+		h, err := NewBusinessHandler(mockSvc, nil, mockUp)
+		require.NoError(t, err)
+
+		body, contentType := buildLogoMultipart(t, []byte("this is not an image at all"))
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/business/logo", body)
+		req.Header.Set("Content-Type", contentType)
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, testUserID)
+		req = req.WithContext(ctx)
+		w := httptest.NewRecorder()
+
+		h.UploadLogo(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "unsupported file type")
+		mockUp.AssertNotCalled(t, "Upload", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
 }
