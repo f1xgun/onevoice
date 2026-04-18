@@ -85,6 +85,35 @@ export function PlatformCard({
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            {platform === 'telegram' &&
+              (i.metadata as Record<string, unknown>)?.linked_group_status === 'bot_not_member' && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Бот не в группе обсуждений"
+                      title="Бот не в группе обсуждений — комментарии не собираются"
+                      className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-sm text-amber-700 hover:bg-amber-200"
+                    >
+                      ⚠
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Добавьте бота в группу обсуждений</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        У этого канала есть связанная группа для комментариев, но бот в неё не
+                        добавлен — поэтому комментарии к постам не собираются. Откройте группу
+                        обсуждений → участники → пригласите бота каналa. После этого отключите и
+                        подключите канал заново, чтобы обновить статус.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Ок</AlertDialogCancel>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             <Badge variant={statusVariants[i.status] ?? 'secondary'} className="text-xs">
               {statusLabels[i.status] ?? i.status}
             </Badge>

@@ -381,6 +381,97 @@ func newTelegramAPIMock(t *testing.T, title string, fail bool) *httptest.Server 
 	}))
 }
 
+// newTelegramAPIMockWithLinkedGroup serves channel getChat with a linked
+// discussion chat, and a getChat on that linked chat either succeeds (bot
+// is member) or fails with 403 (bot_not_member), depending on botInGroup.
+func newTelegramAPIMockWithLinkedGroup(t *testing.T, channelTitle string, linkedChatID int64, botInGroup bool) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		chatID := r.URL.Query().Get("chat_id")
+		if chatID == strconv.FormatInt(linkedChatID, 10) {
+			if !botInGroup {
+				_, _ = fmt.Fprintf(w, `{"ok":false,"description":"Forbidden: bot is not a member of the supergroup chat"}`)
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"id":%d,"title":"Linked Discussion","type":"supergroup"}}`, linkedChatID)
+			return
+		}
+		_, _ = fmt.Fprintf(w,
+			`{"ok":true,"result":{"id":-1001234567890,"title":%q,"type":"channel","linked_chat_id":%d}}`,
+			channelTitle, linkedChatID,
+		)
+	}))
+}
+
+func TestConnectTelegram_LinkedGroupOK(t *testing.T) {
+	tgServer := newTelegramAPIMockWithLinkedGroup(t, "My Channel", -1009876543210, true)
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	mockOAuth := new(MockOAuthStateService)
+	mockIntegration := new(MockOAuthIntegrationService)
+	mockBusiness := new(MockBusinessService)
+
+	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{ID: businessID, UserID: userID}, nil)
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
+		status, _ := p.Metadata["linked_group_status"].(string)
+		linkedID, _ := p.Metadata["linked_chat_id"].(int64)
+		return status == "ok" && linkedID == -1009876543210
+	})).Return(&domain.Integration{ID: uuid.New(), Platform: "telegram"}, nil)
+
+	cfg := OAuthConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, tgServer.Client(), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"@mychannel"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctxWithUser(userID))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
+}
+
+func TestConnectTelegram_LinkedGroupBotNotMember(t *testing.T) {
+	tgServer := newTelegramAPIMockWithLinkedGroup(t, "My Channel", -1009876543210, false)
+	defer tgServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	mockOAuth := new(MockOAuthStateService)
+	mockIntegration := new(MockOAuthIntegrationService)
+	mockBusiness := new(MockBusinessService)
+
+	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{ID: businessID, UserID: userID}, nil)
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
+		status, _ := p.Metadata["linked_group_status"].(string)
+		return status == "bot_not_member"
+	})).Return(&domain.Integration{ID: uuid.New(), Platform: "telegram"}, nil)
+
+	cfg := OAuthConfig{TelegramBotToken: "bot_token_123", telegramAPIBaseURL: tgServer.URL}
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, tgServer.Client(), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
+		strings.NewReader(`{"channel_id":"@mychannel"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctxWithUser(userID))
+	rr := httptest.NewRecorder()
+
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 (integration still created with warning status), got %d", rr.Code)
+	}
+	mockIntegration.AssertExpectations(t)
+}
+
 func TestConnectTelegram_Success(t *testing.T) {
 	tgServer := newTelegramAPIMock(t, "My Channel", false)
 	defer tgServer.Close()
@@ -399,10 +490,12 @@ func TestConnectTelegram_Success(t *testing.T) {
 	}, nil)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		title, _ := p.Metadata["channel_title"].(string)
+		linkedStatus, _ := p.Metadata["linked_group_status"].(string)
 		return p.BusinessID == businessID &&
 			p.Platform == "telegram" &&
 			p.ExternalID == "@mychannel" &&
-			title == "My Channel"
+			title == "My Channel" &&
+			linkedStatus == "no_linked_group" // mock response omits linked_chat_id
 	})).Return(&domain.Integration{
 		ID:       integrationID,
 		Platform: "telegram",
