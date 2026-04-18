@@ -11,6 +11,9 @@ Shared code imported by all services. Everything here is a Go library, not a sta
 | `llm/` | LLM Router, provider adapters (OpenRouter, OpenAI, Anthropic, SelfHosted), rate limiter, billing |
 | `crypto/` | AES-256-GCM encryption for OAuth tokens |
 | `logger/` | Structured logging wrapper (slog) |
+| `health/` | Liveness/readiness probe helpers shared across services |
+| `metrics/` | Prometheus counters/histograms (LLM, tool dispatch, HTTP middleware) |
+| `tokenclient/` | HTTP client that fetches decrypted integration tokens from the API internal endpoint (used by platform agents) |
 
 ## Rules
 
