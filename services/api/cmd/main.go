@@ -221,10 +221,14 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// Start HTTP server
 	addr := ":" + cfg.Port
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:        addr,
+		Handler:     r,
+		ReadTimeout: 15 * time.Second,
+		// WriteTimeout=0: SSE requires long-lived connections (/api/v1/chat/{id}
+		// proxies the orchestrator stream, which may run for minutes while
+		// RPA tool calls complete). Per-request deadlines are enforced by
+		// context.WithTimeout in handlers that need them.
+		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
 
