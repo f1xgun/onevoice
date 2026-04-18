@@ -3,8 +3,10 @@ package tools
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
@@ -64,6 +66,63 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 		}
 	}
 	return result
+}
+
+// AvailableForWhitelist applies Phase 15's typed WhitelistMode filter on top
+// of Available. Unknown tool names in `allowed` are logged (slog WARN) and
+// silently dropped — the safe-default behaviour documented in
+// .planning/research/PITFALLS.md §9 (whitelist drift: a renamed or missing
+// tool is treated as denied rather than surfaced as an error).
+//
+// ctx is the request-scoped context threaded from orchestrator.Run. It is
+// used for slog attribution (correlation_id, business_id) and cancellation
+// hygiene. Callers MUST NOT fabricate a root context here — there is always
+// a request-scoped ctx available at the call site in Run.
+//
+// v1.3 scope note (D-18 in 15-CONTEXT.md): inherit == all. Phase 16
+// (POLICY-05) replaces this with a business-level tool_approvals map that
+// will serve as the actual "inherited" baseline; until then, the baseline is
+// "every registered tool for the active integrations".
+func (r *Registry) AvailableForWhitelist(
+	ctx context.Context,
+	activeIntegrations []string,
+	mode domain.WhitelistMode,
+	allowed []string,
+) []llm.ToolDefinition {
+	base := r.Available(activeIntegrations)
+	switch mode {
+	case "", domain.WhitelistModeInherit, domain.WhitelistModeAll:
+		return base
+	case domain.WhitelistModeNone:
+		return []llm.ToolDefinition{}
+	case domain.WhitelistModeExplicit:
+		known := make(map[string]bool, len(r.tools))
+		for name := range r.tools {
+			known[name] = true
+		}
+		allowSet := make(map[string]bool, len(allowed))
+		for _, name := range allowed {
+			if !known[name] {
+				slog.WarnContext(ctx, "project whitelist contains unknown tool",
+					"tool", name,
+				)
+				continue
+			}
+			allowSet[name] = true
+		}
+		result := make([]llm.ToolDefinition, 0, len(base))
+		for _, def := range base {
+			if allowSet[def.Function.Name] {
+				result = append(result, def)
+			}
+		}
+		return result
+	default:
+		slog.WarnContext(ctx, "unknown whitelist mode, falling back to inherit",
+			"mode", string(mode),
+		)
+		return base
+	}
 }
 
 // Execute runs the registered executor for the named tool.
