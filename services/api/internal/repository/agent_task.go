@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 type agentTaskRepository struct {
@@ -84,7 +85,22 @@ func (r *agentTaskRepository) GetByID(ctx context.Context, businessID, taskID st
 		}
 		return nil, fmt.Errorf("get agent task: %w", err)
 	}
+	backfillDisplayName(&task)
 	return &task, nil
+}
+
+// backfillDisplayName populates DisplayName on read for legacy documents
+// that were written before the display_name field existed. Read-only —
+// we never write the field back here to keep list queries cheap.
+func backfillDisplayName(t *domain.AgentTask) {
+	if t.DisplayName != "" {
+		return
+	}
+	full := t.Type
+	if t.Platform != "" && t.Type != "" {
+		full = t.Platform + "__" + t.Type
+	}
+	t.DisplayName = tools.DisplayName(full)
 }
 
 func (r *agentTaskRepository) ListByBusinessID(ctx context.Context, businessID string, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
@@ -119,6 +135,9 @@ func (r *agentTaskRepository) ListByBusinessID(ctx context.Context, businessID s
 
 	if err := cursor.All(ctx, &tasks); err != nil {
 		return tasks, 0, fmt.Errorf("decode agent tasks: %w", err)
+	}
+	for i := range tasks {
+		backfillDisplayName(&tasks[i])
 	}
 
 	return tasks, int(total), nil

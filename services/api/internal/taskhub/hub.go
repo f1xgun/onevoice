@@ -44,7 +44,7 @@ func New() *Hub {
 // Subscribe registers a new subscriber for the given businessID.
 // The caller reads from the returned channel until unsub is called.
 // After unsub, the channel is closed and must not be read from again.
-func (h *Hub) Subscribe(businessID string) (<-chan Event, func()) {
+func (h *Hub) Subscribe(businessID string) (events <-chan Event, unsub func()) {
 	sub := &subscription{ch: make(chan Event, subscriberBuffer)}
 
 	h.mu.Lock()
@@ -54,7 +54,8 @@ func (h *Hub) Subscribe(businessID string) (<-chan Event, func()) {
 	h.subs[businessID][sub] = struct{}{}
 	h.mu.Unlock()
 
-	unsub := func() {
+	events = sub.ch
+	unsub = func() {
 		h.mu.Lock()
 		if set, ok := h.subs[businessID]; ok {
 			if _, exists := set[sub]; exists {
@@ -67,7 +68,7 @@ func (h *Hub) Subscribe(businessID string) (<-chan Event, func()) {
 		}
 		h.mu.Unlock()
 	}
-	return sub.ch, unsub
+	return events, unsub
 }
 
 // Publish sends an event to all subscribers of businessID. The call never
