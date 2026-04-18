@@ -46,7 +46,7 @@ func TestNewAuthHandler_NilService_ReturnsError(t *testing.T) {
 }
 
 func TestNewBusinessHandler_NilService_ReturnsError(t *testing.T) {
-	h, err := NewBusinessHandler(nil, nil, "")
+	h, err := NewBusinessHandler(nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

@@ -48,8 +48,14 @@ type Config struct {
 	// Review sync
 	ReviewSyncInterval int // minutes, 0 = disabled
 
-	// File uploads
-	UploadDir string
+	// Object storage (MinIO / S3) for user uploads
+	S3Endpoint        string
+	S3AccessKey       string
+	S3SecretKey       string
+	S3Bucket          string
+	S3UseSSL          bool
+	S3PublicURLPrefix string // prefix used in client-facing URLs, e.g. "/media"
+
 	PublicURL string
 
 	// Shutdown
@@ -93,9 +99,16 @@ func Load() (*Config, error) {
 		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", "http://localhost:8090"),
 		NATSUrl:            os.Getenv("NATS_URL"),
 		ReviewSyncInterval: getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30),
-		UploadDir:          getEnv("UPLOAD_DIR", "./uploads"),
-		PublicURL:          getEnv("PUBLIC_URL", "http://localhost:8080"),
-		ShutdownTimeout:    shutdownTimeout,
+
+		S3Endpoint:        getEnv("S3_ENDPOINT", "minio:9000"),
+		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),
+		S3SecretKey:       getEnv("S3_SECRET_KEY", "minioadmin"),
+		S3Bucket:          getEnv("S3_BUCKET", "onevoice"),
+		S3UseSSL:          getEnv("S3_USE_SSL", "false") == "true",
+		S3PublicURLPrefix: getEnv("S3_PUBLIC_URL_PREFIX", "/media"),
+
+		PublicURL:       getEnv("PUBLIC_URL", "http://localhost:8080"),
+		ShutdownTimeout: shutdownTimeout,
 	}
 
 	// Validate required fields
