@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,6 +57,9 @@ type RunRequest struct {
 // Options configures the Orchestrator.
 type Options struct {
 	MaxIterations int
+	// ToolExecTimeout bounds how long a single tool call may block.
+	// Zero means no per-tool timeout — the parent context governs.
+	ToolExecTimeout time.Duration
 }
 
 // Orchestrator runs the LLM agent loop.
@@ -130,71 +134,8 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 				ToolCalls: resp.ToolCalls,
 			})
 
-			// Execute each tool call
-			for _, tc := range resp.ToolCalls {
-				var args map[string]interface{}
-				if tc.Function.Arguments != "" {
-					if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-						args = map[string]interface{}{"raw": tc.Function.Arguments}
-					}
-				}
-
-				displayName := o.tools.DisplayName(tc.Function.Name)
-
-				// Emit tool call event
-				select {
-				case ch <- Event{Type: EventToolCall, ToolCallID: tc.ID, ToolName: tc.Function.Name, ToolDisplayName: displayName, ToolArgs: args}:
-				case <-ctx.Done():
-					return
-				}
-
-				// Execute the tool
-				toolStart := time.Now()
-				result, execErr := o.tools.Execute(ctx, tc.Function.Name, args)
-				if execErr != nil {
-					result = map[string]interface{}{"error": execErr.Error(), "tool_name": tc.Function.Name}
-				}
-
-				// Record tool dispatch metrics
-				toolStatus := "success"
-				if execErr != nil {
-					toolStatus = "error"
-				}
-				toolAgent := tc.Function.Name
-				if sep := strings.Index(tc.Function.Name, "__"); sep != -1 {
-					toolAgent = tc.Function.Name[:sep]
-				}
-				metrics.RecordToolDispatch(tc.Function.Name, toolAgent, toolStatus, time.Since(toolStart))
-
-				// Emit tool result event for the frontend
-				toolResultEv := Event{
-					Type:            EventToolResult,
-					ToolCallID:      tc.ID,
-					ToolName:        tc.Function.Name,
-					ToolDisplayName: displayName,
-					ToolResult:      result,
-				}
-				if execErr != nil {
-					toolResultEv.ToolError = execErr.Error()
-				}
-				select {
-				case ch <- toolResultEv:
-				case <-ctx.Done():
-					return
-				}
-
-				// Serialize result; fallback to error JSON if marshal fails
-				resultJSON, marshalErr := json.Marshal(result)
-				if marshalErr != nil {
-					resultJSON = []byte(fmt.Sprintf(`{"error":"marshal failed: %s","tool_name":%q}`, marshalErr.Error(), tc.Function.Name))
-				}
-
-				// Append tool result message
-				messages = append(messages, llm.Message{
-					Role:       "tool",
-					Content:    string(resultJSON),
-					ToolCallID: tc.ID,
-				})
+			if !o.dispatchToolCalls(ctx, ch, resp.ToolCalls, &messages) {
+				return
 			}
 		}
 
@@ -206,4 +147,127 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 	}()
 
 	return ch, nil
+}
+
+// toolOutcome captures the result of a single tool invocation in a parallel batch.
+type toolOutcome struct {
+	tc      llm.ToolCall
+	args    map[string]interface{}
+	result  interface{}
+	execErr error
+}
+
+// dispatchToolCalls executes a batch of tool calls from a single LLM response
+// concurrently, but preserves the original order for emitted tool_result events
+// and for tool messages appended to the history. Preserving order is required
+// so that the next LLM iteration sees role:tool messages whose ToolCallID
+// matches assistant.tool_calls[*].id (OpenAI and Anthropic enforce this).
+//
+// Returns false if the context was canceled before all events could be emitted.
+func (o *Orchestrator) dispatchToolCalls(
+	ctx context.Context,
+	ch chan<- Event,
+	toolCalls []llm.ToolCall,
+	messages *[]llm.Message,
+) bool {
+	outcomes := make([]toolOutcome, len(toolCalls))
+	for i, tc := range toolCalls {
+		args := parseToolArgs(tc.Function.Arguments)
+		outcomes[i] = toolOutcome{tc: tc, args: args}
+
+		select {
+		case ch <- Event{
+			Type:            EventToolCall,
+			ToolCallID:      tc.ID,
+			ToolName:        tc.Function.Name,
+			ToolDisplayName: o.tools.DisplayName(tc.Function.Name),
+			ToolArgs:        args,
+		}:
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	var wg sync.WaitGroup
+	for i := range outcomes {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			outcomes[i].result, outcomes[i].execErr = o.executeOne(ctx, outcomes[i].tc.Function.Name, outcomes[i].args)
+		}(i)
+	}
+	wg.Wait()
+
+	for _, out := range outcomes {
+		result := out.result
+		if out.execErr != nil {
+			result = map[string]interface{}{"error": out.execErr.Error(), "tool_name": out.tc.Function.Name}
+		}
+
+		ev := Event{
+			Type:            EventToolResult,
+			ToolCallID:      out.tc.ID,
+			ToolName:        out.tc.Function.Name,
+			ToolDisplayName: o.tools.DisplayName(out.tc.Function.Name),
+			ToolResult:      result,
+		}
+		if out.execErr != nil {
+			ev.ToolError = out.execErr.Error()
+		}
+		select {
+		case ch <- ev:
+		case <-ctx.Done():
+			return false
+		}
+
+		resultJSON, marshalErr := json.Marshal(result)
+		if marshalErr != nil {
+			resultJSON = []byte(fmt.Sprintf(`{"error":"marshal failed: %s","tool_name":%q}`, marshalErr.Error(), out.tc.Function.Name))
+		}
+		*messages = append(*messages, llm.Message{
+			Role:       "tool",
+			Content:    string(resultJSON),
+			ToolCallID: out.tc.ID,
+		})
+	}
+	return true
+}
+
+// executeOne runs a single tool, optionally bounded by ToolExecTimeout, and
+// records metrics. Safe for concurrent calls.
+func (o *Orchestrator) executeOne(ctx context.Context, name string, args map[string]interface{}) (interface{}, error) {
+	callCtx := ctx
+	var cancel context.CancelFunc
+	if o.options.ToolExecTimeout > 0 {
+		callCtx, cancel = context.WithTimeout(ctx, o.options.ToolExecTimeout)
+		defer cancel()
+	}
+
+	start := time.Now()
+	result, err := o.tools.Execute(callCtx, name, args)
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	agent := name
+	if sep := strings.Index(name, "__"); sep != -1 {
+		agent = name[:sep]
+	}
+	metrics.RecordToolDispatch(name, agent, status, time.Since(start))
+
+	return result, err
+}
+
+// parseToolArgs unmarshals JSON tool arguments. On failure it falls back to a
+// single "raw" field so the tool executor still receives the original payload.
+func parseToolArgs(raw string) map[string]interface{} {
+	if raw == "" {
+		return map[string]interface{}{}
+	}
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		return map[string]interface{}{"raw": raw}
+	}
+	return args
 }
