@@ -110,21 +110,95 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 		"tools ran serially: elapsed=%s, expected <%s (parallel) not ~%s (serial)",
 		elapsed, maxParallel, toolCount*toolDelay)
 
-	// Tool_call events carry the LLM-issued tool_call_id.
+	// Tool_call events are emitted before any goroutines start, so their
+	// order matches the original tool_calls slice.
 	assert.Equal(t, "call_yb", toolCallEvents[0].ToolCallID)
 	assert.Equal(t, "call_tg", toolCallEvents[1].ToolCallID)
 	assert.Equal(t, "call_vk", toolCallEvents[2].ToolCallID)
 
-	// tool_result events must be in the ORIGINAL order — OpenAI/Anthropic
-	// require role:tool messages to match the original assistant.tool_calls
-	// order for the next iteration.
-	assert.Equal(t, "call_yb", toolResultEvents[0].ToolCallID)
-	assert.Equal(t, "call_tg", toolResultEvents[1].ToolCallID)
-	assert.Equal(t, "call_vk", toolResultEvents[2].ToolCallID)
-
+	// tool_result events fire as each tool finishes — completion order, not
+	// original order. Assert set membership instead. OpenAI/Anthropic
+	// correlation is preserved via the role:tool messages appended after
+	// wg.Wait(), not via SSE event order.
+	resultIDs := map[string]bool{}
 	for _, ev := range toolResultEvents {
+		resultIDs[ev.ToolCallID] = true
 		assert.Empty(t, ev.ToolError, "no tool errors expected")
 	}
+	assert.True(t, resultIDs["call_yb"])
+	assert.True(t, resultIDs["call_tg"])
+	assert.True(t, resultIDs["call_vk"])
+}
+
+// TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish asserts that each tool's
+// tool_result arrives on the SSE channel as soon as THAT tool finishes — not
+// after the slowest one in the batch completes. Without this, every task on
+// the UI shows the batch's max duration (the symptom the user caught in prod).
+func TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish(t *testing.T) {
+	args, _ := json.Marshal(map[string]interface{}{})
+	const fastDelay = 100 * time.Millisecond
+	const slowDelay = 600 * time.Millisecond
+
+	stub := &safeStubLLM{responses: []*llm.ChatResponse{
+		{
+			FinishReason: "tool_calls",
+			ToolCalls: []llm.ToolCall{
+				{ID: "call_slow", Type: "function", Function: llm.FunctionCall{Name: "slow_tool", Arguments: string(args)}},
+				{ID: "call_fast", Type: "function", Function: llm.FunctionCall{Name: "fast_tool", Arguments: string(args)}},
+			},
+		},
+		{Content: "ok", FinishReason: "stop"},
+	}}
+
+	reg := tools.NewRegistry()
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "slow_tool"}}, "",
+		tools.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+			select {
+			case <-time.After(slowDelay):
+				return map[string]interface{}{"ok": true}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}))
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "fast_tool"}}, "",
+		tools.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+			select {
+			case <-time.After(fastDelay):
+				return map[string]interface{}{"ok": true}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}))
+
+	orch := orchestrator.New(stub, reg)
+
+	start := time.Now()
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		UserID:          uuid.New(),
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "go"}},
+	})
+	require.NoError(t, err)
+
+	resultArrivedAt := make(map[string]time.Duration)
+	for e := range events {
+		if e.Type == orchestrator.EventToolResult {
+			resultArrivedAt[e.ToolCallID] = time.Since(start)
+		}
+	}
+
+	require.Len(t, resultArrivedAt, 2)
+
+	// Fast result must arrive well before the slow one — proves per-tool
+	// emission, not batched-after-wg.Wait().
+	gap := resultArrivedAt["call_slow"] - resultArrivedAt["call_fast"]
+	assert.Greaterf(t, gap, (slowDelay-fastDelay)/2,
+		"tool_results batched together: fast=%s slow=%s gap=%s (expected >%s)",
+		resultArrivedAt["call_fast"], resultArrivedAt["call_slow"], gap, (slowDelay-fastDelay)/2)
+
+	// Absolute sanity: fast must be close to fastDelay, not slowDelay.
+	assert.Less(t, resultArrivedAt["call_fast"], slowDelay,
+		"fast tool result arrived as late as the slow tool: %s", resultArrivedAt["call_fast"])
 }
 
 // TestRun_ParallelToolCalls_OneFailsOthersSucceed asserts that errgroup-style
@@ -232,12 +306,20 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 
 	require.Len(t, calls, 2)
 	require.Len(t, results, 2)
+
+	// tool_call events are emitted in original order (before goroutines).
 	assert.Equal(t, "call_a", calls[0].ToolCallID)
 	assert.Equal(t, "call_b", calls[1].ToolCallID)
-	assert.Equal(t, "call_a", results[0].ToolCallID)
-	assert.Equal(t, "call_b", results[1].ToolCallID)
 	assert.Equal(t, "первый", calls[0].ToolArgs["text"])
 	assert.Equal(t, "второй", calls[1].ToolArgs["text"])
+
+	// tool_result events may arrive in any completion order — correlate by ID.
+	resultByID := map[string]orchestrator.Event{}
+	for _, r := range results {
+		resultByID[r.ToolCallID] = r
+	}
+	assert.Contains(t, resultByID, "call_a")
+	assert.Contains(t, resultByID, "call_b")
 }
 
 // TestRun_PerToolTimeout_BoundsSingleTool asserts that when ToolExecTimeout is
