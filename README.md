@@ -19,7 +19,8 @@ Frontend (Next.js :3000)
                            └── Tool dispatch via NATS
                                 ├── Telegram Agent (Bot API)
                                 ├── VK Agent (VK API)
-                                └── Yandex.Business Agent (Playwright RPA)
+                                ├── Yandex.Business Agent (Playwright RPA)
+                                └── Google Business Agent (unverified — see services/agent-google-business/)
 ```
 
 ## Tech Stack
@@ -35,15 +36,16 @@ Frontend (Next.js :3000)
 ## Project Structure
 
 ```
-pkg/                          # Shared Go packages (domain, auth, LLM router, A2A)
+pkg/                          # Shared Go packages (domain, auth, LLM router, A2A, health, metrics, tokenclient)
 services/
   api/                        # REST API service (:8080)
   orchestrator/               # LLM agent loop, tool dispatch (:8090)
   frontend/                   # Next.js dashboard (:3000)
   agent-telegram/             # Telegram Bot API agent
   agent-vk/                   # VK API agent
-  agent-yandex-business/      # Yandex.Business RPA agent
-migrations/                   # PostgreSQL migrations
+  agent-yandex-business/      # Yandex.Business RPA agent (Playwright)
+  agent-google-business/      # Google Business Profile agent (written, not yet verified)
+migrations/                   # PostgreSQL + MongoDB migrations
 test/integration/             # End-to-end integration tests
 docs/                         # Architecture and coding guidelines
 ```
@@ -54,7 +56,7 @@ docs/                         # Architecture and coding guidelines
 
 - Docker and Docker Compose
 - Go 1.24+
-- Node.js 18+
+- Node.js 18+ and **pnpm**
 
 ### Run with Docker Compose
 
@@ -74,15 +76,19 @@ Services will be available at:
 ### Local Development
 
 ```bash
-# Install dependencies
-cd services/frontend && npm install && cd ../..
+# Install frontend dependencies
+cd services/frontend && pnpm install && cd ../..
 
 # Run Go services (requires infrastructure running via docker-compose)
-go run services/api/cmd/main.go
-go run services/orchestrator/cmd/main.go
+go run ./services/api/cmd
+go run ./services/orchestrator/cmd
+go run ./services/agent-telegram/cmd
+go run ./services/agent-vk/cmd
+go run ./services/agent-yandex-business/cmd
+# go run ./services/agent-google-business/cmd  # written, not yet verified
 
 # Run frontend
-cd services/frontend && npm run dev
+cd services/frontend && pnpm dev
 ```
 
 ## Development Commands
