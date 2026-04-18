@@ -2,18 +2,21 @@
 
 Listens on NATS subject `tasks.yandex_business`, automates Yandex.Business via Playwright browser automation (RPA).
 
+**Status:** verified working end-to-end (the one RPA agent we've actually tested against a live Yandex.Business instance).
+
 ## Architecture
 
 ```
 cmd/main.go                  → wiring (NATS, Playwright browser, A2A handler)
 internal/
-├── agent/handler.go         → A2A handler: dispatches tool calls to Yandex client
+├── agent/handler.go         → A2A handler: dispatches tool calls to BusinessBrowser
 └── yandex/
-    ├── browser.go           → Playwright browser pool, withPage, withRetry, humanDelay
-    ├── get_reviews.go       → Fetch reviews from Yandex.Business
-    ├── reply_review.go      → Reply to a review
-    ├── update_hours.go      → Update business hours
-    └── update_info.go       → Update business info
+    ├── browser.go           → Playwright browser lifecycle
+    ├── pool.go              → Page pool + all tool implementations
+                              (GetReviews, ReplyReview, GetInfo, UpdateInfo,
+                               UpdateHours, CreatePost, UploadPhoto)
+    ├── canary.go            → Session-validity check before actions
+    └── *_test.go            → Unit tests
 ```
 
 ## Environment Variables
@@ -21,13 +24,11 @@ internal/
 - `YANDEX_COOKIES_JSON` (required) — session cookies as JSON array
 - `NATS_URL` — NATS server (default: localhost:4222)
 
-## Tool Names
+## Tools
 
-All tools prefixed with `yandex_business__`:
-- `yandex_business__get_reviews`
-- `yandex_business__reply_review`
-- `yandex_business__update_hours`
-- `yandex_business__update_info`
+Tool dispatch lives in `internal/agent/handler.go` (switch on `req.Tool`); implementations are methods on `BusinessBrowser` in `internal/yandex/pool.go`; tool *registration* with descriptions is in `services/orchestrator/cmd/main.go` (search for `"yandex_business__"`). Read those for the current tool set.
+
+All tool names are prefixed with `yandex_business__`.
 
 ## RPA Patterns
 
@@ -35,8 +36,10 @@ This agent uses browser automation, not API calls. Key patterns:
 
 - **`withRetry`** — retry with exponential backoff + canary check between attempts
 - **`withPage`** — acquire page from pool, execute action, release
-- **`humanDelay`** — random 500-1500ms delay to avoid bot detection
-- **Canary check** — verify session is still valid before retrying
+- **`humanDelay`** — random 500–1500ms delay to avoid bot detection
+- **Canary check** (`canary.go`) — verify the session is still logged in before running a tool; fail fast if cookies expired
+- **Screenshot-on-error** — diagnostics written to `rpa-screenshots/` on failures
+- **Resilient selectors** — CSS/XPath with fallback strategy, since the DOM changes
 
 ## Build & Test
 

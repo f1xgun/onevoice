@@ -16,17 +16,20 @@ internal/
 - `VK_ACCESS_TOKEN` (required) — VK API access token
 - `NATS_URL` — NATS server (default: localhost:4222)
 
-## Tool Names
+## Tools
 
-All tools prefixed with `vk__`:
-- `vk__create_wall_post`
-- `vk__get_wall_posts`
-- `vk__delete_wall_post`
-- `vk__get_community_info`
+Tool dispatch lives in `internal/agent/handler.go` (switch on `req.Tool`); tool *registration* with descriptions for the LLM is in `services/orchestrator/cmd/main.go` (search for `"vk__"`). Read both for the current tool set — do not trust enumerations in prose docs.
+
+All tool names are prefixed with `vk__`.
 
 ## A2A Pattern
 
-Same as Telegram agent — NATS subscription, A2A protocol, tool dispatch.
+Same shape as all other platform agents:
+
+1. NATS subscription on `tasks.vk`
+2. Receive `a2a.ToolRequest` with `{Tool, BusinessID, Args}`
+3. Dispatch via switch in `handler.go`
+4. Return `a2a.ToolResponse` with result or error
 
 ## Build & Test
 
