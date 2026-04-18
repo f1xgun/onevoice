@@ -629,17 +629,29 @@ type connectTelegramRequest struct {
 	TelegramUserID string `json:"telegram_user_id"`
 }
 
+// telegramChatInfo holds the fields we care about from Telegram's getChat
+// response: title, and — for channels — the linked discussion group's chat
+// id. A non-zero LinkedChatID means subscribers' comments on channel posts
+// are routed into that group, and the bot needs to be a member of that
+// group (admin, ideally) to see them via getUpdates.
+type telegramChatInfo struct {
+	Title        string
+	LinkedChatID int64
+}
+
 // telegramGetChatResponse represents the Telegram Bot API getChat response.
 type telegramGetChatResponse struct {
 	OK     bool `json:"ok"`
 	Result struct {
-		Title string `json:"title"`
+		Title        string `json:"title"`
+		LinkedChatID int64  `json:"linked_chat_id"`
 	} `json:"result"`
 	Description string `json:"description"`
 }
 
-// telegramGetChat calls the Telegram Bot API to validate bot access and fetch channel title.
-func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (string, error) {
+// telegramGetChat calls the Telegram Bot API to validate bot access and
+// fetch channel title + linked discussion chat id.
+func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (telegramChatInfo, error) {
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getChat?chat_id=%s",
 		botToken, url.QueryEscape(chatID))
 	if h.cfg.telegramAPIBaseURL != "" {
@@ -649,25 +661,44 @@ func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (string, error) 
 
 	resp, err := h.httpClient.Get(apiURL)
 	if err != nil {
-		return "", fmt.Errorf("telegram API request failed: %w", err)
+		return telegramChatInfo{}, fmt.Errorf("telegram API request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("read response body: %w", err)
+		return telegramChatInfo{}, fmt.Errorf("read response body: %w", err)
 	}
 
 	var chatResp telegramGetChatResponse
 	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return "", fmt.Errorf("parse telegram response: %w", err)
+		return telegramChatInfo{}, fmt.Errorf("parse telegram response: %w", err)
 	}
 
 	if !chatResp.OK {
-		return "", fmt.Errorf("telegram API error: %s", chatResp.Description)
+		return telegramChatInfo{}, fmt.Errorf("telegram API error: %s", chatResp.Description)
 	}
 
-	return chatResp.Result.Title, nil
+	return telegramChatInfo{
+		Title:        chatResp.Result.Title,
+		LinkedChatID: chatResp.Result.LinkedChatID,
+	}, nil
+}
+
+// probeTelegramLinkedGroup determines the linked-group membership status of
+// the bot for the given channel. It returns one of: "no_linked_group" (the
+// channel has no discussion group configured), "ok" (linked group exists
+// and the bot can read it — implied by getChat succeeding), or
+// "bot_not_member" (linked group exists but the bot is not in it, so
+// comment collection will be empty).
+func (h *OAuthHandler) probeTelegramLinkedGroup(botToken string, linkedChatID int64) string {
+	if linkedChatID == 0 {
+		return "no_linked_group"
+	}
+	if _, err := h.telegramGetChat(botToken, strconv.FormatInt(linkedChatID, 10)); err != nil {
+		return "bot_not_member"
+	}
+	return "ok"
 }
 
 // ConnectTelegram stores a Telegram channel integration using the system bot token (JWT required).
@@ -700,16 +731,22 @@ func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate bot access and fetch channel title
-	channelTitle, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelID)
+	// Validate bot access and fetch channel title + linked discussion chat
+	channelInfo, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelID)
 	if err != nil {
 		slog.Warn("telegram getChat failed", "error", err, "channel_id", req.ChannelID)
 		writeJSONError(w, http.StatusBadRequest, "bot does not have access to this channel")
 		return
 	}
 
+	linkedStatus := h.probeTelegramLinkedGroup(h.cfg.TelegramBotToken, channelInfo.LinkedChatID)
+
 	metadata := map[string]interface{}{
-		"channel_title": channelTitle,
+		"channel_title":       channelInfo.Title,
+		"linked_group_status": linkedStatus,
+	}
+	if channelInfo.LinkedChatID != 0 {
+		metadata["linked_chat_id"] = channelInfo.LinkedChatID
 	}
 	if req.TelegramUserID != "" {
 		metadata["telegram_user_id"] = req.TelegramUserID
