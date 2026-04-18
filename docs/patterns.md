@@ -1,6 +1,6 @@
 # Approved Code Patterns
 
-Extracted from `CODING_RULES.md`. Each pattern is used consistently across the codebase.
+Concrete good/bad examples from across the codebase. For the rule set they implement, see the topic docs: [go-style.md](go-style.md), [frontend-style.md](frontend-style.md), [api-design.md](api-design.md), [security.md](security.md).
 
 ## Go Backend
 
