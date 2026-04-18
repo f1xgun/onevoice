@@ -16,20 +16,22 @@ internal/
 - `TELEGRAM_BOT_TOKEN` (required) — Telegram Bot API token
 - `NATS_URL` — NATS server (default: localhost:4222)
 
-## Tool Names
+## Tools
 
-All tools prefixed with `telegram__`:
-- `telegram__send_channel_post`
-- `telegram__get_channel_posts`
-- `telegram__delete_channel_post`
-- `telegram__get_chat_info`
+Tool dispatch lives in `internal/agent/handler.go` (switch on `req.Tool`); tool *registration* with descriptions for the LLM is in `services/orchestrator/cmd/main.go` (search for `"telegram__"`). Read both for the current tool set — do not trust enumerations in prose docs, they drift.
+
+All tool names are prefixed with `telegram__`.
+
+## Channel ID Resolution Pattern
+
+`getSender` returns `(Sender, resolvedExternalID, error)`. Handlers: if the LLM-supplied `channel_id` fails `strconv.ParseInt`, fall back to `resolvedExternalID` from the integration. This covers empty, business-name, and hallucinated channel IDs.
 
 ## A2A Pattern
 
 1. NATS subscription on `tasks.telegram`
-2. Receive A2A TaskRequest with tool name + arguments
-3. Dispatch to appropriate Telegram client method
-4. Return A2A TaskResponse with result or error
+2. Receive `a2a.ToolRequest` with `{Tool, BusinessID, Args}`
+3. Dispatch to Telegram client method via switch in `handler.go`
+4. Return `a2a.ToolResponse` with result or error (errors auto-wrapped by base agent)
 
 ## Build & Test
 
