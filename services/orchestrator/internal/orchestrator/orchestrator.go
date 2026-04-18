@@ -30,6 +30,7 @@ const (
 type Event struct {
 	Type       EventType
 	Content    string
+	ToolCallID string
 	ToolName   string
 	ToolArgs   map[string]interface{}
 	ToolResult interface{}
@@ -139,7 +140,7 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 
 				// Emit tool call event
 				select {
-				case ch <- Event{Type: EventToolCall, ToolName: tc.Function.Name, ToolArgs: args}:
+				case ch <- Event{Type: EventToolCall, ToolCallID: tc.ID, ToolName: tc.Function.Name, ToolArgs: args}:
 				case <-ctx.Done():
 					return
 				}
@@ -165,6 +166,7 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 				// Emit tool result event for the frontend
 				toolResultEv := Event{
 					Type:       EventToolResult,
+					ToolCallID: tc.ID,
 					ToolName:   tc.Function.Name,
 					ToolResult: result,
 				}
