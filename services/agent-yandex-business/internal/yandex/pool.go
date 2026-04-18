@@ -793,7 +793,7 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 					return fmt.Errorf("type %q: %w", key, err)
 				}
 				// Blur to trigger validation
-				page.Locator("h1, .InfoBlockCarcass, body").First().Click(playwright.LocatorClickOptions{Timeout: playwright.Float(2000)})
+				_ = page.Locator("h1, .InfoBlockCarcass, body").First().Click(playwright.LocatorClickOptions{Timeout: playwright.Float(2000)})
 				time.Sleep(1 * time.Second)
 				humanDelay()
 			}
@@ -808,36 +808,6 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 			return nil
 		})
 	})
-}
-
-// hoursSchedule represents the parsed hours JSON.
-type hoursSchedule struct {
-	Monday    *dayHours `json:"monday"`
-	Tuesday   *dayHours `json:"tuesday"`
-	Wednesday *dayHours `json:"wednesday"`
-	Thursday  *dayHours `json:"thursday"`
-	Friday    *dayHours `json:"friday"`
-	Saturday  *dayHours `json:"saturday"`
-	Sunday    *dayHours `json:"sunday"`
-}
-
-type dayHours struct {
-	Open  string `json:"open"`
-	Close string `json:"close"`
-}
-
-// orderedDays maps schedule fields to their 0-indexed row position on the form.
-var orderedDays = []struct {
-	name string
-	get  func(s *hoursSchedule) *dayHours
-}{
-	{"monday", func(s *hoursSchedule) *dayHours { return s.Monday }},
-	{"tuesday", func(s *hoursSchedule) *dayHours { return s.Tuesday }},
-	{"wednesday", func(s *hoursSchedule) *dayHours { return s.Wednesday }},
-	{"thursday", func(s *hoursSchedule) *dayHours { return s.Thursday }},
-	{"friday", func(s *hoursSchedule) *dayHours { return s.Friday }},
-	{"saturday", func(s *hoursSchedule) *dayHours { return s.Saturday }},
-	{"sunday", func(s *hoursSchedule) *dayHours { return s.Sunday }},
 }
 
 // UpdateHours updates business operating hours in Yandex.Business via RPA.
@@ -876,7 +846,7 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 				return fmt.Errorf("type hours: %w", err)
 			}
 			// Blur to trigger Yandex auto-format and show save button
-			page.Locator("h1, .InfoWorkIntervals, body").First().Click(playwright.LocatorClickOptions{
+			_ = page.Locator("h1, .InfoWorkIntervals, body").First().Click(playwright.LocatorClickOptions{
 				Timeout: playwright.Float(3000),
 			})
 			time.Sleep(2 * time.Second)
@@ -1008,96 +978,6 @@ func formatHoursForYandex(hoursJSON string) string {
 	return strings.Join(parts, ", ")
 }
 
-// setDayHours sets the hours for a specific day row (0-indexed) in the hours form.
-// If hours is nil, the day is marked as closed.
-func setDayHours(page playwright.Page, dayIndex int, dayName string, hours *dayHours) error {
-	// Locate the day row by index — rows are typically ordered Mon-Sun
-	rowSelectors := []string{
-		fmt.Sprintf("[data-testid='day-row-%s']", dayName),
-		fmt.Sprintf("[data-testid='day-row-%d']", dayIndex),
-		fmt.Sprintf("[class*='DayRow']:nth-child(%d)", dayIndex+1),
-		fmt.Sprintf("[class*='day-row']:nth-child(%d)", dayIndex+1),
-	}
-
-	var row playwright.Locator
-	for _, sel := range rowSelectors {
-		loc := page.Locator(sel).First()
-		if err := loc.WaitFor(playwright.LocatorWaitForOptions{
-			Timeout: playwright.Float(3000),
-		}); err == nil {
-			row = loc
-			break
-		}
-	}
-	if row == nil {
-		return fmt.Errorf("day row not found for %s (index %d)", dayName, dayIndex)
-	}
-
-	if hours == nil {
-		// Mark day as closed — toggle the closed checkbox/switch
-		closedSelectors := []string{
-			"[data-testid='day-closed']",
-			"input[type='checkbox']",
-			"[class*='Closed'] input",
-			"[class*='toggle']",
-		}
-		for _, sel := range closedSelectors {
-			toggle := row.Locator(sel).First()
-			if err := toggle.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(3000),
-			}); err == nil {
-				// Check if already in "closed" state; if not, click to toggle
-				checked, _ := toggle.IsChecked()
-				if !checked {
-					_ = toggle.Click()
-				}
-				return nil
-			}
-		}
-		return fmt.Errorf("closed toggle not found for %s", dayName)
-	}
-
-	// Fill open time
-	openSelectors := []string{
-		"[data-testid='open-time']",
-		"input[name*='open']",
-		"[class*='OpenTime'] input",
-	}
-	if err := fillTimeInput(row, openSelectors, hours.Open); err != nil {
-		return fmt.Errorf("set open time for %s: %w", dayName, err)
-	}
-
-	// Fill close time
-	closeSelectors := []string{
-		"[data-testid='close-time']",
-		"input[name*='close']",
-		"[class*='CloseTime'] input",
-	}
-	if err := fillTimeInput(row, closeSelectors, hours.Close); err != nil {
-		return fmt.Errorf("set close time for %s: %w", dayName, err)
-	}
-
-	return nil
-}
-
-// fillTimeInput fills a time input field using fallback selectors within a parent locator.
-func fillTimeInput(parent playwright.Locator, selectors []string, value string) error {
-	for _, sel := range selectors {
-		loc := parent.Locator(sel).First()
-		if err := loc.WaitFor(playwright.LocatorWaitForOptions{
-			Timeout: playwright.Float(3000),
-			State:   playwright.WaitForSelectorStateVisible,
-		}); err == nil {
-			if err := loc.Fill(""); err == nil {
-				if err := loc.Fill(value); err == nil {
-					return nil
-				}
-			}
-		}
-	}
-	return fmt.Errorf("time input not found")
-}
-
 // CreatePost publishes a text post on Yandex.Business via RPA.
 // Uses the PostAddForm on the /p/edit/posts/ page.
 func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
@@ -1207,7 +1087,7 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 				return fmt.Errorf("download photo from %s: %w", photoURL, err)
 			}
 			body, err := io.ReadAll(httpResp.Body)
-			httpResp.Body.Close()
+			_ = httpResp.Body.Close()
 			if err != nil {
 				return fmt.Errorf("read photo body: %w", err)
 			}
@@ -1216,10 +1096,10 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 			}
 
 			tmpFile := fmt.Sprintf("/tmp/upload_%d.jpg", time.Now().UnixMilli())
-			if err := os.WriteFile(tmpFile, body, 0644); err != nil {
+			if err := os.WriteFile(tmpFile, body, 0o600); err != nil {
 				return fmt.Errorf("write temp file: %w", err)
 			}
-			defer os.Remove(tmpFile)
+			defer func() { _ = os.Remove(tmpFile) }()
 
 			// Set file on the hidden input
 			fileInput := page.Locator(inputSelector).First()
@@ -1238,7 +1118,7 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 				Timeout: playwright.Float(5000),
 				State:   playwright.WaitForSelectorStateVisible,
 			}); err == nil {
-				cropSaveBtn.Click()
+				_ = cropSaveBtn.Click()
 				time.Sleep(3 * time.Second)
 				debugScreenshot(page, "photo_after_crop_save")
 			}

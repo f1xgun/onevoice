@@ -9,8 +9,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/playwright-community/playwright-go"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
 )
 
 // debugScreenshots is true when RPA_DEBUG_SCREENSHOTS env is set.

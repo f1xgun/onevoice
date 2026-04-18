@@ -43,7 +43,7 @@ func checkSession(page playwright.Page, expectedURLPrefix string) error {
 }
 
 // checkSessionAndEvict runs the canary check and evicts the business context from the pool on session expiry.
-func checkSessionAndEvict(page playwright.Page, expectedURLPrefix string, pool ContextEvictor, businessID string) error { //nolint:unparam // expectedURLPrefix is parameterized for testability
+func checkSessionAndEvict(page playwright.Page, expectedURLPrefix string, pool ContextEvictor, businessID string) error {
 	err := checkSession(page, expectedURLPrefix)
 	if err != nil && errors.Is(err, ErrSessionExpired) && pool != nil {
 		pool.EvictContext(businessID)
