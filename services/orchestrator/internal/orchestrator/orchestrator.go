@@ -85,7 +85,7 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 		defer close(ch)
 
 		availableTools := o.tools.Available(req.ActiveIntegrations)
-		messages := prompt.Build(req.BusinessContext, req.Messages)
+		messages := prompt.Build(req.BusinessContext, nil, req.Messages)
 
 		for iter := 0; iter < o.options.MaxIterations; iter++ {
 			llmReq := llm.ChatRequest{
