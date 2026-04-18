@@ -186,10 +186,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("create integration handler: %w", err)
 	}
-	conversationHandler, err := handler.NewConversationHandler(conversationRepo, messageRepo)
-	if err != nil {
-		return fmt.Errorf("create conversation handler: %w", err)
-	}
+	// Conversation handler is constructed below (after the project service is
+	// built) because Phase 15 extended its dependency set with business +
+	// project services for create-conversation scoping and /move system-note.
 	reviewHandler, err := handler.NewReviewHandler(reviewService)
 	if err != nil {
 		return fmt.Errorf("create review handler: %w", err)
@@ -212,6 +211,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	projectHandler, err := handler.NewProjectHandler(projectService, businessService)
 	if err != nil {
 		return fmt.Errorf("create project handler: %w", err)
+	}
+
+	// Conversation handler depends on business + project services for Phase 15
+	// create-conversation scoping and the /move endpoint system-note append.
+	conversationHandler, err := handler.NewConversationHandler(conversationRepo, messageRepo, businessService, projectService)
+	if err != nil {
+		return fmt.Errorf("create conversation handler: %w", err)
 	}
 
 	handlers := &router.Handlers{
