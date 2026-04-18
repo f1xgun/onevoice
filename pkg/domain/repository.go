@@ -40,6 +40,9 @@ type IntegrationRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
+// ProjectRepository is declared in project.go to keep all project-related
+// domain types in one file. See pkg/domain/project.go.
+
 // MongoDB repositories
 
 type ConversationRepository interface {
