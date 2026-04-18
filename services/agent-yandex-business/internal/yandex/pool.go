@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -98,9 +101,19 @@ func (p *BrowserPool) getOrCreateContext(businessID, cookiesJSON string) (*poole
 	if err != nil {
 		return nil, fmt.Errorf("playwright: new context: %w", err)
 	}
-	if err := injectCookies(bCtx, cookiesJSON); err != nil {
-		_ = bCtx.Close()
-		return nil, fmt.Errorf("playwright: set cookies: %w", err)
+
+	if isOAuthToken(cookiesJSON) {
+		// OAuth token — exchange for browser session via passport
+		if err := exchangeOAuthForSession(bCtx, cookiesJSON); err != nil {
+			_ = bCtx.Close()
+			return nil, fmt.Errorf("playwright: oauth session exchange: %w", err)
+		}
+	} else {
+		// Legacy cookies JSON — inject directly
+		if err := injectCookies(bCtx, cookiesJSON); err != nil {
+			_ = bCtx.Close()
+			return nil, fmt.Errorf("playwright: set cookies: %w", err)
+		}
 	}
 
 	pc := &pooledContext{ctx: bCtx, cookies: cookiesJSON}
@@ -222,21 +235,93 @@ func injectCookies(bCtx playwright.BrowserContext, cookiesJSON string) error {
 	return bCtx.AddCookies(pwCookies)
 }
 
+// exchangeOAuthForSession uses Yandex's /am/cookie endpoint to convert an OAuth
+// access token into browser session cookies, then injects them into the context.
+func exchangeOAuthForSession(bCtx playwright.BrowserContext, oauthToken string) error {
+	page, err := bCtx.NewPage()
+	if err != nil {
+		return fmt.Errorf("new page for oauth exchange: %w", err)
+	}
+	defer func() { _ = page.Close() }()
+
+	// Yandex's internal session creation: navigate to passport with OAuth token.
+	// The /auth/welcome endpoint with access_token creates a full session.
+	authURL := "https://passport.yandex.ru/auth/welcome?retpath=https%3A%2F%2Fbusiness.yandex.ru"
+	_, _ = page.Goto(authURL, playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(15000),
+	})
+
+	// Use in-browser fetch to call Yandex session exchange API
+	script := fmt.Sprintf(`async () => {
+		try {
+			const resp = await fetch('https://passport.yandex.ru/auth/session/', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+					'Ya-Consumer-Authorization': 'OAuth %s'
+				},
+				body: 'type=oauth&oauth_token=%s&retpath=https%%3A%%2F%%2Fbusiness.yandex.ru',
+				credentials: 'include',
+				redirect: 'manual'
+			});
+			return JSON.stringify({ok: true, status: resp.status});
+		} catch(e) {
+			return JSON.stringify({ok: false, error: e.message});
+		}
+	}`, oauthToken, oauthToken)
+
+	_, _ = page.Evaluate(script)
+
+	// Verify session was created by checking for Session_id cookie
+	cookies, err := bCtx.Cookies("https://passport.yandex.ru", "https://yandex.ru")
+	if err != nil {
+		return fmt.Errorf("read cookies after exchange: %w", err)
+	}
+	for _, c := range cookies {
+		if c.Name == "Session_id" || c.Name == "sessionid2" {
+			// Session established — navigate to business to confirm
+			_, err = page.Goto("https://business.yandex.ru", playwright.PageGotoOptions{
+				WaitUntil: playwright.WaitUntilStateNetworkidle,
+				Timeout:   playwright.Float(20000),
+			})
+			return err
+		}
+	}
+
+	// No session cookies — fall back to Authorization header approach
+	// This works for Yandex internal APIs but not for the full web UI
+	return fmt.Errorf("oauth session exchange failed: no Session_id cookie received (token may lack required scope)")
+}
+
+// isOAuthToken returns true if the value looks like an OAuth token rather than cookies JSON.
+func isOAuthToken(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed != "" && !strings.HasPrefix(trimmed, "[")
+}
+
 // BusinessBrowser implements the YandexBrowser interface for a specific business,
 // delegating all page operations to the shared BrowserPool.
 type BusinessBrowser struct {
 	pool       *BrowserPool
 	businessID string
 	cookies    string
+	permalink  string // Yandex Sprav permalink (e.g. "114697172504")
 }
 
 // ForBusiness returns a BusinessBrowser scoped to the given business.
-func (p *BrowserPool) ForBusiness(businessID, cookiesJSON string) *BusinessBrowser {
+func (p *BrowserPool) ForBusiness(businessID, cookiesJSON, permalink string) *BusinessBrowser {
 	return &BusinessBrowser{
 		pool:       p,
 		businessID: businessID,
 		cookies:    cookiesJSON,
+		permalink:  permalink,
 	}
+}
+
+// baseURL returns the management URL for this business.
+func (bb *BusinessBrowser) baseURL() string {
+	return spravBaseURL(bb.permalink)
 }
 
 // GetReviews scrapes reviews from Yandex.Business reviews page.
@@ -251,16 +336,22 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 	var reviews []map[string]interface{}
 	err := withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			reviewsURL := businessURL + "/reviews"
+			reviewsURL := bb.baseURL() + "/reviews"
 			if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
 			}); err != nil {
+				debugScreenshot(page, "reviews_navigate_error")
 				return fmt.Errorf("navigate to reviews: %w", err)
 			}
+			debugScreenshot(page, "reviews_after_navigate")
+
+			// Close popups that may overlay the page
+			closePopups(page)
 
 			// Session canary — bail immediately if cookies expired
-			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+				debugScreenshot(page, "reviews_session_expired")
 				return err
 			}
 			humanDelay()
@@ -284,8 +375,10 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 				}
 			}
 			if !containerFound {
-				// No reviews container — might be empty or DOM changed
-				return fmt.Errorf("reviews container not found — DOM may have changed")
+				// No reviews container — page loaded but no reviews exist
+				debugScreenshot(page, "reviews_no_container")
+				reviews = []map[string]interface{}{}
+				return nil
 			}
 
 			// Load more reviews if needed (pagination)
@@ -456,7 +549,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			reviewsURL := businessURL + "/reviews"
+			reviewsURL := bb.baseURL() + "/reviews"
 			if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
 				Timeout:   playwright.Float(30000),
@@ -465,7 +558,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 			}
 
 			// Session canary
-			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
 				return err
 			}
 			humanDelay()
@@ -560,7 +653,105 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 	})
 }
 
+// navigateToEditPage loads the main edit page and dismisses popups.
+func (bb *BusinessBrowser) navigateToEditPage(page playwright.Page) error {
+	editURL := bb.baseURL() + "/"
+	if _, err := page.Goto(editURL, playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateNetworkidle,
+		Timeout:   playwright.Float(30000),
+	}); err != nil {
+		debugScreenshot(page, "edit_navigate_error")
+		return fmt.Errorf("navigate to edit page: %w", err)
+	}
+	closePopups(page)
+	if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+		return err
+	}
+	humanDelay()
+	return nil
+}
+
+// clickSave clicks the "Сохранить изменения" button.
+func clickSave(page playwright.Page) error {
+	saveBtn := page.Locator(".SaveButton-Button").First()
+	if err := saveBtn.WaitFor(playwright.LocatorWaitForOptions{
+		Timeout: playwright.Float(5000),
+		State:   playwright.WaitForSelectorStateVisible,
+	}); err != nil {
+		debugScreenshot(page, "save_not_found")
+		return fmt.Errorf("save button not found")
+	}
+	if err := saveBtn.Click(); err != nil {
+		return fmt.Errorf("click save: %w", err)
+	}
+	humanDelay()
+	return nil
+}
+
+// GetInfo scrapes current business info from the Yandex.Business edit page.
+func (bb *BusinessBrowser) GetInfo(ctx context.Context) (map[string]interface{}, error) {
+	var result map[string]interface{}
+	err := withRetry(ctx, 3, func() error {
+		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
+			if err := bb.navigateToEditPage(page); err != nil {
+				return err
+			}
+			debugScreenshot(page, "getinfo_after_navigate")
+
+			info := make(map[string]interface{})
+
+			// Business name from sidebar
+			nameEl := page.Locator("[class*='CompanyName'], [class*='company-name'], .SidebarCompanyInfo span").First()
+			if name, err := nameEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(3000)}); err == nil {
+				info["name"] = strings.TrimSpace(name)
+			}
+
+			// Hours — from WorkIntervalsUnificationInput
+			hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
+			if val, err := hoursInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+				info["hours"] = val
+			}
+
+			// Phone — from InfoPhones section
+			phoneInput := page.Locator(".InfoPhones input.ya-business-input__control").First()
+			if val, err := phoneInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+				info["phone"] = val
+			}
+
+			// Email — from InfoEmails section
+			emailInput := page.Locator(".InfoEmails input.ya-business-input__control").First()
+			if val, err := emailInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+				info["email"] = val
+			}
+
+			// Description
+			descInput := page.Locator("input.ya-business-input__control[placeholder*='Описание'], .ya-business-input__label:has-text('Описание') ~ input, span:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input").First()
+			if val, err := descInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+				info["description"] = val
+			}
+
+			// Address from sidebar/page
+			addrEl := page.Locator(".InfoAddress, [class*='Address']").First()
+			if text, err := addrEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(3000)}); err == nil {
+				info["address"] = strings.TrimSpace(text)
+			}
+
+			// Status
+			statusEl := page.Locator(".InfoWorkIntervals-StatusWrapper .ya-business-select__button-content").First()
+			if text, err := statusEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(3000)}); err == nil {
+				info["status"] = strings.TrimSpace(text)
+			}
+
+			debugScreenshot(page, "getinfo_result")
+			result = info
+			return nil
+		})
+	})
+	return result, err
+}
+
 // UpdateInfo updates business contact information in Yandex.Business via RPA.
+// Uses real DOM selectors: InfoPhones, InfoEmails, and description input.
 func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]string) error {
 	if len(info) == 0 {
 		return a2a.NewNonRetryableError(fmt.Errorf("no fields to update"))
@@ -568,325 +759,370 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			contactsURL := businessURL + "/settings/contacts"
-			if _, err := page.Goto(contactsURL, playwright.PageGotoOptions{
-				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(30000),
-			}); err != nil {
-				return fmt.Errorf("navigate to contacts settings: %w", err)
-			}
-
-			// Session canary
-			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+			if err := bb.navigateToEditPage(page); err != nil {
 				return err
 			}
-			humanDelay()
+			debugScreenshot(page, "updateinfo_after_navigate")
 
-			// Wait for the settings form to load
-			formSelectors := []string{
-				"[data-testid='contacts-form']",
-				".contacts-form",
-				"[class*='ContactsForm']",
-				"form",
-			}
-			formFound := false
-			for _, sel := range formSelectors {
-				err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(10000),
-				})
-				if err == nil {
-					formFound = true
-					break
-				}
-			}
-			if !formFound {
-				return fmt.Errorf("contacts form not found — DOM may have changed")
-			}
-
-			// Field mapping: info key -> candidate selectors for the input/textarea
-			fieldMap := map[string][]string{
-				"phone": {
-					"[data-testid='phone-input']",
-					"input[name='phone']",
-					"input[type='tel']",
-					"[class*='Phone'] input",
-				},
-				"website": {
-					"[data-testid='website-input']",
-					"input[name='website']",
-					"input[name='url']",
-					"input[type='url']",
-					"[class*='Website'] input",
-				},
-				"description": {
-					"[data-testid='description-input']",
-					"textarea[name='description']",
-					"[class*='Description'] textarea",
-					"[class*='description'] textarea",
-				},
+			// Field mapping: key -> CSS selector for input within the section
+			fieldMap := map[string]string{
+				"phone":       ".InfoPhones input.ya-business-input__control",
+				"description": ".ya-business-input__label:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input",
 			}
 
 			for key, value := range info {
-				selectors, ok := fieldMap[key]
+				sel, ok := fieldMap[key]
 				if !ok {
-					continue // Unknown field — skip
+					continue
 				}
 
-				filled := false
-				for _, sel := range selectors {
-					loc := page.Locator(sel).First()
-					if err := loc.WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: playwright.Float(5000),
-						State:   playwright.WaitForSelectorStateVisible,
-					}); err != nil {
-						continue
-					}
-					// Clear existing value and fill new one
-					if err := loc.Fill(""); err != nil {
-						continue
-					}
-					if err := loc.Fill(value); err != nil {
-						continue
-					}
-					filled = true
-					humanDelay()
-					break
-				}
-				if !filled {
-					return fmt.Errorf("field %q input not found — DOM may have changed", key)
-				}
-			}
-
-			// Click Save button
-			saveSelectors := []string{
-				"[data-testid='save-button']",
-				"button:has-text('Сохранить')",
-				"button[type='submit']",
-				"[class*='SaveButton']",
-			}
-			saved := false
-			for _, sel := range saveSelectors {
-				btn := page.Locator(sel).First()
-				if err := btn.WaitFor(playwright.LocatorWaitForOptions{
+				input := page.Locator(sel).First()
+				if err := input.WaitFor(playwright.LocatorWaitForOptions{
 					Timeout: playwright.Float(5000),
 					State:   playwright.WaitForSelectorStateVisible,
-				}); err == nil {
-					if err := btn.Click(); err == nil {
-						saved = true
-						break
-					}
+				}); err != nil {
+					debugScreenshot(page, "updateinfo_field_not_found_"+key)
+					return fmt.Errorf("field %q input not found", key)
 				}
-			}
-			if !saved {
-				return fmt.Errorf("save button not found — changes may not have been saved")
+
+				// Triple-click to select all, then type new value
+				if err := input.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
+					return fmt.Errorf("click %q input: %w", key, err)
+				}
+				if err := page.Keyboard().Type(value, playwright.KeyboardTypeOptions{Delay: playwright.Float(30)}); err != nil {
+					return fmt.Errorf("type %q: %w", key, err)
+				}
+				// Blur to trigger validation
+				_ = page.Locator("h1, .InfoBlockCarcass, body").First().Click(playwright.LocatorClickOptions{Timeout: playwright.Float(2000)})
+				time.Sleep(1 * time.Second)
+				humanDelay()
 			}
 
-			// Wait for save confirmation
-			humanDelay()
+			debugScreenshot(page, "updateinfo_after_fill")
+
+			// Click Save
+			if err := clickSave(page); err != nil {
+				return err
+			}
+			debugScreenshot(page, "updateinfo_after_save")
 			return nil
 		})
 	})
 }
 
-// hoursSchedule represents the parsed hours JSON.
-type hoursSchedule struct {
-	Monday    *dayHours `json:"monday"`
-	Tuesday   *dayHours `json:"tuesday"`
-	Wednesday *dayHours `json:"wednesday"`
-	Thursday  *dayHours `json:"thursday"`
-	Friday    *dayHours `json:"friday"`
-	Saturday  *dayHours `json:"saturday"`
-	Sunday    *dayHours `json:"sunday"`
-}
-
-type dayHours struct {
-	Open  string `json:"open"`
-	Close string `json:"close"`
-}
-
-// orderedDays maps schedule fields to their 0-indexed row position on the form.
-var orderedDays = []struct {
-	name string
-	get  func(s *hoursSchedule) *dayHours
-}{
-	{"monday", func(s *hoursSchedule) *dayHours { return s.Monday }},
-	{"tuesday", func(s *hoursSchedule) *dayHours { return s.Tuesday }},
-	{"wednesday", func(s *hoursSchedule) *dayHours { return s.Wednesday }},
-	{"thursday", func(s *hoursSchedule) *dayHours { return s.Thursday }},
-	{"friday", func(s *hoursSchedule) *dayHours { return s.Friday }},
-	{"saturday", func(s *hoursSchedule) *dayHours { return s.Saturday }},
-	{"sunday", func(s *hoursSchedule) *dayHours { return s.Sunday }},
-}
-
 // UpdateHours updates business operating hours in Yandex.Business via RPA.
+// The Yandex.Business edit page has a single text input for hours with
+// placeholder "Введите в формате «Пн-Пт 9:00-18:00»".
+// hoursJSON is passed from the LLM — we convert it to the Yandex text format.
 func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) error {
-	var schedule hoursSchedule
-	if err := json.Unmarshal([]byte(hoursJSON), &schedule); err != nil {
-		return a2a.NewNonRetryableError(fmt.Errorf("invalid hours JSON: %w", err))
+	// Convert whatever JSON the LLM sends into a simple text string
+	// for the Yandex input field (e.g. "Пн-Пт 9:00-18:00, Сб 10:00-15:00")
+	hoursText := formatHoursForYandex(hoursJSON)
+	if hoursText == "" {
+		return a2a.NewNonRetryableError(fmt.Errorf("could not parse hours from: %s", hoursJSON))
 	}
 
 	return withRetry(ctx, 3, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			hoursURL := businessURL + "/settings/hours"
-			if _, err := page.Goto(hoursURL, playwright.PageGotoOptions{
-				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(30000),
-			}); err != nil {
-				return fmt.Errorf("navigate to hours settings: %w", err)
-			}
-
-			// Session canary
-			if err := checkSessionAndEvict(page, businessURL, bb.pool, bb.businessID); err != nil {
+			if err := bb.navigateToEditPage(page); err != nil {
 				return err
 			}
-			humanDelay()
 
-			// Wait for hours form to load
-			formSelectors := []string{
-				"[data-testid='hours-form']",
-				".hours-editor",
-				"[class*='HoursForm']",
-				"[class*='hours-form']",
-			}
-			formFound := false
-			for _, sel := range formSelectors {
-				err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(10000),
-				})
-				if err == nil {
-					formFound = true
-					break
-				}
-			}
-			if !formFound {
-				return fmt.Errorf("hours form not found — DOM may have changed")
+			// Find the hours input field
+			hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
+			if err := hoursInput.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(10000),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err != nil {
+				debugScreenshot(page, "hours_input_not_found")
+				return fmt.Errorf("hours input not found — DOM may have changed")
 			}
 
-			// Process each day
-			for idx, day := range orderedDays {
-				hours := day.get(&schedule)
-				if err := setDayHours(page, idx, day.name, hours); err != nil {
-					return fmt.Errorf("set hours for %s: %w", day.name, err)
-				}
-				humanDelay()
+			// Triple-click to select all, then type new value
+			if err := hoursInput.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
+				return fmt.Errorf("click hours input: %w", err)
 			}
+			if err := page.Keyboard().Type(hoursText, playwright.KeyboardTypeOptions{Delay: playwright.Float(30)}); err != nil {
+				return fmt.Errorf("type hours: %w", err)
+			}
+			// Blur to trigger Yandex auto-format and show save button
+			_ = page.Locator("h1, .InfoWorkIntervals, body").First().Click(playwright.LocatorClickOptions{
+				Timeout: playwright.Float(3000),
+			})
+			time.Sleep(2 * time.Second)
+			debugScreenshot(page, "hours_after_fill")
 
-			// Click Save button
-			saveSelectors := []string{
-				"[data-testid='save-hours']",
-				"button:has-text('Сохранить')",
-				"button[type='submit']",
-				"[class*='SaveButton']",
+			if err := clickSave(page); err != nil {
+				return err
 			}
-			saved := false
-			for _, sel := range saveSelectors {
-				btn := page.Locator(sel).First()
-				if err := btn.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(5000),
-					State:   playwright.WaitForSelectorStateVisible,
-				}); err == nil {
-					if err := btn.Click(); err == nil {
-						saved = true
-						break
-					}
-				}
-			}
-			if !saved {
-				return fmt.Errorf("save button not found — changes may not have been saved")
-			}
-
-			humanDelay()
+			debugScreenshot(page, "hours_after_save")
 			return nil
 		})
 	})
 }
 
-// setDayHours sets the hours for a specific day row (0-indexed) in the hours form.
-// If hours is nil, the day is marked as closed.
-func setDayHours(page playwright.Page, dayIndex int, dayName string, hours *dayHours) error {
-	// Locate the day row by index — rows are typically ordered Mon-Sun
-	rowSelectors := []string{
-		fmt.Sprintf("[data-testid='day-row-%s']", dayName),
-		fmt.Sprintf("[data-testid='day-row-%d']", dayIndex),
-		fmt.Sprintf("[class*='DayRow']:nth-child(%d)", dayIndex+1),
-		fmt.Sprintf("[class*='day-row']:nth-child(%d)", dayIndex+1),
+// closePopups dismisses common Yandex popups that overlay the page.
+func closePopups(page playwright.Page) {
+	closeBtnSelectors := []string{
+		".InfoModal-IconClose",
+		".CrossPlatformModal-Close",
+		"button[aria-label='Закрыть']",
+		".Modal-Close",
 	}
-
-	var row playwright.Locator
-	for _, sel := range rowSelectors {
-		loc := page.Locator(sel).First()
-		if err := loc.WaitFor(playwright.LocatorWaitForOptions{
-			Timeout: playwright.Float(3000),
-		}); err == nil {
-			row = loc
-			break
+	for _, sel := range closeBtnSelectors {
+		btn := page.Locator(sel).First()
+		if err := btn.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(2000)}); err == nil {
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
-	if row == nil {
-		return fmt.Errorf("day row not found for %s (index %d)", dayName, dayIndex)
-	}
-
-	if hours == nil {
-		// Mark day as closed — toggle the closed checkbox/switch
-		closedSelectors := []string{
-			"[data-testid='day-closed']",
-			"input[type='checkbox']",
-			"[class*='Closed'] input",
-			"[class*='toggle']",
-		}
-		for _, sel := range closedSelectors {
-			toggle := row.Locator(sel).First()
-			if err := toggle.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(3000),
-			}); err == nil {
-				// Check if already in "closed" state; if not, click to toggle
-				checked, _ := toggle.IsChecked()
-				if !checked {
-					_ = toggle.Click()
-				}
-				return nil
-			}
-		}
-		return fmt.Errorf("closed toggle not found for %s", dayName)
-	}
-
-	// Fill open time
-	openSelectors := []string{
-		"[data-testid='open-time']",
-		"input[name*='open']",
-		"[class*='OpenTime'] input",
-	}
-	if err := fillTimeInput(row, openSelectors, hours.Open); err != nil {
-		return fmt.Errorf("set open time for %s: %w", dayName, err)
-	}
-
-	// Fill close time
-	closeSelectors := []string{
-		"[data-testid='close-time']",
-		"input[name*='close']",
-		"[class*='CloseTime'] input",
-	}
-	if err := fillTimeInput(row, closeSelectors, hours.Close); err != nil {
-		return fmt.Errorf("set close time for %s: %w", dayName, err)
-	}
-
-	return nil
 }
 
-// fillTimeInput fills a time input field using fallback selectors within a parent locator.
-func fillTimeInput(parent playwright.Locator, selectors []string, value string) error {
-	for _, sel := range selectors {
-		loc := parent.Locator(sel).First()
-		if err := loc.WaitFor(playwright.LocatorWaitForOptions{
-			Timeout: playwright.Float(3000),
-			State:   playwright.WaitForSelectorStateVisible,
-		}); err == nil {
-			if err := loc.Fill(""); err == nil {
-				if err := loc.Fill(value); err == nil {
-					return nil
+// formatHoursForYandex converts LLM-generated hours JSON into the text format
+// that Yandex.Business expects: "Пн-Пт 9:00-18:00, Сб 10:00-15:00"
+func formatHoursForYandex(hoursJSON string) string {
+	// Try parsing as structured JSON first
+	var structured map[string]interface{}
+	if err := json.Unmarshal([]byte(hoursJSON), &structured); err != nil {
+		// If not valid JSON, assume it's already a text string
+		return hoursJSON
+	}
+
+	// Map day names to Russian abbreviations
+	dayMap := map[string]string{
+		"monday": "Пн", "tuesday": "Вт", "wednesday": "Ср",
+		"thursday": "Чт", "friday": "Пт", "saturday": "Сб", "sunday": "Вс",
+		"пн": "Пн", "вт": "Вт", "ср": "Ср", "чт": "Чт",
+		"пт": "Пт", "сб": "Сб", "вс": "Вс",
+		"Пн": "Пн", "Вт": "Вт", "Ср": "Ср", "Чт": "Чт",
+		"Пт": "Пт", "Сб": "Сб", "Вс": "Вс",
+	}
+	dayOrder := []string{"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"}
+
+	// Build per-day hours
+	type dayHrs struct {
+		open, close string
+	}
+	days := make(map[string]*dayHrs)
+
+	for key, val := range structured {
+		ruDay, ok := dayMap[key]
+		if !ok {
+			continue
+		}
+		switch v := val.(type) {
+		case string:
+			if v == "closed" || v == "" {
+				continue
+			}
+			days[ruDay] = &dayHrs{open: v}
+		case map[string]interface{}:
+			o, _ := v["open"].(string)
+			c, _ := v["close"].(string)
+			if o == "" && c == "" {
+				o, _ = v["start"].(string)
+				c, _ = v["end"].(string)
+			}
+			if o != "" && c != "" {
+				days[ruDay] = &dayHrs{open: o, close: c}
+			}
+		case []interface{}:
+			if len(v) > 0 {
+				if m, ok := v[0].(map[string]interface{}); ok {
+					o, _ := m["open"].(string)
+					c, _ := m["close"].(string)
+					if o == "" && c == "" {
+						o, _ = m["start"].(string)
+						c, _ = m["end"].(string)
+					}
+					if o != "" && c != "" {
+						days[ruDay] = &dayHrs{open: o, close: c}
+					}
 				}
 			}
 		}
 	}
-	return fmt.Errorf("time input not found")
+
+	// Group consecutive days with same hours
+	var parts []string
+	i := 0
+	for i < len(dayOrder) {
+		d := dayOrder[i]
+		h, ok := days[d]
+		if !ok {
+			i++
+			continue
+		}
+		// Find consecutive days with same hours
+		j := i + 1
+		for j < len(dayOrder) {
+			nextH, ok := days[dayOrder[j]]
+			if !ok || nextH.open != h.open || nextH.close != h.close {
+				break
+			}
+			j++
+		}
+		var dayRange string
+		if j-i == 1 {
+			dayRange = d
+		} else {
+			dayRange = d + "-" + dayOrder[j-1]
+		}
+		if h.close != "" {
+			parts = append(parts, fmt.Sprintf("%s %s-%s", dayRange, h.open, h.close))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s %s", dayRange, h.open))
+		}
+		i = j
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// CreatePost publishes a text post on Yandex.Business via RPA.
+// Uses the PostAddForm on the /p/edit/posts/ page.
+func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
+	if text == "" {
+		return a2a.NewNonRetryableError(fmt.Errorf("post text is required"))
+	}
+
+	return withRetry(ctx, 3, func() error {
+		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
+			postsURL := bb.baseURL() + "/posts/"
+			if _, err := page.Goto(postsURL, playwright.PageGotoOptions{
+				WaitUntil: playwright.WaitUntilStateNetworkidle,
+				Timeout:   playwright.Float(30000),
+			}); err != nil {
+				debugScreenshot(page, "post_navigate_error")
+				return fmt.Errorf("navigate to posts page: %w", err)
+			}
+			closePopups(page)
+			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+				return err
+			}
+			humanDelay()
+			debugScreenshot(page, "post_after_navigate")
+
+			// Find the post textarea
+			textarea := page.Locator(".PostAddForm-Textarea textarea").First()
+			if err := textarea.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(10000),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err != nil {
+				debugScreenshot(page, "post_textarea_not_found")
+				return fmt.Errorf("post textarea not found")
+			}
+
+			// Click and type the post text
+			if err := textarea.Click(); err != nil {
+				return fmt.Errorf("click textarea: %w", err)
+			}
+			if err := page.Keyboard().Type(text, playwright.KeyboardTypeOptions{Delay: playwright.Float(20)}); err != nil {
+				return fmt.Errorf("type post text: %w", err)
+			}
+			debugScreenshot(page, "post_after_type")
+			humanDelay()
+
+			// Click "Создать" (Submit) button
+			submitBtn := page.Locator(".PostAddForm-Submit").First()
+			if err := submitBtn.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(5000),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err != nil {
+				debugScreenshot(page, "post_submit_not_found")
+				return fmt.Errorf("submit button not found")
+			}
+			if err := submitBtn.Click(); err != nil {
+				return fmt.Errorf("click submit: %w", err)
+			}
+			time.Sleep(3 * time.Second)
+			debugScreenshot(page, "post_after_submit")
+			return nil
+		})
+	})
+}
+
+// UploadPhoto uploads a photo to Yandex.Business from a public URL.
+// category: "general" (main photos), "logo", "services", "enter", "interior", "goods", "exterior"
+func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category string) error {
+	if photoURL == "" {
+		return a2a.NewNonRetryableError(fmt.Errorf("photo_url is required"))
+	}
+
+	// Map category to file input selector
+	inputSelector := ".MediaUploadButton-Input" // default: general photo upload button
+	switch category {
+	case "logo":
+		inputSelector = ".MediaAttach-Input[name='logo']"
+	case "services":
+		inputSelector = ".MediaAttach-Input[name='services']"
+	case "enter", "entrance":
+		inputSelector = ".MediaAttach-Input[name='enter']"
+	case "interior":
+		inputSelector = ".MediaAttach-Input[name='interior']"
+	case "goods":
+		inputSelector = ".MediaAttach-Input[name='goods']"
+	case "exterior":
+		inputSelector = ".MediaAttach-Input[name='exterior']"
+	}
+
+	return withRetry(ctx, 3, func() error {
+		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
+			photosURL := bb.baseURL() + "/photos/"
+			if _, err := page.Goto(photosURL, playwright.PageGotoOptions{
+				WaitUntil: playwright.WaitUntilStateNetworkidle,
+				Timeout:   playwright.Float(30000),
+			}); err != nil {
+				debugScreenshot(page, "photo_navigate_error")
+				return fmt.Errorf("navigate to photos page: %w", err)
+			}
+			closePopups(page)
+			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+				return err
+			}
+			humanDelay()
+
+			// Download the image to a temp file using standard HTTP
+			httpResp, err := http.Get(photoURL) //nolint:gosec // URL comes from LLM/user, external fetch is intentional
+			if err != nil {
+				return fmt.Errorf("download photo from %s: %w", photoURL, err)
+			}
+			body, err := io.ReadAll(httpResp.Body)
+			_ = httpResp.Body.Close()
+			if err != nil {
+				return fmt.Errorf("read photo body: %w", err)
+			}
+			if len(body) == 0 {
+				return fmt.Errorf("downloaded empty file from %s", photoURL)
+			}
+
+			tmpFile := fmt.Sprintf("/tmp/upload_%d.jpg", time.Now().UnixMilli())
+			if err := os.WriteFile(tmpFile, body, 0o600); err != nil {
+				return fmt.Errorf("write temp file: %w", err)
+			}
+			defer func() { _ = os.Remove(tmpFile) }()
+
+			// Set file on the hidden input
+			fileInput := page.Locator(inputSelector).First()
+			if err := fileInput.SetInputFiles(tmpFile); err != nil {
+				debugScreenshot(page, "photo_input_error")
+				return fmt.Errorf("set file input (%s): %w", inputSelector, err)
+			}
+
+			// Wait for upload processing
+			time.Sleep(3 * time.Second)
+			debugScreenshot(page, "photo_after_upload")
+
+			// Handle crop dialog if it appears (logo uploads show a crop modal)
+			cropSaveBtn := page.Locator("button:has-text('Сохранить')").First()
+			if err := cropSaveBtn.WaitFor(playwright.LocatorWaitForOptions{
+				Timeout: playwright.Float(5000),
+				State:   playwright.WaitForSelectorStateVisible,
+			}); err == nil {
+				_ = cropSaveBtn.Click()
+				time.Sleep(3 * time.Second)
+				debugScreenshot(page, "photo_after_crop_save")
+			}
+			return nil
+		})
+	})
 }

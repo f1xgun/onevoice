@@ -126,7 +126,7 @@ func (h *OAuthHandler) yandexTokenURL() string {
 	if h.cfg.yandexTokenBaseURL != "" {
 		return h.cfg.yandexTokenBaseURL + "/token"
 	}
-	return "https://oauth.yandex.net/token"
+	return "https://oauth.yandex.ru/token"
 }
 
 // GetVKAuthURL generates a VK ID OAuth 2.1 authorization URL with PKCE (JWT required).

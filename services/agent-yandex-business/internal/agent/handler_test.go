@@ -21,10 +21,13 @@ type fakeTokenFetcher struct {
 	lastPlatform string
 }
 
-func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, _ string) (string, error) {
+func (f *fakeTokenFetcher) GetToken(_ context.Context, businessID, platform, _ string) (agent.TokenInfo, error) {
 	f.lastBizID = businessID
 	f.lastPlatform = platform
-	return f.token, f.err
+	if f.err != nil {
+		return agent.TokenInfo{}, f.err
+	}
+	return agent.TokenInfo{AccessToken: f.token, ExternalID: "12345"}, nil
 }
 
 // stubBrowser records operations performed on it.
@@ -35,6 +38,10 @@ type stubBrowser struct {
 	repliedText  string
 
 	getReviewsFn func(ctx context.Context, limit int) ([]map[string]interface{}, error)
+}
+
+func (s *stubBrowser) GetInfo(_ context.Context) (map[string]interface{}, error) {
+	return map[string]interface{}{"name": "Test Business", "phone": "+7 999 123 45 67", "status": "Работает"}, nil
 }
 
 func (s *stubBrowser) UpdateHours(_ context.Context, hoursJSON string) error {
@@ -60,12 +67,15 @@ func (s *stubBrowser) ReplyReview(_ context.Context, reviewID, text string) erro
 	return nil
 }
 
+func (s *stubBrowser) CreatePost(_ context.Context, _ string) error     { return nil }
+func (s *stubBrowser) UploadPhoto(_ context.Context, _, _ string) error { return nil }
+
 // stubPool implements agent.BrowserPool for testing.
 type stubPool struct {
 	browser agent.YandexBrowser
 }
 
-func (p *stubPool) ForBusiness(_, _ string) agent.YandexBrowser {
+func (p *stubPool) ForBusiness(_, _, _ string) agent.YandexBrowser {
 	return p.browser
 }
 
@@ -212,7 +222,8 @@ type errBrowser struct {
 	err error
 }
 
-func (e *errBrowser) UpdateHours(_ context.Context, _ string) error { return e.err }
+func (e *errBrowser) GetInfo(_ context.Context) (map[string]interface{}, error) { return nil, e.err }
+func (e *errBrowser) UpdateHours(_ context.Context, _ string) error             { return e.err }
 func (e *errBrowser) UpdateInfo(_ context.Context, _ map[string]string) error {
 	return e.err
 }
@@ -220,6 +231,8 @@ func (e *errBrowser) GetReviews(_ context.Context, _ int) ([]map[string]interfac
 	return nil, e.err
 }
 func (e *errBrowser) ReplyReview(_ context.Context, _, _ string) error { return e.err }
+func (e *errBrowser) CreatePost(_ context.Context, _ string) error     { return e.err }
+func (e *errBrowser) UploadPhoto(_ context.Context, _, _ string) error { return e.err }
 
 func newErrHandler(fetcher agent.TokenFetcher, browserErr error) *agent.Handler {
 	return agent.NewHandler(fetcher, &stubPool{browser: &errBrowser{err: browserErr}})

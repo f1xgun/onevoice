@@ -74,7 +74,7 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]int
 		return nil, fmt.Errorf("unknown tool: %q", name)
 	}
 	if e.executor == nil {
-		return map[string]interface{}{"status": "stub", "tool": name}, nil
+		return nil, fmt.Errorf("tool %q has no executor (NATS unavailable)", name)
 	}
 	return e.executor.Execute(ctx, args)
 }
