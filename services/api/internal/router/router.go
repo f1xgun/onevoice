@@ -112,6 +112,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Put("/conversations/{id}", handlers.Conversation.UpdateConversation)
 			r.Delete("/conversations/{id}", handlers.Conversation.DeleteConversation)
 			r.Get("/conversations/{id}/messages", handlers.Conversation.ListMessages)
+			// Phase 15 (PROJ-06): move a chat between projects (or to "Без проекта")
+			r.Post("/conversations/{id}/move", handlers.Conversation.MoveConversation)
 
 			// Project routes (Phase 15 — projects foundation)
 			r.Get("/projects", handlers.Project.List)

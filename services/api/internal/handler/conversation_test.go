@@ -18,6 +18,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // ptr is a helper for building *string literals in test tables.
@@ -76,14 +77,93 @@ func (m *MockConversationRepository) UpdateProjectAssignment(ctx context.Context
 }
 
 // MockMessageRepository is a minimal mock for MessageRepository
-type MockMessageRepository struct{}
+type MockMessageRepository struct {
+	CreateFunc func(ctx context.Context, msg *domain.Message) error
+}
 
-func (m *MockMessageRepository) Create(_ context.Context, _ *domain.Message) error { return nil }
+func (m *MockMessageRepository) Create(ctx context.Context, msg *domain.Message) error {
+	if m.CreateFunc != nil {
+		return m.CreateFunc(ctx, msg)
+	}
+	return nil
+}
 func (m *MockMessageRepository) ListByConversationID(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
 	return []domain.Message{}, nil
 }
 func (m *MockMessageRepository) CountByConversationID(_ context.Context, _ string) (int64, error) {
 	return 0, nil
+}
+
+// noopBusinessService returns ErrBusinessNotFound by default. Tests that need
+// a populated business override GetByUserIDFunc.
+type noopBusinessService struct {
+	GetByUserIDFunc func(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
+}
+
+func (s *noopBusinessService) Create(_ context.Context, _ *domain.Business) (*domain.Business, error) {
+	return nil, nil
+}
+func (s *noopBusinessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
+	if s.GetByUserIDFunc != nil {
+		return s.GetByUserIDFunc(ctx, userID)
+	}
+	return nil, domain.ErrBusinessNotFound
+}
+func (s *noopBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+	return nil, domain.ErrBusinessNotFound
+}
+func (s *noopBusinessService) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
+	return nil, nil
+}
+
+// noopProjectService returns ErrProjectNotFound by default. Tests that need
+// a populated project override GetByIDFunc.
+type noopProjectService struct {
+	GetByIDFunc func(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error)
+}
+
+func (s *noopProjectService) Create(_ context.Context, _ uuid.UUID, _ service.CreateProjectInput) (*domain.Project, error) {
+	return nil, nil
+}
+func (s *noopProjectService) GetByID(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error) {
+	if s.GetByIDFunc != nil {
+		return s.GetByIDFunc(ctx, businessID, id)
+	}
+	return nil, domain.ErrProjectNotFound
+}
+func (s *noopProjectService) ListByBusinessID(_ context.Context, _ uuid.UUID) ([]domain.Project, error) {
+	return []domain.Project{}, nil
+}
+func (s *noopProjectService) Update(_ context.Context, _, _ uuid.UUID, _ service.UpdateProjectInput) (*domain.Project, error) {
+	return nil, nil
+}
+func (s *noopProjectService) DeleteCascade(_ context.Context, _, _ uuid.UUID) (deletedConversations, deletedMessages int, err error) {
+	return 0, 0, nil
+}
+func (s *noopProjectService) CountConversations(_ context.Context, _, _ uuid.UUID) (int, error) {
+	return 0, nil
+}
+
+// newTestConversationHandler builds a ConversationHandler wired with a stub
+// business service that always returns a valid business (so create/move do not
+// 404 on the lookup) and a stub project service that returns ErrProjectNotFound
+// by default. Tests that need custom behavior call NewConversationHandler
+// directly with their own services.
+func newTestConversationHandler(convRepo domain.ConversationRepository, msgRepo domain.MessageRepository) *ConversationHandler {
+	biz := &noopBusinessService{
+		GetByUserIDFunc: func(_ context.Context, userID uuid.UUID) (*domain.Business, error) {
+			return &domain.Business{
+				ID:     uuid.New(),
+				UserID: userID,
+				Name:   "Test Business",
+			}, nil
+		},
+	}
+	h, err := NewConversationHandler(convRepo, msgRepo, biz, &noopProjectService{})
+	if err != nil {
+		panic(err)
+	}
+	return h
 }
 
 // TestCreateConversation_Success tests successful conversation creation
@@ -101,7 +181,7 @@ func TestCreateConversation_Success(t *testing.T) {
 		},
 	}
 
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	reqBody := CreateConversationRequest{
@@ -137,7 +217,7 @@ func TestCreateConversation_Success(t *testing.T) {
 func TestCreateConversation_MissingUserID(t *testing.T) {
 	// Setup
 	mockRepo := &MockConversationRepository{}
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request without user ID in context
 	reqBody := CreateConversationRequest{
@@ -182,7 +262,7 @@ func TestCreateConversation_ValidationError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
 			mockRepo := &MockConversationRepository{}
-			handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+			handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 			// Create request
 			body, _ := json.Marshal(tt.request)
@@ -217,7 +297,7 @@ func TestCreateConversation_RepositoryError(t *testing.T) {
 			return errors.New("database error")
 		},
 	}
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	reqBody := CreateConversationRequest{
@@ -246,7 +326,23 @@ func TestCreateConversation_RepositoryError(t *testing.T) {
 
 // TestNewConversationHandler_NilRepository tests error on nil repository
 func TestNewConversationHandler_NilRepository(t *testing.T) {
-	h, err := NewConversationHandler(nil, &MockMessageRepository{})
+	h, err := NewConversationHandler(nil, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{})
+	assert.Error(t, err)
+	assert.Nil(t, h)
+}
+
+// TestNewConversationHandler_NilBusinessService ensures the Phase 15 new dep
+// is checked.
+func TestNewConversationHandler_NilBusinessService(t *testing.T) {
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, nil, &noopProjectService{})
+	assert.Error(t, err)
+	assert.Nil(t, h)
+}
+
+// TestNewConversationHandler_NilProjectService ensures the Phase 15 new dep
+// is checked.
+func TestNewConversationHandler_NilProjectService(t *testing.T) {
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, nil)
 	assert.Error(t, err)
 	assert.Nil(t, h)
 }
@@ -281,7 +377,7 @@ func TestListConversations_Success(t *testing.T) {
 		},
 	}
 
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
@@ -316,7 +412,7 @@ func TestListConversations_EmptyList(t *testing.T) {
 		},
 	}
 
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
@@ -386,7 +482,7 @@ func TestListConversations_WithQueryParams(t *testing.T) {
 				},
 			}
 
-			handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+			handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 			// Create request
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations"+tt.queryParams, http.NoBody)
@@ -409,7 +505,7 @@ func TestListConversations_WithQueryParams(t *testing.T) {
 func TestListConversations_MissingUserID(t *testing.T) {
 	// Setup
 	mockRepo := &MockConversationRepository{}
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request without user ID in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
@@ -438,7 +534,7 @@ func TestListConversations_RepositoryError(t *testing.T) {
 		},
 	}
 
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
@@ -481,7 +577,7 @@ func TestGetConversation_Success(t *testing.T) {
 		},
 	}
 
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
@@ -532,7 +628,7 @@ func TestGetConversation_Unauthorized(t *testing.T) {
 		},
 	}
 
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
@@ -572,7 +668,7 @@ func TestGetConversation_NotFound(t *testing.T) {
 		},
 	}
 
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
@@ -605,7 +701,7 @@ func TestGetConversation_MissingUserID(t *testing.T) {
 	// Setup
 	conversationID := "507f1f77bcf86cd799439011"
 	mockRepo := &MockConversationRepository{}
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request without user ID in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
@@ -641,7 +737,7 @@ func TestGetConversation_RepositoryError(t *testing.T) {
 		},
 	}
 
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID, http.NoBody)
@@ -762,7 +858,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 			return conversations, nil
 		},
 	}
-	handler, _ := NewConversationHandler(mockRepo, &MockMessageRepository{})
+	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -795,4 +891,364 @@ func keysOf(m map[string]any) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// --- Task 2: CreateConversation with projectId + MoveConversation -----------
+
+// makeAuthedReq builds an *http.Request with userID in context and
+// (optionally) a chi URL param {id}. Returns the recorder to write to.
+func makeAuthedReq(t *testing.T, method, path string, body []byte, userID uuid.UUID, convID string) *http.Request {
+	t.Helper()
+	var r *http.Request
+	if body == nil {
+		r = httptest.NewRequest(method, path, http.NoBody)
+	} else {
+		r = httptest.NewRequest(method, path, bytes.NewReader(body))
+	}
+	ctx := context.WithValue(r.Context(), middleware.UserIDKey, userID)
+	if convID != "" {
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", convID)
+		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	}
+	return r.WithContext(ctx)
+}
+
+// TestCreateConversation_WithProjectID covers Behavior 1 from Plan 15-04 Task 2.
+func TestCreateConversation_WithProjectID(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	projectID := uuid.New()
+
+	var capturedConv *domain.Conversation
+	mockRepo := &MockConversationRepository{
+		CreateFunc: func(_ context.Context, conv *domain.Conversation) error {
+			capturedConv = conv
+			return nil
+		},
+	}
+	biz := &noopBusinessService{
+		GetByUserIDFunc: func(_ context.Context, uid uuid.UUID) (*domain.Business, error) {
+			assert.Equal(t, userID, uid)
+			return &domain.Business{ID: businessID, UserID: userID, Name: "B"}, nil
+		},
+	}
+	proj := &noopProjectService{
+		GetByIDFunc: func(_ context.Context, bizID, id uuid.UUID) (*domain.Project, error) {
+			assert.Equal(t, businessID, bizID)
+			assert.Equal(t, projectID, id)
+			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Reviews"}, nil
+		},
+	}
+	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, biz, proj)
+	require.NoError(t, err)
+
+	pid := projectID.String()
+	body, _ := json.Marshal(CreateConversationRequest{Title: "Chat", ProjectID: &pid})
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations", body, userID, "")
+	w := httptest.NewRecorder()
+	h.CreateConversation(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	require.NotNil(t, capturedConv)
+	require.NotNil(t, capturedConv.ProjectID)
+	assert.Equal(t, pid, *capturedConv.ProjectID)
+	assert.Equal(t, businessID.String(), capturedConv.BusinessID)
+	assert.Equal(t, domain.TitleStatusAutoPending, capturedConv.TitleStatus)
+	assert.False(t, capturedConv.Pinned)
+}
+
+// TestCreateConversation_NullAndAbsentProjectIDEquivalent covers Behaviors 2 & 3.
+// Standard encoding/json semantics: both `"projectId": null` and an absent
+// `projectId` key deserialize to *string(nil). Handler must NOT distinguish.
+func TestCreateConversation_NullAndAbsentProjectIDEquivalent(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"explicit null", `{"title":"x","projectId":null}`},
+		{"absent key", `{"title":"x"}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			userID := uuid.New()
+			businessID := uuid.New()
+
+			var captured *domain.Conversation
+			mockRepo := &MockConversationRepository{
+				CreateFunc: func(_ context.Context, conv *domain.Conversation) error {
+					captured = conv
+					return nil
+				},
+			}
+			biz := &noopBusinessService{
+				GetByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+					return &domain.Business{ID: businessID, UserID: userID, Name: "B"}, nil
+				},
+			}
+			h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, biz, &noopProjectService{})
+			require.NoError(t, err)
+
+			req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations", []byte(tc.body), userID, "")
+			w := httptest.NewRecorder()
+			h.CreateConversation(w, req)
+
+			assert.Equal(t, http.StatusCreated, w.Code)
+			require.NotNil(t, captured)
+			assert.Nil(t, captured.ProjectID, "null and absent projectId must both map to *string(nil)")
+			assert.Equal(t, businessID.String(), captured.BusinessID)
+		})
+	}
+}
+
+// TestCreateConversation_ProjectCrossBusiness covers the cross-business guard.
+func TestCreateConversation_ProjectCrossBusiness(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	projectID := uuid.New()
+
+	biz := &noopBusinessService{
+		GetByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return &domain.Business{ID: businessID, UserID: userID}, nil
+		},
+	}
+	// Project belongs to a different business → service returns
+	// ErrProjectNotFound (Plan 15-03 anti-enumeration).
+	proj := &noopProjectService{
+		GetByIDFunc: func(_ context.Context, _, _ uuid.UUID) (*domain.Project, error) {
+			return nil, domain.ErrProjectNotFound
+		},
+	}
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, biz, proj)
+	require.NoError(t, err)
+
+	pid := projectID.String()
+	body, _ := json.Marshal(CreateConversationRequest{Title: "x", ProjectID: &pid})
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations", body, userID, "")
+	w := httptest.NewRecorder()
+	h.CreateConversation(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// TestMoveConversation_ToProject covers Behavior 4 (move with real destination
+// appends the exact Russian system note).
+func TestMoveConversation_ToProject(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	projectID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	convAfterMove := &domain.Conversation{
+		ID:         convID,
+		UserID:     userID.String(),
+		BusinessID: businessID.String(),
+		ProjectID:  ptr(projectID.String()),
+		Title:      "Moved",
+	}
+
+	getByIDCall := 0
+	var capturedMsg *domain.Message
+	var captureUpdateProjID *string
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			assert.Equal(t, convID, id)
+			getByIDCall++
+			if getByIDCall == 1 {
+				// first call (ownership check) — original state
+				return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String()}, nil
+			}
+			// second call (re-fetch after move)
+			return convAfterMove, nil
+		},
+		UpdateProjectAssignmentFunc: func(_ context.Context, id string, pid *string) error {
+			assert.Equal(t, convID, id)
+			captureUpdateProjID = pid
+			return nil
+		},
+	}
+	msgRepo := &MockMessageRepository{
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			capturedMsg = m
+			return nil
+		},
+	}
+	biz := &noopBusinessService{
+		GetByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return &domain.Business{ID: businessID, UserID: userID}, nil
+		},
+	}
+	proj := &noopProjectService{
+		GetByIDFunc: func(_ context.Context, bid, pid uuid.UUID) (*domain.Project, error) {
+			assert.Equal(t, businessID, bid)
+			assert.Equal(t, projectID, pid)
+			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Отзывы"}, nil
+		},
+	}
+	h, err := NewConversationHandler(mockRepo, msgRepo, biz, proj)
+	require.NoError(t, err)
+
+	pid := projectID.String()
+	body, _ := json.Marshal(MoveConversationRequest{ProjectID: &pid})
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/move", body, userID, convID)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, captureUpdateProjID)
+	assert.Equal(t, pid, *captureUpdateProjID)
+
+	require.NotNil(t, capturedMsg, "system note must be appended")
+	assert.Equal(t, convID, capturedMsg.ConversationID)
+	assert.Equal(t, "system", capturedMsg.Role)
+	// Byte-exact Russian copy per 15-UI-SPEC line 194.
+	assert.Equal(t, "[Чат перемещён в «Отзывы» — с этого момента применяется новая политика]", capturedMsg.Content)
+
+	// Response body carries the re-fetched conversation.
+	var resp domain.Conversation
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotNil(t, resp.ProjectID)
+	assert.Equal(t, projectID.String(), *resp.ProjectID)
+}
+
+// TestMoveConversation_ToNullBezProyekta covers Behavior 5 (move to null uses
+// "Без проекта" in the system note).
+func TestMoveConversation_ToNullBezProyekta(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd799439012"
+
+	var capturedMsg *domain.Message
+	var captureUpdateProjID *string
+	getByIDCall := 0
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			getByIDCall++
+			if getByIDCall == 1 {
+				return &domain.Conversation{ID: convID, UserID: userID.String(), ProjectID: ptr("old-proj")}, nil
+			}
+			return &domain.Conversation{ID: convID, UserID: userID.String(), ProjectID: nil}, nil
+		},
+		UpdateProjectAssignmentFunc: func(_ context.Context, _ string, pid *string) error {
+			captureUpdateProjID = pid
+			return nil
+		},
+	}
+	msgRepo := &MockMessageRepository{
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			capturedMsg = m
+			return nil
+		},
+	}
+	biz := &noopBusinessService{
+		GetByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return &domain.Business{ID: businessID, UserID: userID}, nil
+		},
+	}
+	h, err := NewConversationHandler(mockRepo, msgRepo, biz, &noopProjectService{})
+	require.NoError(t, err)
+
+	// null body
+	body := []byte(`{"projectId":null}`)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/move", body, userID, convID)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Nil(t, captureUpdateProjID, "null projectId must be forwarded as nil to repo")
+
+	require.NotNil(t, capturedMsg)
+	assert.Equal(t, "system", capturedMsg.Role)
+	assert.Equal(t, "[Чат перемещён в «Без проекта» — с этого момента применяется новая политика]", capturedMsg.Content)
+}
+
+// TestMoveConversation_ProjectCrossBusiness covers Behavior 6.
+func TestMoveConversation_ProjectCrossBusiness(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	projectID := uuid.New()
+	convID := "507f1f77bcf86cd799439013"
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+		},
+	}
+	biz := &noopBusinessService{
+		GetByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return &domain.Business{ID: businessID, UserID: userID}, nil
+		},
+	}
+	// Project belongs to a different business → ErrProjectNotFound.
+	proj := &noopProjectService{
+		GetByIDFunc: func(_ context.Context, _, _ uuid.UUID) (*domain.Project, error) {
+			return nil, domain.ErrProjectNotFound
+		},
+	}
+	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, biz, proj)
+	require.NoError(t, err)
+
+	pid := projectID.String()
+	body, _ := json.Marshal(MoveConversationRequest{ProjectID: &pid})
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/move", body, userID, convID)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// TestMoveConversation_MissingConversation covers Behavior 7.
+func TestMoveConversation_MissingConversation(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439014"
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			return nil, domain.ErrConversationNotFound
+		},
+	}
+	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
+
+	body := []byte(`{"projectId":null}`)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/move", body, userID, convID)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// TestMoveConversation_WrongUser covers Behavior 8.
+func TestMoveConversation_WrongUser(t *testing.T) {
+	userID := uuid.New()
+	otherUserID := uuid.New()
+	convID := "507f1f77bcf86cd799439015"
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: convID, UserID: otherUserID.String()}, nil
+		},
+	}
+	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
+
+	body := []byte(`{"projectId":null}`)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/move", body, userID, convID)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+// TestMoveConversation_InvalidBody covers malformed-JSON handling.
+func TestMoveConversation_InvalidBody(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439016"
+	h := newTestConversationHandler(&MockConversationRepository{}, &MockMessageRepository{})
+
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/move", []byte(`not json`), userID, convID)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
