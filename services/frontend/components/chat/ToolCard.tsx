@@ -37,9 +37,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
       )}
       {tool.error && <p className="text-xs text-red-500">{tool.error}</p>}
       {tool.status === 'aborted' && (
-        <p className="text-xs text-gray-500 italic">
-          Выполнение прервано — результат не получен
-        </p>
+        <p className="text-xs italic text-gray-500">Выполнение прервано — результат не получен</p>
       )}
     </div>
   );
