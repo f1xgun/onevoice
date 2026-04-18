@@ -17,6 +17,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -208,8 +209,20 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	var assistantText strings.Builder
 	var toolCalls []domain.ToolCall
 	var toolResults []domain.ToolResult
-	// track tool call ID by name for result correlation
+	// Persistent message uses short local IDs (tc-0, tc-1...) to keep
+	// document shape stable for the frontend message loader.
 	toolCallIDByName := make(map[string]string)
+	// Realtime task lifecycle keyed by the orchestrator's tool_call_id.
+	agentTaskIDByCallID := make(map[string]string)
+
+	// Long-lived context for in-stream task persistence/publishing. The
+	// request context may be cancelled when the client disconnects, but we
+	// still want to finish recording the task row so the history is intact.
+	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), 2*time.Minute)
+	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
+		taskOpsCtx = logger.WithCorrelationID(taskOpsCtx, corrID)
+	}
+	defer cancelTaskOps()
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -222,6 +235,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		var ev struct {
 			Type       string                 `json:"type"`
 			Content    string                 `json:"content"`
+			ToolCallID string                 `json:"tool_call_id"`
 			ToolName   string                 `json:"tool_name"`
 			ToolArgs   map[string]interface{} `json:"tool_args"`
 			ToolResult interface{}            `json:"result"`
@@ -242,6 +256,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			}
 			toolCalls = append(toolCalls, tc)
 			toolCallIDByName[ev.ToolName] = tc.ID
+			h.onToolCall(taskOpsCtx, business.ID.String(), ev.ToolCallID, ev.ToolName, ev.ToolArgs, agentTaskIDByCallID)
 		case "tool_result":
 			var content map[string]interface{}
 			if m, ok := ev.ToolResult.(map[string]interface{}); ok {
@@ -255,6 +270,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 				Content:    content,
 				IsError:    ev.ToolError != "",
 			})
+			h.onToolResult(taskOpsCtx, business.ID.String(), ev.ToolCallID, content, ev.ToolError, agentTaskIDByCallID)
 		}
 	}
 
@@ -278,57 +294,8 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Create AgentTask records for every platform tool call (name contains "__")
-	if h.agentTaskRepo != nil && len(toolResults) > 0 {
-		toolCallByID := make(map[string]domain.ToolCall, len(toolCalls))
-		for _, tc := range toolCalls {
-			toolCallByID[tc.ID] = tc
-		}
-
-		taskCtx, cancel := persistCtx()
-		defer cancel()
-
-		now := time.Now()
-		for _, tr := range toolResults {
-			tc, ok := toolCallByID[tr.ToolCallID]
-			if !ok {
-				continue
-			}
-			sep := strings.Index(tc.Name, "__")
-			if sep == -1 {
-				continue // internal tool, skip
-			}
-			platform := tc.Name[:sep]
-			toolType := tc.Name[sep+2:]
-
-			status := "done"
-			var errMsg string
-			var output interface{}
-			if tr.IsError {
-				status = "error"
-				if msg, ok := tr.Content["error"].(string); ok {
-					errMsg = msg
-				}
-			} else {
-				output = tr.Content
-			}
-
-			agentTask := &domain.AgentTask{
-				BusinessID:  business.ID.String(),
-				Type:        toolType,
-				Platform:    platform,
-				Status:      status,
-				Input:       tc.Arguments,
-				Output:      output,
-				Error:       errMsg,
-				StartedAt:   &now,
-				CompletedAt: &now,
-			}
-			if err := h.agentTaskRepo.Create(taskCtx, agentTask); err != nil {
-				slog.ErrorContext(taskCtx, "failed to create agent task record", "tool", tc.Name, "error", err)
-			}
-		}
-	}
+	// AgentTask lifecycle (created on tool_call, updated on tool_result) is
+	// handled inline via onToolCall/onToolResult. Nothing to do here.
 
 	// Create Post records for each successful posting tool call
 	if h.postRepo != nil && len(toolResults) > 0 {
@@ -477,6 +444,102 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 		ReplyStatus: replyStatus,
 		CreatedAt:   createdAt,
 	}
+}
+
+// onToolCall records a new AgentTask in "running" state and publishes a
+// task.created event so the Tasks page can render the row before the tool
+// has finished executing. Internal (non-platform) tools are skipped.
+func (h *ChatProxyHandler) onToolCall(
+	ctx context.Context,
+	businessID, toolCallID, toolName string,
+	args map[string]interface{},
+	agentTaskIDByCallID map[string]string,
+) {
+	if h.agentTaskRepo == nil {
+		return
+	}
+	sep := strings.Index(toolName, "__")
+	if sep == -1 {
+		return // internal tool — not surfaced on the Tasks page
+	}
+	if toolCallID == "" {
+		slog.WarnContext(ctx, "chat proxy: tool_call without tool_call_id", "tool", toolName)
+		return
+	}
+	now := time.Now()
+	task := &domain.AgentTask{
+		BusinessID:  businessID,
+		Type:        toolName[sep+2:],
+		Platform:    toolName[:sep],
+		DisplayName: tools.DisplayName(toolName),
+		Status:      "running",
+		Input:       args,
+		StartedAt:   &now,
+	}
+	if err := h.agentTaskRepo.Create(ctx, task); err != nil {
+		slog.ErrorContext(ctx, "failed to create agent task record", "tool", toolName, "error", err)
+		return
+	}
+	agentTaskIDByCallID[toolCallID] = task.ID
+	if h.taskHub != nil {
+		h.taskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindCreated, Task: *task})
+	}
+}
+
+// onToolResult transitions a previously created AgentTask to "done" or
+// "error", stamps CompletedAt, and publishes task.updated so the UI can
+// swap the badge and show the duration.
+func (h *ChatProxyHandler) onToolResult(
+	ctx context.Context,
+	businessID, toolCallID string,
+	content map[string]interface{},
+	toolErr string,
+	agentTaskIDByCallID map[string]string,
+) {
+	if h.agentTaskRepo == nil {
+		return
+	}
+	if toolCallID == "" {
+		return
+	}
+	taskID, ok := agentTaskIDByCallID[toolCallID]
+	if !ok {
+		// Result without a prior tool_call in this stream: skip rather than
+		// create a half-formed record.
+		slog.WarnContext(ctx, "chat proxy: tool_result without matching tool_call", "tool_call_id", toolCallID)
+		return
+	}
+
+	now := time.Now()
+	update := &domain.AgentTask{
+		ID:          taskID,
+		BusinessID:  businessID,
+		Status:      "done",
+		CompletedAt: &now,
+	}
+	if toolErr != "" {
+		update.Status = "error"
+		update.Error = toolErr
+		if msg, ok := content["error"].(string); ok && msg != "" {
+			update.Error = msg
+		}
+	} else {
+		update.Output = content
+	}
+	if err := h.agentTaskRepo.Update(ctx, update); err != nil {
+		slog.ErrorContext(ctx, "failed to update agent task record", "task_id", taskID, "error", err)
+		return
+	}
+
+	if h.taskHub == nil {
+		return
+	}
+	fresh, err := h.agentTaskRepo.GetByID(ctx, businessID, taskID)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to reload agent task for hub publish", "task_id", taskID, "error", err)
+		return
+	}
+	h.taskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindUpdated, Task: *fresh})
 }
 
 // loadHistory fetches prior messages for the conversation and converts them
