@@ -158,10 +158,12 @@ type toolOutcome struct {
 }
 
 // dispatchToolCalls executes a batch of tool calls from a single LLM response
-// concurrently, but preserves the original order for emitted tool_result events
-// and for tool messages appended to the history. Preserving order is required
-// so that the next LLM iteration sees role:tool messages whose ToolCallID
-// matches assistant.tool_calls[*].id (OpenAI and Anthropic enforce this).
+// concurrently. Each goroutine emits its tool_result event as soon as that
+// tool finishes, so the UI reflects real per-tool latency rather than the
+// batch's slowest member. The tool messages appended to `messages` are
+// ordered to match the original tool_calls slice — OpenAI and Anthropic
+// require role:tool messages to line up with assistant.tool_calls[*].id for
+// the next iteration.
 //
 // Returns false if the context was canceled before all events could be emitted.
 func (o *Orchestrator) dispatchToolCalls(
@@ -193,33 +195,29 @@ func (o *Orchestrator) dispatchToolCalls(
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			outcomes[i].result, outcomes[i].execErr = o.executeOne(ctx, outcomes[i].tc.Function.Name, outcomes[i].args)
+			name := outcomes[i].tc.Function.Name
+			result, execErr := o.executeOne(ctx, name, outcomes[i].args)
+			outcomes[i].result = result
+			outcomes[i].execErr = execErr
+
+			ev := buildToolResultEvent(outcomes[i].tc, o.tools.DisplayName(name), result, execErr)
+			select {
+			case ch <- ev:
+			case <-ctx.Done():
+			}
 		}(i)
 	}
 	wg.Wait()
+
+	if err := ctx.Err(); err != nil {
+		return false
+	}
 
 	for _, out := range outcomes {
 		result := out.result
 		if out.execErr != nil {
 			result = map[string]interface{}{"error": out.execErr.Error(), "tool_name": out.tc.Function.Name}
 		}
-
-		ev := Event{
-			Type:            EventToolResult,
-			ToolCallID:      out.tc.ID,
-			ToolName:        out.tc.Function.Name,
-			ToolDisplayName: o.tools.DisplayName(out.tc.Function.Name),
-			ToolResult:      result,
-		}
-		if out.execErr != nil {
-			ev.ToolError = out.execErr.Error()
-		}
-		select {
-		case ch <- ev:
-		case <-ctx.Done():
-			return false
-		}
-
 		resultJSON, marshalErr := json.Marshal(result)
 		if marshalErr != nil {
 			resultJSON = []byte(fmt.Sprintf(`{"error":"marshal failed: %s","tool_name":%q}`, marshalErr.Error(), out.tc.Function.Name))
@@ -231,6 +229,26 @@ func (o *Orchestrator) dispatchToolCalls(
 		})
 	}
 	return true
+}
+
+// buildToolResultEvent wraps a tool outcome into the event emitted on the SSE
+// channel. Shaping it here keeps the goroutine body short and side-effect free.
+func buildToolResultEvent(tc llm.ToolCall, displayName string, result interface{}, execErr error) Event {
+	payload := result
+	if execErr != nil {
+		payload = map[string]interface{}{"error": execErr.Error(), "tool_name": tc.Function.Name}
+	}
+	ev := Event{
+		Type:            EventToolResult,
+		ToolCallID:      tc.ID,
+		ToolName:        tc.Function.Name,
+		ToolDisplayName: displayName,
+		ToolResult:      payload,
+	}
+	if execErr != nil {
+		ev.ToolError = execErr.Error()
+	}
+	return ev
 }
 
 // executeOne runs a single tool, optionally bounded by ToolExecTimeout, and
