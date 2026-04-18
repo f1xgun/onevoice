@@ -170,7 +170,10 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authURL := fmt.Sprintf("%s/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256&scope=wall+groups+manage",
+	// `offline` makes VK issue a non-expiring user token. Without it, tokens
+	// expire in ~24h and background wall.getComments syncs start failing
+	// silently the next day until the user re-authorizes.
+	authURL := fmt.Sprintf("%s/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256&scope=wall+groups+manage+offline",
 		h.vkTokenBaseURL(),
 		url.QueryEscape(h.cfg.VKClientID),
 		url.QueryEscape(h.cfg.VKRedirectURI),
@@ -241,8 +244,12 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store user token temporarily in Redis (5 min) for community selection step.
-	// We do NOT store the user token permanently — only the community token will be persisted.
+	// Park the user token in Redis while the user picks a community. The
+	// community-callback picks it up from Redis and hands both tokens to
+	// integrationService.Connect, which persists the user token encrypted
+	// in integrations.encrypted_user_token. The community token is
+	// mandatory for write operations (post/reply); the user token unlocks
+	// wall.getComments, which VK refuses to serve with group auth.
 	redisKey := fmt.Sprintf("vk_temp_token:%s", stateData.BusinessID.String())
 	if err := h.redis.Set(r.Context(), redisKey, tokenResp.AccessToken, 5*time.Minute).Err(); err != nil {
 		slog.Error("failed to store temp VK token", "error", err)
