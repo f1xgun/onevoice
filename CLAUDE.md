@@ -3,8 +3,6 @@
 Platform-agnostic multi-agent system for automating digital presence management.
 Go 1.24 + Next.js 14 + PostgreSQL + NATS + Playwright RPA.
 
-**Dev workflow is mandatory:** [WORKFLOW.md](WORKFLOW.md)
-
 ## Quick Reference
 
 - **Architecture:** [docs/architecture.md](docs/architecture.md)
@@ -12,7 +10,7 @@ Go 1.24 + Next.js 14 + PostgreSQL + NATS + Playwright RPA.
 - **Code Patterns:** [docs/patterns.md](docs/patterns.md)
 - **Anti-patterns:** [docs/anti-patterns.md](docs/anti-patterns.md)
 - **Coding Rules (detailed):** [CODING_RULES.md](CODING_RULES.md)
-- **Dev Workflow:** [WORKFLOW.md](WORKFLOW.md)
+- **Dev workflow:** managed via GSD slash commands (`/gsd:help`)
 - **UI Reviewer Agent:** [.claude/agents/ui-reviewer.md](.claude/agents/ui-reviewer.md)
 
 ## Module Map
