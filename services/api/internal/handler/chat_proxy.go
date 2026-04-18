@@ -208,10 +208,9 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	var assistantText strings.Builder
 	var toolCalls []domain.ToolCall
 	var toolResults []domain.ToolResult
-	// Persistent message uses short local IDs (tc-0, tc-1...) to keep
-	// document shape stable for the frontend message loader.
-	toolCallIDByName := make(map[string]string)
 	// Realtime task lifecycle keyed by the orchestrator's tool_call_id.
+	// We key everything by tool_call_id (not tool name) so duplicate tool
+	// names in a single batch correlate correctly.
 	agentTaskIDByCallID := make(map[string]string)
 
 	// Long-lived context for in-stream task persistence/publishing. The
@@ -249,13 +248,15 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		case "text":
 			assistantText.WriteString(ev.Content)
 		case "tool_call":
-			tc := domain.ToolCall{
-				ID:        fmt.Sprintf("tc-%d", len(toolCalls)),
+			id := ev.ToolCallID
+			if id == "" {
+				id = fmt.Sprintf("tc-%d", len(toolCalls))
+			}
+			toolCalls = append(toolCalls, domain.ToolCall{
+				ID:        id,
 				Name:      ev.ToolName,
 				Arguments: ev.ToolArgs,
-			}
-			toolCalls = append(toolCalls, tc)
-			toolCallIDByName[ev.ToolName] = tc.ID
+			})
 			h.onToolCall(taskOpsCtx, business.ID.String(), ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolArgs, agentTaskIDByCallID)
 		case "tool_result":
 			var content map[string]interface{}
@@ -264,9 +265,8 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			} else {
 				content = map[string]interface{}{"raw": ev.ToolResult}
 			}
-			tcID := toolCallIDByName[ev.ToolName]
 			toolResults = append(toolResults, domain.ToolResult{
-				ToolCallID: tcID,
+				ToolCallID: ev.ToolCallID,
 				Content:    content,
 				IsError:    ev.ToolError != "",
 			})
