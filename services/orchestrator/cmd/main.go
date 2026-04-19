@@ -97,7 +97,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	mongoDB := mongoClient.Database(cfg.MongoDB)
 	log.Info("orchestrator: connected to mongo", "uri", cfg.RedactMongoURI(), "db", cfg.MongoDB)
 	pendingToolCallRepo := repository.NewPendingToolCallRepository(mongoDB)
-	_ = pendingToolCallRepo // wired into orchestrator.New in Plan 16-05
 
 	// Health checker
 	hc := health.New()
@@ -113,8 +112,11 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return mongoClient.Ping(ctx, nil)
 	})
 
-	// Orchestrator
-	orch := orchestrator.NewWithOptions(router, toolRegistry, orchestrator.Options{
+	// Orchestrator (Plan 16-05): pendingToolCallRepo is wired in so that
+	// manual-floor tool calls can be persisted as PendingToolCallBatch
+	// documents at pause time. Without this, stepRun emits EventError
+	// "HITL not configured" when classifying any manual-floor call.
+	orch := orchestrator.NewWithHITL(router, toolRegistry, pendingToolCallRepo, orchestrator.Options{
 		MaxIterations: cfg.MaxIterations,
 	})
 
