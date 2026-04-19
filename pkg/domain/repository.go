@@ -63,6 +63,18 @@ type MessageRepository interface {
 	Create(ctx context.Context, msg *Message) error
 	ListByConversationID(ctx context.Context, conversationID string, limit, offset int) ([]Message, error)
 	CountByConversationID(ctx context.Context, conversationID string) (int64, error)
+	// Update overwrites an existing message by ID. Used by the Phase 16 HITL
+	// resume path (Plan 16-06) to append ToolResults to the SAME assistant
+	// Message that carried the pause-time ToolCalls (invariant D-17: one
+	// assistant Message per LLM turn, even across a pause). If the message
+	// does not exist, returns ErrMessageNotFound.
+	Update(ctx context.Context, msg *Message) error
+	// FindByConversationActive returns the most recent assistant Message in
+	// the conversation whose Status is in {pending_approval, in_progress},
+	// or (nil, ErrMessageNotFound) if none exists. Used by chat_proxy.go's
+	// D-04 stream-open gate (Plan 16-06) to detect in-flight turns before
+	// creating a new assistant Message.
+	FindByConversationActive(ctx context.Context, conversationID string) (*Message, error)
 }
 
 // Filter types

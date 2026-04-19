@@ -76,9 +76,15 @@ func (m *MockConversationRepository) UpdateProjectAssignment(ctx context.Context
 	return nil
 }
 
-// MockMessageRepository is a minimal mock for MessageRepository
+// MockMessageRepository is a minimal mock for MessageRepository. Phase 16
+// extends the interface with Update + FindByConversationActive; tests that
+// don't exercise those paths leave the *Func fields nil and the mock returns
+// safe defaults (nil / ErrMessageNotFound).
 type MockMessageRepository struct {
-	CreateFunc func(ctx context.Context, msg *domain.Message) error
+	CreateFunc                   func(ctx context.Context, msg *domain.Message) error
+	ListByConversationIDFunc     func(ctx context.Context, conversationID string, limit, offset int) ([]domain.Message, error)
+	UpdateFunc                   func(ctx context.Context, msg *domain.Message) error
+	FindByConversationActiveFunc func(ctx context.Context, conversationID string) (*domain.Message, error)
 }
 
 func (m *MockMessageRepository) Create(ctx context.Context, msg *domain.Message) error {
@@ -87,11 +93,26 @@ func (m *MockMessageRepository) Create(ctx context.Context, msg *domain.Message)
 	}
 	return nil
 }
-func (m *MockMessageRepository) ListByConversationID(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
+func (m *MockMessageRepository) ListByConversationID(ctx context.Context, convID string, limit, offset int) ([]domain.Message, error) {
+	if m.ListByConversationIDFunc != nil {
+		return m.ListByConversationIDFunc(ctx, convID, limit, offset)
+	}
 	return []domain.Message{}, nil
 }
 func (m *MockMessageRepository) CountByConversationID(_ context.Context, _ string) (int64, error) {
 	return 0, nil
+}
+func (m *MockMessageRepository) Update(ctx context.Context, msg *domain.Message) error {
+	if m.UpdateFunc != nil {
+		return m.UpdateFunc(ctx, msg)
+	}
+	return nil
+}
+func (m *MockMessageRepository) FindByConversationActive(ctx context.Context, conversationID string) (*domain.Message, error) {
+	if m.FindByConversationActiveFunc != nil {
+		return m.FindByConversationActiveFunc(ctx, conversationID)
+	}
+	return nil, domain.ErrMessageNotFound
 }
 
 // noopBusinessService returns ErrBusinessNotFound by default. Tests that need

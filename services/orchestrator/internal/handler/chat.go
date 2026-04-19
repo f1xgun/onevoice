@@ -63,13 +63,23 @@ type chatRequest struct {
 }
 
 // sseEvent matches the JSON shape written to the SSE stream.
+//
+// Phase 16 additions (all omitempty so legacy text/tool_call/tool_result/done
+// events remain byte-identical on the wire):
+//   - ToolCallID carries the LLM's real tool_call.id on tool_call and
+//     tool_result / tool_rejected events so chat_proxy can persist the
+//     Message.ToolCalls with the real ID (HITL-13: no synthetic "tc-N").
+//   - BatchID + Calls are set on tool_approval_required events (HITL-02).
 type sseEvent struct {
-	Type       string                 `json:"type"`
-	Content    string                 `json:"content,omitempty"`
-	ToolName   string                 `json:"tool_name,omitempty"`
-	ToolArgs   map[string]interface{} `json:"tool_args,omitempty"`
-	ToolResult interface{}            `json:"result,omitempty"`
-	ToolError  string                 `json:"error,omitempty"`
+	Type       string                              `json:"type"`
+	Content    string                              `json:"content,omitempty"`
+	ToolCallID string                              `json:"tool_call_id,omitempty"`
+	ToolName   string                              `json:"tool_name,omitempty"`
+	ToolArgs   map[string]interface{}              `json:"tool_args,omitempty"`
+	ToolResult interface{}                         `json:"result,omitempty"`
+	ToolError  string                              `json:"error,omitempty"`
+	BatchID    string                              `json:"batch_id,omitempty"`
+	Calls      []orchestrator.ApprovalCallSummary  `json:"calls,omitempty"`
 }
 
 // Chat handles POST /chat/{conversationID} and streams SSE events.
@@ -167,14 +177,26 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	for event := range events {
 		sse := sseEvent{Type: string(event.Type), Content: event.Content}
-		if event.Type == orchestrator.EventToolCall {
+		switch event.Type {
+		case orchestrator.EventToolCall:
+			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
 			sse.ToolArgs = event.ToolArgs
-		}
-		if event.Type == orchestrator.EventToolResult {
+		case orchestrator.EventToolResult:
+			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
 			sse.ToolResult = event.ToolResult
 			sse.ToolError = event.ToolError
+		case orchestrator.EventToolRejected:
+			// HITL-09: policy_forbidden / policy_revoked / user_rejected.
+			// chat_proxy forwards this to the client; the frontend renders
+			// the rejection in the approval card.
+			sse.ToolCallID = event.ToolCallID
+			sse.ToolName = event.ToolName
+		case orchestrator.EventToolApprovalRequired:
+			// HITL-02: one pause event per turn carrying all manual calls.
+			sse.BatchID = event.BatchID
+			sse.Calls = event.Calls
 		}
 		writeSSE(ctx, w, flusher, sse)
 	}

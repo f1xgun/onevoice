@@ -20,6 +20,23 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
+// ssePayload is the shape of the JSON we decode from orchestrator SSE `data:`
+// frames. Phase 16 extends this with ToolCallID / BatchID / Calls to carry
+// HITL events without synthetic IDs (HITL-13) and with the approval-batch
+// fields (HITL-02) so chat_proxy can persist the paired assistant Message.
+type ssePayload struct {
+	Type       string                 `json:"type"`
+	Content    string                 `json:"content"`
+	ToolCallID string                 `json:"tool_call_id"`
+	ToolName   string                 `json:"tool_name"`
+	ToolArgs   map[string]interface{} `json:"tool_args"`
+	ToolResult interface{}            `json:"result"`
+	ToolError  string                 `json:"error"`
+	// HITL-02: pause-event fields.
+	BatchID string                   `json:"batch_id"`
+	Calls   []map[string]interface{} `json:"calls"`
+}
+
 // postingToolInfo describes how to extract post data from a platform tool call.
 type postingToolInfo struct {
 	platform     string
@@ -270,15 +287,23 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stream SSE line-by-line, accumulating assistant text and tool calls for persistence
+	// Stream SSE line-by-line, accumulating assistant text and tool calls for persistence.
+	// 1 MB — bumped from 64KB in Phase 16 (HITL-13) to support large tool results
+	// and ModelMessages snapshots that flow through the proxy without truncation.
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 64*1024), 64*1024)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var assistantText strings.Builder
 	var toolCalls []domain.ToolCall
 	var toolResults []domain.ToolResult
-	// track tool call ID by name for result correlation
-	toolCallIDByName := make(map[string]string)
+	// Phase 16: track whether we emitted an approval-pause event. When set,
+	// the assistant Message is persisted with Status=pending_approval and the
+	// handler returns immediately after forwarding the event.
+	var pauseEvent *ssePayload
+	// Phase 16 / HITL-13: stream-start MessageID threaded end-to-end so that
+	// the orchestrator's PendingToolCallBatch.MessageID matches the actual
+	// Message.ID we persist here (D-17 / anti-footgun #5).
+	streamStartMessageID := uuid.NewString()
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -288,14 +313,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		var ev struct {
-			Type       string                 `json:"type"`
-			Content    string                 `json:"content"`
-			ToolName   string                 `json:"tool_name"`
-			ToolArgs   map[string]interface{} `json:"tool_args"`
-			ToolResult interface{}            `json:"result"`
-			ToolError  string                 `json:"error"`
-		}
+		var ev ssePayload
 		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
 			slog.WarnContext(r.Context(), "chat proxy: malformed SSE event", "error", err, "line", line[:min(len(line), 200)])
 			continue
@@ -304,13 +322,14 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		case "text":
 			assistantText.WriteString(ev.Content)
 		case "tool_call":
-			tc := domain.ToolCall{
-				ID:        fmt.Sprintf("tc-%d", len(toolCalls)),
+			// HITL-13 / anti-footgun #4: propagate the LLM's real
+			// tool_call.id from the orchestrator's SSE event. NEVER
+			// synthesize "tc-N" — mismatched IDs break approval resolve.
+			toolCalls = append(toolCalls, domain.ToolCall{
+				ID:        ev.ToolCallID,
 				Name:      ev.ToolName,
 				Arguments: ev.ToolArgs,
-			}
-			toolCalls = append(toolCalls, tc)
-			toolCallIDByName[ev.ToolName] = tc.ID
+			})
 		case "tool_result":
 			var content map[string]interface{}
 			if m, ok := ev.ToolResult.(map[string]interface{}); ok {
@@ -318,12 +337,21 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			} else {
 				content = map[string]interface{}{"raw": ev.ToolResult}
 			}
-			tcID := toolCallIDByName[ev.ToolName]
 			toolResults = append(toolResults, domain.ToolResult{
-				ToolCallID: tcID,
+				ToolCallID: ev.ToolCallID,
 				Content:    content,
 				IsError:    ev.ToolError != "",
 			})
+		case "tool_approval_required":
+			// HITL-01 / HITL-02: single pause event per turn. Copy the event
+			// so we can persist after the scanner loop exits.
+			copy := ev
+			pauseEvent = &copy
+		case "tool_rejected":
+			// HITL-09: synthetic rejection (policy_forbidden /
+			// policy_revoked / user_rejected). Forward-only — no
+			// persistence change here; any paired assistant Message is
+			// persisted by the pause or done path.
 		}
 	}
 
@@ -331,16 +359,55 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(r.Context(), "chat proxy: SSE scanner error", "error", err, "conversation_id", conversationID)
 	}
 
-	// Persist assistant response after stream ends
+	// Phase 16 HITL-01 pause-time branch: persist the assistant Message with
+	// Status=pending_approval so a page reload rehydrates the approval card
+	// via GET /messages (HITL-11 shape delivered in Task 2). The client has
+	// already received the tool_approval_required SSE event; we return from
+	// the handler after the persist so the HTTP response closes.
+	if pauseEvent != nil {
+		saveCtx, cancel := persistCtx()
+		defer cancel()
+		pendingToolCalls := make([]domain.ToolCall, 0, len(toolCalls))
+		for _, tc := range toolCalls {
+			pendingToolCalls = append(pendingToolCalls, domain.ToolCall{
+				ID:         tc.ID,
+				Name:       tc.Name,
+				Arguments:  tc.Arguments,
+				ApprovalID: fmt.Sprintf("%s-%s", pauseEvent.BatchID, tc.ID),
+				Status:     domain.ToolCallStatusPending,
+			})
+		}
+		assistantMsg := &domain.Message{
+			ID:             streamStartMessageID,
+			ConversationID: conversationID,
+			Role:           "assistant",
+			Content:        assistantText.String(),
+			ToolCalls:      pendingToolCalls,
+			Status:         domain.MessageStatusPendingApproval,
+		}
+		if err := h.messageRepo.Create(saveCtx, assistantMsg); err != nil {
+			// Non-fatal for the SSE stream — the client already received
+			// the pause event, and the orchestrator-side pending_tool_calls
+			// batch carries the authoritative state. Approval card will
+			// rehydrate from that on the next GET /messages (HITL-11).
+			slog.WarnContext(saveCtx, "failed to persist assistant pending_approval message",
+				"error", err, "conversation_id", conversationID, "batch_id", pauseEvent.BatchID)
+		}
+		return
+	}
+
+	// Persist assistant response after stream ends (auto / done path).
 	if assistantText.Len() > 0 || len(toolCalls) > 0 {
 		saveCtx, cancel := persistCtx()
 		defer cancel()
 		assistantMsg := &domain.Message{
+			ID:             streamStartMessageID,
 			ConversationID: conversationID,
 			Role:           "assistant",
 			Content:        assistantText.String(),
 			ToolCalls:      toolCalls,
 			ToolResults:    toolResults,
+			Status:         domain.MessageStatusComplete,
 		}
 		if err := h.messageRepo.Create(saveCtx, assistantMsg); err != nil {
 			slog.ErrorContext(saveCtx, "failed to save assistant message", "error", err)
