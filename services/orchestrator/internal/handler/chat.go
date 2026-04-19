@@ -115,18 +115,6 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		ctx = logger.WithCorrelationID(ctx, corrID)
 	}
 
-	// Phase 15 project enrichment: build *prompt.ProjectContext only when the
-	// proxy sent a project_id. An empty project_id means "Без проекта" — the
-	// orchestrator runs with no project prompt layer, identical to pre-Phase-15.
-	var projCtx *prompt.ProjectContext
-	if req.ProjectID != "" {
-		projCtx = &prompt.ProjectContext{
-			ID:           req.ProjectID,
-			Name:         req.ProjectName,
-			SystemPrompt: req.ProjectSystemPrompt,
-		}
-	}
-
 	// Deserialise whitelist mode. Empty string means "inherit" (v1.3 = all per
 	// D-18). Any other value that is not one of the four defined modes is
 	// logged and coerced back to inherit — never crash on bad proxy input.
@@ -136,6 +124,22 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			"mode", req.ProjectWhitelistMode,
 		)
 		mode = ""
+	}
+
+	// Phase 15 project enrichment: build *prompt.ProjectContext only when the
+	// proxy sent a project_id. An empty project_id means "Без проекта" — the
+	// orchestrator runs with no project prompt layer, identical to pre-Phase-15.
+	// WhitelistMode + AllowedTools added in GAP-02 so appendProjectBlock can tell
+	// the LLM about the whitelist instead of silently substituting tools.
+	var projCtx *prompt.ProjectContext
+	if req.ProjectID != "" {
+		projCtx = &prompt.ProjectContext{
+			ID:            req.ProjectID,
+			Name:          req.ProjectName,
+			SystemPrompt:  req.ProjectSystemPrompt,
+			WhitelistMode: mode,
+			AllowedTools:  req.ProjectAllowedTools,
+		}
 	}
 
 	// Build message history: prior turns + current user message

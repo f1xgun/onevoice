@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
@@ -33,9 +34,11 @@ type BusinessContext struct {
 // matches the UX intent: project-level instructions override general business
 // rules for chats inside a project.
 type ProjectContext struct {
-	ID           string
-	Name         string
-	SystemPrompt string
+	ID            string
+	Name          string
+	SystemPrompt  string
+	WhitelistMode domain.WhitelistMode // drives the Ограничения инструментов hint in appendProjectBlock (GAP-02)
+	AllowedTools  []string             // listed verbatim when WhitelistMode == WhitelistModeExplicit (GAP-02)
 }
 
 // Build returns a []llm.Message starting with a system message built from
@@ -57,6 +60,12 @@ func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []l
 // system text. The header is always emitted (even when SystemPrompt is empty)
 // so the LLM knows which project is in scope; this makes the transition
 // visible during move-chat in Plan 04 (see PITFALLS.md §11, Option A).
+//
+// When WhitelistMode is explicit or none, a follow-up
+// "### Ограничения инструментов" section is emitted so the LLM knows to
+// refuse/explain unavailable-platform requests instead of silently
+// substituting the closest allowed tool (see GAP-02 in
+// .planning/phases/15-projects-foundation/15-VERIFICATION.md).
 func appendProjectBlock(base string, proj *ProjectContext) string {
 	var sb strings.Builder
 	sb.WriteString(base)
@@ -72,6 +81,35 @@ func appendProjectBlock(base string, proj *ProjectContext) string {
 			sb.WriteString("\n")
 		}
 	}
+
+	// Whitelist explanation (GAP-02). Only emitted for restrictive modes.
+	switch proj.WhitelistMode {
+	case domain.WhitelistModeExplicit:
+		if len(proj.AllowedTools) == 0 {
+			// Defensive: shouldn't happen (service layer rejects this via
+			// ErrProjectWhitelistEmpty), but if it does we tell the LLM the
+			// same thing WhitelistModeNone would say.
+			sb.WriteString("\n### Ограничения инструментов\n")
+			sb.WriteString("В этом проекте все инструменты отключены. Отвечай только текстом. ")
+			sb.WriteString("Если пользователь просит действие, объясни ограничение и предложи перенести чат в другой проект. ")
+			sb.WriteString("НЕ подменяй канал молча.\n")
+		} else {
+			sb.WriteString("\n### Ограничения инструментов\n")
+			sb.WriteString("В этом проекте разрешены только: ")
+			sb.WriteString(strings.Join(proj.AllowedTools, ", "))
+			sb.WriteString(". Если пользователь просит действие через недоступный канал, ")
+			sb.WriteString("объясни вежливо, что этот канал отключён для проекта, и предложи разрешённую альтернативу ")
+			sb.WriteString("(или просто откажись, если альтернативы нет). НЕ подменяй канал молча.\n")
+		}
+	case domain.WhitelistModeNone:
+		sb.WriteString("\n### Ограничения инструментов\n")
+		sb.WriteString("В этом проекте все инструменты отключены. Отвечай только текстом. ")
+		sb.WriteString("Если пользователь просит действие, объясни ограничение и предложи перенести чат в другой проект. ")
+		sb.WriteString("НЕ подменяй канал молча.\n")
+	case domain.WhitelistModeAll, domain.WhitelistModeInherit, "":
+		// No hint — same behaviour as before GAP-02.
+	}
+
 	return sb.String()
 }
 

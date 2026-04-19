@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 )
@@ -153,4 +154,112 @@ func TestBuildSystemPrompt_ProjectPromptWithTrailingNewline(t *testing.T) {
 	content := msgs[0].Content
 	// Should not contain three consecutive newlines as a result of the body
 	assert.NotContains(t, content, "body\n\n\n", "trailing newline should not compound")
+}
+
+// GAP-02 tests — appendProjectBlock must communicate whitelist restrictions to
+// the LLM so it explains "channel unavailable" instead of silently
+// substituting the closest allowed tool. See
+// .planning/phases/15-projects-foundation/15-VERIFICATION.md §GAP-02.
+//
+// All tests below go through prompt.Build (not appendProjectBlock directly —
+// it's unexported) so they cover the real end-to-end system-prompt shape.
+
+func buildWithProj(t *testing.T, proj *prompt.ProjectContext) string {
+	t.Helper()
+	biz := prompt.BusinessContext{Name: "Test", Now: time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)}
+	msgs := prompt.Build(biz, proj, nil)
+	require.Len(t, msgs, 1)
+	return msgs[0].Content
+}
+
+func TestAppendProjectBlock_ExplicitMode_AppendsAllowedToolsHint(t *testing.T) {
+	proj := &prompt.ProjectContext{
+		Name:          "Отзывы",
+		SystemPrompt:  "Отвечай вежливо",
+		WhitelistMode: domain.WhitelistModeExplicit,
+		AllowedTools:  []string{"telegram__send_channel_post", "telegram__send_channel_photo"},
+	}
+	got := buildWithProj(t, proj)
+
+	assert.Contains(t, got, "### Ограничения инструментов", "expected hint header")
+	assert.Contains(t, got, "telegram__send_channel_post, telegram__send_channel_photo", "expected comma-joined tool list")
+	assert.Contains(t, got, "разрешены только", "expected phrase 'разрешены только'")
+	assert.Contains(t, got, "НЕ подменяй канал молча", "expected anti-substitution instruction")
+}
+
+func TestAppendProjectBlock_NoneMode_AppendsNoneHint(t *testing.T) {
+	proj := &prompt.ProjectContext{
+		Name:          "Молчун",
+		WhitelistMode: domain.WhitelistModeNone,
+	}
+	got := buildWithProj(t, proj)
+
+	assert.Contains(t, got, "### Ограничения инструментов")
+	assert.Contains(t, got, "все инструменты отключены")
+	assert.Contains(t, got, "НЕ подменяй канал молча")
+}
+
+func TestAppendProjectBlock_AllMode_NoHint(t *testing.T) {
+	proj := &prompt.ProjectContext{
+		Name:          "Всё разрешено",
+		WhitelistMode: domain.WhitelistModeAll,
+		AllowedTools:  []string{"telegram__send_channel_post"}, // should be ignored for `all`
+	}
+	got := buildWithProj(t, proj)
+
+	assert.NotContains(t, got, "### Ограничения инструментов", "no hint expected for WhitelistModeAll")
+}
+
+func TestAppendProjectBlock_InheritMode_NoHint(t *testing.T) {
+	proj := &prompt.ProjectContext{
+		Name:          "Наследует",
+		WhitelistMode: domain.WhitelistModeInherit,
+	}
+	got := buildWithProj(t, proj)
+
+	assert.NotContains(t, got, "### Ограничения инструментов", "no hint expected for WhitelistModeInherit")
+}
+
+func TestAppendProjectBlock_EmptyMode_NoHint(t *testing.T) {
+	// Back-compat: call sites that don't populate the new fields still work —
+	// empty string falls through to the default branch with no hint.
+	proj := &prompt.ProjectContext{
+		Name:         "Legacy",
+		SystemPrompt: "body",
+	}
+	got := buildWithProj(t, proj)
+
+	assert.NotContains(t, got, "### Ограничения инструментов", "no hint expected for empty WhitelistMode")
+	assert.Contains(t, got, "## Проект: Legacy", "legacy header must still render")
+}
+
+func TestAppendProjectBlock_ExplicitModeEmptyAllowedTools_FallsBackToNoneWording(t *testing.T) {
+	// Defensive: service layer rejects this via ErrProjectWhitelistEmpty, but
+	// if bad data sneaks through we emit the same wording as WhitelistModeNone.
+	proj := &prompt.ProjectContext{
+		Name:          "Пусто",
+		WhitelistMode: domain.WhitelistModeExplicit,
+		AllowedTools:  []string{},
+	}
+	got := buildWithProj(t, proj)
+
+	assert.Contains(t, got, "### Ограничения инструментов")
+	assert.Contains(t, got, "все инструменты отключены", "empty allowed-tools should read like WhitelistModeNone")
+	assert.NotContains(t, got, "разрешены только", "don't emit 'разрешены только' when list is empty")
+}
+
+func TestAppendProjectBlock_ExplicitMode_InstructsAgainstSubstitution(t *testing.T) {
+	// Regression guard against the GAP-02 reproduction: the anti-substitution
+	// instruction MUST be present verbatim. If a refactor removes this
+	// substring, GAP-02 comes back.
+	proj := &prompt.ProjectContext{
+		Name:          "Регрессия",
+		WhitelistMode: domain.WhitelistModeExplicit,
+		AllowedTools:  []string{"telegram__send_channel_post"},
+	}
+	got := buildWithProj(t, proj)
+
+	assert.Contains(t, got, "НЕ подменяй канал молча")
+	// And the weaker but useful invariant — we tell it HOW to refuse (explain + alternative).
+	assert.Contains(t, got, "объясни вежливо")
 }
