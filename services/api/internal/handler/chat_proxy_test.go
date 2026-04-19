@@ -38,7 +38,7 @@ func newChatProxyNoProject(
 		},
 	}
 	proj := &noopProjectService{}
-	return NewChatProxyHandler(biz, integ, proj, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, orchURL, nil)
+	return NewChatProxyHandler(biz, integ, proj, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orchURL, nil)
 }
 
 // TestChatProxy_EnrichesContext verifies that business and integration context
@@ -276,7 +276,7 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 			return nil, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil)
 
 	body := `{"message":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
@@ -349,7 +349,7 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 			}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil)
 
 	body := `{"message":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
@@ -625,7 +625,7 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 			return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -698,7 +698,7 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 			return &domain.Conversation{ID: id, UserID: "any"}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	req.Header.Set(ResumeBatchHeader, "batch-missing")
@@ -779,7 +779,7 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 			return &domain.Conversation{ID: id, UserID: "any"}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{"message":"(empty resume body)"}`))
 	// NO ResumeBatchHeader here — implicit resume.
@@ -848,7 +848,7 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 			return &domain.Conversation{ID: id, UserID: "any"}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	// No resume header.
@@ -909,7 +909,7 @@ func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testin
 			return &domain.Conversation{ID: id, UserID: "any"}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -1014,7 +1014,7 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 			return nil, domain.ErrProjectNotFound
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil)
 
 	body := `{"message":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))

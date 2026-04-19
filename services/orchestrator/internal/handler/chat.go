@@ -71,15 +71,16 @@ type chatRequest struct {
 //     Message.ToolCalls with the real ID (HITL-13: no synthetic "tc-N").
 //   - BatchID + Calls are set on tool_approval_required events (HITL-02).
 type sseEvent struct {
-	Type       string                              `json:"type"`
-	Content    string                              `json:"content,omitempty"`
-	ToolCallID string                              `json:"tool_call_id,omitempty"`
-	ToolName   string                              `json:"tool_name,omitempty"`
-	ToolArgs   map[string]interface{}              `json:"tool_args,omitempty"`
-	ToolResult interface{}                         `json:"result,omitempty"`
-	ToolError  string                              `json:"error,omitempty"`
-	BatchID    string                              `json:"batch_id,omitempty"`
-	Calls      []orchestrator.ApprovalCallSummary  `json:"calls,omitempty"`
+	Type            string                             `json:"type"`
+	Content         string                             `json:"content,omitempty"`
+	ToolCallID      string                             `json:"tool_call_id,omitempty"`
+	ToolName        string                             `json:"tool_name,omitempty"`
+	ToolDisplayName string                             `json:"tool_display_name,omitempty"`
+	ToolArgs        map[string]interface{}             `json:"tool_args,omitempty"`
+	ToolResult      interface{}                        `json:"result,omitempty"`
+	ToolError       string                             `json:"error,omitempty"`
+	BatchID         string                             `json:"batch_id,omitempty"`
+	Calls           []orchestrator.ApprovalCallSummary `json:"calls,omitempty"`
 }
 
 // Chat handles POST /chat/{conversationID} and streams SSE events.
@@ -181,10 +182,12 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		case orchestrator.EventToolCall:
 			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
+			sse.ToolDisplayName = event.ToolDisplayName
 			sse.ToolArgs = event.ToolArgs
 		case orchestrator.EventToolResult:
 			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
+			sse.ToolDisplayName = event.ToolDisplayName
 			sse.ToolResult = event.ToolResult
 			sse.ToolError = event.ToolError
 		case orchestrator.EventToolRejected:

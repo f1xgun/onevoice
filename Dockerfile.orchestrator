@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.6
+
 # Build stage
 FROM golang:1.25-alpine AS builder
 
@@ -8,13 +10,23 @@ RUN apk add --no-cache git
 ENV GOWORK=off
 ENV GOTOOLCHAIN=auto
 
+COPY pkg/go.mod pkg/go.sum ./pkg/
+COPY services/orchestrator/go.mod services/orchestrator/go.sum ./services/orchestrator/
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    cd pkg && for i in 1 2 3; do go mod download && break || sleep 5; done
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    cd services/orchestrator && for i in 1 2 3; do go mod download && break || sleep 5; done
+
 COPY pkg/ ./pkg/
 COPY services/orchestrator/ ./services/orchestrator/
 
-RUN cd pkg && go mod download
-RUN cd services/orchestrator && go mod download
-
-RUN cd services/orchestrator && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/orchestrator ./cmd/main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    cd services/orchestrator && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/orchestrator ./cmd/main.go
 
 # Runtime stage
 FROM alpine:latest

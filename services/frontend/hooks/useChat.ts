@@ -22,7 +22,7 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
 
   if (type === 'tool_call') {
     const toolCall: ToolCall = {
-      id: crypto.randomUUID(),
+      id: (event.tool_call_id as string) || crypto.randomUUID(),
       name: event.tool_name as string,
       args: (event.tool_args as Record<string, unknown>) ?? {},
       status: 'pending',
@@ -31,21 +31,28 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
   }
 
   if (type === 'tool_result') {
+    // Correlate by orchestrator-issued tool_call_id — duplicate tool names
+    // in a single batch (e.g., two send_channel_post calls) would collapse
+    // under a name-based match.
+    const callID = event.tool_call_id as string | undefined;
     const toolName = event.tool_name as string;
-    const updated = (msg.toolCalls ?? []).map((tc, i) => {
-      // Find the first pending tool with this name
-      const firstPendingIdx = (msg.toolCalls ?? []).findIndex(
-        (t) => t.name === toolName && t.status === 'pending'
-      );
-      return i === firstPendingIdx
+    const calls = msg.toolCalls ?? [];
+    let matchIdx = callID ? calls.findIndex((t) => t.id === callID) : -1;
+    if (matchIdx === -1) {
+      // Fallback: oldest pending with that name.
+      matchIdx = calls.findIndex((t) => t.name === toolName && t.status === 'pending');
+    }
+    if (matchIdx === -1) return msg;
+    const updated = calls.map((tc, i) =>
+      i === matchIdx
         ? {
             ...tc,
             result: event.result as Record<string, unknown>,
             error: event.error as string | undefined,
             status: (event.error ? 'error' : 'done') as ToolCall['status'],
           }
-        : tc;
-    });
+        : tc
+    );
     return { ...msg, toolCalls: updated };
   }
 
@@ -102,6 +109,15 @@ export function useChat(conversationId: string) {
                 m.toolCalls && m.toolCalls.length > 0
                   ? m.toolCalls.map((tc) => {
                       const result = m.toolResults?.find((r) => r.toolCallId === tc.id);
+                      // No matching tool_result → the run was interrupted
+                      // before this tool produced one. Surface it as
+                      // 'aborted' so the UI doesn't mislead with a green
+                      // checkmark.
+                      const status: ToolCall['status'] = result
+                        ? result.isError
+                          ? 'error'
+                          : 'done'
+                        : 'aborted';
                       return {
                         id: tc.id,
                         name: tc.name,
@@ -110,11 +126,7 @@ export function useChat(conversationId: string) {
                         error: result?.isError
                           ? ((result.content?.error as string) ?? 'error')
                           : undefined,
-                        status: result
-                          ? result.isError
-                            ? ('error' as const)
-                            : ('done' as const)
-                          : ('done' as const),
+                        status,
                       };
                     })
                   : undefined;

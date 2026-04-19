@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
 // --- Minimal no-op mocks for interfaces required by constructors ---
@@ -119,7 +120,17 @@ func TestNewPostHandler_NilService_ReturnsError(t *testing.T) {
 }
 
 func TestNewAgentTaskHandler_NilService_ReturnsError(t *testing.T) {
-	h, err := NewAgentTaskHandler(nil)
+	h, err := NewAgentTaskHandler(nil, taskhub.New())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if h != nil {
+		t.Fatal("expected nil handler")
+	}
+}
+
+func TestNewAgentTaskHandler_NilHub_ReturnsError(t *testing.T) {
+	h, err := NewAgentTaskHandler(&mockAgentTaskService{}, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

@@ -37,10 +37,10 @@ func newCaptureLogger(t *testing.T) *bytes.Buffer {
 
 func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_post"), nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("vk__publish_post"), nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("google_business__update_hours"), nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("get_business_info"), nil, domain.ToolFloorAuto, nil) // internal tool, always available
+	reg.Register(makeDef("telegram__send_post"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("google_business__update_hours"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil) // internal tool, always available
 
 	active := []string{"telegram"}
 	defs := reg.Available(active)
@@ -57,8 +57,8 @@ func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 
 func TestRegistry_NoActiveIntegrations_OnlyInternalTools(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_post"), nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("get_business_info"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("telegram__send_post"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
 
 	defs := reg.Available(nil)
 
@@ -73,7 +73,7 @@ func TestRegistry_Execute_CallsExecutor(t *testing.T) {
 		called = true
 		return map[string]interface{}{"ok": true}, nil
 	})
-	reg.Register(makeDef("telegram__send_post"), executor, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("telegram__send_post"), "", executor, domain.ToolFloorAuto, nil)
 
 	result, err := reg.Execute(context.Background(), "telegram__send_post", map[string]interface{}{})
 	require.NoError(t, err)
@@ -100,10 +100,10 @@ func toolNames(defs []llm.ToolDefinition) []string {
 // one internal tool. Used by whitelist subtests.
 func fixtureRegistry() *tools.Registry {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("telegram__send_notification"), nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("vk__publish_post"), nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("get_business_info"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("telegram__send_notification"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
 	return reg
 }
 
@@ -206,8 +206,8 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_MixedKnownAndUnknown(t *tes
 
 func TestRegistry_Floor_RegisteredReturnsFloor(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("telegram__get_reviews"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef("telegram__get_reviews"), "", nil, domain.ToolFloorAuto, nil)
 
 	assert.Equal(t, domain.ToolFloorManual, reg.Floor("telegram__send_channel_post"))
 	assert.Equal(t, domain.ToolFloorAuto, reg.Floor("telegram__get_reviews"))
@@ -219,7 +219,7 @@ func TestRegistry_Floor_RegisteredReturnsFloor(t *testing.T) {
 // approval of tools that no longer exist.
 func TestRegistry_Floor_UnknownReturnsForbidden(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorAuto, nil)
 
 	assert.Equal(t, domain.ToolFloorForbidden, reg.Floor("ghost__missing"))
 	assert.Equal(t, domain.ToolFloorForbidden, reg.Floor(""))
@@ -229,6 +229,7 @@ func TestRegistry_EditableFields_RegisteredReturnsList(t *testing.T) {
 	reg := tools.NewRegistry()
 	reg.Register(
 		makeDef("telegram__send_channel_post"),
+		"",
 		nil,
 		domain.ToolFloorManual,
 		[]string{"text", "parse_mode"},
@@ -249,7 +250,7 @@ func TestRegistry_EditableFields_UnknownReturnsNil(t *testing.T) {
 func TestRegistry_EditableFields_Defensive(t *testing.T) {
 	reg := tools.NewRegistry()
 	original := []string{"text", "parse_mode"}
-	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, original)
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, original)
 
 	// Mutate the caller's slice after Register — registry should not observe the change.
 	original[0] = "channel_id"
@@ -264,7 +265,7 @@ func TestRegistry_EditableFields_Defensive(t *testing.T) {
 
 func TestRegistry_Has(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, nil)
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, nil)
 
 	assert.True(t, reg.Has("telegram__send_channel_post"))
 	assert.False(t, reg.Has("ghost__missing"))
@@ -273,9 +274,9 @@ func TestRegistry_Has(t *testing.T) {
 
 func TestRegistry_AllFloors(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("telegram__get_reviews"), nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("dangerous__delete"), nil, domain.ToolFloorForbidden, nil)
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef("telegram__get_reviews"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("dangerous__delete"), "", nil, domain.ToolFloorForbidden, nil)
 
 	got := reg.AllFloors()
 	assert.Equal(t, domain.ToolFloorManual, got["telegram__send_channel_post"])
@@ -292,9 +293,9 @@ func TestRegistry_AllFloors(t *testing.T) {
 //   - "__weird"                     → "" (leading separator = no platform)
 func TestRegistry_AllEntries_SplitsPlatform(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("bare_internal"), nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("__weird"), nil, domain.ToolFloorForbidden, nil)
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef("bare_internal"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("__weird"), "", nil, domain.ToolFloorForbidden, nil)
 
 	byName := make(map[string]tools.RegistryEntry)
 	for _, e := range reg.AllEntries() {
@@ -317,7 +318,7 @@ func TestRegistry_AllEntries_SplitsPlatform(t *testing.T) {
 // registered allowlist by mutating the slice they received from AllEntries().
 func TestRegistry_AllEntries_EditableFieldsCopy(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
 
 	entries := reg.AllEntries()
 	if len(entries) != 1 {

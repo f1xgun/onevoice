@@ -229,9 +229,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 //
 // When in doubt, prefer manual + a narrow editable list (conservative default).
 type toolSpec struct {
-	def      llm.ToolDefinition
-	floor    domain.ToolFloor
-	editable []string
+	def         llm.ToolDefinition
+	displayName string
+	floor       domain.ToolFloor
+	editable    []string
 }
 
 // registerPlatformTools wires NATS executors into the tool registry for each MVP agent.
@@ -251,6 +252,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// Mutating public: posts to a Telegram channel. text + parse_mode
 				// editable; channel_id pinned from integration.
 				{
+					displayName: "Отправить пост",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__send_channel_post",
 						Description: "Публикует текстовое сообщение в Telegram-канал (без фото). Если нужно опубликовать пост с фото — используй telegram__send_channel_photo вместо этого.",
@@ -270,6 +272,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// photo_url and channel_id pinned (redirecting either at edit
 				// time would be a HITL-07 footgun).
 				{
+					displayName: "Отправить фото",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__send_channel_photo",
 						Description: "Публикует пост с фото и текстовой подписью в Telegram-канал. Используй эту функцию вместо send_channel_post когда нужно опубликовать пост с изображением.",
@@ -289,6 +292,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// DM notification to owner. text editable; recipient pinned
 				// from the integration (never editable).
 				{
+					displayName: "Уведомление владельцу",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__send_notification",
 						Description: "Отправляет личное уведомление владельцу бизнеса в Telegram",
@@ -305,6 +309,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only query of recent messages. Auto, no edit needed.
 				{
+					displayName: "Загрузить отзывы",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__get_reviews",
 						Description: "Получает последние сообщения/отзывы, отправленные боту или в канал через Telegram. Каждое сообщение содержит поля message_id и chat_id — используй их для ответа через telegram__reply_to_comment.",
@@ -322,6 +327,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// message_id + chat_id + channel_id pinned (changing these
 				// would redirect the reply to an unrelated conversation).
 				{
+					displayName: "Ответить на комментарий",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__reply_to_comment",
 						Description: "Отвечает на конкретный комментарий или сообщение в Telegram. Используй эту функцию когда нужно ответить на комментарий — НЕ используй telegram__send_channel_post для ответов на комментарии.",
@@ -346,6 +352,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			tools: []toolSpec{
 				// Mutating public: publishes wall post. text editable; group_id pinned.
 				{
+					displayName: "Опубликовать пост",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__publish_post",
 						Description: "Публикует текстовый пост (без фото) на стену сообщества ВКонтакте. Если нужно опубликовать пост с фото — используй vk__post_photo вместо этого.",
@@ -363,6 +370,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: photo + caption. caption editable; photo_url + group_id pinned.
 				{
+					displayName: "Опубликовать фото",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__post_photo",
 						Description: "Публикует пост с фото и текстовой подписью на стену сообщества ВКонтакте. Используй эту функцию вместо publish_post когда нужно опубликовать пост с изображением.",
@@ -383,6 +391,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// publish_date NOT editable (changing a scheduled time is a
 				// semantic change — a separate tool call makes intent explicit).
 				{
+					displayName: "Запланировать пост",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__schedule_post",
 						Description: "Планирует отложенный пост на стене сообщества ВКонтакте. Пост будет автоматически опубликован ВКонтакте в указанное время.",
@@ -403,6 +412,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// group_id pinned. Contacts/links intentionally omitted from
 				// edit-allowlist until the LLM's JSON schema exposes them.
 				{
+					displayName: "Обновить данные сообщества",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__update_group_info",
 						Description: "Обновляет информацию о сообществе ВКонтакте (описание, ссылки, контакты). Если group_id не указан, используется сообщество из активной VK-интеграции.",
@@ -420,6 +430,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only. Auto.
 				{
+					displayName: "Загрузить комментарии",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__get_comments",
 						Description: "Получает комментарии к конкретному посту на стене сообщества ВКонтакте. Если post_id не указан, возвращает комментарии к последнему посту.",
@@ -438,6 +449,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: comment reply. text editable; ids pinned.
 				{
+					displayName: "Ответить на комментарий",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__reply_comment",
 						Description: "Отвечает на комментарий к посту на стене сообщества ВКонтакте. Создает ответ в ветке обсуждения.",
@@ -459,6 +471,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// cannot request this even behind approval. Lifting requires
 				// a deliberate code change.
 				{
+					displayName: "Удалить комментарий",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__delete_comment",
 						Description: "Удаляет комментарий к посту на стене сообщества ВКонтакте. Требуются права администратора или модератора сообщества.",
@@ -476,6 +489,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only. Auto.
 				{
+					displayName: "Загрузить данные сообщества",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__get_community_info",
 						Description: "Получает информацию о сообществе ВКонтакте: название, описание, количество подписчиков, статус, ссылки. Используй для ответа на вопросы о сообществе.",
@@ -492,6 +506,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only. Auto.
 				{
+					displayName: "Загрузить посты",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__get_wall_posts",
 						Description: "Получает последние посты со стены сообщества ВКонтакте с данными о лайках, комментариях, репостах и просмотрах.",
@@ -514,6 +529,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			tools: []toolSpec{
 				// Read-only. Auto.
 				{
+					displayName: "Загрузить карточку организации",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__get_info",
 						Description: "Получает текущую информацию об организации в Яндекс Бизнес: название, телефон, email, часы работы, адрес, статус.",
@@ -527,6 +543,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: hours. hours editable (text payload).
 				{
+					displayName: "Обновить часы работы",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__update_hours",
 						Description: "Обновляет часы работы в Яндекс Бизнес. Принимает описание расписания в свободном формате.",
@@ -546,6 +563,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// a high-impact mutation; operator confirms via UI toggle before
 				// any tool call rather than post-hoc edit).
 				{
+					displayName: "Обновить данные организации",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__update_info",
 						Description: "Обновляет контактную информацию в Яндекс Бизнес (телефон, сайт, описание)",
@@ -563,6 +581,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only. Auto.
 				{
+					displayName: "Загрузить отзывы Яндекса",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__get_reviews",
 						Description: "Получает отзывы об организации из Яндекс Бизнес",
@@ -578,6 +597,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: review reply. text editable; review_id pinned.
 				{
+					displayName: "Ответить на отзыв Яндекса",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__reply_review",
 						Description: "Публикует ответ на отзыв в Яндекс Бизнес",
@@ -597,6 +617,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// and photo_url are both semantic — editing either changes
 				// what the operator sees in the card vs what actually uploads).
 				{
+					displayName: "Загрузить фото",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__upload_photo",
 						Description: "Загружает фото в Яндекс Бизнес. Категория: general (общее), logo (логотип), services, interior, exterior, enter (вход), goods (товары).",
@@ -614,6 +635,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: publication. text editable.
 				{
+					displayName: "Опубликовать пост в Яндекс Бизнес",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__create_post",
 						Description: "Создаёт публикацию (пост) в Яндекс Бизнес. Публикация появится в Поиске Яндекса и Яндекс Картах.",
@@ -635,6 +657,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			tools: []toolSpec{
 				// Read-only. Auto.
 				{
+					displayName: "Загрузить отзывы Google",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "google_business__get_reviews",
 						Description: "Получает отзывы о локации из Google Business Profile. Возвращает список отзывов с рейтингами, комментариями и ответами владельца.",
@@ -650,6 +673,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: review reply. text editable; review_name pinned.
 				{
+					displayName: "Ответить на отзыв Google",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "google_business__reply_review",
 						Description: "Отвечает на отзыв в Google Business Profile от имени владельца бизнеса.",
@@ -673,7 +697,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 	for _, a := range agents {
 		for _, spec := range a.tools {
 			exec := natsexec.New(a.id, spec.def.Function.Name, conn)
-			reg.Register(spec.def, exec, spec.floor, spec.editable)
+			reg.Register(spec.def, spec.displayName, exec, spec.floor, spec.editable)
 		}
 	}
 }

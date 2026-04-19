@@ -4,56 +4,45 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
+// VKCommunityModal collects the VK community URL or screen_name and
+// redirects the admin to oauth.vk.com to issue a community-scoped token.
+// The API resolves screen_name → numeric group_id via the Mini-App
+// service key, so the user can paste "vk.com/mycompany", "mycompany",
+// or a numeric id interchangeably.
 export function VKCommunityModal({ open, onClose }: Props) {
-  const [step, setStep] = useState(1);
-  const [groupId, setGroupId] = useState('');
-  const [token, setToken] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [value, setValue] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  function extractGroupId(input: string): string {
-    const trimmed = input.trim();
-    if (/^\d+$/.test(trimmed)) return trimmed;
-    const clubMatch = trimmed.match(/(?:club|public)(\d+)/);
-    if (clubMatch) return clubMatch[1];
-    return trimmed;
-  }
-
-  async function handleConnect() {
-    const id = extractGroupId(groupId);
-    if (!id || !token.trim()) {
-      toast.error('Заполните оба поля');
-      return;
-    }
-    setLoading(true);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
     try {
-      await api.post('/integrations/vk/connect', {
-        group_id: id,
-        access_token: token.trim(),
-      });
-      toast.success('VK сообщество подключено!');
-      handleClose();
+      const { data } = await api.get<{ url: string }>(
+        `/integrations/vk/community-auth-url?group_id=${encodeURIComponent(trimmed)}`
+      );
+      window.location.href = data.url;
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Ошибка подключения';
+        'Не удалось подготовить ссылку авторизации';
       toast.error(msg);
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
   function handleClose() {
-    setStep(1);
-    setGroupId('');
-    setToken('');
-    setLoading(false);
+    setValue('');
+    setSubmitting(false);
     onClose();
   }
 
@@ -64,75 +53,42 @@ export function VKCommunityModal({ open, onClose }: Props) {
           <DialogTitle>Подключить сообщество VK</DialogTitle>
         </DialogHeader>
 
-        {step === 1 && (
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">ID сообщества</label>
-              <Input
-                placeholder="vk.com/club123456789 или 123456789"
-                value={groupId}
-                onChange={(e) => setGroupId(e.target.value)}
-              />
-              <p className="mt-1 text-xs text-gray-400">
-                Откройте сообщество → в адресной строке число после &quot;club&quot;
-              </p>
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm text-gray-600">
+              Вставьте ссылку на сообщество, его короткое имя или числовой ID. Примеры:{' '}
+              <span className="font-mono text-xs">vk.com/mycompany</span>,{' '}
+              <span className="font-mono text-xs">mycompany</span>,{' '}
+              <span className="font-mono text-xs">123456</span>.
+            </p>
+            <Input
+              autoFocus
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="vk.com/mycompany"
+              disabled={submitting}
+            />
+            <p className="text-xs text-gray-500">
+              Вы должны быть администратором сообщества. На следующем шаге VK попросит вас
+              подтвердить выдачу прав от имени сообщества.
+            </p>
+          </div>
 
-            <Button onClick={() => setStep(2)} disabled={!groupId.trim()} className="w-full">
-              Далее
+          <div className="flex gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClose}
+              className="flex-1"
+              disabled={submitting}
+            >
+              Отмена
+            </Button>
+            <Button type="submit" disabled={submitting || !value.trim()} className="flex-1">
+              {submitting ? 'Переход в VK...' : 'Подключить'}
             </Button>
           </div>
-        )}
-
-        {step === 2 && (
-          <div className="space-y-4">
-            <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
-              <p className="mb-2 font-medium">Создайте ключ доступа API:</p>
-              <ol className="list-inside list-decimal space-y-1 text-xs">
-                <li>
-                  Откройте{' '}
-                  <a
-                    href={`https://vk.com/club${extractGroupId(groupId)}?act=tokens`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium underline"
-                  >
-                    настройки API сообщества
-                  </a>
-                </li>
-                <li>Нажмите &quot;Создать ключ&quot;</li>
-                <li>
-                  Отметьте права: <strong>Управление сообществом</strong>,{' '}
-                  <strong>Доступ к стене</strong>, <strong>Фотографии</strong>
-                </li>
-                <li>Скопируйте полученный ключ и вставьте ниже</li>
-              </ol>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium">Ключ доступа API</label>
-              <Input
-                placeholder="vk1.a.xxxx..."
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                type="password"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                Назад
-              </Button>
-              <Button
-                onClick={handleConnect}
-                disabled={loading || !token.trim()}
-                className="flex-1"
-              >
-                {loading ? 'Подключение...' : 'Подключить'}
-              </Button>
-            </div>
-          </div>
-        )}
+        </form>
       </DialogContent>
     </Dialog>
   );

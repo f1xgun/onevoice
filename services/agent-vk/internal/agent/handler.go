@@ -311,13 +311,16 @@ func (h *Handler) updateGroupInfo(ctx context.Context, req a2a.ToolRequest) (*a2
 }
 
 func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	// wall.getComments needs community token (service key can't call it).
-	// But wall.get (to find latest post) needs service key (community token can't call it).
-	// So we use two clients when post_id is not provided.
-	client, groupID, err := h.getClient(ctx, req)
+	// wall.getComments is callable with the Mini-App service key (profile
+	// type = app). VK ID tokens fail with error 1051; community tokens fail
+	// with error 27 "group auth unavailable". We route all reads through
+	// getReadClient: it prefers user token if the integration has one,
+	// otherwise falls back to service key — which is the supported path.
+	client, groupID, err := h.getReadClient(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+
 	postIDf, _ := req.Args["post_id"].(float64)
 	postID := int(postIDf)
 	countF, _ := req.Args["count"].(float64)
@@ -326,13 +329,8 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		count = 20
 	}
 
-	// If no post_id, fetch latest post via readClient (service key can call wall.get)
 	if postID == 0 {
-		readClient, readGroupID, readErr := h.getReadClient(ctx, req)
-		if readErr != nil {
-			return nil, readErr
-		}
-		posts, _, postsErr := readClient.GetWallPosts(readGroupID, 1)
+		posts, _, postsErr := client.GetWallPosts(groupID, 1)
 		if postsErr != nil {
 			return nil, fmt.Errorf("vk: get latest post: %w", classifyVKError(postsErr))
 		}

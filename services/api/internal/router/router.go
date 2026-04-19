@@ -97,6 +97,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// Telegram routes
 			r.Post("/integrations/telegram/verify", handlers.OAuth.VerifyTelegramLogin)
 			r.Post("/integrations/telegram/connect", handlers.OAuth.ConnectTelegram)
+			r.Post("/integrations/telegram/refresh", handlers.OAuth.RefreshTelegramLinkedGroup)
 
 			// Google Business routes
 			r.Get("/integrations/google_business/auth-url", handlers.OAuth.GetGoogleAuthURL)
@@ -151,6 +152,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			// Agent task routes
 			r.Get("/tasks", handlers.AgentTask.ListTasks)
+			r.Get("/tasks/stream", handlers.AgentTask.StreamTasks)
 
 			// Telemetry
 			r.Post("/telemetry", handlers.Telemetry.Ingest)

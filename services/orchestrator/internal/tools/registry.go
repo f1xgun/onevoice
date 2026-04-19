@@ -35,6 +35,7 @@ func (f ExecutorFunc) Execute(ctx context.Context, args map[string]interface{}) 
 
 type entry struct {
 	def            llm.ToolDefinition
+	displayName    string
 	executor       Executor
 	floor          domain.ToolFloor
 	editableFields []string
@@ -51,10 +52,11 @@ func NewRegistry() *Registry {
 }
 
 // Register adds a tool definition with its executor (may be nil for stub tools),
-// the ToolFloor baseline (POLICY-01), and the per-tool EditableFields allowlist
-// for HITL-07 edit-args validation (HITL-L4 promoted into v1.3 per D-10/D-11).
+// the human-readable displayName surfaced on the Tasks page, the ToolFloor
+// baseline (POLICY-01), and the per-tool EditableFields allowlist for HITL-07
+// edit-args validation (HITL-L4 promoted into v1.3 per D-10/D-11).
 //
-// The caller MUST pass all four arguments explicitly — every registration site
+// The caller MUST pass all five arguments explicitly — every registration site
 // in services/orchestrator/cmd/main.go must deliberately choose a floor and an
 // edit allowlist. There is no default so that a newly-added tool can never
 // silently inherit an unsafe policy. EditableFields is copied defensively so
@@ -65,16 +67,28 @@ func NewRegistry() *Registry {
 // ValidateEditArgs is case-sensitive.
 func (r *Registry) Register(
 	def llm.ToolDefinition,
+	displayName string,
 	exec Executor,
 	floor domain.ToolFloor,
 	editableFields []string,
 ) {
 	r.tools[def.Function.Name] = entry{
 		def:            def,
+		displayName:    displayName,
 		executor:       exec,
 		floor:          floor,
 		editableFields: append([]string(nil), editableFields...),
 	}
+}
+
+// DisplayName returns the human-readable label registered for the named tool.
+// Returns an empty string for unknown tools.
+func (r *Registry) DisplayName(name string) string {
+	e, ok := r.tools[name]
+	if !ok {
+		return ""
+	}
+	return e.displayName
 }
 
 // Available returns tool definitions available for the given active integrations.

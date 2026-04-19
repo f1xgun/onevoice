@@ -3,9 +3,7 @@ package handler
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -35,13 +34,18 @@ type OAuthStateService interface {
 // OAuthIntegrationService is the subset of IntegrationService needed for OAuth flows.
 type OAuthIntegrationService interface {
 	Connect(ctx context.Context, params service.ConnectParams) (*domain.Integration, error)
+	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
+	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
 }
 
 // OAuthConfig holds platform OAuth credentials and optional test overrides.
 type OAuthConfig struct {
-	VKClientID         string
-	VKClientSecret     string
-	VKRedirectURI      string
+	VKClientID     string
+	VKClientSecret string
+	VKRedirectURI  string
+	// VKServiceKey is used for server-side resolution of community screen_name
+	// → numeric group_id before starting community OAuth.
+	VKServiceKey       string
 	YandexClientID     string
 	YandexClientSecret string
 	YandexRedirectURI  string
@@ -98,27 +102,16 @@ func NewOAuthHandler(
 	}
 }
 
-// generateCodeVerifier creates a cryptographically random PKCE code_verifier (43-128 chars).
-func generateCodeVerifier() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("generate code verifier: %w", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
-}
-
-// computeCodeChallenge computes S256 code_challenge from code_verifier.
-func computeCodeChallenge(verifier string) string {
-	h := sha256.Sum256([]byte(verifier))
-	return base64.RawURLEncoding.EncodeToString(h[:])
-}
-
-// vkTokenBaseURL returns the VK ID token exchange base URL.
+// vkTokenBaseURL returns the classic VK OAuth base URL.
+// We use oauth.vk.com (not id.vk.com) because VK ID Connect tokens return
+// error 1051 ("method unavailable with current profile type") on groups.get,
+// wall.getComments and other methods we need. Classic oauth.vk.com tokens
+// work with the full VK API as long as the right scopes are granted.
 func (h *OAuthHandler) vkTokenBaseURL() string {
 	if h.cfg.vkTokenBaseURL != "" {
 		return h.cfg.vkTokenBaseURL
 	}
-	return "https://id.vk.com"
+	return "https://oauth.vk.com"
 }
 
 // yandexTokenURL returns the Yandex token exchange URL (supports test override via cfg.yandexTokenBaseURL).
@@ -129,7 +122,10 @@ func (h *OAuthHandler) yandexTokenURL() string {
 	return "https://oauth.yandex.ru/token"
 }
 
-// GetVKAuthURL generates a VK ID OAuth 2.1 authorization URL with PKCE (JWT required).
+// GetVKAuthURL generates a classic VK OAuth authorization URL (JWT required).
+// Uses oauth.vk.com code flow (not VK ID / id.vk.com) — the resulting user
+// token works with groups.get and wall.getComments, which VK ID tokens
+// reject with error 1051 ("method unavailable with current profile type").
 func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -148,21 +144,10 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate PKCE code_verifier and code_challenge
-	codeVerifier, err := generateCodeVerifier()
-	if err != nil {
-		slog.Error("failed to generate PKCE code verifier", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-	codeChallenge := computeCodeChallenge(codeVerifier)
-
-	// Store code_verifier in state data so we can retrieve it in callback
 	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
-		UserID:       userID,
-		BusinessID:   business.ID,
-		Platform:     "vk",
-		CodeVerifier: codeVerifier,
+		UserID:     userID,
+		BusinessID: business.ID,
+		Platform:   "vk",
 	})
 	if err != nil {
 		slog.Error("failed to generate OAuth state for VK", "error", err)
@@ -170,25 +155,28 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authURL := fmt.Sprintf("%s/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256&scope=wall+groups+manage",
+	// Scopes match the original working config of this VK app:
+	// `wall,groups,manage` — the `offline` scope triggers "Security Error"
+	// on this app's oauth.vk.com flow (not enabled in app settings).
+	// Without `offline`, user tokens expire in ~24h; the ReviewSyncer
+	// warns once per expired token (tracked separately).
+	authURL := fmt.Sprintf("%s/authorize?client_id=%s&redirect_uri=%s&scope=wall,groups,manage&response_type=code&state=%s&v=5.199",
 		h.vkTokenBaseURL(),
 		url.QueryEscape(h.cfg.VKClientID),
 		url.QueryEscape(h.cfg.VKRedirectURI),
 		url.QueryEscape(state),
-		url.QueryEscape(codeChallenge),
 	)
 
 	writeJSON(w, http.StatusOK, map[string]string{"url": authURL})
 }
 
-// VKCallback handles the VK ID OAuth 2.1 callback with PKCE token exchange (public — state validates identity).
+// VKCallback handles the classic VK OAuth callback (public — state validates identity).
 func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
-	deviceID := r.URL.Query().Get("device_id")
 
 	if code == "" || state == "" {
-		slog.Warn("VK callback missing params", "code_present", code != "", "state_present", state != "", "device_id", deviceID)
+		slog.Warn("VK callback missing params", "code_present", code != "", "state_present", state != "")
 		http.Redirect(w, r, "/integrations?error=missing_params", http.StatusFound)
 		return
 	}
@@ -200,21 +188,17 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exchange code for token via VK ID OAuth 2.1 (POST with form data)
-	form := url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {code},
-		"code_verifier": {stateData.CodeVerifier},
-		"client_id":     {h.cfg.VKClientID},
-		"redirect_uri":  {h.cfg.VKRedirectURI},
-		"device_id":     {deviceID},
-		"state":         {state},
-	}
-
-	tokenEndpoint := h.vkTokenBaseURL() + "/oauth2/auth"
-	resp, err := h.httpClient.PostForm(tokenEndpoint, form)
+	// Exchange code for token via classic VK OAuth (GET with query params).
+	tokenEndpoint := fmt.Sprintf("%s/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
+		h.vkTokenBaseURL(),
+		url.QueryEscape(h.cfg.VKClientID),
+		url.QueryEscape(h.cfg.VKClientSecret),
+		url.QueryEscape(h.cfg.VKRedirectURI),
+		url.QueryEscape(code),
+	)
+	resp, err := h.httpClient.Get(tokenEndpoint)
 	if err != nil {
-		slog.Error("VK ID token exchange failed", "error", err)
+		slog.Error("VK token exchange failed", "error", err)
 		http.Redirect(w, r, "/integrations?error=token_exchange", http.StatusFound)
 		return
 	}
@@ -222,15 +206,14 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 
 	body, _ := io.ReadAll(resp.Body)
 	var tokenResp struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int64  `json:"expires_in"`
-		UserID       int64  `json:"user_id"`
-		Error        string `json:"error"`
-		ErrorDesc    string `json:"error_description"`
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+		UserID      int64  `json:"user_id"`
+		Error       string `json:"error"`
+		ErrorDesc   string `json:"error_description"`
 	}
 	if err := json.Unmarshal(body, &tokenResp); err != nil || tokenResp.AccessToken == "" {
-		slog.Error("VK ID token response invalid",
+		slog.Error("VK token response invalid",
 			"error", err,
 			"vk_error", tokenResp.Error,
 			"vk_error_desc", tokenResp.ErrorDesc,
@@ -241,8 +224,12 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store user token temporarily in Redis (5 min) for community selection step.
-	// We do NOT store the user token permanently — only the community token will be persisted.
+	// Park the user token in Redis while the user picks a community. The
+	// community-callback picks it up from Redis and hands both tokens to
+	// integrationService.Connect, which persists the user token encrypted
+	// in integrations.encrypted_user_token. The community token is
+	// mandatory for write operations (post/reply); the user token unlocks
+	// wall.getComments, which VK refuses to serve with group auth.
 	redisKey := fmt.Sprintf("vk_temp_token:%s", stateData.BusinessID.String())
 	if err := h.redis.Set(r.Context(), redisKey, tokenResp.AccessToken, 5*time.Minute).Err(); err != nil {
 		slog.Error("failed to store temp VK token", "error", err)
@@ -334,8 +321,8 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	groupID := r.URL.Query().Get("group_id")
-	if groupID == "" {
+	groupInput := strings.TrimSpace(r.URL.Query().Get("group_id"))
+	if groupInput == "" {
 		writeJSONError(w, http.StatusBadRequest, "group_id is required")
 		return
 	}
@@ -343,6 +330,17 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 	business, err := h.businessService.GetByUserID(r.Context(), userID)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "business not found")
+		return
+	}
+
+	// Accept a numeric ID, a screen_name, or a full VK URL. Resolve
+	// everything non-numeric to a numeric group_id via groups.getById
+	// using the Mini-App service key — VK's community OAuth endpoint
+	// only accepts numeric ids in group_ids.
+	groupID, err := h.resolveVKGroupID(r.Context(), groupInput)
+	if err != nil {
+		slog.Warn("VK group resolution failed", "input", groupInput, "error", err)
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -622,17 +620,83 @@ type connectTelegramRequest struct {
 	TelegramUserID string `json:"telegram_user_id"`
 }
 
+// telegramChatInfo holds the fields we care about from Telegram's getChat
+// response: title, and — for channels — the linked discussion group's chat
+// id. A non-zero LinkedChatID means subscribers' comments on channel posts
+// are routed into that group, and the bot needs to be a member of that
+// group (admin, ideally) to see them via getUpdates.
+type telegramChatInfo struct {
+	Title        string
+	LinkedChatID int64
+}
+
 // telegramGetChatResponse represents the Telegram Bot API getChat response.
 type telegramGetChatResponse struct {
 	OK     bool `json:"ok"`
 	Result struct {
-		Title string `json:"title"`
+		Title        string `json:"title"`
+		LinkedChatID int64  `json:"linked_chat_id"`
 	} `json:"result"`
 	Description string `json:"description"`
 }
 
-// telegramGetChat calls the Telegram Bot API to validate bot access and fetch channel title.
-func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (string, error) {
+// resolveVKGroupID turns user input (numeric id, screen_name, or full VK URL)
+// into a numeric VK group id via groups.getById with the Mini-App service key.
+func (h *OAuthHandler) resolveVKGroupID(ctx context.Context, input string) (string, error) {
+	// Strip URL prefix: https://vk.com/mygroup → mygroup
+	input = strings.TrimSpace(input)
+	for _, prefix := range []string{"https://vk.com/", "http://vk.com/", "https://m.vk.com/", "vk.com/", "@"} {
+		input = strings.TrimPrefix(input, prefix)
+	}
+	input = strings.TrimPrefix(input, "club")
+	input = strings.TrimPrefix(input, "public")
+	input = strings.SplitN(input, "/", 2)[0]
+	input = strings.SplitN(input, "?", 2)[0]
+	if input == "" {
+		return "", fmt.Errorf("empty group id/URL")
+	}
+	// If already a positive numeric ID, return as-is.
+	if _, err := strconv.ParseUint(input, 10, 64); err == nil {
+		return input, nil
+	}
+	if h.cfg.VKServiceKey == "" {
+		return "", fmt.Errorf("VK service key not configured; pass a numeric group id")
+	}
+	apiURL := fmt.Sprintf("https://api.vk.com/method/groups.getById?group_id=%s&access_token=%s&v=5.199",
+		url.QueryEscape(input), url.QueryEscape(h.cfg.VKServiceKey))
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("vk API request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	var vkResp struct {
+		Response struct {
+			Groups []struct {
+				ID int64 `json:"id"`
+			} `json:"groups"`
+		} `json:"response"`
+		Error *struct {
+			ErrorCode int    `json:"error_code"`
+			ErrorMsg  string `json:"error_msg"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &vkResp); err != nil {
+		return "", fmt.Errorf("parse vk response: %w", err)
+	}
+	if vkResp.Error != nil {
+		return "", fmt.Errorf("vk: %s", vkResp.Error.ErrorMsg)
+	}
+	if len(vkResp.Response.Groups) == 0 {
+		return "", fmt.Errorf("community not found: %s", input)
+	}
+	return strconv.FormatInt(vkResp.Response.Groups[0].ID, 10), nil
+}
+
+// telegramGetChat calls the Telegram Bot API to validate bot access and
+// fetch channel title + linked discussion chat id.
+func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (telegramChatInfo, error) {
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getChat?chat_id=%s",
 		botToken, url.QueryEscape(chatID))
 	if h.cfg.telegramAPIBaseURL != "" {
@@ -642,25 +706,44 @@ func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (string, error) 
 
 	resp, err := h.httpClient.Get(apiURL)
 	if err != nil {
-		return "", fmt.Errorf("telegram API request failed: %w", err)
+		return telegramChatInfo{}, fmt.Errorf("telegram API request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("read response body: %w", err)
+		return telegramChatInfo{}, fmt.Errorf("read response body: %w", err)
 	}
 
 	var chatResp telegramGetChatResponse
 	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return "", fmt.Errorf("parse telegram response: %w", err)
+		return telegramChatInfo{}, fmt.Errorf("parse telegram response: %w", err)
 	}
 
 	if !chatResp.OK {
-		return "", fmt.Errorf("telegram API error: %s", chatResp.Description)
+		return telegramChatInfo{}, fmt.Errorf("telegram API error: %s", chatResp.Description)
 	}
 
-	return chatResp.Result.Title, nil
+	return telegramChatInfo{
+		Title:        chatResp.Result.Title,
+		LinkedChatID: chatResp.Result.LinkedChatID,
+	}, nil
+}
+
+// probeTelegramLinkedGroup determines the linked-group membership status of
+// the bot for the given channel. It returns one of: "no_linked_group" (the
+// channel has no discussion group configured), "ok" (linked group exists
+// and the bot can read it — implied by getChat succeeding), or
+// "bot_not_member" (linked group exists but the bot is not in it, so
+// comment collection will be empty).
+func (h *OAuthHandler) probeTelegramLinkedGroup(botToken string, linkedChatID int64) string {
+	if linkedChatID == 0 {
+		return "no_linked_group"
+	}
+	if _, err := h.telegramGetChat(botToken, strconv.FormatInt(linkedChatID, 10)); err != nil {
+		return "bot_not_member"
+	}
+	return "ok"
 }
 
 // ConnectTelegram stores a Telegram channel integration using the system bot token (JWT required).
@@ -693,16 +776,22 @@ func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate bot access and fetch channel title
-	channelTitle, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelID)
+	// Validate bot access and fetch channel title + linked discussion chat
+	channelInfo, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelID)
 	if err != nil {
 		slog.Warn("telegram getChat failed", "error", err, "channel_id", req.ChannelID)
 		writeJSONError(w, http.StatusBadRequest, "bot does not have access to this channel")
 		return
 	}
 
+	linkedStatus := h.probeTelegramLinkedGroup(h.cfg.TelegramBotToken, channelInfo.LinkedChatID)
+
 	metadata := map[string]interface{}{
-		"channel_title": channelTitle,
+		"channel_title":       channelInfo.Title,
+		"linked_group_status": linkedStatus,
+	}
+	if channelInfo.LinkedChatID != 0 {
+		metadata["linked_chat_id"] = channelInfo.LinkedChatID
 	}
 	if req.TelegramUserID != "" {
 		metadata["telegram_user_id"] = req.TelegramUserID
@@ -722,6 +811,99 @@ func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, integration)
+}
+
+// refreshTelegramRequest is the request body for RefreshTelegramLinkedGroup.
+type refreshTelegramRequest struct {
+	ChannelID string `json:"channel_id"`
+}
+
+// RefreshTelegramLinkedGroup re-probes a Telegram channel's linked
+// discussion group and updates integration metadata with the latest
+// linked_chat_id and linked_group_status. Used after the user invites
+// the bot into the discussion group and wants the UI warning to clear
+// without a full disconnect/reconnect cycle.
+func (h *OAuthHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req refreshTelegramRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.ChannelID == "" {
+		writeJSONError(w, http.StatusBadRequest, "channel_id is required")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to get business for Telegram refresh", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Find the specific integration by external_id.
+	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, "telegram")
+	if err != nil {
+		slog.Error("failed to list telegram integrations for refresh", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	var target *domain.Integration
+	for i := range integrations {
+		if integrations[i].ExternalID == req.ChannelID {
+			target = &integrations[i]
+			break
+		}
+	}
+	if target == nil {
+		writeJSONError(w, http.StatusNotFound, "integration not found")
+		return
+	}
+
+	channelInfo, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelID)
+	if err != nil {
+		slog.Warn("telegram getChat failed during refresh", "error", err, "channel_id", req.ChannelID)
+		writeJSONError(w, http.StatusBadGateway, "bot no longer has access to this channel")
+		return
+	}
+
+	linkedStatus := h.probeTelegramLinkedGroup(h.cfg.TelegramBotToken, channelInfo.LinkedChatID)
+
+	// Merge into existing metadata so unrelated keys (telegram_user_id etc.)
+	// are preserved.
+	metadata := map[string]interface{}{}
+	for k, v := range target.Metadata {
+		metadata[k] = v
+	}
+	metadata["channel_title"] = channelInfo.Title
+	metadata["linked_group_status"] = linkedStatus
+	if channelInfo.LinkedChatID != 0 {
+		metadata["linked_chat_id"] = channelInfo.LinkedChatID
+	} else {
+		delete(metadata, "linked_chat_id")
+	}
+
+	if err := h.integrationService.UpdateMetadata(r.Context(), target.ID, metadata); err != nil {
+		slog.Error("failed to update telegram integration metadata", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to persist refresh")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"linked_chat_id":      channelInfo.LinkedChatID,
+		"linked_group_status": linkedStatus,
+		"channel_title":       channelInfo.Title,
+	})
 }
 
 // GetYandexAuthURL generates a Yandex OAuth authorization URL (JWT required).

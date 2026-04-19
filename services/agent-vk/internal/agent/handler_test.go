@@ -192,7 +192,7 @@ func TestHandler_UpdateGroupInfo(t *testing.T) {
 }
 
 func TestHandler_GetComments(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
 	vkClient := &mockVKClient{
 		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
 			assert.Equal(t, "-123456", groupID)
@@ -219,8 +219,40 @@ func TestHandler_GetComments(t *testing.T) {
 	assert.Equal(t, 1, resp.Result["count"])
 }
 
+func TestHandler_GetComments_UsesServiceKeyWithoutUserToken(t *testing.T) {
+	// wall.getComments is callable with the Mini-App service key. When an
+	// integration has no user token, we must fall through to the service
+	// key rather than erroring out — getReadClient handles the priority.
+	tokens := &mockTokenFetcher{token: "community-tok", userToken: ""}
+	var capturedToken string
+	vkClient := &mockVKClient{
+		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
+			return []map[string]interface{}{{"id": 1, "text": "ok"}}, nil
+		},
+	}
+	factory := func(token string) agent.VKClient {
+		capturedToken = token
+		return vkClient
+	}
+	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-service-key",
+		Tool:       "vk__get_comments",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"group_id": "-123456",
+			"post_id":  float64(42),
+		},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "service-key-tok", capturedToken, "should use service key when no user token")
+	assert.Equal(t, 1, resp.Result["count"])
+}
+
 func TestHandler_GetComments_DefaultCount(t *testing.T) {
-	tokens := &mockTokenFetcher{token: "tok"}
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
 	vkClient := &mockVKClient{
 		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
 			assert.Equal(t, 20, count)
@@ -974,8 +1006,8 @@ func TestReadClient_ExternalIDFallback(t *testing.T) {
 }
 
 func TestGetComments_UsesResolvedGroupID(t *testing.T) {
-	// getComments uses getClient which resolves groupID with negative sign.
-	tokens := &mockTokenFetcher{token: "tok", extID: "999888"}
+	// getComments now requires a user OAuth token for wall.getComments.
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok", extID: "999888"}
 	var capturedGroupID string
 	factory := func(_ string) agent.VKClient {
 		return &mockVKClient{
