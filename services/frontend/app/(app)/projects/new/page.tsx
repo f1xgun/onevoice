@@ -17,8 +17,8 @@ export default function NewProjectPage() {
       <div className="mt-6">
         <ProjectForm
           onSaved={(saved: Project) => {
-            toast.success('Проект создан');
-            router.push(`/projects/${saved.id}/chats`);
+            toast.success(`Проект «${saved.name}» создан`);
+            router.push('/chat');
           }}
         />
       </div>
