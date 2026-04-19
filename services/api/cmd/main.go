@@ -89,6 +89,43 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	backfillCancel()
 
+	// HITL-10: pending-tool-calls startup reconciliation.
+	// Phase 16 Plan 16-02. Three things happen here, in order:
+	//   1. EnsurePendingToolCallsIndexes — creates TTL on expires_at,
+	//      compound (conversation_id, status), and business_id indexes.
+	//      Idempotent: safe on every boot. HITL is broken without these
+	//      indexes (the resolve handler would scan the whole collection)
+	//      so we fail fast if creation errors.
+	//   2. NewPendingToolCallRepository — constructs the repo used by
+	//      chat_proxy / resolve / resume handlers in later plans (16-06,
+	//      16-07). Wired into downstream consumers in those plans.
+	//   3. ReconcileOrphanPreparing (goroutine, 30s bound) — one-shot
+	//      sweep that marks "preparing" batches older than 5 minutes as
+	//      "expired" (Pattern 3 crash recovery: orchestrator inserted a
+	//      preparing row then crashed before PromoteToPending). Runs async
+	//      so the HTTP server can bind immediately.
+	indexesCtx, indexesCancel := context.WithTimeout(ctx, 30*time.Second)
+	if err := repository.EnsurePendingToolCallsIndexes(indexesCtx, mongoDB); err != nil {
+		indexesCancel()
+		slog.ErrorContext(indexesCtx, "failed to ensure pending_tool_calls indexes", "error", err)
+		return fmt.Errorf("ensure pending_tool_calls indexes: %w", err)
+	}
+	indexesCancel()
+	pendingToolCallRepo := repository.NewPendingToolCallRepository(mongoDB)
+	_ = pendingToolCallRepo // consumed by chat_proxy (16-06) and HITL handlers (16-07)
+	go func() {
+		sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer sweepCancel()
+		n, reconcileErr := pendingToolCallRepo.ReconcileOrphanPreparing(sweepCtx, 5*time.Minute)
+		if reconcileErr != nil {
+			slog.ErrorContext(sweepCtx, "pending_tool_calls orphan reconcile failed", "error", reconcileErr)
+			return
+		}
+		if n > 0 {
+			slog.InfoContext(sweepCtx, "pending_tool_calls: reconciled orphan preparing batches", "count", n)
+		}
+	}()
+
 	// Redis
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
