@@ -62,7 +62,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
     setSubmitting(true);
     try {
       const { data } = await api.get<{ url: string }>(
-        `/integrations/vk/community-auth-url?group_id=${selected}`,
+        `/integrations/vk/community-auth-url?group_id=${selected}`
       );
       window.location.href = data.url;
     } catch (err: unknown) {
@@ -94,8 +94,8 @@ export function VKCommunityModal({ open, onClose }: Props) {
           </div>
         ) : communities.length === 0 ? (
           <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-            Не найдено сообществ, в которых вы администратор. Убедитесь, что роль
-            администратора назначена на стороне VK, и попробуйте заново.
+            Не найдено сообществ, в которых вы администратор. Убедитесь, что роль администратора
+            назначена на стороне VK, и попробуйте заново.
           </div>
         ) : (
           <div className="space-y-2">

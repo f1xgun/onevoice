@@ -82,7 +82,7 @@ export function PlatformCard({
     try {
       const { data } = await api.post<{ linked_group_status: string }>(
         '/integrations/telegram/refresh',
-        { channel_id: i.externalId },
+        { channel_id: i.externalId }
       );
       if (data.linked_group_status === 'ok') {
         toast.success('Бот найден в группе обсуждений — комментарии будут собираться.');
