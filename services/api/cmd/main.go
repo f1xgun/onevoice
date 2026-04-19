@@ -265,7 +265,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	// Conversation handler depends on business + project services for Phase 15
 	// create-conversation scoping and the /move endpoint system-note append.
-	conversationHandler, err := handler.NewConversationHandler(conversationRepo, messageRepo, businessService, projectService)
+	conversationHandler, err := handler.NewConversationHandler(conversationRepo, messageRepo, businessService, projectService, pendingToolCallRepo)
 	if err != nil {
 		return fmt.Errorf("create conversation handler: %w", err)
 	}
@@ -279,6 +279,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		projectService,
 		conversationRepo,
 		messageRepo,
+		pendingToolCallRepo,
 		postRepo,
 		reviewRepo,
 		agentTaskRepo,

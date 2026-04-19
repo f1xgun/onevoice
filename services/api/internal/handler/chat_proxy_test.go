@@ -24,7 +24,8 @@ import (
 // projectService that returns ErrProjectNotFound and a stub conversation repo
 // that returns a conversation with ProjectID = nil. Used by legacy tests that
 // do not exercise project enrichment. The conversationID URL param is bound
-// via chi.RouteCtxKey in each test.
+// via chi.RouteCtxKey in each test. Phase 16 also injects an empty
+// pendingRepo (no active batches) so the D-04 gate is a pass-through.
 func newChatProxyNoProject(
 	biz BusinessService,
 	integ IntegrationService,
@@ -37,7 +38,7 @@ func newChatProxyNoProject(
 		},
 	}
 	proj := &noopProjectService{}
-	return NewChatProxyHandler(biz, integ, proj, convRepo, msgRepo, nil, nil, nil, orchURL, nil)
+	return NewChatProxyHandler(biz, integ, proj, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, orchURL, nil)
 }
 
 // TestChatProxy_EnrichesContext verifies that business and integration context
@@ -275,7 +276,7 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 			return nil, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, orch.URL, nil)
 
 	body := `{"message":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
@@ -348,7 +349,7 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 			}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, orch.URL, nil)
 
 	body := `{"message":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
@@ -552,6 +553,380 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 	assert.Empty(t, persistedMsg.ToolResults, "no tool results yet at pause time")
 }
 
+// --- Phase 16 Plan 06 Task 2: D-04 implicit-resume + explicit-resume tests ---
+
+// TestChatProxy_Resume_AppendsToExistingMessage covers the happy path for
+// explicit resume: client POSTs /chat/{id} with X-Onevoice-Resume-Batch-Id;
+// the proxy forwards to /chat/{id}/resume?batch_id=..., the orchestrator
+// emits tool_result events and done, the SAME assistant Message is updated
+// (not a new one — D-17), and Status transitions to complete.
+func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "conv-resume"
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	activeMsg := &domain.Message{
+		ID:             "msg-1",
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        "Here I'll post:",
+		ToolCalls: []domain.ToolCall{
+			{ID: "call-a", Name: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "x"}, Status: domain.ToolCallStatusPending},
+			{ID: "call-b", Name: "vk__publish_post", Arguments: map[string]interface{}{"text": "x"}, Status: domain.ToolCallStatusPending},
+		},
+		Status: domain.MessageStatusPendingApproval,
+	}
+
+	// Orchestrator mock — assert resume URL + emit two tool_result events and done.
+	orchHits := 0
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		orchHits++
+		assert.Contains(t, r.URL.Path, "/chat/"+convID+"/resume")
+		assert.Equal(t, "batch-1", r.URL.Query().Get("batch_id"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"call-a","tool_name":"telegram__send_channel_post","result":{"ok":true}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"call-b","tool_name":"vk__publish_post","result":{"ok":true}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"text","content":"Done!"}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"done"}` + "\n\n"))
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	var persistedUpdates []*domain.Message
+	msgRepo := &MockMessageRepository{
+		FindByConversationActiveFunc: func(_ context.Context, id string) (*domain.Message, error) {
+			assert.Equal(t, convID, id)
+			cp := *activeMsg
+			return &cp, nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			cp.ToolCalls = append([]domain.ToolCall{}, m.ToolCalls...)
+			cp.ToolResults = append([]domain.ToolResult{}, m.ToolResults...)
+			persistedUpdates = append(persistedUpdates, &cp)
+			return nil
+		},
+	}
+	pendingRepo := &MockPendingToolCallRepository{
+		GetByBatchIDFunc: func(_ context.Context, id string) (*domain.PendingToolCallBatch, error) {
+			assert.Equal(t, "batch-1", id)
+			return &domain.PendingToolCallBatch{ID: "batch-1", ConversationID: convID, Status: "resolving"}, nil
+		},
+	}
+
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+		},
+	}
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(ResumeBatchHeader, "batch-1")
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", convID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, 1, orchHits, "orchestrator's resume endpoint must be invoked")
+
+	// The final Update carries the terminal state.
+	require.NotEmpty(t, persistedUpdates)
+	final := persistedUpdates[len(persistedUpdates)-1]
+	assert.Equal(t, "msg-1", final.ID, "same message ID preserved (D-17)")
+	assert.Equal(t, domain.MessageStatusComplete, final.Status)
+	require.Len(t, final.ToolResults, 2)
+	require.Len(t, final.ToolCalls, 2)
+	assert.Equal(t, domain.ToolCallStatusApproved, final.ToolCalls[0].Status)
+	assert.Equal(t, domain.ToolCallStatusApproved, final.ToolCalls[1].Status)
+	assert.Contains(t, final.Content, "Done!", "post-tool text appended to Content")
+}
+
+// TestChatProxy_Resume_NoActiveApproval_EmitsInlineError covers the guard in
+// streamResume: if the header points at a batch that does not exist (or has
+// the wrong conversation_id), we emit an inline SSE error and close — we
+// never call the orchestrator.
+func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "conv-resume-missing"
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	// Message exists but batch does not.
+	activeMsg := &domain.Message{
+		ID: "msg-1", ConversationID: convID, Role: "assistant",
+		Status: domain.MessageStatusPendingApproval,
+	}
+
+	orchHits := 0
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		orchHits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	msgRepo := &MockMessageRepository{
+		FindByConversationActiveFunc: func(_ context.Context, _ string) (*domain.Message, error) {
+			return activeMsg, nil
+		},
+	}
+	pendingRepo := &MockPendingToolCallRepository{
+		GetByBatchIDFunc: func(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+			return nil, domain.ErrBatchNotFound
+		},
+	}
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: id, UserID: "any"}, nil
+		},
+	}
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
+	req.Header.Set(ResumeBatchHeader, "batch-missing")
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", convID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, 0, orchHits, "orchestrator must NOT be invoked when the batch is missing")
+	assert.Contains(t, rr.Body.String(), "no_active_approval_for_conversation")
+}
+
+// TestChatProxy_ImplicitResume_InProgressMessage_Rejoins covers D-04 case (b):
+// no resume header, but the conversation has an in_progress message AND a
+// resolving batch → implicit rejoin via the orchestrator's resume endpoint.
+func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "conv-implicit"
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	activeMsg := &domain.Message{
+		ID: "msg-2", ConversationID: convID, Role: "assistant",
+		Status: domain.MessageStatusInProgress,
+		ToolCalls: []domain.ToolCall{
+			{ID: "call-x", Name: "telegram__send_channel_post", Status: domain.ToolCallStatusPending},
+		},
+	}
+
+	orchHits := 0
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		orchHits++
+		assert.Equal(t, "batch-resolving", r.URL.Query().Get("batch_id"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"done"}` + "\n\n"))
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	createCalls := 0
+	updateCalls := 0
+	msgRepo := &MockMessageRepository{
+		FindByConversationActiveFunc: func(_ context.Context, _ string) (*domain.Message, error) {
+			cp := *activeMsg
+			return &cp, nil
+		},
+		CreateFunc: func(_ context.Context, _ *domain.Message) error { createCalls++; return nil },
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			updateCalls++
+			// ID preserved.
+			assert.Equal(t, "msg-2", m.ID)
+			return nil
+		},
+	}
+	pendingRepo := &MockPendingToolCallRepository{
+		ListPendingByConversationFunc: func(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
+			return []*domain.PendingToolCallBatch{
+				{ID: "batch-resolving", ConversationID: convID, Status: "resolving"},
+			}, nil
+		},
+		GetByBatchIDFunc: func(_ context.Context, id string) (*domain.PendingToolCallBatch, error) {
+			assert.Equal(t, "batch-resolving", id)
+			return &domain.PendingToolCallBatch{ID: "batch-resolving", ConversationID: convID, Status: "resolving"}, nil
+		},
+	}
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: id, UserID: "any"}, nil
+		},
+	}
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{"message":"(empty resume body)"}`))
+	// NO ResumeBatchHeader here — implicit resume.
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", convID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, 1, orchHits, "orchestrator resume must be invoked")
+	assert.Equal(t, 0, createCalls, "no new Message should be created on implicit resume")
+	assert.GreaterOrEqual(t, updateCalls, 1, "Update should be called at least once on done")
+}
+
+// TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent covers D-04 case (c):
+// no resume header, an active pending_approval message, and a batch still in
+// status="pending" → re-emit the stored tool_approval_required event from the
+// batch document so the UI re-hydrates. Orchestrator is NOT invoked.
+func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "conv-pending-reconnect"
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	activeMsg := &domain.Message{
+		ID: "msg-3", ConversationID: convID, Role: "assistant",
+		Status: domain.MessageStatusPendingApproval,
+	}
+
+	orchHits := 0
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		orchHits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	msgRepo := &MockMessageRepository{
+		FindByConversationActiveFunc: func(_ context.Context, _ string) (*domain.Message, error) {
+			return activeMsg, nil
+		},
+	}
+	pendingRepo := &MockPendingToolCallRepository{
+		ListPendingByConversationFunc: func(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
+			return []*domain.PendingToolCallBatch{
+				{
+					ID: "batch-pending", ConversationID: convID, MessageID: "msg-3", Status: "pending",
+					Calls: []domain.PendingCall{
+						{CallID: "call-p", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+					},
+				},
+			}, nil
+		},
+	}
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: id, UserID: "any"}, nil
+		},
+	}
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
+	// No resume header.
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", convID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, 0, orchHits, "orchestrator must NOT be invoked; the event is re-emitted from the stored batch")
+	assert.Contains(t, rr.Body.String(), `"type":"tool_approval_required"`)
+	assert.Contains(t, rr.Body.String(), `"batch_id":"batch-pending"`)
+	assert.Contains(t, rr.Body.String(), `"call_id":"call-p"`)
+}
+
+// TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress covers D-04
+// case (d): active in_progress Message with NO batch (shouldn't happen in
+// healthy flow) → inline error "turn_already_in_progress".
+func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "conv-orphan"
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	activeMsg := &domain.Message{
+		ID: "msg-orphan", ConversationID: convID, Role: "assistant",
+		Status: domain.MessageStatusInProgress,
+	}
+
+	orchHits := 0
+	orch := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		orchHits++
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	msgRepo := &MockMessageRepository{
+		FindByConversationActiveFunc: func(_ context.Context, _ string) (*domain.Message, error) {
+			return activeMsg, nil
+		},
+	}
+	pendingRepo := &MockPendingToolCallRepository{
+		ListPendingByConversationFunc: func(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
+			return nil, nil // no active batches
+		},
+	}
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: id, UserID: "any"}, nil
+		},
+	}
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, orch.URL, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", convID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, 0, orchHits)
+	assert.Contains(t, rr.Body.String(), `"type":"error"`)
+	assert.Contains(t, rr.Body.String(), `"content":"turn_already_in_progress"`)
+}
+
 // TestChatProxy_ToolApprovalRequired_NoErrorIfPersistFails covers the
 // best-effort fallback: even if the Message insert fails (e.g. duplicate _id
 // from a prior crash), the client still receives the tool_approval_required
@@ -639,7 +1014,7 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 			return nil, domain.ErrProjectNotFound
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, orch.URL, nil)
 
 	body := `{"message":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))

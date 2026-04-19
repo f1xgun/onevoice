@@ -29,17 +29,23 @@ type ConversationHandler struct {
 	messageRepo      domain.MessageRepository
 	businessService  BusinessService // Phase 15 — resolve caller's business for project scoping
 	projectService   ProjectService  // Phase 15 — validate projectId belongs to caller's business
+	// pendingRepo drives HITL-11's pendingApprovals array on GET /messages.
+	// Phase 16 dep.
+	pendingRepo domain.PendingToolCallRepository
 }
 
 // NewConversationHandler creates a new conversation handler instance.
 // businessService and projectService are required (Phase 15) — create-conversation
 // and move-conversation must validate that the supplied projectId belongs to the
-// caller's business. Passing nil for either is a programmer error.
+// caller's business. pendingRepo is required (Phase 16) — GET /messages joins
+// the pending_tool_calls collection to hydrate the approval card. Passing nil
+// for any dep is a programmer error.
 func NewConversationHandler(
 	conversationRepo domain.ConversationRepository,
 	messageRepo domain.MessageRepository,
 	businessService BusinessService,
 	projectService ProjectService,
+	pendingRepo domain.PendingToolCallRepository,
 ) (*ConversationHandler, error) {
 	if conversationRepo == nil {
 		return nil, fmt.Errorf("NewConversationHandler: conversationRepo cannot be nil")
@@ -53,12 +59,45 @@ func NewConversationHandler(
 	if projectService == nil {
 		return nil, fmt.Errorf("NewConversationHandler: projectService cannot be nil")
 	}
+	if pendingRepo == nil {
+		return nil, fmt.Errorf("NewConversationHandler: pendingRepo cannot be nil")
+	}
 	return &ConversationHandler{
 		conversationRepo: conversationRepo,
 		messageRepo:      messageRepo,
 		businessService:  businessService,
 		projectService:   projectService,
+		pendingRepo:      pendingRepo,
 	}, nil
+}
+
+// PendingApprovalSummary is the per-batch projection returned by
+// GET /conversations/{id}/messages in the `pendingApprovals` array. Each
+// field name matches the JSON contract the Phase 17 frontend consumes to
+// render the approval card on page reload (HITL-11).
+//
+// EditableFields is intentionally left empty in this response: the frontend
+// already has the live tool registry via the `['tools']` React Query
+// (Plan 16-08 / GET /api/v1/tools), which is the single source of truth for
+// per-tool editable-field whitelists. The field is still emitted as [] (not
+// omitted) so the JSON schema stays stable for downstream consumers.
+type PendingApprovalSummary struct {
+	BatchID   string                `json:"batchId"`
+	MessageID string                `json:"messageId"`
+	Calls     []ApprovalCallSummary `json:"calls"`
+	Status    string                `json:"status"`
+	CreatedAt time.Time             `json:"createdAt"`
+	ExpiresAt time.Time             `json:"expiresAt"`
+}
+
+// ApprovalCallSummary mirrors orchestrator.ApprovalCallSummary but scoped to
+// the HTTP/JSON contract the frontend consumes. Keeping a local type avoids a
+// cross-service import and keeps the api handler decoupled from orchestrator.
+type ApprovalCallSummary struct {
+	CallID         string                 `json:"callId"`
+	ToolName       string                 `json:"toolName"`
+	Args           map[string]interface{} `json:"args"`
+	EditableFields []string               `json:"editableFields"`
 }
 
 // CreateConversationRequest represents the conversation creation request.
@@ -328,7 +367,21 @@ func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ListMessages handles GET /api/v1/conversations/{id}/messages
+// listMessagesResponse is the JSON shape returned by GET /messages. Messages
+// retains the v1.2 wire format; pendingApprovals is the Phase 16 HITL-11
+// addition that lets the approval card rehydrate on page reload.
+//
+// `pendingApprovals` is ALWAYS serialized (even as []) so the frontend can
+// iterate unconditionally — never omit or emit null.
+type listMessagesResponse struct {
+	Messages         []domain.Message         `json:"messages"`
+	PendingApprovals []PendingApprovalSummary `json:"pendingApprovals"`
+}
+
+// ListMessages handles GET /api/v1/conversations/{id}/messages.
+// Phase 16 extends the response with a pendingApprovals array hydrated from
+// the pending_tool_calls collection so the frontend approval card (HITL-11)
+// can reconstruct its state on page reload.
 func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -360,8 +413,47 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	if messages == nil {
+		messages = []domain.Message{}
+	}
 
-	writeJSON(w, http.StatusOK, messages)
+	// HITL-11: hydrate the approval card from pending_tool_calls. Failure here
+	// is non-fatal — the messages list is still useful. The repo performs the
+	// lazy-expiration virtualization so any batch past its TTL surfaces as
+	// status="expired".
+	pendingApprovals := make([]PendingApprovalSummary, 0)
+	batches, err := h.pendingRepo.ListPendingByConversation(r.Context(), conversationID)
+	if err != nil {
+		slog.WarnContext(r.Context(), "list messages: failed to load pending approvals",
+			"error", err, "conversation_id", conversationID)
+	} else {
+		for _, b := range batches {
+			summary := PendingApprovalSummary{
+				BatchID:   b.ID,
+				MessageID: b.MessageID,
+				Calls:     make([]ApprovalCallSummary, 0, len(b.Calls)),
+				Status:    b.Status,
+				CreatedAt: b.CreatedAt,
+				ExpiresAt: b.ExpiresAt,
+			}
+			for _, c := range b.Calls {
+				summary.Calls = append(summary.Calls, ApprovalCallSummary{
+					CallID:   c.CallID,
+					ToolName: c.ToolName,
+					Args:     c.Arguments,
+					// EditableFields intentionally empty — frontend gets the
+					// live whitelist from GET /api/v1/tools (Plan 16-08).
+					EditableFields: []string{},
+				})
+			}
+			pendingApprovals = append(pendingApprovals, summary)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, listMessagesResponse{
+		Messages:         messages,
+		PendingApprovals: pendingApprovals,
+	})
 }
 
 // MoveConversationRequest is the body for POST /api/v1/conversations/{id}/move.

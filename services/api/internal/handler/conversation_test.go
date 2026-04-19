@@ -76,6 +76,47 @@ func (m *MockConversationRepository) UpdateProjectAssignment(ctx context.Context
 	return nil
 }
 
+// MockPendingToolCallRepository is a minimal test double for Phase 16's
+// PendingToolCallRepository. Only the methods actually called by the handler
+// under test need a *Func field; others return nil / empty slices.
+type MockPendingToolCallRepository struct {
+	ListPendingByConversationFunc func(ctx context.Context, conversationID string) ([]*domain.PendingToolCallBatch, error)
+	GetByBatchIDFunc              func(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error)
+}
+
+func (m *MockPendingToolCallRepository) InsertPreparing(_ context.Context, _ *domain.PendingToolCallBatch) error {
+	return nil
+}
+func (m *MockPendingToolCallRepository) PromoteToPending(_ context.Context, _ string) error {
+	return nil
+}
+func (m *MockPendingToolCallRepository) GetByBatchID(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
+	if m.GetByBatchIDFunc != nil {
+		return m.GetByBatchIDFunc(ctx, batchID)
+	}
+	return nil, domain.ErrBatchNotFound
+}
+func (m *MockPendingToolCallRepository) ListPendingByConversation(ctx context.Context, conversationID string) ([]*domain.PendingToolCallBatch, error) {
+	if m.ListPendingByConversationFunc != nil {
+		return m.ListPendingByConversationFunc(ctx, conversationID)
+	}
+	return nil, nil
+}
+func (m *MockPendingToolCallRepository) AtomicTransitionToResolving(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+	return nil, domain.ErrBatchNotFound
+}
+func (m *MockPendingToolCallRepository) RecordDecisions(_ context.Context, _ string, _ []domain.PendingCall) error {
+	return nil
+}
+func (m *MockPendingToolCallRepository) MarkDispatched(_ context.Context, _, _ string) error {
+	return nil
+}
+func (m *MockPendingToolCallRepository) MarkResolved(_ context.Context, _ string) error { return nil }
+func (m *MockPendingToolCallRepository) MarkExpired(_ context.Context, _ string) error  { return nil }
+func (m *MockPendingToolCallRepository) ReconcileOrphanPreparing(_ context.Context, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+
 // MockMessageRepository is a minimal mock for MessageRepository. Phase 16
 // extends the interface with Update + FindByConversationActive; tests that
 // don't exercise those paths leave the *Func fields nil and the mock returns
@@ -169,7 +210,9 @@ func (s *noopProjectService) CountConversations(_ context.Context, _, _ uuid.UUI
 // business service that always returns a valid business (so create/move do not
 // 404 on the lookup) and a stub project service that returns ErrProjectNotFound
 // by default. Tests that need custom behavior call NewConversationHandler
-// directly with their own services.
+// directly with their own services. Phase 16 injects an empty
+// PendingToolCallRepository mock so the HITL-11 pendingApprovals array is
+// always serialized as [] for legacy tests.
 func newTestConversationHandler(convRepo domain.ConversationRepository, msgRepo domain.MessageRepository) *ConversationHandler {
 	biz := &noopBusinessService{
 		GetByUserIDFunc: func(_ context.Context, userID uuid.UUID) (*domain.Business, error) {
@@ -180,7 +223,7 @@ func newTestConversationHandler(convRepo domain.ConversationRepository, msgRepo 
 			}, nil
 		},
 	}
-	h, err := NewConversationHandler(convRepo, msgRepo, biz, &noopProjectService{})
+	h, err := NewConversationHandler(convRepo, msgRepo, biz, &noopProjectService{}, &MockPendingToolCallRepository{})
 	if err != nil {
 		panic(err)
 	}
@@ -347,7 +390,7 @@ func TestCreateConversation_RepositoryError(t *testing.T) {
 
 // TestNewConversationHandler_NilRepository tests error on nil repository
 func TestNewConversationHandler_NilRepository(t *testing.T) {
-	h, err := NewConversationHandler(nil, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{})
+	h, err := NewConversationHandler(nil, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{})
 	assert.Error(t, err)
 	assert.Nil(t, h)
 }
@@ -355,7 +398,7 @@ func TestNewConversationHandler_NilRepository(t *testing.T) {
 // TestNewConversationHandler_NilBusinessService ensures the Phase 15 new dep
 // is checked.
 func TestNewConversationHandler_NilBusinessService(t *testing.T) {
-	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, nil, &noopProjectService{})
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, nil, &noopProjectService{}, &MockPendingToolCallRepository{})
 	assert.Error(t, err)
 	assert.Nil(t, h)
 }
@@ -363,7 +406,15 @@ func TestNewConversationHandler_NilBusinessService(t *testing.T) {
 // TestNewConversationHandler_NilProjectService ensures the Phase 15 new dep
 // is checked.
 func TestNewConversationHandler_NilProjectService(t *testing.T) {
-	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, nil)
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, nil, &MockPendingToolCallRepository{})
+	assert.Error(t, err)
+	assert.Nil(t, h)
+}
+
+// TestNewConversationHandler_NilPendingRepo ensures the Phase 16 new dep is
+// checked (chat_proxy and GET /messages both rely on it).
+func TestNewConversationHandler_NilPendingRepo(t *testing.T) {
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, nil)
 	assert.Error(t, err)
 	assert.Nil(t, h)
 }
@@ -961,7 +1012,7 @@ func TestCreateConversation_WithProjectID(t *testing.T) {
 			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Reviews"}, nil
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, biz, proj)
+	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, biz, proj, &MockPendingToolCallRepository{})
 	require.NoError(t, err)
 
 	pid := projectID.String()
@@ -1007,7 +1058,7 @@ func TestCreateConversation_NullAndAbsentProjectIDEquivalent(t *testing.T) {
 					return &domain.Business{ID: businessID, UserID: userID, Name: "B"}, nil
 				},
 			}
-			h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, biz, &noopProjectService{})
+			h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, biz, &noopProjectService{}, &MockPendingToolCallRepository{})
 			require.NoError(t, err)
 
 			req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations", []byte(tc.body), userID, "")
@@ -1040,7 +1091,7 @@ func TestCreateConversation_ProjectCrossBusiness(t *testing.T) {
 			return nil, domain.ErrProjectNotFound
 		},
 	}
-	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, biz, proj)
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, biz, proj, &MockPendingToolCallRepository{})
 	require.NoError(t, err)
 
 	pid := projectID.String()
@@ -1107,7 +1158,7 @@ func TestMoveConversation_ToProject(t *testing.T) {
 			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Отзывы"}, nil
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, msgRepo, biz, proj)
+	h, err := NewConversationHandler(mockRepo, msgRepo, biz, proj, &MockPendingToolCallRepository{})
 	require.NoError(t, err)
 
 	pid := projectID.String()
@@ -1168,7 +1219,7 @@ func TestMoveConversation_ToNullBezProyekta(t *testing.T) {
 			return &domain.Business{ID: businessID, UserID: userID}, nil
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, msgRepo, biz, &noopProjectService{})
+	h, err := NewConversationHandler(mockRepo, msgRepo, biz, &noopProjectService{}, &MockPendingToolCallRepository{})
 	require.NoError(t, err)
 
 	// null body
@@ -1208,7 +1259,7 @@ func TestMoveConversation_ProjectCrossBusiness(t *testing.T) {
 			return nil, domain.ErrProjectNotFound
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, biz, proj)
+	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, biz, proj, &MockPendingToolCallRepository{})
 	require.NoError(t, err)
 
 	pid := projectID.String()
@@ -1272,4 +1323,189 @@ func TestMoveConversation_InvalidBody(t *testing.T) {
 	h.MoveConversation(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// --- Phase 16 Plan 06 Task 2: GET /messages pendingApprovals (HITL-11) ------
+
+// newConversationHandlerWithPending wires a ConversationHandler with a custom
+// pending-tool-call repo mock so tests can drive ListPendingByConversation.
+func newConversationHandlerWithPending(t *testing.T, convRepo domain.ConversationRepository, msgRepo domain.MessageRepository, pendingRepo domain.PendingToolCallRepository) *ConversationHandler {
+	t.Helper()
+	biz := &noopBusinessService{
+		GetByUserIDFunc: func(_ context.Context, userID uuid.UUID) (*domain.Business, error) {
+			return &domain.Business{ID: uuid.New(), UserID: userID, Name: "Biz"}, nil
+		},
+	}
+	h, err := NewConversationHandler(convRepo, msgRepo, biz, &noopProjectService{}, pendingRepo)
+	require.NoError(t, err)
+	return h
+}
+
+// TestGetMessages_NoPendingApprovals_ReturnsEmptyArray covers the default case:
+// no active batches → the response serializes `pendingApprovals: []`
+// (non-null, empty) so the frontend can iterate unconditionally (HITL-11).
+func TestGetMessages_NoPendingApprovals_ReturnsEmptyArray(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439101"
+
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+		},
+	}
+	msgRepo := &MockMessageRepository{
+		ListByConversationIDFunc: func(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
+			return []domain.Message{{ID: "m1", ConversationID: convID, Role: "user", Content: "hi"}}, nil
+		},
+	}
+	pending := &MockPendingToolCallRepository{
+		ListPendingByConversationFunc: func(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
+			return nil, nil // no active batches
+		},
+	}
+	h := newConversationHandlerWithPending(t, convRepo, msgRepo, pending)
+
+	req := makeAuthedReq(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.ListMessages(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var body map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	// Must be an explicit [] not null or missing.
+	raw, ok := body["pendingApprovals"]
+	require.True(t, ok, "pendingApprovals key must be present; got keys: %v", body)
+	assert.Equal(t, "[]", string(raw), "pendingApprovals must serialize as [] when no batches active")
+}
+
+// TestGetMessages_WithPendingApprovals_ReturnsPopulatedArray covers the happy
+// path: a single pending batch with one manual call surfaces in the response.
+func TestGetMessages_WithPendingApprovals_ReturnsPopulatedArray(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439102"
+	created := time.Now().UTC().Truncate(time.Second)
+	expires := created.Add(24 * time.Hour)
+
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+		},
+	}
+	msgRepo := &MockMessageRepository{}
+	pending := &MockPendingToolCallRepository{
+		ListPendingByConversationFunc: func(_ context.Context, id string) ([]*domain.PendingToolCallBatch, error) {
+			assert.Equal(t, convID, id)
+			return []*domain.PendingToolCallBatch{
+				{
+					ID:             "batch-abc",
+					ConversationID: convID,
+					MessageID:      "msg-42",
+					Status:         "pending",
+					Calls: []domain.PendingCall{
+						{CallID: "toolu_1", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+					},
+					CreatedAt: created,
+					ExpiresAt: expires,
+				},
+			}, nil
+		},
+	}
+	h := newConversationHandlerWithPending(t, convRepo, msgRepo, pending)
+
+	req := makeAuthedReq(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.ListMessages(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		Messages         []domain.Message         `json:"messages"`
+		PendingApprovals []PendingApprovalSummary `json:"pendingApprovals"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Len(t, body.PendingApprovals, 1)
+	assert.Equal(t, "batch-abc", body.PendingApprovals[0].BatchID)
+	assert.Equal(t, "msg-42", body.PendingApprovals[0].MessageID)
+	assert.Equal(t, "pending", body.PendingApprovals[0].Status)
+	require.Len(t, body.PendingApprovals[0].Calls, 1)
+	assert.Equal(t, "toolu_1", body.PendingApprovals[0].Calls[0].CallID)
+	assert.Equal(t, "telegram__send_channel_post", body.PendingApprovals[0].Calls[0].ToolName)
+	// EditableFields is intentionally empty — Plan 16-06 defers population to
+	// the frontend's `['tools']` React Query (Plan 16-08 ships the live map).
+	assert.NotNil(t, body.PendingApprovals[0].Calls[0].EditableFields, "EditableFields must be [] not null for stable contract")
+}
+
+// TestGetMessages_ExpiredBatch_ReportsExpiredStatus documents the
+// lazy-expiration pass: a batch whose expires_at is in the past is reported
+// with status="expired" so the UI can render the "Истекло" badge (D-19).
+func TestGetMessages_ExpiredBatch_ReportsExpiredStatus(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439103"
+
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+		},
+	}
+	pending := &MockPendingToolCallRepository{
+		ListPendingByConversationFunc: func(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
+			// Simulate the repo's lazy virtualization: past expires_at with
+			// status="pending" is returned as status="expired".
+			return []*domain.PendingToolCallBatch{{
+				ID:             "batch-old",
+				ConversationID: convID,
+				Status:         "expired",
+				ExpiresAt:      time.Now().Add(-time.Hour),
+			}}, nil
+		},
+	}
+	h := newConversationHandlerWithPending(t, convRepo, &MockMessageRepository{}, pending)
+
+	req := makeAuthedReq(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.ListMessages(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		PendingApprovals []PendingApprovalSummary `json:"pendingApprovals"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Len(t, body.PendingApprovals, 1)
+	assert.Equal(t, "expired", body.PendingApprovals[0].Status)
+}
+
+// TestGetMessages_MultiplePendingBatches_AllReturned covers the edge case
+// where a resume spawned a second pause (new turn inside a continuation).
+func TestGetMessages_MultiplePendingBatches_AllReturned(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439104"
+
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: convID, UserID: userID.String()}, nil
+		},
+	}
+	pending := &MockPendingToolCallRepository{
+		ListPendingByConversationFunc: func(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
+			return []*domain.PendingToolCallBatch{
+				{ID: "b1", ConversationID: convID, MessageID: "m1", Status: "pending"},
+				{ID: "b2", ConversationID: convID, MessageID: "m2", Status: "resolving"},
+			}, nil
+		},
+	}
+	h := newConversationHandlerWithPending(t, convRepo, &MockMessageRepository{}, pending)
+
+	req := makeAuthedReq(t, http.MethodGet, "/api/v1/conversations/"+convID+"/messages", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.ListMessages(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		PendingApprovals []PendingApprovalSummary `json:"pendingApprovals"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Len(t, body.PendingApprovals, 2)
+	assert.Equal(t, "b1", body.PendingApprovals[0].BatchID)
+	assert.Equal(t, "pending", body.PendingApprovals[0].Status)
+	assert.Equal(t, "b2", body.PendingApprovals[1].BatchID)
+	assert.Equal(t, "resolving", body.PendingApprovals[1].Status)
 }
