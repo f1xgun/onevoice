@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.6
+
 # Build stage
 FROM golang:1.25-alpine AS builder
 
@@ -8,14 +10,24 @@ RUN apk add --no-cache git
 ENV GOWORK=off
 ENV GOTOOLCHAIN=auto
 
+COPY pkg/go.mod pkg/go.sum ./pkg/
+COPY services/agent-yandex-business/go.mod services/agent-yandex-business/go.sum ./services/agent-yandex-business/
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    cd pkg && for i in 1 2 3; do go mod download && break || sleep 5; done
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    cd services/agent-yandex-business && for i in 1 2 3; do go mod download && break || sleep 5; done
+
 COPY pkg/ ./pkg/
 COPY services/agent-yandex-business/ ./services/agent-yandex-business/
 
-RUN cd pkg && go mod download
-RUN cd services/agent-yandex-business && go mod download
-
-RUN cd services/agent-yandex-business && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/agent ./cmd/main.go
-RUN cd services/agent-yandex-business && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/pw-install ./cmd/install/main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    cd services/agent-yandex-business && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/agent ./cmd/main.go && \
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/pw-install ./cmd/install/main.go
 
 # Runtime stage — Playwright v1.50.0 has browsers pre-installed
 FROM mcr.microsoft.com/playwright:v1.50.0-jammy
