@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -106,4 +107,83 @@ type PostRepository interface {
 type AgentTaskRepository interface {
 	Create(ctx context.Context, task *AgentTask) error
 	ListByBusinessID(ctx context.Context, businessID string, filter TaskFilter) ([]AgentTask, int, error)
+}
+
+// --- Phase 16 HITL — pending tool-call batches ---
+
+// PendingToolCallBatch is the persisted snapshot of a paused multi-tool
+// approval batch: one document per assistant turn that hit ≥1 manual-floor
+// tool. Written by services/orchestrator at pause time (status="preparing"),
+// promoted to "pending" just before the SSE tool_approval_required event is
+// flushed, transitioned to "resolving" atomically by the resolve endpoint,
+// then "resolved" after all decisions are recorded. Expired batches are
+// swept by the Mongo TTL index on ExpiresAt (HITL-10).
+//
+// ProjectID is nullable (bson:",omitempty") because conversations may not be
+// scoped to any project (the virtual "Без проекта" bucket from Phase 15).
+// When present, it is the key that Plan 16-05 and 16-07 use to look up the
+// project's approval_overrides for the TOCTOU re-check (POLICY-03 + HITL-06).
+//
+// See .planning/phases/16-hitl-backend/16-02-PLAN.md for the Mongo
+// collection/index spec and the implementation.
+type PendingToolCallBatch struct {
+	ID             string        `bson:"_id"`
+	ConversationID string        `bson:"conversation_id"`
+	BusinessID     string        `bson:"business_id"`
+	ProjectID      string        `bson:"project_id,omitempty"`
+	UserID         string        `bson:"user_id"`
+	MessageID      string        `bson:"message_id"`
+	Status         string        `bson:"status"` // "preparing" | "pending" | "resolving" | "resolved" | "expired"
+	Calls          []PendingCall `bson:"calls"`
+	ModelMessages  []byte        `bson:"model_messages"` // JSON-serialized []llm.Message snapshot
+	IterationIdx   int           `bson:"iteration_idx"`
+	CreatedAt      time.Time     `bson:"created_at"`
+	UpdatedAt      time.Time     `bson:"updated_at"`
+	ExpiresAt      time.Time     `bson:"expires_at"`
+}
+
+// PendingCall is a single proposed tool invocation within a batch. CallID is
+// the LLM's real tool_call.id (no synthetic "tc-N" placeholder — HITL-13).
+// Verdict/EditedArgs/RejectReason are populated by the resolve endpoint.
+// Dispatched is the orchestrator-side double-execution guard (Overview
+// invariant #3): on resume, any entry with Dispatched=true is skipped.
+type PendingCall struct {
+	CallID       string                 `bson:"call_id"`
+	ToolName     string                 `bson:"tool_name"`
+	Arguments    map[string]interface{} `bson:"arguments"`
+	Verdict      string                 `bson:"verdict,omitempty"` // "approve" | "edit" | "reject"
+	EditedArgs   map[string]interface{} `bson:"edited_args,omitempty"`
+	RejectReason string                 `bson:"reject_reason,omitempty"`
+	Dispatched   bool                   `bson:"dispatched"`
+	DispatchedAt *time.Time             `bson:"dispatched_at,omitempty"`
+}
+
+// PendingToolCallRepository is implemented by services/api in Plan 16-02. The
+// interface declares every primitive that the orchestrator (at pause time),
+// the resolve handler (at decision time), and the chat_proxy (at SSE emission
+// time) need — no type assertions, no out-of-band helpers.
+//
+// Atomicity discipline: because MongoDB in this deployment is STANDALONE (no
+// multi-document transactions — see Overview invariant #1), all cross-document
+// consistency is encoded as a strict write-order:
+//
+//	InsertPreparing → PromoteToPending → emit SSE
+//	↓ (crash here → ReconcileOrphanPreparing sweeps after olderThan)
+//	AtomicTransitionToResolving → RecordDecisions → MarkDispatched* → MarkResolved
+//
+// AtomicTransitionToResolving uses findOneAndUpdate with filter
+// `{_id, status: "pending"}` and update `{$set: {status: "resolving"}}` to
+// guarantee exactly-one-wins on concurrent resolve attempts (Overview
+// anti-footgun #5).
+type PendingToolCallRepository interface {
+	InsertPreparing(ctx context.Context, b *PendingToolCallBatch) error
+	PromoteToPending(ctx context.Context, batchID string) error
+	GetByBatchID(ctx context.Context, batchID string) (*PendingToolCallBatch, error)
+	ListPendingByConversation(ctx context.Context, conversationID string) ([]*PendingToolCallBatch, error)
+	AtomicTransitionToResolving(ctx context.Context, batchID string) (*PendingToolCallBatch, error)
+	RecordDecisions(ctx context.Context, batchID string, calls []PendingCall) error
+	MarkDispatched(ctx context.Context, batchID, callID string) error
+	MarkResolved(ctx context.Context, batchID string) error
+	MarkExpired(ctx context.Context, batchID string) error
+	ReconcileOrphanPreparing(ctx context.Context, olderThan time.Duration) (int64, error)
 }
