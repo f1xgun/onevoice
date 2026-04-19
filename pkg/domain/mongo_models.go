@@ -11,6 +11,25 @@ const (
 	TitleStatusManual      = "manual"
 )
 
+// Message.Status values (POLICY / HITL — Phase 16). An empty string is
+// semantically equivalent to MessageStatusComplete for backward compatibility
+// with pre-Phase-16 messages; see the docstring on Message.Status.
+const (
+	MessageStatusComplete        = "complete"
+	MessageStatusPendingApproval = "pending_approval"
+	MessageStatusInProgress      = "in_progress"
+)
+
+// ToolCall.Status values (Phase 16 HITL). Empty string means "no approval
+// required" (auto-floor tool) — the same zero-value-is-default pattern as
+// Message.Status. Non-empty values track the approval lifecycle.
+const (
+	ToolCallStatusPending  = "pending_approval"
+	ToolCallStatusApproved = "approved"
+	ToolCallStatusRejected = "rejected"
+	ToolCallStatusExpired  = "expired"
+)
+
 // Conversation is a chat thread stored in MongoDB. Phase 15 adds
 // BusinessID, ProjectID, TitleStatus, Pinned, and LastMessageAt.
 // ProjectID intentionally omits bson `omitempty` so nil serializes as
@@ -39,7 +58,15 @@ type Message struct {
 	ToolCalls      []ToolCall             `json:"toolCalls,omitempty" bson:"tool_calls,omitempty"`
 	ToolResults    []ToolResult           `json:"toolResults,omitempty" bson:"tool_results,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
-	CreatedAt      time.Time              `json:"createdAt" bson:"created_at"`
+	// Status is the Phase 16 HITL message lifecycle marker. Valid non-empty
+	// values: "complete", "pending_approval", "in_progress" (see
+	// MessageStatus* constants above).
+	//
+	// Empty string == "complete" for backward compatibility with pre-Phase-16
+	// messages (no backfill write needed). Any reader that branches on Status
+	// MUST treat "" and "complete" identically.
+	Status    string    `json:"status,omitempty" bson:"status,omitempty"`
+	CreatedAt time.Time `json:"createdAt" bson:"created_at"`
 }
 
 type Attachment struct {
@@ -53,6 +80,17 @@ type ToolCall struct {
 	ID        string                 `json:"id" bson:"id"`
 	Name      string                 `json:"name" bson:"name"`
 	Arguments map[string]interface{} `json:"arguments" bson:"arguments"`
+	// ApprovalID correlates a persisted tool call with a pending-approval
+	// batch (Phase 16 HITL). Stamped on the tool call at pause time
+	// (chat_proxy.go), persisted in the approval_id header of the NATS
+	// dispatch, and keyed into Redis at each platform agent for dedupe.
+	// Format: "<batch_id>-<call_id>". Empty for auto-floor tools.
+	ApprovalID string `json:"approvalId,omitempty" bson:"approval_id,omitempty"`
+	// Status tracks the approval lifecycle of this call (see
+	// ToolCallStatus* constants). Empty means "no approval required"
+	// (auto-floor tool); non-empty values are "pending_approval",
+	// "approved", "rejected", or "expired".
+	Status string `json:"status,omitempty" bson:"status,omitempty"`
 }
 
 type ToolResult struct {

@@ -44,17 +44,25 @@ type QuickAction = string
 
 // Project is a Postgres-backed grouping of chats with a shared system prompt
 // override, tool whitelist, and quick-action list. Scoped per business.
+//
+// ApprovalOverrides (Phase 16, POLICY-03) carries project-scoped tool-floor
+// overrides persisted as JSONB in Postgres. Key absence ⇒ "inherit" from the
+// business-level setting (see Overview §Anti-Footguns invariant #8: inherit
+// is encoded as KEY ABSENCE, never as a literal "inherit" string). The typed
+// map `map[string]ToolFloor` guarantees only valid enum values reach the
+// resolver.
 type Project struct {
-	ID            uuid.UUID     `json:"id" db:"id"`
-	BusinessID    uuid.UUID     `json:"businessId" db:"business_id"`
-	Name          string        `json:"name" db:"name"`
-	Description   string        `json:"description" db:"description"`
-	SystemPrompt  string        `json:"systemPrompt" db:"system_prompt"`
-	WhitelistMode WhitelistMode `json:"whitelistMode" db:"whitelist_mode"`
-	AllowedTools  []string      `json:"allowedTools" db:"allowed_tools"`
-	QuickActions  []string      `json:"quickActions" db:"quick_actions"`
-	CreatedAt     time.Time     `json:"createdAt" db:"created_at"`
-	UpdatedAt     time.Time     `json:"updatedAt" db:"updated_at"`
+	ID                uuid.UUID            `json:"id" db:"id"`
+	BusinessID        uuid.UUID            `json:"businessId" db:"business_id"`
+	Name              string               `json:"name" db:"name"`
+	Description       string               `json:"description" db:"description"`
+	SystemPrompt      string               `json:"systemPrompt" db:"system_prompt"`
+	WhitelistMode     WhitelistMode        `json:"whitelistMode" db:"whitelist_mode"`
+	AllowedTools      []string             `json:"allowedTools" db:"allowed_tools"`
+	ApprovalOverrides map[string]ToolFloor `json:"approvalOverrides,omitempty" db:"approval_overrides"`
+	QuickActions      []string             `json:"quickActions" db:"quick_actions"`
+	CreatedAt         time.Time            `json:"createdAt" db:"created_at"`
+	UpdatedAt         time.Time            `json:"updatedAt" db:"updated_at"`
 }
 
 // ProjectRepository is the contract implemented by services/api/internal/repository

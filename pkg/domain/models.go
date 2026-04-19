@@ -82,3 +82,41 @@ type RefreshToken struct {
 	ExpiresAt time.Time `json:"expiresAt" db:"expires_at"`
 	CreatedAt time.Time `json:"createdAt" db:"created_at"`
 }
+
+// ToolApprovals extracts the typed tool-approval overrides (POLICY-02) from
+// the generic Business.Settings map. The storage format inside Settings is:
+//
+//	settings["tool_approvals"] = map[string]interface{}{
+//	    "telegram__send_channel_post": "manual",
+//	    "vk__send_post":               "auto",
+//	    ...
+//	}
+//
+// Returns a non-nil empty map when Settings is nil, when the tool_approvals
+// key is missing, or when its value is not a map. Invalid enum values (i.e.
+// anything outside ValidToolFloor) are skipped silently — the safe default
+// behaviour is "fall back to the registry floor", which downstream
+// hitl.Resolve achieves automatically when a key is absent.
+//
+// This accessor is used by the orchestrator at pause time and by the API at
+// resolve time (HITL-06 TOCTOU re-check). Keeping the parsing in exactly one
+// place prevents divergent interpretation of malformed data.
+func (b Business) ToolApprovals() map[string]ToolFloor {
+	out := make(map[string]ToolFloor)
+	raw, ok := b.Settings["tool_approvals"].(map[string]interface{})
+	if !ok {
+		return out
+	}
+	for name, v := range raw {
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		f := ToolFloor(s)
+		if !ValidToolFloor(f) {
+			continue
+		}
+		out[name] = f
+	}
+	return out
+}
