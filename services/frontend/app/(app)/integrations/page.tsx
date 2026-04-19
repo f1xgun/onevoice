@@ -76,12 +76,6 @@ export default function IntegrationsPage() {
       window.history.replaceState({}, '', '/integrations');
     }
 
-    const vkStep = searchParams.get('vk_step');
-    if (vkStep === 'select_community') {
-      setVkCommunityOpen(true);
-      window.history.replaceState({}, '', '/integrations');
-    }
-
     if (error) {
       const messages: Record<string, string> = {
         missing_params: 'Ошибка авторизации: отсутствуют параметры',
@@ -125,16 +119,11 @@ export default function IntegrationsPage() {
     }
 
     if (platformId === 'vk') {
-      // Start VK ID (PKCE) OAuth; callback stores the user token in Redis
-      // and redirects back with vk_step=select_community, which opens
-      // VKCommunityModal to pick the community for the community-scoped
-      // second OAuth hop.
-      try {
-        const { data } = await api.get('/integrations/vk/auth-url');
-        window.location.href = data.url;
-      } catch {
-        toast.error('Ошибка получения ссылки авторизации VK');
-      }
+      // Community OAuth only: the user pastes the community URL/screen_name,
+      // the API resolves it via the Mini-App service key, then redirects
+      // to oauth.vk.com with group_ids to issue the community token used
+      // for writes. Reads run through the service key server-side.
+      setVkCommunityOpen(true);
       return;
     }
 

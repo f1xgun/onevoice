@@ -157,6 +157,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		VKClientID:         cfg.VKClientID,
 		VKClientSecret:     cfg.VKClientSecret,
 		VKRedirectURI:      cfg.VKRedirectURI,
+		VKServiceKey:       cfg.VKServiceKey,
 		YandexClientID:     cfg.YandexClientID,
 		YandexClientSecret: cfg.YandexClientSecret,
 		YandexRedirectURI:  cfg.YandexRedirectURI,
