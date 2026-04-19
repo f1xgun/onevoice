@@ -83,6 +83,7 @@ export default function IntegrationsPage() {
         token_exchange: 'Ошибка обмена токена',
         connect_failed: 'Ошибка подключения интеграции',
         no_community_token: 'Не удалось получить токен сообщества',
+        internal: 'Внутренняя ошибка. Попробуйте ещё раз.',
         no_refresh_token: 'Ошибка авторизации Google: не получен refresh token. Попробуйте снова.',
         no_locations: 'Не найдены бизнес-локации в вашем аккаунте Google.',
       };
@@ -118,6 +119,10 @@ export default function IntegrationsPage() {
     }
 
     if (platformId === 'vk') {
+      // Community OAuth only: the user pastes the community URL/screen_name,
+      // the API resolves it via the Mini-App service key, then redirects
+      // to oauth.vk.com with group_ids to issue the community token used
+      // for writes. Reads run through the service key server-side.
       setVkCommunityOpen(true);
       return;
     }

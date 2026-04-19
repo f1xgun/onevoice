@@ -230,6 +230,20 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 			"reply":      "",
 			"created_at": time.Unix(int64(msg.Date), 0).UTC().Format(time.RFC3339),
 		}
+
+		// Attribute channel-post comments. When Telegram auto-forwards a
+		// channel post into the linked discussion group, replies to that
+		// forwarded message are comments on the original post. Tagging the
+		// review with the channel's ID and the original post's message ID
+		// lets downstream UI link "comment on post X" instead of treating
+		// it as a standalone message in the discussion group.
+		if r := msg.ReplyToMessage; r != nil && r.IsAutomaticForward {
+			if r.SenderChat != nil {
+				review["channel_id"] = r.SenderChat.ID
+			}
+			review["channel_post_id"] = r.ForwardFromMessageID
+		}
+
 		reviews = append(reviews, review)
 	}
 	return reviews, nil

@@ -95,6 +95,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// Telegram routes
 			r.Post("/integrations/telegram/verify", handlers.OAuth.VerifyTelegramLogin)
 			r.Post("/integrations/telegram/connect", handlers.OAuth.ConnectTelegram)
+			r.Post("/integrations/telegram/refresh", handlers.OAuth.RefreshTelegramLinkedGroup)
 
 			// Google Business routes
 			r.Get("/integrations/google_business/auth-url", handlers.OAuth.GetGoogleAuthURL)
