@@ -153,6 +153,7 @@ services:
       VK_CLIENT_ID: ${VK_CLIENT_ID:-}
       VK_CLIENT_SECRET: ${VK_CLIENT_SECRET:-}
       VK_REDIRECT_URI: ${VK_REDIRECT_URI:-http://localhost/api/v1/oauth/vk/callback}
+      VK_SERVICE_KEY: ${VK_SERVICE_KEY:-}
       YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
       YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
       YANDEX_REDIRECT_URI: ${YANDEX_REDIRECT_URI:-http://localhost/api/v1/oauth/yandex_business/callback}

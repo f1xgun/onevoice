@@ -214,21 +214,25 @@ func TestHandler_GetComments(t *testing.T) {
 	assert.Equal(t, 1, resp.Result["count"])
 }
 
-func TestHandler_GetComments_RejectsWithoutUserToken(t *testing.T) {
-	// wall.getComments requires a user OAuth token; integrations that only
-	// have a community token must surface a clear, non-retryable error so
-	// the caller can prompt re-authorization instead of silently failing.
+func TestHandler_GetComments_UsesServiceKeyWithoutUserToken(t *testing.T) {
+	// wall.getComments is callable with the Mini-App service key. When an
+	// integration has no user token, we must fall through to the service
+	// key rather than erroring out — getReadClient handles the priority.
 	tokens := &mockTokenFetcher{token: "community-tok", userToken: ""}
+	var capturedToken string
 	vkClient := &mockVKClient{
-		getCommentsFn: func(string, int, int) ([]map[string]interface{}, error) {
-			t.Fatal("GetComments must not be called when UserToken is empty")
-			return nil, nil
+		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
+			return []map[string]interface{}{{"id": 1, "text": "ok"}}, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	factory := func(token string) agent.VKClient {
+		capturedToken = token
+		return vkClient
+	}
+	h := agent.NewHandler(tokens, factory, "service-key-tok")
 
-	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		TaskID:     "t-no-user-token",
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-service-key",
 		Tool:       "vk__get_comments",
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
@@ -237,10 +241,9 @@ func TestHandler_GetComments_RejectsWithoutUserToken(t *testing.T) {
 		},
 	})
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "user OAuth token")
-	var nonRetryable *a2a.NonRetryableError
-	assert.ErrorAs(t, err, &nonRetryable, "missing user token is a permanent config error, not a transient failure")
+	require.NoError(t, err)
+	assert.Equal(t, "service-key-tok", capturedToken, "should use service key when no user token")
+	assert.Equal(t, 1, resp.Result["count"])
 }
 
 func TestHandler_GetComments_DefaultCount(t *testing.T) {
