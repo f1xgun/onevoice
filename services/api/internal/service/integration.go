@@ -55,6 +55,7 @@ type IntegrationService interface {
 	Connect(ctx context.Context, params ConnectParams) (*domain.Integration, error)
 	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*TokenResponse, error)
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
+	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
 }
 
 type integrationService struct {
@@ -129,6 +130,36 @@ func (s *integrationService) GetByBusinessAndPlatform(ctx context.Context, busin
 	}
 
 	return integration, nil
+}
+
+// UpdateMetadata replaces the metadata jsonb of an integration. Token
+// fields are preserved untouched — callers that need to rotate tokens
+// should go through Connect() which handles encryption.
+func (s *integrationService) UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if integrationID == uuid.Nil {
+		return fmt.Errorf("integration id is required")
+	}
+
+	integration, err := s.repo.GetByID(ctx, integrationID)
+	if err != nil {
+		if errors.Is(err, domain.ErrIntegrationNotFound) {
+			return err
+		}
+		return fmt.Errorf("get integration: %w", err)
+	}
+
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+	integration.Metadata = metadata
+
+	if err := s.repo.Update(ctx, integration); err != nil {
+		return fmt.Errorf("update integration: %w", err)
+	}
+	return nil
 }
 
 // Delete removes an integration

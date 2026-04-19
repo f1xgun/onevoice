@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -35,6 +36,8 @@ type OAuthStateService interface {
 // OAuthIntegrationService is the subset of IntegrationService needed for OAuth flows.
 type OAuthIntegrationService interface {
 	Connect(ctx context.Context, params service.ConnectParams) (*domain.Integration, error)
+	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
+	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
 }
 
 // OAuthConfig holds platform OAuth credentials and optional test overrides.
@@ -766,6 +769,99 @@ func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, integration)
+}
+
+// refreshTelegramRequest is the request body for RefreshTelegramLinkedGroup.
+type refreshTelegramRequest struct {
+	ChannelID string `json:"channel_id"`
+}
+
+// RefreshTelegramLinkedGroup re-probes a Telegram channel's linked
+// discussion group and updates integration metadata with the latest
+// linked_chat_id and linked_group_status. Used after the user invites
+// the bot into the discussion group and wants the UI warning to clear
+// without a full disconnect/reconnect cycle.
+func (h *OAuthHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req refreshTelegramRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.ChannelID == "" {
+		writeJSONError(w, http.StatusBadRequest, "channel_id is required")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to get business for Telegram refresh", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Find the specific integration by external_id.
+	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, "telegram")
+	if err != nil {
+		slog.Error("failed to list telegram integrations for refresh", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	var target *domain.Integration
+	for i := range integrations {
+		if integrations[i].ExternalID == req.ChannelID {
+			target = &integrations[i]
+			break
+		}
+	}
+	if target == nil {
+		writeJSONError(w, http.StatusNotFound, "integration not found")
+		return
+	}
+
+	channelInfo, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelID)
+	if err != nil {
+		slog.Warn("telegram getChat failed during refresh", "error", err, "channel_id", req.ChannelID)
+		writeJSONError(w, http.StatusBadGateway, "bot no longer has access to this channel")
+		return
+	}
+
+	linkedStatus := h.probeTelegramLinkedGroup(h.cfg.TelegramBotToken, channelInfo.LinkedChatID)
+
+	// Merge into existing metadata so unrelated keys (telegram_user_id etc.)
+	// are preserved.
+	metadata := map[string]interface{}{}
+	for k, v := range target.Metadata {
+		metadata[k] = v
+	}
+	metadata["channel_title"] = channelInfo.Title
+	metadata["linked_group_status"] = linkedStatus
+	if channelInfo.LinkedChatID != 0 {
+		metadata["linked_chat_id"] = channelInfo.LinkedChatID
+	} else {
+		delete(metadata, "linked_chat_id")
+	}
+
+	if err := h.integrationService.UpdateMetadata(r.Context(), target.ID, metadata); err != nil {
+		slog.Error("failed to update telegram integration metadata", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to persist refresh")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"linked_chat_id":      channelInfo.LinkedChatID,
+		"linked_group_status": linkedStatus,
+		"channel_title":       channelInfo.Title,
+	})
 }
 
 // GetYandexAuthURL generates a Yandex OAuth authorization URL (JWT required).

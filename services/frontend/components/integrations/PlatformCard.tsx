@@ -1,3 +1,8 @@
+'use client';
+
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { PlatformIcon } from '@/components/integrations/PlatformIcons';
+import { api } from '@/lib/api';
 
 interface Integration {
   id: string;
@@ -68,6 +74,32 @@ export function PlatformCard({
   onDisconnect,
   disabled,
 }: Props) {
+  const qc = useQueryClient();
+  const [refreshingID, setRefreshingID] = useState<string | null>(null);
+
+  async function refreshTelegramLinkedGroup(i: Integration) {
+    setRefreshingID(i.id);
+    try {
+      const { data } = await api.post<{ linked_group_status: string }>(
+        '/integrations/telegram/refresh',
+        { channel_id: i.externalId },
+      );
+      if (data.linked_group_status === 'ok') {
+        toast.success('Бот найден в группе обсуждений — комментарии будут собираться.');
+      } else {
+        toast.warning('Бот всё ещё не в группе обсуждений.');
+      }
+      qc.invalidateQueries({ queryKey: ['integrations'] });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        'Не удалось проверить статус';
+      toast.error(msg);
+    } finally {
+      setRefreshingID(null);
+    }
+  }
+
   const hasActive = integrations.some((i) => i.status === 'active');
   const channelList = (
     <div className="space-y-2">
@@ -109,7 +141,18 @@ export function PlatformCard({
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Ок</AlertDialogCancel>
+                      <AlertDialogCancel>Закрыть</AlertDialogCancel>
+                      <AlertDialogAction
+                        disabled={refreshingID === i.id}
+                        onClick={(e) => {
+                          // Keep the dialog open until refresh resolves so
+                          // the user sees the toast feedback in context.
+                          e.preventDefault();
+                          void refreshTelegramLinkedGroup(i);
+                        }}
+                      >
+                        {refreshingID === i.id ? 'Проверка...' : 'Я добавил бота — проверить'}
+                      </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
