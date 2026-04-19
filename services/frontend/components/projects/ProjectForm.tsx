@@ -30,9 +30,12 @@ import {
 } from '@/hooks/useProjects';
 import { WhitelistRadio } from './WhitelistRadio';
 import { ToolCheckboxGrid } from './ToolCheckboxGrid';
+import { ProjectApprovalOverrides } from './ProjectApprovalOverrides';
 import { QuickActionsEditor } from './QuickActionsEditor';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
-import type { Project } from '@/types/project';
+import { useTools } from '@/lib/hooks/useTools';
+import { useBusinessToolApprovals } from '@/lib/hooks/useBusinessToolApprovals';
+import type { Project, ProjectApprovalOverrides as ProjectApprovalOverridesMap } from '@/types/project';
 
 const MAX_SYSTEM_PROMPT_CHARS = 4000;
 
@@ -45,6 +48,11 @@ const schema = z
       .max(MAX_SYSTEM_PROMPT_CHARS, 'Системный промпт слишком длинный (максимум 4000 символов).'),
     whitelistMode: z.enum(['inherit', 'all', 'explicit', 'none']),
     allowedTools: z.array(z.string()),
+    // Phase 16 — POLICY-06 approvalOverrides. Zod-typed as a map of
+    // tool-name → "auto"|"manual". Absence = inherit (Overview invariant
+    // #8); the UI never produces a key whose value is the string
+    // "inherit".
+    approvalOverrides: z.record(z.string(), z.enum(['auto', 'manual'])),
     quickActions: z.array(z.string().trim().min(1)).max(MAX_QUICK_ACTIONS),
   })
   .refine((d) => d.whitelistMode !== 'explicit' || d.allowedTools.length > 0, {
@@ -76,6 +84,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
       systemPrompt: project?.systemPrompt ?? '',
       whitelistMode: project?.whitelistMode ?? 'inherit',
       allowedTools: project?.allowedTools ?? [],
+      approvalOverrides: (project?.approvalOverrides ?? {}) as ProjectApprovalOverridesMap,
       quickActions: project?.quickActions ?? [],
     },
   });
@@ -88,6 +97,13 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
     queryFn: () => api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : [])),
   });
   const activePlatforms = integrations.filter((i) => i.status === 'active').map((i) => i.platform);
+
+  // Phase 16 — live registry (POLICY-06 overrides section). Business
+  // approvals drive the inherit chip; both are loaded in the background
+  // and the form renders a loading note in the overrides section until
+  // they resolve.
+  const { data: tools } = useTools();
+  const { data: businessApprovals = {} } = useBusinessToolApprovals(project?.businessId ?? '');
 
   const createMutation = useCreateProject();
   const updateMutation = useUpdateProject(project?.id ?? '');
@@ -228,6 +244,35 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
             )}
           />
         )}
+
+        <FormField
+          control={form.control}
+          name="approvalOverrides"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>«Одобрение инструментов»</FormLabel>
+              <FormDescription>
+                Переопределить правила бизнеса для этого проекта. «как у бизнеса» —
+                использовать настройку, выбранную в «Настройки одобрения инструментов».
+              </FormDescription>
+              <FormControl>
+                {tools ? (
+                  <ProjectApprovalOverrides
+                    tools={tools}
+                    businessApprovals={businessApprovals}
+                    value={field.value}
+                    onChange={field.onChange}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Загрузка списка инструментов…
+                  </p>
+                )}
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <FormField
           control={form.control}
