@@ -40,9 +40,9 @@ type OAuthIntegrationService interface {
 
 // OAuthConfig holds platform OAuth credentials and optional test overrides.
 type OAuthConfig struct {
-	VKClientID         string
-	VKClientSecret     string
-	VKRedirectURI      string
+	VKClientID     string
+	VKClientSecret string
+	VKRedirectURI  string
 	// VKServiceKey is used for server-side resolution of community screen_name
 	// → numeric group_id before starting community OAuth.
 	VKServiceKey       string

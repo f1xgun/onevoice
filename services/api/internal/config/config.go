@@ -23,9 +23,9 @@ type Config struct {
 	SecureCookies bool
 
 	// OAuth credentials
-	VKClientID         string
-	VKClientSecret     string
-	VKRedirectURI      string
+	VKClientID     string
+	VKClientSecret string
+	VKRedirectURI  string
 	// VKServiceKey is the service access token from the VK Mini-App that
 	// backs wall.getComments / groups.getById. It's intentionally separate
 	// from VKClientID (a VK ID app used only for user auth).
