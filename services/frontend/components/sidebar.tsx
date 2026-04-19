@@ -65,7 +65,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { data: projects } = useProjectsQuery();
   const { data: conversations } = useConversationsQuery();
 
-  const isChatArea = pathname.startsWith('/chat');
+  // Projects subtree stays visible while the user is managing projects or
+  // browsing chats. Anywhere else (integrations, businesses, billing) it
+  // collapses back to a flat "Чат" link. See GAP-03 in 15-VERIFICATION.md.
+  const isProjectsOrChatArea = pathname.startsWith('/chat') || pathname.startsWith('/projects');
   const activeConversationId = useMemo(() => {
     if (!pathname.startsWith('/chat/')) return undefined;
     return pathname.split('/')[2];
@@ -116,7 +119,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 {label}
               </Link>
 
-              {href === '/chat' && isChatArea && (
+              {href === '/chat' && isProjectsOrChatArea && (
                 <div className="mt-1 space-y-1 border-l border-gray-700 pl-2">
                   <UnassignedBucket
                     conversations={unassigned}
