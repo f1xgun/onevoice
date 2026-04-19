@@ -79,7 +79,7 @@ func TestNewIntegrationHandler_NilBusinessService_ReturnsError(t *testing.T) {
 }
 
 func TestNewConversationHandler_NilConversationRepo_ReturnsError(t *testing.T) {
-	h, err := NewConversationHandler(nil, nil, nil, nil)
+	h, err := NewConversationHandler(nil, nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -89,7 +89,7 @@ func TestNewConversationHandler_NilConversationRepo_ReturnsError(t *testing.T) {
 }
 
 func TestNewConversationHandler_NilMessageRepo_ReturnsError(t *testing.T) {
-	h, err := NewConversationHandler(&stubConversationRepo{}, nil, nil, nil)
+	h, err := NewConversationHandler(&stubConversationRepo{}, nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
