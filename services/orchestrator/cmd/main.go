@@ -15,6 +15,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	mongoopts "go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -27,6 +29,7 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/repository"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
 )
 
@@ -65,6 +68,37 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		registerPlatformTools(toolRegistry, nc)
 	}
 
+	// HITL-01: orchestrator-side Mongo connection (Plan 16-02 Task 2).
+	// The orchestrator inserts pending_tool_calls rows at pause time and
+	// marks calls dispatched after each NATS reply; it needs its own Mongo
+	// connection (circular-dep avoidance — orchestrator cannot call the
+	// API which already serves / consumes the orchestrator). The repo
+	// variable is constructed here and threaded into orchestrator.New in
+	// Plan 16-05 — for 16-02 it is sufficient that the dial succeeds and
+	// the repo type exists.
+	mongoCtx, mongoCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	mongoClient, err := mongo.Connect(mongoopts.Client().ApplyURI(cfg.MongoURI))
+	if err != nil {
+		mongoCancel()
+		log.Error("orchestrator: failed to connect to mongo", "uri", cfg.RedactMongoURI(), "error", err)
+		return fmt.Errorf("mongo connect: %w", err)
+	}
+	if pingErr := mongoClient.Ping(mongoCtx, nil); pingErr != nil {
+		mongoCancel()
+		log.Error("orchestrator: mongo ping failed", "uri", cfg.RedactMongoURI(), "error", pingErr)
+		return fmt.Errorf("mongo ping: %w", pingErr)
+	}
+	mongoCancel()
+	defer func() {
+		shutdownMongoCtx, shutdownMongoCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownMongoCancel()
+		_ = mongoClient.Disconnect(shutdownMongoCtx)
+	}()
+	mongoDB := mongoClient.Database(cfg.MongoDB)
+	log.Info("orchestrator: connected to mongo", "uri", cfg.RedactMongoURI(), "db", cfg.MongoDB)
+	pendingToolCallRepo := repository.NewPendingToolCallRepository(mongoDB)
+	_ = pendingToolCallRepo // wired into orchestrator.New in Plan 16-05
+
 	// Health checker
 	hc := health.New()
 	if nc != nil {
@@ -75,6 +109,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 			return nil
 		})
 	}
+	hc.AddCheck("mongo", func(ctx context.Context) error {
+		return mongoClient.Ping(ctx, nil)
+	})
 
 	// Orchestrator
 	orch := orchestrator.NewWithOptions(router, toolRegistry, orchestrator.Options{
@@ -83,6 +120,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	// HTTP handler — business context is now provided per-request in the body
 	chatHandler := handler.NewChatHandler(orch, cfg.LLMModel)
+
+	// POLICY-07: cluster-internal endpoint serving the live tool registry
+	// snapshot. The API service hits this at boot to validate every
+	// business.settings.tool_approvals + project.approval_overrides entry
+	// against the set of actually-registered tool names, logging
+	// tool_approval_whitelist_unknown for drift.
+	internalToolsHandler := handler.NewInternalToolsHandler(toolRegistry)
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
@@ -100,6 +144,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	r.Use(metrics.HTTPMiddleware)
 
 	r.Post("/chat/{conversationID}", chatHandler.Chat)
+	r.Get("/internal/tools/names", internalToolsHandler.Names)
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health/live", hc.LiveHandler())
 	r.Get("/health/ready", hc.ReadyHandler())
