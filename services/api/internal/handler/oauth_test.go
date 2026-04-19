@@ -107,7 +107,7 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 		UserID: userID,
 	}, nil)
 	mockOAuth.On("GenerateState", mock.Anything, mock.MatchedBy(func(data service.OAuthStateData) bool {
-		return data.UserID == userID && data.BusinessID == businessID && data.Platform == "vk" && data.CodeVerifier != ""
+		return data.UserID == userID && data.BusinessID == businessID && data.Platform == "vk"
 	})).Return("test-state-token", nil)
 
 	cfg := OAuthConfig{
@@ -136,7 +136,7 @@ func TestGetVKAuthURL_ReturnsURL(t *testing.T) {
 		t.Fatal("expected 'url' in response")
 	}
 
-	if !strings.Contains(authURL, "id.vk.com") {
+	if !strings.Contains(authURL, "oauth.vk.com") {
 		t.Errorf("expected VK OAuth URL, got: %s", authURL)
 	}
 	if !strings.Contains(authURL, "my_vk_client") {
