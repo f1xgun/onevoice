@@ -2,7 +2,7 @@ package config
 
 import "os"
 
-// Config holds the agent-google-business configuration.
+// Config holds the agent-yandex-business configuration.
 type Config struct {
 	NATSUrl        string
 	APIInternalURL string
