@@ -25,6 +25,11 @@ type ToolRequest struct {
 	Args       map[string]interface{} `json:"args"`
 	BusinessID string                 `json:"business_id"`
 	RequestID  string                 `json:"request_id,omitempty"`
+	// ApprovalID is the HITL approval identifier for this tool call.
+	// Empty for auto-floor tools (backward-compat invariant for pre-Phase-16
+	// orchestrator messages). When non-empty, the receiving agent dedupes on
+	// (business_id, approval_id) via Redis with a 24h TTL — see pkg/hitldedupe.
+	ApprovalID string `json:"approval_id,omitempty"`
 }
 
 // ToolResponse is sent back from the agent to the orchestrator.
