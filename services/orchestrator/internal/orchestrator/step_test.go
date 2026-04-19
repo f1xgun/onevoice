@@ -135,7 +135,7 @@ func newRegistryWithFloor(name string, floor domain.ToolFloor, exec tools.Execut
 			return map[string]interface{}{"ok": true}, nil
 		})
 	}
-	reg.Register(def, exec, floor, []string{"text"})
+	reg.Register(def, "", exec, floor, []string{"text"})
 	return reg
 }
 
@@ -365,13 +365,13 @@ func TestStepRun_ForbiddenTool_SynthesizesRejection_AndContinues(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "forbidden_tool", Description: "x", Parameters: map[string]interface{}{}},
-	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, errors.New("must not be called")
 	}), domain.ToolFloorForbidden, nil)
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "auto_tool", Description: "x", Parameters: map[string]interface{}{}},
-	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorAuto, nil)
 
@@ -415,13 +415,13 @@ func TestStepRun_MixedAutoAndManual_PausesAfterAutoComplete(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "auto_t", Description: "x", Parameters: map[string]interface{}{}},
-	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "manual_t", Description: "x", Parameters: map[string]interface{}{}},
-	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorManual, []string{"text"})
 

@@ -15,6 +15,9 @@ type Config struct {
 	MaxIterations   int
 	NATSUrl         string
 	ShutdownTimeout time.Duration
+	// ToolExecTimeout bounds a single tool call. Zero disables the per-tool
+	// deadline — the request context still governs overall cancellation.
+	ToolExecTimeout time.Duration
 
 	// MongoDB connection (Phase 16 HITL — Plan 16-02 Task 2). The
 	// orchestrator writes pending_tool_calls batches at pause time, so it
@@ -61,6 +64,13 @@ func Load() (*Config, error) {
 		}
 	}
 
+	var toolExecTimeout time.Duration
+	if v := os.Getenv("TOOL_EXEC_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			toolExecTimeout = d
+		}
+	}
+
 	return &Config{
 		Port:            getEnv("PORT", "8090"),
 		LLMModel:        model,
@@ -68,6 +78,7 @@ func Load() (*Config, error) {
 		MaxIterations:   maxIter,
 		NATSUrl:         getEnv("NATS_URL", "nats://localhost:4222"),
 		ShutdownTimeout: shutdownTimeout,
+		ToolExecTimeout: toolExecTimeout,
 
 		MongoURI: getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDB:  getEnv("MONGO_DB", "onevoice"),

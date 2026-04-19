@@ -1,11 +1,13 @@
 'use client';
 
-import { Fragment, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { Fragment, useCallback, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { ListChecks, ChevronDown, ChevronRight } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useTasksStream } from '@/hooks/useTasksStream';
+import type { TaskStreamEvent } from '@/types/task';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -119,6 +121,8 @@ export default function TasksPage() {
   const [platform, setPlatform] = useState<string>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const queryClient = useQueryClient();
+
   const { data: tasks = [], isLoading } = useQuery<AgentTask[]>({
     queryKey: ['tasks', status, platform],
     queryFn: () => {
@@ -127,7 +131,20 @@ export default function TasksPage() {
       if (platform !== 'all') params.set('platform', platform);
       return api.get(`/tasks?${params}`).then((r) => (r.data.tasks ?? []) as AgentTask[]);
     },
+    // SSE does the realtime work; polling is a safety net for dropped
+    // connections or server restarts that slip past the reconnect loop.
+    refetchInterval: 30_000,
   });
+
+  // Realtime updates: any task event invalidates the whole tasks cache so
+  // the active filter refetches the current slice. Cheap and correct.
+  const onStreamEvent = useCallback(
+    (_: TaskStreamEvent) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    [queryClient]
+  );
+  useTasksStream(onStreamEvent);
 
   return (
     <div className="max-w-4xl space-y-6 p-8">
@@ -223,7 +240,9 @@ export default function TasksPage() {
                           ) : (
                             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                           )}
-                          <span className="text-sm font-medium">{task.type}</span>
+                          <span className="text-sm font-medium">
+                            {task.displayName || task.type}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>

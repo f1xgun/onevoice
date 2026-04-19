@@ -90,7 +90,7 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 				"required": []string{"text"},
 			},
 		},
-	}, natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
+	}, "", natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
 
 	// Stub LLM: first call → tool_call, second call → text answer
 	toolArgs, _ := json.Marshal(map[string]interface{}{
@@ -192,7 +192,7 @@ func TestE2E_AgentError(t *testing.T) {
 			Description: "Публикует пост",
 			Parameters:  map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
 		},
-	}, natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
+	}, "", natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
 
 	toolArgs, _ := json.Marshal(map[string]interface{}{"text": "test"})
 	stub := &stubLLM{responses: []*llm.ChatResponse{
@@ -270,11 +270,11 @@ func TestE2E_MultipleAgents(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "telegram__send_channel_post", Description: "Send TG post", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
-	}, natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", conn), domain.ToolFloorAuto, nil)
+	}, "", natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", conn), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "vk__publish_post", Description: "Send VK post", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
-	}, natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
+	}, "", natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
 
 	// LLM calls telegram tool first, then vk, then answers
 	tgArgs, _ := json.Marshal(map[string]interface{}{"text": "tg post"})
@@ -353,7 +353,7 @@ func TestE2E_BusinessIDPropagation(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "vk__publish_post", Description: "d", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
-	}, natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
+	}, "", natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
 
 	args, _ := json.Marshal(map[string]interface{}{})
 	stub := &stubLLM{responses: []*llm.ChatResponse{

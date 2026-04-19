@@ -25,9 +25,9 @@ func makeDef(name string) llm.ToolDefinition {
 // map iteration is non-deterministic.
 func TestInternalToolsNames_ReturnsRegistrySnapshot(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("vk__publish_post"), nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("get_business_info"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
 
 	h := handler.NewInternalToolsHandler(reg)
 	req := httptest.NewRequest(http.MethodGet, "/internal/tools/names", nil)

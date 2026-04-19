@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
 // ssePayload is the shape of the JSON we decode from orchestrator SSE `data:`
@@ -25,13 +26,14 @@ import (
 // HITL events without synthetic IDs (HITL-13) and with the approval-batch
 // fields (HITL-02) so chat_proxy can persist the paired assistant Message.
 type ssePayload struct {
-	Type       string                 `json:"type"`
-	Content    string                 `json:"content"`
-	ToolCallID string                 `json:"tool_call_id"`
-	ToolName   string                 `json:"tool_name"`
-	ToolArgs   map[string]interface{} `json:"tool_args"`
-	ToolResult interface{}            `json:"result"`
-	ToolError  string                 `json:"error"`
+	Type            string                 `json:"type"`
+	Content         string                 `json:"content"`
+	ToolCallID      string                 `json:"tool_call_id"`
+	ToolName        string                 `json:"tool_name"`
+	ToolDisplayName string                 `json:"tool_display_name"`
+	ToolArgs        map[string]interface{} `json:"tool_args"`
+	ToolResult      interface{}            `json:"result"`
+	ToolError       string                 `json:"error"`
 	// HITL-02: pause-event fields.
 	BatchID string                   `json:"batch_id"`
 	Calls   []map[string]interface{} `json:"calls"`
@@ -75,17 +77,19 @@ type ChatProxyHandler struct {
 	postRepo           domain.PostRepository
 	reviewRepo         domain.ReviewRepository
 	agentTaskRepo      domain.AgentTaskRepository
+	taskHub            *taskhub.Hub
 	orchestratorURL    string
 	httpClient         *http.Client
 }
 
 // NewChatProxyHandler creates a new ChatProxyHandler. If httpClient is nil,
-// http.DefaultClient is used. postRepo, reviewRepo and agentTaskRepo may be
-// nil to skip persistence. projectService, conversationRepo, and pendingRepo
-// are REQUIRED — the proxy must resolve the conversation's project to enrich
-// the orchestrator request (PROJ-09 layering) and detect HITL resume state
-// (D-04 / HITL-11). Passing nil for any of the three panics at construction
-// time — they are wiring-time invariants, not runtime state.
+// http.DefaultClient is used. postRepo, reviewRepo, agentTaskRepo and taskHub
+// may be nil to skip persistence / realtime publishing. projectService,
+// conversationRepo, and pendingRepo are REQUIRED — the proxy must resolve the
+// conversation's project to enrich the orchestrator request (PROJ-09 layering)
+// and detect HITL resume state (D-04 / HITL-11). Passing nil for any of the
+// three panics at construction time — they are wiring-time invariants, not
+// runtime state.
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
@@ -96,6 +100,7 @@ func NewChatProxyHandler(
 	postRepo domain.PostRepository,
 	reviewRepo domain.ReviewRepository,
 	agentTaskRepo domain.AgentTaskRepository,
+	taskHub *taskhub.Hub,
 	orchestratorURL string,
 	httpClient *http.Client,
 ) *ChatProxyHandler {
@@ -121,6 +126,7 @@ func NewChatProxyHandler(
 		postRepo:           postRepo,
 		reviewRepo:         reviewRepo,
 		agentTaskRepo:      agentTaskRepo,
+		taskHub:            taskHub,
 		orchestratorURL:    orchestratorURL,
 		httpClient:         httpClient,
 	}
@@ -353,13 +359,26 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	orchURL := fmt.Sprintf("%s/chat/%s", h.orchestratorURL, conversationID)
 	body, _ := json.Marshal(orchReq)
-	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, orchURL, bytes.NewReader(body))
+
+	// Detach the orchestrator request from the client's request context: if
+	// the user refreshes or navigates away mid-run, the orchestrator keeps
+	// executing tools, chat_proxy keeps persisting tool_results, and
+	// AgentTask rows transition to done/error as they finish. Bounded by a
+	// generous upper limit so a truly stuck agent can't pin the connection
+	// forever.
+	orchCtx, orchCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	if corrID != "" {
+		orchCtx = logger.WithCorrelationID(orchCtx, corrID)
+	}
+	defer orchCancel()
+
+	proxyReq, err := http.NewRequestWithContext(orchCtx, http.MethodPost, orchURL, bytes.NewReader(body))
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	proxyReq.Header.Set("Content-Type", "application/json")
-	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
+	if corrID != "" {
 		proxyReq.Header.Set("X-Correlation-ID", corrID)
 	}
 
@@ -401,10 +420,36 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// Message.ID we persist here (D-17 / anti-footgun #5).
 	streamStartMessageID := uuid.NewString()
 
+	// Realtime task lifecycle keyed by the orchestrator's tool_call_id.
+	// We key everything by tool_call_id (not tool name) so duplicate tool
+	// names in a single batch correlate correctly.
+	agentTaskIDByCallID := make(map[string]string)
+
+	// Long-lived context for in-stream task persistence/publishing. Must
+	// match the orchestrator budget: we need to keep recording tool results
+	// even after the client disconnects (refresh, navigate away).
+	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), 10*time.Minute)
+	if corrID != "" {
+		taskOpsCtx = logger.WithCorrelationID(taskOpsCtx, corrID)
+	}
+	defer cancelTaskOps()
+
+	// Client connection may vanish before the stream ends. Track it once so
+	// we stop forwarding SSE bytes after disconnect — reading and
+	// persistence continue regardless.
+	clientGone := r.Context().Done()
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		_, _ = fmt.Fprintf(w, "%s\n", line)
-		flusher.Flush()
+		select {
+		case <-clientGone:
+			// Skip writes to a dead socket, but keep scanning to drain the
+			// orchestrator stream so tool_results land in Mongo and
+			// AgentTask rows reach a terminal state.
+		default:
+			_, _ = fmt.Fprintf(w, "%s\n", line)
+			flusher.Flush()
+		}
 
 		if !strings.HasPrefix(line, "data: ") {
 			continue
@@ -426,6 +471,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 				Name:      ev.ToolName,
 				Arguments: ev.ToolArgs,
 			})
+			h.onToolCall(taskOpsCtx, business.ID.String(), ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolArgs, agentTaskIDByCallID)
 		case "tool_result":
 			var content map[string]interface{}
 			if m, ok := ev.ToolResult.(map[string]interface{}); ok {
@@ -438,6 +484,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 				Content:    content,
 				IsError:    ev.ToolError != "",
 			})
+			h.onToolResult(taskOpsCtx, business.ID.String(), ev.ToolCallID, content, ev.ToolError, agentTaskIDByCallID)
 		case "tool_approval_required":
 			// HITL-01 / HITL-02: single pause event per turn. Copy the event
 			// so we can persist after the scanner loop exits.
@@ -510,57 +557,8 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Create AgentTask records for every platform tool call (name contains "__")
-	if h.agentTaskRepo != nil && len(toolResults) > 0 {
-		toolCallByID := make(map[string]domain.ToolCall, len(toolCalls))
-		for _, tc := range toolCalls {
-			toolCallByID[tc.ID] = tc
-		}
-
-		taskCtx, cancel := persistCtx()
-		defer cancel()
-
-		now := time.Now()
-		for _, tr := range toolResults {
-			tc, ok := toolCallByID[tr.ToolCallID]
-			if !ok {
-				continue
-			}
-			sep := strings.Index(tc.Name, "__")
-			if sep == -1 {
-				continue // internal tool, skip
-			}
-			platform := tc.Name[:sep]
-			toolType := tc.Name[sep+2:]
-
-			status := "done"
-			var errMsg string
-			var output interface{}
-			if tr.IsError {
-				status = "error"
-				if msg, ok := tr.Content["error"].(string); ok {
-					errMsg = msg
-				}
-			} else {
-				output = tr.Content
-			}
-
-			agentTask := &domain.AgentTask{
-				BusinessID:  business.ID.String(),
-				Type:        toolType,
-				Platform:    platform,
-				Status:      status,
-				Input:       tc.Arguments,
-				Output:      output,
-				Error:       errMsg,
-				StartedAt:   &now,
-				CompletedAt: &now,
-			}
-			if err := h.agentTaskRepo.Create(taskCtx, agentTask); err != nil {
-				slog.ErrorContext(taskCtx, "failed to create agent task record", "tool", tc.Name, "error", err)
-			}
-		}
-	}
+	// AgentTask lifecycle (created on tool_call, updated on tool_result) is
+	// handled inline via onToolCall/onToolResult. Nothing to do here.
 
 	// Create Post records for each successful posting tool call
 	if h.postRepo != nil && len(toolResults) > 0 {
@@ -896,6 +894,102 @@ func (h *ChatProxyHandler) streamResume(
 		slog.WarnContext(saveCtx, "resume: failed to persist partial message",
 			"error", err, "message_id", msg.ID)
 	}
+}
+
+// onToolCall records a new AgentTask in "running" state and publishes a
+// task.created event so the Tasks page can render the row before the tool
+// has finished executing. Internal (non-platform) tools are skipped.
+func (h *ChatProxyHandler) onToolCall(
+	ctx context.Context,
+	businessID, toolCallID, toolName, displayName string,
+	args map[string]interface{},
+	agentTaskIDByCallID map[string]string,
+) {
+	if h.agentTaskRepo == nil {
+		return
+	}
+	sep := strings.Index(toolName, "__")
+	if sep == -1 {
+		return // internal tool — not surfaced on the Tasks page
+	}
+	if toolCallID == "" {
+		slog.WarnContext(ctx, "chat proxy: tool_call without tool_call_id", "tool", toolName)
+		return
+	}
+	now := time.Now()
+	task := &domain.AgentTask{
+		BusinessID:  businessID,
+		Type:        toolName[sep+2:],
+		Platform:    toolName[:sep],
+		DisplayName: displayName,
+		Status:      "running",
+		Input:       args,
+		StartedAt:   &now,
+	}
+	if err := h.agentTaskRepo.Create(ctx, task); err != nil {
+		slog.ErrorContext(ctx, "failed to create agent task record", "tool", toolName, "error", err)
+		return
+	}
+	agentTaskIDByCallID[toolCallID] = task.ID
+	if h.taskHub != nil {
+		h.taskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindCreated, Task: *task})
+	}
+}
+
+// onToolResult transitions a previously created AgentTask to "done" or
+// "error", stamps CompletedAt, and publishes task.updated so the UI can
+// swap the badge and show the duration.
+func (h *ChatProxyHandler) onToolResult(
+	ctx context.Context,
+	businessID, toolCallID string,
+	content map[string]interface{},
+	toolErr string,
+	agentTaskIDByCallID map[string]string,
+) {
+	if h.agentTaskRepo == nil {
+		return
+	}
+	if toolCallID == "" {
+		return
+	}
+	taskID, ok := agentTaskIDByCallID[toolCallID]
+	if !ok {
+		// Result without a prior tool_call in this stream: skip rather than
+		// create a half-formed record.
+		slog.WarnContext(ctx, "chat proxy: tool_result without matching tool_call", "tool_call_id", toolCallID)
+		return
+	}
+
+	now := time.Now()
+	update := &domain.AgentTask{
+		ID:          taskID,
+		BusinessID:  businessID,
+		Status:      "done",
+		CompletedAt: &now,
+	}
+	if toolErr != "" {
+		update.Status = "error"
+		update.Error = toolErr
+		if msg, ok := content["error"].(string); ok && msg != "" {
+			update.Error = msg
+		}
+	} else {
+		update.Output = content
+	}
+	if err := h.agentTaskRepo.Update(ctx, update); err != nil {
+		slog.ErrorContext(ctx, "failed to update agent task record", "task_id", taskID, "error", err)
+		return
+	}
+
+	if h.taskHub == nil {
+		return
+	}
+	fresh, err := h.agentTaskRepo.GetByID(ctx, businessID, taskID)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to reload agent task for hub publish", "task_id", taskID, "error", err)
+		return
+	}
+	h.taskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindUpdated, Task: *fresh})
 }
 
 // loadHistory fetches prior messages for the conversation and converts them

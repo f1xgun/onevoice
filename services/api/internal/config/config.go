@@ -23,9 +23,13 @@ type Config struct {
 	SecureCookies bool
 
 	// OAuth credentials
-	VKClientID         string
-	VKClientSecret     string
-	VKRedirectURI      string
+	VKClientID     string
+	VKClientSecret string
+	VKRedirectURI  string
+	// VKServiceKey is the service access token from the VK Mini-App that
+	// backs wall.getComments / groups.getById. It's intentionally separate
+	// from VKClientID (a VK ID app used only for user auth).
+	VKServiceKey       string
 	YandexClientID     string
 	YandexClientSecret string
 	YandexRedirectURI  string
@@ -88,6 +92,7 @@ func Load() (*Config, error) {
 		VKClientID:         os.Getenv("VK_CLIENT_ID"),
 		VKClientSecret:     os.Getenv("VK_CLIENT_SECRET"),
 		VKRedirectURI:      getEnv("VK_REDIRECT_URI", "http://localhost/api/v1/oauth/vk/callback"),
+		VKServiceKey:       os.Getenv("VK_SERVICE_KEY"),
 		YandexClientID:     os.Getenv("YANDEX_CLIENT_ID"),
 		YandexClientSecret: os.Getenv("YANDEX_CLIENT_SECRET"),
 		YandexRedirectURI:  getEnv("YANDEX_REDIRECT_URI", "http://localhost/api/v1/oauth/yandex_business/callback"),

@@ -13,10 +13,9 @@ import (
 )
 
 type OAuthStateData struct {
-	UserID       uuid.UUID `json:"user_id"`
-	BusinessID   uuid.UUID `json:"business_id"`
-	Platform     string    `json:"platform"`
-	CodeVerifier string    `json:"code_verifier,omitempty"`
+	UserID     uuid.UUID `json:"user_id"`
+	BusinessID uuid.UUID `json:"business_id"`
+	Platform   string    `json:"platform"`
 }
 
 type OAuthService struct {

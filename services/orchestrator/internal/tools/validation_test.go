@@ -22,12 +22,14 @@ func TestValidateEditArgs(t *testing.T) {
 	reg := tools.NewRegistry()
 	reg.Register(
 		makeDef("telegram__send_channel_post"),
+		"",
 		nil,
 		domain.ToolFloorManual,
 		[]string{"text", "parse_mode"},
 	)
 	reg.Register(
 		makeDef("multi_scalar"),
+		"",
 		nil,
 		domain.ToolFloorAuto,
 		[]string{"a", "b", "c"},
@@ -178,6 +180,7 @@ func TestValidateEditArgs_ErrorMessagesIncludeContext(t *testing.T) {
 	reg := tools.NewRegistry()
 	reg.Register(
 		makeDef("telegram__send_channel_post"),
+		"",
 		nil,
 		domain.ToolFloorManual,
 		[]string{"text"},

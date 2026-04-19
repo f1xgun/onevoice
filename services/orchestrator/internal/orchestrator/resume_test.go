@@ -107,7 +107,7 @@ func registryWithRecording(t *testing.T, toolName string, floor domain.ToolFloor
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: toolName, Description: "d", Parameters: map[string]interface{}{}},
-	}, rec, floor, []string{"text"})
+	}, "", rec, floor, []string{"text"})
 	return reg, rec
 }
 
@@ -160,7 +160,7 @@ func TestResume_AllApproved_DispatchesInParallel(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "parallel_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, rec, domain.ToolFloorManual, []string{"text"})
+	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
 	repo := newMockPendingRepo()
 	batch := batchWithCalls(t, "batch-p", []domain.PendingCall{
@@ -205,7 +205,7 @@ func TestResume_RejectedCall_SynthesizesToolMessage_SkipsDispatch(t *testing.T) 
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "rej_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, rec, domain.ToolFloorManual, []string{"text"})
+	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
 	repo := newMockPendingRepo()
 	batch := batchWithCalls(t, "batch-r", []domain.PendingCall{
@@ -239,7 +239,7 @@ func TestResume_TOCTOU_PolicyRevoked_DropsCallWithSyntheticMessage(t *testing.T)
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "toctou_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, rec, domain.ToolFloorManual, []string{"text"})
+	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
 	repo := newMockPendingRepo()
 	batch := batchWithCalls(t, "batch-toctou", []domain.PendingCall{
@@ -277,7 +277,7 @@ func TestResume_AlreadyDispatched_SkipsReDispatch(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "done_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, rec, domain.ToolFloorManual, []string{"text"})
+	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
 	repo := newMockPendingRepo()
 	batch := batchWithCalls(t, "batch-d", []domain.PendingCall{
@@ -315,7 +315,7 @@ func TestResume_EditedArgs_PassesMergedArgsToExecutor(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "edit_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, rec, domain.ToolFloorManual, []string{"text"})
+	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
 	repo := newMockPendingRepo()
 	batch := batchWithCalls(t, "batch-e", []domain.PendingCall{
@@ -355,7 +355,7 @@ func TestResume_ApprovalID_IsBatchIDDashCallID(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "appr_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, rec, domain.ToolFloorManual, []string{"text"})
+	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
 	repo := newMockPendingRepo()
 	batch := batchWithCalls(t, "batch-1", []domain.PendingCall{
@@ -387,7 +387,7 @@ func TestResume_CompletesAndContinuesStepRun_ToDone(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "cont_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, rec, domain.ToolFloorManual, []string{"text"})
+	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
 	repo := newMockPendingRepo()
 	batch := batchWithCalls(t, "batch-cont", []domain.PendingCall{
@@ -418,7 +418,7 @@ func TestResume_MixedRejectAndApprove_BothProcessed(t *testing.T) {
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "mix_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, rec, domain.ToolFloorManual, []string{"text"})
+	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
 	repo := newMockPendingRepo()
 	batch := batchWithCalls(t, "batch-mix", []domain.PendingCall{

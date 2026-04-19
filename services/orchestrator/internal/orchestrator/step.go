@@ -5,14 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
-	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/hitl"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
 )
@@ -182,9 +179,15 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			}
 		}
 
-		// 6. Auto calls — dispatch inline, preserving existing behavior.
-		if err := o.executeAutoCalls(ctx, state, autoCalls, out); err != nil {
-			return OutcomeError, "", err
+		// 6. Auto calls — dispatch in parallel via dispatchToolCalls (ported from
+		// main's c662290) so independent platform broadcasts complete
+		// concurrently. dispatchToolCalls appends tool-role messages in the
+		// original tool_calls order regardless of completion order, preserving
+		// the LLM's assistant.tool_calls[i].id ↔ tool[i] correspondence.
+		if len(autoCalls) > 0 {
+			if !o.dispatchToolCalls(ctx, out, autoCalls, &state.Messages) {
+				return OutcomeError, "", ctx.Err()
+			}
 		}
 
 		// 7. Manual calls — two-phase persist, emit pause event, return.
@@ -245,74 +248,6 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 	return OutcomeMaxIterations, "", nil
 }
 
-// executeAutoCalls dispatches auto-floor tool calls inline, preserving the
-// exact legacy behavior of the pre-Phase-16 Run body: decode arguments, emit
-// tool_call, call the registered Executor (NATSExecutor in production),
-// record metrics, emit tool_result, append the serialized result as a
-// tool-role message to state.Messages.
-func (o *Orchestrator) executeAutoCalls(ctx context.Context, state *RunState, calls []llm.ToolCall, out chan<- Event) error {
-	for _, tc := range calls {
-		var args map[string]interface{}
-		if tc.Function.Arguments != "" {
-			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-				args = map[string]interface{}{"raw": tc.Function.Arguments}
-			}
-		}
-
-		// Emit tool_call event
-		select {
-		case out <- Event{Type: EventToolCall, ToolCallID: tc.ID, ToolName: tc.Function.Name, ToolArgs: args}:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-
-		// Execute the tool
-		toolStart := time.Now()
-		result, execErr := o.tools.Execute(ctx, tc.Function.Name, args)
-		if execErr != nil {
-			result = map[string]interface{}{"error": execErr.Error(), "tool_name": tc.Function.Name}
-		}
-
-		// Record tool dispatch metrics
-		toolStatus := "success"
-		if execErr != nil {
-			toolStatus = "error"
-		}
-		toolAgent := tc.Function.Name
-		if sep := strings.Index(tc.Function.Name, "__"); sep != -1 {
-			toolAgent = tc.Function.Name[:sep]
-		}
-		metrics.RecordToolDispatch(tc.Function.Name, toolAgent, toolStatus, time.Since(toolStart))
-
-		// Emit tool_result event
-		toolResultEv := Event{
-			Type:       EventToolResult,
-			ToolCallID: tc.ID,
-			ToolName:   tc.Function.Name,
-			ToolResult: result,
-		}
-		if execErr != nil {
-			toolResultEv.ToolError = execErr.Error()
-		}
-		select {
-		case out <- toolResultEv:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-
-		// Append tool result message
-		resultJSON, marshalErr := json.Marshal(result)
-		if marshalErr != nil {
-			resultJSON = []byte(fmt.Sprintf(`{"error":"marshal failed: %s","tool_name":%q}`, marshalErr.Error(), tc.Function.Name))
-		}
-		state.Messages = append(state.Messages, llm.Message{
-			Role:       "tool",
-			Content:    string(resultJSON),
-			ToolCallID: tc.ID,
-		})
-	}
-	return nil
-}
 
 // buildPendingBatch assembles the PendingToolCallBatch that will be persisted
 // at pause time. ProjectID is threaded through from RunState so Plan 16-07's

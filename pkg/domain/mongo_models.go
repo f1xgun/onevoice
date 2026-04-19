@@ -103,6 +103,7 @@ type AgentTask struct {
 	ID          string      `json:"id" bson:"_id,omitempty"`
 	BusinessID  string      `json:"businessId" bson:"business_id"`
 	Type        string      `json:"type" bson:"type"`
+	DisplayName string      `json:"displayName,omitempty" bson:"display_name,omitempty"`
 	Status      string      `json:"status" bson:"status"`
 	Platform    string      `json:"platform" bson:"platform"`
 	Input       interface{} `json:"input,omitempty" bson:"input,omitempty"`

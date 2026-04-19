@@ -33,6 +33,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
+	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
 func main() {
@@ -163,6 +164,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	postRepo := repository.NewPostRepository(mongoDB)
 	agentTaskRepo := repository.NewAgentTaskRepository(mongoDB)
 
+	// In-process hub that fans out task lifecycle events to SSE subscribers.
+	taskHub := taskhub.New()
+
 	// Initialize services
 	userService, err := service.NewUserService(userRepo, redisClient, cfg.JWTSecret)
 	if err != nil {
@@ -205,12 +209,15 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		nil,
 		cfg.PublicURL,
 	)
+	platformSyncer.SetTaskRecorder(agentTaskRepo)
+	platformSyncer.SetTaskHub(taskHub)
 
 	// Initialize handlers
 	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
 		VKClientID:         cfg.VKClientID,
 		VKClientSecret:     cfg.VKClientSecret,
 		VKRedirectURI:      cfg.VKRedirectURI,
+		VKServiceKey:       cfg.VKServiceKey,
 		YandexClientID:     cfg.YandexClientID,
 		YandexClientSecret: cfg.YandexClientSecret,
 		YandexRedirectURI:  cfg.YandexRedirectURI,
@@ -247,7 +254,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("create post handler: %w", err)
 	}
-	agentTaskHandler, err := handler.NewAgentTaskHandler(agentTaskService)
+	agentTaskHandler, err := handler.NewAgentTaskHandler(agentTaskService, taskHub)
 	if err != nil {
 		return fmt.Errorf("create agent task handler: %w", err)
 	}
@@ -283,6 +290,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		postRepo,
 		reviewRepo,
 		agentTaskRepo,
+		taskHub,
 		cfg.OrchestratorURL,
 		nil,
 	)
@@ -337,10 +345,14 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// Start HTTP server
 	addr := ":" + cfg.Port
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:        addr,
+		Handler:     r,
+		ReadTimeout: 15 * time.Second,
+		// WriteTimeout=0: SSE requires long-lived connections (/api/v1/chat/{id}
+		// proxies the orchestrator stream, which may run for minutes while
+		// RPA tool calls complete). Per-request deadlines are enforced by
+		// context.WithTimeout in handlers that need them.
+		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
 

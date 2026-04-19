@@ -2,11 +2,17 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
 )
@@ -44,13 +50,14 @@ const (
 // persist tool_call events with the LLM's real call ID on the assistant
 // Message.ToolCalls (HITL-13).
 type Event struct {
-	Type       EventType
-	Content    string
-	ToolCallID string
-	ToolName   string
-	ToolArgs   map[string]interface{}
-	ToolResult interface{}
-	ToolError  string
+	Type            EventType
+	Content         string
+	ToolCallID      string
+	ToolName        string
+	ToolDisplayName string
+	ToolArgs        map[string]interface{}
+	ToolResult      interface{}
+	ToolError       string
 	// BatchID is set on EventToolApprovalRequired events. Carries the
 	// PendingToolCallBatch._id so the frontend can POST to the resolve
 	// endpoint with the same identifier at approval time.
@@ -126,6 +133,9 @@ type RunRequest struct {
 // Options configures the Orchestrator.
 type Options struct {
 	MaxIterations int
+	// ToolExecTimeout bounds how long a single tool call may block.
+	// Zero means no per-tool timeout — the parent context governs.
+	ToolExecTimeout time.Duration
 }
 
 // Orchestrator runs the LLM agent loop.
@@ -209,4 +219,145 @@ func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, e
 	}()
 
 	return ch, nil
+}
+
+// toolOutcome captures the result of a single tool invocation in a parallel batch.
+type toolOutcome struct {
+	tc      llm.ToolCall
+	args    map[string]interface{}
+	result  interface{}
+	execErr error
+}
+
+// dispatchToolCalls executes a batch of tool calls from a single LLM response
+// concurrently. Each goroutine emits its tool_result event as soon as that
+// tool finishes, so the UI reflects real per-tool latency rather than the
+// batch's slowest member. The tool messages appended to `messages` are
+// ordered to match the original tool_calls slice — OpenAI and Anthropic
+// require role:tool messages to line up with assistant.tool_calls[*].id for
+// the next iteration.
+//
+// Returns false if the context was canceled before all events could be emitted.
+func (o *Orchestrator) dispatchToolCalls(
+	ctx context.Context,
+	ch chan<- Event,
+	toolCalls []llm.ToolCall,
+	messages *[]llm.Message,
+) bool {
+	outcomes := make([]toolOutcome, len(toolCalls))
+	for i, tc := range toolCalls {
+		args := parseToolArgs(tc.Function.Arguments)
+		outcomes[i] = toolOutcome{tc: tc, args: args}
+
+		select {
+		case ch <- Event{
+			Type:            EventToolCall,
+			ToolCallID:      tc.ID,
+			ToolName:        tc.Function.Name,
+			ToolDisplayName: o.tools.DisplayName(tc.Function.Name),
+			ToolArgs:        args,
+		}:
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	var wg sync.WaitGroup
+	for i := range outcomes {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			name := outcomes[i].tc.Function.Name
+			result, execErr := o.executeOne(ctx, name, outcomes[i].args)
+			outcomes[i].result = result
+			outcomes[i].execErr = execErr
+
+			ev := buildToolResultEvent(outcomes[i].tc, o.tools.DisplayName(name), result, execErr)
+			select {
+			case ch <- ev:
+			case <-ctx.Done():
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if err := ctx.Err(); err != nil {
+		return false
+	}
+
+	for _, out := range outcomes {
+		result := out.result
+		if out.execErr != nil {
+			result = map[string]interface{}{"error": out.execErr.Error(), "tool_name": out.tc.Function.Name}
+		}
+		resultJSON, marshalErr := json.Marshal(result)
+		if marshalErr != nil {
+			resultJSON = []byte(fmt.Sprintf(`{"error":"marshal failed: %s","tool_name":%q}`, marshalErr.Error(), out.tc.Function.Name))
+		}
+		*messages = append(*messages, llm.Message{
+			Role:       "tool",
+			Content:    string(resultJSON),
+			ToolCallID: out.tc.ID,
+		})
+	}
+	return true
+}
+
+// buildToolResultEvent wraps a tool outcome into the event emitted on the SSE
+// channel. Shaping it here keeps the goroutine body short and side-effect free.
+func buildToolResultEvent(tc llm.ToolCall, displayName string, result interface{}, execErr error) Event {
+	payload := result
+	if execErr != nil {
+		payload = map[string]interface{}{"error": execErr.Error(), "tool_name": tc.Function.Name}
+	}
+	ev := Event{
+		Type:            EventToolResult,
+		ToolCallID:      tc.ID,
+		ToolName:        tc.Function.Name,
+		ToolDisplayName: displayName,
+		ToolResult:      payload,
+	}
+	if execErr != nil {
+		ev.ToolError = execErr.Error()
+	}
+	return ev
+}
+
+// executeOne runs a single tool, optionally bounded by ToolExecTimeout, and
+// records metrics. Safe for concurrent calls.
+func (o *Orchestrator) executeOne(ctx context.Context, name string, args map[string]interface{}) (interface{}, error) {
+	callCtx := ctx
+	var cancel context.CancelFunc
+	if o.options.ToolExecTimeout > 0 {
+		callCtx, cancel = context.WithTimeout(ctx, o.options.ToolExecTimeout)
+		defer cancel()
+	}
+
+	start := time.Now()
+	result, err := o.tools.Execute(callCtx, name, args)
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	agent := name
+	if sep := strings.Index(name, "__"); sep != -1 {
+		agent = name[:sep]
+	}
+	metrics.RecordToolDispatch(name, agent, status, time.Since(start))
+
+	return result, err
+}
+
+// parseToolArgs unmarshals JSON tool arguments. On failure it falls back to a
+// single "raw" field so the tool executor still receives the original payload.
+func parseToolArgs(raw string) map[string]interface{} {
+	if raw == "" {
+		return map[string]interface{}{}
+	}
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		return map[string]interface{}{"raw": raw}
+	}
+	return args
 }

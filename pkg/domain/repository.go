@@ -122,6 +122,8 @@ type PostRepository interface {
 
 type AgentTaskRepository interface {
 	Create(ctx context.Context, task *AgentTask) error
+	Update(ctx context.Context, task *AgentTask) error
+	GetByID(ctx context.Context, businessID, taskID string) (*AgentTask, error)
 	ListByBusinessID(ctx context.Context, businessID string, filter TaskFilter) ([]AgentTask, int, error)
 }
 

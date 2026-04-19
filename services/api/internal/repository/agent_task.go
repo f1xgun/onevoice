@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -33,6 +34,57 @@ func (r *agentTaskRepository) Create(ctx context.Context, task *domain.AgentTask
 		return fmt.Errorf("insert agent task: %w", err)
 	}
 	return nil
+}
+
+func (r *agentTaskRepository) Update(ctx context.Context, task *domain.AgentTask) error {
+	if task.ID == "" {
+		return fmt.Errorf("update agent task: id is required")
+	}
+	if task.BusinessID == "" {
+		return fmt.Errorf("update agent task: business_id is required")
+	}
+
+	set := bson.M{"status": task.Status}
+	if task.DisplayName != "" {
+		set["display_name"] = task.DisplayName
+	}
+	if task.Output != nil {
+		set["output"] = task.Output
+	}
+	if task.Error != "" {
+		set["error"] = task.Error
+	}
+	if task.StartedAt != nil {
+		set["started_at"] = task.StartedAt
+	}
+	if task.CompletedAt != nil {
+		set["completed_at"] = task.CompletedAt
+	}
+
+	res, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"_id": task.ID, "business_id": task.BusinessID},
+		bson.M{"$set": set},
+	)
+	if err != nil {
+		return fmt.Errorf("update agent task: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return domain.ErrAgentTaskNotFound
+	}
+	return nil
+}
+
+func (r *agentTaskRepository) GetByID(ctx context.Context, businessID, taskID string) (*domain.AgentTask, error) {
+	var task domain.AgentTask
+	err := r.collection.FindOne(ctx, bson.M{"_id": taskID, "business_id": businessID}).Decode(&task)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, domain.ErrAgentTaskNotFound
+		}
+		return nil, fmt.Errorf("get agent task: %w", err)
+	}
+	return &task, nil
 }
 
 func (r *agentTaskRepository) ListByBusinessID(ctx context.Context, businessID string, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
