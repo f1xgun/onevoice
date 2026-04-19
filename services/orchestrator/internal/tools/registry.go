@@ -15,6 +15,17 @@ type Executor interface {
 	Execute(ctx context.Context, args map[string]interface{}) (interface{}, error)
 }
 
+// ApprovalExecutor extends Executor with a variant that accepts an approvalID
+// propagated into the dispatch payload (Plan 16-04's a2a.ToolRequest.ApprovalID
+// field). Implemented by natsexec.NATSExecutor; internal-only executors that
+// never pass through HITL approval do not need to implement it — Registry
+// falls back to plain Execute (discarding approvalID, which is correct for
+// tools that have no agent-side Redis dedupe).
+type ApprovalExecutor interface {
+	Executor
+	ExecuteWithApproval(ctx context.Context, args map[string]interface{}, approvalID string) (interface{}, error)
+}
+
 // ExecutorFunc is a function that implements Executor.
 type ExecutorFunc func(ctx context.Context, args map[string]interface{}) (interface{}, error)
 
@@ -159,6 +170,32 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]int
 	if e.executor == nil {
 		return nil, fmt.Errorf("tool %q has no executor (NATS unavailable)", name)
 	}
+	return e.executor.Execute(ctx, args)
+}
+
+// ExecuteWithApproval runs the registered executor with the given approvalID
+// propagated into the dispatch payload when the executor implements
+// ApprovalExecutor (production NATS executors do). Executors that do not
+// implement ApprovalExecutor fall back to plain Execute — safe for internal
+// tools that have no agent-side dedupe requirement.
+//
+// Called by Plan 16-05's Resume path after parsing a resolved batch:
+// approvalID is always "<batch_id>-<call_id>", so each approved call
+// within a batch has a unique dedupe key for the agent's Redis SetNX
+// (pkg/hitldedupe).
+func (r *Registry) ExecuteWithApproval(ctx context.Context, name string, args map[string]interface{}, approvalID string) (interface{}, error) {
+	e, ok := r.tools[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown tool: %q", name)
+	}
+	if e.executor == nil {
+		return nil, fmt.Errorf("tool %q has no executor (NATS unavailable)", name)
+	}
+	if ae, ok := e.executor.(ApprovalExecutor); ok {
+		return ae.ExecuteWithApproval(ctx, args, approvalID)
+	}
+	// Fallback: executor doesn't carry approval metadata — safe for
+	// internal/stub tools with no agent-side dedupe.
 	return e.executor.Execute(ctx, args)
 }
 
