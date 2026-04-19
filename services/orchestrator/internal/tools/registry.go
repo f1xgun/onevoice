@@ -23,8 +23,10 @@ func (f ExecutorFunc) Execute(ctx context.Context, args map[string]interface{}) 
 }
 
 type entry struct {
-	def      llm.ToolDefinition
-	executor Executor
+	def            llm.ToolDefinition
+	executor       Executor
+	floor          domain.ToolFloor
+	editableFields []string
 }
 
 // Registry holds tool definitions and their executors.
@@ -37,9 +39,31 @@ func NewRegistry() *Registry {
 	return &Registry{tools: make(map[string]entry)}
 }
 
-// Register adds a tool definition with its executor (may be nil for stub tools).
-func (r *Registry) Register(def llm.ToolDefinition, exec Executor) {
-	r.tools[def.Function.Name] = entry{def: def, executor: exec}
+// Register adds a tool definition with its executor (may be nil for stub tools),
+// the ToolFloor baseline (POLICY-01), and the per-tool EditableFields allowlist
+// for HITL-07 edit-args validation (HITL-L4 promoted into v1.3 per D-10/D-11).
+//
+// The caller MUST pass all four arguments explicitly — every registration site
+// in services/orchestrator/cmd/main.go must deliberately choose a floor and an
+// edit allowlist. There is no default so that a newly-added tool can never
+// silently inherit an unsafe policy. EditableFields is copied defensively so
+// subsequent caller-side mutations cannot change registered behaviour.
+//
+// Convention (Pitfall 8): EditableFields is always lowercase_with_underscore
+// matching the tool's JSON arguments schema keys. The comparison performed by
+// ValidateEditArgs is case-sensitive.
+func (r *Registry) Register(
+	def llm.ToolDefinition,
+	exec Executor,
+	floor domain.ToolFloor,
+	editableFields []string,
+) {
+	r.tools[def.Function.Name] = entry{
+		def:            def,
+		executor:       exec,
+		floor:          floor,
+		editableFields: append([]string(nil), editableFields...),
+	}
 }
 
 // Available returns tool definitions available for the given active integrations.
@@ -136,4 +160,87 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]int
 		return nil, fmt.Errorf("tool %q has no executor (NATS unavailable)", name)
 	}
 	return e.executor.Execute(ctx, args)
+}
+
+// Floor returns the registered ToolFloor for toolName or ToolFloorForbidden
+// if the tool is unknown (safe default per POLICY-07 — the runtime policy
+// resolver treats unknown tools as "not permitted", matching the startup
+// validation sweep that logs tool_approval_whitelist_unknown for entries
+// referencing missing tools).
+func (r *Registry) Floor(toolName string) domain.ToolFloor {
+	if e, ok := r.tools[toolName]; ok {
+		return e.floor
+	}
+	return domain.ToolFloorForbidden
+}
+
+// EditableFields returns the registered edit allowlist for toolName, or nil
+// if the tool is unknown. The returned slice is a defensive copy — mutating
+// it does not alter registry state. The list is always lowercase_with_underscore
+// matching the tool's JSON args schema (Pitfall 8).
+func (r *Registry) EditableFields(toolName string) []string {
+	if e, ok := r.tools[toolName]; ok {
+		return append([]string(nil), e.editableFields...)
+	}
+	return nil
+}
+
+// Has reports whether toolName is currently registered. Used by the POLICY-07
+// startup validation sweep to detect whitelist entries that reference a tool
+// which has been renamed or removed between deploys.
+func (r *Registry) Has(toolName string) bool {
+	_, ok := r.tools[toolName]
+	return ok
+}
+
+// AllFloors returns a snapshot of every registered tool's floor. Used by
+// POLICY-07 startup validation and by GET /api/v1/tools (Plan 16-07) to
+// populate the settings UI's per-tool toggles.
+func (r *Registry) AllFloors() map[string]domain.ToolFloor {
+	out := make(map[string]domain.ToolFloor, len(r.tools))
+	for name, e := range r.tools {
+		out[name] = e.floor
+	}
+	return out
+}
+
+// RegistryEntry is the projection exposed by GET /api/v1/tools (Plan 16-07).
+// Kept in the tools package so the API handler can import a typed shape.
+type RegistryEntry struct {
+	Name           string           `json:"name"`
+	Platform       string           `json:"platform"` // e.g., "telegram" — derived from {platform}__{action}
+	Floor          domain.ToolFloor `json:"floor"`
+	EditableFields []string         `json:"editableFields"`
+	Description    string           `json:"description"`
+}
+
+// AllEntries returns a snapshot of (name, platform, floor, editable, description)
+// for every registered tool. Feeds GET /api/v1/tools in Plan 16-07 as well as
+// the cluster-internal /internal/tools/names endpoint (Plan 16-03 Task 2) used
+// by the POLICY-07 startup validation sweep.
+func (r *Registry) AllEntries() []RegistryEntry {
+	out := make([]RegistryEntry, 0, len(r.tools))
+	for _, e := range r.tools {
+		platform := toolPlatform(e.def.Function.Name)
+		out = append(out, RegistryEntry{
+			Name:           e.def.Function.Name,
+			Platform:       platform,
+			Floor:          e.floor,
+			EditableFields: append([]string(nil), e.editableFields...),
+			Description:    e.def.Function.Description,
+		})
+	}
+	return out
+}
+
+// toolPlatform extracts the prefix of a "{platform}__{action}" tool name.
+// Returns "" for bare (internal) tools without the "__" separator and for
+// names that start with "__" (edge case: leading separator means no platform
+// prefix).
+func toolPlatform(toolName string) string {
+	idx := strings.Index(toolName, "__")
+	if idx <= 0 {
+		return ""
+	}
+	return toolName[:idx]
 }
