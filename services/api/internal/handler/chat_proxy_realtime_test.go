@@ -120,7 +120,19 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 
 	spy := newSpyAgentTaskRepo()
 
-	h := NewChatProxyHandler(mockBiz, mockInteg, &MockMessageRepository{}, nil, nil, spy, hub, orchServer.URL, nil)
+	h := NewChatProxyHandler(
+		mockBiz,
+		mockInteg,
+		&noopProjectService{},
+		&MockConversationRepository{
+			GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+				return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+			},
+		},
+		&MockMessageRepository{},
+		&MockPendingToolCallRepository{},
+		nil, nil, spy, hub, orchServer.URL, nil,
+	)
 
 	body := `{"message":"post please","model":"gpt-4"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-1", strings.NewReader(body))
