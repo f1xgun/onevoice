@@ -130,6 +130,17 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// tool_approval_whitelist_unknown for drift.
 	internalToolsHandler := handler.NewInternalToolsHandler(toolRegistry)
 
+	// Plan 16-07: internal endpoint serving the live registry snapshot
+	// (name, platform, floor, editable_fields, description) consumed by the
+	// API's GET /api/v1/tools passthrough.
+	internalToolsAllHandler := handler.NewInternalToolsAllHandler(toolRegistry)
+
+	// HITL resume endpoint (Plan 16-07): POST /chat/{conversationID}/resume
+	// consumes the orchestrator's Resume method (Plan 16-05) and streams the
+	// post-approval continuation as SSE. The API's chat_proxy (Plan 16-06)
+	// and resolve handler (this plan) forward to this endpoint.
+	resumeHandler := handler.NewResumeHandler(orch)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(func(next http.Handler) http.Handler {
@@ -146,7 +157,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	r.Use(metrics.HTTPMiddleware)
 
 	r.Post("/chat/{conversationID}", chatHandler.Chat)
+	r.Post("/chat/{conversationID}/resume", resumeHandler.Resume)
 	r.Get("/internal/tools/names", internalToolsHandler.Names)
+	r.Get("/internal/tools", internalToolsAllHandler.ServeHTTP)
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health/live", hc.LiveHandler())
 	r.Get("/health/ready", hc.ReadyHandler())

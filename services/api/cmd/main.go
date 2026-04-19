@@ -287,6 +287,24 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		nil,
 	)
 
+	// Plan 16-07 HITL: resolve + resume + GET /tools handlers.
+	// ToolsRegistryCache talks to the orchestrator's /internal/tools endpoint
+	// with a 5-min TTL so settings/project pages + edit-validation share one
+	// source of truth.
+	toolsCache := service.NewToolsRegistryCache(cfg.OrchestratorURL, nil, 5*time.Minute)
+	hitlService := service.NewHITLService(
+		pendingToolCallRepo,
+		businessRepo,
+		projectRepo,
+		toolsCache,
+		cfg.OrchestratorURL,
+		&http.Client{Timeout: 0}, // SSE requires no timeout
+	)
+	hitlHandler, err := handler.NewHITLHandler(hitlService, businessService, conversationRepo)
+	if err != nil {
+		return fmt.Errorf("create hitl handler: %w", err)
+	}
+
 	handlers := &router.Handlers{
 		Auth:          authHandler,
 		Business:      businessHandler,
@@ -299,6 +317,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		Post:          postHandler,
 		AgentTask:     agentTaskHandler,
 		Project:       projectHandler,
+		HITL:          hitlHandler,
 	}
 
 	// Health checker
