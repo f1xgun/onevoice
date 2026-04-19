@@ -2,14 +2,19 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/services/agent-telegram/internal/agent"
 )
 
@@ -67,7 +72,7 @@ func newHandlerWithSender(fetcher agent.TokenFetcher, sender *fakeSender) *agent
 	factory := func(_ string) (agent.Sender, error) {
 		return sender, nil
 	}
-	return agent.NewHandler(fetcher, factory)
+	return agent.NewHandler(fetcher, factory, nil)
 }
 
 func TestHandler_SendChannelPost_FetchesTokenPerRequest(t *testing.T) {
@@ -144,7 +149,7 @@ func TestHandler_UnknownTool_ReturnsError(t *testing.T) {
 	fetcher := &fakeTokenFetcher{token: "tok"}
 	h := agent.NewHandler(fetcher, func(_ string) (agent.Sender, error) {
 		return &fakeSender{}, nil
-	})
+	}, nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID: "t4",
@@ -171,7 +176,7 @@ func newHandlerWithErrSender(fetcher agent.TokenFetcher, sendErr error) *agent.H
 	factory := func(_ string) (agent.Sender, error) {
 		return &errSender{err: sendErr}, nil
 	}
-	return agent.NewHandler(fetcher, factory)
+	return agent.NewHandler(fetcher, factory, nil)
 }
 
 func sendPostReq() a2a.ToolRequest {
@@ -222,9 +227,111 @@ func TestClassifyTelegramError_TokenFetchFailure(t *testing.T) {
 	fetcher := &fakeTokenFetcher{err: fmt.Errorf("integration not found")}
 	h := agent.NewHandler(fetcher, func(_ string) (agent.Sender, error) {
 		return &fakeSender{}, nil
-	})
+	}, nil)
 
 	_, err := h.Handle(context.Background(), sendPostReq())
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "token fetch failure should be NonRetryableError")
+}
+
+// --- Phase 16 HITL-08: Redis dedupe gate tests ---
+
+// countingSender wraps fakeSender with an atomic call counter so
+// second-call-returns-cached tests can prove the tool was NOT re-invoked.
+type countingSender struct {
+	fakeSender
+	sendCalls int64
+}
+
+func (c *countingSender) SendMessage(chatID int64, text string) error {
+	atomic.AddInt64(&c.sendCalls, 1)
+	return c.fakeSender.SendMessage(chatID, text)
+}
+
+func newDedupeTestHandler(t *testing.T, sender agent.Sender) (*agent.Handler, *miniredis.Miniredis, agent.TokenFetcher) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	dedupe := hitldedupe.New(rdb)
+	fetcher := &fakeTokenFetcher{token: "bot-token", externalID: "-1001234567890"}
+	factory := func(_ string) (agent.Sender, error) { return sender, nil }
+	return agent.NewHandler(fetcher, factory, dedupe), mr, fetcher
+}
+
+func sendPostReqWithApproval(approvalID string) a2a.ToolRequest {
+	return a2a.ToolRequest{
+		TaskID:     "task-t",
+		Tool:       "telegram__send_channel_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "channel_id": "-1001234567890"},
+		ApprovalID: approvalID,
+	}
+}
+
+func TestHandler_Handle_EmptyApprovalID_SkipsDedupe(t *testing.T) {
+	sender := &countingSender{}
+	h, mr, _ := newDedupeTestHandler(t, sender)
+
+	resp, err := h.Handle(context.Background(), sendPostReqWithApproval(""))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&sender.sendCalls))
+	assert.Equal(t, 0, len(mr.Keys()),
+		"empty ApprovalID must NOT touch Redis (anti-footgun #2)")
+}
+
+func TestHandler_Handle_FirstCallWithApprovalID_ExecutesAndCaches(t *testing.T) {
+	sender := &countingSender{}
+	h, mr, _ := newDedupeTestHandler(t, sender)
+
+	resp, err := h.Handle(context.Background(), sendPostReqWithApproval("appr-tg-1"))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&sender.sendCalls))
+
+	key := "hitl:approval:biz-1:appr-tg-1"
+	require.True(t, mr.Exists(key), "dedupe key must be stored after successful execution")
+	val, err := mr.Get(key)
+	require.NoError(t, err)
+	var cached a2a.ToolResponse
+	require.NoError(t, json.Unmarshal([]byte(val), &cached))
+	assert.True(t, cached.Success)
+}
+
+func TestHandler_Handle_SecondCallWithSameApprovalID_ReturnsCached(t *testing.T) {
+	sender := &countingSender{}
+	h, _, _ := newDedupeTestHandler(t, sender)
+
+	resp1, err := h.Handle(context.Background(), sendPostReqWithApproval("appr-tg-2"))
+	require.NoError(t, err)
+	require.NotNil(t, resp1)
+
+	resp2, err := h.Handle(context.Background(), sendPostReqWithApproval("appr-tg-2"))
+	require.NoError(t, err)
+	require.NotNil(t, resp2)
+
+	assert.Equal(t, int64(1), atomic.LoadInt64(&sender.sendCalls),
+		"tool must be invoked exactly once across two Handle calls with the same ApprovalID")
+	assert.Equal(t, resp1.Success, resp2.Success, "second call must return the cached response")
+	assert.Equal(t, resp1.Result["status"], resp2.Result["status"])
+}
+
+func TestHandler_Handle_ApprovalID_InFlight_ReturnsDuplicateError(t *testing.T) {
+	sender := &countingSender{}
+	h, mr, _ := newDedupeTestHandler(t, sender)
+
+	// Simulate an in-flight peer: the sentinel 'executing' is held under the key.
+	key := "hitl:approval:biz-1:appr-tg-3"
+	require.NoError(t, mr.Set(key, "executing"))
+	mr.SetTTL(key, 24*60*60*1e9) // 24h in nanoseconds
+
+	resp, err := h.Handle(context.Background(), sendPostReqWithApproval("appr-tg-3"))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Contains(t, resp.Error, "duplicate: already in flight")
+	assert.Equal(t, int64(0), atomic.LoadInt64(&sender.sendCalls),
+		"in-flight claim must short-circuit before tool dispatch")
 }

@@ -11,9 +11,11 @@ import (
 	"time"
 
 	natslib "github.com/nats-io/nats.go"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/health"
+	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	agentpkg "github.com/f1xgun/onevoice/services/agent-google-business/internal/agent"
 	"github.com/f1xgun/onevoice/services/agent-google-business/internal/config"
@@ -37,9 +39,10 @@ func run() error {
 
 	tc := tokenclient.New(cfg.APIInternalURL, nil)
 	tokens := &tokenAdapter{client: tc}
+	dedupe := newDedupeClient(cfg.RedisURL)
 	handler := agentpkg.NewHandler(tokens, func(token string) agentpkg.GBPClient {
 		return gbp.New(token) //nolint:typecheck // gbp.Client implements GBPClient
-	})
+	}, dedupe)
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentGoogleBusiness, transport, handler)
 
@@ -96,4 +99,29 @@ func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, exter
 		AccessToken: resp.AccessToken,
 		ExternalID:  resp.ExternalID,
 	}, nil
+}
+
+// newDedupeClient parses REDIS_URL, dials Redis, and returns a *hitldedupe.DedupeClient.
+// Any failure (parse, connect, ping) is logged and returns nil — the agent falls back
+// to legacy behavior without HITL dedupe rather than refusing to boot.
+func newDedupeClient(redisURL string) *hitldedupe.DedupeClient {
+	if redisURL == "" {
+		slog.Warn("REDIS_URL empty; HITL dedupe disabled")
+		return nil
+	}
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		slog.Warn("REDIS_URL parse failed; HITL dedupe disabled", "error", err)
+		return nil
+	}
+	rdb := redis.NewClient(opts)
+	pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := rdb.Ping(pingCtx).Err(); err != nil {
+		slog.Warn("Redis ping failed; HITL dedupe disabled", "error", err)
+		_ = rdb.Close()
+		return nil
+	}
+	slog.Info("HITL dedupe enabled", "redis_url", redisURL)
+	return hitldedupe.New(rdb)
 }

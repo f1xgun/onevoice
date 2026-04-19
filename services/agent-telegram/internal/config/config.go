@@ -2,7 +2,7 @@ package config
 
 import "os"
 
-// Config holds the agent-google-business configuration.
+// Config holds the agent-telegram configuration.
 type Config struct {
 	NATSUrl        string
 	APIInternalURL string
@@ -17,7 +17,7 @@ func Load() *Config {
 	return &Config{
 		NATSUrl:        getEnv("NATS_URL", "nats://localhost:4222"),
 		APIInternalURL: getEnv("API_INTERNAL_URL", "http://localhost:8443"),
-		HealthPort:     getEnv("HEALTH_PORT", "8083"),
+		HealthPort:     getEnv("HEALTH_PORT", "8081"),
 		RedisURL:       getEnv("REDIS_URL", "redis://redis:6379"),
 	}
 }

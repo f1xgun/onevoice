@@ -2,11 +2,14 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
 )
 
@@ -41,32 +44,90 @@ type BrowserPool interface {
 type Handler struct {
 	tokens TokenFetcher
 	pool   BrowserPool
+	dedupe *hitldedupe.DedupeClient // optional; nil skips the HITL dedupe gate
 }
 
-// NewHandler creates a Handler with the given TokenFetcher and BrowserPool.
-func NewHandler(tokens TokenFetcher, pool BrowserPool) *Handler {
-	return &Handler{tokens: tokens, pool: pool}
+// NewHandler creates a Handler with the given TokenFetcher, BrowserPool, and
+// optional dedupe client. Passing nil for dedupe disables the HITL dedupe
+// gate — used by unit tests and dev-local environments without Redis.
+func NewHandler(tokens TokenFetcher, pool BrowserPool, dedupe *hitldedupe.DedupeClient) *Handler {
+	return &Handler{tokens: tokens, pool: pool, dedupe: dedupe}
 }
 
 // Handle routes ToolRequests to the appropriate Yandex.Business operation.
+// The HITL dedupe gate runs BEFORE Playwright acquires a browser page from the
+// pool — this matters for the RPA agent because a page acquisition is
+// expensive; deduping early avoids spinning up a Chromium tab for a replay.
+// The `withRetry + withPage` pattern inside yandex/pool.go remains unchanged.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	if resp, stop := h.dedupeGate(ctx, req); stop {
+		return resp, nil
+	}
+
+	var (
+		resp *a2a.ToolResponse
+		err  error
+	)
 	switch req.Tool {
 	case "yandex_business__get_info":
-		return h.getInfo(ctx, req)
+		resp, err = h.getInfo(ctx, req)
 	case "yandex_business__update_hours":
-		return h.updateHours(ctx, req)
+		resp, err = h.updateHours(ctx, req)
 	case "yandex_business__update_info":
-		return h.updateInfo(ctx, req)
+		resp, err = h.updateInfo(ctx, req)
 	case "yandex_business__get_reviews":
-		return h.getReviews(ctx, req)
+		resp, err = h.getReviews(ctx, req)
 	case "yandex_business__reply_review":
-		return h.replyReview(ctx, req)
+		resp, err = h.replyReview(ctx, req)
 	case "yandex_business__create_post":
-		return h.createPost(ctx, req)
+		resp, err = h.createPost(ctx, req)
 	case "yandex_business__upload_photo":
-		return h.uploadPhoto(ctx, req)
+		resp, err = h.uploadPhoto(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
+	}
+
+	h.dedupeStore(ctx, req, resp, err)
+	return resp, err
+}
+
+// dedupeGate consults the Redis dedupe cache BEFORE tool dispatch when a HITL
+// approval is in play. Returns (resp, true) when the caller should stop.
+func (h *Handler) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, bool) {
+	if h.dedupe == nil || req.ApprovalID == "" {
+		return nil, false
+	}
+	outcome, cached, err := h.dedupe.Claim(ctx, req.BusinessID, req.ApprovalID)
+	if err != nil {
+		slog.WarnContext(ctx, "hitl dedupe claim failed; proceeding without dedupe",
+			"error", err, "business_id", req.BusinessID, "approval_id", req.ApprovalID)
+		return nil, false
+	}
+	switch outcome {
+	case hitldedupe.ClaimOutcomeInFlight:
+		return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: already in flight"}, true
+	case hitldedupe.ClaimOutcomeDuplicate:
+		var cachedResp a2a.ToolResponse
+		if uerr := json.Unmarshal([]byte(cached), &cachedResp); uerr != nil {
+			slog.WarnContext(ctx, "hitl dedupe cached result malformed; returning generic duplicate",
+				"error", uerr)
+			return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: cached result unavailable"}, true
+		}
+		cachedResp.TaskID = req.TaskID
+		return &cachedResp, true
+	}
+	return nil, false
+}
+
+// dedupeStore persists a successful ToolResponse under the HITL dedupe key
+// so replays see ClaimOutcomeDuplicate. Errors/nil responses are not cached.
+func (h *Handler) dedupeStore(ctx context.Context, req a2a.ToolRequest, resp *a2a.ToolResponse, err error) {
+	if h.dedupe == nil || req.ApprovalID == "" || err != nil || resp == nil {
+		return
+	}
+	if serr := h.dedupe.Store(ctx, req.BusinessID, req.ApprovalID, resp); serr != nil {
+		slog.WarnContext(ctx, "hitl dedupe store failed; result returned but not cached",
+			"error", serr, "approval_id", req.ApprovalID)
 	}
 }
 

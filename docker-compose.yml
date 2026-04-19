@@ -192,12 +192,15 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: http://api:8443
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./certs/ca.crt:/certs/ca.crt:ro
       - ./certs/telegram.crt:/certs/client.crt:ro
       - ./certs/telegram.key:/certs/client.key:ro
     depends_on:
       nats:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - onevoice-network
@@ -213,12 +216,15 @@ services:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: http://api:8443
       VK_SERVICE_KEY: ${VK_SERVICE_KEY:-}
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./certs/ca.crt:/certs/ca.crt:ro
       - ./certs/vk.crt:/certs/client.crt:ro
       - ./certs/vk.key:/certs/client.key:ro
     depends_on:
       nats:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - onevoice-network
@@ -234,8 +240,11 @@ services:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: http://api:8443
       HEALTH_PORT: "8083"
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       nats:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - onevoice-network
@@ -251,6 +260,7 @@ services:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: http://api:8443
       RPA_DEBUG_SCREENSHOTS: "1"
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./certs/ca.crt:/certs/ca.crt:ro
       - ./certs/yandex-business.crt:/certs/client.crt:ro
@@ -258,6 +268,8 @@ services:
       - ./rpa-screenshots:/tmp:rw
     depends_on:
       nats:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - onevoice-network

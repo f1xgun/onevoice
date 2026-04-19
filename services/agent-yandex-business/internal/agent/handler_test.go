@@ -2,14 +2,20 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/agent"
 )
 
@@ -80,7 +86,7 @@ func (p *stubPool) ForBusiness(_, _, _ string) agent.YandexBrowser {
 }
 
 func newHandler(fetcher agent.TokenFetcher, browser *stubBrowser) *agent.Handler {
-	return agent.NewHandler(fetcher, &stubPool{browser: browser})
+	return agent.NewHandler(fetcher, &stubPool{browser: browser}, nil)
 }
 
 // --- Happy path tests ---
@@ -235,7 +241,7 @@ func (e *errBrowser) CreatePost(_ context.Context, _ string) error     { return 
 func (e *errBrowser) UploadPhoto(_ context.Context, _, _ string) error { return e.err }
 
 func newErrHandler(fetcher agent.TokenFetcher, browserErr error) *agent.Handler {
-	return agent.NewHandler(fetcher, &stubPool{browser: &errBrowser{err: browserErr}})
+	return agent.NewHandler(fetcher, &stubPool{browser: &errBrowser{err: browserErr}}, nil)
 }
 
 func reviewReq() a2a.ToolRequest {
@@ -313,4 +319,103 @@ func TestClassifyYandexError_TransientNetworkError(t *testing.T) {
 	_, err := h.Handle(context.Background(), reviewReq())
 	require.Error(t, err)
 	assert.False(t, errors.Is(err, &a2a.NonRetryableError{}), "network error should NOT be NonRetryableError")
+}
+
+// --- Phase 16 HITL-08: Redis dedupe gate tests ---
+
+// countingBrowser wraps stubBrowser behaviour with an atomic call counter.
+type countingBrowser struct {
+	stubBrowser
+	postCalls int64
+}
+
+func (c *countingBrowser) CreatePost(ctx context.Context, text string) error {
+	atomic.AddInt64(&c.postCalls, 1)
+	return c.stubBrowser.CreatePost(ctx, text)
+}
+
+func newYandexDedupeTestHandler(t *testing.T, browser agent.YandexBrowser) (*agent.Handler, *miniredis.Miniredis) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	dedupe := hitldedupe.New(rdb)
+	fetcher := &fakeTokenFetcher{token: "cookies"}
+	return agent.NewHandler(fetcher, &stubPool{browser: browser}, dedupe), mr
+}
+
+func yandexCreatePostReqWithApproval(approvalID string) a2a.ToolRequest {
+	return a2a.ToolRequest{
+		TaskID:     "task-y",
+		Tool:       "yandex_business__create_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi"},
+		ApprovalID: approvalID,
+	}
+}
+
+func TestHandler_Handle_EmptyApprovalID_SkipsDedupe(t *testing.T) {
+	browser := &countingBrowser{}
+	h, mr := newYandexDedupeTestHandler(t, browser)
+
+	resp, err := h.Handle(context.Background(), yandexCreatePostReqWithApproval(""))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&browser.postCalls))
+	assert.Equal(t, 0, len(mr.Keys()),
+		"empty ApprovalID must NOT touch Redis (anti-footgun #2)")
+}
+
+func TestHandler_Handle_FirstCallWithApprovalID_ExecutesAndCaches(t *testing.T) {
+	browser := &countingBrowser{}
+	h, mr := newYandexDedupeTestHandler(t, browser)
+
+	resp, err := h.Handle(context.Background(), yandexCreatePostReqWithApproval("appr-y-1"))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&browser.postCalls))
+
+	key := "hitl:approval:biz-1:appr-y-1"
+	require.True(t, mr.Exists(key), "dedupe key must be stored after successful execution")
+	val, err := mr.Get(key)
+	require.NoError(t, err)
+	var cached a2a.ToolResponse
+	require.NoError(t, json.Unmarshal([]byte(val), &cached))
+	assert.True(t, cached.Success)
+}
+
+func TestHandler_Handle_SecondCallWithSameApprovalID_ReturnsCached(t *testing.T) {
+	browser := &countingBrowser{}
+	h, _ := newYandexDedupeTestHandler(t, browser)
+
+	resp1, err := h.Handle(context.Background(), yandexCreatePostReqWithApproval("appr-y-2"))
+	require.NoError(t, err)
+	require.NotNil(t, resp1)
+
+	resp2, err := h.Handle(context.Background(), yandexCreatePostReqWithApproval("appr-y-2"))
+	require.NoError(t, err)
+	require.NotNil(t, resp2)
+
+	assert.Equal(t, int64(1), atomic.LoadInt64(&browser.postCalls),
+		"tool must be invoked exactly once across two Handle calls with the same ApprovalID")
+	assert.Equal(t, resp1.Success, resp2.Success)
+	assert.Equal(t, resp1.Result["status"], resp2.Result["status"])
+}
+
+func TestHandler_Handle_ApprovalID_InFlight_ReturnsDuplicateError(t *testing.T) {
+	browser := &countingBrowser{}
+	h, mr := newYandexDedupeTestHandler(t, browser)
+
+	key := "hitl:approval:biz-1:appr-y-3"
+	require.NoError(t, mr.Set(key, "executing"))
+	mr.SetTTL(key, 24*time.Hour)
+
+	resp, err := h.Handle(context.Background(), yandexCreatePostReqWithApproval("appr-y-3"))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Contains(t, resp.Error, "duplicate: already in flight")
+	assert.Equal(t, int64(0), atomic.LoadInt64(&browser.postCalls),
+		"in-flight claim must short-circuit before Playwright page acquisition")
 }
