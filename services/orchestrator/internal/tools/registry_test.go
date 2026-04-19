@@ -37,10 +37,10 @@ func newCaptureLogger(t *testing.T) *bytes.Buffer {
 
 func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_post"), nil)
-	reg.Register(makeDef("vk__publish_post"), nil)
-	reg.Register(makeDef("google_business__update_hours"), nil)
-	reg.Register(makeDef("get_business_info"), nil) // internal tool, always available
+	reg.Register(makeDef("telegram__send_post"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("vk__publish_post"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("google_business__update_hours"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("get_business_info"), nil, domain.ToolFloorAuto, nil) // internal tool, always available
 
 	active := []string{"telegram"}
 	defs := reg.Available(active)
@@ -57,8 +57,8 @@ func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 
 func TestRegistry_NoActiveIntegrations_OnlyInternalTools(t *testing.T) {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_post"), nil)
-	reg.Register(makeDef("get_business_info"), nil)
+	reg.Register(makeDef("telegram__send_post"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("get_business_info"), nil, domain.ToolFloorAuto, nil)
 
 	defs := reg.Available(nil)
 
@@ -73,7 +73,7 @@ func TestRegistry_Execute_CallsExecutor(t *testing.T) {
 		called = true
 		return map[string]interface{}{"ok": true}, nil
 	})
-	reg.Register(makeDef("telegram__send_post"), executor)
+	reg.Register(makeDef("telegram__send_post"), executor, domain.ToolFloorAuto, nil)
 
 	result, err := reg.Execute(context.Background(), "telegram__send_post", map[string]interface{}{})
 	require.NoError(t, err)
@@ -100,10 +100,10 @@ func toolNames(defs []llm.ToolDefinition) []string {
 // one internal tool. Used by whitelist subtests.
 func fixtureRegistry() *tools.Registry {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), nil)
-	reg.Register(makeDef("telegram__send_notification"), nil)
-	reg.Register(makeDef("vk__publish_post"), nil)
-	reg.Register(makeDef("get_business_info"), nil)
+	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("telegram__send_notification"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("vk__publish_post"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("get_business_info"), nil, domain.ToolFloorAuto, nil)
 	return reg
 }
 
@@ -200,4 +200,131 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_MixedKnownAndUnknown(t *tes
 	names := toolNames(got)
 	assert.Equal(t, []string{"telegram__send_channel_post"}, names)
 	assert.True(t, strings.Contains(buf.String(), "bogus__tool"))
+}
+
+// --- Phase 16 Plan 16-03 additions: Floor, EditableFields, Has, AllEntries ---
+
+func TestRegistry_Floor_RegisteredReturnsFloor(t *testing.T) {
+	reg := tools.NewRegistry()
+	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef("telegram__get_reviews"), nil, domain.ToolFloorAuto, nil)
+
+	assert.Equal(t, domain.ToolFloorManual, reg.Floor("telegram__send_channel_post"))
+	assert.Equal(t, domain.ToolFloorAuto, reg.Floor("telegram__get_reviews"))
+}
+
+// TestRegistry_Floor_UnknownReturnsForbidden locks POLICY-07's safe-default:
+// the runtime policy resolver treats unknown tools as if they were registered
+// with Floor=Forbidden. Changing this to Auto or Manual would silently permit
+// approval of tools that no longer exist.
+func TestRegistry_Floor_UnknownReturnsForbidden(t *testing.T) {
+	reg := tools.NewRegistry()
+	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorAuto, nil)
+
+	assert.Equal(t, domain.ToolFloorForbidden, reg.Floor("ghost__missing"))
+	assert.Equal(t, domain.ToolFloorForbidden, reg.Floor(""))
+}
+
+func TestRegistry_EditableFields_RegisteredReturnsList(t *testing.T) {
+	reg := tools.NewRegistry()
+	reg.Register(
+		makeDef("telegram__send_channel_post"),
+		nil,
+		domain.ToolFloorManual,
+		[]string{"text", "parse_mode"},
+	)
+	got := reg.EditableFields("telegram__send_channel_post")
+	assert.ElementsMatch(t, []string{"text", "parse_mode"}, got)
+}
+
+func TestRegistry_EditableFields_UnknownReturnsNil(t *testing.T) {
+	reg := tools.NewRegistry()
+	assert.Nil(t, reg.EditableFields("ghost__missing"))
+}
+
+// TestRegistry_EditableFields_Defensive verifies that mutating the slice
+// returned by EditableFields does not mutate registry state. Without the
+// defensive copy in Register + EditableFields, a caller could widen the
+// allowlist at runtime by appending to the returned slice.
+func TestRegistry_EditableFields_Defensive(t *testing.T) {
+	reg := tools.NewRegistry()
+	original := []string{"text", "parse_mode"}
+	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, original)
+
+	// Mutate the caller's slice after Register — registry should not observe the change.
+	original[0] = "channel_id"
+	got := reg.EditableFields("telegram__send_channel_post")
+	assert.ElementsMatch(t, []string{"text", "parse_mode"}, got)
+
+	// Mutate the returned slice — registry should not observe the change.
+	got[0] = "tampered"
+	fresh := reg.EditableFields("telegram__send_channel_post")
+	assert.ElementsMatch(t, []string{"text", "parse_mode"}, fresh)
+}
+
+func TestRegistry_Has(t *testing.T) {
+	reg := tools.NewRegistry()
+	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, nil)
+
+	assert.True(t, reg.Has("telegram__send_channel_post"))
+	assert.False(t, reg.Has("ghost__missing"))
+	assert.False(t, reg.Has(""))
+}
+
+func TestRegistry_AllFloors(t *testing.T) {
+	reg := tools.NewRegistry()
+	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef("telegram__get_reviews"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("dangerous__delete"), nil, domain.ToolFloorForbidden, nil)
+
+	got := reg.AllFloors()
+	assert.Equal(t, domain.ToolFloorManual, got["telegram__send_channel_post"])
+	assert.Equal(t, domain.ToolFloorAuto, got["telegram__get_reviews"])
+	assert.Equal(t, domain.ToolFloorForbidden, got["dangerous__delete"])
+	assert.Len(t, got, 3)
+}
+
+// TestRegistry_AllEntries_SplitsPlatform checks that the platform prefix is
+// correctly derived from "{platform}__{action}" and that bare (internal) tools
+// map to an empty platform. Guards the edge cases spelled out in the plan:
+//   - "telegram__send_channel_post" → "telegram"
+//   - "bare_internal"               → ""
+//   - "__weird"                     → "" (leading separator = no platform)
+func TestRegistry_AllEntries_SplitsPlatform(t *testing.T) {
+	reg := tools.NewRegistry()
+	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef("bare_internal"), nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("__weird"), nil, domain.ToolFloorForbidden, nil)
+
+	byName := make(map[string]tools.RegistryEntry)
+	for _, e := range reg.AllEntries() {
+		byName[e.Name] = e
+	}
+	assert.Len(t, byName, 3)
+	assert.Equal(t, "telegram", byName["telegram__send_channel_post"].Platform)
+	assert.Equal(t, domain.ToolFloorManual, byName["telegram__send_channel_post"].Floor)
+	assert.ElementsMatch(t, []string{"text"}, byName["telegram__send_channel_post"].EditableFields)
+
+	assert.Equal(t, "", byName["bare_internal"].Platform)
+	assert.Equal(t, domain.ToolFloorAuto, byName["bare_internal"].Floor)
+
+	assert.Equal(t, "", byName["__weird"].Platform)
+	assert.Equal(t, domain.ToolFloorForbidden, byName["__weird"].Floor)
+}
+
+// TestRegistry_AllEntries_EditableFieldsCopy guards the same defensive-copy
+// invariant at the snapshot layer — a caller must not be able to widen the
+// registered allowlist by mutating the slice they received from AllEntries().
+func TestRegistry_AllEntries_EditableFieldsCopy(t *testing.T) {
+	reg := tools.NewRegistry()
+	reg.Register(makeDef("telegram__send_channel_post"), nil, domain.ToolFloorManual, []string{"text"})
+
+	entries := reg.AllEntries()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	entries[0].EditableFields[0] = "tampered"
+
+	fresh := reg.AllEntries()
+	assert.Equal(t, "text", fresh[0].EditableFields[0])
 }

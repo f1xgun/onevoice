@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
@@ -39,13 +40,13 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 		Function: llm.FunctionDefinition{Name: "telegram__send_channel_post", Description: "d", Parameters: map[string]interface{}{}},
 	}, tools.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"message_id": "tg_42", "platform": "telegram"}, nil
-	}))
+	}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "vk__publish_post", Description: "d", Parameters: map[string]interface{}{}},
 	}, tools.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"post_id": "vk_99", "platform": "vk"}, nil
-	}))
+	}), domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -106,7 +107,7 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 		Function: llm.FunctionDefinition{Name: "failing_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, context.DeadlineExceeded
-	}))
+	}), domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{

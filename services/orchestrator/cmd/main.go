@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/llm/providers"
@@ -150,310 +151,469 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	return nil
 }
 
+// toolSpec binds a tool definition to its ToolFloor baseline (POLICY-01) and
+// per-tool EditableFields allowlist (HITL-L4 promoted into v1.3 per D-10/D-11).
+//
+// Policy guidelines for choosing a floor:
+//   - ToolFloorAuto       — read-only / safe queries (no external side effects).
+//   - ToolFloorManual     — any public mutation (post, reply, update, schedule,
+//                           upload). Editable allowlist covers ONLY
+//                           human-facing text fields (text/caption/description);
+//                           ids, recipients, URLs, dates, categories, and
+//                           quantities are pinned at pause time.
+//   - ToolFloorForbidden  — destructive operations that cannot be recovered
+//                           via the UI (e.g., vk__delete_comment). Kept
+//                           registered so the LLM sees it exists, but always
+//                           blocked by policy. Operator must lift via code
+//                           review + redeploy, never via settings.
+//
+// When in doubt, prefer manual + a narrow editable list (conservative default).
+type toolSpec struct {
+	def      llm.ToolDefinition
+	floor    domain.ToolFloor
+	editable []string
+}
+
 // registerPlatformTools wires NATS executors into the tool registry for each MVP agent.
-// MVP platforms: Telegram (API), VK (API), Yandex.Business (RPA).
+// MVP platforms: Telegram (API), VK (API), Yandex.Business (RPA), Google Business (API).
+//
+// Every tool registration is explicit — Register takes floor + editableFields
+// as required arguments so a newly-added tool can never silently inherit
+// ToolFloorAuto. See toolSpec above for the policy rubric used below.
 func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 	agents := []struct {
 		id    a2a.AgentID
-		tools []llm.ToolDefinition
+		tools []toolSpec
 	}{
 		{
 			id: a2a.AgentTelegram,
-			tools: []llm.ToolDefinition{
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "telegram__send_channel_post",
-					Description: "Публикует текстовое сообщение в Telegram-канал (без фото). Если нужно опубликовать пост с фото — используй telegram__send_channel_photo вместо этого.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"text":       map[string]interface{}{"type": "string", "description": "Текст сообщения"},
-							"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
+			tools: []toolSpec{
+				// Mutating public: posts to a Telegram channel. text + parse_mode
+				// editable; channel_id pinned from integration.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "telegram__send_channel_post",
+						Description: "Публикует текстовое сообщение в Telegram-канал (без фото). Если нужно опубликовать пост с фото — используй telegram__send_channel_photo вместо этого.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"text":       map[string]interface{}{"type": "string", "description": "Текст сообщения"},
+								"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
+							},
+							"required": []string{"text"},
 						},
-						"required": []string{"text"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "telegram__send_channel_photo",
-					Description: "Публикует пост с фото и текстовой подписью в Telegram-канал. Используй эту функцию вместо send_channel_post когда нужно опубликовать пост с изображением.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"photo_url":  map[string]interface{}{"type": "string", "description": "Публичный URL изображения"},
-							"caption":    map[string]interface{}{"type": "string", "description": "Подпись к фото"},
-							"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"text"},
+				},
+				// Mutating public: posts a photo + caption. caption editable;
+				// photo_url and channel_id pinned (redirecting either at edit
+				// time would be a HITL-07 footgun).
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "telegram__send_channel_photo",
+						Description: "Публикует пост с фото и текстовой подписью в Telegram-канал. Используй эту функцию вместо send_channel_post когда нужно опубликовать пост с изображением.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"photo_url":  map[string]interface{}{"type": "string", "description": "Публичный URL изображения"},
+								"caption":    map[string]interface{}{"type": "string", "description": "Подпись к фото"},
+								"channel_id": map[string]interface{}{"type": "string", "description": "ID канала"},
+							},
+							"required": []string{"photo_url"},
 						},
-						"required": []string{"photo_url"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "telegram__send_notification",
-					Description: "Отправляет личное уведомление владельцу бизнеса в Telegram",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"text": map[string]interface{}{"type": "string", "description": "Текст уведомления"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"caption"},
+				},
+				// DM notification to owner. text editable; recipient pinned
+				// from the integration (never editable).
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "telegram__send_notification",
+						Description: "Отправляет личное уведомление владельцу бизнеса в Telegram",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"text": map[string]interface{}{"type": "string", "description": "Текст уведомления"},
+							},
+							"required": []string{"text"},
 						},
-						"required": []string{"text"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "telegram__get_reviews",
-					Description: "Получает последние сообщения/отзывы, отправленные боту или в канал через Telegram. Каждое сообщение содержит поля message_id и chat_id — используй их для ответа через telegram__reply_to_comment.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"limit": map[string]interface{}{"type": "integer", "description": "Количество сообщений (макс 100)"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"text"},
+				},
+				// Read-only query of recent messages. Auto, no edit needed.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "telegram__get_reviews",
+						Description: "Получает последние сообщения/отзывы, отправленные боту или в канал через Telegram. Каждое сообщение содержит поля message_id и chat_id — используй их для ответа через telegram__reply_to_comment.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"limit": map[string]interface{}{"type": "integer", "description": "Количество сообщений (макс 100)"},
+							},
 						},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "telegram__reply_to_comment",
-					Description: "Отвечает на конкретный комментарий или сообщение в Telegram. Используй эту функцию когда нужно ответить на комментарий — НЕ используй telegram__send_channel_post для ответов на комментарии.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"message_id": map[string]interface{}{"type": "integer", "description": "ID сообщения/комментария, на который отвечаем (поле message_id из telegram__get_reviews)"},
-							"chat_id":    map[string]interface{}{"type": "string", "description": "ID чата/группы обсуждений, где находится комментарий (поле chat_id из telegram__get_reviews)"},
-							"text":       map[string]interface{}{"type": "string", "description": "Текст ответа"},
-							"channel_id": map[string]interface{}{"type": "string", "description": "ID канала (необязательно, для выбора интеграции)"},
+					}},
+					floor:    domain.ToolFloorAuto,
+					editable: nil,
+				},
+				// Mutating public: replies to a comment. text editable;
+				// message_id + chat_id + channel_id pinned (changing these
+				// would redirect the reply to an unrelated conversation).
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "telegram__reply_to_comment",
+						Description: "Отвечает на конкретный комментарий или сообщение в Telegram. Используй эту функцию когда нужно ответить на комментарий — НЕ используй telegram__send_channel_post для ответов на комментарии.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"message_id": map[string]interface{}{"type": "integer", "description": "ID сообщения/комментария, на который отвечаем (поле message_id из telegram__get_reviews)"},
+								"chat_id":    map[string]interface{}{"type": "string", "description": "ID чата/группы обсуждений, где находится комментарий (поле chat_id из telegram__get_reviews)"},
+								"text":       map[string]interface{}{"type": "string", "description": "Текст ответа"},
+								"channel_id": map[string]interface{}{"type": "string", "description": "ID канала (необязательно, для выбора интеграции)"},
+							},
+							"required": []string{"message_id", "chat_id", "text"},
 						},
-						"required": []string{"message_id", "chat_id", "text"},
-					},
-				}},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"text"},
+				},
 			},
 		},
 		{
 			id: a2a.AgentVK,
-			tools: []llm.ToolDefinition{
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "vk__publish_post",
-					Description: "Публикует текстовый пост (без фото) на стену сообщества ВКонтакте. Если нужно опубликовать пост с фото — используй vk__post_photo вместо этого.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"text":     map[string]interface{}{"type": "string", "description": "Текст поста"},
-							"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества"},
+			tools: []toolSpec{
+				// Mutating public: publishes wall post. text editable; group_id pinned.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "vk__publish_post",
+						Description: "Публикует текстовый пост (без фото) на стену сообщества ВКонтакте. Если нужно опубликовать пост с фото — используй vk__post_photo вместо этого.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"text":     map[string]interface{}{"type": "string", "description": "Текст поста"},
+								"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества"},
+							},
+							"required": []string{"text"},
 						},
-						"required": []string{"text"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "vk__post_photo",
-					Description: "Публикует пост с фото и текстовой подписью на стену сообщества ВКонтакте. Используй эту функцию вместо publish_post когда нужно опубликовать пост с изображением.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"photo_url": map[string]interface{}{"type": "string", "description": "Публичный URL изображения для загрузки"},
-							"caption":   map[string]interface{}{"type": "string", "description": "Текстовая подпись к фото"},
-							"group_id":  map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"text"},
+				},
+				// Mutating public: photo + caption. caption editable; photo_url + group_id pinned.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "vk__post_photo",
+						Description: "Публикует пост с фото и текстовой подписью на стену сообщества ВКонтакте. Используй эту функцию вместо publish_post когда нужно опубликовать пост с изображением.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"photo_url": map[string]interface{}{"type": "string", "description": "Публичный URL изображения для загрузки"},
+								"caption":   map[string]interface{}{"type": "string", "description": "Текстовая подпись к фото"},
+								"group_id":  map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+							},
+							"required": []string{"photo_url"},
 						},
-						"required": []string{"photo_url"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "vk__schedule_post",
-					Description: "Планирует отложенный пост на стене сообщества ВКонтакте. Пост будет автоматически опубликован ВКонтакте в указанное время.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"text":         map[string]interface{}{"type": "string", "description": "Текст поста"},
-							"publish_date": map[string]interface{}{"type": "string", "description": "Дата и время публикации (Unix timestamp или ISO 8601 формат, например 2026-03-20T12:00:00Z)"},
-							"group_id":     map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"caption"},
+				},
+				// Mutating public w/ scheduled release. text editable;
+				// publish_date NOT editable (changing a scheduled time is a
+				// semantic change — a separate tool call makes intent explicit).
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "vk__schedule_post",
+						Description: "Планирует отложенный пост на стене сообщества ВКонтакте. Пост будет автоматически опубликован ВКонтакте в указанное время.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"text":         map[string]interface{}{"type": "string", "description": "Текст поста"},
+								"publish_date": map[string]interface{}{"type": "string", "description": "Дата и время публикации (Unix timestamp или ISO 8601 формат, например 2026-03-20T12:00:00Z)"},
+								"group_id":     map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+							},
+							"required": []string{"text", "publish_date"},
 						},
-						"required": []string{"text", "publish_date"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "vk__update_group_info",
-					Description: "Обновляет информацию о сообществе ВКонтакте (описание, ссылки, контакты). Если group_id не указан, используется сообщество из активной VK-интеграции.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"group_id":    map[string]interface{}{"type": "string", "description": "Числовой ID сообщества ВКонтакте. Необязателен — берётся из активной интеграции."},
-							"description": map[string]interface{}{"type": "string", "description": "Новое описание"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"text"},
+				},
+				// Mutating public: group meta update. description editable;
+				// group_id pinned. Contacts/links intentionally omitted from
+				// edit-allowlist until the LLM's JSON schema exposes them.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "vk__update_group_info",
+						Description: "Обновляет информацию о сообществе ВКонтакте (описание, ссылки, контакты). Если group_id не указан, используется сообщество из активной VK-интеграции.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"group_id":    map[string]interface{}{"type": "string", "description": "Числовой ID сообщества ВКонтакте. Необязателен — берётся из активной интеграции."},
+								"description": map[string]interface{}{"type": "string", "description": "Новое описание"},
+							},
+							"required": []string{},
 						},
-						"required": []string{},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "vk__get_comments",
-					Description: "Получает комментарии к конкретному посту на стене сообщества ВКонтакте. Если post_id не указан, возвращает комментарии к последнему посту.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"post_id":  map[string]interface{}{"type": "integer", "description": "ID поста на стене. Если не указан — берётся последний пост."},
-							"group_id": map[string]interface{}{"type": "string", "description": "Числовой ID сообщества ВКонтакте. Необязателен — берётся из активной интеграции."},
-							"count":    map[string]interface{}{"type": "integer", "description": "Количество комментариев (макс 100)"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"description"},
+				},
+				// Read-only. Auto.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "vk__get_comments",
+						Description: "Получает комментарии к конкретному посту на стене сообщества ВКонтакте. Если post_id не указан, возвращает комментарии к последнему посту.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"post_id":  map[string]interface{}{"type": "integer", "description": "ID поста на стене. Если не указан — берётся последний пост."},
+								"group_id": map[string]interface{}{"type": "string", "description": "Числовой ID сообщества ВКонтакте. Необязателен — берётся из активной интеграции."},
+								"count":    map[string]interface{}{"type": "integer", "description": "Количество комментариев (макс 100)"},
+							},
+							"required": []string{},
 						},
-						"required": []string{},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "vk__reply_comment",
-					Description: "Отвечает на комментарий к посту на стене сообщества ВКонтакте. Создает ответ в ветке обсуждения.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"post_id":    map[string]interface{}{"type": "number", "description": "ID поста на стене"},
-							"comment_id": map[string]interface{}{"type": "number", "description": "ID комментария, на который нужно ответить"},
-							"text":       map[string]interface{}{"type": "string", "description": "Текст ответа на комментарий"},
-							"group_id":   map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+					}},
+					floor:    domain.ToolFloorAuto,
+					editable: nil,
+				},
+				// Mutating public: comment reply. text editable; ids pinned.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "vk__reply_comment",
+						Description: "Отвечает на комментарий к посту на стене сообщества ВКонтакте. Создает ответ в ветке обсуждения.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"post_id":    map[string]interface{}{"type": "number", "description": "ID поста на стене"},
+								"comment_id": map[string]interface{}{"type": "number", "description": "ID комментария, на который нужно ответить"},
+								"text":       map[string]interface{}{"type": "string", "description": "Текст ответа на комментарий"},
+								"group_id":   map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+							},
+							"required": []string{"post_id", "comment_id", "text"},
 						},
-						"required": []string{"post_id", "comment_id", "text"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "vk__delete_comment",
-					Description: "Удаляет комментарий к посту на стене сообщества ВКонтакте. Требуются права администратора или модератора сообщества.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"comment_id": map[string]interface{}{"type": "number", "description": "ID комментария для удаления"},
-							"group_id":   map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"text"},
+				},
+				// Destructive: hard-deletes a comment. Forbidden — the LLM
+				// cannot request this even behind approval. Lifting requires
+				// a deliberate code change.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "vk__delete_comment",
+						Description: "Удаляет комментарий к посту на стене сообщества ВКонтакте. Требуются права администратора или модератора сообщества.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"comment_id": map[string]interface{}{"type": "number", "description": "ID комментария для удаления"},
+								"group_id":   map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте"},
+							},
+							"required": []string{"comment_id"},
 						},
-						"required": []string{"comment_id"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "vk__get_community_info",
-					Description: "Получает информацию о сообществе ВКонтакте: название, описание, количество подписчиков, статус, ссылки. Используй для ответа на вопросы о сообществе.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте. Если не указан, используется группа из активной VK-интеграции."},
+					}},
+					floor:    domain.ToolFloorForbidden,
+					editable: nil,
+				},
+				// Read-only. Auto.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "vk__get_community_info",
+						Description: "Получает информацию о сообществе ВКонтакте: название, описание, количество подписчиков, статус, ссылки. Используй для ответа на вопросы о сообществе.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте. Если не указан, используется группа из активной VK-интеграции."},
+							},
+							"required": []string{},
 						},
-						"required": []string{},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "vk__get_wall_posts",
-					Description: "Получает последние посты со стены сообщества ВКонтакте с данными о лайках, комментариях, репостах и просмотрах.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте. Если не указан, используется группа из активной VK-интеграции."},
-							"count":    map[string]interface{}{"type": "integer", "description": "Количество постов (по умолчанию 10, макс 100)"},
+					}},
+					floor:    domain.ToolFloorAuto,
+					editable: nil,
+				},
+				// Read-only. Auto.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "vk__get_wall_posts",
+						Description: "Получает последние посты со стены сообщества ВКонтакте с данными о лайках, комментариях, репостах и просмотрах.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"group_id": map[string]interface{}{"type": "string", "description": "ID сообщества ВКонтакте. Если не указан, используется группа из активной VK-интеграции."},
+								"count":    map[string]interface{}{"type": "integer", "description": "Количество постов (по умолчанию 10, макс 100)"},
+							},
+							"required": []string{},
 						},
-						"required": []string{},
-					},
-				}},
+					}},
+					floor:    domain.ToolFloorAuto,
+					editable: nil,
+				},
 			},
 		},
 		{
 			id: a2a.AgentYandexBusiness,
-			tools: []llm.ToolDefinition{
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "yandex_business__get_info",
-					Description: "Получает текущую информацию об организации в Яндекс Бизнес: название, телефон, email, часы работы, адрес, статус.",
-					Parameters: map[string]interface{}{
-						"type":       "object",
-						"properties": map[string]interface{}{},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "yandex_business__update_hours",
-					Description: "Обновляет часы работы в Яндекс Бизнес. Принимает описание расписания в свободном формате.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"hours": map[string]interface{}{"type": "string", "description": "Часы работы в формате JSON"},
+			tools: []toolSpec{
+				// Read-only. Auto.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "yandex_business__get_info",
+						Description: "Получает текущую информацию об организации в Яндекс Бизнес: название, телефон, email, часы работы, адрес, статус.",
+						Parameters: map[string]interface{}{
+							"type":       "object",
+							"properties": map[string]interface{}{},
 						},
-						"required": []string{"hours"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "yandex_business__update_info",
-					Description: "Обновляет контактную информацию в Яндекс Бизнес (телефон, сайт, описание)",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"phone":       map[string]interface{}{"type": "string", "description": "Номер телефона"},
-							"website":     map[string]interface{}{"type": "string", "description": "URL сайта"},
-							"description": map[string]interface{}{"type": "string", "description": "Описание организации"},
+					}},
+					floor:    domain.ToolFloorAuto,
+					editable: nil,
+				},
+				// Mutating public: hours. hours editable (text payload).
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "yandex_business__update_hours",
+						Description: "Обновляет часы работы в Яндекс Бизнес. Принимает описание расписания в свободном формате.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"hours": map[string]interface{}{"type": "string", "description": "Часы работы в формате JSON"},
+							},
+							"required": []string{"hours"},
 						},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "yandex_business__get_reviews",
-					Description: "Получает отзывы об организации из Яндекс Бизнес",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"limit": map[string]interface{}{"type": "integer", "description": "Количество отзывов (макс 50)"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"hours"},
+				},
+				// Mutating public: business-profile text fields. description
+				// editable. phone + website pinned (dialing/URL redirection is
+				// a high-impact mutation; operator confirms via UI toggle before
+				// any tool call rather than post-hoc edit).
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "yandex_business__update_info",
+						Description: "Обновляет контактную информацию в Яндекс Бизнес (телефон, сайт, описание)",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"phone":       map[string]interface{}{"type": "string", "description": "Номер телефона"},
+								"website":     map[string]interface{}{"type": "string", "description": "URL сайта"},
+								"description": map[string]interface{}{"type": "string", "description": "Описание организации"},
+							},
 						},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "yandex_business__reply_review",
-					Description: "Публикует ответ на отзыв в Яндекс Бизнес",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"review_id": map[string]interface{}{"type": "string", "description": "ID отзыва"},
-							"text":      map[string]interface{}{"type": "string", "description": "Текст ответа"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"description"},
+				},
+				// Read-only. Auto.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "yandex_business__get_reviews",
+						Description: "Получает отзывы об организации из Яндекс Бизнес",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"limit": map[string]interface{}{"type": "integer", "description": "Количество отзывов (макс 50)"},
+							},
 						},
-						"required": []string{"review_id", "text"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "yandex_business__upload_photo",
-					Description: "Загружает фото в Яндекс Бизнес. Категория: general (общее), logo (логотип), services, interior, exterior, enter (вход), goods (товары).",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"photo_url": map[string]interface{}{"type": "string", "description": "Публичный URL изображения для загрузки"},
-							"category":  map[string]interface{}{"type": "string", "description": "Категория фото: general, logo, services, interior, exterior, enter, goods"},
+					}},
+					floor:    domain.ToolFloorAuto,
+					editable: nil,
+				},
+				// Mutating public: review reply. text editable; review_id pinned.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "yandex_business__reply_review",
+						Description: "Публикует ответ на отзыв в Яндекс Бизнес",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"review_id": map[string]interface{}{"type": "string", "description": "ID отзыва"},
+								"text":      map[string]interface{}{"type": "string", "description": "Текст ответа"},
+							},
+							"required": []string{"review_id", "text"},
 						},
-						"required": []string{"photo_url"},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "yandex_business__create_post",
-					Description: "Создаёт публикацию (пост) в Яндекс Бизнес. Публикация появится в Поиске Яндекса и Яндекс Картах.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"text": map[string]interface{}{"type": "string", "description": "Текст публикации"},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"text"},
+				},
+				// Mutating public: upload photo. Nothing editable (category
+				// and photo_url are both semantic — editing either changes
+				// what the operator sees in the card vs what actually uploads).
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "yandex_business__upload_photo",
+						Description: "Загружает фото в Яндекс Бизнес. Категория: general (общее), logo (логотип), services, interior, exterior, enter (вход), goods (товары).",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"photo_url": map[string]interface{}{"type": "string", "description": "Публичный URL изображения для загрузки"},
+								"category":  map[string]interface{}{"type": "string", "description": "Категория фото: general, logo, services, interior, exterior, enter, goods"},
+							},
+							"required": []string{"photo_url"},
 						},
-						"required": []string{"text"},
-					},
-				}},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: nil,
+				},
+				// Mutating public: publication. text editable.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "yandex_business__create_post",
+						Description: "Создаёт публикацию (пост) в Яндекс Бизнес. Публикация появится в Поиске Яндекса и Яндекс Картах.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"text": map[string]interface{}{"type": "string", "description": "Текст публикации"},
+							},
+							"required": []string{"text"},
+						},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"text"},
+				},
 			},
 		},
 		{
 			id: a2a.AgentGoogleBusiness,
-			tools: []llm.ToolDefinition{
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "google_business__get_reviews",
-					Description: "Получает отзывы о локации из Google Business Profile. Возвращает список отзывов с рейтингами, комментариями и ответами владельца.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"limit": map[string]interface{}{"type": "integer", "description": "Количество отзывов (макс 50)"},
+			tools: []toolSpec{
+				// Read-only. Auto.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "google_business__get_reviews",
+						Description: "Получает отзывы о локации из Google Business Profile. Возвращает список отзывов с рейтингами, комментариями и ответами владельца.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"limit": map[string]interface{}{"type": "integer", "description": "Количество отзывов (макс 50)"},
+							},
 						},
-					},
-				}},
-				{Type: "function", Function: llm.FunctionDefinition{
-					Name:        "google_business__reply_review",
-					Description: "Отвечает на отзыв в Google Business Profile от имени владельца бизнеса.",
-					Parameters: map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"review_name": map[string]interface{}{"type": "string", "description": "Полное имя ресурса отзыва (поле name из google_business__get_reviews)"},
-							"text":        map[string]interface{}{"type": "string", "description": "Текст ответа на отзыв"},
+					}},
+					floor:    domain.ToolFloorAuto,
+					editable: nil,
+				},
+				// Mutating public: review reply. text editable; review_name pinned.
+				{
+					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+						Name:        "google_business__reply_review",
+						Description: "Отвечает на отзыв в Google Business Profile от имени владельца бизнеса.",
+						Parameters: map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"review_name": map[string]interface{}{"type": "string", "description": "Полное имя ресурса отзыва (поле name из google_business__get_reviews)"},
+								"text":        map[string]interface{}{"type": "string", "description": "Текст ответа на отзыв"},
+							},
+							"required": []string{"review_name", "text"},
 						},
-						"required": []string{"review_name", "text"},
-					},
-				}},
+					}},
+					floor:    domain.ToolFloorManual,
+					editable: []string{"text"},
+				},
 			},
 		},
 	}
 
 	conn := natsexec.NewNATSConn(nc)
 	for _, a := range agents {
-		for _, def := range a.tools {
-			exec := natsexec.New(a.id, def.Function.Name, conn)
-			reg.Register(def, exec)
+		for _, spec := range a.tools {
+			exec := natsexec.New(a.id, spec.def.Function.Name, conn)
+			reg.Register(spec.def, exec, spec.floor, spec.editable)
 		}
 	}
 }
