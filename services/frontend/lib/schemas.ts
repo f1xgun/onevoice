@@ -34,3 +34,34 @@ export const businessSchema = z.object({
 });
 
 export type BusinessInput = z.infer<typeof businessSchema>;
+
+// Phase 16 — HITL tool registry & approvals.
+//
+// GET /api/v1/tools returns [{name, platform, floor, editableFields, description}].
+// GET /api/v1/business/{id}/tool-approvals returns {toolApprovals: {[name]: "auto"|"manual"}}.
+// PUT /api/v1/projects/{id} accepts {approvalOverrides: {[name]: "auto"|"manual"}} where
+// inherit is encoded as KEY ABSENCE (no "inherit" string).
+export const toolFloorSchema = z.enum(['auto', 'manual', 'forbidden']);
+export type ToolFloor = z.infer<typeof toolFloorSchema>;
+
+export const toolSchema = z.object({
+  name: z.string(),
+  platform: z.string(),
+  floor: toolFloorSchema,
+  editableFields: z.array(z.string()).default([]),
+  description: z.string().default(''),
+});
+export type Tool = z.infer<typeof toolSchema>;
+
+// tool-approvals values accept only user-settable floors: auto|manual.
+// forbidden is a registration-time property and must not flow via this API.
+export const toolApprovalValueSchema = z.enum(['auto', 'manual']);
+export type ToolApprovalValue = z.infer<typeof toolApprovalValueSchema>;
+
+export const toolApprovalsSchema = z.record(z.string(), toolApprovalValueSchema);
+export type ToolApprovals = z.infer<typeof toolApprovalsSchema>;
+
+export const businessToolApprovalsResponseSchema = z.object({
+  toolApprovals: toolApprovalsSchema.default({}),
+});
+export type BusinessToolApprovalsResponse = z.infer<typeof businessToolApprovalsResponseSchema>;
