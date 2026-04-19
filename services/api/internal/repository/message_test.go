@@ -254,3 +254,143 @@ func TestMessageRepository_CountByConversationID(t *testing.T) {
 		assert.Equal(t, int64(0), count)
 	})
 }
+
+// TestFindByConversationActive_ReturnsLatestMatching documents the Phase 16
+// HITL invariant (Plan 16-06 D-04 stream-open gate): when a conversation has
+// multiple active (pending_approval / in_progress) assistant messages, the
+// repo returns the most recent one (sorted by created_at DESC).
+func TestFindByConversationActive_ReturnsLatestMatching(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewMessageRepository(db)
+	ctx := context.Background()
+
+	convID := "conv-active-latest"
+
+	older := &domain.Message{
+		ID:             "msg-older",
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        "older",
+		Status:         domain.MessageStatusPendingApproval,
+	}
+	require.NoError(t, repo.Create(ctx, older))
+
+	// Create a complete message (should be ignored).
+	complete := &domain.Message{
+		ID:             "msg-complete",
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        "complete",
+		Status:         domain.MessageStatusComplete,
+	}
+	require.NoError(t, repo.Create(ctx, complete))
+
+	time.Sleep(10 * time.Millisecond)
+
+	newer := &domain.Message{
+		ID:             "msg-newer",
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        "newer",
+		Status:         domain.MessageStatusInProgress,
+	}
+	require.NoError(t, repo.Create(ctx, newer))
+
+	got, err := repo.FindByConversationActive(ctx, convID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "msg-newer", got.ID, "must return the newest active message")
+	assert.Equal(t, domain.MessageStatusInProgress, got.Status)
+}
+
+// TestFindByConversationActive_NoMatch_ReturnsErrNotFound documents that when
+// no message matches (either the conversation is empty or all messages are
+// already complete), ErrMessageNotFound is returned so chat_proxy's D-04
+// gate can fall through to the normal new-turn flow.
+func TestFindByConversationActive_NoMatch_ReturnsErrNotFound(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewMessageRepository(db)
+	ctx := context.Background()
+
+	convID := "conv-active-empty"
+
+	// No messages at all.
+	got, err := repo.FindByConversationActive(ctx, convID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrMessageNotFound)
+	assert.Nil(t, got)
+
+	// Insert only complete / user messages — neither should match.
+	require.NoError(t, repo.Create(ctx, &domain.Message{
+		ID:             "msg-user",
+		ConversationID: convID,
+		Role:           "user",
+		Content:        "hi",
+	}))
+	require.NoError(t, repo.Create(ctx, &domain.Message{
+		ID:             "msg-assistant-done",
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        "done",
+		Status:         domain.MessageStatusComplete,
+	}))
+	got, err = repo.FindByConversationActive(ctx, convID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrMessageNotFound)
+	assert.Nil(t, got)
+}
+
+// TestMessageRepository_Update verifies that Update replaces the stored
+// Message document by _id (Plan 16-06 resume path appends ToolResults to the
+// SAME Message, D-17). Missing message → ErrMessageNotFound.
+func TestMessageRepository_Update(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewMessageRepository(db)
+	ctx := context.Background()
+
+	t.Run("updates status, content, and appends tool results", func(t *testing.T) {
+		msg := &domain.Message{
+			ID:             "msg-update-1",
+			ConversationID: "conv-update",
+			Role:           "assistant",
+			Content:        "original",
+			ToolCalls: []domain.ToolCall{
+				{ID: "call-1", Name: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}, Status: domain.ToolCallStatusPending},
+			},
+			Status: domain.MessageStatusPendingApproval,
+		}
+		require.NoError(t, repo.Create(ctx, msg))
+
+		// Mutate and Update.
+		msg.Status = domain.MessageStatusComplete
+		msg.Content = "done"
+		msg.ToolCalls[0].Status = domain.ToolCallStatusApproved
+		msg.ToolResults = append(msg.ToolResults, domain.ToolResult{
+			ToolCallID: "call-1",
+			Content:    map[string]interface{}{"ok": true},
+		})
+		require.NoError(t, repo.Update(ctx, msg))
+
+		// Re-fetch via ListByConversationID (since we don't have a FindByID yet).
+		msgs, err := repo.ListByConversationID(ctx, "conv-update", 10, 0)
+		require.NoError(t, err)
+		require.Len(t, msgs, 1)
+		assert.Equal(t, domain.MessageStatusComplete, msgs[0].Status)
+		assert.Equal(t, "done", msgs[0].Content)
+		require.Len(t, msgs[0].ToolCalls, 1)
+		assert.Equal(t, domain.ToolCallStatusApproved, msgs[0].ToolCalls[0].Status)
+		require.Len(t, msgs[0].ToolResults, 1)
+		assert.Equal(t, "call-1", msgs[0].ToolResults[0].ToolCallID)
+	})
+
+	t.Run("missing message returns ErrMessageNotFound", func(t *testing.T) {
+		err := repo.Update(ctx, &domain.Message{
+			ID:             "msg-update-missing",
+			ConversationID: "conv-update-missing",
+			Role:           "assistant",
+			Content:        "x",
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrMessageNotFound)
+	})
+}

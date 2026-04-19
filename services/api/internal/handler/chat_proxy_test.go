@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -372,6 +373,231 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 	require.True(t, ok)
 	require.Len(t, tools, 1)
 	assert.Equal(t, "telegram__send_channel_post", tools[0])
+}
+
+// TestChatProxy_ScannerBuffer_HandlesLargeToolResult documents HITL-13: the
+// SSE scanner buffer was bumped from 64KB to 1MB so large tool_result / pending
+// batch payloads do not trigger a bufio.ErrTooLong during streaming.
+// We stream a ~512KB tool_result event and assert the handler consumes it
+// without a scanner error and persists the assistant Message with a single
+// ToolResult whose payload matches.
+func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	// Build a ~512KB JSON payload (well above the old 64KB limit).
+	bigText := strings.Repeat("a", 500_000)
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// One tool_call, one giant tool_result, one done.
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"toolu_big","tool_name":"telegram__send_channel_post","tool_args":{"text":"x"}}` + "\n\n"))
+		payload := map[string]interface{}{"type": "tool_result", "tool_call_id": "toolu_big", "tool_name": "telegram__send_channel_post", "result": map[string]interface{}{"echo": bigText}}
+		b, _ := json.Marshal(payload)
+		_, _ = w.Write([]byte("data: "))
+		_, _ = w.Write(b)
+		_, _ = w.Write([]byte("\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	var persistedMsg *domain.Message
+	msgRepo := &MockMessageRepository{
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			if m.Role == "assistant" {
+				persistedMsg = m
+			}
+			return nil
+		},
+	}
+	h := newChatProxyNoProject(mockBiz, mockInteg, msgRepo, orch.URL)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-big", strings.NewReader(`{"message":"hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", "conv-big")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	require.NotNil(t, persistedMsg, "assistant message should be persisted")
+	require.Len(t, persistedMsg.ToolResults, 1, "the large tool_result should be captured without truncation")
+	inner, ok := persistedMsg.ToolResults[0].Content["echo"].(string)
+	require.True(t, ok)
+	assert.Equal(t, 500_000, len(inner), "payload must round-trip the full 500K chars")
+}
+
+// TestChatProxy_NoSyntheticToolCallID documents HITL-13 anti-footgun #4: the
+// synthetic "tc-N" ID generator was removed; chat_proxy propagates the LLM's
+// real tool_call.id verbatim from the orchestrator's SSE event.
+func TestChatProxy_NoSyntheticToolCallID(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"toolu_abc123","tool_name":"telegram__send_channel_post","tool_args":{"text":"x"}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"tool_result","tool_call_id":"toolu_abc123","tool_name":"telegram__send_channel_post","result":{"ok":true}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"done"}` + "\n\n"))
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	var persistedMsg *domain.Message
+	msgRepo := &MockMessageRepository{
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			if m.Role == "assistant" {
+				persistedMsg = m
+			}
+			return nil
+		},
+	}
+	h := newChatProxyNoProject(mockBiz, mockInteg, msgRepo, orch.URL)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-tcn", strings.NewReader(`{"message":"hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", "conv-tcn")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	require.NotNil(t, persistedMsg)
+	require.Len(t, persistedMsg.ToolCalls, 1)
+	assert.Equal(t, "toolu_abc123", persistedMsg.ToolCalls[0].ID, "ToolCall.ID must be the LLM's real id, not a synthetic tc-N")
+	require.Len(t, persistedMsg.ToolResults, 1)
+	assert.Equal(t, "toolu_abc123", persistedMsg.ToolResults[0].ToolCallID, "ToolResult must correlate by the real call_id, not by name")
+}
+
+// TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage covers the
+// HITL-01 pause-time persistence branch: on tool_approval_required, chat_proxy
+// persists an assistant Message with Status=pending_approval, ToolCalls marked
+// Status=pending_approval and ApprovalID=<batchID>-<callID>, and forwards the
+// SSE event to the client before closing the stream.
+func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"text","content":"Here I'll post:"}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"toolu_abc","tool_name":"telegram__send_channel_post","tool_args":{"text":"привет"}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"tool_approval_required","batch_id":"batch-1","calls":[{"call_id":"toolu_abc","tool_name":"telegram__send_channel_post","args":{"text":"привет"},"editable_fields":["text"],"floor":"manual"}]}` + "\n\n"))
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	var persistedMsg *domain.Message
+	msgRepo := &MockMessageRepository{
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			if m.Role == "assistant" {
+				persistedMsg = m
+			}
+			return nil
+		},
+	}
+	h := newChatProxyNoProject(mockBiz, mockInteg, msgRepo, orch.URL)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-pause", strings.NewReader(`{"message":"post something"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", "conv-pause")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	// Client received the pause event.
+	assert.Contains(t, rr.Body.String(), `"type":"tool_approval_required"`)
+	assert.Contains(t, rr.Body.String(), `"batch_id":"batch-1"`)
+
+	// Pending-approval Message is persisted.
+	require.NotNil(t, persistedMsg, "assistant message must be persisted at pause time")
+	assert.Equal(t, domain.MessageStatusPendingApproval, persistedMsg.Status)
+	assert.Equal(t, "Here I'll post:", persistedMsg.Content)
+	require.Len(t, persistedMsg.ToolCalls, 1)
+	assert.Equal(t, "toolu_abc", persistedMsg.ToolCalls[0].ID)
+	assert.Equal(t, "batch-1-toolu_abc", persistedMsg.ToolCalls[0].ApprovalID, "ApprovalID format is <batchID>-<callID>")
+	assert.Equal(t, domain.ToolCallStatusPending, persistedMsg.ToolCalls[0].Status)
+	assert.Empty(t, persistedMsg.ToolResults, "no tool results yet at pause time")
+}
+
+// TestChatProxy_ToolApprovalRequired_NoErrorIfPersistFails covers the
+// best-effort fallback: even if the Message insert fails (e.g. duplicate _id
+// from a prior crash), the client still receives the tool_approval_required
+// event so the approval card hydrates via GET /messages later.
+func TestChatProxy_ToolApprovalRequired_NoErrorIfPersistFails(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"tool_approval_required","batch_id":"batch-2","calls":[{"call_id":"toolu_fail","tool_name":"vk__publish_post","args":{"text":"x"},"floor":"manual"}]}` + "\n\n"))
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	msgRepo := &MockMessageRepository{
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			if m.Role == "assistant" {
+				return fmt.Errorf("simulated persist failure")
+			}
+			return nil
+		},
+	}
+	h := newChatProxyNoProject(mockBiz, mockInteg, msgRepo, orch.URL)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-fail", strings.NewReader(`{"message":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", "conv-fail")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	// Client still got the pause event (no error event).
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"type":"tool_approval_required"`)
+	assert.NotContains(t, rr.Body.String(), `"type":"error"`)
 }
 
 // TestChatProxy_ProjectEnrichment_StaleProjectID covers Behavior 3: when the
