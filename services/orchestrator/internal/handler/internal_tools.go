@@ -50,3 +50,36 @@ func (h *InternalToolsHandler) Names(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"names": names})
 }
+
+// InternalToolsAllHandler serves GET /internal/tools — the full registry
+// projection consumed by the API's GET /api/v1/tools passthrough (Plan 16-07).
+// Emits `{name, platform, floor, editable_fields, description}` per tool.
+//
+// Same cluster-internal visibility rules apply as for Names: this port is not
+// exposed publicly; the API service caches responses in-memory with a 5-min
+// TTL, so this endpoint sees minimal traffic even during heavy frontend load.
+type InternalToolsAllHandler struct {
+	Registry *tools.Registry
+}
+
+// NewInternalToolsAllHandler constructs the handler. Registry must be non-nil.
+func NewInternalToolsAllHandler(reg *tools.Registry) *InternalToolsAllHandler {
+	return &InternalToolsAllHandler{Registry: reg}
+}
+
+// ServeHTTP responds with `[{name, platform, floor, editable_fields, description}, ...]`
+// for every registered tool. EditableFields is always a non-null array
+// (possibly empty) so downstream consumers (React Query cache, Go JSON
+// decoders) never see null — matches the Phase 16 convention applied to
+// project.allowed_tools and similar list fields.
+func (h *InternalToolsAllHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	entries := h.Registry.AllEntries()
+	// Normalize nil EditableFields to [] so the JSON array is non-null.
+	for i := range entries {
+		if entries[i].EditableFields == nil {
+			entries[i].EditableFields = []string{}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(entries)
+}

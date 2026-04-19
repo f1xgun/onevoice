@@ -29,6 +29,7 @@ type Handlers struct {
 	AgentTask     *handler.AgentTaskHandler
 	Telemetry     *handler.TelemetryHandler
 	Project       *handler.ProjectHandler
+	HITL          *handler.HITLHandler // Phase 16: resolve + resume + GET /tools
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
@@ -122,6 +123,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Put("/projects/{id}", handlers.Project.Update)
 			r.Delete("/projects/{id}", handlers.Project.Delete)
 			r.Get("/projects/{id}/conversation-count", handlers.Project.ConversationCount)
+
+			// Phase 16 HITL routes (Plan 16-07)
+			if handlers.HITL != nil {
+				r.Post("/conversations/{id}/pending-tool-calls/{batch_id}/resolve", handlers.HITL.ResolvePendingToolCalls)
+				r.With(middleware.RateLimitByUser(redisClient, 10, time.Minute)).
+					Post("/chat/{id}/resume", handlers.HITL.Resume)
+				r.Get("/tools", handlers.HITL.GetTools)
+			}
 
 			// Password change
 			r.Put("/auth/password", handlers.Auth.ChangePassword)
