@@ -5,7 +5,7 @@ import { AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
-import { toolsForPlatform } from '@/lib/tools-catalogue';
+import { useTools, toolNamesForPlatform } from '@/lib/hooks/useTools';
 import type { Project } from '@/types/project';
 
 interface Props {
@@ -28,10 +28,15 @@ export function WhitelistWarningBanner({ integrationId, businessId, platform }: 
     }
   });
   const { data: projects } = useProjectsQuery();
+  const { data: tools, isLoading: toolsLoading, error: toolsError } = useTools();
 
+  // Degrade silently when the registry is still loading or errored — Phase 15
+  // UAT passed with the banner effectively optional, so "no banner" is an
+  // acceptable fallback rather than a blocking error state.
   if (dismissed || !projects) return null;
+  if (toolsLoading || toolsError || !tools) return null;
 
-  const newTools = toolsForPlatform(platform);
+  const newTools = toolNamesForPlatform(tools, platform);
   if (newTools.length === 0) return null;
 
   const excluded = (projects ?? [])

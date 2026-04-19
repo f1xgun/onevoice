@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { PLATFORM_COLORS, PLATFORM_FULL_LABELS } from '@/lib/platforms';
-import { TOOLS_BY_PLATFORM } from '@/lib/tools-catalogue';
+import { useTools, groupByPlatform, type PlatformKey } from '@/lib/hooks/useTools';
 
 interface ToolCheckboxGridProps {
   activeIntegrations: string[];
@@ -132,14 +132,22 @@ function PlatformSection({
   );
 }
 
-export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCheckboxGridProps) {
-  // Show all platforms that have tools in the catalogue, so a user can
-  // pre-configure a project before connecting a platform. If the user has
-  // zero integrations, show a helpful message but still render the full list.
-  const platforms = Object.keys(TOOLS_BY_PLATFORM).filter(
-    (p) => TOOLS_BY_PLATFORM[p] && (TOOLS_BY_PLATFORM[p] as string[]).length > 0
-  );
+// Platform ordering displayed to the user — matches the legacy Phase 15
+// catalogue's key order so UAT-approved screenshots remain pixel-stable.
+const PLATFORM_DISPLAY_ORDER: PlatformKey[] = [
+  'telegram',
+  'vk',
+  'yandex_business',
+  'google_business',
+];
 
+export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCheckboxGridProps) {
+  const { data: tools, isLoading } = useTools();
+
+  // Show all registered platforms (not just the user's active integrations)
+  // so a user can pre-configure a project before connecting a platform —
+  // matches Phase 15 behaviour. If the user has zero integrations, still show
+  // the platforms but render a helpful message instead of the grid below.
   if (activeIntegrations.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -148,13 +156,22 @@ export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCh
     );
   }
 
+  if (isLoading || !tools) {
+    return (
+      <p className="text-sm text-muted-foreground">Загрузка списка инструментов…</p>
+    );
+  }
+
+  const buckets = groupByPlatform(tools);
+  const platforms = PLATFORM_DISPLAY_ORDER.filter((p) => buckets[p].length > 0);
+
   return (
     <div className="space-y-3">
       {platforms.map((platform) => (
         <PlatformSection
           key={platform}
           platform={platform}
-          tools={TOOLS_BY_PLATFORM[platform] ?? []}
+          tools={buckets[platform].map((t) => t.name)}
           value={value}
           onChange={onChange}
         />
