@@ -101,6 +101,9 @@ func (f *fakeBusinessRepoHITL) GetByUserID(_ context.Context, _ uuid.UUID) (*dom
 	return nil, domain.ErrBusinessNotFound
 }
 func (f *fakeBusinessRepoHITL) Update(_ context.Context, _ *domain.Business) error { return nil }
+func (f *fakeBusinessRepoHITL) UpdateToolApprovals(_ context.Context, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
+	return nil
+}
 
 type fakeProjectRepoHITL struct {
 	proj *domain.Project
@@ -148,6 +151,15 @@ func (s *hitlBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.B
 }
 func (s *hitlBusinessService) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
 	return nil, nil
+}
+func (s *hitlBusinessService) GetToolApprovals(_ context.Context, _, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
+	if s.biz == nil {
+		return map[string]domain.ToolFloor{}, nil
+	}
+	return s.biz.ToolApprovals(), nil
+}
+func (s *hitlBusinessService) UpdateToolApprovals(_ context.Context, _, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
+	return nil
 }
 
 type hitlConvRepo struct {

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -51,12 +52,17 @@ func (r *projectRepository) Create(ctx context.Context, p *domain.Project) error
 	p.CreatedAt = now
 	p.UpdatedAt = now
 
+	overridesJSON, err := marshalApprovalOverrides(p.ApprovalOverrides)
+	if err != nil {
+		return fmt.Errorf("marshal approval_overrides: %w", err)
+	}
+
 	sql, args, err := r.sb.
 		Insert("projects").
 		Columns("id", "business_id", "name", "description", "system_prompt",
-			"whitelist_mode", "allowed_tools", "quick_actions", "created_at", "updated_at").
+			"whitelist_mode", "allowed_tools", "approval_overrides", "quick_actions", "created_at", "updated_at").
 		Values(p.ID, p.BusinessID, p.Name, p.Description, p.SystemPrompt,
-			string(p.WhitelistMode), p.AllowedTools, p.QuickActions, p.CreatedAt, p.UpdatedAt).
+			string(p.WhitelistMode), p.AllowedTools, overridesJSON, p.QuickActions, p.CreatedAt, p.UpdatedAt).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert: %w", err)
@@ -71,13 +77,44 @@ func (r *projectRepository) Create(ctx context.Context, p *domain.Project) error
 	return nil
 }
 
+// marshalApprovalOverrides serializes a ToolFloor map to a JSONB byte slice
+// suitable for a pgx parameter. Nil maps become `{}` (the column default is
+// `'{}'::jsonb`, so this keeps reads round-trip clean).
+func marshalApprovalOverrides(m map[string]domain.ToolFloor) ([]byte, error) {
+	if m == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(m)
+}
+
+// unmarshalApprovalOverrides is the inverse of marshalApprovalOverrides. A
+// nil / missing / malformed payload becomes a nil map — callers treat this
+// identically to "no overrides" because key-absence is the inherit encoding.
+func unmarshalApprovalOverrides(raw []byte) map[string]domain.ToolFloor {
+	if len(raw) == 0 || string(raw) == "{}" {
+		return nil
+	}
+	var out map[string]domain.ToolFloor
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
 // GetByID returns a project row by its UUID. Scoping to a business is the
 // caller's responsibility (service layer enforces cross-business isolation via
 // the returned BusinessID field).
+//
+// Phase 16: COALESCE(approval_overrides, '{}'::jsonb) shields callers from a
+// non-migrated DB (e.g., a dev env that hasn't run the 000004/000005
+// migration yet) — missing column would error at Scan, so we explicitly
+// default to '{}' at the query layer.
 func (r *projectRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Project, error) {
 	sql, args, err := r.sb.
 		Select("id", "business_id", "name", "description", "system_prompt",
-			"whitelist_mode", "allowed_tools", "quick_actions", "created_at", "updated_at").
+			"whitelist_mode", "allowed_tools",
+			"COALESCE(approval_overrides, '{}'::jsonb)::text",
+			"quick_actions", "created_at", "updated_at").
 		From("projects").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -87,9 +124,10 @@ func (r *projectRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.
 
 	var p domain.Project
 	var mode string
+	var overridesText string
 	err = r.pool.QueryRow(ctx, sql, args...).Scan(
 		&p.ID, &p.BusinessID, &p.Name, &p.Description, &p.SystemPrompt,
-		&mode, &p.AllowedTools, &p.QuickActions, &p.CreatedAt, &p.UpdatedAt,
+		&mode, &p.AllowedTools, &overridesText, &p.QuickActions, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -98,6 +136,7 @@ func (r *projectRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.
 		return nil, fmt.Errorf("query project: %w", err)
 	}
 	p.WhitelistMode = domain.WhitelistMode(mode)
+	p.ApprovalOverrides = unmarshalApprovalOverrides([]byte(overridesText))
 	return &p, nil
 }
 
@@ -105,7 +144,9 @@ func (r *projectRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.
 func (r *projectRepository) ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Project, error) {
 	sql, args, err := r.sb.
 		Select("id", "business_id", "name", "description", "system_prompt",
-			"whitelist_mode", "allowed_tools", "quick_actions", "created_at", "updated_at").
+			"whitelist_mode", "allowed_tools",
+			"COALESCE(approval_overrides, '{}'::jsonb)::text",
+			"quick_actions", "created_at", "updated_at").
 		From("projects").
 		Where(squirrel.Eq{"business_id": businessID}).
 		OrderBy("created_at DESC").
@@ -124,11 +165,13 @@ func (r *projectRepository) ListByBusinessID(ctx context.Context, businessID uui
 	for rows.Next() {
 		var p domain.Project
 		var mode string
+		var overridesText string
 		if err := rows.Scan(&p.ID, &p.BusinessID, &p.Name, &p.Description, &p.SystemPrompt,
-			&mode, &p.AllowedTools, &p.QuickActions, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			&mode, &p.AllowedTools, &overridesText, &p.QuickActions, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan project: %w", err)
 		}
 		p.WhitelistMode = domain.WhitelistMode(mode)
+		p.ApprovalOverrides = unmarshalApprovalOverrides([]byte(overridesText))
 		projects = append(projects, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -138,9 +181,20 @@ func (r *projectRepository) ListByBusinessID(ctx context.Context, businessID uui
 }
 
 // Update modifies mutable fields (name, description, system_prompt,
-// whitelist_mode, allowed_tools, quick_actions) and bumps updated_at.
+// whitelist_mode, allowed_tools, approval_overrides, quick_actions) and
+// bumps updated_at.
+//
+// Phase 16 (POLICY-06): approval_overrides is a JSONB map. Key-absence in the
+// persisted value encodes "inherit" (never a literal "inherit" string) — the
+// service layer is responsible for translating inherit from the request body
+// into key-absence before calling Update.
 func (r *projectRepository) Update(ctx context.Context, p *domain.Project) error {
 	p.UpdatedAt = time.Now()
+
+	overridesJSON, err := marshalApprovalOverrides(p.ApprovalOverrides)
+	if err != nil {
+		return fmt.Errorf("marshal approval_overrides: %w", err)
+	}
 
 	sql, args, err := r.sb.
 		Update("projects").
@@ -149,6 +203,7 @@ func (r *projectRepository) Update(ctx context.Context, p *domain.Project) error
 		Set("system_prompt", p.SystemPrompt).
 		Set("whitelist_mode", string(p.WhitelistMode)).
 		Set("allowed_tools", p.AllowedTools).
+		Set("approval_overrides", overridesJSON).
 		Set("quick_actions", p.QuickActions).
 		Set("updated_at", p.UpdatedAt).
 		Where(squirrel.Eq{"id": p.ID}).

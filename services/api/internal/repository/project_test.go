@@ -55,6 +55,8 @@ func TestProjectRepository_Create(t *testing.T) {
 		// Squirrel serializes uuid.UUID to string via Stringer before passing
 		// to pgx; pgxmock sees a string, not the original uuid.UUID. Use
 		// AnyArg() for every value to avoid driver-specific conversions.
+		// Phase 16: approval_overrides JSONB column inserted between allowed_tools
+		// and quick_actions — 11 args total (was 10).
 		mockPool.ExpectExec(`INSERT INTO projects`).
 			WithArgs(
 				pgxmock.AnyArg(), // id
@@ -64,6 +66,7 @@ func TestProjectRepository_Create(t *testing.T) {
 				"",
 				"inherit",
 				[]string{},
+				pgxmock.AnyArg(), // approval_overrides JSONB
 				[]string{},
 				pgxmock.AnyArg(), // created_at
 				pgxmock.AnyArg(), // updated_at
@@ -86,7 +89,7 @@ func TestProjectRepository_Create(t *testing.T) {
 				pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 				pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 				pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-				pgxmock.AnyArg(),
+				pgxmock.AnyArg(), pgxmock.AnyArg(),
 			).
 			WillReturnError(errors.New("ERROR: duplicate key value violates unique constraint \"idx_projects_business_name\""))
 
@@ -111,9 +114,9 @@ func TestProjectRepository_GetByID(t *testing.T) {
 
 		rows := pgxmock.NewRows([]string{
 			"id", "business_id", "name", "description", "system_prompt",
-			"whitelist_mode", "allowed_tools", "quick_actions", "created_at", "updated_at",
+			"whitelist_mode", "allowed_tools", "approval_overrides", "quick_actions", "created_at", "updated_at",
 		}).AddRow(projectID, businessID, "Reviews", "desc", "you reply to reviews",
-			"explicit", []string{"telegram__send_channel_post"}, []string{"Reply nicely"},
+			"explicit", []string{"telegram__send_channel_post"}, "{}", []string{"Reply nicely"},
 			now, now)
 
 		// squirrel/pgx convert uuid.UUID to string via Stringer — match with AnyArg.
@@ -154,10 +157,10 @@ func TestProjectRepository_ListByBusinessID(t *testing.T) {
 
 		rows := pgxmock.NewRows([]string{
 			"id", "business_id", "name", "description", "system_prompt",
-			"whitelist_mode", "allowed_tools", "quick_actions", "created_at", "updated_at",
+			"whitelist_mode", "allowed_tools", "approval_overrides", "quick_actions", "created_at", "updated_at",
 		}).
-			AddRow(uuid.New(), businessID, "Reviews", "", "", "all", []string{}, []string{}, now, now).
-			AddRow(uuid.New(), businessID, "Posts", "", "", "inherit", []string{}, []string{}, now.Add(-time.Minute), now.Add(-time.Minute))
+			AddRow(uuid.New(), businessID, "Reviews", "", "", "all", []string{}, "{}", []string{}, now, now).
+			AddRow(uuid.New(), businessID, "Posts", "", "", "inherit", []string{}, "{}", []string{}, now.Add(-time.Minute), now.Add(-time.Minute))
 
 		mockPool.ExpectQuery(`SELECT .+ FROM projects WHERE .+ ORDER BY created_at DESC`).
 			WithArgs(pgxmock.AnyArg()).
@@ -176,7 +179,7 @@ func TestProjectRepository_ListByBusinessID(t *testing.T) {
 
 		rows := pgxmock.NewRows([]string{
 			"id", "business_id", "name", "description", "system_prompt",
-			"whitelist_mode", "allowed_tools", "quick_actions", "created_at", "updated_at",
+			"whitelist_mode", "allowed_tools", "approval_overrides", "quick_actions", "created_at", "updated_at",
 		})
 
 		mockPool.ExpectQuery(`SELECT .+ FROM projects WHERE`).
@@ -208,12 +211,14 @@ func TestProjectRepository_Update(t *testing.T) {
 			QuickActions:  []string{"quick"},
 		}
 
-		// UPDATE has 8 bound arguments (name, description, system_prompt,
-		// whitelist_mode, allowed_tools, quick_actions, updated_at, id).
+		// UPDATE has 9 bound arguments (name, description, system_prompt,
+		// whitelist_mode, allowed_tools, approval_overrides, quick_actions,
+		// updated_at, id). Phase 16 added approval_overrides.
 		mockPool.ExpectExec(`UPDATE projects SET`).
 			WithArgs(
 				pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 				pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+				pgxmock.AnyArg(),
 			).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
@@ -230,6 +235,7 @@ func TestProjectRepository_Update(t *testing.T) {
 			WithArgs(
 				pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 				pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+				pgxmock.AnyArg(),
 			).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 

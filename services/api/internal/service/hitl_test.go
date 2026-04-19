@@ -44,7 +44,12 @@ func (s *stubPendingRepo) GetByBatchID(_ context.Context, batchID string) (*doma
 	if !ok {
 		return nil, domain.ErrBatchNotFound
 	}
-	return b, nil
+	// Deep-copy to avoid races in concurrent-resolve tests where one goroutine
+	// is still reading fields on the batch while another has already mutated
+	// Status via AtomicTransitionToResolving.
+	cp := *b
+	cp.Calls = append([]domain.PendingCall(nil), b.Calls...)
+	return &cp, nil
 }
 func (s *stubPendingRepo) ListPendingByConversation(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
 	return nil, nil
@@ -110,6 +115,9 @@ func (s *stubBusinessRepo) Update(_ context.Context, b *domain.Business) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Business = b
+	return nil
+}
+func (s *stubBusinessRepo) UpdateToolApprovals(_ context.Context, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
 	return nil
 }
 

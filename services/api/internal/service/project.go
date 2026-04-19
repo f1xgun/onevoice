@@ -10,13 +10,21 @@ import (
 
 // CreateProjectInput is the validated payload for Create / Update. The same
 // shape is used for both operations (per 15-CONTEXT D-02 — same form).
+//
+// Phase 16 (POLICY-06): ApprovalOverrides is the per-project tool-floor
+// override map. Keys are tool names; values are "auto" or "manual".
+// A key whose value is "inherit" at the request level MUST be stripped
+// before reaching the repo — inherit is encoded as KEY ABSENCE in the
+// persisted JSONB (Overview invariant #8). The handler owns this
+// transformation before passing the map down.
 type CreateProjectInput struct {
-	Name          string
-	Description   string
-	SystemPrompt  string
-	WhitelistMode domain.WhitelistMode
-	AllowedTools  []string
-	QuickActions  []string
+	Name              string
+	Description       string
+	SystemPrompt      string
+	WhitelistMode     domain.WhitelistMode
+	AllowedTools      []string
+	ApprovalOverrides map[string]domain.ToolFloor
+	QuickActions      []string
 }
 
 // UpdateProjectInput is identical to CreateProjectInput (same form both
@@ -64,13 +72,14 @@ func (s *ProjectService) Create(ctx context.Context, businessID uuid.UUID, input
 		return nil, err
 	}
 	p := &domain.Project{
-		BusinessID:    businessID,
-		Name:          input.Name,
-		Description:   input.Description,
-		SystemPrompt:  input.SystemPrompt,
-		WhitelistMode: input.WhitelistMode,
-		AllowedTools:  nilToEmptyStrings(input.AllowedTools),
-		QuickActions:  nilToEmptyStrings(input.QuickActions),
+		BusinessID:        businessID,
+		Name:              input.Name,
+		Description:       input.Description,
+		SystemPrompt:      input.SystemPrompt,
+		WhitelistMode:     input.WhitelistMode,
+		AllowedTools:      nilToEmptyStrings(input.AllowedTools),
+		ApprovalOverrides: input.ApprovalOverrides,
+		QuickActions:      nilToEmptyStrings(input.QuickActions),
 	}
 	if err := s.repo.Create(ctx, p); err != nil {
 		return nil, err
@@ -115,6 +124,7 @@ func (s *ProjectService) Update(ctx context.Context, businessID, id uuid.UUID, i
 	p.SystemPrompt = input.SystemPrompt
 	p.WhitelistMode = input.WhitelistMode
 	p.AllowedTools = nilToEmptyStrings(input.AllowedTools)
+	p.ApprovalOverrides = input.ApprovalOverrides
 	p.QuickActions = nilToEmptyStrings(input.QuickActions)
 	if err := s.repo.Update(ctx, p); err != nil {
 		return nil, err
