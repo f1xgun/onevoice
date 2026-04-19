@@ -58,6 +58,39 @@ func (m *MockBusinessService) Update(ctx context.Context, business *domain.Busin
 	return args.Get(0).(*domain.Business), args.Error(1)
 }
 
+// Phase 16 POLICY-05 stubs. Default behavior: return nil/empty so existing
+// tests that don't exercise these paths keep working unchanged.
+func (m *MockBusinessService) GetToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID) (map[string]domain.ToolFloor, error) {
+	if !m.hasExpectation("GetToolApprovals") {
+		return map[string]domain.ToolFloor{}, nil
+	}
+	args := m.Called(ctx, actorUserID, businessID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string]domain.ToolFloor), args.Error(1)
+}
+
+func (m *MockBusinessService) UpdateToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
+	if !m.hasExpectation("UpdateToolApprovals") {
+		return nil
+	}
+	args := m.Called(ctx, actorUserID, businessID, approvals)
+	return args.Error(0)
+}
+
+// hasExpectation reports whether a method has a configured .On() expectation.
+// Used so new interface methods don't break existing tests that didn't
+// explicitly stub them.
+func (m *MockBusinessService) hasExpectation(method string) bool {
+	for _, call := range m.ExpectedCalls {
+		if call.Method == method {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGetBusiness(t *testing.T) {
 	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
 	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")

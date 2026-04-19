@@ -20,6 +20,10 @@ import (
 type ProjectHandler struct {
 	projectService  ProjectService
 	businessService BusinessService
+	// toolsCache is optional — required only for POLICY-06 approval-overrides
+	// validation on PUT /projects/{id}. When nil, approvalOverrides in the
+	// request body are rejected with a 503.
+	toolsCache ToolsCache
 }
 
 // NewProjectHandler constructs a ProjectHandler. Both dependencies are
@@ -38,28 +42,81 @@ func NewProjectHandler(ps ProjectService, bs BusinessService) (*ProjectHandler, 
 	}, nil
 }
 
+// SetToolsCache wires a tools-registry cache so PUT /projects/{id} can
+// validate approvalOverrides keys against the live orchestrator registry
+// (POLICY-06). Safe to call with nil to disable the field.
+func (h *ProjectHandler) SetToolsCache(c ToolsCache) {
+	h.toolsCache = c
+}
+
 // projectRequest is the JSON shape consumed by both Create and Update —
 // Plan 15-CONTEXT D-02 says the same form handles both operations.
+//
+// Phase 16 (POLICY-06) — ApprovalOverrides is a map of tool names to floor
+// strings. Valid values are "auto" | "manual" | "inherit". "inherit" is
+// stripped from the map before persistence — key-absence is the canonical
+// encoding of inherit (Overview invariant #8). The handler does this
+// translation in buildApprovalOverrides() below.
 type projectRequest struct {
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	SystemPrompt  string   `json:"systemPrompt"`
-	WhitelistMode string   `json:"whitelistMode"`
-	AllowedTools  []string `json:"allowedTools"`
-	QuickActions  []string `json:"quickActions"`
+	Name              string            `json:"name"`
+	Description       string            `json:"description"`
+	SystemPrompt      string            `json:"systemPrompt"`
+	WhitelistMode     string            `json:"whitelistMode"`
+	AllowedTools      []string          `json:"allowedTools"`
+	ApprovalOverrides map[string]string `json:"approvalOverrides"`
+	QuickActions      []string          `json:"quickActions"`
 }
 
 // toInput converts the wire-format request into the service-layer input struct.
 // The service layer owns validation of name/prompt-length/mode/empty-explicit.
-func (req projectRequest) toInput() service.CreateProjectInput {
+// Edit-field validation for approvalOverrides lives in the handler since it
+// requires the tools cache which the service doesn't have.
+func (req projectRequest) toInput(overrides map[string]domain.ToolFloor) service.CreateProjectInput {
 	return service.CreateProjectInput{
-		Name:          req.Name,
-		Description:   req.Description,
-		SystemPrompt:  req.SystemPrompt,
-		WhitelistMode: domain.WhitelistMode(req.WhitelistMode),
-		AllowedTools:  req.AllowedTools,
-		QuickActions:  req.QuickActions,
+		Name:              req.Name,
+		Description:       req.Description,
+		SystemPrompt:      req.SystemPrompt,
+		WhitelistMode:     domain.WhitelistMode(req.WhitelistMode),
+		AllowedTools:      req.AllowedTools,
+		ApprovalOverrides: overrides,
+		QuickActions:      req.QuickActions,
 	}
+}
+
+// buildApprovalOverrides validates and strips inherit-valued entries from the
+// request's approvalOverrides map. Returns (overrides, httpStatus, errorBody).
+//  - Unknown tool name → (nil, 400, {"error":"unknown tool: X"})
+//  - Invalid value (not in {auto,manual,inherit}) → (nil, 400, {"error":"..."})
+//  - "inherit" → key stripped from the returned map (inherit == absence)
+// When the handler's toolsCache is nil, returns (nil, 503, ...) because we
+// cannot validate without the live registry.
+func (h *ProjectHandler) buildApprovalOverrides(body map[string]string) (map[string]domain.ToolFloor, int, map[string]string) {
+	if len(body) == 0 {
+		return nil, 0, nil
+	}
+	if h.toolsCache == nil {
+		return nil, http.StatusServiceUnavailable, map[string]string{"error": "tool registry unavailable"}
+	}
+	out := make(map[string]domain.ToolFloor, len(body))
+	for toolName, val := range body {
+		if !h.toolsCache.Has(toolName) {
+			return nil, http.StatusBadRequest, map[string]string{"error": "unknown tool: " + toolName}
+		}
+		switch val {
+		case "auto":
+			out[toolName] = domain.ToolFloorAuto
+		case "manual":
+			out[toolName] = domain.ToolFloorManual
+		case "inherit":
+			// Key absence encoding — do not persist.
+			continue
+		default:
+			return nil, http.StatusBadRequest, map[string]string{
+				"error": "invalid floor for tool " + toolName + ": must be auto, manual, or inherit",
+			}
+		}
+	}
+	return out, 0, nil
 }
 
 // mapProjectError translates service/domain errors into HTTP status codes and
@@ -126,8 +183,13 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	overrides, status, errBody := h.buildApprovalOverrides(req.ApprovalOverrides)
+	if status != 0 {
+		writeJSON(w, status, errBody)
+		return
+	}
 
-	project, err := h.projectService.Create(r.Context(), businessID, req.toInput())
+	project, err := h.projectService.Create(r.Context(), businessID, req.toInput(overrides))
 	if err != nil {
 		h.mapProjectError(r.Context(), w, err, "create")
 		return
@@ -185,8 +247,13 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	overrides, status, errBody := h.buildApprovalOverrides(req.ApprovalOverrides)
+	if status != 0 {
+		writeJSON(w, status, errBody)
+		return
+	}
 
-	project, err := h.projectService.Update(r.Context(), businessID, id, req.toInput())
+	project, err := h.projectService.Update(r.Context(), businessID, id, req.toInput(overrides))
 	if err != nil {
 		h.mapProjectError(r.Context(), w, err, "update")
 		return

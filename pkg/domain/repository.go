@@ -21,6 +21,10 @@ type BusinessRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Business, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*Business, error)
 	Update(ctx context.Context, business *Business) error
+	// UpdateToolApprovals replaces only settings.tool_approvals on the target
+	// business, preserving other keys inside the generic settings JSONB.
+	// Phase 16 (POLICY-05): feeds PUT /api/v1/business/{id}/tool-approvals.
+	UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]ToolFloor) error
 }
 
 type BusinessScheduleRepository interface {

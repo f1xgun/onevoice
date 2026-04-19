@@ -15,10 +15,11 @@ import (
 
 // Mock BusinessRepository
 type mockBusinessRepository struct {
-	createFunc      func(ctx context.Context, business *domain.Business) error
-	getByIDFunc     func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
-	getByUserIDFunc func(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
-	updateFunc      func(ctx context.Context, business *domain.Business) error
+	createFunc               func(ctx context.Context, business *domain.Business) error
+	getByIDFunc              func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
+	getByUserIDFunc          func(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
+	updateFunc               func(ctx context.Context, business *domain.Business) error
+	updateToolApprovalsFunc  func(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
 
 func (m *mockBusinessRepository) Create(ctx context.Context, business *domain.Business) error {
@@ -45,6 +46,13 @@ func (m *mockBusinessRepository) GetByUserID(ctx context.Context, userID uuid.UU
 func (m *mockBusinessRepository) Update(ctx context.Context, business *domain.Business) error {
 	if m.updateFunc != nil {
 		return m.updateFunc(ctx, business)
+	}
+	return nil
+}
+
+func (m *mockBusinessRepository) UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
+	if m.updateToolApprovalsFunc != nil {
+		return m.updateToolApprovalsFunc(ctx, businessID, approvals)
 	}
 	return nil
 }

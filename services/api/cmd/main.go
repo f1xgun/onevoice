@@ -304,6 +304,12 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("create hitl handler: %w", err)
 	}
+	// Wire the shared ToolsRegistryCache into the business + project
+	// handlers so PUT /business/{id}/tool-approvals and
+	// PUT /projects/{id} can validate approval-overrides keys against the
+	// live orchestrator registry before persisting (POLICY-05, POLICY-06).
+	businessHandler.SetToolsCache(toolsCache)
+	projectHandler.SetToolsCache(toolsCache)
 
 	handlers := &router.Handlers{
 		Auth:          authHandler,

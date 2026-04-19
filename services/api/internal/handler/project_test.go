@@ -90,6 +90,12 @@ func (m *mockProjectBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*d
 func (m *mockProjectBusinessService) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
 	return nil, nil
 }
+func (m *mockProjectBusinessService) GetToolApprovals(_ context.Context, _, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
+	return map[string]domain.ToolFloor{}, nil
+}
+func (m *mockProjectBusinessService) UpdateToolApprovals(_ context.Context, _, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
+	return nil
+}
 
 var _ BusinessService = (*mockProjectBusinessService)(nil)
 

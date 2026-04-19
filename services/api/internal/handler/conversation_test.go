@@ -177,6 +177,12 @@ func (s *noopBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.B
 func (s *noopBusinessService) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
 	return nil, nil
 }
+func (s *noopBusinessService) GetToolApprovals(_ context.Context, _, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
+	return map[string]domain.ToolFloor{}, nil
+}
+func (s *noopBusinessService) UpdateToolApprovals(_ context.Context, _, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
+	return nil
+}
 
 // noopProjectService returns ErrProjectNotFound by default. Tests that need
 // a populated project override GetByIDFunc.

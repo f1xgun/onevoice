@@ -131,6 +131,11 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 					Post("/chat/{id}/resume", handlers.HITL.Resume)
 				r.Get("/tools", handlers.HITL.GetTools)
 			}
+			// POLICY-05 business tool-approvals CRUD.
+			if handlers.Business != nil {
+				r.Get("/business/{id}/tool-approvals", handlers.Business.GetBusinessToolApprovals)
+				r.Put("/business/{id}/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)
+			}
 
 			// Password change
 			r.Put("/auth/password", handlers.Auth.ChangePassword)
