@@ -36,7 +36,10 @@ import { QuickActionsEditor } from './QuickActionsEditor';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
 import { useTools } from '@/lib/hooks/useTools';
 import { useBusinessToolApprovals } from '@/lib/hooks/useBusinessToolApprovals';
-import type { Project, ProjectApprovalOverrides as ProjectApprovalOverridesMap } from '@/types/project';
+import type {
+  Project,
+  ProjectApprovalOverrides as ProjectApprovalOverridesMap,
+} from '@/types/project';
 
 const MAX_SYSTEM_PROMPT_CHARS = 4000;
 

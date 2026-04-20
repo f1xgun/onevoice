@@ -16,9 +16,7 @@ describe('WhitelistRadio', () => {
 
     // Helper text
     expect(
-      screen.getByText(
-        'Использовать настройки бизнеса (по умолчанию все доступные инструменты).'
-      )
+      screen.getByText('Использовать настройки бизнеса (по умолчанию все доступные инструменты).')
     ).toBeInTheDocument();
     expect(
       screen.getByText('Любой инструмент активной интеграции доступен LLM.')

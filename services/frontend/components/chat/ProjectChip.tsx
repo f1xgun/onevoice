@@ -19,10 +19,7 @@ export function ProjectChip({ projectId, projectName }: Props) {
     return (
       <span
         aria-label="Чат не привязан к проекту"
-        className={cn(
-          chipBase,
-          'cursor-default border-border italic text-muted-foreground'
-        )}
+        className={cn(chipBase, 'cursor-default border-border italic text-muted-foreground')}
       >
         <FolderOpen size={12} />
         <span className="truncate">{UNASSIGNED_LABEL}</span>

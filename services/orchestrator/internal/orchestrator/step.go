@@ -88,7 +88,12 @@ type RunState struct {
 // OutcomePaused so the caller's goroutine exits cleanly (HITL-03).
 //
 // Signature is anti-footgun #3 — see 16-OVERVIEW.md. Any deviation blocks
-// the phase: the wave-2 grep gate confirms the literal substring.
+// the phase: the wave-2 grep gate confirms the literal substring. The
+// StepOutcome return is currently unused by Run (it just calls close(ch)) but
+// IS consumed by Resume's dispatchApprovedCalls path — suppressing unparam
+// because the return value is load-bearing downstream.
+//
+//nolint:unparam // StepOutcome consumed by Resume — see resume.go.
 func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- Event) (StepOutcome, string, error) {
 	for state.Iter < o.options.MaxIterations {
 		// 1. Call the LLM
@@ -247,7 +252,6 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 	}
 	return OutcomeMaxIterations, "", nil
 }
-
 
 // buildPendingBatch assembles the PendingToolCallBatch that will be persisted
 // at pause time. ProjectID is threaded through from RunState so Plan 16-07's

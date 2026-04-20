@@ -323,7 +323,7 @@ func TestClassifyYandexError_TransientNetworkError(t *testing.T) {
 
 // --- Phase 16 HITL-08: Redis dedupe gate tests ---
 
-// countingBrowser wraps stubBrowser behaviour with an atomic call counter.
+// countingBrowser wraps stubBrowser behavior with an atomic call counter.
 type countingBrowser struct {
 	stubBrowser
 	postCalls int64

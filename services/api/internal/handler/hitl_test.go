@@ -125,7 +125,7 @@ func (f *fakeProjectRepoHITL) Delete(_ context.Context, _ uuid.UUID) error      
 func (f *fakeProjectRepoHITL) CountConversationsByID(_ context.Context, _ uuid.UUID) (int, error) {
 	return 0, nil
 }
-func (f *fakeProjectRepoHITL) HardDeleteCascade(_ context.Context, _ uuid.UUID) (int, int, error) {
+func (f *fakeProjectRepoHITL) HardDeleteCascade(_ context.Context, _ uuid.UUID) (convs, msgs int, err error) {
 	return 0, 0, nil
 }
 
@@ -712,7 +712,7 @@ func TestGetTools_ReturnsRegistryProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/tools", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tools", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, uuid.New())
 	req = req.WithContext(ctx)
 	rec := httptest.NewRecorder()

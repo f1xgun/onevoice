@@ -70,8 +70,8 @@ const ResumeBatchHeader = "X-Onevoice-Resume-Batch-Id"
 type ChatProxyHandler struct {
 	businessService    BusinessService
 	integrationService IntegrationService
-	projectService     ProjectService                  // Phase 15 — enrichment path
-	conversationRepo   domain.ConversationRepository   // Phase 15 — read-only lookup of conv.ProjectID
+	projectService     ProjectService                // Phase 15 — enrichment path
+	conversationRepo   domain.ConversationRepository // Phase 15 — read-only lookup of conv.ProjectID
 	messageRepo        domain.MessageRepository
 	pendingRepo        domain.PendingToolCallRepository // Phase 16 — HITL approval batches
 	postRepo           domain.PostRepository
@@ -147,10 +147,10 @@ type chatProxyRequest struct {
 //     persisted pending_approval Message (D-17).
 //   - Implicit resume (D-04): no header, but the conversation has an active
 //     Message (Status=pending_approval|in_progress):
-//       * if a resolving batch exists → rejoin as implicit resume;
-//       * if a pending batch exists → re-emit the tool_approval_required
-//         SSE event constructed from the stored batch and close (UI rehydrates);
-//       * orphan in_progress → emit inline "turn_already_in_progress" error.
+//   - if a resolving batch exists → rejoin as implicit resume;
+//   - if a pending batch exists → re-emit the tool_approval_required
+//     SSE event constructed from the stored batch and close (UI rehydrates);
+//   - orphan in_progress → emit inline "turn_already_in_progress" error.
 //   - No active Message → normal new-turn flow (unchanged).
 func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
@@ -488,8 +488,8 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		case "tool_approval_required":
 			// HITL-01 / HITL-02: single pause event per turn. Copy the event
 			// so we can persist after the scanner loop exits.
-			copy := ev
-			pauseEvent = &copy
+			evCopy := ev
+			pauseEvent = &evCopy
 		case "tool_rejected":
 			// HITL-09: synthetic rejection (policy_forbidden /
 			// policy_revoked / user_rejected). Forward-only — no
@@ -815,11 +815,9 @@ func (h *ChatProxyHandler) streamResume(
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	// Work on a local copy so we flush the full final state in one Update.
+	// msg.Content is intentionally not cleared — we preserve the Content
+	// builder semantics and start from whatever was persisted at pause time.
 	msg := *activeMsg
-	if msg.Content == "" {
-		// preserve the Content builder semantics — start from whatever was
-		// persisted at pause time.
-	}
 	var postText strings.Builder
 	postText.WriteString(msg.Content)
 

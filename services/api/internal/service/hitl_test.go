@@ -145,7 +145,7 @@ func (s *stubProjectRepo) Delete(_ context.Context, _ uuid.UUID) error       { r
 func (s *stubProjectRepo) CountConversationsByID(_ context.Context, _ uuid.UUID) (int, error) {
 	return 0, nil
 }
-func (s *stubProjectRepo) HardDeleteCascade(_ context.Context, _ uuid.UUID) (int, int, error) {
+func (s *stubProjectRepo) HardDeleteCascade(_ context.Context, _ uuid.UUID) (convs, msgs int, err error) {
 	return 0, 0, nil
 }
 

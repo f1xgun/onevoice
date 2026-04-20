@@ -60,7 +60,7 @@ export function WhitelistRadio({ value, onChange, name }: WhitelistRadioProps) {
           >
             <RadioGroupItem value={opt.value} id={id} className="mt-0.5" />
             <div className="flex-1">
-              <Label htmlFor={id} className="text-sm font-medium cursor-pointer">
+              <Label htmlFor={id} className="cursor-pointer text-sm font-medium">
                 {opt.label}
               </Label>
               <p className="mt-1 text-xs text-muted-foreground">{opt.helper}</p>

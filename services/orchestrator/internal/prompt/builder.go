@@ -107,7 +107,7 @@ func appendProjectBlock(base string, proj *ProjectContext) string {
 		sb.WriteString("Если пользователь просит действие, объясни ограничение и предложи перенести чат в другой проект. ")
 		sb.WriteString("НЕ подменяй канал молча.\n")
 	case domain.WhitelistModeAll, domain.WhitelistModeInherit, "":
-		// No hint — same behaviour as before GAP-02.
+		// No hint — same behavior as before GAP-02.
 	}
 
 	return sb.String()

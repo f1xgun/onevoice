@@ -117,11 +117,11 @@ type RunRequest struct {
 	// pause time. Empty strings are tolerated: the repo stores them
 	// verbatim and the resolve handler will 403/404 on missing context
 	// when it needs business-scoped auth (Plan 16-07).
-	ConversationID   string
-	BusinessID       string
-	ProjectID        string
-	UserIDString     string
-	MessageID        string
+	ConversationID string
+	BusinessID     string
+	ProjectID      string
+	UserIDString   string
+	MessageID      string
 
 	// Phase 16 HITL policy inputs — consulted by hitl.Resolve at pause
 	// time to classify each LLM-proposed tool call. nil maps are tolerated

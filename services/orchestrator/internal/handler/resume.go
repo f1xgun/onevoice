@@ -138,6 +138,8 @@ func (h *ResumeHandler) Resume(w http.ResponseWriter, r *http.Request) {
 			// see the new pause event.
 			sse.BatchID = event.BatchID
 			sse.Calls = event.Calls
+		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
+			// No additional fields beyond Type + Content.
 		}
 		writeSSE(ctx, w, flusher, sse)
 	}

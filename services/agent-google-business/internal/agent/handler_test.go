@@ -11,11 +11,12 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/services/agent-google-business/internal/gbp"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type mockTokenFetcher struct {
@@ -200,8 +201,8 @@ func TestHandler_ReplyReview_MissingText(t *testing.T) {
 
 func TestClassifyGBPError(t *testing.T) {
 	tests := []struct {
-		name        string
-		err         error
+		name         string
+		err          error
 		nonRetryable bool
 	}{
 		{"nil", nil, false},

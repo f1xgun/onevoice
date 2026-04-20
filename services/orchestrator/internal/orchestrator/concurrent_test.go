@@ -66,6 +66,8 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 			toolResults = append(toolResults, e)
 		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
 			// ignore in this test
+		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
+			// Not relevant for this test — ignored.
 		}
 	}
 
@@ -131,6 +133,8 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 			texts = append(texts, e)
 		case orchestrator.EventToolCall, orchestrator.EventError, orchestrator.EventDone:
 			// ignore in this test
+		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
+			// Not relevant for this test — ignored.
 		}
 	}
 

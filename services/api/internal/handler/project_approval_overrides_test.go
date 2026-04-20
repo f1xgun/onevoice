@@ -49,7 +49,7 @@ func (s *stubProjectSvc) Update(ctx context.Context, bid, id uuid.UUID, input se
 	}
 	return &domain.Project{ID: id, BusinessID: bid, Name: input.Name, ApprovalOverrides: input.ApprovalOverrides}, nil
 }
-func (s *stubProjectSvc) DeleteCascade(_ context.Context, _, _ uuid.UUID) (int, int, error) {
+func (s *stubProjectSvc) DeleteCascade(_ context.Context, _, _ uuid.UUID) (convs, msgs int, err error) {
 	return 0, 0, nil
 }
 func (s *stubProjectSvc) CountConversations(_ context.Context, _, _ uuid.UUID) (int, error) {
@@ -84,7 +84,7 @@ func (s *stubBusinessSvcProj) UpdateToolApprovals(_ context.Context, _, _ uuid.U
 	return nil
 }
 
-func servePUTProject(t *testing.T, h *handler.ProjectHandler, projectID uuid.UUID, userID uuid.UUID, body []byte) *httptest.ResponseRecorder {
+func servePUTProject(t *testing.T, h *handler.ProjectHandler, projectID, userID uuid.UUID, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/projects/"+projectID.String(), bytes.NewReader(body))
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)

@@ -19,7 +19,12 @@ interface Props {
 
 const MAX_VISIBLE = 20;
 
-export function ProjectSection({ project, conversations, activeConversationId, onNavigate }: Props) {
+export function ProjectSection({
+  project,
+  conversations,
+  activeConversationId,
+  onNavigate,
+}: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const createConversation = useCreateConversation();

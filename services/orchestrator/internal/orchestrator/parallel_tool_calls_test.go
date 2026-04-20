@@ -97,6 +97,8 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 		case orchestrator.EventToolResult:
 			toolResultEvents = append(toolResultEvents, e)
 		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
+		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
+			// Not relevant for this test — ignored.
 		}
 	}
 	elapsed := time.Since(start)
@@ -302,6 +304,8 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 		case orchestrator.EventToolResult:
 			results = append(results, e)
 		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
+		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
+			// Not relevant for this test — ignored.
 		}
 	}
 

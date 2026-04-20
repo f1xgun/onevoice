@@ -33,19 +33,19 @@ type ListLocationsResponse struct {
 
 // Review represents a Google Business Profile review.
 type Review struct {
-	Name          string        `json:"name"` // e.g., "accounts/123/locations/456/reviews/789"
-	ReviewID      string        `json:"reviewId"`
-	Reviewer      Reviewer      `json:"reviewer"`
-	StarRating    string        `json:"starRating"` // ONE, TWO, THREE, FOUR, FIVE
-	Comment       string        `json:"comment"`
-	CreateTime    string        `json:"createTime"`
-	UpdateTime    string        `json:"updateTime"`
-	ReviewReply   *ReviewReply  `json:"reviewReply,omitempty"`
+	Name        string       `json:"name"` // e.g., "accounts/123/locations/456/reviews/789"
+	ReviewID    string       `json:"reviewId"`
+	Reviewer    Reviewer     `json:"reviewer"`
+	StarRating  string       `json:"starRating"` // ONE, TWO, THREE, FOUR, FIVE
+	Comment     string       `json:"comment"`
+	CreateTime  string       `json:"createTime"`
+	UpdateTime  string       `json:"updateTime"`
+	ReviewReply *ReviewReply `json:"reviewReply,omitempty"`
 }
 
 // Reviewer contains info about the review author.
 type Reviewer struct {
-	DisplayName   string `json:"displayName"`
+	DisplayName     string `json:"displayName"`
 	ProfilePhotoURL string `json:"profilePhotoUrl,omitempty"`
 }
 

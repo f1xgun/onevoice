@@ -95,7 +95,7 @@ type RefreshToken struct {
 // Returns a non-nil empty map when Settings is nil, when the tool_approvals
 // key is missing, or when its value is not a map. Invalid enum values (i.e.
 // anything outside ValidToolFloor) are skipped silently — the safe default
-// behaviour is "fall back to the registry floor", which downstream
+// behavior is "fall back to the registry floor", which downstream
 // hitl.Resolve achieves automatically when a key is absent.
 //
 // This accessor is used by the orchestrator at pause time and by the API at

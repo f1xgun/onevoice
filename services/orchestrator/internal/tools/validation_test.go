@@ -137,7 +137,7 @@ func TestValidateEditArgs(t *testing.T) {
 				t.Fatalf("ValidateEditArgs(%q, %v) = nil, want error", tc.tool, tc.args)
 			}
 			switch want := tc.wantErrAs.(type) {
-			case *(*tools.ErrFieldNotEditable):
+			case **tools.ErrFieldNotEditable:
 				var got *tools.ErrFieldNotEditable
 				if !errors.As(err, &got) {
 					t.Fatalf("expected *ErrFieldNotEditable, got %T (%v)", err, err)
@@ -154,7 +154,7 @@ func TestValidateEditArgs(t *testing.T) {
 				if !tc.nilEditLst && got.Editable == nil {
 					t.Fatalf("Editable = nil, want non-nil allowlist for known tool %q", tc.tool)
 				}
-			case *(*tools.ErrNonScalarValue):
+			case **tools.ErrNonScalarValue:
 				var got *tools.ErrNonScalarValue
 				if !errors.As(err, &got) {
 					t.Fatalf("expected *ErrNonScalarValue, got %T (%v)", err, err)
@@ -220,7 +220,7 @@ func contains(s, needle string) bool {
 }
 
 func indexOf(s, needle string) int {
-	if len(needle) == 0 {
+	if needle == "" {
 		return 0
 	}
 	for i := 0; i+len(needle) <= len(s); i++ {

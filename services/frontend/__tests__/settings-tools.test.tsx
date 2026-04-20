@@ -152,9 +152,7 @@ describe('ToolsPageClient — /settings/tools (POLICY-05)', () => {
     const saveBtn = await screen.findByRole('button', { name: /Сохранить/ });
     expect(saveBtn).toBeDisabled();
 
-    await userEvent.click(
-      screen.getByLabelText(`Режим одобрения для ${TELEGRAM_POST.name}`)
-    );
+    await userEvent.click(screen.getByLabelText(`Режим одобрения для ${TELEGRAM_POST.name}`));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Сохранить/ })).toBeEnabled();
@@ -171,9 +169,7 @@ describe('ToolsPageClient — /settings/tools (POLICY-05)', () => {
 
     // Flip telegram post auto; leave telegram photo untouched (manual by
     // default); yandex reply starts at auto from server.
-    await userEvent.click(
-      screen.getByLabelText(`Режим одобрения для ${TELEGRAM_POST.name}`)
-    );
+    await userEvent.click(screen.getByLabelText(`Режим одобрения для ${TELEGRAM_POST.name}`));
 
     await userEvent.click(screen.getByRole('button', { name: /Сохранить/ }));
 

@@ -1,8 +1,5 @@
 import { api } from '@/lib/api';
-import {
-  businessToolApprovalsResponseSchema,
-  type ToolApprovals,
-} from '@/lib/schemas';
+import { businessToolApprovalsResponseSchema, type ToolApprovals } from '@/lib/schemas';
 
 // Backend contracts (Phase 16-07):
 //   GET  /api/v1/business/{id}/tool-approvals → 200 { toolApprovals: {[name]: "auto"|"manual"} }

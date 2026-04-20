@@ -85,13 +85,8 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
       {/* Chat header */}
       {!showEmptyState && (
         <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-4">
-          <span className="truncate text-sm font-medium">
-            {conversation?.title ?? ''}
-          </span>
-          <ProjectChip
-            projectId={currentProject?.id ?? null}
-            projectName={currentProject?.name}
-          />
+          <span className="truncate text-sm font-medium">{conversation?.title ?? ''}</span>
+          <ProjectChip projectId={currentProject?.id ?? null} projectName={currentProject?.name} />
         </div>
       )}
 

@@ -371,10 +371,10 @@ type ToolsRegistryCache struct {
 	httpClient      *http.Client
 	ttl             time.Duration
 
-	mu            sync.RWMutex
-	entries       []ToolsRegistryEntry
-	loadedAt      time.Time
-	inFlight      chan struct{} // closed when the current refresh completes
+	mu       sync.RWMutex
+	entries  []ToolsRegistryEntry
+	loadedAt time.Time
+	inFlight chan struct{} // closed when the current refresh completes
 }
 
 // ToolsRegistryEntry is the per-tool projection returned by GET /api/v1/tools
@@ -445,13 +445,12 @@ func (c *ToolsRegistryCache) List(ctx context.Context) []ToolsRegistryEntry {
 // chase and GC pressure.
 func (c *ToolsRegistryCache) Floor(toolName string) domain.ToolFloor {
 	c.mu.RLock()
+	defer c.mu.RUnlock()
 	for _, e := range c.entries {
 		if e.Name == toolName {
-			defer c.mu.RUnlock()
 			return e.Floor
 		}
 	}
-	c.mu.RUnlock()
 	return domain.ToolFloorForbidden
 }
 
@@ -518,7 +517,7 @@ func (c *ToolsRegistryCache) refresh(ctx context.Context) {
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	url := c.orchestratorURL + "/internal/tools"
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return
 	}

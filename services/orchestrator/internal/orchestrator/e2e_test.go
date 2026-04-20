@@ -140,6 +140,8 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 			gotDone = true
 		case orchestrator.EventError:
 			// ignore in this test
+		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
+			// Not relevant for this test — ignored.
 		}
 	}
 

@@ -22,11 +22,10 @@ import (
 // --- Instrumented executor that records approvalID + args ---
 
 type recordingExecutor struct {
-	mu           sync.Mutex
-	calls        []recordedCall
-	delay        time.Duration
-	result       interface{}
-	approvalExec bool
+	mu     sync.Mutex
+	calls  []recordedCall
+	delay  time.Duration
+	result interface{}
 }
 
 type recordedCall struct {

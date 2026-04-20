@@ -48,10 +48,7 @@ const PLATFORM_DISPLAY_ORDER: PlatformKey[] = [
   'google_business',
 ];
 
-function selectionFor(
-  toolName: string,
-  value: Record<string, ToolApprovalValue>
-): Selection {
+function selectionFor(toolName: string, value: Record<string, ToolApprovalValue>): Selection {
   const explicit = value[toolName];
   if (explicit === 'auto') return SELECTION_AUTO;
   if (explicit === 'manual') return SELECTION_MANUAL;
@@ -109,26 +106,24 @@ function ToolRow({
       </div>
       <RadioGroup
         value={selection}
-        onValueChange={(next) =>
-          onChange(applySelection(value, tool.name, next as Selection))
-        }
+        onValueChange={(next) => onChange(applySelection(value, tool.name, next as Selection))}
         className="flex flex-wrap items-center gap-4"
       >
         <div className="flex items-center gap-2">
           <RadioGroupItem value={SELECTION_AUTO} id={autoId} />
-          <Label htmlFor={autoId} className="text-sm cursor-pointer">
+          <Label htmlFor={autoId} className="cursor-pointer text-sm">
             Автоматически
           </Label>
         </div>
         <div className="flex items-center gap-2">
           <RadioGroupItem value={SELECTION_MANUAL} id={manualId} />
-          <Label htmlFor={manualId} className="text-sm cursor-pointer">
+          <Label htmlFor={manualId} className="cursor-pointer text-sm">
             Вручную
           </Label>
         </div>
         <div className="flex items-center gap-2">
           <RadioGroupItem value={SELECTION_INHERIT} id={inheritId} />
-          <Label htmlFor={inheritId} className="text-sm cursor-pointer">
+          <Label htmlFor={inheritId} className="cursor-pointer text-sm">
             «как у бизнеса»
           </Label>
           <span

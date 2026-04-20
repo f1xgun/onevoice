@@ -25,7 +25,9 @@ export function ProjectPickerChip({ value, onChange }: Props) {
   const sorted = [...(projects ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
   const currentName =
-    value == null ? UNASSIGNED_LABEL : (sorted.find((p) => p.id === value)?.name ?? UNASSIGNED_LABEL);
+    value == null
+      ? UNASSIGNED_LABEL
+      : (sorted.find((p) => p.id === value)?.name ?? UNASSIGNED_LABEL);
 
   return (
     <DropdownMenu>

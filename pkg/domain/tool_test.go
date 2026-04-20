@@ -41,7 +41,7 @@ func TestToolFloorRank(t *testing.T) {
 	if forbidden != 2 {
 		t.Fatalf("ToolFloorRank(forbidden) = %d, want 2", forbidden)
 	}
-	if !(forbidden > manual && manual > auto) {
+	if forbidden <= manual || manual <= auto {
 		t.Fatalf("rank order broken: forbidden=%d manual=%d auto=%d", forbidden, manual, auto)
 	}
 	if invalid >= auto {

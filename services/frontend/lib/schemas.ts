@@ -71,9 +71,7 @@ export function toolLabel(t: Pick<Tool, 'name' | 'displayName'>): string {
 // userDescription when populated, empty string otherwise. Callers should
 // render nothing rather than falling back to description, which is LLM-facing
 // and may leak tool-name references to non-technical users.
-export function toolUserDescription(
-  t: Pick<Tool, 'userDescription'>
-): string {
+export function toolUserDescription(t: Pick<Tool, 'userDescription'>): string {
   return t.userDescription ?? '';
 }
 

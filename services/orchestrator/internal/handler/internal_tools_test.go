@@ -30,7 +30,7 @@ func TestInternalToolsNames_ReturnsRegistrySnapshot(t *testing.T) {
 	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
 
 	h := handler.NewInternalToolsHandler(reg)
-	req := httptest.NewRequest(http.MethodGet, "/internal/tools/names", nil)
+	req := httptest.NewRequest(http.MethodGet, "/internal/tools/names", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.Names(rec, req)
@@ -71,7 +71,7 @@ func TestInternalToolsNames_EmptyRegistry(t *testing.T) {
 	reg := tools.NewRegistry()
 	h := handler.NewInternalToolsHandler(reg)
 
-	req := httptest.NewRequest(http.MethodGet, "/internal/tools/names", nil)
+	req := httptest.NewRequest(http.MethodGet, "/internal/tools/names", http.NoBody)
 	rec := httptest.NewRecorder()
 	h.Names(rec, req)
 

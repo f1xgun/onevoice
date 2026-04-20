@@ -61,7 +61,7 @@ func NewRegistry() *Registry {
 // in services/orchestrator/cmd/main.go must deliberately choose a floor and an
 // edit allowlist. There is no default so that a newly-added tool can never
 // silently inherit an unsafe policy. EditableFields is copied defensively so
-// subsequent caller-side mutations cannot change registered behaviour.
+// subsequent caller-side mutations cannot change registered behavior.
 //
 // Convention (Pitfall 8): EditableFields is always lowercase_with_underscore
 // matching the tool's JSON arguments schema keys. The comparison performed by
@@ -275,8 +275,8 @@ func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 // Kept in the tools package so the API handler can import a typed shape.
 type RegistryEntry struct {
 	Name            string           `json:"name"`
-	DisplayName     string           `json:"displayName"`     // human-readable label (e.g., "Отправить пост") shown in settings UI; may be empty — frontend falls back to Name.
-	Platform        string           `json:"platform"`        // e.g., "telegram" — derived from {platform}__{action}
+	DisplayName     string           `json:"displayName"` // human-readable label (e.g., "Отправить пост") shown in settings UI; may be empty — frontend falls back to Name.
+	Platform        string           `json:"platform"`    // e.g., "telegram" — derived from {platform}__{action}
 	Floor           domain.ToolFloor `json:"floor"`
 	EditableFields  []string         `json:"editableFields"`
 	Description     string           `json:"description"`     // LLM-facing description — includes tool-name references and disambiguation rules.

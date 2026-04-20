@@ -42,10 +42,8 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 // hasPointerCapture / releasePointerCapture / scrollIntoView — jsdom stubs
 // used by Radix primitives. Only install if missing.
 if (typeof (globalThis as unknown as { Element?: typeof Element }).Element !== 'undefined') {
-  const proto = (globalThis as unknown as { Element: typeof Element }).Element.prototype as unknown as Record<
-    string,
-    unknown
-  >;
+  const proto = (globalThis as unknown as { Element: typeof Element }).Element
+    .prototype as unknown as Record<string, unknown>;
   if (typeof proto.hasPointerCapture !== 'function') {
     proto.hasPointerCapture = function () {
       return false;
