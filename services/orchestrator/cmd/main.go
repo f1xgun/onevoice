@@ -221,11 +221,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 //                           human-facing text fields (text/caption/description);
 //                           ids, recipients, URLs, dates, categories, and
 //                           quantities are pinned at pause time.
-//   - ToolFloorForbidden  — destructive operations that cannot be recovered
-//                           via the UI (e.g., vk__delete_comment). Kept
-//                           registered so the LLM sees it exists, but always
-//                           blocked by policy. Operator must lift via code
-//                           review + redeploy, never via settings.
+//   - ToolFloorForbidden  — reserved for actions that must NEVER be lifted
+//                           via settings (e.g., a future "wipe all posts").
+//                           Kept registered so the LLM sees it exists but
+//                           policy.Resolve always denies. Destructive-but-
+//                           legitimate operations (comment moderation, etc.)
+//                           belong under Manual, not Forbidden — users with
+//                           a valid use-case can opt into auto-approval.
 //
 // When in doubt, prefer manual + a narrow editable list (conservative default).
 type toolSpec struct {
@@ -479,11 +481,14 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					floor:    domain.ToolFloorManual,
 					editable: []string{"text"},
 				},
-				// Destructive: hard-deletes a comment. Forbidden — the LLM
-				// cannot request this even behind approval. Lifting requires
-				// a deliberate code change.
+				// Destructive: hard-deletes a comment. Manual-floor — legitimate
+				// moderation use-case (spam, abuse). Default behaviour is
+				// per-call approval; a business owner can bump to auto if
+				// they trust the LLM's filtering. No editable fields:
+				// comment_id is a hard ID that users must not override at
+				// approval time (redirect-delete attack).
 				{
-					displayName: "Удалить комментарий",
+					displayName:     "Удалить комментарий",
 					userDescription: "Удаляет комментарий под постом ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__delete_comment",
@@ -497,7 +502,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 							"required": []string{"comment_id"},
 						},
 					}},
-					floor:    domain.ToolFloorForbidden,
+					floor:    domain.ToolFloorManual,
 					editable: nil,
 				},
 				// Read-only. Auto.
