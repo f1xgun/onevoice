@@ -259,13 +259,14 @@ func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 // Kept in the tools package so the API handler can import a typed shape.
 type RegistryEntry struct {
 	Name           string           `json:"name"`
-	Platform       string           `json:"platform"` // e.g., "telegram" — derived from {platform}__{action}
+	DisplayName    string           `json:"displayName"` // human-readable label (e.g., "Отправить пост") shown in settings UI; may be empty — frontend falls back to Name.
+	Platform       string           `json:"platform"`    // e.g., "telegram" — derived from {platform}__{action}
 	Floor          domain.ToolFloor `json:"floor"`
 	EditableFields []string         `json:"editableFields"`
 	Description    string           `json:"description"`
 }
 
-// AllEntries returns a snapshot of (name, platform, floor, editable, description)
+// AllEntries returns a snapshot of (name, displayName, platform, floor, editable, description)
 // for every registered tool. Feeds GET /api/v1/tools in Plan 16-07 as well as
 // the cluster-internal /internal/tools/names endpoint (Plan 16-03 Task 2) used
 // by the POLICY-07 startup validation sweep.
@@ -275,6 +276,7 @@ func (r *Registry) AllEntries() []RegistryEntry {
 		platform := toolPlatform(e.def.Function.Name)
 		out = append(out, RegistryEntry{
 			Name:           e.def.Function.Name,
+			DisplayName:    e.displayName,
 			Platform:       platform,
 			Floor:          e.floor,
 			EditableFields: append([]string(nil), e.editableFields...),

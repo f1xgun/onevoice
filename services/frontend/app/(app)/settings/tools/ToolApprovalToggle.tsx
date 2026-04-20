@@ -9,7 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { Tool, ToolApprovalValue } from '@/lib/schemas';
+import { toolLabel, type Tool, type ToolApprovalValue } from '@/lib/schemas';
 
 interface ToolApprovalToggleProps {
   tool: Tool;
@@ -35,11 +35,12 @@ export function ToolApprovalToggle({
 }: ToolApprovalToggleProps) {
   const isForbidden = tool.floor === 'forbidden';
   const checked = value === 'auto';
+  const label = toolLabel(tool);
 
   return (
     <div className="flex items-start justify-between gap-4 rounded-md border p-3">
       <div className="min-w-0 flex-1">
-        <p className="font-mono text-sm">{tool.name}</p>
+        <p className="text-sm font-medium">{label}</p>
         {tool.description && (
           <p className="mt-1 text-xs text-muted-foreground">{tool.description}</p>
         )}
@@ -70,7 +71,7 @@ export function ToolApprovalToggle({
             checked={checked}
             onCheckedChange={(next) => onChange(next ? 'auto' : 'manual')}
             disabled={disabled}
-            aria-label={`Режим одобрения для ${tool.name}`}
+            aria-label={`Режим одобрения для ${label}`}
           />
           <span
             className={

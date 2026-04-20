@@ -46,12 +46,21 @@ export type ToolFloor = z.infer<typeof toolFloorSchema>;
 
 export const toolSchema = z.object({
   name: z.string(),
+  displayName: z.string().default(''),
   platform: z.string(),
   floor: toolFloorSchema,
   editableFields: z.array(z.string()).default([]),
   description: z.string().default(''),
 });
 export type Tool = z.infer<typeof toolSchema>;
+
+// toolLabel returns the human-readable label for a tool — displayName when
+// registered, falling back to the technical name (e.g. `telegram__send_post`).
+// Use everywhere a tool is surfaced in the UI so we never leak the underscore
+// format to non-technical users.
+export function toolLabel(t: Pick<Tool, 'name' | 'displayName'>): string {
+  return t.displayName && t.displayName.length > 0 ? t.displayName : t.name;
+}
 
 // tool-approvals values accept only user-settable floors: auto|manual.
 // forbidden is a registration-time property and must not flow via this API.
