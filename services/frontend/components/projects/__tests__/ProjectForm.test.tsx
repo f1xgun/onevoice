@@ -92,12 +92,15 @@ describe('ProjectForm', () => {
   });
 
   it('shows empty-explicit-whitelist error on submit with no tools', async () => {
-    renderForm();
+    // Edit mode — whitelist UI lives under the «Инструменты» tab. Start
+    // from a project with no allowed tools so switching to "explicit" mode
+    // trips the refine.
+    renderForm({ ...sampleProject, whitelistMode: 'all', allowedTools: [] });
     const user = userEvent.setup();
 
-    await user.type(screen.getByLabelText('Название'), 'My Project');
+    await user.click(screen.getByRole('tab', { name: 'Инструменты' }));
     await user.click(screen.getByText('Выбранные'));
-    await user.click(screen.getByRole('button', { name: 'Создать проект' }));
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
 
     expect(
       await screen.findByText(
@@ -107,18 +110,18 @@ describe('ProjectForm', () => {
   });
 
   it('shows long system-prompt error with exact copy', async () => {
-    renderForm();
+    // Edit mode — system-prompt textarea lives under the «Промпт» tab.
+    renderForm(sampleProject);
     const user = userEvent.setup();
 
-    await user.type(screen.getByLabelText('Название'), 'My Project');
-
+    await user.click(screen.getByRole('tab', { name: 'Промпт' }));
     const textarea = screen.getByLabelText('Системный промпт') as HTMLTextAreaElement;
     const tooLong = 'a'.repeat(4001);
     // fireEvent.change uses React's native-input-value-setter shim so
     // react-hook-form's onChange handler receives the new value.
     fireEvent.change(textarea, { target: { value: tooLong } });
 
-    await user.click(screen.getByRole('button', { name: 'Создать проект' }));
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
 
     await waitFor(() => {
       expect(

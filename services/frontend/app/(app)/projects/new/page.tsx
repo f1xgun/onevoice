@@ -12,13 +12,15 @@ export default function NewProjectPage() {
     <div className="mx-auto w-full max-w-2xl p-6">
       <h1 className="text-2xl font-semibold">Новый проект</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Настройте системный промпт, инструменты и быстрые действия для группы чатов.
+        Дайте проекту название — остальное настроим позже.
       </p>
       <div className="mt-6">
         <ProjectForm
           onSaved={(saved: Project) => {
-            toast.success(`Проект «${saved.name}» создан`);
-            router.push('/chat');
+            toast.success(`Проект «${saved.name}» создан`, {
+              description: 'Теперь можно настроить промпт и инструменты.',
+            });
+            router.push(`/projects/${saved.id}`);
           }}
         />
       </div>
