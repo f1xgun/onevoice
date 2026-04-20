@@ -7,7 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { cn } from '@/lib/utils';
 import { PLATFORM_COLORS, PLATFORM_FULL_LABELS } from '@/lib/platforms';
 import { useTools, groupByPlatform, type PlatformKey } from '@/lib/hooks/useTools';
-import { toolLabel, type Tool } from '@/lib/schemas';
+import { toolLabel, toolUserDescription, type Tool } from '@/lib/schemas';
 
 interface ToolCheckboxGridProps {
   activeIntegrations: string[];
@@ -112,8 +112,10 @@ function PlatformSection({
                   <label htmlFor={id} className="text-sm font-medium cursor-pointer">
                     {toolLabel(tool)}
                   </label>
-                  {tool.description && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">{tool.description}</p>
+                  {toolUserDescription(tool) && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {toolUserDescription(tool)}
+                    </p>
                   )}
                 </div>
               </div>

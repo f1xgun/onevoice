@@ -50,7 +50,12 @@ export const toolSchema = z.object({
   platform: z.string(),
   floor: toolFloorSchema,
   editableFields: z.array(z.string()).default([]),
+  // `description` is the LLM-facing text (may reference other tool names and
+  // disambiguation rules). Never render it directly in the UI.
   description: z.string().default(''),
+  // `userDescription` is the short end-user-facing copy populated per-tool in
+  // the orchestrator registry. Use in settings pages / approval cards.
+  userDescription: z.string().default(''),
 });
 export type Tool = z.infer<typeof toolSchema>;
 
@@ -60,6 +65,16 @@ export type Tool = z.infer<typeof toolSchema>;
 // format to non-technical users.
 export function toolLabel(t: Pick<Tool, 'name' | 'displayName'>): string {
   return t.displayName && t.displayName.length > 0 ? t.displayName : t.name;
+}
+
+// toolUserDescription returns the end-user-facing description for a tool —
+// userDescription when populated, empty string otherwise. Callers should
+// render nothing rather than falling back to description, which is LLM-facing
+// and may leak tool-name references to non-technical users.
+export function toolUserDescription(
+  t: Pick<Tool, 'userDescription'>
+): string {
+  return t.userDescription ?? '';
 }
 
 // tool-approvals values accept only user-settable floors: auto|manual.

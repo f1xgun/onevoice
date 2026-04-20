@@ -9,7 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { toolLabel, type Tool, type ToolApprovalValue } from '@/lib/schemas';
+import { toolLabel, toolUserDescription, type Tool, type ToolApprovalValue } from '@/lib/schemas';
 
 interface ToolApprovalToggleProps {
   tool: Tool;
@@ -36,14 +36,13 @@ export function ToolApprovalToggle({
   const isForbidden = tool.floor === 'forbidden';
   const checked = value === 'auto';
   const label = toolLabel(tool);
+  const userDesc = toolUserDescription(tool);
 
   return (
     <div className="flex items-start justify-between gap-4 rounded-md border p-3">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">{label}</p>
-        {tool.description && (
-          <p className="mt-1 text-xs text-muted-foreground">{tool.description}</p>
-        )}
+        {userDesc && <p className="mt-1 text-xs text-muted-foreground">{userDesc}</p>}
       </div>
       {isForbidden ? (
         <TooltipProvider delayDuration={100}>
