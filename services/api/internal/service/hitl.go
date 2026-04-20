@@ -381,6 +381,7 @@ type ToolsRegistryCache struct {
 // (frontend) and by GET /internal/tools (internal — orchestrator-to-API).
 type ToolsRegistryEntry struct {
 	Name           string           `json:"name"`
+	DisplayName    string           `json:"displayName"`
 	Platform       string           `json:"platform"`
 	Floor          domain.ToolFloor `json:"floor"`
 	EditableFields []string         `json:"editableFields"`

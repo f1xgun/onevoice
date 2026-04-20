@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { cn } from '@/lib/utils';
 import { PLATFORM_COLORS, PLATFORM_FULL_LABELS } from '@/lib/platforms';
 import { useTools, groupByPlatform, type PlatformKey } from '@/lib/hooks/useTools';
+import { toolLabel, type Tool } from '@/lib/schemas';
 
 interface ToolCheckboxGridProps {
   activeIntegrations: string[];
@@ -15,12 +16,6 @@ interface ToolCheckboxGridProps {
 }
 
 const STORAGE_PREFIX = 'projects:whitelistPanel:';
-
-function humanToolName(toolId: string): string {
-  const parts = toolId.split('__');
-  const action = parts[1] ?? toolId;
-  return action.replace(/_/g, ' ');
-}
 
 function platformLabel(platform: string): string {
   return PLATFORM_FULL_LABELS[platform] ?? platform;
@@ -53,12 +48,12 @@ function PlatformSection({
   onChange,
 }: {
   platform: string;
-  tools: string[];
+  tools: Tool[];
   value: string[];
   onChange: (allowed: string[]) => void;
 }) {
   const color = PLATFORM_COLORS[platform] ?? '#6b7280';
-  const checkedInPlatform = tools.filter((t) => value.includes(t)).length;
+  const checkedInPlatform = tools.filter((t) => value.includes(t.name)).length;
   const [open, setOpen] = useState<boolean>(true);
 
   useEffect(() => {
@@ -103,25 +98,23 @@ function PlatformSection({
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="space-y-3 px-4 pb-4">
-          {tools.map((toolId) => {
-            const id = `tool-${toolId}`;
-            const checked = value.includes(toolId);
-            const hintId = `${id}-hint`;
+          {tools.map((tool) => {
+            const id = `tool-${tool.name}`;
+            const checked = value.includes(tool.name);
             return (
-              <div key={toolId} className="flex items-start gap-3">
+              <div key={tool.name} className="flex items-start gap-3">
                 <Checkbox
                   id={id}
                   checked={checked}
-                  onCheckedChange={(v) => toggleTool(toolId, v === true)}
-                  aria-describedby={hintId}
+                  onCheckedChange={(v) => toggleTool(tool.name, v === true)}
                 />
                 <div className="flex-1">
-                  <label htmlFor={id} className="text-sm capitalize cursor-pointer">
-                    {humanToolName(toolId)}
+                  <label htmlFor={id} className="text-sm font-medium cursor-pointer">
+                    {toolLabel(tool)}
                   </label>
-                  <p id={hintId} className="font-mono text-xs text-muted-foreground">
-                    {toolId}
-                  </p>
+                  {tool.description && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{tool.description}</p>
+                  )}
                 </div>
               </div>
             );
@@ -171,7 +164,7 @@ export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCh
         <PlatformSection
           key={platform}
           platform={platform}
-          tools={buckets[platform].map((t) => t.name)}
+          tools={buckets[platform]}
           value={value}
           onChange={onChange}
         />
