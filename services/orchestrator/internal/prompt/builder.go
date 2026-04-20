@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
@@ -21,14 +22,95 @@ type BusinessContext struct {
 	Now                time.Time
 }
 
+// ProjectContext carries the optional project prompt layer that is appended
+// after the business rules block when a chat lives inside a project. When nil,
+// the builder emits the legacy business-only system message (pre-Phase-15
+// behavior).
+//
+// Scope: see .planning/phases/15-projects-foundation/15-CONTEXT.md (D-09 —
+// prompt layering order is business context → project system prompt →
+// conversation history). The project block is appended AFTER the business
+// rules because LLM attention gives the last-emitted block precedence, which
+// matches the UX intent: project-level instructions override general business
+// rules for chats inside a project.
+type ProjectContext struct {
+	ID            string
+	Name          string
+	SystemPrompt  string
+	WhitelistMode domain.WhitelistMode // drives the Ограничения инструментов hint in appendProjectBlock (GAP-02)
+	AllowedTools  []string             // listed verbatim when WhitelistMode == WhitelistModeExplicit (GAP-02)
+}
+
 // Build returns a []llm.Message starting with a system message built from
-// the business context, followed by the conversation history.
-func Build(ctx BusinessContext, history []llm.Message) []llm.Message {
+// the business context, followed by the conversation history. When proj is
+// non-nil, the system message ends with a "## Проект: {Name}" block after the
+// business rules and before the history.
+func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []llm.Message {
 	system := buildSystemContent(ctx)
+	if proj != nil {
+		system = appendProjectBlock(system, proj)
+	}
 	msgs := make([]llm.Message, 0, 1+len(history))
 	msgs = append(msgs, llm.Message{Role: "system", Content: system})
 	msgs = append(msgs, history...)
 	return msgs
+}
+
+// appendProjectBlock glues the project prompt layer onto the business-only
+// system text. The header is always emitted (even when SystemPrompt is empty)
+// so the LLM knows which project is in scope; this makes the transition
+// visible during move-chat in Plan 04 (see PITFALLS.md §11, Option A).
+//
+// When WhitelistMode is explicit or none, a follow-up
+// "### Ограничения инструментов" section is emitted so the LLM knows to
+// refuse/explain unavailable-platform requests instead of silently
+// substituting the closest allowed tool (see GAP-02 in
+// .planning/phases/15-projects-foundation/15-VERIFICATION.md).
+func appendProjectBlock(base string, proj *ProjectContext) string {
+	var sb strings.Builder
+	sb.WriteString(base)
+	if !strings.HasSuffix(base, "\n") {
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n## Проект: ")
+	sb.WriteString(proj.Name)
+	sb.WriteString("\n")
+	if proj.SystemPrompt != "" {
+		sb.WriteString(proj.SystemPrompt)
+		if !strings.HasSuffix(proj.SystemPrompt, "\n") {
+			sb.WriteString("\n")
+		}
+	}
+
+	// Whitelist explanation (GAP-02). Only emitted for restrictive modes.
+	switch proj.WhitelistMode {
+	case domain.WhitelistModeExplicit:
+		if len(proj.AllowedTools) == 0 {
+			// Defensive: shouldn't happen (service layer rejects this via
+			// ErrProjectWhitelistEmpty), but if it does we tell the LLM the
+			// same thing WhitelistModeNone would say.
+			sb.WriteString("\n### Ограничения инструментов\n")
+			sb.WriteString("В этом проекте все инструменты отключены. Отвечай только текстом. ")
+			sb.WriteString("Если пользователь просит действие, объясни ограничение и предложи перенести чат в другой проект. ")
+			sb.WriteString("НЕ подменяй канал молча.\n")
+		} else {
+			sb.WriteString("\n### Ограничения инструментов\n")
+			sb.WriteString("В этом проекте разрешены только: ")
+			sb.WriteString(strings.Join(proj.AllowedTools, ", "))
+			sb.WriteString(". Если пользователь просит действие через недоступный канал, ")
+			sb.WriteString("объясни вежливо, что этот канал отключён для проекта, и предложи разрешённую альтернативу ")
+			sb.WriteString("(или просто откажись, если альтернативы нет). НЕ подменяй канал молча.\n")
+		}
+	case domain.WhitelistModeNone:
+		sb.WriteString("\n### Ограничения инструментов\n")
+		sb.WriteString("В этом проекте все инструменты отключены. Отвечай только текстом. ")
+		sb.WriteString("Если пользователь просит действие, объясни ограничение и предложи перенести чат в другой проект. ")
+		sb.WriteString("НЕ подменяй канал молча.\n")
+	case domain.WhitelistModeAll, domain.WhitelistModeInherit, "":
+		// No hint — same behavior as before GAP-02.
+	}
+
+	return sb.String()
 }
 
 func buildSystemContent(ctx BusinessContext) string {

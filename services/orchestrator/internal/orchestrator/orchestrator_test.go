@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
@@ -79,7 +80,7 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "get info", Parameters: map[string]interface{}{}},
 	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"name": "Кофейня Уют"}, nil
-	}))
+	}), domain.ToolFloorAuto, nil)
 
 	biz := prompt.BusinessContext{Name: "Кофейня"}
 	orch := orchestrator.New(stub, reg)
@@ -104,6 +105,8 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 			textEvents = append(textEvents, e)
 		case orchestrator.EventError, orchestrator.EventDone:
 			// not relevant for this test
+		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
+			// Not relevant for this test — ignored.
 		}
 	}
 
@@ -136,7 +139,7 @@ func TestRun_MaxIterations_Stops(t *testing.T) {
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
-	}))
+	}), domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{MaxIterations: 3})
 	req := orchestrator.RunRequest{

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
@@ -73,9 +74,9 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 			return nil, ctx.Err()
 		}
 	})
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "yandex_business__get_reviews"}}, "", slow)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "telegram__get_reviews"}}, "", slow)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "vk__get_comments"}}, "", slow)
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "yandex_business__get_reviews"}}, "", slow, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "telegram__get_reviews"}}, "", slow, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "vk__get_comments"}}, "", slow, domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
 
@@ -96,6 +97,8 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 		case orchestrator.EventToolResult:
 			toolResultEvents = append(toolResultEvents, e)
 		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
+		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
+			// Not relevant for this test — ignored.
 		}
 	}
 	elapsed := time.Since(start)
@@ -159,7 +162,7 @@ func TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish(t *testing.T) {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
-		}))
+		}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "fast_tool"}}, "",
 		tools.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 			select {
@@ -168,7 +171,7 @@ func TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish(t *testing.T) {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
-		}))
+		}), domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
 
@@ -232,9 +235,9 @@ func TestRun_ParallelToolCalls_OneFailsOthersSucceed(t *testing.T) {
 	failExec := tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, errors.New("boom")
 	})
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_ok_a"}}, "", okExec)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_fail"}}, "", failExec)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_ok_b"}}, "", okExec)
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_ok_a"}}, "", okExec, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_fail"}}, "", failExec, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_ok_b"}}, "", okExec, domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -283,7 +286,7 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 	})
 
 	reg := tools.NewRegistry()
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "telegram__send_channel_post"}}, "", exec)
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "telegram__send_channel_post"}}, "", exec, domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -301,6 +304,8 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 		case orchestrator.EventToolResult:
 			results = append(results, e)
 		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
+		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
+			// Not relevant for this test — ignored.
 		}
 	}
 
@@ -344,11 +349,11 @@ func TestRun_PerToolTimeout_BoundsSingleTool(t *testing.T) {
 		tools.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 			<-ctx.Done()
 			return nil, ctx.Err()
-		}))
+		}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "fast"}}, "",
 		tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 			return map[string]interface{}{"ok": true}, nil
-		}))
+		}), domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{
 		MaxIterations:   3,

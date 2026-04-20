@@ -40,6 +40,14 @@ func (r *capturingMessageRepo) CountByConversationID(_ context.Context, _ string
 	return 0, nil
 }
 
+func (r *capturingMessageRepo) Update(_ context.Context, _ *domain.Message) error {
+	return nil
+}
+
+func (r *capturingMessageRepo) FindByConversationActive(_ context.Context, _ string) (*domain.Message, error) {
+	return nil, nil
+}
+
 // TestChatProxy_ToolCallIDCorrelation verifies that toolCalls ↔ toolResults are
 // correlated by the orchestrator-issued tool_call_id — not by tool name. This
 // protects the case where the LLM invokes the same tool twice in one batch:
@@ -76,7 +84,19 @@ func TestChatProxy_ToolCallIDCorrelation(t *testing.T) {
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
 	msgRepo := &capturingMessageRepo{}
-	h := NewChatProxyHandler(mockBiz, mockInteg, msgRepo, nil, nil, nil, nil, orchServer.URL, nil)
+	h := NewChatProxyHandler(
+		mockBiz,
+		mockInteg,
+		&noopProjectService{},
+		&MockConversationRepository{
+			GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+				return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+			},
+		},
+		msgRepo,
+		&MockPendingToolCallRepository{},
+		nil, nil, nil, nil, orchServer.URL, nil,
+	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-1", strings.NewReader(`{"message":"send two"}`))
 	req.Header.Set("Content-Type", "application/json")

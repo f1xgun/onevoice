@@ -33,6 +33,9 @@ func (s *stubConversationRepo) ListByUserID(_ context.Context, _ string, _, _ in
 }
 func (s *stubConversationRepo) Update(_ context.Context, _ *domain.Conversation) error { return nil }
 func (s *stubConversationRepo) Delete(_ context.Context, _ string) error               { return nil }
+func (s *stubConversationRepo) UpdateProjectAssignment(_ context.Context, _ string, _ *string) error {
+	return nil
+}
 
 // --- Tests ---
 
@@ -77,7 +80,7 @@ func TestNewIntegrationHandler_NilBusinessService_ReturnsError(t *testing.T) {
 }
 
 func TestNewConversationHandler_NilConversationRepo_ReturnsError(t *testing.T) {
-	h, err := NewConversationHandler(nil, nil)
+	h, err := NewConversationHandler(nil, nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -87,7 +90,7 @@ func TestNewConversationHandler_NilConversationRepo_ReturnsError(t *testing.T) {
 }
 
 func TestNewConversationHandler_NilMessageRepo_ReturnsError(t *testing.T) {
-	h, err := NewConversationHandler(&stubConversationRepo{}, nil)
+	h, err := NewConversationHandler(&stubConversationRepo{}, nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

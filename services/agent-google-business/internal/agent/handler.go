@@ -2,10 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 
 	"github.com/f1xgun/onevoice/services/agent-google-business/internal/gbp"
 )
@@ -34,22 +37,80 @@ type GBPClientFactory func(accessToken string) GBPClient
 type Handler struct {
 	tokens        TokenFetcher
 	clientFactory GBPClientFactory
+	dedupe        *hitldedupe.DedupeClient // optional; nil skips the HITL dedupe gate
 }
 
-// NewHandler creates a Handler with per-request token fetching.
-func NewHandler(tokens TokenFetcher, factory GBPClientFactory) *Handler {
-	return &Handler{tokens: tokens, clientFactory: factory}
+// NewHandler creates a Handler with per-request token fetching and an
+// optional dedupe client. Passing nil for dedupe disables the HITL dedupe
+// gate — used by unit tests and dev-local environments without Redis.
+func NewHandler(tokens TokenFetcher, factory GBPClientFactory, dedupe *hitldedupe.DedupeClient) *Handler {
+	return &Handler{tokens: tokens, clientFactory: factory, dedupe: dedupe}
 }
 
 // Handle routes the ToolRequest to the appropriate GBP API operation.
+// Before dispatch, if a dedupe client is configured AND req.ApprovalID is
+// non-empty, the HITL dedupe gate is consulted — see dedupeGate.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	if resp, stop := h.dedupeGate(ctx, req); stop {
+		return resp, nil
+	}
+
+	var (
+		resp *a2a.ToolResponse
+		err  error
+	)
 	switch req.Tool {
 	case "google_business__get_reviews":
-		return h.getReviews(ctx, req)
+		resp, err = h.getReviews(ctx, req)
 	case "google_business__reply_review":
-		return h.replyReview(ctx, req)
+		resp, err = h.replyReview(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
+	}
+
+	h.dedupeStore(ctx, req, resp, err)
+	return resp, err
+}
+
+// dedupeGate consults the Redis dedupe cache BEFORE tool dispatch when a HITL
+// approval is in play. Returns (resp, true) when the caller should stop.
+func (h *Handler) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, bool) {
+	if h.dedupe == nil || req.ApprovalID == "" {
+		return nil, false
+	}
+	outcome, cached, err := h.dedupe.Claim(ctx, req.BusinessID, req.ApprovalID)
+	if err != nil {
+		slog.WarnContext(ctx, "hitl dedupe claim failed; proceeding without dedupe",
+			"error", err, "business_id", req.BusinessID, "approval_id", req.ApprovalID)
+		return nil, false
+	}
+	switch outcome {
+	case hitldedupe.ClaimOutcomeInFlight:
+		return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: already in flight"}, true
+	case hitldedupe.ClaimOutcomeDuplicate:
+		var cachedResp a2a.ToolResponse
+		if uerr := json.Unmarshal([]byte(cached), &cachedResp); uerr != nil {
+			slog.WarnContext(ctx, "hitl dedupe cached result malformed; returning generic duplicate",
+				"error", uerr)
+			return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: cached result unavailable"}, true
+		}
+		cachedResp.TaskID = req.TaskID
+		return &cachedResp, true
+	case hitldedupe.ClaimOutcomeClaimed, hitldedupe.ClaimOutcomeSkip:
+		// Proceed with execution — no cached response.
+	}
+	return nil, false
+}
+
+// dedupeStore persists a successful ToolResponse under the HITL dedupe key
+// so replays see ClaimOutcomeDuplicate. Errors/nil responses are not cached.
+func (h *Handler) dedupeStore(ctx context.Context, req a2a.ToolRequest, resp *a2a.ToolResponse, err error) {
+	if h.dedupe == nil || req.ApprovalID == "" || err != nil || resp == nil {
+		return
+	}
+	if serr := h.dedupe.Store(ctx, req.BusinessID, req.ApprovalID, resp); serr != nil {
+		slog.WarnContext(ctx, "hitl dedupe store failed; result returned but not cached",
+			"error", serr, "approval_id", req.ApprovalID)
 	}
 }
 
@@ -98,13 +159,13 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 	reviews := make([]map[string]interface{}, 0, len(resp.Reviews))
 	for _, r := range resp.Reviews {
 		review := map[string]interface{}{
-			"review_id":   r.ReviewID,
-			"name":        r.Name,
-			"author":      r.Reviewer.DisplayName,
-			"rating":      r.StarRating,
-			"comment":     r.Comment,
-			"created_at":  r.CreateTime,
-			"has_reply":   r.ReviewReply != nil,
+			"review_id":  r.ReviewID,
+			"name":       r.Name,
+			"author":     r.Reviewer.DisplayName,
+			"rating":     r.StarRating,
+			"comment":    r.Comment,
+			"created_at": r.CreateTime,
+			"has_reply":  r.ReviewReply != nil,
 		}
 		if r.ReviewReply != nil {
 			review["reply"] = r.ReviewReply.Comment

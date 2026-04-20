@@ -163,6 +163,67 @@ func TestExecute_SetsRequestIDFromCorrelationID(t *testing.T) {
 	assert.Equal(t, "corr-abc-789", toolReq.RequestID)
 }
 
+func TestNATSExecutor_ExecuteWithApproval_SetsApprovalIDInPayload(t *testing.T) {
+	fake := &fakeRequester{
+		response: &a2a.ToolResponse{
+			TaskID:  "t7",
+			Success: true,
+			Result:  map[string]interface{}{},
+		},
+	}
+
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	_, err := exec.ExecuteWithApproval(context.Background(), map[string]interface{}{"text": "hi"}, "appr-123")
+	require.NoError(t, err)
+
+	var toolReq a2a.ToolRequest
+	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
+	assert.Equal(t, "appr-123", toolReq.ApprovalID)
+}
+
+func TestNATSExecutor_ExecuteWithApproval_EmptyApproval_DoesNotSetField(t *testing.T) {
+	fake := &fakeRequester{
+		response: &a2a.ToolResponse{
+			TaskID:  "t8",
+			Success: true,
+			Result:  map[string]interface{}{},
+		},
+	}
+
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	_, err := exec.ExecuteWithApproval(context.Background(), map[string]interface{}{}, "")
+	require.NoError(t, err)
+
+	// The ApprovalID field has omitempty — when empty, the JSON key should
+	// be absent from the serialized wire payload (backward-compat with
+	// pre-Phase-16 agents).
+	assert.NotContains(t, string(fake.capturedReq), "approval_id")
+}
+
+func TestNATSExecutor_Execute_IsBackwardCompatibleShim(t *testing.T) {
+	fake := &fakeRequester{
+		response: &a2a.ToolResponse{
+			TaskID:  "t9",
+			Success: true,
+			Result:  map[string]interface{}{},
+		},
+	}
+
+	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	_, err := exec.Execute(context.Background(), map[string]interface{}{"text": "hi"})
+	require.NoError(t, err)
+
+	// Execute delegates to ExecuteWithApproval(ctx, args, "") — no
+	// approval_id key in the wire payload.
+	assert.NotContains(t, string(fake.capturedReq), "approval_id")
+
+	// Sanity: the rest of the payload is well-formed
+	var toolReq a2a.ToolRequest
+	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
+	assert.Equal(t, a2a.AgentID("telegram__send_channel_post"), toolReq.Tool)
+	assert.Empty(t, toolReq.ApprovalID)
+}
+
 func TestExecute_EmptyCorrelationID(t *testing.T) {
 	fake := &fakeRequester{
 		response: &a2a.ToolResponse{

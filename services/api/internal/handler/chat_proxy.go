@@ -21,6 +21,24 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
+// ssePayload is the shape of the JSON we decode from orchestrator SSE `data:`
+// frames. Phase 16 extends this with ToolCallID / BatchID / Calls to carry
+// HITL events without synthetic IDs (HITL-13) and with the approval-batch
+// fields (HITL-02) so chat_proxy can persist the paired assistant Message.
+type ssePayload struct {
+	Type            string                 `json:"type"`
+	Content         string                 `json:"content"`
+	ToolCallID      string                 `json:"tool_call_id"`
+	ToolName        string                 `json:"tool_name"`
+	ToolDisplayName string                 `json:"tool_display_name"`
+	ToolArgs        map[string]interface{} `json:"tool_args"`
+	ToolResult      interface{}            `json:"result"`
+	ToolError       string                 `json:"error"`
+	// HITL-02: pause-event fields.
+	BatchID string                   `json:"batch_id"`
+	Calls   []map[string]interface{} `json:"calls"`
+}
+
 // postingToolInfo describes how to extract post data from a platform tool call.
 type postingToolInfo struct {
 	platform     string
@@ -35,12 +53,27 @@ var postingTools = map[string]postingToolInfo{
 	"vk__publish_post":             {platform: "vk", contentField: "text"},
 }
 
+// ResumeBatchHeader is the HTTP header chat_proxy inspects to detect an
+// explicit HITL resume. When set, chat_proxy rejoins the in-flight turn via
+// the orchestrator's resume endpoint instead of starting a fresh LLM turn.
+// D-04 (implicit resume) covers the no-header case — see ListMessages.
+const ResumeBatchHeader = "X-Onevoice-Resume-Batch-Id"
+
 // ChatProxyHandler enriches chat requests with business context and proxies
-// them to the orchestrator service.
+// them to the orchestrator service. Phase 15 adds project enrichment — the
+// handler resolves the conversation's project_id (if any) via projectService
+// and forwards five project_* fields on the outbound orchestrator request so
+// prompt.Build (Plan 15-02) can layer the project system prompt and the tool
+// registry can apply the project's whitelist (PROJ-09). Phase 16 adds HITL
+// pause/resume awareness — pendingRepo drives the D-04 stream-open gate and
+// the resume-path tool_result extension (D-17 / HITL-11).
 type ChatProxyHandler struct {
 	businessService    BusinessService
 	integrationService IntegrationService
+	projectService     ProjectService                // Phase 15 — enrichment path
+	conversationRepo   domain.ConversationRepository // Phase 15 — read-only lookup of conv.ProjectID
 	messageRepo        domain.MessageRepository
+	pendingRepo        domain.PendingToolCallRepository // Phase 16 — HITL approval batches
 	postRepo           domain.PostRepository
 	reviewRepo         domain.ReviewRepository
 	agentTaskRepo      domain.AgentTaskRepository
@@ -51,11 +84,19 @@ type ChatProxyHandler struct {
 
 // NewChatProxyHandler creates a new ChatProxyHandler. If httpClient is nil,
 // http.DefaultClient is used. postRepo, reviewRepo, agentTaskRepo and taskHub
-// may be nil to skip persistence / realtime publishing.
+// may be nil to skip persistence / realtime publishing. projectService,
+// conversationRepo, and pendingRepo are REQUIRED — the proxy must resolve the
+// conversation's project to enrich the orchestrator request (PROJ-09 layering)
+// and detect HITL resume state (D-04 / HITL-11). Passing nil for any of the
+// three panics at construction time — they are wiring-time invariants, not
+// runtime state.
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
+	projectService ProjectService,
+	conversationRepo domain.ConversationRepository,
 	messageRepo domain.MessageRepository,
+	pendingRepo domain.PendingToolCallRepository,
 	postRepo domain.PostRepository,
 	reviewRepo domain.ReviewRepository,
 	agentTaskRepo domain.AgentTaskRepository,
@@ -63,13 +104,25 @@ func NewChatProxyHandler(
 	orchestratorURL string,
 	httpClient *http.Client,
 ) *ChatProxyHandler {
+	if projectService == nil {
+		panic("NewChatProxyHandler: projectService cannot be nil")
+	}
+	if conversationRepo == nil {
+		panic("NewChatProxyHandler: conversationRepo cannot be nil")
+	}
+	if pendingRepo == nil {
+		panic("NewChatProxyHandler: pendingRepo cannot be nil")
+	}
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
 	return &ChatProxyHandler{
 		businessService:    businessService,
 		integrationService: integrationService,
+		projectService:     projectService,
+		conversationRepo:   conversationRepo,
 		messageRepo:        messageRepo,
+		pendingRepo:        pendingRepo,
 		postRepo:           postRepo,
 		reviewRepo:         reviewRepo,
 		agentTaskRepo:      agentTaskRepo,
@@ -86,6 +139,19 @@ type chatProxyRequest struct {
 
 // Chat enriches the incoming request with business context and streams the
 // orchestrator's SSE response back to the client.
+//
+// Phase 16 HITL flow:
+//   - Explicit resume: client sends X-Onevoice-Resume-Batch-Id header (or
+//     ?batch_id= query) → proxy forwards to orchestrator's
+//     /chat/{id}/resume?batch_id=X and folds tool_result events into the
+//     persisted pending_approval Message (D-17).
+//   - Implicit resume (D-04): no header, but the conversation has an active
+//     Message (Status=pending_approval|in_progress):
+//   - if a resolving batch exists → rejoin as implicit resume;
+//   - if a pending batch exists → re-emit the tool_approval_required
+//     SSE event constructed from the stored batch and close (UI rehydrates);
+//   - orphan in_progress → emit inline "turn_already_in_progress" error.
+//   - No active Message → normal new-turn flow (unchanged).
 func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -104,6 +170,74 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		return ctx, cancel
 	}
+
+	// --- D-04 stream-open gate --------------------------------------------
+	// BEFORE we decode the body or start a new LLM turn, detect whether the
+	// client is reopening an in-flight approval turn so we can rejoin it or
+	// re-emit the pause event instead of starting a fresh turn.
+	resumeBatchID := r.Header.Get(ResumeBatchHeader)
+	if resumeBatchID == "" {
+		resumeBatchID = r.URL.Query().Get("batch_id")
+	}
+	activeMsg, activeErr := h.messageRepo.FindByConversationActive(r.Context(), conversationID)
+	if activeErr != nil && !errors.Is(activeErr, domain.ErrMessageNotFound) {
+		slog.WarnContext(r.Context(), "chat proxy: FindByConversationActive failed, falling through",
+			"error", activeErr, "conversation_id", conversationID)
+		activeMsg = nil
+	}
+
+	// Implicit-resume branch: no header, but an active message exists. Look
+	// up the conversation's active batches and apply the D-04 tri-case.
+	if activeMsg != nil && resumeBatchID == "" {
+		batches, berr := h.pendingRepo.ListPendingByConversation(r.Context(), conversationID)
+		if berr != nil {
+			slog.WarnContext(r.Context(), "chat proxy: ListPendingByConversation failed",
+				"error", berr, "conversation_id", conversationID)
+		}
+		var resolving, pending *domain.PendingToolCallBatch
+		for _, b := range batches {
+			switch b.Status {
+			case "resolving":
+				if resolving == nil {
+					resolving = b
+				}
+			case "pending":
+				if pending == nil {
+					pending = b
+				}
+			}
+		}
+
+		switch {
+		case resolving != nil:
+			// D-04 case (b): orchestrator is mid-dispatch (user clicked approve,
+			// the prior SSE stream dropped). Rejoin the resume stream keyed on
+			// this batch.ID; reuse activeMsg.ID so tool_result events extend the
+			// same Message (D-17).
+			resumeBatchID = resolving.ID
+			h.streamResume(w, r, conversationID, activeMsg, resumeBatchID, persistCtx)
+			return
+		case pending != nil:
+			// D-04 case (c): approval card dropped off the client but the batch
+			// is still pending. Re-emit the stored tool_approval_required event
+			// so the UI re-hydrates; do NOT invoke the orchestrator.
+			h.reemitApprovalEvent(w, pending)
+			return
+		default:
+			// D-04 case (d): orphan in_progress Message with no active batch —
+			// shouldn't happen in healthy flow. Surface as inline error.
+			h.sseInlineError(w, "turn_already_in_progress")
+			return
+		}
+	}
+
+	// Explicit-resume branch: header (or query) set AND an active message
+	// exists → forward to the orchestrator's resume endpoint.
+	if activeMsg != nil && resumeBatchID != "" {
+		h.streamResume(w, r, conversationID, activeMsg, resumeBatchID, persistCtx)
+		return
+	}
+	// --- end D-04 gate ----------------------------------------------------
 
 	var req chatProxyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -155,18 +289,72 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(r.Context(), "failed to save user message", "error", err)
 	}
 
+	// Phase 15 (PROJ-09): resolve the conversation's project (if any) so the
+	// orchestrator can layer the project system prompt and apply the project
+	// whitelist. A stale or invalid project_id falls back to the no-project
+	// path — the chat must still succeed (best-effort enrichment).
+	var (
+		projectID            string
+		projectName          string
+		projectSystemPrompt  string
+		projectWhitelistMode string
+		projectAllowedTools  []string
+	)
+
+	conv, convErr := h.conversationRepo.GetByID(r.Context(), conversationID)
+	switch {
+	case convErr != nil:
+		// Missing/errored conversation: log and fall through to no-project
+		// enrichment. Other handlers (GetConversation, move) enforce
+		// existence; here we must not break the chat flow.
+		slog.WarnContext(r.Context(), "chat proxy: conversation lookup failed, no project enrichment",
+			"conversation_id", conversationID, "error", convErr)
+	case conv.ProjectID != nil && *conv.ProjectID != "":
+		projUUID, parseErr := uuid.Parse(*conv.ProjectID)
+		if parseErr != nil {
+			slog.WarnContext(r.Context(), "chat proxy: invalid project_id on conversation, falling back to no-project",
+				"conversation_id", conversationID, "project_id", *conv.ProjectID, "error", parseErr)
+		} else {
+			proj, projErr := h.projectService.GetByID(r.Context(), business.ID, projUUID)
+			switch {
+			case projErr == nil:
+				projectID = proj.ID.String()
+				projectName = proj.Name
+				projectSystemPrompt = proj.SystemPrompt
+				projectWhitelistMode = string(proj.WhitelistMode)
+				projectAllowedTools = proj.AllowedTools
+			case errors.Is(projErr, domain.ErrProjectNotFound):
+				slog.WarnContext(r.Context(), "chat proxy: stale project_id, falling back to no-project",
+					"conversation_id", conversationID, "project_id", *conv.ProjectID)
+			default:
+				slog.WarnContext(r.Context(), "chat proxy: failed to resolve project, falling back to no-project",
+					"conversation_id", conversationID, "project_id", *conv.ProjectID, "error", projErr)
+			}
+		}
+	}
+	// Normalize nil slices so the outbound JSON serializes as `[]` not `null`
+	// (matches the orchestrator's expectation from Plan 15-02 handler tests).
+	if projectAllowedTools == nil {
+		projectAllowedTools = []string{}
+	}
+
 	orchReq := map[string]interface{}{
-		"model":                req.Model,
-		"message":              req.Message,
-		"business_id":          business.ID.String(),
-		"business_name":        business.Name,
-		"business_category":    business.Category,
-		"business_address":     business.Address,
-		"business_phone":       business.Phone,
-		"business_website":     derefString(business.Website),
-		"business_description": business.Description,
-		"active_integrations":  activeIntegrations,
-		"history":              history,
+		"model":                  req.Model,
+		"message":                req.Message,
+		"business_id":            business.ID.String(),
+		"business_name":          business.Name,
+		"business_category":      business.Category,
+		"business_address":       business.Address,
+		"business_phone":         business.Phone,
+		"business_website":       derefString(business.Website),
+		"business_description":   business.Description,
+		"active_integrations":    activeIntegrations,
+		"history":                history,
+		"project_id":             projectID,
+		"project_name":           projectName,
+		"project_system_prompt":  projectSystemPrompt,
+		"project_whitelist_mode": projectWhitelistMode,
+		"project_allowed_tools":  projectAllowedTools,
 	}
 
 	orchURL := fmt.Sprintf("%s/chat/%s", h.orchestratorURL, conversationID)
@@ -214,13 +402,24 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stream SSE line-by-line, accumulating assistant text and tool calls for persistence
+	// Stream SSE line-by-line, accumulating assistant text and tool calls for persistence.
+	// 1 MB — bumped from 64KB in Phase 16 (HITL-13) to support large tool results
+	// and ModelMessages snapshots that flow through the proxy without truncation.
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 64*1024), 64*1024)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var assistantText strings.Builder
 	var toolCalls []domain.ToolCall
 	var toolResults []domain.ToolResult
+	// Phase 16: track whether we emitted an approval-pause event. When set,
+	// the assistant Message is persisted with Status=pending_approval and the
+	// handler returns immediately after forwarding the event.
+	var pauseEvent *ssePayload
+	// Phase 16 / HITL-13: stream-start MessageID threaded end-to-end so that
+	// the orchestrator's PendingToolCallBatch.MessageID matches the actual
+	// Message.ID we persist here (D-17 / anti-footgun #5).
+	streamStartMessageID := uuid.NewString()
+
 	// Realtime task lifecycle keyed by the orchestrator's tool_call_id.
 	// We key everything by tool_call_id (not tool name) so duplicate tool
 	// names in a single batch correlate correctly.
@@ -255,16 +454,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		var ev struct {
-			Type            string                 `json:"type"`
-			Content         string                 `json:"content"`
-			ToolCallID      string                 `json:"tool_call_id"`
-			ToolName        string                 `json:"tool_name"`
-			ToolDisplayName string                 `json:"tool_display_name"`
-			ToolArgs        map[string]interface{} `json:"tool_args"`
-			ToolResult      interface{}            `json:"result"`
-			ToolError       string                 `json:"error"`
-		}
+		var ev ssePayload
 		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
 			slog.WarnContext(r.Context(), "chat proxy: malformed SSE event", "error", err, "line", line[:min(len(line), 200)])
 			continue
@@ -273,12 +463,11 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		case "text":
 			assistantText.WriteString(ev.Content)
 		case "tool_call":
-			id := ev.ToolCallID
-			if id == "" {
-				id = fmt.Sprintf("tc-%d", len(toolCalls))
-			}
+			// HITL-13 / anti-footgun #4: propagate the LLM's real
+			// tool_call.id from the orchestrator's SSE event. NEVER
+			// synthesize "tc-N" — mismatched IDs break approval resolve.
 			toolCalls = append(toolCalls, domain.ToolCall{
-				ID:        id,
+				ID:        ev.ToolCallID,
 				Name:      ev.ToolName,
 				Arguments: ev.ToolArgs,
 			})
@@ -296,6 +485,16 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 				IsError:    ev.ToolError != "",
 			})
 			h.onToolResult(taskOpsCtx, business.ID.String(), ev.ToolCallID, content, ev.ToolError, agentTaskIDByCallID)
+		case "tool_approval_required":
+			// HITL-01 / HITL-02: single pause event per turn. Copy the event
+			// so we can persist after the scanner loop exits.
+			evCopy := ev
+			pauseEvent = &evCopy
+		case "tool_rejected":
+			// HITL-09: synthetic rejection (policy_forbidden /
+			// policy_revoked / user_rejected). Forward-only — no
+			// persistence change here; any paired assistant Message is
+			// persisted by the pause or done path.
 		}
 	}
 
@@ -303,16 +502,55 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(r.Context(), "chat proxy: SSE scanner error", "error", err, "conversation_id", conversationID)
 	}
 
-	// Persist assistant response after stream ends
+	// Phase 16 HITL-01 pause-time branch: persist the assistant Message with
+	// Status=pending_approval so a page reload rehydrates the approval card
+	// via GET /messages (HITL-11 shape delivered in Task 2). The client has
+	// already received the tool_approval_required SSE event; we return from
+	// the handler after the persist so the HTTP response closes.
+	if pauseEvent != nil {
+		saveCtx, cancel := persistCtx()
+		defer cancel()
+		pendingToolCalls := make([]domain.ToolCall, 0, len(toolCalls))
+		for _, tc := range toolCalls {
+			pendingToolCalls = append(pendingToolCalls, domain.ToolCall{
+				ID:         tc.ID,
+				Name:       tc.Name,
+				Arguments:  tc.Arguments,
+				ApprovalID: fmt.Sprintf("%s-%s", pauseEvent.BatchID, tc.ID),
+				Status:     domain.ToolCallStatusPending,
+			})
+		}
+		assistantMsg := &domain.Message{
+			ID:             streamStartMessageID,
+			ConversationID: conversationID,
+			Role:           "assistant",
+			Content:        assistantText.String(),
+			ToolCalls:      pendingToolCalls,
+			Status:         domain.MessageStatusPendingApproval,
+		}
+		if err := h.messageRepo.Create(saveCtx, assistantMsg); err != nil {
+			// Non-fatal for the SSE stream — the client already received
+			// the pause event, and the orchestrator-side pending_tool_calls
+			// batch carries the authoritative state. Approval card will
+			// rehydrate from that on the next GET /messages (HITL-11).
+			slog.WarnContext(saveCtx, "failed to persist assistant pending_approval message",
+				"error", err, "conversation_id", conversationID, "batch_id", pauseEvent.BatchID)
+		}
+		return
+	}
+
+	// Persist assistant response after stream ends (auto / done path).
 	if assistantText.Len() > 0 || len(toolCalls) > 0 {
 		saveCtx, cancel := persistCtx()
 		defer cancel()
 		assistantMsg := &domain.Message{
+			ID:             streamStartMessageID,
 			ConversationID: conversationID,
 			Role:           "assistant",
 			Content:        assistantText.String(),
 			ToolCalls:      toolCalls,
 			ToolResults:    toolResults,
+			Status:         domain.MessageStatusComplete,
 		}
 		if err := h.messageRepo.Create(saveCtx, assistantMsg); err != nil {
 			slog.ErrorContext(saveCtx, "failed to save assistant message", "error", err)
@@ -468,6 +706,191 @@ func reviewFromToolResult(m map[string]interface{}, businessID, platform string)
 		ReplyText:   reply,
 		ReplyStatus: replyStatus,
 		CreatedAt:   createdAt,
+	}
+}
+
+// reemitApprovalEvent writes a tool_approval_required SSE event built from
+// the persisted PendingToolCallBatch. Used by the D-04 implicit-resume gate
+// when the client reopens the chat mid-approval (network flap, page reload)
+// and the batch is still in status="pending". No orchestrator roundtrip.
+func (h *ChatProxyHandler) reemitApprovalEvent(w http.ResponseWriter, batch *domain.PendingToolCallBatch) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	calls := make([]map[string]interface{}, 0, len(batch.Calls))
+	for _, c := range batch.Calls {
+		calls = append(calls, map[string]interface{}{
+			"call_id":         c.CallID,
+			"tool_name":       c.ToolName,
+			"args":            c.Arguments,
+			"editable_fields": []string{},
+			"floor":           "manual",
+		})
+	}
+	payload := map[string]interface{}{
+		"type":     "tool_approval_required",
+		"batch_id": batch.ID,
+		"calls":    calls,
+	}
+	data, _ := json.Marshal(payload)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
+}
+
+// sseInlineError writes a single {"type":"error","content":reason} SSE event
+// and closes the stream. Used by the D-04 gate's orphan-in-progress case.
+func (h *ChatProxyHandler) sseInlineError(w http.ResponseWriter, reason string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	payload := map[string]interface{}{"type": "error", "content": reason}
+	data, _ := json.Marshal(payload)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
+}
+
+// streamResume proxies to the orchestrator's resume endpoint and folds
+// tool_result events into the existing assistant Message (D-17). On done,
+// transitions Message.Status from pending_approval/in_progress to complete.
+func (h *ChatProxyHandler) streamResume(
+	w http.ResponseWriter,
+	r *http.Request,
+	conversationID string,
+	activeMsg *domain.Message,
+	batchID string,
+	persistCtx func() (context.Context, context.CancelFunc),
+) {
+	// Validate the batch exists for this conversation before proxying.
+	batch, err := h.pendingRepo.GetByBatchID(r.Context(), batchID)
+	if err != nil || batch == nil || batch.ConversationID != conversationID {
+		h.sseInlineError(w, "no_active_approval_for_conversation")
+		return
+	}
+
+	orchURL := fmt.Sprintf("%s/chat/%s/resume?batch_id=%s", h.orchestratorURL, conversationID, batchID)
+	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, orchURL, http.NoBody)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
+		proxyReq.Header.Set("X-Correlation-ID", corrID)
+	}
+	resp, err := h.httpClient.Do(proxyReq)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "orchestrator resume request failed", "error", err)
+		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Stream SSE response back to client.
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+
+	// Work on a local copy so we flush the full final state in one Update.
+	// msg.Content is intentionally not cleared — we preserve the Content
+	// builder semantics and start from whatever was persisted at pause time.
+	msg := *activeMsg
+	var postText strings.Builder
+	postText.WriteString(msg.Content)
+
+	// Index existing tool calls by call_id so we can update Status on result.
+	callIdx := make(map[string]int, len(msg.ToolCalls))
+	for i, tc := range msg.ToolCalls {
+		callIdx[tc.ID] = i
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		_, _ = fmt.Fprintf(w, "%s\n", line)
+		flusher.Flush()
+
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var ev ssePayload
+		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
+			continue
+		}
+		switch ev.Type {
+		case "text":
+			postText.WriteString(ev.Content)
+		case "tool_result":
+			var content map[string]interface{}
+			if m, ok := ev.ToolResult.(map[string]interface{}); ok {
+				content = m
+			} else {
+				content = map[string]interface{}{"raw": ev.ToolResult}
+			}
+			msg.ToolResults = append(msg.ToolResults, domain.ToolResult{
+				ToolCallID: ev.ToolCallID,
+				Content:    content,
+				IsError:    ev.ToolError != "",
+			})
+			if idx, ok := callIdx[ev.ToolCallID]; ok {
+				if ev.ToolError != "" {
+					msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
+				} else {
+					msg.ToolCalls[idx].Status = domain.ToolCallStatusApproved
+				}
+			}
+		case "tool_rejected":
+			if idx, ok := callIdx[ev.ToolCallID]; ok {
+				msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
+			}
+		case "done":
+			msg.Status = domain.MessageStatusComplete
+			msg.Content = postText.String()
+			saveCtx, cancel := persistCtx()
+			if err := h.messageRepo.Update(saveCtx, &msg); err != nil {
+				slog.WarnContext(saveCtx, "resume: failed to persist completed message",
+					"error", err, "message_id", msg.ID)
+			}
+			cancel()
+			return
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		slog.ErrorContext(r.Context(), "chat proxy: resume scanner error",
+			"error", err, "conversation_id", conversationID)
+	}
+
+	// Stream ended without EventDone (e.g. transient network drop). Persist
+	// whatever partial state we accumulated so the next reopen sees it.
+	msg.Content = postText.String()
+	saveCtx, cancel := persistCtx()
+	defer cancel()
+	if err := h.messageRepo.Update(saveCtx, &msg); err != nil {
+		slog.WarnContext(saveCtx, "resume: failed to persist partial message",
+			"error", err, "message_id", msg.ID)
 	}
 }
 

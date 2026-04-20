@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +13,7 @@ import (
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 )
 
 // TokenInfo holds the resolved tokens for an integration.
@@ -45,38 +48,95 @@ type VKClientFactory func(accessToken string) VKClient
 type Handler struct {
 	tokens        TokenFetcher
 	clientFactory VKClientFactory
-	serviceKey    string // VK API service key for read-only operations (public data)
+	serviceKey    string                   // VK API service key for read-only operations (public data)
+	dedupe        *hitldedupe.DedupeClient // optional; nil skips the HITL dedupe gate
 }
 
 // NewHandler creates a Handler with per-request token fetching.
 // serviceKey is optional — if provided, read operations use it instead of community token.
-func NewHandler(tokens TokenFetcher, factory VKClientFactory, serviceKey string) *Handler {
-	return &Handler{tokens: tokens, clientFactory: factory, serviceKey: serviceKey}
+// dedupe is optional — nil disables the HITL dedupe gate (used by unit tests and dev-local envs).
+func NewHandler(tokens TokenFetcher, factory VKClientFactory, serviceKey string, dedupe *hitldedupe.DedupeClient) *Handler {
+	return &Handler{tokens: tokens, clientFactory: factory, serviceKey: serviceKey, dedupe: dedupe}
 }
 
 // Handle routes the ToolRequest to the appropriate VK API operation.
+// Before dispatch, if a dedupe client is configured AND req.ApprovalID is
+// non-empty, the HITL dedupe gate is consulted — see dedupeGate.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	if resp, stop := h.dedupeGate(ctx, req); stop {
+		return resp, nil
+	}
+
+	var (
+		resp *a2a.ToolResponse
+		err  error
+	)
 	switch req.Tool {
 	case "vk__publish_post":
-		return h.publishPost(ctx, req)
+		resp, err = h.publishPost(ctx, req)
 	case "vk__post_photo":
-		return h.postPhoto(ctx, req)
+		resp, err = h.postPhoto(ctx, req)
 	case "vk__update_group_info":
-		return h.updateGroupInfo(ctx, req)
+		resp, err = h.updateGroupInfo(ctx, req)
 	case "vk__schedule_post":
-		return h.schedulePost(ctx, req)
+		resp, err = h.schedulePost(ctx, req)
 	case "vk__get_comments":
-		return h.getComments(ctx, req)
+		resp, err = h.getComments(ctx, req)
 	case "vk__reply_comment":
-		return h.replyComment(ctx, req)
+		resp, err = h.replyComment(ctx, req)
 	case "vk__delete_comment":
-		return h.deleteComment(ctx, req)
+		resp, err = h.deleteComment(ctx, req)
 	case "vk__get_community_info":
-		return h.getCommunityInfo(ctx, req)
+		resp, err = h.getCommunityInfo(ctx, req)
 	case "vk__get_wall_posts":
-		return h.getWallPosts(ctx, req)
+		resp, err = h.getWallPosts(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
+	}
+
+	h.dedupeStore(ctx, req, resp, err)
+	return resp, err
+}
+
+// dedupeGate consults the Redis dedupe cache BEFORE tool dispatch when a HITL
+// approval is in play. Returns (resp, true) when the caller should stop.
+func (h *Handler) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, bool) {
+	if h.dedupe == nil || req.ApprovalID == "" {
+		return nil, false
+	}
+	outcome, cached, err := h.dedupe.Claim(ctx, req.BusinessID, req.ApprovalID)
+	if err != nil {
+		slog.WarnContext(ctx, "hitl dedupe claim failed; proceeding without dedupe",
+			"error", err, "business_id", req.BusinessID, "approval_id", req.ApprovalID)
+		return nil, false
+	}
+	switch outcome {
+	case hitldedupe.ClaimOutcomeInFlight:
+		return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: already in flight"}, true
+	case hitldedupe.ClaimOutcomeDuplicate:
+		var cachedResp a2a.ToolResponse
+		if uerr := json.Unmarshal([]byte(cached), &cachedResp); uerr != nil {
+			slog.WarnContext(ctx, "hitl dedupe cached result malformed; returning generic duplicate",
+				"error", uerr)
+			return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: cached result unavailable"}, true
+		}
+		cachedResp.TaskID = req.TaskID
+		return &cachedResp, true
+	case hitldedupe.ClaimOutcomeClaimed, hitldedupe.ClaimOutcomeSkip:
+		// Proceed with execution — no cached response.
+	}
+	return nil, false
+}
+
+// dedupeStore persists a successful ToolResponse under the HITL dedupe key
+// so replays see ClaimOutcomeDuplicate. Errors/nil responses are not cached.
+func (h *Handler) dedupeStore(ctx context.Context, req a2a.ToolRequest, resp *a2a.ToolResponse, err error) {
+	if h.dedupe == nil || req.ApprovalID == "" || err != nil || resp == nil {
+		return
+	}
+	if serr := h.dedupe.Store(ctx, req.BusinessID, req.ApprovalID, resp); serr != nil {
+		slog.WarnContext(ctx, "hitl dedupe store failed; result returned but not cached",
+			"error", serr, "approval_id", req.ApprovalID)
 	}
 }
 

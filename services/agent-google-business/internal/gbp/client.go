@@ -46,7 +46,7 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

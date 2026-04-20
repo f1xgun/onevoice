@@ -54,3 +54,13 @@ var (
 var (
 	ErrAgentTaskNotFound = errors.New("agent task not found")
 )
+
+// Project errors
+var (
+	ErrProjectNotFound            = errors.New("project not found")
+	ErrProjectExists              = errors.New("project already exists")
+	ErrProjectNameRequired        = errors.New("project name required")
+	ErrProjectSystemPromptTooLong = errors.New("project system prompt too long (max 4000 chars)")
+	ErrProjectWhitelistEmpty      = errors.New("explicit whitelist must contain at least one tool")
+	ErrProjectWhitelistMode       = errors.New("invalid whitelist mode")
+)

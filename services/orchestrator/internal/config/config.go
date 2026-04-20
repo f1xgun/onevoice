@@ -19,6 +19,15 @@ type Config struct {
 	// deadline — the request context still governs overall cancellation.
 	ToolExecTimeout time.Duration
 
+	// MongoDB connection (Phase 16 HITL — Plan 16-02 Task 2). The
+	// orchestrator writes pending_tool_calls batches at pause time, so it
+	// needs its own Mongo connection (avoids a circular dependency where
+	// orchestrator → API → orchestrator). Defaults match the API service's
+	// docker-compose values so dev setups that only set one MONGO_URI
+	// continue to work.
+	MongoURI string
+	MongoDB  string
+
 	// LLM provider API keys (at least one must be set)
 	OpenRouterAPIKey string
 	OpenAIAPIKey     string
@@ -71,12 +80,58 @@ func Load() (*Config, error) {
 		ShutdownTimeout: shutdownTimeout,
 		ToolExecTimeout: toolExecTimeout,
 
+		MongoURI: getEnv("MONGO_URI", "mongodb://localhost:27017"),
+		MongoDB:  getEnv("MONGO_DB", "onevoice"),
+
 		OpenRouterAPIKey: os.Getenv("OPENROUTER_API_KEY"),
 		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
 		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
 
 		SelfHostedEndpoints: parseIndexedEndpoints(),
 	}, nil
+}
+
+// RedactMongoURI returns the Mongo connection URI with any embedded user:
+// password stripped, suitable for logging on startup. Implementation is
+// intentionally conservative: if the URI fails to parse it returns the
+// string `<mongo-uri-redacted>` rather than leaking the raw value.
+func (c *Config) RedactMongoURI() string {
+	// Supported forms: mongodb://user:pass@host[:port]/db and
+	// mongodb+srv://user:pass@host/db. We only redact the user-info segment
+	// between "//" and "@"; everything after "@" is host/path which is
+	// non-sensitive.
+	uri := c.MongoURI
+	if uri == "" {
+		return ""
+	}
+	// Find the scheme separator.
+	schemeEnd := -1
+	for i := 0; i+2 < len(uri); i++ {
+		if uri[i] == ':' && uri[i+1] == '/' && uri[i+2] == '/' {
+			schemeEnd = i + 3
+			break
+		}
+	}
+	if schemeEnd < 0 {
+		return "<mongo-uri-redacted>"
+	}
+	atIdx := -1
+	for i := schemeEnd; i < len(uri); i++ {
+		switch uri[i] {
+		case '@':
+			atIdx = i
+		case '/':
+			if atIdx < 0 {
+				// Path started before any '@' — no user-info segment. Safe as-is.
+				return uri
+			}
+		}
+	}
+	if atIdx < 0 {
+		// No user-info segment. Safe as-is.
+		return uri
+	}
+	return uri[:schemeEnd] + "***:***@" + uri[atIdx+1:]
 }
 
 // parseIndexedEndpoints scans SELF_HOSTED_N_URL / _MODEL / _API_KEY env vars

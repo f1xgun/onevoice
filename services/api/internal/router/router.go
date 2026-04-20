@@ -28,6 +28,8 @@ type Handlers struct {
 	Post          *handler.PostHandler
 	AgentTask     *handler.AgentTaskHandler
 	Telemetry     *handler.TelemetryHandler
+	Project       *handler.ProjectHandler
+	HITL          *handler.HITLHandler // Phase 16: resolve + resume + GET /tools
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
@@ -112,6 +114,29 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Put("/conversations/{id}", handlers.Conversation.UpdateConversation)
 			r.Delete("/conversations/{id}", handlers.Conversation.DeleteConversation)
 			r.Get("/conversations/{id}/messages", handlers.Conversation.ListMessages)
+			// Phase 15 (PROJ-06): move a chat between projects (or to "Без проекта")
+			r.Post("/conversations/{id}/move", handlers.Conversation.MoveConversation)
+
+			// Project routes (Phase 15 — projects foundation)
+			r.Get("/projects", handlers.Project.List)
+			r.Post("/projects", handlers.Project.Create)
+			r.Get("/projects/{id}", handlers.Project.Get)
+			r.Put("/projects/{id}", handlers.Project.Update)
+			r.Delete("/projects/{id}", handlers.Project.Delete)
+			r.Get("/projects/{id}/conversation-count", handlers.Project.ConversationCount)
+
+			// Phase 16 HITL routes (Plan 16-07)
+			if handlers.HITL != nil {
+				r.Post("/conversations/{id}/pending-tool-calls/{batch_id}/resolve", handlers.HITL.ResolvePendingToolCalls)
+				r.With(middleware.RateLimitByUser(redisClient, 10, time.Minute)).
+					Post("/chat/{id}/resume", handlers.HITL.Resume)
+				r.Get("/tools", handlers.HITL.GetTools)
+			}
+			// POLICY-05 business tool-approvals CRUD.
+			if handlers.Business != nil {
+				r.Get("/business/{id}/tool-approvals", handlers.Business.GetBusinessToolApprovals)
+				r.Put("/business/{id}/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)
+			}
 
 			// Password change
 			r.Put("/auth/password", handlers.Auth.ChangePassword)

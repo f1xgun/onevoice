@@ -240,6 +240,119 @@ func TestMessage_JSON_OmitsEmptyOptionalFields(t *testing.T) {
 
 // --- Post with platform results ---
 
+// --- Phase 16 additions: Message.Status + Business.ToolApprovals() ---
+
+// TestMessage_ZeroStatus_IsComplete documents the zero-value semantics of
+// Message.Status: an empty string MUST mean "complete" so that pre-Phase-16
+// messages (persisted before the field existed) behave exactly as they did
+// before — no backfill write is required. Any future reader of Message.Status
+// must honor this invariant.
+func TestMessage_ZeroStatus_IsComplete(t *testing.T) {
+	var m Message
+	if m.Status != "" {
+		t.Fatalf("zero-value Message.Status = %q, want empty string", m.Status)
+	}
+	// No constant-equality check here: the whole point is that legacy rows
+	// that DON'T carry the field still render as "complete" through whatever
+	// UI/branching logic downstream consumers apply. See docstring on
+	// Message.Status in mongo_models.go for the contract.
+}
+
+func TestBusiness_ToolApprovals(t *testing.T) {
+	t.Run("nil settings returns non-nil empty map", func(t *testing.T) {
+		b := Business{Settings: nil}
+		got := b.ToolApprovals()
+		if got == nil {
+			t.Fatal("ToolApprovals() returned nil; must be non-nil empty map")
+		}
+		if len(got) != 0 {
+			t.Fatalf("ToolApprovals() len = %d, want 0", len(got))
+		}
+	})
+
+	t.Run("empty settings map returns empty map", func(t *testing.T) {
+		b := Business{Settings: map[string]interface{}{}}
+		got := b.ToolApprovals()
+		if got == nil {
+			t.Fatal("ToolApprovals() returned nil")
+		}
+		if len(got) != 0 {
+			t.Fatalf("ToolApprovals() len = %d, want 0", len(got))
+		}
+	})
+
+	t.Run("happy path parses all valid entries", func(t *testing.T) {
+		b := Business{Settings: map[string]interface{}{
+			"tool_approvals": map[string]interface{}{
+				"telegram__send_channel_post": "manual",
+				"vk__send_post":               "auto",
+				"google_business__update":     "forbidden",
+			},
+		}}
+		got := b.ToolApprovals()
+		want := map[string]ToolFloor{
+			"telegram__send_channel_post": ToolFloorManual,
+			"vk__send_post":               ToolFloorAuto,
+			"google_business__update":     ToolFloorForbidden,
+		}
+		if len(got) != len(want) {
+			t.Fatalf("ToolApprovals() len = %d, want %d (got: %v)", len(got), len(want), got)
+		}
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("ToolApprovals()[%q] = %q, want %q", k, got[k], v)
+			}
+		}
+	})
+
+	t.Run("malformed value type skipped", func(t *testing.T) {
+		// Non-string value → skipped silently (defensive parsing).
+		b := Business{Settings: map[string]interface{}{
+			"tool_approvals": map[string]interface{}{
+				"good__tool": "manual",
+				"bad__tool":  42, // int, not string
+			},
+		}}
+		got := b.ToolApprovals()
+		if _, ok := got["bad__tool"]; ok {
+			t.Errorf("ToolApprovals() must skip non-string values, got %v", got)
+		}
+		if got["good__tool"] != ToolFloorManual {
+			t.Errorf("ToolApprovals()[good__tool] = %q, want manual", got["good__tool"])
+		}
+	})
+
+	t.Run("unknown enum value skipped", func(t *testing.T) {
+		b := Business{Settings: map[string]interface{}{
+			"tool_approvals": map[string]interface{}{
+				"x": "banana",
+				"y": "manual",
+			},
+		}}
+		got := b.ToolApprovals()
+		if _, ok := got["x"]; ok {
+			t.Errorf("ToolApprovals() must skip invalid enum values, got %v", got)
+		}
+		if got["y"] != ToolFloorManual {
+			t.Errorf("ToolApprovals()[y] = %q, want manual", got["y"])
+		}
+	})
+
+	t.Run("tool_approvals key is not a map is ignored", func(t *testing.T) {
+		// Defensive: if someone wrote a string at that key, don't panic.
+		b := Business{Settings: map[string]interface{}{
+			"tool_approvals": "not-a-map",
+		}}
+		got := b.ToolApprovals()
+		if got == nil {
+			t.Fatal("ToolApprovals() must return non-nil empty map even for malformed root value")
+		}
+		if len(got) != 0 {
+			t.Fatalf("ToolApprovals() len = %d, want 0", len(got))
+		}
+	})
+}
+
 func TestPost_JSON_PlatformResults(t *testing.T) {
 	post := Post{
 		ID:         "post-1",
