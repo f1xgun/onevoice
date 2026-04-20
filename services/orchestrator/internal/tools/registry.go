@@ -34,11 +34,12 @@ func (f ExecutorFunc) Execute(ctx context.Context, args map[string]interface{}) 
 }
 
 type entry struct {
-	def            llm.ToolDefinition
-	displayName    string
-	executor       Executor
-	floor          domain.ToolFloor
-	editableFields []string
+	def             llm.ToolDefinition
+	displayName     string
+	userDescription string // human-readable description surfaced in settings UI (LLM-facing description stays in def.Function.Description).
+	executor        Executor
+	floor           domain.ToolFloor
+	editableFields  []string
 }
 
 // Registry holds tool definitions and their executors.
@@ -89,6 +90,21 @@ func (r *Registry) DisplayName(name string) string {
 		return ""
 	}
 	return e.displayName
+}
+
+// SetUserDescription attaches a short user-facing description to a
+// previously-registered tool. This is what renders in /settings/tools and the
+// project approval overrides; the LLM-facing description (kept on
+// def.Function.Description) may reference other tool names and disambiguation
+// rules that would be confusing to surface in the UI. No-op if the tool is
+// not registered.
+func (r *Registry) SetUserDescription(name, text string) {
+	e, ok := r.tools[name]
+	if !ok {
+		return
+	}
+	e.userDescription = text
+	r.tools[name] = e
 }
 
 // Available returns tool definitions available for the given active integrations.
@@ -258,12 +274,13 @@ func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 // RegistryEntry is the projection exposed by GET /api/v1/tools (Plan 16-07).
 // Kept in the tools package so the API handler can import a typed shape.
 type RegistryEntry struct {
-	Name           string           `json:"name"`
-	DisplayName    string           `json:"displayName"` // human-readable label (e.g., "Отправить пост") shown in settings UI; may be empty — frontend falls back to Name.
-	Platform       string           `json:"platform"`    // e.g., "telegram" — derived from {platform}__{action}
-	Floor          domain.ToolFloor `json:"floor"`
-	EditableFields []string         `json:"editableFields"`
-	Description    string           `json:"description"`
+	Name            string           `json:"name"`
+	DisplayName     string           `json:"displayName"`     // human-readable label (e.g., "Отправить пост") shown in settings UI; may be empty — frontend falls back to Name.
+	Platform        string           `json:"platform"`        // e.g., "telegram" — derived from {platform}__{action}
+	Floor           domain.ToolFloor `json:"floor"`
+	EditableFields  []string         `json:"editableFields"`
+	Description     string           `json:"description"`     // LLM-facing description — includes tool-name references and disambiguation rules.
+	UserDescription string           `json:"userDescription"` // end-user-facing description shown in settings UI; never references other tool names.
 }
 
 // AllEntries returns a snapshot of (name, displayName, platform, floor, editable, description)
@@ -275,12 +292,13 @@ func (r *Registry) AllEntries() []RegistryEntry {
 	for _, e := range r.tools {
 		platform := toolPlatform(e.def.Function.Name)
 		out = append(out, RegistryEntry{
-			Name:           e.def.Function.Name,
-			DisplayName:    e.displayName,
-			Platform:       platform,
-			Floor:          e.floor,
-			EditableFields: append([]string(nil), e.editableFields...),
-			Description:    e.def.Function.Description,
+			Name:            e.def.Function.Name,
+			DisplayName:     e.displayName,
+			Platform:        platform,
+			Floor:           e.floor,
+			EditableFields:  append([]string(nil), e.editableFields...),
+			Description:     e.def.Function.Description,
+			UserDescription: e.userDescription,
 		})
 	}
 	return out

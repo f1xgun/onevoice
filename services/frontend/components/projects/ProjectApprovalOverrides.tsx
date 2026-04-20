@@ -6,7 +6,13 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 import { groupByPlatform, type PlatformKey } from '@/lib/hooks/useTools';
-import { toolLabel, type Tool, type ToolApprovals, type ToolApprovalValue } from '@/lib/schemas';
+import {
+  toolLabel,
+  toolUserDescription,
+  type Tool,
+  type ToolApprovals,
+  type ToolApprovalValue,
+} from '@/lib/schemas';
 
 interface ProjectApprovalOverridesProps {
   tools: Tool[];
@@ -97,8 +103,8 @@ function ToolRow({
     <div className="space-y-2 rounded-md border p-3">
       <div>
         <p className="text-sm font-medium">{toolLabel(tool)}</p>
-        {tool.description && (
-          <p className="mt-1 text-xs text-muted-foreground">{tool.description}</p>
+        {toolUserDescription(tool) && (
+          <p className="mt-1 text-xs text-muted-foreground">{toolUserDescription(tool)}</p>
         )}
       </div>
       <RadioGroup

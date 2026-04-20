@@ -380,12 +380,13 @@ type ToolsRegistryCache struct {
 // ToolsRegistryEntry is the per-tool projection returned by GET /api/v1/tools
 // (frontend) and by GET /internal/tools (internal — orchestrator-to-API).
 type ToolsRegistryEntry struct {
-	Name           string           `json:"name"`
-	DisplayName    string           `json:"displayName"`
-	Platform       string           `json:"platform"`
-	Floor          domain.ToolFloor `json:"floor"`
-	EditableFields []string         `json:"editableFields"`
-	Description    string           `json:"description"`
+	Name            string           `json:"name"`
+	DisplayName     string           `json:"displayName"`
+	Platform        string           `json:"platform"`
+	Floor           domain.ToolFloor `json:"floor"`
+	EditableFields  []string         `json:"editableFields"`
+	Description     string           `json:"description"`     // LLM-facing.
+	UserDescription string           `json:"userDescription"` // end-user-facing copy for settings UI.
 }
 
 // NewToolsRegistryCache constructs a cache bound to orchestratorURL (e.g.,
