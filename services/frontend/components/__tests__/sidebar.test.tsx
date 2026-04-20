@@ -26,8 +26,9 @@ vi.mock('@/lib/api', () => ({
 }));
 
 vi.mock('@/lib/auth', () => ({
-  useAuthStore: (selector: (state: { user: { email: string } | null; logout: () => void }) => unknown) =>
-    selector({ user: { email: 'tester@example.com' }, logout: vi.fn() }),
+  useAuthStore: (
+    selector: (state: { user: { email: string } | null; logout: () => void }) => unknown
+  ) => selector({ user: { email: 'tester@example.com' }, logout: vi.fn() }),
 }));
 
 const sampleProject: Project = {
@@ -63,7 +64,7 @@ function renderSidebar(pathname: string) {
   return render(
     <Providers>
       <Sidebar />
-    </Providers>,
+    </Providers>
   );
 }
 

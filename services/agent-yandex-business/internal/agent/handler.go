@@ -115,6 +115,8 @@ func (h *Handler) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 		}
 		cachedResp.TaskID = req.TaskID
 		return &cachedResp, true
+	case hitldedupe.ClaimOutcomeClaimed, hitldedupe.ClaimOutcomeSkip:
+		// Proceed with execution — no cached response.
 	}
 	return nil, false
 }

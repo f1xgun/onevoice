@@ -246,7 +246,7 @@ func TestMessage_JSON_OmitsEmptyOptionalFields(t *testing.T) {
 // Message.Status: an empty string MUST mean "complete" so that pre-Phase-16
 // messages (persisted before the field existed) behave exactly as they did
 // before — no backfill write is required. Any future reader of Message.Status
-// must honour this invariant.
+// must honor this invariant.
 func TestMessage_ZeroStatus_IsComplete(t *testing.T) {
 	var m Message
 	if m.Status != "" {

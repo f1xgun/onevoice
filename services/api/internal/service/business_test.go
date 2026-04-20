@@ -15,11 +15,11 @@ import (
 
 // Mock BusinessRepository
 type mockBusinessRepository struct {
-	createFunc               func(ctx context.Context, business *domain.Business) error
-	getByIDFunc              func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
-	getByUserIDFunc          func(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
-	updateFunc               func(ctx context.Context, business *domain.Business) error
-	updateToolApprovalsFunc  func(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
+	createFunc              func(ctx context.Context, business *domain.Business) error
+	getByIDFunc             func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
+	getByUserIDFunc         func(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
+	updateFunc              func(ctx context.Context, business *domain.Business) error
+	updateToolApprovalsFunc func(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
 
 func (m *mockBusinessRepository) Create(ctx context.Context, business *domain.Business) error {

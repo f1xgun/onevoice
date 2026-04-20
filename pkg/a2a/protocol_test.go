@@ -87,7 +87,7 @@ func TestToolRequest_JSONRoundTrip_WithApprovalID(t *testing.T) {
 
 	data, err := json.Marshal(req)
 	require.NoError(t, err)
-	assert.Contains(t, string(data), `"approval_id":"batch-7-call-3"`, "approval_id must be marshalled")
+	assert.Contains(t, string(data), `"approval_id":"batch-7-call-3"`, "approval_id must be marshaled")
 
 	var decoded a2a.ToolRequest
 	require.NoError(t, json.Unmarshal(data, &decoded))

@@ -166,7 +166,7 @@ func TestInternalToolsAll_ReturnsFullProjection(t *testing.T) {
 	reg.Register(makeDef("get_reviews"), "", nil, domain.ToolFloorAuto, nil)
 
 	h := handler.NewInternalToolsAllHandler(reg)
-	req := httptest.NewRequest(http.MethodGet, "/internal/tools", nil)
+	req := httptest.NewRequest(http.MethodGet, "/internal/tools", http.NoBody)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 

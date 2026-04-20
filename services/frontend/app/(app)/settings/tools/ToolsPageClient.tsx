@@ -8,11 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api } from '@/lib/api';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
-import {
-  useTools,
-  groupByPlatform,
-  type PlatformKey,
-} from '@/lib/hooks/useTools';
+import { useTools, groupByPlatform, type PlatformKey } from '@/lib/hooks/useTools';
 import {
   useBusinessToolApprovals,
   useUpdateBusinessToolApprovals,
@@ -65,11 +61,7 @@ export function ToolsPageClient() {
     queryFn: () => api.get('/business').then((r) => r.data as Business),
   });
 
-  const {
-    data: tools,
-    isLoading: toolsLoading,
-    error: toolsError,
-  } = useTools();
+  const { data: tools, isLoading: toolsLoading, error: toolsError } = useTools();
 
   const businessId = business?.id ?? '';
   const {
@@ -103,8 +95,8 @@ export function ToolsPageClient() {
   }, [initialDraft]);
 
   const buckets = useMemo(() => groupByPlatform(tools ?? []), [tools]);
-  const platforms = PLATFORM_DISPLAY_ORDER.filter(
-    (p) => buckets[p].some((t) => t.floor === 'manual' || t.floor === 'forbidden')
+  const platforms = PLATFORM_DISPLAY_ORDER.filter((p) =>
+    buckets[p].some((t) => t.floor === 'manual' || t.floor === 'forbidden')
   );
 
   const isLoading = businessLoading || toolsLoading || approvalsLoading;

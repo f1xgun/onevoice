@@ -39,8 +39,8 @@ func newStubToolsCache(names ...string) handler.ToolsCache {
 
 // stubBusinessServiceForApprovals is a minimal stub that captures calls.
 type stubBusinessServiceForApprovals struct {
-	bizByUser   *domain.Business
-	bizByID     *domain.Business
+	bizByUser    *domain.Business
+	bizByID      *domain.Business
 	getByUserErr error
 	getByIDErr   error
 

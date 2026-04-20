@@ -3,12 +3,7 @@
 import { Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toolLabel, toolUserDescription, type Tool, type ToolApprovalValue } from '@/lib/schemas';
 
 interface ToolApprovalToggleProps {

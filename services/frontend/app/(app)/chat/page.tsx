@@ -126,10 +126,7 @@ function ConversationItem({
               Переименовать
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <MoveChatMenuItem
-              conversationId={conv.id}
-              currentProjectId={conv.projectId ?? null}
-            />
+            <MoveChatMenuItem conversationId={conv.id} currentProjectId={conv.projectId ?? null} />
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-red-600 focus:text-red-600"

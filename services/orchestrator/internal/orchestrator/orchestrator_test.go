@@ -105,6 +105,8 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 			textEvents = append(textEvents, e)
 		case orchestrator.EventError, orchestrator.EventDone:
 			// not relevant for this test
+		case orchestrator.EventToolApprovalRequired, orchestrator.EventToolRejected:
+			// Not relevant for this test — ignored.
 		}
 	}
 

@@ -184,8 +184,8 @@ func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, con
 		if err := cursor.Decode(&doc); err != nil {
 			return nil, err
 		}
-		copy := doc
-		out = append(out, &copy)
+		docCopy := doc
+		out = append(out, &docCopy)
 	}
 	if err := cursor.Err(); err != nil {
 		return nil, err

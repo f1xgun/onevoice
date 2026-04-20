@@ -217,17 +217,17 @@ func run(log *slog.Logger, cfg *config.Config) error {
 // Policy guidelines for choosing a floor:
 //   - ToolFloorAuto       — read-only / safe queries (no external side effects).
 //   - ToolFloorManual     — any public mutation (post, reply, update, schedule,
-//                           upload). Editable allowlist covers ONLY
-//                           human-facing text fields (text/caption/description);
-//                           ids, recipients, URLs, dates, categories, and
-//                           quantities are pinned at pause time.
+//     upload). Editable allowlist covers ONLY
+//     human-facing text fields (text/caption/description);
+//     ids, recipients, URLs, dates, categories, and
+//     quantities are pinned at pause time.
 //   - ToolFloorForbidden  — reserved for actions that must NEVER be lifted
-//                           via settings (e.g., a future "wipe all posts").
-//                           Kept registered so the LLM sees it exists but
-//                           policy.Resolve always denies. Destructive-but-
-//                           legitimate operations (comment moderation, etc.)
-//                           belong under Manual, not Forbidden — users with
-//                           a valid use-case can opt into auto-approval.
+//     via settings (e.g., a future "wipe all posts").
+//     Kept registered so the LLM sees it exists but
+//     policy.Resolve always denies. Destructive-but-
+//     legitimate operations (comment moderation, etc.)
+//     belong under Manual, not Forbidden — users with
+//     a valid use-case can opt into auto-approval.
 //
 // When in doubt, prefer manual + a narrow editable list (conservative default).
 type toolSpec struct {
@@ -255,7 +255,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// Mutating public: posts to a Telegram channel. text + parse_mode
 				// editable; channel_id pinned from integration.
 				{
-					displayName: "Отправить пост",
+					displayName:     "Отправить пост",
 					userDescription: "Публикует текстовое сообщение в Telegram-канале.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__send_channel_post",
@@ -276,7 +276,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// photo_url and channel_id pinned (redirecting either at edit
 				// time would be a HITL-07 footgun).
 				{
-					displayName: "Отправить фото",
+					displayName:     "Отправить фото",
 					userDescription: "Публикует фото с подписью в Telegram-канале.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__send_channel_photo",
@@ -297,7 +297,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// DM notification to owner. text editable; recipient pinned
 				// from the integration (never editable).
 				{
-					displayName: "Уведомление владельцу",
+					displayName:     "Уведомление владельцу",
 					userDescription: "Отправляет личное уведомление владельцу бизнеса в Telegram.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__send_notification",
@@ -315,7 +315,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only query of recent messages. Auto, no edit needed.
 				{
-					displayName: "Загрузить отзывы",
+					displayName:     "Загрузить отзывы",
 					userDescription: "Загружает комментарии и реакции из Telegram-канала.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__get_reviews",
@@ -334,7 +334,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// message_id + chat_id + channel_id pinned (changing these
 				// would redirect the reply to an unrelated conversation).
 				{
-					displayName: "Ответить на комментарий",
+					displayName:     "Ответить на комментарий",
 					userDescription: "Отвечает на комментарий к посту в Telegram-канале.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "telegram__reply_to_comment",
@@ -360,7 +360,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			tools: []toolSpec{
 				// Mutating public: publishes wall post. text editable; group_id pinned.
 				{
-					displayName: "Опубликовать пост",
+					displayName:     "Опубликовать пост",
 					userDescription: "Публикует пост на стене сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__publish_post",
@@ -379,7 +379,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: photo + caption. caption editable; photo_url + group_id pinned.
 				{
-					displayName: "Опубликовать фото",
+					displayName:     "Опубликовать фото",
 					userDescription: "Публикует пост с фото на стене сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__post_photo",
@@ -401,7 +401,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// publish_date NOT editable (changing a scheduled time is a
 				// semantic change — a separate tool call makes intent explicit).
 				{
-					displayName: "Запланировать пост",
+					displayName:     "Запланировать пост",
 					userDescription: "Планирует отложенную публикацию на стене ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__schedule_post",
@@ -423,7 +423,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// group_id pinned. Contacts/links intentionally omitted from
 				// edit-allowlist until the LLM's JSON schema exposes them.
 				{
-					displayName: "Обновить данные сообщества",
+					displayName:     "Обновить данные сообщества",
 					userDescription: "Изменяет название, описание и контакты сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__update_group_info",
@@ -442,7 +442,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only. Auto.
 				{
-					displayName: "Загрузить комментарии",
+					displayName:     "Загрузить комментарии",
 					userDescription: "Загружает комментарии к посту ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__get_comments",
@@ -462,7 +462,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: comment reply. text editable; ids pinned.
 				{
-					displayName: "Ответить на комментарий",
+					displayName:     "Ответить на комментарий",
 					userDescription: "Отвечает на комментарий ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__reply_comment",
@@ -482,7 +482,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					editable: []string{"text"},
 				},
 				// Destructive: hard-deletes a comment. Manual-floor — legitimate
-				// moderation use-case (spam, abuse). Default behaviour is
+				// moderation use-case (spam, abuse). Default behavior is
 				// per-call approval; a business owner can bump to auto if
 				// they trust the LLM's filtering. No editable fields:
 				// comment_id is a hard ID that users must not override at
@@ -507,7 +507,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only. Auto.
 				{
-					displayName: "Загрузить данные сообщества",
+					displayName:     "Загрузить данные сообщества",
 					userDescription: "Загружает карточку сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__get_community_info",
@@ -525,7 +525,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only. Auto.
 				{
-					displayName: "Загрузить посты",
+					displayName:     "Загрузить посты",
 					userDescription: "Загружает посты со стены сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "vk__get_wall_posts",
@@ -549,7 +549,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			tools: []toolSpec{
 				// Read-only. Auto.
 				{
-					displayName: "Загрузить карточку организации",
+					displayName:     "Загрузить карточку организации",
 					userDescription: "Загружает карточку организации из Яндекс.Бизнеса.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__get_info",
@@ -564,7 +564,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: hours. hours editable (text payload).
 				{
-					displayName: "Обновить часы работы",
+					displayName:     "Обновить часы работы",
 					userDescription: "Обновляет часы работы организации в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__update_hours",
@@ -585,7 +585,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// a high-impact mutation; operator confirms via UI toggle before
 				// any tool call rather than post-hoc edit).
 				{
-					displayName: "Обновить данные организации",
+					displayName:     "Обновить данные организации",
 					userDescription: "Изменяет описание, телефон и сайт организации в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__update_info",
@@ -604,7 +604,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Read-only. Auto.
 				{
-					displayName: "Загрузить отзывы Яндекса",
+					displayName:     "Загрузить отзывы Яндекса",
 					userDescription: "Загружает отзывы клиентов с Яндекс.Бизнеса.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__get_reviews",
@@ -621,7 +621,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: review reply. text editable; review_id pinned.
 				{
-					displayName: "Ответить на отзыв Яндекса",
+					displayName:     "Ответить на отзыв Яндекса",
 					userDescription: "Отвечает на отзыв клиента в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__reply_review",
@@ -642,7 +642,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				// and photo_url are both semantic — editing either changes
 				// what the operator sees in the card vs what actually uploads).
 				{
-					displayName: "Загрузить фото",
+					displayName:     "Загрузить фото",
 					userDescription: "Добавляет фото в галерею карточки организации в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__upload_photo",
@@ -661,7 +661,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: publication. text editable.
 				{
-					displayName: "Опубликовать пост в Яндекс Бизнес",
+					displayName:     "Опубликовать пост в Яндекс Бизнес",
 					userDescription: "Публикует пост в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "yandex_business__create_post",
@@ -684,7 +684,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 			tools: []toolSpec{
 				// Read-only. Auto.
 				{
-					displayName: "Загрузить отзывы Google",
+					displayName:     "Загрузить отзывы Google",
 					userDescription: "Загружает отзывы клиентов из Google Business Profile.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "google_business__get_reviews",
@@ -701,7 +701,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 				},
 				// Mutating public: review reply. text editable; review_name pinned.
 				{
-					displayName: "Ответить на отзыв Google",
+					displayName:     "Ответить на отзыв Google",
 					userDescription: "Отвечает на отзыв клиента в Google Business Profile.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 						Name:        "google_business__reply_review",

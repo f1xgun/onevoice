@@ -93,7 +93,7 @@ function PlatformSection({
         </div>
         <ChevronDown
           size={16}
-          className={cn('transition-transform text-muted-foreground', open && 'rotate-180')}
+          className={cn('text-muted-foreground transition-transform', open && 'rotate-180')}
         />
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -109,7 +109,7 @@ function PlatformSection({
                   onCheckedChange={(v) => toggleTool(tool.name, v === true)}
                 />
                 <div className="flex-1">
-                  <label htmlFor={id} className="text-sm font-medium cursor-pointer">
+                  <label htmlFor={id} className="cursor-pointer text-sm font-medium">
                     {toolLabel(tool)}
                   </label>
                   {toolUserDescription(tool) && (
@@ -152,9 +152,7 @@ export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCh
   }
 
   if (isLoading || !tools) {
-    return (
-      <p className="text-sm text-muted-foreground">Загрузка списка инструментов…</p>
-    );
+    return <p className="text-sm text-muted-foreground">Загрузка списка инструментов…</p>;
   }
 
   const buckets = groupByPlatform(tools);

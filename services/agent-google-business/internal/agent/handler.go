@@ -96,6 +96,8 @@ func (h *Handler) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 		}
 		cachedResp.TaskID = req.TaskID
 		return &cachedResp, true
+	case hitldedupe.ClaimOutcomeClaimed, hitldedupe.ClaimOutcomeSkip:
+		// Proceed with execution — no cached response.
 	}
 	return nil, false
 }
@@ -157,13 +159,13 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 	reviews := make([]map[string]interface{}, 0, len(resp.Reviews))
 	for _, r := range resp.Reviews {
 		review := map[string]interface{}{
-			"review_id":   r.ReviewID,
-			"name":        r.Name,
-			"author":      r.Reviewer.DisplayName,
-			"rating":      r.StarRating,
-			"comment":     r.Comment,
-			"created_at":  r.CreateTime,
-			"has_reply":   r.ReviewReply != nil,
+			"review_id":  r.ReviewID,
+			"name":       r.Name,
+			"author":     r.Reviewer.DisplayName,
+			"rating":     r.StarRating,
+			"comment":    r.Comment,
+			"created_at": r.CreateTime,
+			"has_reply":  r.ReviewReply != nil,
 		}
 		if r.ReviewReply != nil {
 			review["reply"] = r.ReviewReply.Comment

@@ -85,12 +85,13 @@ func (req projectRequest) toInput(overrides map[string]domain.ToolFloor) service
 
 // buildApprovalOverrides validates and strips inherit-valued entries from the
 // request's approvalOverrides map. Returns (overrides, httpStatus, errorBody).
-//  - Unknown tool name → (nil, 400, {"error":"unknown tool: X"})
-//  - Invalid value (not in {auto,manual,inherit}) → (nil, 400, {"error":"..."})
-//  - "inherit" → key stripped from the returned map (inherit == absence)
+//   - Unknown tool name → (nil, 400, {"error":"unknown tool: X"})
+//   - Invalid value (not in {auto,manual,inherit}) → (nil, 400, {"error":"..."})
+//   - "inherit" → key stripped from the returned map (inherit == absence)
+//
 // When the handler's toolsCache is nil, returns (nil, 503, ...) because we
 // cannot validate without the live registry.
-func (h *ProjectHandler) buildApprovalOverrides(body map[string]string) (map[string]domain.ToolFloor, int, map[string]string) {
+func (h *ProjectHandler) buildApprovalOverrides(body map[string]string) (overrides map[string]domain.ToolFloor, status int, errBody map[string]string) {
 	if len(body) == 0 {
 		return nil, 0, nil
 	}

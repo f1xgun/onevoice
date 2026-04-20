@@ -60,7 +60,7 @@ func (m *MockBusinessService) Update(ctx context.Context, business *domain.Busin
 
 // Phase 16 POLICY-05 stubs. Default behavior: return nil/empty so existing
 // tests that don't exercise these paths keep working unchanged.
-func (m *MockBusinessService) GetToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID) (map[string]domain.ToolFloor, error) {
+func (m *MockBusinessService) GetToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID) (map[string]domain.ToolFloor, error) {
 	if !m.hasExpectation("GetToolApprovals") {
 		return map[string]domain.ToolFloor{}, nil
 	}
@@ -71,7 +71,7 @@ func (m *MockBusinessService) GetToolApprovals(ctx context.Context, actorUserID 
 	return args.Get(0).(map[string]domain.ToolFloor), args.Error(1)
 }
 
-func (m *MockBusinessService) UpdateToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
+func (m *MockBusinessService) UpdateToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
 	if !m.hasExpectation("UpdateToolApprovals") {
 		return nil
 	}

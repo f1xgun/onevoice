@@ -495,7 +495,7 @@ func (a *integrationSyncAdapter) GetDecryptedToken(ctx context.Context, business
 // silently on sustained failure so a slow/dead orchestrator cannot block API
 // boot. The sweep is advisory — production alerts should watch for
 // `tool_approval_whitelist_unknown` events in Loki/Grafana.
-func runToolApprovalStartupValidation(ctx context.Context, pgPool *pgxpool.Pool, orchestratorURL string) {
+func runToolApprovalStartupValidation(_ context.Context, pgPool *pgxpool.Pool, orchestratorURL string) {
 	sweepCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -546,7 +546,7 @@ func fetchOrchestratorToolNames(ctx context.Context, orchestratorURL string) (ma
 	defer cancel()
 
 	u := strings.TrimRight(orchestratorURL, "/") + "/internal/tools/names"
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}

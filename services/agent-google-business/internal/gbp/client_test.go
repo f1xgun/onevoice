@@ -21,7 +21,7 @@ func TestClient_ListAccounts(t *testing.T) {
 				{Name: "accounts/123", AccountName: "Test Business", Type: "PERSONAL"},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -45,7 +45,7 @@ func TestClient_ListLocations(t *testing.T) {
 				{Name: "locations/456", Title: "My Shop"},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -79,7 +79,7 @@ func TestClient_GetReviews(t *testing.T) {
 			AverageRating:    5.0,
 			TotalReviewCount: 1,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -98,7 +98,7 @@ func TestClient_GetReviews(t *testing.T) {
 func TestClient_GetReviews_DefaultLimit(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "50", r.URL.Query().Get("pageSize"))
-		json.NewEncoder(w).Encode(ListReviewsResponse{})
+		_ = json.NewEncoder(w).Encode(ListReviewsResponse{})
 	}))
 	defer srv.Close()
 
@@ -117,10 +117,10 @@ func TestClient_ReplyReview(t *testing.T) {
 
 		body, _ := io.ReadAll(r.Body)
 		var payload map[string]string
-		json.Unmarshal(body, &payload)
+		_ = json.Unmarshal(body, &payload)
 		assert.Equal(t, "Thank you!", payload["comment"])
 
-		json.NewEncoder(w).Encode(ReviewReply{
+		_ = json.NewEncoder(w).Encode(ReviewReply{
 			Comment:    "Thank you!",
 			UpdateTime: "2026-01-05T00:00:00Z",
 		})
@@ -139,7 +139,7 @@ func TestClient_ReplyReview(t *testing.T) {
 func TestClient_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(ErrorResponse{
+		_ = json.NewEncoder(w).Encode(ErrorResponse{
 			Error: struct {
 				Code    int    `json:"code"`
 				Message string `json:"message"`

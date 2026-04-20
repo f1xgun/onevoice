@@ -115,7 +115,9 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
       />
     );
 
-    await userEvent.click(screen.getByLabelText(/«как у бизнеса»/i, { selector: '[id^="po-inherit-telegram"]' }));
+    await userEvent.click(
+      screen.getByLabelText(/«как у бизнеса»/i, { selector: '[id^="po-inherit-telegram"]' })
+    );
     expect(onChange).toHaveBeenCalledWith({ [vkPost.name]: 'manual' });
   });
 
@@ -137,8 +139,6 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
       />
     );
 
-    expect(
-      screen.getByText(/Нет инструментов, требующих одобрения/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Нет инструментов, требующих одобрения/)).toBeInTheDocument();
   });
 });

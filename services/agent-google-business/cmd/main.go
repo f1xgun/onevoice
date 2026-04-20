@@ -41,7 +41,7 @@ func run() error {
 	tokens := &tokenAdapter{client: tc}
 	dedupe := newDedupeClient(cfg.RedisURL)
 	handler := agentpkg.NewHandler(tokens, func(token string) agentpkg.GBPClient {
-		return gbp.New(token) //nolint:typecheck // gbp.Client implements GBPClient
+		return gbp.New(token)
 	}, dedupe)
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentGoogleBusiness, transport, handler)

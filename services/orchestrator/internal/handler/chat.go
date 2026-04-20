@@ -200,6 +200,8 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			// HITL-02: one pause event per turn carrying all manual calls.
 			sse.BatchID = event.BatchID
 			sse.Calls = event.Calls
+		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
+			// No additional fields beyond Type + Content.
 		}
 		writeSSE(ctx, w, flusher, sse)
 	}
