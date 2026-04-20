@@ -29,19 +29,21 @@ describe('NewProjectPage — post-create behaviour (GAP-04)', () => {
     capturedOnSaved = null;
   });
 
-  it('redirects to /chat after successful create', () => {
+  it('redirects to /projects/:id (edit page) after successful create so the user can configure', () => {
     render(<NewProjectPage />);
     expect(capturedOnSaved).toBeTypeOf('function');
     capturedOnSaved!({ id: 'p1', name: 'Отзывы' });
-    expect(push).toHaveBeenCalledWith('/chat');
+    expect(push).toHaveBeenCalledWith('/projects/p1');
     expect(push).toHaveBeenCalledTimes(1);
   });
 
   it('shows toast with project name', () => {
     render(<NewProjectPage />);
     capturedOnSaved!({ id: 'p1', name: 'Отзывы' });
-    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Отзывы'));
-    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('создан'));
+    const calls = (toast.success as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toContain('Отзывы');
+    expect(calls[0][0]).toContain('создан');
   });
 
   it('does NOT redirect to Phase 19 placeholder /projects/:id/chats (regression guard)', () => {

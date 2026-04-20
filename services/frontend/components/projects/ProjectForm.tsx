@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
@@ -145,148 +146,221 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Название</FormLabel>
-              <FormControl>
-                <Input placeholder="Например: Отзывы" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {isEdit ? (
+          <Tabs defaultValue="basics" className="w-full">
+            <TabsList className="w-full justify-start">
+              <TabsTrigger value="basics">Основное</TabsTrigger>
+              <TabsTrigger value="prompt">Промпт</TabsTrigger>
+              <TabsTrigger value="tools">Инструменты</TabsTrigger>
+              <TabsTrigger value="quick-actions">Быстрые действия</TabsTrigger>
+            </TabsList>
 
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>
-                Описание <span className="text-muted-foreground">(необязательно)</span>
-              </FormLabel>
-              <FormControl>
-                <Textarea
-                  rows={2}
-                  placeholder="Короткое описание — для кого этот проект."
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="systemPrompt"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Системный промпт</FormLabel>
-              <FormControl>
-                <Textarea
-                  rows={6}
-                  placeholder="Опишите роль и ограничения. Добавляется к контексту бизнеса."
-                  {...field}
-                />
-              </FormControl>
-              <div className="flex items-center justify-between">
-                <FormDescription>
-                  Опишите роль и ограничения. Добавляется к контексту бизнеса.
-                </FormDescription>
-                <span
-                  className={cn(
-                    'text-xs tabular-nums',
-                    overCap ? 'text-destructive' : 'text-muted-foreground'
-                  )}
-                  aria-live="polite"
-                >
-                  {systemPromptLen} / 4000 символов
-                </span>
-              </div>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="whitelistMode"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Доступные инструменты</FormLabel>
-              <FormControl>
-                <WhitelistRadio value={field.value} onChange={field.onChange} name={field.name} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {whitelistMode === 'explicit' && (
-          <FormField
-            control={form.control}
-            name="allowedTools"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="sr-only">Список инструментов</FormLabel>
-                <FormControl>
-                  <ToolCheckboxGrid
-                    activeIntegrations={activePlatforms}
-                    value={field.value}
-                    onChange={field.onChange}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-
-        <FormField
-          control={form.control}
-          name="approvalOverrides"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>«Одобрение инструментов»</FormLabel>
-              <FormDescription>
-                Переопределить правила бизнеса для этого проекта. «как у бизнеса» —
-                использовать настройку, выбранную в «Настройки одобрения инструментов».
-              </FormDescription>
-              <FormControl>
-                {tools ? (
-                  <ProjectApprovalOverrides
-                    tools={tools}
-                    businessApprovals={businessApprovals}
-                    value={field.value}
-                    onChange={field.onChange}
-                  />
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Загрузка списка инструментов…
-                  </p>
+            <TabsContent value="basics" className="space-y-6 pt-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Название</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Например: Отзывы" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+              />
 
-        <FormField
-          control={form.control}
-          name="quickActions"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Быстрые действия</FormLabel>
-              <FormControl>
-                <QuickActionsEditor value={field.value} onChange={field.onChange} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Описание <span className="text-muted-foreground">(необязательно)</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={3}
+                        placeholder="Короткое описание — для кого этот проект."
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </TabsContent>
+
+            <TabsContent value="prompt" className="space-y-6 pt-4">
+              <FormField
+                control={form.control}
+                name="systemPrompt"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Системный промпт</FormLabel>
+                    <FormDescription>
+                      Описывает роль и ограничения ИИ. Добавляется к контексту бизнеса при каждом
+                      сообщении.
+                    </FormDescription>
+                    <FormControl>
+                      <Textarea
+                        rows={10}
+                        placeholder="Ты — помощник по отзывам. Отвечай вежливо, по существу…"
+                        {...field}
+                      />
+                    </FormControl>
+                    <div className="flex justify-end">
+                      <span
+                        className={cn(
+                          'text-xs tabular-nums',
+                          overCap ? 'text-destructive' : 'text-muted-foreground'
+                        )}
+                        aria-live="polite"
+                      >
+                        {systemPromptLen} / 4000 символов
+                      </span>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </TabsContent>
+
+            <TabsContent value="tools" className="space-y-6 pt-4">
+              <FormField
+                control={form.control}
+                name="whitelistMode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Доступные инструменты</FormLabel>
+                    <FormDescription>
+                      Какие действия вообще разрешены в этом проекте.
+                    </FormDescription>
+                    <FormControl>
+                      <WhitelistRadio
+                        value={field.value}
+                        onChange={field.onChange}
+                        name={field.name}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {whitelistMode === 'explicit' && (
+                <FormField
+                  control={form.control}
+                  name="allowedTools"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="sr-only">Список инструментов</FormLabel>
+                      <FormControl>
+                        <ToolCheckboxGrid
+                          activeIntegrations={activePlatforms}
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              <FormField
+                control={form.control}
+                name="approvalOverrides"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Одобрение инструментов</FormLabel>
+                    <FormDescription>
+                      Какие действия ИИ выполняет сам, а какие должны ждать вашего подтверждения.
+                      «Как у бизнеса» — использовать общую настройку из «Настройки → Одобрение
+                      инструментов».
+                    </FormDescription>
+                    <FormControl>
+                      {tools ? (
+                        <ProjectApprovalOverrides
+                          tools={tools}
+                          businessApprovals={businessApprovals}
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Загрузка списка инструментов…
+                        </p>
+                      )}
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </TabsContent>
+
+            <TabsContent value="quick-actions" className="space-y-6 pt-4">
+              <FormField
+                control={form.control}
+                name="quickActions"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Быстрые действия</FormLabel>
+                    <FormDescription>
+                      Кнопки-подсказки, которые появляются над полем ввода в новом чате.
+                    </FormDescription>
+                    <FormControl>
+                      <QuickActionsEditor value={field.value} onChange={field.onChange} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          // Create flow — only name + description. Остальное настраивается после создания.
+          <>
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Название</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Например: Отзывы" autoFocus {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Описание <span className="text-muted-foreground">(необязательно)</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={3}
+                      placeholder="Короткое описание — для кого этот проект."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <p className="rounded-md border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+              Системный промпт, доступные инструменты и быстрые действия можно настроить после
+              создания проекта.
+            </p>
+          </>
+        )}
 
         <div className="flex flex-wrap items-center gap-3 pt-2">
           <Button type="submit" disabled={submitting}>
