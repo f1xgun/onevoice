@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -20,6 +20,11 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { useProjectsQuery } from '@/hooks/useProjects';
+import { useConversationsQuery } from '@/hooks/useConversations';
+import { UnassignedBucket } from '@/components/sidebar/UnassignedBucket';
+import { ProjectSection } from '@/components/sidebar/ProjectSection';
+import type { Conversation } from '@/lib/conversations';
 
 interface Integration {
   platform: string;
@@ -57,6 +62,35 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     placeholderData: [],
   });
 
+  const { data: projects } = useProjectsQuery();
+  const { data: conversations } = useConversationsQuery();
+
+  // Projects subtree stays visible while the user is managing projects or
+  // browsing chats. Anywhere else (integrations, businesses, billing) it
+  // collapses back to a flat "Чат" link. See GAP-03 in 15-VERIFICATION.md.
+  const isProjectsOrChatArea = pathname.startsWith('/chat') || pathname.startsWith('/projects');
+  const activeConversationId = useMemo(() => {
+    if (!pathname.startsWith('/chat/')) return undefined;
+    return pathname.split('/')[2];
+  }, [pathname]);
+
+  const { unassigned, byProject } = useMemo(() => {
+    const convs: Conversation[] = conversations ?? [];
+    const unassignedList = convs.filter((c) => c.projectId == null);
+    const grouped: Record<string, Conversation[]> = {};
+    for (const c of convs) {
+      if (c.projectId != null) {
+        (grouped[c.projectId] ??= []).push(c);
+      }
+    }
+    return { unassigned: unassignedList, byProject: grouped };
+  }, [conversations]);
+
+  const sortedProjects = useMemo(() => {
+    const list = projects ?? [];
+    return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [projects]);
+
   return (
     <div className="flex h-full flex-col bg-gray-900 text-white">
       {/* Logo */}
@@ -66,23 +100,53 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-2">
-        {navItems.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            onClick={onNavigate}
-            className={cn(
-              'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-              pathname.startsWith(href)
-                ? 'bg-gray-700 text-white'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-            )}
-          >
-            <Icon size={18} />
-            {label}
-          </Link>
-        ))}
+      <nav className="flex-1 space-y-1 overflow-y-auto p-2">
+        {navItems.map(({ href, label, icon: Icon }) => {
+          const isActive = pathname.startsWith(href);
+          return (
+            <div key={href}>
+              <Link
+                href={href}
+                onClick={onNavigate}
+                className={cn(
+                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                  isActive
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                )}
+              >
+                <Icon size={18} />
+                {label}
+              </Link>
+
+              {href === '/chat' && isProjectsOrChatArea && (
+                <div className="mt-1 space-y-1 border-l border-gray-700 pl-2">
+                  <UnassignedBucket
+                    conversations={unassigned}
+                    activeConversationId={activeConversationId}
+                    onNavigate={onNavigate}
+                  />
+                  {sortedProjects.map((p) => (
+                    <ProjectSection
+                      key={p.id}
+                      project={p}
+                      conversations={byProject[p.id] ?? []}
+                      activeConversationId={activeConversationId}
+                      onNavigate={onNavigate}
+                    />
+                  ))}
+                  <Link
+                    href="/projects/new"
+                    onClick={onNavigate}
+                    className="mt-1 block px-2 py-1 text-xs text-gray-500 hover:text-white"
+                  >
+                    + Новый проект
+                  </Link>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       {/* Platform status */}

@@ -2,17 +2,22 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/services/agent-vk/internal/agent"
 )
 
@@ -105,7 +110,7 @@ func TestHandler_PublishPost(t *testing.T) {
 			return 123, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t1",
@@ -133,7 +138,7 @@ func TestHandler_PublishPost_FetchesToken(t *testing.T) {
 		}
 	}
 
-	h := agent.NewHandler(tokens, factory, "")
+	h := agent.NewHandler(tokens, factory, "", nil)
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t2",
 		Tool:       "vk__publish_post",
@@ -148,7 +153,7 @@ func TestHandler_PublishPost_FetchesToken(t *testing.T) {
 
 func TestHandler_TokenError(t *testing.T) {
 	tokens := &mockTokenFetcher{err: fmt.Errorf("token not found")}
-	h := agent.NewHandler(tokens, nil, "")
+	h := agent.NewHandler(tokens, nil, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -168,7 +173,7 @@ func TestHandler_UpdateGroupInfo(t *testing.T) {
 			return nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t3",
@@ -195,7 +200,7 @@ func TestHandler_GetComments(t *testing.T) {
 			return []map[string]interface{}{{"id": "1", "text": "nice!"}}, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t4",
@@ -229,7 +234,7 @@ func TestHandler_GetComments_UsesServiceKeyWithoutUserToken(t *testing.T) {
 		capturedToken = token
 		return vkClient
 	}
-	h := agent.NewHandler(tokens, factory, "service-key-tok")
+	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-service-key",
@@ -254,7 +259,7 @@ func TestHandler_GetComments_DefaultCount(t *testing.T) {
 			return nil, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t5",
@@ -269,7 +274,7 @@ func TestHandler_GetComments_DefaultCount(t *testing.T) {
 
 func TestHandler_UnknownTool_ReturnsError(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, nil, "")
+	h := agent.NewHandler(tokens, nil, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID: "t6",
@@ -288,7 +293,7 @@ func TestClassifyVKError_PermanentCode5(t *testing.T) {
 		},
 	}
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -306,7 +311,7 @@ func TestClassifyVKError_RateLimitCode6(t *testing.T) {
 		},
 	}
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -324,7 +329,7 @@ func TestClassifyVKError_TransientCode1(t *testing.T) {
 		},
 	}
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -342,7 +347,7 @@ func TestClassifyVKError_NetworkError(t *testing.T) {
 		},
 	}
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -355,7 +360,7 @@ func TestClassifyVKError_NetworkError(t *testing.T) {
 
 func TestClassifyVKError_TokenFetchFailure(t *testing.T) {
 	tokens := &mockTokenFetcher{err: fmt.Errorf("token not found")}
-	h := agent.NewHandler(tokens, nil, "")
+	h := agent.NewHandler(tokens, nil, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -379,7 +384,7 @@ func TestHandler_SchedulePost(t *testing.T) {
 			return 999, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-sched",
@@ -409,7 +414,7 @@ func TestHandler_SchedulePost_RFC3339(t *testing.T) {
 			return 888, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-rfc",
@@ -430,7 +435,7 @@ func TestHandler_SchedulePost_RFC3339(t *testing.T) {
 
 func TestHandler_SchedulePost_MissingText(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__schedule_post",
@@ -447,7 +452,7 @@ func TestHandler_SchedulePost_MissingText(t *testing.T) {
 
 func TestHandler_SchedulePost_MissingDate(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__schedule_post",
@@ -464,7 +469,7 @@ func TestHandler_SchedulePost_MissingDate(t *testing.T) {
 
 func TestHandler_SchedulePost_PastDate(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	pastTS := time.Now().Add(-1 * time.Hour).Unix()
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
@@ -483,7 +488,7 @@ func TestHandler_SchedulePost_PastDate(t *testing.T) {
 
 func TestHandler_SchedulePost_InvalidDate(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__schedule_post",
@@ -512,7 +517,7 @@ func TestHandler_ReplyComment(t *testing.T) {
 			return 99, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-reply",
@@ -534,7 +539,7 @@ func TestHandler_ReplyComment(t *testing.T) {
 
 func TestHandler_ReplyComment_MissingPostID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__reply_comment",
@@ -552,7 +557,7 @@ func TestHandler_ReplyComment_MissingPostID(t *testing.T) {
 
 func TestHandler_ReplyComment_MissingCommentID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__reply_comment",
@@ -570,7 +575,7 @@ func TestHandler_ReplyComment_MissingCommentID(t *testing.T) {
 
 func TestHandler_ReplyComment_MissingText(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__reply_comment",
@@ -597,7 +602,7 @@ func TestHandler_DeleteComment(t *testing.T) {
 			return nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-del",
@@ -617,7 +622,7 @@ func TestHandler_DeleteComment(t *testing.T) {
 
 func TestHandler_DeleteComment_MissingCommentID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__delete_comment",
@@ -638,7 +643,7 @@ func TestHandler_DeleteComment_VKError(t *testing.T) {
 			return &vkapi.Error{Code: 15, Message: "access denied"}
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__delete_comment",
@@ -664,7 +669,7 @@ func TestHandler_PostPhoto(t *testing.T) {
 			return 777, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-photo",
@@ -685,7 +690,7 @@ func TestHandler_PostPhoto(t *testing.T) {
 
 func TestHandler_PostPhoto_MissingURL(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__post_photo",
@@ -707,7 +712,7 @@ func TestHandler_PostPhoto_VKError(t *testing.T) {
 			return 0, &vkapi.Error{Code: 5, Message: "invalid token"}
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__post_photo",
@@ -735,7 +740,7 @@ func TestHandler_GetCommunityInfo(t *testing.T) {
 			}, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-info",
@@ -756,7 +761,7 @@ func TestHandler_GetCommunityInfo(t *testing.T) {
 
 func TestHandler_GetCommunityInfo_MissingGroupID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_community_info",
@@ -775,7 +780,7 @@ func TestHandler_GetCommunityInfo_VKError(t *testing.T) {
 			return nil, &vkapi.Error{Code: 100, Message: "invalid param"}
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_community_info",
@@ -802,7 +807,7 @@ func TestHandler_GetWallPosts(t *testing.T) {
 			}, 100, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-wall",
@@ -830,7 +835,7 @@ func TestHandler_GetWallPosts_DefaultCount(t *testing.T) {
 			return nil, 0, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-wall-def",
@@ -853,7 +858,7 @@ func TestHandler_GetWallPosts_ClampCount(t *testing.T) {
 			return nil, 0, nil
 		},
 	}
-	h := agent.NewHandler(tokens, newFactory(vkClient), "")
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-wall-clamp",
@@ -871,7 +876,7 @@ func TestHandler_GetWallPosts_ClampCount(t *testing.T) {
 
 func TestHandler_GetWallPosts_MissingGroupID(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
-	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "")
+	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_wall_posts",
@@ -898,7 +903,7 @@ func TestReadClient_PrefersUserToken(t *testing.T) {
 			},
 		}
 	}
-	h := agent.NewHandler(tokens, factory, "service-key-tok")
+	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_community_info",
@@ -920,7 +925,7 @@ func TestReadClient_FallsBackToServiceKey(t *testing.T) {
 			},
 		}
 	}
-	h := agent.NewHandler(tokens, factory, "service-key-tok")
+	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_community_info",
@@ -943,7 +948,7 @@ func TestReadClient_FallsBackToCommunityToken(t *testing.T) {
 		}
 	}
 	// No service key set
-	h := agent.NewHandler(tokens, factory, "")
+	h := agent.NewHandler(tokens, factory, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_wall_posts",
@@ -965,7 +970,7 @@ func TestWriteClient_AlwaysUsesCommunityToken(t *testing.T) {
 			publishPostFn: func(_, _ string) (int64, error) { return 1, nil },
 		}
 	}
-	h := agent.NewHandler(tokens, factory, "service-key-tok")
+	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__publish_post",
@@ -989,7 +994,7 @@ func TestReadClient_ExternalIDFallback(t *testing.T) {
 			},
 		}
 	}
-	h := agent.NewHandler(tokens, factory, "")
+	h := agent.NewHandler(tokens, factory, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_community_info",
@@ -1012,7 +1017,7 @@ func TestGetComments_UsesResolvedGroupID(t *testing.T) {
 			},
 		}
 	}
-	h := agent.NewHandler(tokens, factory, "")
+	h := agent.NewHandler(tokens, factory, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		Tool:       "vk__get_comments",
@@ -1021,4 +1026,116 @@ func TestGetComments_UsesResolvedGroupID(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "-999888", capturedGroupID, "getComments should use resolved groupID with negative sign")
+}
+
+// --- Phase 16 HITL-08: Redis dedupe gate tests ---
+
+func newVKDedupeTestHandler(t *testing.T, vkClient agent.VKClient, publishCalls *int64) (*agent.Handler, *miniredis.Miniredis) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	dedupe := hitldedupe.New(rdb)
+	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
+	return agent.NewHandler(tokens, newFactory(vkClient), "", dedupe), mr
+}
+
+func vkPublishReqWithApproval(approvalID string) a2a.ToolRequest {
+	return a2a.ToolRequest{
+		TaskID:     "task-v",
+		Tool:       "vk__publish_post",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "group_id": "-123456"},
+		ApprovalID: approvalID,
+	}
+}
+
+func TestHandler_Handle_EmptyApprovalID_SkipsDedupe(t *testing.T) {
+	var calls int64
+	vkClient := &mockVKClient{
+		publishPostFn: func(_, _ string) (int64, error) {
+			atomic.AddInt64(&calls, 1)
+			return 1, nil
+		},
+	}
+	h, mr := newVKDedupeTestHandler(t, vkClient, &calls)
+
+	resp, err := h.Handle(context.Background(), vkPublishReqWithApproval(""))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&calls))
+	assert.Equal(t, 0, len(mr.Keys()),
+		"empty ApprovalID must NOT touch Redis (anti-footgun #2)")
+}
+
+func TestHandler_Handle_FirstCallWithApprovalID_ExecutesAndCaches(t *testing.T) {
+	var calls int64
+	vkClient := &mockVKClient{
+		publishPostFn: func(_, _ string) (int64, error) {
+			atomic.AddInt64(&calls, 1)
+			return 42, nil
+		},
+	}
+	h, mr := newVKDedupeTestHandler(t, vkClient, &calls)
+
+	resp, err := h.Handle(context.Background(), vkPublishReqWithApproval("appr-vk-1"))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&calls))
+
+	key := "hitl:approval:biz-1:appr-vk-1"
+	require.True(t, mr.Exists(key), "dedupe key must be stored after successful execution")
+	val, err := mr.Get(key)
+	require.NoError(t, err)
+	var cached a2a.ToolResponse
+	require.NoError(t, json.Unmarshal([]byte(val), &cached))
+	assert.True(t, cached.Success)
+}
+
+func TestHandler_Handle_SecondCallWithSameApprovalID_ReturnsCached(t *testing.T) {
+	var calls int64
+	vkClient := &mockVKClient{
+		publishPostFn: func(_, _ string) (int64, error) {
+			atomic.AddInt64(&calls, 1)
+			return 99, nil
+		},
+	}
+	h, _ := newVKDedupeTestHandler(t, vkClient, &calls)
+
+	resp1, err := h.Handle(context.Background(), vkPublishReqWithApproval("appr-vk-2"))
+	require.NoError(t, err)
+	require.NotNil(t, resp1)
+
+	resp2, err := h.Handle(context.Background(), vkPublishReqWithApproval("appr-vk-2"))
+	require.NoError(t, err)
+	require.NotNil(t, resp2)
+
+	assert.Equal(t, int64(1), atomic.LoadInt64(&calls),
+		"tool must be invoked exactly once across two Handle calls with the same ApprovalID")
+	assert.Equal(t, resp1.Success, resp2.Success)
+	assert.Equal(t, resp1.Result["post_id"], resp2.Result["post_id"])
+}
+
+func TestHandler_Handle_ApprovalID_InFlight_ReturnsDuplicateError(t *testing.T) {
+	var calls int64
+	vkClient := &mockVKClient{
+		publishPostFn: func(_, _ string) (int64, error) {
+			atomic.AddInt64(&calls, 1)
+			return 0, nil
+		},
+	}
+	h, mr := newVKDedupeTestHandler(t, vkClient, &calls)
+
+	key := "hitl:approval:biz-1:appr-vk-3"
+	require.NoError(t, mr.Set(key, "executing"))
+	mr.SetTTL(key, 24*time.Hour)
+
+	resp, err := h.Handle(context.Background(), vkPublishReqWithApproval("appr-vk-3"))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Contains(t, resp.Error, "duplicate: already in flight")
+	assert.Equal(t, int64(0), atomic.LoadInt64(&calls),
+		"in-flight claim must short-circuit before tool dispatch")
 }

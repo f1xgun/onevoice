@@ -2,12 +2,14 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 )
 
 // TokenInfo holds the resolved access token and the integration's external ID.
@@ -37,28 +39,92 @@ type SenderFactory func(botToken string) (Sender, error)
 type Handler struct {
 	tokens        TokenFetcher
 	senderFactory SenderFactory
+	dedupe        *hitldedupe.DedupeClient // optional; nil skips the HITL dedupe gate
 }
 
-// NewHandler creates a Handler with the given TokenFetcher and SenderFactory.
-func NewHandler(tokens TokenFetcher, factory SenderFactory) *Handler {
-	return &Handler{tokens: tokens, senderFactory: factory}
+// NewHandler creates a Handler with the given TokenFetcher, SenderFactory, and
+// optional dedupe client. Passing nil for dedupe disables the HITL dedupe
+// gate — used by unit tests and dev-local environments without Redis.
+func NewHandler(tokens TokenFetcher, factory SenderFactory, dedupe *hitldedupe.DedupeClient) *Handler {
+	return &Handler{tokens: tokens, senderFactory: factory, dedupe: dedupe}
 }
 
 // Handle routes the ToolRequest to the appropriate Telegram operation.
+// Before dispatching, if a dedupe client is configured AND req.ApprovalID is
+// non-empty, the HITL dedupe gate is consulted. See dedupeGate for semantics.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	if resp, stop := h.dedupeGate(ctx, req); stop {
+		return resp, nil
+	}
+
+	var (
+		resp *a2a.ToolResponse
+		err  error
+	)
 	switch req.Tool {
 	case "telegram__send_channel_post":
-		return h.sendChannelPost(ctx, req)
+		resp, err = h.sendChannelPost(ctx, req)
 	case "telegram__send_channel_photo":
-		return h.sendChannelPhoto(ctx, req)
+		resp, err = h.sendChannelPhoto(ctx, req)
 	case "telegram__send_notification":
-		return h.sendNotification(ctx, req)
+		resp, err = h.sendNotification(ctx, req)
 	case "telegram__get_reviews":
-		return h.getReviews(ctx, req)
+		resp, err = h.getReviews(ctx, req)
 	case "telegram__reply_to_comment":
-		return h.replyToComment(ctx, req)
+		resp, err = h.replyToComment(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
+	}
+
+	h.dedupeStore(ctx, req, resp, err)
+	return resp, err
+}
+
+// dedupeGate consults the Redis dedupe cache BEFORE tool dispatch when a HITL
+// approval is in play. It returns (resp, true) when the caller should stop
+// executing (in-flight elsewhere, or already-completed duplicate). On any
+// error the gate is best-effort — we log and fall through rather than fail
+// a turn because Redis blinked.
+func (h *Handler) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, bool) {
+	if h.dedupe == nil || req.ApprovalID == "" {
+		return nil, false
+	}
+	outcome, cached, err := h.dedupe.Claim(ctx, req.BusinessID, req.ApprovalID)
+	if err != nil {
+		slog.WarnContext(ctx, "hitl dedupe claim failed; proceeding without dedupe",
+			"error", err, "business_id", req.BusinessID, "approval_id", req.ApprovalID)
+		return nil, false
+	}
+	switch outcome {
+	case hitldedupe.ClaimOutcomeInFlight:
+		return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: already in flight"}, true
+	case hitldedupe.ClaimOutcomeDuplicate:
+		var cachedResp a2a.ToolResponse
+		if uerr := json.Unmarshal([]byte(cached), &cachedResp); uerr != nil {
+			slog.WarnContext(ctx, "hitl dedupe cached result malformed; returning generic duplicate",
+				"error", uerr)
+			return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: cached result unavailable"}, true
+		}
+		// The cached response was stored for the original TaskID; rewrite to
+		// this replay's TaskID so the orchestrator correlates correctly.
+		cachedResp.TaskID = req.TaskID
+		return &cachedResp, true
+	case hitldedupe.ClaimOutcomeClaimed, hitldedupe.ClaimOutcomeSkip:
+		// Proceed with execution — no cached response.
+	}
+	return nil, false
+}
+
+// dedupeStore persists a successful ToolResponse under the HITL dedupe key so
+// replays see ClaimOutcomeDuplicate. Errors and nil responses are NOT cached
+// (a replay should be free to retry when the original failed).
+func (h *Handler) dedupeStore(ctx context.Context, req a2a.ToolRequest, resp *a2a.ToolResponse, err error) {
+	if h.dedupe == nil || req.ApprovalID == "" || err != nil || resp == nil {
+		return
+	}
+	if serr := h.dedupe.Store(ctx, req.BusinessID, req.ApprovalID, resp); serr != nil {
+		slog.WarnContext(ctx, "hitl dedupe store failed; result returned but not cached",
+			"error", serr, "approval_id", req.ApprovalID)
 	}
 }
 

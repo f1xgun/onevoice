@@ -125,6 +125,57 @@ func (r *businessRepository) GetByUserID(ctx context.Context, userID uuid.UUID) 
 	return &business, nil
 }
 
+// UpdateToolApprovals replaces only the settings.tool_approvals sub-object on
+// the given business. Other keys inside settings (e.g. schedule) are
+// preserved — this is a MERGE on the top-level settings JSONB, but a REPLACE
+// on the tool_approvals sub-object: a key removed from the PUT body becomes
+// un-approved (no longer in the persisted map).
+//
+// Implementation: load current settings, mutate the tool_approvals key,
+// write the merged settings back with Update. Done under a single pgx Exec
+// call (no transaction) because this is standalone Postgres and a lost
+// update only affects settings races which the frontend serializes via
+// React Query's mutate() pattern.
+//
+// Phase 16 (POLICY-05): feeds the PUT /api/v1/business/{id}/tool-approvals
+// endpoint.
+func (r *businessRepository) UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
+	// Load current business so we keep unrelated settings keys intact.
+	business, err := r.GetByID(ctx, businessID)
+	if err != nil {
+		return err
+	}
+	if business.Settings == nil {
+		business.Settings = make(map[string]interface{})
+	}
+	// Translate ToolFloor map into map[string]interface{} for the JSONB blob.
+	raw := make(map[string]interface{}, len(approvals))
+	for k, v := range approvals {
+		raw[k] = string(v)
+	}
+	business.Settings["tool_approvals"] = raw
+	business.UpdatedAt = time.Now()
+
+	sql, args, buildErr := r.sb.
+		Update("businesses").
+		Set("settings", business.Settings).
+		Set("updated_at", business.UpdatedAt).
+		Where(squirrel.Eq{"id": businessID}).
+		ToSql()
+	if buildErr != nil {
+		return fmt.Errorf("build update: %w", buildErr)
+	}
+
+	tag, execErr := r.pool.Exec(ctx, sql, args...)
+	if execErr != nil {
+		return fmt.Errorf("update business settings: %w", execErr)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrBusinessNotFound
+	}
+	return nil
+}
+
 func (r *businessRepository) Update(ctx context.Context, business *domain.Business) error {
 	business.UpdatedAt = time.Now()
 

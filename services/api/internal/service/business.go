@@ -16,6 +16,18 @@ type BusinessService interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
+	// GetToolApprovals returns the current businesses.settings.tool_approvals
+	// map (POLICY-02). Returns a non-nil empty map when no approvals are
+	// stored — matches Business.ToolApprovals() contract.
+	GetToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
+	// UpdateToolApprovals replaces the businesses.settings.tool_approvals
+	// map with the given approvals. Validation:
+	//   - Keys must exist in the live orchestrator registry (caller injects
+	//     via ToolsRegistryCache — see handler.UpdateBusinessToolApprovals).
+	//   - Values must be in {Auto, Manual}. Forbidden is NOT a valid user-set
+	//     value (floor is set at registration only — POLICY-01).
+	// Ownership (actor owns the business) is enforced before the repo write.
+	UpdateToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
 
 type businessService struct {
@@ -109,6 +121,35 @@ func (s *businessService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Bu
 	}
 
 	return business, nil
+}
+
+// GetToolApprovals returns the businesses.settings.tool_approvals map for
+// the business identified by businessID. Access control: actorUserID must
+// own businessID (Business.UserID check) — otherwise ErrBusinessNotFound
+// (404-to-avoid-enumeration).
+func (s *businessService) GetToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID) (map[string]domain.ToolFloor, error) {
+	b, err := s.repo.GetByID(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+	if b.UserID != actorUserID {
+		return nil, domain.ErrBusinessNotFound
+	}
+	return b.ToolApprovals(), nil
+}
+
+// UpdateToolApprovals persists a new tool_approvals map. Ownership check is
+// identical to GetToolApprovals. Value validation (Auto/Manual only) is the
+// handler's concern — this layer just maps the typed map into the repo call.
+func (s *businessService) UpdateToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
+	b, err := s.repo.GetByID(ctx, businessID)
+	if err != nil {
+		return err
+	}
+	if b.UserID != actorUserID {
+		return domain.ErrBusinessNotFound
+	}
+	return s.repo.UpdateToolApprovals(ctx, businessID, approvals)
 }
 
 // Update updates a business profile

@@ -2,13 +2,21 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/services/agent-google-business/internal/gbp"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/services/agent-google-business/internal/gbp"
 )
 
 type mockTokenFetcher struct {
@@ -38,7 +46,7 @@ func (m *mockGBPClient) ReplyReview(_ context.Context, _, _ string) (*gbp.Review
 }
 
 func newTestHandler(tokens TokenFetcher, client GBPClient) *Handler {
-	return NewHandler(tokens, func(_ string) GBPClient { return client })
+	return NewHandler(tokens, func(_ string) GBPClient { return client }, nil)
 }
 
 func TestHandler_Handle_UnknownTool(t *testing.T) {
@@ -193,8 +201,8 @@ func TestHandler_ReplyReview_MissingText(t *testing.T) {
 
 func TestClassifyGBPError(t *testing.T) {
 	tests := []struct {
-		name        string
-		err         error
+		name         string
+		err          error
 		nonRetryable bool
 	}{
 		{"nil", nil, false},
@@ -221,4 +229,122 @@ func TestClassifyGBPError(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- Phase 16 HITL-08: Redis dedupe gate tests ---
+
+// countingGBPClient wraps mockGBPClient with an atomic call counter.
+type countingGBPClient struct {
+	mockGBPClient
+	replyCalls int64
+}
+
+func (c *countingGBPClient) ReplyReview(ctx context.Context, reviewName, text string) (*gbp.ReviewReply, error) {
+	atomic.AddInt64(&c.replyCalls, 1)
+	return c.mockGBPClient.ReplyReview(ctx, reviewName, text)
+}
+
+func newGBPDedupeTestHandler(t *testing.T, client GBPClient) (*Handler, *miniredis.Miniredis) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	dedupe := hitldedupe.New(rdb)
+	tokens := &mockTokenFetcher{}
+	return NewHandler(tokens, func(_ string) GBPClient { return client }, dedupe), mr
+}
+
+func gbpReplyReqWithApproval(approvalID string) a2a.ToolRequest {
+	return a2a.ToolRequest{
+		TaskID:     "task-g",
+		Tool:       "google_business__reply_review",
+		BusinessID: "biz-1",
+		Args: map[string]interface{}{
+			"review_name": "accounts/1/locations/2/reviews/rev-1",
+			"text":        "Thanks!",
+		},
+		ApprovalID: approvalID,
+	}
+}
+
+func TestHandler_Handle_EmptyApprovalID_SkipsDedupe(t *testing.T) {
+	client := &countingGBPClient{
+		mockGBPClient: mockGBPClient{
+			replyResp: &gbp.ReviewReply{Comment: "Thanks!", UpdateTime: "2026-01-05T00:00:00Z"},
+		},
+	}
+	h, mr := newGBPDedupeTestHandler(t, client)
+
+	resp, err := h.Handle(context.Background(), gbpReplyReqWithApproval(""))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&client.replyCalls))
+	assert.Equal(t, 0, len(mr.Keys()),
+		"empty ApprovalID must NOT touch Redis (anti-footgun #2)")
+}
+
+func TestHandler_Handle_FirstCallWithApprovalID_ExecutesAndCaches(t *testing.T) {
+	client := &countingGBPClient{
+		mockGBPClient: mockGBPClient{
+			replyResp: &gbp.ReviewReply{Comment: "Thanks!", UpdateTime: "2026-01-05T00:00:00Z"},
+		},
+	}
+	h, mr := newGBPDedupeTestHandler(t, client)
+
+	resp, err := h.Handle(context.Background(), gbpReplyReqWithApproval("appr-g-1"))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.Success)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&client.replyCalls))
+
+	key := "hitl:approval:biz-1:appr-g-1"
+	require.True(t, mr.Exists(key), "dedupe key must be stored after successful execution")
+	val, err := mr.Get(key)
+	require.NoError(t, err)
+	var cached a2a.ToolResponse
+	require.NoError(t, json.Unmarshal([]byte(val), &cached))
+	assert.True(t, cached.Success)
+}
+
+func TestHandler_Handle_SecondCallWithSameApprovalID_ReturnsCached(t *testing.T) {
+	client := &countingGBPClient{
+		mockGBPClient: mockGBPClient{
+			replyResp: &gbp.ReviewReply{Comment: "Thanks!", UpdateTime: "2026-01-05T00:00:00Z"},
+		},
+	}
+	h, _ := newGBPDedupeTestHandler(t, client)
+
+	resp1, err := h.Handle(context.Background(), gbpReplyReqWithApproval("appr-g-2"))
+	require.NoError(t, err)
+	require.NotNil(t, resp1)
+
+	resp2, err := h.Handle(context.Background(), gbpReplyReqWithApproval("appr-g-2"))
+	require.NoError(t, err)
+	require.NotNil(t, resp2)
+
+	assert.Equal(t, int64(1), atomic.LoadInt64(&client.replyCalls),
+		"tool must be invoked exactly once across two Handle calls with the same ApprovalID")
+	assert.Equal(t, resp1.Success, resp2.Success)
+	assert.Equal(t, resp1.Result["status"], resp2.Result["status"])
+}
+
+func TestHandler_Handle_ApprovalID_InFlight_ReturnsDuplicateError(t *testing.T) {
+	client := &countingGBPClient{
+		mockGBPClient: mockGBPClient{
+			replyResp: &gbp.ReviewReply{Comment: "Thanks!", UpdateTime: "2026-01-05T00:00:00Z"},
+		},
+	}
+	h, mr := newGBPDedupeTestHandler(t, client)
+
+	key := "hitl:approval:biz-1:appr-g-3"
+	require.NoError(t, mr.Set(key, "executing"))
+	mr.SetTTL(key, 24*time.Hour)
+
+	resp, err := h.Handle(context.Background(), gbpReplyReqWithApproval("appr-g-3"))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Contains(t, resp.Error, "duplicate: already in flight")
+	assert.Equal(t, int64(0), atomic.LoadInt64(&client.replyCalls),
+		"in-flight claim must short-circuit before tool dispatch")
 }

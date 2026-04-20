@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -10,6 +10,8 @@ import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
 import { GoogleLocationModal } from '@/components/integrations/GoogleLocationModal';
+import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
+import type { Business } from '@/types/business';
 
 interface Integration {
   id: string;
@@ -47,12 +49,20 @@ const DISABLED_PLATFORMS = [
   { id: 'avito', label: 'Авито', description: 'Скоро', color: '#00AAFF' },
 ];
 
+interface LastRegistered {
+  integrationId: string;
+  businessId: string;
+  platform: string;
+}
+
 export default function IntegrationsPage() {
   const qc = useQueryClient();
   const searchParams = useSearchParams();
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
   const [googleLocationOpen, setGoogleLocationOpen] = useState(false);
+  const [lastRegistered, setLastRegistered] = useState<LastRegistered | null>(null);
+  const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
 
   // Handle OAuth callback results
   useEffect(() => {
@@ -97,6 +107,35 @@ export default function IntegrationsPage() {
     queryFn: () =>
       api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
   });
+
+  const { data: business } = useQuery<Business>({
+    queryKey: ['business'],
+    queryFn: () => api.get('/business').then((r) => r.data as Business),
+  });
+
+  // Detect newly-registered integrations by diffing the integration-id set
+  // across refetches. On first load we just seed the baseline so existing
+  // integrations do not trigger the banner.
+  useEffect(() => {
+    const currentIds = new Set(integrations.map((i) => i.id));
+    const prev = prevIntegrationIdsRef.current;
+
+    if (prev == null) {
+      prevIntegrationIdsRef.current = currentIds;
+      return;
+    }
+
+    const added = integrations.filter((i) => !prev.has(i.id));
+    if (added.length > 0 && business?.id) {
+      const latest = added[added.length - 1];
+      setLastRegistered({
+        integrationId: latest.id,
+        businessId: business.id,
+        platform: latest.platform,
+      });
+    }
+    prevIntegrationIdsRef.current = currentIds;
+  }, [integrations, business?.id]);
 
   const disconnectMutation = useMutation({
     mutationFn: (integrationId: string) => api.delete(`/integrations/${integrationId}`),
@@ -149,6 +188,14 @@ export default function IntegrationsPage() {
   return (
     <div className="max-w-5xl p-8">
       <h1 className="mb-6 text-2xl font-bold">Интеграции</h1>
+
+      {lastRegistered && (
+        <WhitelistWarningBanner
+          integrationId={lastRegistered.integrationId}
+          businessId={lastRegistered.businessId}
+          platform={lastRegistered.platform}
+        />
+      )}
 
       <div className="mb-8 grid grid-cols-1 items-start gap-4 md:grid-cols-2">
         {PLATFORMS.map((p) => {

@@ -98,11 +98,21 @@ export function useChat(conversationId: string) {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then((r) => {
-        if (!r.ok) return [];
-        return r.json() as Promise<ApiMessage[]>;
+        if (!r.ok) return null;
+        return r.json() as Promise<
+          ApiMessage[] | { messages: ApiMessage[]; pendingApprovals?: unknown[] }
+        >;
       })
-      .then((apiMsgs) => {
-        if (Array.isArray(apiMsgs)) {
+      .then((payload) => {
+        // Phase 16 changed the shape from `ApiMessage[]` to
+        // `{messages, pendingApprovals}`. Accept either so older responses
+        // (test fixtures, local dev runs without Phase-16 MongoDB) still work.
+        const apiMsgs: ApiMessage[] | null = Array.isArray(payload)
+          ? payload
+          : payload && Array.isArray((payload as { messages?: ApiMessage[] }).messages)
+            ? (payload as { messages: ApiMessage[] }).messages
+            : null;
+        if (apiMsgs) {
           setMessages(
             apiMsgs.map((m) => {
               const toolCalls: ToolCall[] | undefined =

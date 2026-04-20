@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 
@@ -33,6 +34,9 @@ type BusinessService interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
+	// Phase 16 POLICY-05 additions:
+	GetToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
+	UpdateToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
 
 // BusinessSyncer syncs updated business data to connected platforms.
@@ -46,6 +50,25 @@ type BusinessHandler struct {
 	syncer          BusinessSyncer // optional; may be nil
 	validate        *validator.Validate
 	storage         storage.Uploader // optional; required only for UploadLogo
+	// toolsCache is optional — required only when the caller wires
+	// GetBusinessToolApprovals / UpdateBusinessToolApprovals endpoints.
+	// When nil, those handlers return 503 since they cannot validate tool
+	// names against the live registry.
+	toolsCache ToolsCache
+}
+
+// ToolsCache is the narrow interface this handler needs from
+// *service.ToolsRegistryCache. Declared locally so business_test doesn't
+// need to import service for test-only fakes.
+type ToolsCache interface {
+	Has(toolName string) bool
+}
+
+// SetToolsCache wires a tools-registry cache for POLICY-05 validation.
+// Called after construction so existing NewBusinessHandler call sites don't
+// churn. Safe to call with nil to disable the endpoints.
+func (h *BusinessHandler) SetToolsCache(c ToolsCache) {
+	h.toolsCache = c
 }
 
 // UpdateBusinessRequest represents the business update request
@@ -224,6 +247,116 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, updated)
+}
+
+// GetBusinessToolApprovals handles GET /api/v1/business/{id}/tool-approvals.
+// Response shape: `{"toolApprovals": {"tool_name": "auto"|"manual", ...}}`.
+// Absence from the map means the registry floor applies (POLICY-01).
+func (h *BusinessHandler) GetBusinessToolApprovals(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	idStr := chi.URLParam(r, "id")
+	businessID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid business id")
+		return
+	}
+
+	approvals, err := h.businessService.GetToolApprovals(r.Context(), userID, businessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			// 404 even when cross-tenant — avoid enumeration per docs/security.md.
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "get tool approvals failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Serialize as `{"toolApprovals": {...}}` — stable field name so the
+	// Phase 17 frontend can bind directly.
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"toolApprovals": approvals,
+	})
+}
+
+// updateToolApprovalsRequest is the PUT body shape. Values are strings
+// (Auto/Manual); handler converts to ToolFloor after validation.
+type updateToolApprovalsRequest struct {
+	ToolApprovals map[string]string `json:"toolApprovals"`
+}
+
+// UpdateBusinessToolApprovals handles PUT /api/v1/business/{id}/tool-approvals.
+// Validation layers:
+//  1. JSON shape
+//  2. Every key must exist in the live orchestrator registry (via toolsCache).
+//     Unknown key → 400 {"error":"unknown tool: X"}
+//  3. Every value must be "auto" or "manual" (NOT "forbidden" — that's a
+//     registration-time property, not a user setting).
+//  4. Ownership: actor's userID matches business.UserID.
+func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	idStr := chi.URLParam(r, "id")
+	businessID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid business id")
+		return
+	}
+
+	if h.toolsCache == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "tool registry unavailable")
+		return
+	}
+
+	var req updateToolApprovalsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	approvals := make(map[string]domain.ToolFloor, len(req.ToolApprovals))
+	for toolName, floorStr := range req.ToolApprovals {
+		if !h.toolsCache.Has(toolName) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "unknown tool: " + toolName,
+			})
+			return
+		}
+		floor := domain.ToolFloor(floorStr)
+		// POLICY-05: only Auto and Manual are user-settable. Forbidden is a
+		// registration-time property — allowing it here would let a user
+		// escalate a tool's floor, which matches the registry's floor
+		// invariant but would surprise operators and invite confusion.
+		if floor != domain.ToolFloorAuto && floor != domain.ToolFloorManual {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid floor for tool " + toolName + ": must be auto or manual",
+			})
+			return
+		}
+		approvals[toolName] = floor
+	}
+
+	if err := h.businessService.UpdateToolApprovals(r.Context(), userID, businessID, approvals); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "update tool approvals failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"toolApprovals": approvals,
+	})
 }
 
 // UploadLogo handles multipart logo upload, stores the file in object storage,

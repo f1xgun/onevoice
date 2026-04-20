@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -77,6 +79,31 @@ export default function SettingsPage() {
               <p className="text-sm font-medium capitalize">{user?.role ?? '—'}</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Разделы настроек</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Link
+            href="/settings/tools"
+            className="flex items-center justify-between rounded-md border p-4 transition-colors hover:bg-accent/40"
+          >
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-medium">Одобрение инструментов</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Какие действия ИИ выполняет автоматически, а какие требуют вашего согласия
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </Link>
         </CardContent>
       </Card>
 
