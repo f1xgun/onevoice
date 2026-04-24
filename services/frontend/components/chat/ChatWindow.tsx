@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { MessageBubble } from './MessageBubble';
 import { ProjectChip } from './ProjectChip';
 import { ProjectPickerChip } from './ProjectPickerChip';
+import { ToolApprovalCard } from './ToolApprovalCard';
+import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useChat } from '@/hooks/useChat';
@@ -22,10 +24,17 @@ async function fetchConversation(id: string): Promise<Conversation> {
 }
 
 export function ChatWindow({ conversationId }: { conversationId: string }) {
-  const { messages, isLoading, isStreaming, sendMessage } = useChat(conversationId);
+  const { messages, isLoading, isStreaming, pendingApproval, resolveApproval, sendMessage } =
+    useChat(conversationId);
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+
+  // Invariant 9: the composer is disabled whenever a batch is awaiting
+  // the user's decision OR while a message is streaming. Both conditions
+  // must flow through a single flag so the Input and Send Button stay
+  // in sync.
+  const composerDisabled = isStreaming || pendingApproval !== null;
 
   const { data: conversation } = useQuery<Conversation>({
     queryKey: ['conversations', conversationId],
@@ -54,7 +63,7 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || isStreaming) return;
+    if (!text || composerDisabled) return;
     setInput('');
     await sendMessage(text);
   };
@@ -109,7 +118,7 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
                   key={action}
                   type="button"
                   onClick={() => sendMessage(action)}
-                  disabled={isStreaming}
+                  disabled={composerDisabled}
                   className="rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {action}
@@ -123,6 +132,16 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
         <div ref={bottomRef} />
       </div>
 
+      {/* Expired approval banner — sits above the card; owned by Plan 17-05. */}
+      {pendingApproval?.status === 'expired' && <ExpiredApprovalBanner />}
+
+      {/* Inline approval card — renders only when a pending batch exists. */}
+      {pendingApproval?.status === 'pending' && (
+        <div className="border-t bg-background px-4 py-4">
+          <ToolApprovalCard batch={pendingApproval} onSubmit={resolveApproval} />
+        </div>
+      )}
+
       {/* Input */}
       <div className="flex gap-2 border-t bg-white p-4">
         <Input
@@ -130,10 +149,10 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void handleSend()}
           placeholder="Напишите сообщение..."
-          disabled={isStreaming}
+          disabled={composerDisabled}
           className="flex-1"
         />
-        <Button onClick={handleSend} disabled={isStreaming || !input.trim()}>
+        <Button onClick={handleSend} disabled={composerDisabled || !input.trim()}>
           <Send size={16} />
         </Button>
       </div>
