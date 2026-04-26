@@ -209,7 +209,19 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	} else {
 		log.Warn("auto-titler: disabled (TITLER_MODEL and LLM_MODEL both unset)")
 	}
-	_ = llmRouter // Plan 18-04 will consume this when constructing service.NewTitler
+
+	// Phase 18 Plan 04 — construct the Titler service when the Router is
+	// available. titler stays nil on the graceful-disable branch so Plan 05's
+	// fireAutoTitleIfPending becomes a no-op (Pitfall 1 / Assumption A6).
+	// llmRouter (concrete *llm.Router) implicitly satisfies the package-private
+	// chatCaller interface in services/api/internal/service/titler.go via its
+	// Chat method — Go's structural typing handles the conversion here.
+	var titler *service.Titler
+	if llmRouter != nil {
+		titler = service.NewTitler(llmRouter, conversationRepo, titlerModel)
+		log.Info("auto-titler: service constructed", "model", titlerModel)
+	}
+	_ = titler // Plan 05 wires this into ChatProxyHandler + TitlerHandler
 
 	// In-process hub that fans out task lifecycle events to SSE subscribers.
 	taskHub := taskhub.New()
