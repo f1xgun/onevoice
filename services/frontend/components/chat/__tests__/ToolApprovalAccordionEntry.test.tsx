@@ -169,4 +169,112 @@ describe('ToolApprovalAccordionEntry', () => {
     const trigger = screen.getByLabelText(/telegram__send_channel_post — свернуть/);
     expect(trigger).toBeInTheDocument();
   });
+
+  // ── Plan 17-08 GAP-01 / GAP-02 closures ───────────────────────────────────
+  //
+  // GAP-01: operators must be able to read tool args BEFORE selecting a
+  // decision. Pre-fix the `Аргументы` heading + JsonView only rendered when
+  // `decision === 'edit'`, so Approve / undecided modes hid the args.
+  //
+  // GAP-02: in Edit mode, `@uiw/react-json-view/editor` requires double-click
+  // on a value to invoke the inline editor — this is not discoverable. A
+  // visible hint chip tells first-time operators how to edit.
+
+  it('GAP-01: read-only Аргументы block + value visible when decision is undecided and entry is expanded', async () => {
+    const user = userEvent.setup();
+    renderEntry({
+      call: singleCallBatch.calls[0]!, // args: { chat_id: 123, text: 'hello' }
+      draft: makeDraft({ decision: 'undecided' }),
+    });
+    // Expand the entry (it is collapsed by default in 'undecided' mode).
+    const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
+    await user.click(trigger);
+    expect(screen.getByText('Аргументы')).toBeInTheDocument();
+    // The args value (`hello`) must be present somewhere in the rendered
+    // JSON tree. JsonView renders strings inside spans; queryAllByText with a
+    // regex tolerant of surrounding quotes survives library escaping.
+    expect(screen.getAllByText(/hello/i).length).toBeGreaterThan(0);
+  });
+
+  it('GAP-01: read-only Аргументы block + value visible when decision is approve and entry is expanded', async () => {
+    const user = userEvent.setup();
+    renderEntry({
+      call: singleCallBatch.calls[0]!,
+      draft: makeDraft({ decision: 'approve' }),
+    });
+    // Approve does not auto-expand (only Edit / Reject do); user must click.
+    const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
+    await user.click(trigger);
+    expect(screen.getByText('Аргументы')).toBeInTheDocument();
+    expect(screen.getAllByText(/hello/i).length).toBeGreaterThan(0);
+  });
+
+  it('GAP-01 regression: Аргументы block stays visible in edit mode (existing behaviour preserved)', () => {
+    renderEntry({
+      call: singleCallBatch.calls[0]!,
+      draft: makeDraft({ decision: 'edit' }),
+    });
+    expect(screen.getByText('Аргументы')).toBeInTheDocument();
+  });
+
+  it('GAP-02: edit-affordance hint chip renders in edit mode with the exact RU copy', () => {
+    renderEntry({
+      call: singleCallBatch.calls[0]!,
+      draft: makeDraft({ decision: 'edit' }),
+    });
+    const hint = screen.getByTestId('edit-affordance-hint');
+    expect(hint).toBeInTheDocument();
+    expect(hint).toHaveTextContent('Дважды нажмите на значение, чтобы изменить');
+  });
+
+  it('GAP-02 negative: edit-affordance hint chip is NOT rendered in undecided mode', async () => {
+    const user = userEvent.setup();
+    renderEntry({
+      call: singleCallBatch.calls[0]!,
+      draft: makeDraft({ decision: 'undecided' }),
+    });
+    // Expand so the body is in the DOM — the chip must still be absent.
+    const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
+    await user.click(trigger);
+    expect(screen.queryByTestId('edit-affordance-hint')).not.toBeInTheDocument();
+  });
+
+  it('GAP-02 negative: edit-affordance hint chip is NOT rendered in approve mode', async () => {
+    const user = userEvent.setup();
+    renderEntry({
+      call: singleCallBatch.calls[0]!,
+      draft: makeDraft({ decision: 'approve' }),
+    });
+    const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
+    await user.click(trigger);
+    expect(screen.queryByTestId('edit-affordance-hint')).not.toBeInTheDocument();
+  });
+
+  it('GAP-02 negative: edit-affordance hint chip is NOT rendered in reject mode (only the textarea)', () => {
+    renderEntry({
+      call: singleCallBatch.calls[0]!,
+      draft: makeDraft({ decision: 'reject' }),
+    });
+    expect(screen.queryByTestId('edit-affordance-hint')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Причина (необязательно)')).toBeInTheDocument();
+  });
+
+  it('"Можно изменять" hint renders in BOTH read-only (undecided) and edit modes', async () => {
+    const user = userEvent.setup();
+    // Pass 1: undecided, must expand manually.
+    const { unmount } = renderEntry({
+      call: singleCallBatch.calls[0]!, // editableFields: ['text', 'parse_mode']
+      draft: makeDraft({ decision: 'undecided' }),
+    });
+    await user.click(screen.getByLabelText(/telegram__send_channel_post — развернуть/));
+    expect(screen.getByText(/Можно изменять:\s*text,\s*parse_mode/)).toBeInTheDocument();
+    unmount();
+
+    // Pass 2: edit (auto-expanded by useEffect).
+    renderEntry({
+      call: singleCallBatch.calls[0]!,
+      draft: makeDraft({ decision: 'edit' }),
+    });
+    expect(screen.getByText(/Можно изменять:\s*text,\s*parse_mode/)).toBeInTheDocument();
+  });
 });
