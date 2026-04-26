@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
@@ -60,6 +63,18 @@ type chatRequest struct {
 	ProjectSystemPrompt  string   `json:"project_system_prompt"`
 	ProjectWhitelistMode string   `json:"project_whitelist_mode"`
 	ProjectAllowedTools  []string `json:"project_allowed_tools"`
+
+	// Phase 16 HITL identity + policy fields. Forwarded by chat_proxy.go on
+	// every request; threaded into RunRequest so the orchestrator's pause
+	// path persists non-empty IDs onto pending_tool_calls (HITL-01/HITL-11).
+	// GAP-03 (Plan 17-07): these were missing pre-17-07, which made every
+	// PendingToolCallBatch.conversation_id="" and broke hydration + the
+	// resolve-time business-scoped auth check.
+	UserID                   string                      `json:"user_id"`
+	MessageID                string                      `json:"message_id"`
+	Tier                     string                      `json:"tier"`
+	BusinessApprovals        map[string]domain.ToolFloor `json:"business_approvals"`
+	ProjectApprovalOverrides map[string]domain.ToolFloor `json:"project_approval_overrides"`
 }
 
 // sseEvent matches the JSON shape written to the SSE stream.
@@ -90,6 +105,10 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
+	// Phase 16 / Plan 17-07 GAP-03: extract the conversation ID from the URL
+	// path so RunRequest.ConversationID is non-empty and the persisted
+	// PendingToolCallBatch is reachable from GET /messages hydration filter.
+	conversationID := chi.URLParam(r, "conversationID")
 	if req.Message == "" {
 		http.Error(w, `{"error":"message is required"}`, http.StatusBadRequest)
 		return
@@ -168,6 +187,26 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		AllowedTools:       req.ProjectAllowedTools,
 		ActiveIntegrations: req.ActiveIntegrations,
 		Messages:           history,
+		// Phase 16 HITL identity fields — populated from URL + body so the
+		// pause-time persistence writes non-empty values to pending_tool_calls.
+		// GAP-03 closure (Plan 17-07): pre-17-07 these defaulted to "" and
+		// every persisted batch was unreachable by HITL-11 hydration.
+		ConversationID:           conversationID,
+		BusinessID:               req.BusinessID,
+		ProjectID:                req.ProjectID,
+		UserIDString:             req.UserID,
+		MessageID:                req.MessageID,
+		Tier:                     req.Tier,
+		BusinessApprovals:        req.BusinessApprovals,
+		ProjectApprovalOverrides: req.ProjectApprovalOverrides,
+	}
+	if req.UserID != "" {
+		if u, err := uuid.Parse(req.UserID); err == nil {
+			runReq.UserID = u
+		} else {
+			slog.WarnContext(ctx, "invalid user_id from proxy, leaving UserID zero",
+				"user_id", req.UserID, "error", err)
+		}
 	}
 
 	events, err := h.runner.Run(ctx, runReq)
