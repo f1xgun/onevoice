@@ -115,7 +115,19 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("ensure pending_tool_calls indexes: %w", err)
 	}
 	indexesCancel()
-	// Phase 18 Plan 03: insert EnsureConversationIndexes here.
+
+	// Phase 18 Plan 03 (D-08a): compound index {user_id, business_id,
+	// title_status} on conversations. Backs the auto-titler's atomic
+	// UpdateTitleIfPending lookups (TITLE-04 / D-08) and Phase 19's sidebar
+	// queries that surface auto_pending rows distinctly. Idempotent — safe
+	// on every boot.
+	indexesCtx2, indexesCancel2 := context.WithTimeout(ctx, 30*time.Second)
+	if err := repository.EnsureConversationIndexes(indexesCtx2, mongoDB); err != nil {
+		indexesCancel2()
+		slog.ErrorContext(indexesCtx2, "failed to ensure conversation indexes", "error", err)
+		return fmt.Errorf("ensure conversation indexes: %w", err)
+	}
+	indexesCancel2()
 	pendingToolCallRepo := repository.NewPendingToolCallRepository(mongoDB)
 	_ = pendingToolCallRepo // consumed by chat_proxy (16-06) and HITL handlers (16-07)
 	go func() {
