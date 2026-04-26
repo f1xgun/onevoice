@@ -10,6 +10,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -61,6 +62,24 @@ func NewPendingToolCallRepository(db *mongo.Database) domain.PendingToolCallRepo
 // startup + every 5 min cadence in future plans) marks this row as
 // expired after 5 minutes.
 func (r *pendingToolCallRepo) InsertPreparing(ctx context.Context, b *domain.PendingToolCallBatch) error {
+	// Plan 17-07 / GAP-03 regression net. Phase-16 wired identity fields
+	// through but the API proxy + orchestrator HTTP handler omitted them
+	// until 17-07 closed the gap (every batch persisted with empty IDs,
+	// breaking HITL-11 hydration and the resolve-time business-scoped auth
+	// check). Fail loud here so a future regression of either chat.go or
+	// chat_proxy.go cannot silently write empty IDs again.
+	//
+	// UserID and MessageID are intentionally NOT guarded here: system /
+	// anonymous flows may legitimately have an empty UserID, and the
+	// HITL-11 hydration filter is keyed on conversation_id + status.
+	// ConversationID + BusinessID are the structural floor.
+	if b.ConversationID == "" {
+		return fmt.Errorf("pending_tool_call: conversation_id is required (regression of plan 17-07 gap-03)")
+	}
+	if b.BusinessID == "" {
+		return fmt.Errorf("pending_tool_call: business_id is required (regression of plan 17-07 gap-03)")
+	}
+
 	now := time.Now().UTC()
 	b.Status = "preparing"
 	b.CreatedAt = now
