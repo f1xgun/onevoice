@@ -221,7 +221,10 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		titler = service.NewTitler(llmRouter, conversationRepo, titlerModel)
 		log.Info("auto-titler: service constructed", "model", titlerModel)
 	}
-	_ = titler // Plan 05 wires this into ChatProxyHandler + TitlerHandler
+	// Phase 18 Plan 05 — TitlerHandler for POST /conversations/{id}/regenerate-title.
+	// titler may be nil here (graceful disable per A6); the handler returns 503
+	// in that case. conversationRepo + messageRepo are required (panic-on-nil).
+	titlerHandler := handler.NewTitlerHandler(titler, conversationRepo, messageRepo)
 
 	// In-process hub that fans out task lifecycle events to SSE subscribers.
 	taskHub := taskhub.New()
@@ -391,6 +394,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		AgentTask:     agentTaskHandler,
 		Project:       projectHandler,
 		HITL:          hitlHandler,
+		Titler:        titlerHandler,
 	}
 
 	// Health checker
