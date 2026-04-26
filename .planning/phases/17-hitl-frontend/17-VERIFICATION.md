@@ -106,11 +106,12 @@ The form-based replacement is a larger change but solves both GAP-01 (read-only 
 
 ---
 
-### GAP-03 — Pending-approval card disappears after page refresh
+### GAP-03 — Pending-approval card disappears after page refresh (ROOT CAUSE: BACKEND / Phase 16 regression)
 
 **Severity:** critical (directly violates HITL-11 / Invariant 5 / Plan-17-02 hydration contract)
 **Affected requirement:** HITL-11 (pending state survives reload), Invariant 5 (card rehydrates from `GET /messages.pendingApprovals`), and 17-06 verification item #7.
 **Discovered:** 2026-04-26 human checkpoint, same session
+**Investigated:** 2026-04-26 (DB inspection + code trace; root cause confirmed below)
 
 **Reproduction:**
 1. Reach the approval card (steps 1–2 of GAP-01)
@@ -118,27 +119,70 @@ The form-based replacement is a larger change but solves both GAP-01 (read-only 
 3. The conversation reloads; the previously sent message and partial assistant stream are visible in history
 4. **The pending-approval card does NOT re-appear.** Composer is enabled. The pending tool call is not visible anywhere.
 
-**Expected:**
-Per Plan 17-02 SUMMARY: `useChat` hydrates from `GET /messages` envelope `{ messages, pendingApprovals }`; if `pendingApprovals` is non-empty for the active conversation, `ChatWindow` re-renders the `ToolApprovalCard` with the same `batch_id` and the composer stays disabled.
+**Confirmed root cause — ALL identity fields persisted as empty strings:**
 
-**Actual:**
-Card does not rehydrate. Composer is re-enabled. The user can send a new message, but the orchestrator is still waiting on the pending-tool-call resolve — likely producing an inconsistent/orphaned batch on the server side.
+DB inspection (`onevoice-mongodb` → `db.pending_tool_calls.findOne({status:'pending'})`) of an active record from the operator's reproduction:
 
-**Likely root causes (to investigate during gap closure):**
-1. **Backend regression:** `GET /api/v1/conversations/{id}/messages` may not be returning `pendingApprovals` in the envelope (Phase 16 contract). Verify with `curl -s http://localhost/api/v1/conversations/{id}/messages -H "Authorization: Bearer ..." | jq '.pendingApprovals'` after triggering a paused turn.
-2. **Frontend hydration parse:** `useChat.ts` may parse the envelope but not set `pendingApproval` state; or it sets it but `ChatWindow` does not re-render on hydration. Add a `console.log` at the hydration call site and the `pendingApproval` setter to trace.
-3. **Conversation ID mismatch:** the hydrated batch may key off a different conversation ID than the one the user is viewing.
+```json
+{
+  "_id": "82abfbbc-c0dd-472b-a386-592894c5edc8",
+  "conversation_id": "",   // ← empty
+  "business_id": "",       // ← empty
+  "user_id": "",           // ← empty
+  "message_id": "",        // ← empty
+  "status": "pending",
+  "calls": [{ "call_id": "call_jWnYvFdMaKhNB2kJy2jNAp9r",
+              "tool_name": "telegram__send_channel_post",
+              "arguments": { "text": "тест HITL" }, "dispatched": false }],
+  "expires_at": "2026-04-27T14:10:34.861Z"
+}
+```
+
+The frontend hydration call `GET /messages?conversation_id=<X>` cannot find this record because its `conversation_id` field is `""`. The API handler at `services/api/internal/handler/conversation.go:425` correctly calls `pendingRepo.ListPendingByConversation(ctx, conversationID)`, but the Mongo `find` filter `{conversation_id: "<real-id>", status: "pending"}` returns zero docs.
+
+**Code path of the regression (Phase 16 backend, NOT Phase 17 frontend):**
+
+1. **API → orchestrator forward (chat_proxy.go:341-358):** The `orchReq` map sent to the orchestrator omits all Phase-16 identity fields. Currently sends only `model`, `message`, `business_*`, `active_integrations`, `history`, `project_*`. **Missing:** `user_id`, `message_id`, `tier`, `business_approvals`, `project_approval_overrides`. (Note: `conversation_id` lives in the URL `POST /chat/{conversationID}`, but the orchestrator never extracts it — see #2.)
+2. **Orchestrator request decoding (orchestrator/internal/handler/chat.go:41-63):** The `chatRequest` struct has no Phase-16 fields. `ConversationID` is never read from `chi.URLParam(r, "conversationID")`. `UserIDString`, `MessageID`, `Tier`, `BusinessApprovals`, `ProjectApprovalOverrides` are never deserialized.
+3. **Orchestrator RunRequest construction (chat.go:163-171):** `runReq` is built without any Phase-16 identity field. `runReq.ConversationID` defaults to `""`.
+4. **Orchestrator state propagation (orchestrator.go:200-214):** `state.ConversationID = req.ConversationID` (empty), then propagated to step.go.
+5. **Pause-time persistence (orchestrator/step.go:286-299):** `PendingToolCallBatch` is built from `state.ConversationID` etc. — all empty — and `pendingRepo.InsertPreparing` writes the empty values into Mongo verbatim.
+
+This means **every** pending_tool_calls record persisted in production has empty IDs, making both:
+- HITL-11 hydration (`GET /messages` filtered by conversation_id)
+- Plan 16-07's business-scoped resolve auth check (`hitl.Resolve` cross-checks `batch.BusinessID`)
+
+structurally impossible. The Phase-16 feature has been wire-broken since merge; only the absence of human-verify checkpoints prior to Phase 17 hid it.
 
 **Impact if unresolved:**
 - The HITL feature is fragile to any reload — accidental reload, browser crash, multi-tab navigation
 - Operators who walk away and come back will never see their pending decisions, leaving the orchestrator hung waiting on a resolve that will never come
 - Phase 16 D-19 expiration (24h) is the only safety net, and that's far too long for a daily workflow
+- The resolve-handler's business-scoped auth check (`batch.BusinessID == requesterBusinessID`) is currently a no-op because every batch has `business_id: ""` — **a security regression too**, not just a UX gap
 
-**Suggested fix (for /gsd-plan-phase --gaps):**
-A focused gap-closure plan should:
-1. Add an integration probe (manual `curl` + parsed jq output) that confirms the API returns `pendingApprovals` after a paused turn — captured in the gap-plan SUMMARY
-2. Add a `useChat.hydration.test.ts` case that mocks the envelope with `pendingApprovals` and asserts both `state.pendingApproval` is set AND the `ChatWindow` snapshot includes the `ToolApprovalCard`
-3. Fix whichever side (backend or frontend) is dropping the data; commit with a regression test that fails on revert
+**Required gap-closure fix (must be a Phase 17.1 plan that touches backend + frontend):**
+
+1. **Backend — orchestrator handler (`services/orchestrator/internal/handler/chat.go`):**
+   - Extend `chatRequest` struct with Phase-16 fields: `UserID`, `MessageID`, `Tier`, `BusinessApprovals` (`map[string]domain.ToolFloor`), `ProjectApprovalOverrides` (same type).
+   - Extract `conversationID := chi.URLParam(r, "conversationID")` (or accept it as a body field for symmetry — URL is fine).
+   - Populate `runReq` with all Phase-16 fields including `ConversationID`, `UserID` (`uuid.UUID` parsed from `req.UserID`), `UserIDString`, `MessageID`, `Tier`, `BusinessApprovals`, `ProjectApprovalOverrides`.
+
+2. **Backend — API proxy (`services/api/internal/handler/chat_proxy.go:341-358`):**
+   - Add to `orchReq` map: `user_id` (the JWT subject), `message_id` (the just-saved `userMsg.ID`), `tier`, `business_approvals` (from `business.ToolApprovals`), `project_approval_overrides` (from the resolved project's `approval_overrides`).
+   - Add a regression test in `chat_proxy_test.go` that inspects the marshaled body and asserts these 5 fields are present with non-empty/non-nil values.
+
+3. **Backend — repo regression test (`services/orchestrator/internal/repository/pending_tool_call_test.go`):**
+   - Add `TestInsertPreparing_RejectsEmptyConversationID` (or a soft warn at insert time) so a future regression of either point #1 or #2 fails loudly instead of silently writing empty IDs.
+
+4. **Frontend — `useChat.hydration.test.ts`:**
+   - Add a test case that mocks `GET /messages` envelope with one non-empty `pendingApprovals` entry and asserts (a) `state.pendingApproval` is set, (b) `ChatWindow` renders `ToolApprovalCard` after the hook hydrates. This is purely a regression net for the frontend half — currently green, but only because no DB record ever has the right conversation_id to surface here.
+
+5. **Manual verification step in the gap-closure plan:**
+   - Trigger a paused turn, query Mongo, assert `conversation_id`, `business_id`, `user_id`, `message_id` are all non-empty.
+   - Reload the page, assert the card reappears and the composer is disabled.
+   - Approve, assert resolve 200 and resume SSE flows in the same assistant message.
+
+This is a **Phase 17.1 gap-closure plan**, not a small frontend tweak — the regression spans api + orchestrator + (frontend regression test).
 
 ---
 
