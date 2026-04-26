@@ -185,6 +185,8 @@ func (c *hitlConvRepo) Delete(_ context.Context, _ string) error               {
 func (c *hitlConvRepo) UpdateProjectAssignment(_ context.Context, _ string, _ *string) error {
 	return nil
 }
+func (c *hitlConvRepo) UpdateTitleIfPending(_ context.Context, _, _ string) error { return nil }
+func (c *hitlConvRepo) TransitionToAutoPending(_ context.Context, _ string) error { return nil }
 
 // -- helpers -----------------------------------------------------------------
 

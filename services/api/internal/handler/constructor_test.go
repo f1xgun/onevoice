@@ -36,6 +36,12 @@ func (s *stubConversationRepo) Delete(_ context.Context, _ string) error        
 func (s *stubConversationRepo) UpdateProjectAssignment(_ context.Context, _ string, _ *string) error {
 	return nil
 }
+func (s *stubConversationRepo) UpdateTitleIfPending(_ context.Context, _, _ string) error {
+	return nil
+}
+func (s *stubConversationRepo) TransitionToAutoPending(_ context.Context, _ string) error {
+	return nil
+}
 
 // --- Tests ---
 

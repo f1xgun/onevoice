@@ -61,6 +61,16 @@ type ConversationRepository interface {
 	// Plan 15-04 relies on the `bson:"project_id"` tag (no omitempty) so the
 	// Mongo field becomes explicit null rather than missing.
 	UpdateProjectAssignment(ctx context.Context, id string, projectID *string) error
+	// UpdateTitleIfPending atomically writes title + title_status="auto" only
+	// when current status is "auto_pending" or null. Returns ErrConversationNotFound
+	// when the filter matches zero docs (manual rename won the race, or doc deleted).
+	// TITLE-04 / D-08: trust-critical path — manual renames MUST NOT be clobbered.
+	UpdateTitleIfPending(ctx context.Context, id, title string) error
+	// TransitionToAutoPending atomically flips title_status from "auto" or null
+	// → "auto_pending". Used by POST /regenerate-title (Plan 05). Returns
+	// ErrConversationNotFound when filter matches zero docs (status was "manual"
+	// OR "auto_pending" — caller maps each disposition to its 409 body).
+	TransitionToAutoPending(ctx context.Context, id string) error
 }
 
 type MessageRepository interface {
