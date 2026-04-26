@@ -95,7 +95,7 @@ Plans:
   2. A user editing tool args sees an inline JSON tree editor (pinned `@uiw/react-json-view` version) that accepts edits only for top-level string/number/bool fields; nested-object edits are disabled in v1.3.
   3. A user reloading the page mid-approval sees the same card reconstructed from the backend's pending state with no loss of arg edits-in-progress.
 **UI hint**: yes
-**Plans:** 10/10 plans complete
+**Plans:** 11 plans (10 complete + GAP-04 gap_closure)
 Plans:
 - [x] 17-01-PLAN.md — Wave 0 foundation: install @uiw/react-json-view@2.0.0-alpha.42, extend types, test-utils + fixtures, probe onEdit semantics
 - [x] 17-02-PLAN.md — useChat extension: pendingApproval state, resolveApproval action, consumeSSEStream extraction, hydration, Russian error-toast map
@@ -107,6 +107,7 @@ Plans:
 - [x] 17-08-PLAN.md — GAP-01 + GAP-02 frontend: read-only Аргументы always visible + edit-affordance hint chip; useChat hydration regression test (gap_closure)
 - [x] 17-09-PLAN.md — Item 4 + Item 6 UI polish: Submit hint hides on enabled; 403 toast → dedicated `Отказано: операция вне вашей бизнес-области` copy (gap_closure)
 - [x] 17-10-PLAN.md — Re-verify the 10-row matrix against the gap-closed stack and update 17-VERIFICATION.md (gap_closure, autonomous: false)
+- [ ] 17-11-PLAN.md — GAP-04 closure: persist FloorAtPause on PendingCall + admit status=resolving in api Resume handler (gap_closure, autonomous: false)
 
 ### Phase 18: Auto-Title
 **Goal**: After the first assistant reply, chats auto-generate a 3–6 word title using a cheap dedicated model, background and out-of-band from the chat SSE, with atomic guards so a user's manual rename is never clobbered and no PII ever reaches logs.
@@ -158,7 +159,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19
 | 14. Media Upload + Performance Insights | v1.2 | 2/2 | Complete | 2026-04-09 |
 | 15. Projects Foundation | v1.3 | 0/6 | Not started | - |
 | 16. HITL Backend | v1.3 | 0/TBD | Not started | - |
-| 17. HITL Frontend | v1.3 | 10/10 | Complete   | 2026-04-26 |
+| 17. HITL Frontend | v1.3 | 10/11 | In progress (GAP-04 closure) | 2026-04-26 |
 | 18. Auto-Title | v1.3 | 0/TBD | Not started | - |
 | 19. Search & Sidebar Redesign | v1.3 | 0/TBD | Not started | - |
 
