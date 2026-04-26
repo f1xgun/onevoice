@@ -47,7 +47,7 @@
 
 - [ ] **Phase 15: Projects Foundation** — Postgres CRUD, conversation fields, prompt layering, per-project tool whitelist + quick actions
 - [ ] **Phase 16: HITL Backend** — Policy resolution, pausable agent loop, pending tool calls collection, resume endpoint
-- [ ] **Phase 17: HITL Frontend** — Batched approval card with inline JSON arg editor and approve/edit/reject flow
+- [x] **Phase 17: HITL Frontend** — Batched approval card with inline JSON arg editor and approve/edit/reject flow (completed 2026-04-26)
 - [ ] **Phase 18: Auto-Title** — Fire-and-forget cheap-model title generation with manual-rename protection
 - [ ] **Phase 19: Search & Sidebar Redesign** — Mongo $text search (Russian stemming) and master/detail sidebar with pinned chats
 
@@ -95,7 +95,7 @@ Plans:
   2. A user editing tool args sees an inline JSON tree editor (pinned `@uiw/react-json-view` version) that accepts edits only for top-level string/number/bool fields; nested-object edits are disabled in v1.3.
   3. A user reloading the page mid-approval sees the same card reconstructed from the backend's pending state with no loss of arg edits-in-progress.
 **UI hint**: yes
-**Plans:** 6/10 plans executed (gap-closure plans 17-07 → 17-10 added 2026-04-26 after 17-06 surfaced GAP-01/02/03)
+**Plans:** 10/10 plans complete
 Plans:
 - [x] 17-01-PLAN.md — Wave 0 foundation: install @uiw/react-json-view@2.0.0-alpha.42, extend types, test-utils + fixtures, probe onEdit semantics
 - [x] 17-02-PLAN.md — useChat extension: pendingApproval state, resolveApproval action, consumeSSEStream extraction, hydration, Russian error-toast map
@@ -103,10 +103,10 @@ Plans:
 - [x] 17-04-PLAN.md — ToolApprovalAccordionEntry + ToolApprovalCard (reducer-driven atomic Submit) + ChatWindow integration; Wave 0 probe deletion
 - [x] 17-05-PLAN.md — ExpiredApprovalBanner + ToolCard extension (rejected / expired / wasEdited branches)
 - [x] 17-06-PLAN.md — Human-verify checkpoint: live end-to-end HITL pause/resume flow (surfaced GAP-01/02/03 — see 17-VERIFICATION.md)
-- [ ] 17-07-PLAN.md — GAP-03 backend wiring: chat_proxy + orchestrator handler thread Phase-16 identity + policy fields; pending_tool_call repo guard (gap_closure)
-- [ ] 17-08-PLAN.md — GAP-01 + GAP-02 frontend: read-only Аргументы always visible + edit-affordance hint chip; useChat hydration regression test (gap_closure)
-- [ ] 17-09-PLAN.md — Item 4 + Item 6 UI polish: Submit hint hides on enabled; 403 toast → dedicated `Отказано: операция вне вашей бизнес-области` copy (gap_closure)
-- [ ] 17-10-PLAN.md — Re-verify the 10-row matrix against the gap-closed stack and update 17-VERIFICATION.md (gap_closure, autonomous: false)
+- [x] 17-07-PLAN.md — GAP-03 backend wiring: chat_proxy + orchestrator handler thread Phase-16 identity + policy fields; pending_tool_call repo guard (gap_closure)
+- [x] 17-08-PLAN.md — GAP-01 + GAP-02 frontend: read-only Аргументы always visible + edit-affordance hint chip; useChat hydration regression test (gap_closure)
+- [x] 17-09-PLAN.md — Item 4 + Item 6 UI polish: Submit hint hides on enabled; 403 toast → dedicated `Отказано: операция вне вашей бизнес-области` copy (gap_closure)
+- [x] 17-10-PLAN.md — Re-verify the 10-row matrix against the gap-closed stack and update 17-VERIFICATION.md (gap_closure, autonomous: false)
 
 ### Phase 18: Auto-Title
 **Goal**: After the first assistant reply, chats auto-generate a 3–6 word title using a cheap dedicated model, background and out-of-band from the chat SSE, with atomic guards so a user's manual rename is never clobbered and no PII ever reaches logs.
@@ -158,7 +158,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19
 | 14. Media Upload + Performance Insights | v1.2 | 2/2 | Complete | 2026-04-09 |
 | 15. Projects Foundation | v1.3 | 0/6 | Not started | - |
 | 16. HITL Backend | v1.3 | 0/TBD | Not started | - |
-| 17. HITL Frontend | v1.3 | 6/10 | In Progress (gap closure) |  |
+| 17. HITL Frontend | v1.3 | 10/10 | Complete   | 2026-04-26 |
 | 18. Auto-Title | v1.3 | 0/TBD | Not started | - |
 | 19. Search & Sidebar Redesign | v1.3 | 0/TBD | Not started | - |
 
