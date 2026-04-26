@@ -1,13 +1,36 @@
 ---
 phase: 17-hitl-frontend
-verified: 2026-04-26T15:23:00Z
-status: gaps_closed_with_followup
-score: 6/7-exercised (resume SSE blocked by new downstream issue GAP-04)
-verification_source: 17-06 + 17-10 human-verify checkpoints (live browser against gap-closed stack)
+verified: 2026-04-26T16:00:00Z
+status: verified
+score: 7/7-exercised (items 8/9/10 still deferred to manual-only)
+verification_source: 17-06 + 17-10 human-verify checkpoints + 17-11 GAP-04 live verify
 overrides_applied: 0
-gap_closure_completed: [GAP-01, GAP-02, GAP-03, Item-4-hint-persistence, Item-6-403-toast-copy]
-gap_followup_required: [GAP-04]
+gap_closure_completed: [GAP-01, GAP-02, GAP-03, GAP-04, Item-4-hint-persistence, Item-6-403-toast-copy]
+gap_followup_required: []
 ---
+
+# GAP-04 Closure — Live Verified 2026-04-26 16:00
+
+After Plan 17-11 (commits `3cbc7b8`, `471439b`, `e38b92e`, merged
+`11fa229`) and api+orchestrator container rebuild, full HITL flow drives
+end-to-end:
+
+| Probe | Pre-17-11 | Post-17-11 |
+|-------|-----------|-----------|
+| `pending_tool_calls.calls[0].floor_at_pause` after pause | (field absent) | `"manual"` |
+| `POST /pending-tool-calls/{id}/resolve` after Approve | 200 OK | 200 OK |
+| `POST /chat/{id}/resume?batch_id=…` | 409 Conflict | **200 OK** |
+| `pending_tool_calls.calls[0].verdict` after resolve | `"reject"` (policy_revoked rewrite) | `"approve"` |
+| `pending_tool_calls.status` after dispatch | `"resolving"` (stuck) | `"resolved"` |
+| `pending_tool_calls.calls[0].dispatched` after dispatch | `false` | `true` |
+| Frontend card after Submit | stays open (toast: connection error) | dismissed |
+| Frontend composer after Submit | re-enabled | re-enabled |
+
+GAP-04's two root causes — pause/resolve registry divergence and the
+api Resume handler's overly-strict 409 gate — are both eliminated. The
+end-to-end approval flow (LLM pause → operator approve → resolve 200 →
+resume 200 → dispatch → assistant message completes) works for the
+manual-floor Telegram tool against the test business.
 
 # Phase 17: HITL Frontend — Verification Report
 
