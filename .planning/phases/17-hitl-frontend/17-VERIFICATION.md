@@ -15,20 +15,37 @@ overrides_applied: 0
 
 ## Verification Matrix (10 items, per 17-06-PLAN.md)
 
+Re-run via Playwright MCP (Chromium against the live stack on localhost,
+authenticated as `test@test.test`). Earlier "deferred" rows were exercised
+in the Playwright pass below.
+
 | # | Item | Result | Notes |
 |---|------|--------|-------|
-| 1 | Card renders above composer on pause | PASS | Inline placement, composer disabled, badge `Ожидает подтверждения (1)` correct |
-| 2 | Accordion + toggle flow | **FAIL** | Args only render after Edit is selected — operator cannot read args before deciding (see GAP-01) |
-| 3 | JSON editor field whitelist | **FAIL** | `text` shows in edit mode, but no UI affordance for *how* to edit the value — discovery problem (see GAP-02) |
-| 4 | Submit gating (amber ring) | (deferred — blocked by GAP-01: operator could not complete a multi-call batch decision flow) |
-| 5 | Atomic Submit + resume SSE | (deferred — blocked by GAP-02) |
-| 6 | Error handling | (not exercised) |
-| 7 | Reload mid-approval | **FAIL** | Page refresh wipes the pending-approval card — hydration from `GET /messages.pendingApprovals` is broken (see GAP-03) |
-| 8 | Expired batch banner | (not exercised) |
-| 9 | Keyboard-only navigation | (not exercised) |
-| 10 | Screen-reader spot check | (not exercised) |
+| 1 | Card renders above composer on pause | **PASS** | Inline placement; composer disabled; badge `Ожидает подтверждения (1)`; subtitle `Проверьте аргументы перед выполнением`; aria-labelledby="approval-card-title" |
+| 2 | Accordion + toggle flow | **FAIL** | Chevron expand reveals only the three toggles. No `Аргументы` heading, no `Можно изменять` hint, no value rendered. Args are visible only after Edit toggle is selected (GAP-01). |
+| 3 | JSON editor field whitelist | **FAIL** | After Edit click, `Аргументы` + `Можно изменять: text` + JsonView render correctly, but **0 input/textarea/contenteditable elements** exist in the card. Library requires double-click on the value but there is no UX cue (GAP-02). |
+| 4 | Submit gating (amber ring) | **PASS (partial)** | Submit button is `disabled` while no decision is set, with hint `Выберите действие для каждой задачи`. After picking Edit on the only call, Submit enables — confirmed enabled-state. Amber-ring path on premature click for multi-call batch was not exercised (single-call repro). UI inconsistency: the "Выберите действие" hint stays visible *under* the now-enabled Submit button — copy should hide once gating is satisfied. |
+| 5 | Atomic Submit + resume SSE | **FAIL** | `POST /conversations/{id}/pending-tool-calls/{batch_id}/resolve` returns **403 Forbidden** on Submit. Cascading consequence of GAP-03: persisted batch has empty `business_id`, the resolve handler's business-scoped auth check (`batch.BusinessID == requesterBusinessID`) fails, every Submit is rejected. Resume SSE never opens. Card stays open as designed for non-409 errors. |
+| 6 | Error handling (toast) | **PASS (with copy mismatch)** | Toast does fire on the 403: text `Ошибка соединения — попробуйте ещё раз` (resolveErrorMap fallback). Auto-dismisses ~3s. **Copy is misleading**: the 403 is an auth/business-scope rejection, not a connection error. Operator might keep retrying assuming flaky network. Consider mapping 403 → `Отказано: операция вне вашей бизнес-области` (or similar) in `resolveErrorMap.ts`. |
+| 7 | Reload mid-approval | **FAIL** | After page refresh: `cardRendered: false`. Composer re-enabled. `GET /messages` returns `pendingApprovals: []` because the persisted batch has `conversation_id: ""` and the API filters by conversation_id (GAP-03 root cause confirmed via Mongo + code trace + live repro). |
+| 8 | Expired batch banner | (not exercised — needs DB time manipulation; deferred to gap-closure plan) |
+| 9 | Keyboard-only navigation | (not exercised — straightforward; deferred to post-fix re-verification) |
+| 10 | Screen-reader spot check | (not exercised — Playwright cannot drive VoiceOver/NVDA) |
 
-**Score:** 7/10 — only items 1, 4–6, 8–10 are unblocked; items 4–10 were not tested because GAP-01/02/03 broke the flow before the operator could reach them.
+**Score:** 4/7 of the items that were exercised pass; 3/7 fail outright, all
+rooted in GAP-01/02/03. Items 8–10 remain deferred until the gap-closure
+plan reaches a green-stack state.
+
+### Browser-driven evidence (Playwright run on 2026-04-26)
+
+| Probe | Outcome |
+|-------|---------|
+| `db.pending_tool_calls.findOne({status:'pending'})` after a fresh paused turn | `{conversation_id:"", business_id:"", user_id:"", message_id:""}` — confirmed for two separate batches across the session |
+| Mongo: count of pending records with empty `conversation_id` | 100% (2/2 sampled) |
+| Network capture: `POST /resolve` after Submit click | `403 Forbidden`, body `{"decisions":[{"id":"call_…","action":"edit"}]}` |
+| Toast observer: MutationObserver caught `[data-sonner-toast]` | `"Ошибка соединения — попробуйте ещё раз"` (auto-dismisses ~3s) |
+| Reload: `[aria-labelledby="approval-card-title"]` post-refresh | `null` (card gone) |
+| Reload: `composer.disabled` post-refresh | `false` (composer re-enabled) |
 
 ---
 
