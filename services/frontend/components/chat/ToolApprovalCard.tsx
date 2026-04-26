@@ -242,7 +242,13 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
                   // honest for the "undecided" state.
                   disabled={submitting}
                   aria-disabled={!allDecided || submitting}
-                  aria-describedby="approval-card-submit-helper"
+                  // Plan 17-09: only describe the button while it is gated on
+                  // an undecided row. Once allDecided flips, the helper span
+                  // unmounts (see below) and dropping the attribute keeps SR
+                  // output clean — the SR reads only the button label, not a
+                  // stale "Выберите действие для каждой задачи" hint that
+                  // contradicts an enabled button.
+                  aria-describedby={!allDecided ? 'approval-card-submit-helper' : undefined}
                   className={!allDecided ? 'opacity-50' : undefined}
                 >
                   {submitting && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
@@ -253,9 +259,20 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
             {!allDecided && <TooltipContent>{RU.submitHelper}</TooltipContent>}
           </Tooltip>
         </TooltipProvider>
-        <span id="approval-card-submit-helper" className="sr-only">
-          {RU.submitHelper}
-        </span>
+        {/*
+          Plan 17-09 / VERIFICATION item 4: the visually-hidden helper span
+          is gated on the same `!allDecided` predicate as the TooltipContent
+          above. Previously this span rendered unconditionally, so once
+          Submit became enabled the visible-to-AT copy contradicted the
+          enabled-button state. Operators (and SR users) saw a stale hint
+          telling them to "pick an action for each task" while the button
+          was already actionable.
+        */}
+        {!allDecided && (
+          <span id="approval-card-submit-helper" className="sr-only">
+            {RU.submitHelper}
+          </span>
+        )}
       </div>
     </div>
   );
