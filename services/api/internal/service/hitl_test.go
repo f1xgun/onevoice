@@ -176,7 +176,23 @@ func newSvc(t *testing.T, pending *stubPendingRepo, biz *stubBusinessRepo, proj 
 
 // seedBatch creates a pending batch with the given calls under the given
 // business and conversation IDs.
+//
+// Plan 17-11: every PendingCall now carries FloorAtPause (persisted at
+// orchestrator pause time so the resolve-time TOCTOU re-check consults the
+// same registry that classified the call). For test ergonomics we default
+// FloorAtPause to ToolFloorManual when callers leave it empty — production
+// orchestrator code always sets it to Manual at pause time (only manual-
+// floor calls reach the manualCalls bucket). Tests that need to exercise
+// the legacy/empty-FloorAtPause behavior should construct PendingCall
+// literals with an explicit zero/empty value (and pre-populate it AFTER
+// calling seedBatch so this defaulting does not overwrite their intent —
+// or just bypass seedBatch).
 func seedBatch(pr *stubPendingRepo, batchID, convID, bizID string, calls []domain.PendingCall) *domain.PendingToolCallBatch {
+	for i := range calls {
+		if calls[i].FloorAtPause == "" {
+			calls[i].FloorAtPause = domain.ToolFloorManual
+		}
+	}
 	b := &domain.PendingToolCallBatch{
 		ID:             batchID,
 		ConversationID: convID,
@@ -420,18 +436,74 @@ func TestHITLService_Resolve_ConcurrentResolve_ExactlyOneWins_OtherGets409(t *te
 	}
 }
 
-// TestHITLService_Resolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject —
-// the HITL-06 invariant: when the business policy flips to "forbidden" between
-// pause time and resolve time, the resolve succeeds BUT the decision is
-// rewritten to reject with reason="policy_revoked".
-func TestHITLService_Resolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject(t *testing.T) {
+// TestHITLService_Resolve_PreservesApproveWhenFloorAtPauseManual — Plan
+// 17-11 / GAP-04 closure. When the persisted FloorAtPause is Manual and
+// business + project policy still permits the tool, an operator-initiated
+// approve must be preserved verbatim (no policy_revoked rewrite). Pre-fix
+// this test would fail because the api-side toolsCache was empty in
+// production and Floor() returned Forbidden, tripping the HITL-06 rewrite
+// branch even when policy permitted the call.
+func TestHITLService_Resolve_PreservesApproveWhenFloorAtPauseManual(t *testing.T) {
 	bizID := uuid.New().String()
 	bizUUID := uuid.MustParse(bizID)
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{
+			CallID:       "tc_a",
+			ToolName:     "telegram__send_channel_post",
+			Arguments:    map[string]interface{}{"text": "hi"},
+			FloorAtPause: domain.ToolFloorManual,
+		},
 	})
-	// Business settings now flag the tool as forbidden post-pause.
+	// Business has NO tool_approvals override — Resolve(Manual, {}, nil, ...) = Manual = not Forbidden.
+	biz := &stubBusinessRepo{Business: &domain.Business{ID: bizUUID}}
+	svc := newSvc(t, pr, biz, &stubProjectRepo{})
+
+	res, err := svc.Resolve(context.Background(), service.ResolveInput{
+		ConversationID:  "conv-1",
+		BatchID:         "batch-1",
+		ActorUserID:     uuid.New().String(),
+		ActorBusinessID: bizID,
+		Decisions:       []service.DecisionInput{{ID: "tc_a", Action: "approve"}},
+	})
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if len(res.Decisions) != 1 {
+		t.Fatalf("expected 1 decision, got %d", len(res.Decisions))
+	}
+	if res.Decisions[0].Action != "approve" {
+		t.Errorf("Action = %q, want approve (no policy_revoked rewrite)", res.Decisions[0].Action)
+	}
+	if res.Decisions[0].Reason != "" {
+		t.Errorf("Reason = %q, want empty", res.Decisions[0].Reason)
+	}
+	if len(pr.RecordedDecisions) != 1 || pr.RecordedDecisions[0].Verdict != "approve" {
+		t.Errorf("recorded verdict = %+v, want approve", pr.RecordedDecisions)
+	}
+	if pr.RecordedDecisions[0].RejectReason != "" {
+		t.Errorf("recorded reject_reason = %q, want empty", pr.RecordedDecisions[0].RejectReason)
+	}
+}
+
+// TestHITLService_Resolve_FloorAtPauseManual_BusinessFlipsToForbidden_RewritesToReject —
+// The HITL-06 invariant is preserved through the new FloorAtPause path:
+// when business policy genuinely flips a tool to "forbidden" between pause
+// and resolve, the resolve rewrites approve to reject with
+// reason="policy_revoked" because pkghitl.Resolve(Manual,
+// {tool:"forbidden"}, nil, tool) returns Forbidden via strictest-wins.
+func TestHITLService_Resolve_FloorAtPauseManual_BusinessFlipsToForbidden_RewritesToReject(t *testing.T) {
+	bizID := uuid.New().String()
+	bizUUID := uuid.MustParse(bizID)
+	pr := newStubPendingRepo()
+	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
+		{
+			CallID:       "tc_a",
+			ToolName:     "telegram__send_channel_post",
+			Arguments:    map[string]interface{}{"text": "hi"},
+			FloorAtPause: domain.ToolFloorManual,
+		},
+	})
 	biz := &stubBusinessRepo{Business: &domain.Business{
 		ID: bizUUID,
 		Settings: map[string]interface{}{
@@ -450,10 +522,7 @@ func TestHITLService_Resolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject(t *t
 		Decisions:       []service.DecisionInput{{ID: "tc_a", Action: "approve"}},
 	})
 	if err != nil {
-		t.Fatalf("Resolve returned error: %v (expected 200 with rewritten decision)", err)
-	}
-	if len(res.Decisions) != 1 {
-		t.Fatalf("expected 1 decision, got %d", len(res.Decisions))
+		t.Fatalf("Resolve returned error: %v", err)
 	}
 	if res.Decisions[0].Action != "reject" {
 		t.Errorf("Action = %q, want reject", res.Decisions[0].Action)
@@ -461,12 +530,8 @@ func TestHITLService_Resolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject(t *t
 	if res.Decisions[0].Reason != "policy_revoked" {
 		t.Errorf("Reason = %q, want policy_revoked", res.Decisions[0].Reason)
 	}
-	// Persisted batch must reflect the rewrite.
-	if len(pr.RecordedDecisions) != 1 || pr.RecordedDecisions[0].Verdict != "reject" {
-		t.Errorf("recorded verdict not rewritten to reject: %+v", pr.RecordedDecisions)
-	}
-	if pr.RecordedDecisions[0].RejectReason != "policy_revoked" {
-		t.Errorf("recorded reject_reason = %q, want policy_revoked", pr.RecordedDecisions[0].RejectReason)
+	if pr.RecordedDecisions[0].Verdict != "reject" || pr.RecordedDecisions[0].RejectReason != "policy_revoked" {
+		t.Errorf("persisted verdict/reason = %+v, want reject/policy_revoked", pr.RecordedDecisions[0])
 	}
 }
 
