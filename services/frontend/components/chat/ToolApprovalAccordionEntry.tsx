@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import JsonView from '@uiw/react-json-view';
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,11 +18,25 @@ import { ToolApprovalToggleGroup } from './ToolApprovalToggleGroup';
 const RU = {
   argsHeading: 'Аргументы',
   editableFieldsHint: 'Можно изменять',
+  // Plan 17-08 GAP-02: discoverability hint for the inline JSON editor's
+  // double-click-to-edit interaction model. Library-agnostic phrasing so
+  // a future swap to a labeled-input form (per VERIFICATION §GAP-02
+  // suggested fix B) does not require a copy revision.
+  editAffordanceHint: 'Дважды нажмите на значение, чтобы изменить',
   rejectPlaceholder: 'Причина (необязательно)',
   rejectAriaLabel: 'Причина отказа',
   triggerExpand: 'развернуть',
   triggerCollapse: 'свернуть',
 } as const;
+
+// Bridge `@uiw/react-json-view` (root, read-only) to the shadcn neutral palette.
+// Mirrors `jsonEditorTheme` from `ToolApprovalJsonEditor.tsx` so the editable
+// vs. read-only swap is visually identical. Kept local per Plan 17-08 to
+// avoid cross-modifying the editor file in this minimal-diff plan.
+const jsonViewTheme = {
+  '--w-rjv-color': 'hsl(var(--foreground))',
+  '--w-rjv-background-color': 'hsl(var(--muted))',
+} as React.CSSProperties;
 
 type Decision = ApprovalAction | 'undecided';
 
@@ -110,22 +125,40 @@ export function ToolApprovalAccordionEntry({
         </div>
 
         <CollapsibleContent>
-          {draft.decision === 'edit' && (
-            <div className="space-y-2 px-3 pb-3">
-              <p className="text-sm font-semibold">{RU.argsHeading}</p>
-              {call.editableFields.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {RU.editableFieldsHint}: {call.editableFields.join(', ')}
+          {/*
+            Plan 17-08 GAP-01 fix: the Аргументы block + editable-fields hint
+            now render whenever the entry is expanded — gated only by
+            <CollapsibleContent>, NOT by `decision`. In Edit mode the editable
+            JSON view replaces the read-only one and the affordance chip
+            (GAP-02) appears above it. Previously this whole block was hidden
+            unless `decision === 'edit'`, blocking UI-08 (inspect-before-approve).
+          */}
+          <div className="space-y-2 px-3 pb-3">
+            <p className="text-sm font-semibold">{RU.argsHeading}</p>
+            {call.editableFields.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {RU.editableFieldsHint}: {call.editableFields.join(', ')}
+              </p>
+            )}
+            {draft.decision === 'edit' ? (
+              <>
+                <p
+                  className="text-xs italic text-muted-foreground"
+                  data-testid="edit-affordance-hint"
+                >
+                  {RU.editAffordanceHint}
                 </p>
-              )}
-              <ToolApprovalJsonEditor
-                args={call.args}
-                editedArgs={draft.editedArgs}
-                editableFields={call.editableFields}
-                onEdit={onEditArg}
-              />
-            </div>
-          )}
+                <ToolApprovalJsonEditor
+                  args={call.args}
+                  editedArgs={draft.editedArgs}
+                  editableFields={call.editableFields}
+                  onEdit={onEditArg}
+                />
+              </>
+            ) : (
+              <JsonView value={call.args} collapsed={2} style={jsonViewTheme} />
+            )}
+          </div>
 
           {draft.decision === 'reject' && (
             <div className="space-y-1 px-3 pb-3">
