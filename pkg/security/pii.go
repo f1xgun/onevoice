@@ -38,7 +38,14 @@ var (
 	// INN — 10 digits (legal entity) or 12 digits (individual), but ONLY when
 	// prefixed by "ИНН" / "INN" (case-insensitive). Bare numbers without the
 	// prefix (e.g. "Заявка 7654321098") MUST NOT match — Landmine 2.
-	reINN = regexp.MustCompile(`(?i)\b(?:ИНН|INN)[\s:№]*\d{10}(?:\d{2})?\b`)
+	//
+	// NOTE: Go's RE2 \b is ASCII-only — a word boundary is not detected at the
+	// transition between a space and a Cyrillic letter, so a literal `\bИНН`
+	// never matches in practice. We split the alternation: Latin "INN" keeps
+	// `\b` (where ASCII boundary detection works), Cyrillic "ИНН" drops it
+	// (the prefix is unique enough that mid-word collision is not a realistic
+	// false-positive in Russian text). Deviation from research draft regex.
+	reINN = regexp.MustCompile(`(?i)(?:\bINN|ИНН)[\s:№]*\d{10}(?:\d{2})?\b`)
 )
 
 // piiClass binds a name (used as the D-16 regex_class log field) to a compiled
