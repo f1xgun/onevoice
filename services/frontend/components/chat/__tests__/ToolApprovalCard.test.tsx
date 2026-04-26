@@ -103,6 +103,74 @@ describe('ToolApprovalCard — card structure and gates', () => {
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={vi.fn()} />);
     expect(screen.getByText('Выберите действие для каждой задачи')).toBeInTheDocument();
   });
+
+  // ---------- Plan 17-09 / VERIFICATION item 4: Submit hint persistence ----------
+  // Regression: the visually-hidden helper span at the bottom of the footer
+  // was rendered unconditionally (only the TooltipContent was gated on
+  // `!allDecided`). Once a decision was picked and Submit became enabled,
+  // `screen.getByText('Выберите действие для каждой задачи')` still found the
+  // sr-only copy → operators saw a stale hint contradicting the enabled
+  // button. Plan 17-09 gates the sr-only span on the same `!allDecided`
+  // predicate.
+
+  it('GG) keeps the Submit helper hint in the DOM while any call is undecided', () => {
+    render(<ToolApprovalCard batch={threeCallBatch} onSubmit={vi.fn()} />);
+    // No decisions yet → hint MUST still be visible to AT users.
+    expect(screen.getByText('Выберите действие для каждой задачи')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Подтвердить$/ })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+  });
+
+  it('HH) hides the Submit helper hint once every call has a decision', async () => {
+    const user = userEvent.setup();
+    render(<ToolApprovalCard batch={threeCallBatch} onSubmit={vi.fn()} />);
+
+    // Decide every call → allDecided flips to true.
+    const approveButtons = screen.getAllByRole('button', { name: /^Одобрить /u });
+    for (const btn of approveButtons) {
+      await user.click(btn);
+    }
+
+    const submit = screen.getByRole('button', { name: /^Подтвердить$/ });
+
+    // 1. Confirm allDecided flipped (Submit is no longer aria-disabled).
+    expect(submit).not.toHaveAttribute('aria-disabled', 'true');
+
+    // 2. The helper copy must be ABSENT from the DOM — neither the tooltip
+    //    nor the sr-only span renders. Plan 17-09 fix: gate the sr-only
+    //    span on `!allDecided`.
+    expect(screen.queryByText('Выберите действие для каждой задачи')).toBeNull();
+
+    // 3. With the helper span gone, the Button's aria-describedby points
+    //    nowhere. Plan 17-09 also drops the attribute when allDecided so
+    //    SR output stays clean.
+    expect(submit).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('II) Submit helper hint is absent during in-flight resolve (allDecided + submitting)', async () => {
+    const user = userEvent.setup();
+    let resolvePending: () => void = () => {};
+    const pendingPromise = new Promise<void>((resolve) => {
+      resolvePending = resolve;
+    });
+    const onSubmit = vi.fn().mockReturnValue(pendingPromise);
+    render(<ToolApprovalCard batch={threeCallBatch} onSubmit={onSubmit} />);
+
+    const approveButtons = screen.getAllByRole('button', { name: /^Одобрить /u });
+    for (const btn of approveButtons) {
+      await user.click(btn);
+    }
+    await user.click(screen.getByRole('button', { name: /^Подтвердить$/ }));
+
+    // While submitting, allDecided is true so the gated helper still does
+    // NOT appear — the only visible feedback is the spinner + "Отправляем…".
+    expect(screen.queryByText('Выберите действие для каждой задачи')).toBeNull();
+
+    resolvePending();
+    await pendingPromise;
+  });
 });
 
 // ---------- Reducer unit tests ----------
