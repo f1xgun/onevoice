@@ -157,7 +157,11 @@ describe('useChat.resolveApproval — error branches', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('403 with reason=policy_revoked → policy-revoked toast, card stays open', async () => {
+  it('403 with reason=policy_revoked → 403 business-scope toast wins (Plan 17-09 precedence), card stays open', async () => {
+    // Plan 17-09 / VERIFICATION item 6 flips the precedence: a 403 is an
+    // auth/scope rejection (Plan 16-07 batch.BusinessID check), NOT a
+    // policy gate, so the 403 branch now wins even if the body shape also
+    // says reason=policy_revoked. Operators get scope-accurate copy.
     const fetchMock = vi.fn();
     const { result } = hydratedHook('cid-policy', fetchMock);
     await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -165,6 +169,30 @@ describe('useChat.resolveApproval — error branches', () => {
     fetchMock.mockImplementationOnce(async () => {
       return new Response(JSON.stringify({ reason: 'policy_revoked' }), {
         status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    await act(async () => {
+      await result.current.resolveApproval([{ id: 'call-single-1', action: 'approve' }]);
+    });
+
+    expect(toast.error).toHaveBeenCalledWith('Отказано: операция вне вашей бизнес-области');
+    expect(result.current.pendingApproval).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('400 with reason=policy_revoked → policy-revoked toast (precedence preserved on non-403), card stays open', async () => {
+    // Regression net for the OTHER direction of Plan 17-09's precedence
+    // change: policy_revoked still wins on a non-403 4xx (e.g. 400) per
+    // Phase 16 D-12.
+    const fetchMock = vi.fn();
+    const { result } = hydratedHook('cid-policy-400', fetchMock);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    fetchMock.mockImplementationOnce(async () => {
+      return new Response(JSON.stringify({ reason: 'policy_revoked' }), {
+        status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     });
