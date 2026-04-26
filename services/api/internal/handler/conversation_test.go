@@ -26,12 +26,14 @@ func ptr[T any](v T) *T { return &v }
 
 // MockConversationRepository is a mock implementation of ConversationRepository for testing
 type MockConversationRepository struct {
-	CreateFunc                  func(ctx context.Context, conv *domain.Conversation) error
-	GetByIDFunc                 func(ctx context.Context, id string) (*domain.Conversation, error)
-	ListByUserIDFunc            func(ctx context.Context, userID string, limit, offset int) ([]domain.Conversation, error)
-	UpdateFunc                  func(ctx context.Context, conv *domain.Conversation) error
-	DeleteFunc                  func(ctx context.Context, id string) error
-	UpdateProjectAssignmentFunc func(ctx context.Context, id string, projectID *string) error
+	CreateFunc                    func(ctx context.Context, conv *domain.Conversation) error
+	GetByIDFunc                   func(ctx context.Context, id string) (*domain.Conversation, error)
+	ListByUserIDFunc              func(ctx context.Context, userID string, limit, offset int) ([]domain.Conversation, error)
+	UpdateFunc                    func(ctx context.Context, conv *domain.Conversation) error
+	DeleteFunc                    func(ctx context.Context, id string) error
+	UpdateProjectAssignmentFunc   func(ctx context.Context, id string, projectID *string) error
+	UpdateTitleIfPendingFunc      func(ctx context.Context, id, title string) error
+	TransitionToAutoPendingFunc   func(ctx context.Context, id string) error
 }
 
 func (m *MockConversationRepository) Create(ctx context.Context, conv *domain.Conversation) error {
@@ -72,6 +74,20 @@ func (m *MockConversationRepository) Delete(ctx context.Context, id string) erro
 func (m *MockConversationRepository) UpdateProjectAssignment(ctx context.Context, id string, projectID *string) error {
 	if m.UpdateProjectAssignmentFunc != nil {
 		return m.UpdateProjectAssignmentFunc(ctx, id, projectID)
+	}
+	return nil
+}
+
+func (m *MockConversationRepository) UpdateTitleIfPending(ctx context.Context, id, title string) error {
+	if m.UpdateTitleIfPendingFunc != nil {
+		return m.UpdateTitleIfPendingFunc(ctx, id, title)
+	}
+	return nil
+}
+
+func (m *MockConversationRepository) TransitionToAutoPending(ctx context.Context, id string) error {
+	if m.TransitionToAutoPendingFunc != nil {
+		return m.TransitionToAutoPendingFunc(ctx, id)
 	}
 	return nil
 }
