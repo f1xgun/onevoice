@@ -45,7 +45,6 @@ func TestContainsPII(t *testing.T) {
 		{"non-luhn 16 digit", "Идентификатор 1234567890123456", false, ""}, // 16 digits but fails Luhn
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			class, hit := ContainsPIIClass(c.input)
 			if hit != c.wantHit {
@@ -80,7 +79,6 @@ func TestRedactPII(t *testing.T) {
 		{"mixed email + phone", "user@x.ru и +7 495 1234567", "[Скрыто] и [Скрыто]"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			got := RedactPII(c.input)
 			if got != c.want {
@@ -110,7 +108,6 @@ func TestRedactPII_LogShape(t *testing.T) {
 		"паспорт 1234 567890",
 	}
 	for _, input := range piiInputs {
-		input := input
 		t.Run(input, func(t *testing.T) {
 			redacted := RedactPII(input)
 			if strings.Contains(redacted, input) {

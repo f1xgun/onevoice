@@ -8,6 +8,8 @@ import (
 // redactionToken is the literal Russian placeholder that replaces every PII
 // match in RedactPII output. D-14 locked this exact token; downstream prompt
 // builders rely on it verbatim.
+//
+//nolint:gosec // G101 false positive: this is a placeholder string, not a credential.
 const redactionToken = "[Скрыто]"
 
 // Compiled regex classes. Each class is responsible for one trust-boundary PII
@@ -76,7 +78,6 @@ var piiClasses = []piiClass{
 func RedactPII(s string) string {
 	out := s
 	for _, c := range piiClasses {
-		c := c // capture loop variable for the closure
 		out = c.pattern.ReplaceAllStringFunc(out, func(match string) string {
 			if c.extra != nil && !c.extra(match) {
 				return match // not a real PII match — leave intact
