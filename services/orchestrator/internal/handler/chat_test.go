@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -152,6 +154,109 @@ func TestChatHandler_without_project_context(t *testing.T) {
 	assert.Nil(t, got.ProjectContext, "ProjectContext must be nil when project_id is absent")
 	assert.Equal(t, domain.WhitelistMode(""), got.WhitelistMode)
 	assert.Empty(t, got.AllowedTools)
+}
+
+// TestChatHandler_ThreadsPhase16Fields covers Plan 17-07 GAP-03 closure: the
+// orchestrator handler must extract conversationID from the URL path and
+// decode the five new Phase-16 body fields (user_id, message_id, tier,
+// business_approvals, project_approval_overrides), threading them all into
+// RunRequest so the pause-time persistence writes non-empty IDs to
+// pending_tool_calls. Without this wiring, every persisted batch had
+// conversation_id="" / business_id="" and HITL-11 hydration was impossible.
+func TestChatHandler_ThreadsPhase16Fields(t *testing.T) {
+	t.Run("populates RunRequest from URL + body", func(t *testing.T) {
+		runner := &captureRunner{}
+		h := handler.NewChatHandler(runner, "openai/gpt-4o-mini")
+
+		userID := uuid.New().String()
+		body := `{
+			"model": "gpt-4o-mini",
+			"message": "Привет",
+			"business_id": "biz-1",
+			"business_name": "Test Business",
+			"active_integrations": ["telegram"],
+			"user_id": "` + userID + `",
+			"message_id": "msg-42",
+			"tier": "pro",
+			"business_approvals": {"telegram__send_channel_post":"manual"},
+			"project_approval_overrides": {"vk__publish_post":"auto"}
+		}`
+
+		// Use the chi router so chi.URLParam(r, "conversationID") resolves the
+		// "conv-abc-123" path segment — exactly the wiring used in
+		// services/orchestrator/cmd/main.go.
+		r := chi.NewRouter()
+		r.Post("/chat/{conversationID}", h.Chat)
+		req := httptest.NewRequest(http.MethodPost, "/chat/conv-abc-123", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		got := runner.got
+		assert.Equal(t, "conv-abc-123", got.ConversationID, "conversationID must come from chi URL param")
+		assert.Equal(t, "biz-1", got.BusinessID)
+		assert.Equal(t, userID, got.UserIDString)
+		assert.NotEqual(t, uuid.Nil, got.UserID, "valid UUID must be parsed into RunRequest.UserID")
+		assert.Equal(t, "msg-42", got.MessageID)
+		assert.Equal(t, "pro", got.Tier)
+		require.NotNil(t, got.BusinessApprovals)
+		assert.Equal(t, domain.ToolFloor("manual"), got.BusinessApprovals["telegram__send_channel_post"])
+		require.NotNil(t, got.ProjectApprovalOverrides)
+		assert.Equal(t, domain.ToolFloor("auto"), got.ProjectApprovalOverrides["vk__publish_post"])
+	})
+
+	t.Run("empty user_id leaves UserID zero", func(t *testing.T) {
+		runner := &captureRunner{}
+		h := handler.NewChatHandler(runner, "openai/gpt-4o-mini")
+
+		body := `{
+			"model": "gpt-4o-mini",
+			"message": "Привет",
+			"business_id": "biz-1",
+			"business_name": "Test Business",
+			"active_integrations": ["telegram"],
+			"user_id": "",
+			"message_id": "msg-1"
+		}`
+
+		r := chi.NewRouter()
+		r.Post("/chat/{conversationID}", h.Chat)
+		req := httptest.NewRequest(http.MethodPost, "/chat/conv-empty-user", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		got := runner.got
+		assert.Equal(t, "conv-empty-user", got.ConversationID)
+		assert.Equal(t, "", got.UserIDString, "empty user_id passes through verbatim")
+		assert.Equal(t, uuid.Nil, got.UserID, "no UUID parsed when user_id is empty")
+		assert.Equal(t, "msg-1", got.MessageID)
+	})
+
+	t.Run("invalid user_id leaves UserID zero, no panic", func(t *testing.T) {
+		runner := &captureRunner{}
+		h := handler.NewChatHandler(runner, "openai/gpt-4o-mini")
+
+		body := `{
+			"model": "gpt-4o-mini",
+			"message": "Привет",
+			"business_id": "biz-1",
+			"business_name": "Test Business",
+			"active_integrations": ["telegram"],
+			"user_id": "not-a-uuid"
+		}`
+
+		r := chi.NewRouter()
+		r.Post("/chat/{conversationID}", h.Chat)
+		req := httptest.NewRequest(http.MethodPost, "/chat/conv-bad-user", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		got := runner.got
+		assert.Equal(t, "not-a-uuid", got.UserIDString, "string mirror preserves the proxy-provided value")
+		assert.Equal(t, uuid.Nil, got.UserID, "invalid UUID must NOT crash the handler — it logs + leaves zero")
+	})
 }
 
 // TestChatHandler_invalid_whitelist_mode_falls_back verifies that a bogus
