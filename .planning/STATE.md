@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Chats & Projects
-current_phase: 17
+current_phase: 18
 status: executing
 stopped_at: Phase 18 context gathered
-last_updated: "2026-04-26T17:59:16.152Z"
+last_updated: "2026-04-26T18:04:15.231Z"
 last_activity: 2026-04-26
 progress:
   total_phases: 5
@@ -19,14 +19,14 @@ progress:
 
 **Project:** OneVoice
 **Milestone:** v1.3 Chats & Projects
-**Current Phase:** 17
-**Status:** Ready to execute
+**Current Phase:** 18
+**Status:** Executing Phase 18
 **Last activity:** 2026-04-26
 
 ## Current Position
 
-Phase: 17 (hitl-frontend) — EXECUTING
-Plan: 1 of 11
+Phase: 18 (auto-title) — EXECUTING
+Plan: 1 of 6
 Phase 15: COMPLETE — UAT passed 2026-04-19 (all 7 items, zero open gaps).
 Phase 16: COMPLETE — UAT passed 2026-04-20 (7/7 items, zero open gaps).
 
@@ -44,7 +44,7 @@ Progress: [██████████] 100% of Phases 15 + 16 (16/16 plans).
 
 See: .planning/PROJECT.md (updated 2026-04-18)
 **Core value:** Business owners can manage digital presence across platforms through a single conversational interface.
-**Current focus:** Phase 17 — hitl-frontend
+**Current focus:** Phase 18 — auto-title
 
 ## Milestone Summary
 
