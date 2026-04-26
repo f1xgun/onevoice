@@ -1,19 +1,70 @@
 ---
 phase: 17-hitl-frontend
-verified: 2026-04-26T00:00:00Z
-status: gaps_found
-score: 7/10
-verification_source: 17-06 human-verify checkpoint (live browser against running orchestrator)
+verified: 2026-04-26T15:23:00Z
+status: gaps_closed_with_followup
+score: 6/7-exercised (resume SSE blocked by new downstream issue GAP-04)
+verification_source: 17-06 + 17-10 human-verify checkpoints (live browser against gap-closed stack)
 overrides_applied: 0
+gap_closure_completed: [GAP-01, GAP-02, GAP-03, Item-4-hint-persistence, Item-6-403-toast-copy]
+gap_followup_required: [GAP-04]
 ---
 
 # Phase 17: HITL Frontend — Verification Report
 
 **Phase Goal:** Operator can pause a real LLM turn at a `manual`-floor tool, inspect args, approve/edit/reject per call, atomic-resolve the batch, resume SSE in the same assistant message, and see post-submit history reflect the decision.
-**Verified:** 2026-04-26 (human checkpoint 17-06)
-**Status:** `gaps_found` — automated suite green; live operator found 3 UX/persistence gaps
+**Verified:** 2026-04-26 (human checkpoint 17-06; re-verified 2026-04-26 15:23 after Wave-1 gap closure 17-07/08/09)
+**Status:** `gaps_closed_with_followup` — original gaps GAP-01/02/03 closed; new GAP-04 surfaced post-fix
 
-## Verification Matrix (10 items, per 17-06-PLAN.md)
+## Verification Matrix — Re-run after gap closure (2026-04-26 15:23, Playwright on rebuilt stack)
+
+After commits `f3b7561` (17-07 backend), `5a27d8c` (17-08 frontend args/hint),
+`90cdfef` (17-09 frontend polish) merged into `milestone/1.3` and api +
+orchestrator + frontend Docker containers rebuilt and restarted, the matrix
+was re-driven on a **fresh** conversation `69ee2d99a65d23771b7b9f57` (the
+Phase-16 implicit-resume gate guards against orphan in_progress messages,
+so old-conversation IDs were cleaned in Mongo before re-test).
+
+| # | Item | Pre-fix | Post-fix | Notes |
+|---|------|---------|----------|-------|
+| 1 | Card renders above composer on pause | PASS | **PASS** | Same — inline placement preserved. |
+| 2 | Accordion + toggle flow (args visible without Edit) | FAIL (GAP-01) | **PASS** | After chevron expand without selecting Edit, card shows `Аргументы` heading + `Можно изменять: text` hint + JsonView with `{1 item "text":string"ui probe"}`. Confirmed via Playwright `card.innerText` eval. |
+| 3 | JSON editor field whitelist (edit affordance) | FAIL (GAP-02) | **PASS** | After clicking Edit, the new hint chip `Дважды нажмите на значение, чтобы изменить` is visible above the JsonView. Discoverability gap closed. (Underlying library still uses double-click; chip tells the user how.) |
+| 4 | Submit gating (hint persistence) | PASS partial (Item-4 hint persists) | **PASS** | Submit `disabled` with hint `Выберите действие для каждой задачи` while undecided. After picking Edit, Submit enables AND the hint disappears (`Item_4_hintTextStillThere: false` confirmed via Playwright eval). |
+| 5 | Atomic Submit — resolve | FAIL (403, GAP-03) | **PASS (resolve)** | `POST /pending-tool-calls/{batch_id}/resolve` returns `200 OK` (vs pre-fix 403). Auth check on `business_id` succeeds because the persisted batch now carries `biz: "5f81c3e1-…"` instead of `""`. |
+| 5b | Atomic Submit — resume SSE | FAIL (cascade) | **FAIL (NEW: GAP-04)** | Resume immediately follows resolve and now returns **`409 Conflict`** with `body.error.reason: "policy_revoked"`. The HITL.Resolve TOCTOU recheck rewrites the user's `approve` to `reject` with reason `policy_revoked`, and the resume endpoint rejects the resume because the batch's terminal verdict is `reject`. See GAP-04 below — surfaced post-fix because pre-fix 403 short-circuited the flow. |
+| 6 | Error handling (toast) | PASS partial (copy mismatch) | **PASS** | The 403 → "Ошибка соединения" copy mismatch is now N/A: `resolveErrorToRussian` adds a 403 → `Отказано: операция вне вашей бизнес-области` mapping (Plan 17-09), and the resolve no longer returns 403 anyway. New 409 from resume falls through to RESUME_STREAM_ERROR (`Ошибка продолжения — перезагрузите страницу`) — see GAP-04 for whether this copy is right for `policy_revoked`. |
+| 7 | Reload mid-approval | FAIL (GAP-03) | **PASS** | After page refresh the card reappears: `cardRendered: true`, `cardTitle: "Ожидает подтверждения (1)"`, `composerDisabled: true`. Hydration via `GET /messages.pendingApprovals` works because the batch's `conversation_id` is now non-empty. |
+| 8 | Expired batch banner | (deferred) | (still deferred) | Needs Mongo `expires_at` time manipulation; not exercised. Component code path is covered by automated tests in Plan 17-05 already. |
+| 9 | Keyboard-only navigation | (deferred) | (still deferred) | Manual test recommended after GAP-04 closure. |
+| 10 | Screen-reader spot check | (deferred) | (still deferred) | Playwright cannot drive VoiceOver/NVDA; manual test recommended. |
+
+**Re-run score:** Of the 7 items exercised (#1, #2, #3, #4, #5/5b, #6, #7),
+**6 PASS** and **1 FAIL (GAP-04 surfaced)**. All originally-filed gaps
+(GAP-01, GAP-02, GAP-03) are CLOSED. Items #8/#9/#10 remain deferred to the
+manual-only verification path.
+
+### Browser-driven evidence (post-fix Playwright run, 2026-04-26 15:20-15:23)
+
+| Probe | Pre-fix | Post-fix |
+|-------|---------|----------|
+| `db.pending_tool_calls.findOne({status:'pending'})` after a fresh paused turn | `{conv_id:"", biz:"", user:"", msg:""}` | `{conv_id:"69ee2d05a65d23771b7b9f56", biz:"5f81c3e1-0828-4f5c-85d7-d1c1034be2bb", user:"a87929d9-355a-4917-b1cc-5a54cfdd5d7f", msg:"53df5fcb-5280-4879-a843-fa67cf7baa8a"}` |
+| Reload: `cardRendered` and `composerDisabled` | `false` / `false` | `true` / `true` |
+| Network: `POST /resolve` after Submit | `403 Forbidden` | `200 OK` (body `196B`) |
+| Network: `POST /resume?batch_id=…` after Submit | (never reached — 403 short-circuit) | `409 Conflict` (NEW — see GAP-04) |
+| Card text after expand without Edit | `[no Аргументы / no value]` | `Аргументы / Можно изменять: text / { "text":string"ui probe" }` |
+| Card text in Edit mode | `[no editing affordance]` | `Дважды нажмите на значение, чтобы изменить` chip |
+| Card text after picking decision | `[hint stays under enabled Submit]` | `[hint hidden]` |
+
+---
+
+## Original Gaps (closed)
+
+The original GAP-01 / GAP-02 / GAP-03 reports are preserved below for the
+historical record. All three are **CLOSED** by Wave-1 plans 17-07 / 17-08 /
+17-09 (commits listed at the top of this section). The post-fix matrix
+above reflects the verified-closed state.
+
+---
 
 Re-run via Playwright MCP (Chromium against the live stack on localhost,
 authenticated as `test@test.test`). Earlier "deferred" rows were exercised
@@ -203,7 +254,63 @@ This is a **Phase 17.1 gap-closure plan**, not a small frontend tweak — the re
 
 ---
 
-## Recommended Next Step
+## Recommended Next Step (POST-FIX)
+
+Original recommendation (`/gsd-plan-phase 17 --gaps`) was completed by Wave 1
+plans 17-07 / 17-08 / 17-09 (commits `f3b7561` / `5a27d8c` / `90cdfef`).
+GAP-01, GAP-02, GAP-03 are CLOSED. **New issue surfaced post-fix — see GAP-04
+below.** Either roll a Phase 17.2 gap-closure plan for GAP-04, or capture it
+as a known issue and defer; Phase 17 can be marked complete-with-followup.
+
+After GAP-04 closure (or accept-and-defer), exercise items #8/#9/#10 manually
+and update this report.
+
+---
+
+## NEW: GAP-04 — Resume returns 409 with `policy_revoked` on user-initiated approve
+
+**Severity:** high (every approval flow currently fails at the resume stage; HITL is functional only for the inspect/decide phase, not the dispatch phase)
+**Surfaced:** 2026-04-26 15:21 by re-verification probe — was previously masked by GAP-03's 403 short-circuit
+**Affected requirement:** UI-08 / HITL-12 (atomic Submit → resume SSE in same assistant message)
+
+**Reproduction:**
+1. Trigger a paused turn (manual-floor Telegram tool); pause confirms `pending_tool_calls` row has `status: pending` with the call's tool_name and args, and the per-call `verdict` is unset (or `none`).
+2. Click `Одобрить` on the only call → toggle activates correctly.
+3. Click `Подтвердить` → `POST /pending-tool-calls/{batch_id}/resolve` returns `200 OK`.
+4. Frontend immediately follows with `POST /chat/{conv_id}/resume?batch_id=…` → returns **`409 Conflict`** (78B body).
+5. Mongo state of the batch post-resolve:
+   ```
+   { status: "resolving",
+     calls: [{ tool_name: "telegram__send_channel_post",
+                arguments: { text: "verification probe — backend wired" },
+                verdict: "reject",            ← was approve from frontend
+                reject_reason: "policy_revoked",
+                dispatched: false }] }
+   ```
+
+The HITL.Resolve TOCTOU recheck is overwriting the operator's `approve` with `reject` + `reject_reason: "policy_revoked"`, then the resume endpoint refuses to dispatch a fully-rejected batch.
+
+**Likely root cause (to confirm in the gap-closure plan):**
+
+The pause-time policy classifier (in `services/orchestrator/internal/orchestrator/step.go`) computed the floor as `manual` (because the card paused — pause requires manual floor). The resolve-time classifier (in `services/api/internal/service/hitl.go`) is recomputing the floor and getting either `forbidden` or `none` instead of `manual`, then policy-revoking the user's choice.
+
+Two failure modes are plausible:
+
+1. **Inputs diverge:** the pause-time evaluator reads policy inputs from `RunState` (which my Plan 17-07 fix populated from `req.BusinessApprovals` / `req.ProjectApprovalOverrides`). The resolve-time evaluator reads them from… the persisted batch? Postgres? A different source? If the pause-time `business_approvals` came from `business.ToolApprovals()` but resolve-time looks up a different field, the two answers diverge.
+2. **Empty maps imply different defaults:** Plan 17-07 forwards empty maps `{}` when business has no overrides. If the resolve-time evaluator treats "no entry for tool" as `forbidden` while the pause-time evaluator treats it as `manual` (registry default), the outcome flips.
+
+**Suggested investigation steps:**
+
+1. Add temporary trace logging to both evaluators showing the inputs and computed floor for the same `tool_name` + `business_id` + `project_id`.
+2. Run the same probe and compare the two trace lines.
+3. Reconcile — either fix the resolve-time path to read the same inputs, or persist the pause-time floor on the batch and have resolve-time re-use it (no re-classification).
+4. Add a regression test: spin up a paused batch with manual-floor for a real tool, call `POST /resolve` with `approve`, assert the persisted verdict is `approve` (not `reject` with `policy_revoked`).
+
+**Severity/scope note:** This is NOT a regression introduced by Plan 17-07; it is a Phase 16 design issue that was previously masked by GAP-03. The 17-07 fix unblocks the resolve auth check, which unmasks the policy-revocation logic. So GAP-04 is a follow-on to Phase 16, not a 17-07 defect.
+
+---
+
+## Original Recommendation (historical)
 
 Run:
 
