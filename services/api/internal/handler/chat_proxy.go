@@ -279,8 +279,14 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// Load conversation history from MongoDB
 	history := h.loadHistory(r.Context(), conversationID)
 
-	// Save user message before proxying
+	// Save user message before proxying.
+	//
+	// Plan 17-07 GAP-03: assign userMsg.ID up-front so we have a stable value
+	// to forward to the orchestrator as message_id. This lets the
+	// orchestrator's PendingToolCallBatch.MessageID reference a Message that
+	// is guaranteed to exist on disk by the time the pause SSE fires.
 	userMsg := &domain.Message{
+		ID:             uuid.NewString(),
 		ConversationID: conversationID,
 		Role:           "user",
 		Content:        req.Message,
@@ -294,11 +300,12 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// whitelist. A stale or invalid project_id falls back to the no-project
 	// path — the chat must still succeed (best-effort enrichment).
 	var (
-		projectID            string
-		projectName          string
-		projectSystemPrompt  string
-		projectWhitelistMode string
-		projectAllowedTools  []string
+		projectID                string
+		projectName              string
+		projectSystemPrompt      string
+		projectWhitelistMode     string
+		projectAllowedTools      []string
+		projectApprovalOverrides map[string]domain.ToolFloor
 	)
 
 	conv, convErr := h.conversationRepo.GetByID(r.Context(), conversationID)
@@ -323,6 +330,10 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 				projectSystemPrompt = proj.SystemPrompt
 				projectWhitelistMode = string(proj.WhitelistMode)
 				projectAllowedTools = proj.AllowedTools
+				// Plan 17-07 GAP-03: capture per-project ToolFloor overrides
+				// (POLICY-03) so hitl.Resolve at pause time has the project
+				// inputs alongside business_approvals (POLICY-02).
+				projectApprovalOverrides = proj.ApprovalOverrides
 			case errors.Is(projErr, domain.ErrProjectNotFound):
 				slog.WarnContext(r.Context(), "chat proxy: stale project_id, falling back to no-project",
 					"conversation_id", conversationID, "project_id", *conv.ProjectID)
@@ -336,6 +347,20 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// (matches the orchestrator's expectation from Plan 15-02 handler tests).
 	if projectAllowedTools == nil {
 		projectAllowedTools = []string{}
+	}
+
+	// Plan 17-07 GAP-03: HITL policy inputs forwarded to the orchestrator on
+	// every fresh-turn request. The defensive accessor Business.ToolApprovals()
+	// always returns non-nil; project.ApprovalOverrides may be nil (no project
+	// or stale ID), so we materialize an empty map to keep the JSON shape `{}`
+	// not `null` — matches the symmetry the test suite asserts for
+	// project_allowed_tools above.
+	businessApprovals := business.ToolApprovals()
+	if businessApprovals == nil {
+		businessApprovals = map[string]domain.ToolFloor{}
+	}
+	if projectApprovalOverrides == nil {
+		projectApprovalOverrides = map[string]domain.ToolFloor{}
 	}
 
 	orchReq := map[string]interface{}{
@@ -355,6 +380,16 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		"project_system_prompt":  projectSystemPrompt,
 		"project_whitelist_mode": projectWhitelistMode,
 		"project_allowed_tools":  projectAllowedTools,
+		// Phase 16 HITL — Plan 17-07 gap closure. GAP-03 root cause: these
+		// five keys were missing pre-17-07, so every PendingToolCallBatch
+		// persisted with empty IDs and the resolve auth check became a
+		// no-op. See .planning/phases/17-hitl-frontend/17-VERIFICATION.md
+		// §GAP-03.
+		"user_id":                    userID.String(),
+		"message_id":                 userMsg.ID,
+		"tier":                       "", // reserved; backend has no tier model in v1.3 yet.
+		"business_approvals":         businessApprovals,
+		"project_approval_overrides": projectApprovalOverrides,
 	}
 
 	orchURL := fmt.Sprintf("%s/chat/%s", h.orchestratorURL, conversationID)
