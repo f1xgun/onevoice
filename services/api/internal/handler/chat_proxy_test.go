@@ -1036,3 +1036,186 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 	assert.Equal(t, "", captured["project_name"])
 	assert.Equal(t, "", captured["project_whitelist_mode"])
 }
+
+// TestChatProxy_ForwardsPhase16Fields covers Plan 17-07 GAP-03 closure on the
+// API side: the proxy MUST forward five Phase-16 keys to the orchestrator on
+// every fresh-turn request — user_id (JWT subject), message_id (the just-
+// saved userMsg.ID), tier, business_approvals (from Business.ToolApprovals()),
+// project_approval_overrides (from project.ApprovalOverrides). Without these,
+// the orchestrator persists PendingToolCallBatch with empty IDs and HITL-11
+// hydration is impossible. See VERIFICATION.md §GAP-03.
+func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
+	t.Run("with project — all five keys present and populated", func(t *testing.T) {
+		userID := uuid.New()
+		businessID := uuid.New()
+		projectID := uuid.New()
+		conversationID := "conv-p16-1"
+
+		business := &domain.Business{
+			ID:     businessID,
+			UserID: userID,
+			Name:   "Biz",
+			Settings: map[string]interface{}{
+				"tool_approvals": map[string]interface{}{
+					"telegram__send_channel_post": "manual",
+				},
+			},
+		}
+
+		var captured map[string]interface{}
+		orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(body, &captured))
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
+		}))
+		defer orch.Close()
+
+		mockBiz := new(MockBusinessService)
+		mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+		mockInteg := new(MockIntegrationService)
+		mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+		// Capture the userMsg.ID assigned by chat_proxy before Create.
+		var capturedUserMsgID string
+		msgRepo := &MockMessageRepository{
+			CreateFunc: func(_ context.Context, m *domain.Message) error {
+				if m.Role == "user" {
+					capturedUserMsgID = m.ID
+				}
+				return nil
+			},
+		}
+
+		projIDStr := projectID.String()
+		convRepo := &MockConversationRepository{
+			GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+				return &domain.Conversation{ID: conversationID, UserID: userID.String(), ProjectID: &projIDStr}, nil
+			},
+		}
+		proj := &noopProjectService{
+			GetByIDFunc: func(_ context.Context, bizID, pid uuid.UUID) (*domain.Project, error) {
+				assert.Equal(t, businessID, bizID)
+				assert.Equal(t, projectID, pid)
+				return &domain.Project{
+					ID:         projectID,
+					BusinessID: businessID,
+					Name:       "Отзывы",
+					ApprovalOverrides: map[string]domain.ToolFloor{
+						"vk__publish_post": "auto",
+					},
+				}, nil
+			},
+		}
+		h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil)
+
+		body := `{"message":"hi"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("conversationID", conversationID)
+		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+		req = req.WithContext(ctx)
+
+		rr := httptest.NewRecorder()
+		h.Chat(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		require.NotNil(t, captured, "orchestrator request body should be captured")
+
+		// All five Phase-16 keys MUST be present.
+		assert.Contains(t, captured, "user_id")
+		assert.Contains(t, captured, "message_id")
+		assert.Contains(t, captured, "tier")
+		assert.Contains(t, captured, "business_approvals")
+		assert.Contains(t, captured, "project_approval_overrides")
+
+		// user_id is the JWT subject (uuid).
+		assert.Equal(t, userID.String(), captured["user_id"])
+
+		// message_id matches the userMsg.ID set on the wire (non-empty).
+		mid, ok := captured["message_id"].(string)
+		require.True(t, ok, "message_id must be a string, got %T", captured["message_id"])
+		assert.NotEmpty(t, mid, "message_id must be non-empty")
+		assert.Equal(t, capturedUserMsgID, mid, "message_id must equal the just-saved userMsg.ID")
+
+		// tier — string (empty acceptable per Plan 17-07; v1.3 has no tier model).
+		_, ok = captured["tier"].(string)
+		assert.True(t, ok, "tier must be a string, got %T", captured["tier"])
+
+		// business_approvals: non-nil map echoing Business.ToolApprovals().
+		ba, ok := captured["business_approvals"].(map[string]interface{})
+		require.True(t, ok, "business_approvals must be a JSON object, got %T", captured["business_approvals"])
+		assert.Equal(t, "manual", ba["telegram__send_channel_post"])
+
+		// project_approval_overrides: non-nil map echoing project.ApprovalOverrides.
+		po, ok := captured["project_approval_overrides"].(map[string]interface{})
+		require.True(t, ok, "project_approval_overrides must be a JSON object, got %T", captured["project_approval_overrides"])
+		assert.Equal(t, "auto", po["vk__publish_post"])
+	})
+
+	t.Run("without project — project_approval_overrides marshals as {} not null", func(t *testing.T) {
+		userID := uuid.New()
+		businessID := uuid.New()
+		conversationID := "conv-p16-noproj"
+
+		business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+		var captured map[string]interface{}
+		orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(body, &captured))
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
+		}))
+		defer orch.Close()
+
+		mockBiz := new(MockBusinessService)
+		mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+		mockInteg := new(MockIntegrationService)
+		mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+		convRepo := &MockConversationRepository{
+			GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+				return &domain.Conversation{ID: id, UserID: userID.String(), ProjectID: nil}, nil
+			},
+		}
+		proj := &noopProjectService{}
+		h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil)
+
+		body := `{"message":"hi"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("conversationID", conversationID)
+		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+		req = req.WithContext(ctx)
+
+		rr := httptest.NewRecorder()
+		h.Chat(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		require.NotNil(t, captured)
+
+		// project_approval_overrides MUST be present and a non-nil map (empty
+		// object) — never null. The frontend / orchestrator's JSON decode
+		// behaves differently for {} vs null.
+		require.Contains(t, captured, "project_approval_overrides")
+		po, ok := captured["project_approval_overrides"].(map[string]interface{})
+		require.True(t, ok, "project_approval_overrides must be a JSON object {}, not null. got %T", captured["project_approval_overrides"])
+		assert.Empty(t, po, "without project, project_approval_overrides must be an empty object")
+
+		// business_approvals also non-nil empty map.
+		require.Contains(t, captured, "business_approvals")
+		ba, ok := captured["business_approvals"].(map[string]interface{})
+		require.True(t, ok, "business_approvals must be a JSON object {}, not null. got %T", captured["business_approvals"])
+		assert.Empty(t, ba)
+
+		// user_id still populated from JWT subject.
+		assert.Equal(t, userID.String(), captured["user_id"])
+	})
+}
