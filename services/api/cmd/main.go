@@ -25,6 +25,8 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/hitlvalidation"
+	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/llm/providers"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
@@ -113,6 +115,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("ensure pending_tool_calls indexes: %w", err)
 	}
 	indexesCancel()
+	// Phase 18 Plan 03: insert EnsureConversationIndexes here.
 	pendingToolCallRepo := repository.NewPendingToolCallRepository(mongoDB)
 	_ = pendingToolCallRepo // consumed by chat_proxy (16-06) and HITL handlers (16-07)
 	go func() {
@@ -163,6 +166,38 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	reviewRepo := repository.NewReviewRepository(mongoDB)
 	postRepo := repository.NewPostRepository(mongoDB)
 	agentTaskRepo := repository.NewAgentTaskRepository(mongoDB)
+
+	// Phase 18 — Auto-titler LLM Router wiring (Plan 18-02).
+	//
+	// Graceful disable per Pitfall 1 / Assumption A6: when no LLM provider
+	// key is set OR no model is configured, the titler is left nil and
+	// downstream Plan 18-05's fireAutoTitleIfPending becomes a no-op. The
+	// API service must boot in dev environments without any LLM env at all.
+	//
+	// `buildProviderOpts` is lifted verbatim from
+	// services/orchestrator/cmd/main.go:740-788; the construction sequence
+	// (NewRegistry → buildProviderOpts → NewRouter) mirrors orchestrator's
+	// run() function lines 53-59. This is the FIRST pkg/llm import in
+	// services/api (Phase 18 Landmine 3).
+	//
+	// `_ = llmRouter` is a deliberate placeholder — Plan 18-04 will replace
+	// it with `service.NewTitler(llmRouter, conversationRepo, titlerModel)`
+	// and thread the result into chat_proxy/handler.NewTitlerHandler.
+	var llmRouter *llm.Router
+	titlerModel := cfg.TitlerModel
+	if titlerModel != "" {
+		registry := llm.NewRegistry()
+		routerOpts := buildProviderOpts(cfg, registry, log)
+		if len(routerOpts) > 0 {
+			llmRouter = llm.NewRouter(registry, routerOpts...)
+			log.Info("auto-titler: llm router constructed", "model", titlerModel, "providers", len(routerOpts))
+		} else {
+			log.Warn("auto-titler: disabled (no LLM provider API key set; set OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY to enable)")
+		}
+	} else {
+		log.Warn("auto-titler: disabled (TITLER_MODEL and LLM_MODEL both unset)")
+	}
+	_ = llmRouter // Plan 18-04 will consume this when constructing service.NewTitler
 
 	// In-process hub that fans out task lifecycle events to SSE subscribers.
 	taskHub := taskhub.New()
@@ -686,4 +721,63 @@ func parseToolFloorMap(s string) map[string]domain.ToolFloor {
 		out[k] = domain.ToolFloor(v)
 	}
 	return out
+}
+
+// buildProviderOpts creates RouterOptions for every API key that is set in config,
+// and registers the LLM model → provider mapping in the registry for each.
+// Returns at least one option if any key is set, nil if none.
+//
+// Lifted verbatim from services/orchestrator/cmd/main.go:740-788 so the
+// API-side titler Router constructs over byte-identical provider semantics
+// (Phase 18 — Landmine 3). The only intentional difference between this
+// copy and the orchestrator's is package locality; the body is unchanged
+// so future audits can diff the two and confirm parity.
+func buildProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) []llm.RouterOption {
+	type providerSpec struct {
+		name    string
+		apiKey  string
+		factory func(string) llm.Provider
+	}
+
+	specs := []providerSpec{
+		{"openrouter", cfg.OpenRouterAPIKey, func(k string) llm.Provider { return providers.NewOpenRouter(k) }},
+		{"openai", cfg.OpenAIAPIKey, func(k string) llm.Provider { return providers.NewOpenAI(k) }},
+		{"anthropic", cfg.AnthropicAPIKey, func(k string) llm.Provider { return providers.NewAnthropic(k) }},
+	}
+
+	opts := make([]llm.RouterOption, 0, len(specs)+len(cfg.SelfHostedEndpoints))
+	for _, spec := range specs {
+		if spec.apiKey == "" {
+			continue
+		}
+		p := spec.factory(spec.apiKey)
+		opts = append(opts, llm.WithProvider(p))
+		reg.RegisterModelProvider(&llm.ModelProviderEntry{
+			Model:        cfg.LLMModel,
+			Provider:     spec.name,
+			HealthStatus: "healthy",
+			Enabled:      true,
+		})
+		log.Info("LLM provider registered", "provider", spec.name, "model", cfg.LLMModel)
+	}
+
+	// Wire self-hosted endpoints
+	for i, ep := range cfg.SelfHostedEndpoints {
+		name := fmt.Sprintf("selfhosted-%d", i)
+		p := providers.NewSelfHosted(name, ep.URL, ep.APIKey)
+		if p == nil {
+			log.Warn("self-hosted endpoint skipped (empty name or URL)", "index", i)
+			continue
+		}
+		opts = append(opts, llm.WithProvider(p))
+		reg.RegisterModelProvider(&llm.ModelProviderEntry{
+			Model:        ep.Model,
+			Provider:     name,
+			HealthStatus: "healthy",
+			Enabled:      true,
+		})
+		log.Info("self-hosted LLM registered", "name", name, "url", ep.URL, "model", ep.Model)
+	}
+
+	return opts
 }
