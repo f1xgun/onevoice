@@ -166,9 +166,28 @@ type PendingToolCallBatch struct {
 // Dispatched is the orchestrator-side double-execution guard (Overview
 // invariant #3): on resume, any entry with Dispatched=true is skipped.
 type PendingCall struct {
-	CallID       string                 `bson:"call_id"`
-	ToolName     string                 `bson:"tool_name"`
-	Arguments    map[string]interface{} `bson:"arguments"`
+	CallID    string                 `bson:"call_id"`
+	ToolName  string                 `bson:"tool_name"`
+	Arguments map[string]interface{} `bson:"arguments"`
+
+	// FloorAtPause is the effective ToolFloor at the moment the orchestrator
+	// paused the turn for this call. Persisted so the resolve-time TOCTOU
+	// re-check can consult the same registry that classified the call at
+	// pause time, eliminating divergence between the orchestrator's
+	// in-process tools.Registry (always warm) and the api's
+	// service.ToolsRegistryCache (HTTP-backed, lazily warmed). See
+	// 17-VERIFICATION.md §GAP-04 for the divergence root cause.
+	//
+	// For pause-time-persisted calls this is always ToolFloorManual (only
+	// manual-floor calls reach the orchestrator's pause path; auto and
+	// forbidden are bucketed elsewhere). bson:",omitempty" so legacy
+	// batches written before plan 17-11 decode with FloorAtPause == ""
+	// (ToolFloorRank returns -1 for invalid values, so an empty floor
+	// cannot dominate a valid business/project override — strictest-wins
+	// still detects a post-pause forbidden flip; the orchestrator-side
+	// TOCTOU recheck remains the load-bearing primitive for safety).
+	FloorAtPause ToolFloor `bson:"floor_at_pause,omitempty"`
+
 	Verdict      string                 `bson:"verdict,omitempty"` // "approve" | "edit" | "reject"
 	EditedArgs   map[string]interface{} `bson:"edited_args,omitempty"`
 	RejectReason string                 `bson:"reject_reason,omitempty"`

@@ -291,7 +291,18 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		finalized[i].RejectReason = d.RejectReason
 
 		if d.Action == "approve" || d.Action == "edit" {
-			floor := s.toolsCache.Floor(c.ToolName)
+			// Plan 17-11 / GAP-04: consult the pause-time floor persisted by
+			// the orchestrator rather than s.toolsCache.Floor. The api-side
+			// ToolsRegistryCache is HTTP-backed and lazily warmed (only
+			// GET /api/v1/tools triggers a refresh), so it would spuriously
+			// return Forbidden for valid manual-floor tools whenever the
+			// settings page had not been visited in this api process
+			// lifetime — see 17-VERIFICATION.md §GAP-04. The persisted
+			// FloorAtPause is the faithful echo of the orchestrator's
+			// in-process tools.Registry (always warm) at the moment of
+			// pause; the orchestrator-side resume goroutine remains the
+			// load-bearing TOCTOU recheck (resume.go: dispatchApprovedCalls).
+			floor := c.FloorAtPause
 			effective := pkghitl.Resolve(floor, businessApprovals, projectOverrides, c.ToolName)
 			if effective == domain.ToolFloorForbidden {
 				// TOCTOU: flipped to forbidden post-pause. Rewrite to synthetic
