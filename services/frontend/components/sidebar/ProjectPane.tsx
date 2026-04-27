@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useConversationsQuery } from '@/hooks/useConversations';
 import { useProjectsQuery } from '@/hooks/useProjects';
+import { PinnedSection } from '@/components/sidebar/PinnedSection';
 import { UnassignedBucket } from '@/components/sidebar/UnassignedBucket';
 import { ProjectSection } from '@/components/sidebar/ProjectSection';
 import type { Conversation } from '@/lib/conversations';
@@ -15,9 +16,9 @@ interface ProjectPaneProps {
 
 // ProjectPane (D-14): route-conditional column. Rendered only when the
 // surrounding layout decides — i.e., on /chat/* and /projects/*. The pane
-// hosts the search slot (filled by 19-04), the pinned slot (filled by
-// 19-02), the «Без проекта» bucket, the project tree, and the «+ Новый
-// проект» link.
+// hosts the search slot (filled by 19-04), the PinnedSection (Phase 19 /
+// Plan 19-02 / D-04+D-05 — hidden when empty), the «Без проекта» bucket,
+// the project tree, and the «+ Новый проект» link.
 export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
   const pathname = usePathname();
   const { data: projects } = useProjectsQuery();
@@ -45,6 +46,25 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
     return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [projects]);
 
+  // Phase 19 / Plan 19-02 / D-03 — pinned chats sort by pinnedAt desc
+  // (most-recently-pinned first). Re-pinning at the API stamps a fresh
+  // now-UTC timestamp, so the sort is server-stable.
+  const pinned = useMemo(() => {
+    const convs: Conversation[] = conversations ?? [];
+    return convs
+      .filter((c) => c.pinnedAt != null)
+      .sort((a, b) => (b.pinnedAt ?? '').localeCompare(a.pinnedAt ?? ''));
+  }, [conversations]);
+
+  // Lookup table for the mini ProjectChip on each pinned row (D-05).
+  const projectsById = useMemo(() => {
+    const out: Record<string, { id: string; name: string }> = {};
+    for (const p of projects ?? []) {
+      out[p.id] = { id: p.id, name: p.name };
+    }
+    return out;
+  }, [projects]);
+
   return (
     <aside
       data-testid="project-pane"
@@ -53,8 +73,18 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
       {/* Slot for SidebarSearch (19-04) */}
       <div data-testid="sidebar-search-slot" />
 
-      {/* Slot for PinnedSection (19-02) */}
-      <div data-testid="pinned-section-slot" />
+      {/* Phase 19 / Plan 19-02 — PinnedSection. Hidden entirely when empty
+          (D-04). The data-testid is preserved for upstream callers/tests
+          that probed for the slot during Phase 19 wave-1 layout work; the
+          slot is now the live component. */}
+      <div data-testid="pinned-section-slot">
+        <PinnedSection
+          conversations={pinned}
+          projectsById={projectsById}
+          activeConversationId={activeConversationId}
+          onNavigate={onNavigate}
+        />
+      </div>
 
       <UnassignedBucket
         conversations={unassigned}
