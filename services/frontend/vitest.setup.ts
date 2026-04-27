@@ -61,6 +61,16 @@ if (typeof (globalThis as unknown as { Element?: typeof Element }).Element !== '
 // `@chialab/vitest-axe` is the React-18-compatible fork (RESEARCH §3) —
 // `@axe-core/react` is incompatible with React 18 and CANNOT be used here.
 // Matcher API: `expect(await axe(container)).toHaveNoViolations()`.
-import * as axeMatchers from '@chialab/vitest-axe/matchers';
+//
+// IMPORTANT: the package exposes the matchers object as the DEFAULT export
+// of the main entry (`lib/index.js: export default { toHaveNoViolations }`).
+// The `./matchers` subpath in @chialab/vitest-axe@0.19.1's `package.json`
+// `exports` map is a TYPES-ONLY entry (no `default` runtime condition) —
+// importing it at runtime fails with "No known conditions". We therefore
+// import the default from the main entry and pass it to `expect.extend`.
+// Type augmentation for `toHaveNoViolations` is not strictly required because
+// our axe tests filter violations manually (impact-aware gate, see
+// components/sidebar/__a11y__/sidebar-axe.test.tsx).
+import axeMatchers from '@chialab/vitest-axe';
 import { expect as vitestExpect } from 'vitest';
 vitestExpect.extend(axeMatchers);
