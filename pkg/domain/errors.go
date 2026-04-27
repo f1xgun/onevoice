@@ -64,3 +64,22 @@ var (
 	ErrProjectWhitelistEmpty      = errors.New("explicit whitelist must contain at least one tool")
 	ErrProjectWhitelistMode       = errors.New("invalid whitelist mode")
 )
+
+// Phase 19 search sentinels (Plan 19-03 / SEARCH-02 + SEARCH-06).
+//
+// ErrInvalidScope is returned by SearchService.Search and the underlying
+// repository methods when businessID or userID is empty. Defense-in-depth
+// (Pitfalls §19): prevents accidental "search across all tenants" if any
+// upstream caller forgets to scope. Callers must NEVER fall back to a
+// "default to all" path on this error — surface it as 500 (server-side
+// bug) at the handler layer.
+//
+// ErrSearchIndexNotReady is returned by SearchService.Search while the
+// startup-time EnsureSearchIndexes call has not completed. Maps to
+// HTTP 503 + Retry-After: 5 in the search handler (T-19-INDEX-503
+// mitigation). Flips to ready via Searcher.MarkIndexesReady() in main.go
+// AFTER EnsureSearchIndexes returns nil.
+var (
+	ErrInvalidScope        = errors.New("search: invalid scope (business_id and user_id required)")
+	ErrSearchIndexNotReady = errors.New("search: index not ready")
+)

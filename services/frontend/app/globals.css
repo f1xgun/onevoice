@@ -73,3 +73,27 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Phase 19 / Plan 19-04 / D-08 — flash highlight on ?highlight=… target.
+   Owned by useHighlightMessage; the hook sets data-highlight='true' on the
+   matched MessageBubble for ~1.75 s, then removes the attribute. */
+[data-highlight='true'] {
+  animation: onevoice-flash 1.75s ease-out;
+}
+
+@keyframes onevoice-flash {
+  0% {
+    background-color: rgb(250 204 21 / 0.4); /* yellow-400/40 */
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-highlight='true'] {
+    animation: none;
+    background-color: rgb(250 204 21 / 0.2);
+    transition: background-color 200ms;
+  }
+}
