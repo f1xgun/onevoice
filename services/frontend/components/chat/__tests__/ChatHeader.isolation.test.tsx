@@ -50,9 +50,7 @@ function setup(initialConvs: TestConv[]) {
 
 describe('ChatHeader — D-11 isolation (B-06 vi.fn() + Profiler.onRender)', () => {
   it('renders the title for the matching conversation', () => {
-    const { wrapper } = setup([
-      { id: 'c1', title: 'Запланировать пост', titleStatus: 'auto' },
-    ]);
+    const { wrapper } = setup([{ id: 'c1', title: 'Запланировать пост', titleStatus: 'auto' }]);
     render(<ChatHeader conversationId="c1" />, { wrapper });
     expect(screen.getByText('Запланировать пост')).toBeInTheDocument();
   });

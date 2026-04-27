@@ -38,9 +38,7 @@ function useConversationTitle(conversationId: string): string {
       if (!conv) return '';
       // D-09 fallback encapsulated here so the header and the sidebar share
       // exactly one definition of "what should the title look like right now?"
-      return conv.title === '' || conv.titleStatus === 'auto_pending'
-        ? 'Новый диалог'
-        : conv.title;
+      return conv.title === '' || conv.titleStatus === 'auto_pending' ? 'Новый диалог' : conv.title;
     },
     enabled: !!conversationId,
   });
