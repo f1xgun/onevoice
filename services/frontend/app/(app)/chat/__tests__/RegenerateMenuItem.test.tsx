@@ -158,7 +158,7 @@ describe('regenerateTitle 409 → verbatim Russian toast (B-04)', () => {
     vi.restoreAllMocks();
   });
 
-  it("toasts the verbatim D-02 Russian body when server returns 409 title_is_manual", async () => {
+  it('toasts the verbatim D-02 Russian body when server returns 409 title_is_manual', async () => {
     // Stub api.post → rejects with the locked Russian D-02 body.
     vi.spyOn(api, 'post').mockRejectedValueOnce({
       isAxiosError: true,
@@ -219,7 +219,7 @@ describe('regenerateTitle 409 → verbatim Russian toast (B-04)', () => {
     );
   });
 
-  it("toasts the verbatim D-03 Russian body when server returns 409 title_in_flight", async () => {
+  it('toasts the verbatim D-03 Russian body when server returns 409 title_in_flight', async () => {
     vi.spyOn(api, 'post').mockRejectedValueOnce({
       isAxiosError: true,
       response: {
