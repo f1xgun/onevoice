@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import type { ReactNode } from 'react';
 
-import { ConversationItem } from '../page';
+import { ConversationItem } from '@/components/chat/ConversationItem';
 
 // Phase 18 / TITLE-09 / D-12 — "Обновить заголовок" menu item:
 //

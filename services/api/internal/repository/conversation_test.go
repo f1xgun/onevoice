@@ -575,4 +575,3 @@ func TestEnsureConversationIndexes_Idempotent(t *testing.T) {
 	}
 	assert.True(t, found, "named index conversations_user_biz_title_status must exist after EnsureConversationIndexes")
 }
-

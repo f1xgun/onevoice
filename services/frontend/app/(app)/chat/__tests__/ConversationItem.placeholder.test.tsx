@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { ConversationItem } from '../page';
+import { ConversationItem } from '@/components/chat/ConversationItem';
 
 // Phase 18 / TITLE-01 / D-09:
 // Sidebar / chat-list rows render the verbatim Russian placeholder
