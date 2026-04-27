@@ -34,6 +34,9 @@ type MockConversationRepository struct {
 	UpdateProjectAssignmentFunc func(ctx context.Context, id string, projectID *string) error
 	UpdateTitleIfPendingFunc    func(ctx context.Context, id, title string) error
 	TransitionToAutoPendingFunc func(ctx context.Context, id string) error
+	// Phase 19 / D-02 atomic Pin/Unpin (Plan 19-02 Task 1).
+	PinFunc   func(ctx context.Context, id, businessID, userID string) error
+	UnpinFunc func(ctx context.Context, id, businessID, userID string) error
 }
 
 func (m *MockConversationRepository) Create(ctx context.Context, conv *domain.Conversation) error {
@@ -88,6 +91,23 @@ func (m *MockConversationRepository) UpdateTitleIfPending(ctx context.Context, i
 func (m *MockConversationRepository) TransitionToAutoPending(ctx context.Context, id string) error {
 	if m.TransitionToAutoPendingFunc != nil {
 		return m.TransitionToAutoPendingFunc(ctx, id)
+	}
+	return nil
+}
+
+// Pin / Unpin — Phase 19 / D-02 atomic conditional updates (Plan 19-02 Task 1).
+// Default returns nil so unrelated tests stay green; real Pin/Unpin tests
+// install per-call PinFunc / UnpinFunc.
+func (m *MockConversationRepository) Pin(ctx context.Context, id, businessID, userID string) error {
+	if m.PinFunc != nil {
+		return m.PinFunc(ctx, id, businessID, userID)
+	}
+	return nil
+}
+
+func (m *MockConversationRepository) Unpin(ctx context.Context, id, businessID, userID string) error {
+	if m.UnpinFunc != nil {
+		return m.UnpinFunc(ctx, id, businessID, userID)
 	}
 	return nil
 }
@@ -862,10 +882,10 @@ func TestGetConversation_RepositoryError(t *testing.T) {
 // TestConversation_JSONShape_PopulatedFields asserts that json.Marshal of a
 // fully populated domain.Conversation produces the camelCase keys the Phase 15
 // frontend (Plan 06 sidebar) relies on for grouping, pinning, and empty-state
-// filtering. This is the Plan 15-04 Task 1 JSON-shape contract (five keys
-// guaranteed when values are non-zero).
+// filtering. Phase 19 D-02 swaps `pinned` → `pinnedAt` (single source of truth).
 func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	lastMsg := time.Now().UTC()
+	pinnedAt := time.Now().UTC()
 	conv := domain.Conversation{
 		ID:            "c1",
 		UserID:        "u1",
@@ -873,7 +893,7 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 		ProjectID:     ptr("p1"),
 		Title:         "Ошибки после обновления",
 		TitleStatus:   domain.TitleStatusAutoPending,
-		Pinned:        true,
+		PinnedAt:      &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
 		LastMessageAt: &lastMsg,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -884,20 +904,23 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(raw, &m))
 
-	// The five keys Plan 06 sidebar relies on.
-	for _, key := range []string{"projectId", "businessId", "pinned", "titleStatus", "lastMessageAt"} {
+	// The five keys the sidebar relies on (Phase 19 D-02 swaps `pinned` → `pinnedAt`).
+	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
 		_, ok := m[key]
 		assert.Truef(t, ok, "expected key %q in JSON shape; got keys: %v", key, keysOf(m))
 	}
 	assert.Equal(t, "p1", m["projectId"])
 	assert.Equal(t, "b1", m["businessId"])
-	assert.Equal(t, true, m["pinned"])
 	assert.Equal(t, string(domain.TitleStatusAutoPending), m["titleStatus"])
+	// Legacy `pinned` bool MUST NOT appear in the JSON output (D-02 single source of truth).
+	_, hasLegacy := m["pinned"]
+	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed in Phase 19")
 }
 
 // TestConversation_JSONShape_NilProjectIDElided documents that when ProjectID
 // is nil, the `json:"projectId,omitempty"` tag elides the key. The frontend
 // must treat "missing projectId" as "null / Без проекта" per Plan 15-04.
+// Phase 19 D-02: `pinnedAt` is also omitempty so unpinned chats elide that key.
 func TestConversation_JSONShape_NilProjectIDElided(t *testing.T) {
 	conv := domain.Conversation{
 		ID:          "c2",
@@ -915,13 +938,14 @@ func TestConversation_JSONShape_NilProjectIDElided(t *testing.T) {
 
 	_, present := m["projectId"]
 	assert.False(t, present, "projectId must be elided when ProjectID is nil (omitempty); got: %v", m)
-	// businessId/pinned/titleStatus remain present.
+	// businessId / titleStatus remain present.
 	_, ok := m["businessId"]
-	assert.True(t, ok)
-	_, ok = m["pinned"]
 	assert.True(t, ok)
 	_, ok = m["titleStatus"]
 	assert.True(t, ok)
+	// Phase 19 D-02 — pinnedAt is omitempty; nil PinnedAt elides the key.
+	_, hasPinned := m["pinnedAt"]
+	assert.False(t, hasPinned, "pinnedAt must be elided when PinnedAt is nil (omitempty)")
 }
 
 // TestListConversations_JSONShape verifies that GET /api/v1/conversations
@@ -932,6 +956,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 	projID := "proj-1"
 	lastMsg := time.Now().UTC()
 
+	pinnedAt := time.Now().UTC()
 	conversations := []domain.Conversation{
 		{
 			ID:            "507f1f77bcf86cd799439011",
@@ -940,7 +965,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 			ProjectID:     &projID,
 			Title:         "Pinned",
 			TitleStatus:   domain.TitleStatusAuto,
-			Pinned:        true,
+			PinnedAt:      &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
 			LastMessageAt: &lastMsg,
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
@@ -968,14 +993,23 @@ func TestListConversations_JSONShape(t *testing.T) {
 	require.Len(t, items, 1)
 
 	item := items[0]
-	for _, key := range []string{"projectId", "businessId", "pinned", "titleStatus", "lastMessageAt"} {
+	// Phase 19 D-02 swaps `pinned` → `pinnedAt` (single source of truth).
+	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
 		_, ok := item[key]
 		assert.Truef(t, ok, "GET /api/v1/conversations item must carry key %q; got: %v", key, keysOf(item))
 	}
 	assert.Equal(t, "biz-1", item["businessId"])
 	assert.Equal(t, "proj-1", item["projectId"])
-	assert.Equal(t, true, item["pinned"])
+	// `pinnedAt` is the timestamp string; assert merely that it's non-empty
+	// and parseable. Exact value depends on the test fixture (now() at the
+	// pinnedAt := time.Now().UTC() statement above).
+	pa, ok := item["pinnedAt"].(string)
+	require.True(t, ok, "pinnedAt must serialize as a string (ISO timestamp)")
+	assert.NotEmpty(t, pa)
 	assert.Equal(t, string(domain.TitleStatusAuto), item["titleStatus"])
+	// Legacy `pinned` JSON key MUST be absent.
+	_, hasLegacy := item["pinned"]
+	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed in Phase 19 D-02")
 }
 
 // keysOf returns the keys of m (used only in test failure messages).
@@ -1049,7 +1083,9 @@ func TestCreateConversation_WithProjectID(t *testing.T) {
 	assert.Equal(t, pid, *capturedConv.ProjectID)
 	assert.Equal(t, businessID.String(), capturedConv.BusinessID)
 	assert.Equal(t, domain.TitleStatusAutoPending, capturedConv.TitleStatus)
-	assert.False(t, capturedConv.Pinned)
+	// Phase 19 D-02 — newly created chats are unpinned (PinnedAt == nil is the
+	// single source of truth; legacy `Pinned bool` removed).
+	assert.Nil(t, capturedConv.PinnedAt)
 }
 
 // TestCreateConversation_NullAndAbsentProjectIDEquivalent covers Behaviors 2 & 3.

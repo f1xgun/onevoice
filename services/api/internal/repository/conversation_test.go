@@ -274,9 +274,9 @@ func TestConversationRepository_Delete(t *testing.T) {
 	})
 }
 
-// TestConversationRepository_CreatePersistsPhase15Fields verifies the Plan 15-01
-// fields (BusinessID, ProjectID, TitleStatus, Pinned, LastMessageAt) round-trip
-// through Create → GetByID without loss. Behavior 1 & 2 from Plan 15-04 Task 1.
+// TestConversationRepository_CreatePersistsPhase15Fields verifies the Phase 15
+// fields plus Phase 19's PinnedAt swap (D-02 — single source of truth) round-trip
+// through Create → GetByID without loss.
 func TestConversationRepository_CreatePersistsPhase15Fields(t *testing.T) {
 	db := setupMongoTestDB(t)
 	repo := NewConversationRepository(db)
@@ -285,13 +285,14 @@ func TestConversationRepository_CreatePersistsPhase15Fields(t *testing.T) {
 	t.Run("persists all new fields when ProjectID is set", func(t *testing.T) {
 		projID := "proj-uuid-a"
 		lastMsg := time.Now().UTC().Truncate(time.Millisecond)
+		pinnedAt := time.Now().UTC().Truncate(time.Millisecond)
 		conv := &domain.Conversation{
 			UserID:        "user-p15-1",
 			BusinessID:    "biz-uuid-1",
 			ProjectID:     &projID,
 			Title:         "Test",
 			TitleStatus:   domain.TitleStatusAutoPending,
-			Pinned:        true,
+			PinnedAt:      &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
 			LastMessageAt: &lastMsg,
 		}
 		err := repo.Create(ctx, conv)
@@ -303,7 +304,8 @@ func TestConversationRepository_CreatePersistsPhase15Fields(t *testing.T) {
 		require.NotNil(t, found.ProjectID)
 		assert.Equal(t, "proj-uuid-a", *found.ProjectID)
 		assert.Equal(t, domain.TitleStatusAutoPending, found.TitleStatus)
-		assert.True(t, found.Pinned)
+		require.NotNil(t, found.PinnedAt)
+		assert.WithinDuration(t, pinnedAt, *found.PinnedAt, time.Second)
 		require.NotNil(t, found.LastMessageAt)
 		assert.WithinDuration(t, lastMsg, *found.LastMessageAt, time.Second)
 	})
@@ -342,13 +344,14 @@ func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 
 	t.Run("updates only project_id and updated_at", func(t *testing.T) {
 		origProj := "proj-orig"
+		pinnedAt := time.Now().UTC().Truncate(time.Millisecond)
 		conv := &domain.Conversation{
 			UserID:      "user-move-1",
 			BusinessID:  "biz-move-1",
 			ProjectID:   &origProj,
 			Title:       "Immutable Title",
 			TitleStatus: domain.TitleStatusManual,
-			Pinned:      true,
+			PinnedAt:    &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
 		}
 		require.NoError(t, repo.Create(ctx, conv))
 		origUpdatedAt := conv.UpdatedAt
@@ -365,7 +368,8 @@ func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 		// Untouched fields stay the same
 		assert.Equal(t, "Immutable Title", found.Title)
 		assert.Equal(t, domain.TitleStatusManual, found.TitleStatus)
-		assert.True(t, found.Pinned)
+		require.NotNil(t, found.PinnedAt)
+		assert.WithinDuration(t, pinnedAt, *found.PinnedAt, time.Second)
 		assert.Equal(t, "biz-move-1", found.BusinessID)
 		assert.Equal(t, "user-move-1", found.UserID)
 		// updated_at bumped
@@ -556,6 +560,11 @@ func TestUpdate_PersistsTitleStatus(t *testing.T) {
 // TestEnsureConversationIndexes_Idempotent — Phase 18 / D-08a. Index
 // creation must be idempotent across boots and the named index must exist
 // after the helper returns.
+//
+// Phase 19 / Plan 19-02 extends the index list with
+// `conversations_user_biz_proj_pinned_recency` — verified inline below so
+// the same idempotency assertion covers BOTH phases' indexes (the helper
+// stays a single canonical entry-point).
 func TestEnsureConversationIndexes_Idempotent(t *testing.T) {
 	db := setupMongoTestDB(t)
 	ctx := context.Background()
@@ -566,13 +575,131 @@ func TestEnsureConversationIndexes_Idempotent(t *testing.T) {
 	specs, err := db.Collection("conversations").Indexes().ListSpecifications(ctx)
 	require.NoError(t, err)
 
-	found := false
+	names := map[string]bool{}
 	for _, s := range specs {
-		if s.Name == "conversations_user_biz_title_status" {
-			found = true
-			break
-		}
+		names[s.Name] = true
 	}
-	assert.True(t, found, "named index conversations_user_biz_title_status must exist after EnsureConversationIndexes")
+	assert.True(t, names["conversations_user_biz_title_status"],
+		"Phase 18 named index conversations_user_biz_title_status must exist (untouched)")
+	assert.True(t, names["conversations_user_biz_proj_pinned_recency"],
+		"Phase 19 named index conversations_user_biz_proj_pinned_recency must exist (D-08a is locked — this is a NEW separate index)")
+}
+
+// insertConvForPin inserts a Phase-19-shape conversation document directly
+// via the Mongo driver so Pin/Unpin tests can assert atomic conditional
+// updates without going through Create (which would otherwise stamp
+// generated IDs and obscure the (id, business_id, user_id) scope-filter
+// behavior under test).
+func insertConvForPin(t *testing.T, db *mongo.Database, businessID, userID string) string {
+	t.Helper()
+	id := bson.NewObjectID().Hex()
+	now := time.Now()
+	_, err := db.Collection("conversations").InsertOne(context.Background(), bson.M{
+		"_id":         id,
+		"user_id":     userID,
+		"business_id": businessID,
+		"project_id":  nil,
+		"title":       "seed",
+		"created_at":  now,
+		"updated_at":  now,
+	})
+	require.NoError(t, err)
+	return id
+}
+
+// TestPin — Phase 19 / D-02 + Pitfalls §19. Trust-critical: the (id, business_id,
+// user_id) scope filter prevents cross-tenant pin manipulation. Mismatched
+// businessID OR userID MUST surface as ErrConversationNotFound (uniform 404
+// at the handler layer — never 403, to avoid leaking existence-vs-ownership).
+func TestPin(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewConversationRepository(db)
+	ctx := context.Background()
+
+	t.Run("sets pinned_at to a non-nil UTC timestamp on success", func(t *testing.T) {
+		id := insertConvForPin(t, db, "biz-1", "user-1")
+
+		err := repo.Pin(ctx, id, "biz-1", "user-1")
+		require.NoError(t, err)
+
+		got, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		require.NotNil(t, got.PinnedAt, "PinnedAt must be non-nil after Pin")
+		assert.True(t, got.PinnedAt.Equal(got.PinnedAt.UTC()),
+			"pinned_at must be persisted in UTC")
+	})
+
+	t.Run("returns ErrConversationNotFound on mismatched userID (cross-tenant)", func(t *testing.T) {
+		id := insertConvForPin(t, db, "biz-2", "user-owner")
+
+		err := repo.Pin(ctx, id, "biz-2", "user-attacker")
+		assert.ErrorIs(t, err, domain.ErrConversationNotFound,
+			"defense-in-depth: scope filter must mismatch and return 404, not silently succeed")
+
+		// State must remain unchanged — pinned_at still nil.
+		got, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		assert.Nil(t, got.PinnedAt, "Pin under wrong userID must NOT mutate the doc")
+	})
+
+	t.Run("returns ErrConversationNotFound on mismatched businessID", func(t *testing.T) {
+		id := insertConvForPin(t, db, "biz-real", "user-1")
+
+		err := repo.Pin(ctx, id, "biz-other", "user-1")
+		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
+
+		got, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		assert.Nil(t, got.PinnedAt)
+	})
+
+	t.Run("returns ErrConversationNotFound for missing id", func(t *testing.T) {
+		err := repo.Pin(ctx, "nonexistent-id-xyz", "biz-1", "user-1")
+		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
+	})
+}
+
+// TestUnpin — Phase 19 / D-02. Symmetric to TestPin; clearing pinned_at
+// must (a) set PinnedAt to nil, (b) bump updated_at, (c) be scoped by the
+// same (id, business_id, user_id) filter as Pin.
+func TestUnpin(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewConversationRepository(db)
+	ctx := context.Background()
+
+	t.Run("sets pinned_at to nil on a previously pinned conversation", func(t *testing.T) {
+		id := insertConvForPin(t, db, "biz-3", "user-3")
+		require.NoError(t, repo.Pin(ctx, id, "biz-3", "user-3"))
+
+		// Confirm pinned first.
+		got, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		require.NotNil(t, got.PinnedAt)
+
+		// Unpin.
+		require.NoError(t, repo.Unpin(ctx, id, "biz-3", "user-3"))
+
+		got, err = repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		assert.Nil(t, got.PinnedAt, "PinnedAt must be nil after Unpin")
+	})
+
+	t.Run("returns ErrConversationNotFound on mismatched userID", func(t *testing.T) {
+		id := insertConvForPin(t, db, "biz-4", "user-owner")
+		require.NoError(t, repo.Pin(ctx, id, "biz-4", "user-owner"))
+
+		err := repo.Unpin(ctx, id, "biz-4", "user-attacker")
+		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
+
+		// State must remain pinned.
+		got, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		assert.NotNil(t, got.PinnedAt, "Unpin under wrong userID must NOT mutate the doc")
+	})
+
+	t.Run("returns ErrConversationNotFound for missing id", func(t *testing.T) {
+		err := repo.Unpin(ctx, "nonexistent-id-xyz", "biz-1", "user-1")
+		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
+	})
 }
 

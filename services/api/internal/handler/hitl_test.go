@@ -188,6 +188,11 @@ func (c *hitlConvRepo) UpdateProjectAssignment(_ context.Context, _ string, _ *s
 func (c *hitlConvRepo) UpdateTitleIfPending(_ context.Context, _, _ string) error { return nil }
 func (c *hitlConvRepo) TransitionToAutoPending(_ context.Context, _ string) error { return nil }
 
+// Pin / Unpin — Phase 19 / D-02 atomic conditional updates (Plan 19-02 Task 1).
+// HITL tests don't exercise pin lifecycle; stubs return nil.
+func (c *hitlConvRepo) Pin(_ context.Context, _, _, _ string) error   { return nil }
+func (c *hitlConvRepo) Unpin(_ context.Context, _, _, _ string) error { return nil }
+
 // -- helpers -----------------------------------------------------------------
 
 func seededToolsCache() *service.ToolsRegistryCache {

@@ -173,7 +173,9 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		}
 	}
 
-	// Create conversation
+	// Create conversation. Phase 19 D-02 — newly created chats start unpinned;
+	// PinnedAt stays nil (the single source of truth for the unpinned state).
+	// The legacy `Pinned bool` field was removed; do not re-introduce it.
 	now := time.Now()
 	conversation := &domain.Conversation{
 		ID:          primitive.NewObjectID().Hex(),
@@ -182,7 +184,6 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		ProjectID:   req.ProjectID, // nil → "Без проекта"; both null and absent map here
 		Title:       req.Title,
 		TitleStatus: domain.TitleStatusAutoPending,
-		Pinned:      false,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}

@@ -71,6 +71,17 @@ type ConversationRepository interface {
 	// ErrConversationNotFound when filter matches zero docs (status was "manual"
 	// OR "auto_pending" — caller maps each disposition to its 409 body).
 	TransitionToAutoPending(ctx context.Context, id string) error
+	// Pin — Phase 19 / D-02. Atomically sets pinned_at = now (UTC) on the
+	// conversation, scoped by (id, business_id, user_id) for defense-in-depth
+	// (Pitfalls §19 — defends against cross-tenant pin manipulation even if
+	// callers misroute IDs). Returns ErrConversationNotFound on mismatch
+	// (uniform 404 at the handler layer, never 403, to avoid leaking
+	// existence-vs-ownership).
+	Pin(ctx context.Context, id, businessID, userID string) error
+	// Unpin — Phase 19 / D-02. Atomically sets pinned_at = nil on the
+	// conversation, scoped by (id, business_id, user_id). Returns
+	// ErrConversationNotFound on mismatch.
+	Unpin(ctx context.Context, id, businessID, userID string) error
 }
 
 type MessageRepository interface {

@@ -43,6 +43,11 @@ func (s *stubConversationRepo) TransitionToAutoPending(_ context.Context, _ stri
 	return nil
 }
 
+// Pin / Unpin — Phase 19 / D-02 atomic conditional updates (Plan 19-02 Task 1).
+// Stub returns nil so the constructor test stays scope-agnostic.
+func (s *stubConversationRepo) Pin(_ context.Context, _, _, _ string) error   { return nil }
+func (s *stubConversationRepo) Unpin(_ context.Context, _, _, _ string) error { return nil }
+
 // --- Tests ---
 
 func TestNewAuthHandler_NilService_ReturnsError(t *testing.T) {
