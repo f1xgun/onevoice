@@ -31,9 +31,7 @@ export function useHighlightMessage(messagesReady: boolean) {
     const target = params.get('highlight');
     if (!target) return;
 
-    const el = document.querySelector<HTMLElement>(
-      `[data-message-id="${CSS.escape(target)}"]`
-    );
+    const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(target)}"]`);
     if (!el) return;
 
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });

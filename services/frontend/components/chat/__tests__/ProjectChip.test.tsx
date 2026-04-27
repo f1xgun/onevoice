@@ -3,7 +3,12 @@ import { render, screen } from '@testing-library/react';
 import { ProjectChip } from '../ProjectChip';
 
 vi.mock('next/link', () => ({
-  default: ({ children, href, className, ...rest }: { children: React.ReactNode; href: string; className?: string } & Record<string, unknown>) => (
+  default: ({
+    children,
+    href,
+    className,
+    ...rest
+  }: { children: React.ReactNode; href: string; className?: string } & Record<string, unknown>) => (
     <a href={href} className={className} {...rest}>
       {children}
     </a>
