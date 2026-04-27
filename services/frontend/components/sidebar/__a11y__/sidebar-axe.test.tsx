@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -36,10 +36,7 @@ import type { Conversation } from '@/lib/conversations';
  * directly. The alias keeps the call site phrasing identical to the
  * planning docs and the plan's grep checks (`axe(container` substring).
  */
-function axe(
-  container: ElementContext,
-  options?: RunOptions
-): Promise<AxeResults> {
+function axe(container: ElementContext, options?: RunOptions): Promise<AxeResults> {
   return axeCore.run(container, options ?? {});
 }
 
@@ -112,18 +109,14 @@ async function expectNoBlockingViolations(container: ElementContext) {
     // eslint-disable-next-line no-console
     console.warn(
       'axe non-blocking violations (moderate/minor — logged only):\n' +
-        moderateMinor
-          .map((v) => `  [${v.impact}] ${v.id} — ${v.help}\n    ${v.helpUrl}`)
-          .join('\n')
+        moderateMinor.map((v) => `  [${v.impact}] ${v.id} — ${v.help}\n    ${v.helpUrl}`).join('\n')
     );
   }
   if (blocking.length > 0) {
     // eslint-disable-next-line no-console
     console.error(
       'axe BLOCKING violations (critical/serious — fail the build):\n' +
-        blocking
-          .map((v) => `  [${v.impact}] ${v.id} — ${v.help}\n    ${v.helpUrl}`)
-          .join('\n')
+        blocking.map((v) => `  [${v.impact}] ${v.id} — ${v.help}\n    ${v.helpUrl}`).join('\n')
     );
   }
   expect(blocking).toEqual([]);
@@ -192,6 +185,7 @@ describe('Phase 19 a11y audit — sidebar surfaces (BLOCKING — critical+seriou
   });
 
   it('audits ProjectSection with context menu open — no critical/serious violations', async () => {
+    const user = userEvent.setup();
     const convs = [makeConv('c-1', 'Первый чат'), makeConv('c-2', 'Второй чат')];
     render(
       <Wrapper>
@@ -200,12 +194,12 @@ describe('Phase 19 a11y audit — sidebar surfaces (BLOCKING — critical+seriou
     );
     // Open the first per-row DropdownMenu trigger («Меню чата …»). Radix
     // renders the menu in a Portal; auditing document.body picks it up.
+    // userEvent (not fireEvent) is required because Radix DropdownMenu
+    // primitives gate on PointerEvents that fireEvent.click does not emit.
     const trigger = screen.getAllByRole('button', { name: /Меню чата/ })[0];
-    fireEvent.click(trigger);
+    await user.click(trigger);
     await waitFor(() => {
-      expect(
-        screen.getByRole('menuitem', { name: /Закрепить|Открепить/ })
-      ).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /Закрепить|Открепить/ })).toBeInTheDocument();
     });
     await expectNoBlockingViolations(document.body);
   });

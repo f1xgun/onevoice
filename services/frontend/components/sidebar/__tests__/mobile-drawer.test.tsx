@@ -115,8 +115,10 @@ describe('mobile drawer — Phase 19 / Plan 19-05 / D-16', () => {
       expect(screen.getByText('Первый чат')).toBeInTheDocument();
     });
 
-    // Click the chat-row link → onNavigate → setOpen(false).
-    await user.click(screen.getByRole('link', { name: /Первый чат/ }));
+    // Click the chat-row Link → onNavigate → setOpen(false).
+    // Note: chat-row links carry role="option" (Phase 19 / D-17 listbox
+    // pattern), so we query by `option`, not `link`.
+    await user.click(screen.getByRole('option', { name: /Первый чат/ }));
 
     // Radix unmounts the dialog from the DOM after close-state animation.
     await waitFor(() => {
@@ -148,7 +150,7 @@ describe('mobile drawer — Phase 19 / Plan 19-05 / D-16', () => {
 
   it('stays open when the per-row context menu is opened', async () => {
     const user = userEvent.setup();
-    render(<Sidebar />, { wrapper: Wrapper });
+    const { container } = render(<Sidebar />, { wrapper: Wrapper });
 
     await user.click(screen.getByRole('button', { name: 'Открыть боковое меню' }));
     await waitFor(() => {
@@ -163,6 +165,14 @@ describe('mobile drawer — Phase 19 / Plan 19-05 / D-16', () => {
     const menuTriggers = screen.getAllByRole('button', { name: /Меню чата/ });
     await user.click(menuTriggers[0]);
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // When the DropdownMenu opens, Radix sets aria-hidden=true on background
+    // elements (including the parent Sheet) — so `screen.getByRole('dialog')`
+    // would not find it. The dialog is still IN THE DOM though; we assert
+    // its physical presence via querySelector. The menu role="menu" being
+    // present is the proxy for "menu opened".
+    const dialog = container.ownerDocument.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    // Sanity check: the menu is open (this is what made aria-hidden flip).
+    expect(screen.getByRole('menu')).toBeInTheDocument();
   });
 });

@@ -29,7 +29,12 @@ function Wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-function makeConv(id: string, title: string, projectId: string | null, pinnedAt: string | null): Conversation {
+function makeConv(
+  id: string,
+  title: string,
+  projectId: string | null,
+  pinnedAt: string | null
+): Conversation {
   return {
     id,
     userId: 'u-1',

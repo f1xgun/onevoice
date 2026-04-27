@@ -106,6 +106,7 @@ export function NavRail() {
         <Tooltip>
           <TooltipTrigger asChild>
             <div
+              role="group"
               aria-label="Платформы"
               className="my-2 flex flex-col gap-1.5"
               data-testid="integration-status"
