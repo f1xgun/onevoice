@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Phase 19 / Plan 19-03 — search backend integration tests.
@@ -94,6 +96,40 @@ func seedConvWithMessage(t *testing.T, userID, businessID, projectID, title, msg
 	return convID
 }
 
+// ensureSearchIndexes creates the Phase 19 text indexes idempotently
+// after cleanupDatabase drops the conversations + messages collections.
+// Mirrors services/api/internal/repository/search_indexes.go EnsureSearchIndexes
+// (mongo-driver v2 there; mongo-driver v1 here — same IndexModel shape).
+func ensureSearchIndexes(t *testing.T) {
+	t.Helper()
+	require.NotNil(t, mongoDB, "TEST_MONGO_URL not set — cannot create indexes")
+
+	ctx := context.Background()
+
+	titleIdx := mongo.IndexModel{
+		Keys: bson.D{{Key: "title", Value: "text"}},
+		Options: options.Index().
+			SetName("conversations_title_text_v19").
+			SetDefaultLanguage("russian").
+			SetWeights(bson.M{"title": 20}),
+	}
+	if _, err := mongoDB.Collection("conversations").Indexes().CreateOne(ctx, titleIdx); err != nil {
+		// Idempotent — duplicate-key / "already exists" is fine
+		t.Logf("title index already present or non-fatal: %v", err)
+	}
+
+	contentIdx := mongo.IndexModel{
+		Keys: bson.D{{Key: "content", Value: "text"}},
+		Options: options.Index().
+			SetName("messages_content_text_v19").
+			SetDefaultLanguage("russian").
+			SetWeights(bson.M{"content": 10}),
+	}
+	if _, err := mongoDB.Collection("messages").Indexes().CreateOne(ctx, contentIdx); err != nil {
+		t.Logf("content index already present or non-fatal: %v", err)
+	}
+}
+
 // doSearch issues GET /api/v1/search with the given query/projectID
 // scope and returns the parsed []SearchResult body + status code.
 func doSearch(t *testing.T, accessToken, q, projectID string) (int, []map[string]interface{}, http.Header) {
@@ -133,6 +169,7 @@ func TestSearchCrossTenant(t *testing.T) {
 		t.Skip("TEST_MONGO_URL not set — search integration test requires direct Mongo access for seeding")
 	}
 	cleanupDatabase(t)
+	ensureSearchIndexes(t)
 
 	accessTokenA := setupTestUser(t, "userA-search@example.com", "password123")
 	accessTokenB := setupTestUser(t, "userB-search@example.com", "password123")
@@ -225,6 +262,7 @@ func TestSearchAggregatedShape(t *testing.T) {
 		t.Skip("TEST_MONGO_URL not set")
 	}
 	cleanupDatabase(t)
+	ensureSearchIndexes(t)
 	accessToken := setupTestUser(t, "userAgg@example.com", "password123")
 	setupTestBusiness(t, accessToken)
 	userID, bizID := resolveBusinessID(t, accessToken)
@@ -259,6 +297,7 @@ func TestSearchProjectScope(t *testing.T) {
 		t.Skip("TEST_MONGO_URL not set")
 	}
 	cleanupDatabase(t)
+	ensureSearchIndexes(t)
 	accessToken := setupTestUser(t, "userProjScope@example.com", "password123")
 	setupTestBusiness(t, accessToken)
 	userID, bizID := resolveBusinessID(t, accessToken)
