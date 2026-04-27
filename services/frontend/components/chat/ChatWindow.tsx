@@ -4,6 +4,7 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import { Send } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ChatHeader } from './ChatHeader';
 import { MessageBubble } from './MessageBubble';
 import { ProjectChip } from './ProjectChip';
 import { ProjectPickerChip } from './ProjectPickerChip';
@@ -91,12 +92,21 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Chat header */}
+      {/* Chat header — Phase 18 / D-11 (USER OVERRIDE) Landmine 1:
+          isolated, memoized subtree subscribed via useQuery `select` to a
+          primitive string. Rendered as a SIBLING of the message list and
+          composer below so title changes do not destroy composer focus or
+          scroll position. */}
       {!showEmptyState && (
-        <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-4">
-          <span className="truncate text-sm font-medium">{conversation?.title ?? ''}</span>
-          <ProjectChip projectId={currentProject?.id ?? null} projectName={currentProject?.name} />
-        </div>
+        <ChatHeader
+          conversationId={conversationId}
+          rightSlot={
+            <ProjectChip
+              projectId={currentProject?.id ?? null}
+              projectName={currentProject?.name}
+            />
+          }
+        />
       )}
 
       {/* Messages */}

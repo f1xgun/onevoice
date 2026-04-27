@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 import { useChat } from '../useChat';
 import { useAuthStore } from '@/lib/auth';
 import { mockSSEResponse, sseLine } from '@/test-utils/sse-mock';
@@ -8,6 +10,17 @@ import { mockSSEResponse, sseLine } from '@/test-utils/sse-mock';
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
+
+// Phase 18 / D-10: useChat now consumes useQueryClient() so it can invalidate
+// ['conversations'] on chat SSE 'done'. All renderHook calls now wrap a
+// QueryClientProvider — the React Query cache is unused by these test
+// scenarios (they cover SSE pause / resume / hydration paths) but the hook
+// requires the context.
+function makeQCWrapper() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: qc }, children);
+}
 
 describe('useChat — SSE tool_approval_required arrival', () => {
   beforeEach(() => {
@@ -55,7 +68,7 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-1'));
+    const { result } = renderHook(() => useChat('cid-1'), { wrapper: makeQCWrapper() });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
@@ -111,7 +124,7 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-2'));
+    const { result } = renderHook(() => useChat('cid-2'), { wrapper: makeQCWrapper() });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     await act(async () => {
       await result.current.sendMessage('anything');

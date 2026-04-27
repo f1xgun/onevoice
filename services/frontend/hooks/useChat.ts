@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/auth';
 import { trackEvent } from '@/lib/telemetry';
 import { resolveErrorToRussian, RESUME_STREAM_ERROR } from '@/lib/resolveErrorMap';
@@ -158,6 +159,10 @@ export function useChat(conversationId: string) {
   const isStreamingRef = useRef(false);
   const accessToken = useAuthStore((s) => s.accessToken);
   const abortRef = useRef<AbortController | null>(null);
+  // Phase 18 / TITLE-06 / D-10: handleSSEEvent invalidates ['conversations']
+  // when SSE 'done' arrives so an auto-titled chat picks up its new title
+  // out-of-band. PITFALLS §13: NEVER mux titles into chat SSE.
+  const queryClient = useQueryClient();
 
   // Load existing messages on mount — accepts both legacy `ApiMessage[]` and
   // the Phase-16 `{messages, pendingApprovals}` envelope. When the envelope
@@ -236,33 +241,44 @@ export function useChat(conversationId: string) {
   // consumeSSEStream without recreating closures per call.
   const onEventRef = useRef<(event: Record<string, unknown>) => void>(() => {});
 
-  const handleSSEEvent = useCallback((event: Record<string, unknown>) => {
-    if (event.type === 'tool_approval_required') {
-      const rawCalls = (event.calls as Array<Record<string, unknown>>) ?? [];
-      setPendingApproval({
-        batchId: event.batch_id as string,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        // expiresAt intentionally undefined — hydration path (GET /messages) carries it.
-        calls: rawCalls.map((c) => ({
-          callId: c.call_id as string,
-          toolName: c.tool_name as string,
-          args: (c.args as Record<string, unknown>) ?? {},
-          editableFields: (c.editable_fields as string[]) ?? [],
-          floor: c.floor as string,
-        })),
+  const handleSSEEvent = useCallback(
+    (event: Record<string, unknown>) => {
+      // Phase 18 / TITLE-06 / D-10: out-of-band auto-title propagation. The
+      // titler goroutine on the API side races chat 'done'; invalidating
+      // ['conversations'] picks up whatever title has landed. PITFALLS §13
+      // hard rule — NEVER mux titles into chat SSE.
+      if (event.type === 'done') {
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      }
+
+      if (event.type === 'tool_approval_required') {
+        const rawCalls = (event.calls as Array<Record<string, unknown>>) ?? [];
+        setPendingApproval({
+          batchId: event.batch_id as string,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          // expiresAt intentionally undefined — hydration path (GET /messages) carries it.
+          calls: rawCalls.map((c) => ({
+            callId: c.call_id as string,
+            toolName: c.tool_name as string,
+            args: (c.args as Record<string, unknown>) ?? {},
+            editableFields: (c.editable_fields as string[]) ?? [],
+            floor: c.floor as string,
+          })),
+        });
+        // 17-RESEARCH §Pitfall 2: do NOT abort the controller here. The
+        // orchestrator closes the response naturally after emitting the event;
+        // aborting races with natural close and masks errors.
+        return;
+      }
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (!last || last.role !== 'assistant') return prev;
+        return [...prev.slice(0, -1), applySSEEvent(last, event)];
       });
-      // 17-RESEARCH §Pitfall 2: do NOT abort the controller here. The
-      // orchestrator closes the response naturally after emitting the event;
-      // aborting races with natural close and masks errors.
-      return;
-    }
-    setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (!last || last.role !== 'assistant') return prev;
-      return [...prev.slice(0, -1), applySSEEvent(last, event)];
-    });
-  }, []);
+    },
+    [queryClient]
+  );
 
   // Rebind on every render so the resume stream picks up the latest closure.
   useEffect(() => {
