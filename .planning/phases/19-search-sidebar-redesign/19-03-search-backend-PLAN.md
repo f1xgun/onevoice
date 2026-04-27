@@ -39,11 +39,14 @@ must_haves:
     - "t.Setenv not os.Setenv in tests"
     - "github.com/kljensen/snowball v0.10.0 (MIT, pure Go) is the chosen Russian stemmer (RESEARCH §1)"
     - "$text MUST be in the FIRST $match stage of the aggregation pipeline (Mongo manual rule — RESEARCH §5)"
+    - "Search results aggregated per conversation: title + top-scored snippet + match_count + aggregated_score (max(titleScore × 20, contentScore × 10)); single-match conversations omit the +N badge (D-07)"
     - "Two-phase query strategy is REQUIRED, not optional — Message has no business_id field (verified pkg/domain/mongo_models.go:52-70)"
     - "EnsureSearchIndexes is wired into main.go startup BEFORE searcher.MarkIndexesReady() — atomic.Bool flag flips only after index creation succeeds"
+    - "Serialization note: 19-02 Task 2 and 19-03 Task 4 both modify services/api/cmd/main.go; 19-03 depends_on: [19-02], so 19-03 Task 4 commits AFTER 19-02 Task 2 — V19 backfill is in place when search wiring lands; both blocks coexist in main.go startup"
     - "ErrInvalidScope is returned IMMEDIATELY by Searcher.Search when businessID == \"\" || userID == \"\" — defense-in-depth (Pitfalls §19)"
     - "Cross-tenant integration test in test/integration/search_test.go is BLOCKING — proves SEARCH-02 contract"
     - "Search logs metadata only: {user_id, business_id, query_length} — never the query text (SEARCH-07)"
+    - "Backend computes [start, end] byte ranges for stem-matched tokens via github.com/kljensen/snowball — frontend wraps each in <mark> (D-09)"
     - "GET /api/v1/search returns 503 + Retry-After: 5 until searchReady atomic.Bool flips true (SEARCH-06)"
   artifacts:
     - path: services/api/go.mod
@@ -244,13 +247,12 @@ github.com/kljensen/snowball/russian — `func Stem(word string, stemStopWords b
    }
    ```
 
-6. Run scaffolds — all must FAIL with "undefined" or "missing function" errors (RED state). This proves the test files compile against the package import paths but their assertions cannot pass until the implementation lands:
+6. Verify scaffolds compile (verify command runs `go vet` only — NOT `go test`). The scaffolds are intentionally RED because they reference symbols defined in Tasks 2–4. Acceptance for THIS task is file-existence + `go vet ./...` exits 0; `go test` is reserved for Tasks 2–4 where each scaffold turns GREEN as its target lands.
    ```bash
    cd services/api && GOWORK=off go vet ./...        # MUST pass — files compile
-   cd services/api && GOWORK=off go test ./internal/repository/... ./internal/service/... ./internal/handler/... -run "Phase19" 2>&1 | head -20   # SHOULD show "undefined: ..." errors for unimplemented symbols
    ```
 
-   If `go vet` fails, fix the scaffold imports. If `go test` fails for any other reason than "undefined symbol", fix the scaffold.
+   If `go vet` fails, fix the scaffold imports.
   </action>
   <verify>
     <automated>cd services/api && GOWORK=off go mod tidy && grep -q "github.com/kljensen/snowball" go.mod && cd /Users/f1xgun/onevoice/.worktrees/milestone-1.3 && grep -q "ErrInvalidScope" pkg/domain/errors.go && grep -q "ErrSearchIndexNotReady" pkg/domain/errors.go && test -f services/api/internal/repository/search_indexes_test.go && test -f services/api/internal/repository/search_messages_test.go && test -f services/api/internal/service/search_test.go && test -f services/api/internal/service/snippet_test.go && test -f services/api/internal/handler/search_test.go && test -f test/integration/search_test.go && cd services/api && GOWORK=off go vet ./...</automated>
@@ -262,7 +264,6 @@ github.com/kljensen/snowball/russian — `func Stem(word string, stemStopWords b
     - 5 scaffold test files exist (search_indexes_test, search_messages_test, search_test (service), snippet_test, search_test (handler))
     - `test/integration/search_test.go` exists and contains `TestSearchCrossTenant`
     - `cd services/api && GOWORK=off go vet ./...` exits 0 (scaffolds compile)
-    - Scaffold tests FAIL on `GOWORK=off go test` (RED state) — run won't actually be exit-0 here; the directive is to commit the RED state and unblock Wave-1 implementation.
   </acceptance_criteria>
   <done>Snowball lib installed; sentinels added; 5 scaffold test files + integration test suite skeleton committed; Wave-0 RED state achieved.</done>
 </task>
@@ -860,7 +861,7 @@ github.com/kljensen/snowball/russian — `func Stem(word string, stemStopWords b
     - `grep -c "ErrSearchIndexNotReady" services/api/internal/service/search.go` >= 1
     - `grep -c "query_length" services/api/internal/service/search.go` >= 1 (SEARCH-07 metadata field)
     - `grep -c "businessID == \"\" || userID == \"\"" services/api/internal/service/search.go` >= 1 (T-19-CROSS-TENANT defense)
-    - Search.go does NOT contain `"query"` as a slog field key (only `"query_length"`); verify via `! grep -E '"query"\s*,\s*query' services/api/internal/service/search.go`
+    - Search.go does NOT contain `"query"` as a slog field key (only `"query_length"`); verify via `! grep -E '"query"\s*,' services/api/internal/service/search.go` (loose form catches any `"query", X` slog field)
     - `cd services/api && GOWORK=off go test -race ./internal/service/... -run "TestSearcher|TestBuildSnippet|TestHighlightRanges|TestQueryStems"` exits 0
     - The dedicated log-leak test asserts `!bytes.Contains(buf, []byte(literalQuery))` and passes
   </acceptance_criteria>

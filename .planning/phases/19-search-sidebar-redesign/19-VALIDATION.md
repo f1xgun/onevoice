@@ -2,7 +2,7 @@
 phase: 19
 slug: search-sidebar-redesign
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-04-27
 ---
@@ -47,11 +47,21 @@ created: 2026-04-27
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 19-01-XX | 01 layout-restructure | 1 | UI-01 | — | NavRail + ProjectPane render only on chat/projects routes | unit | `pnpm vitest run components/sidebar/NavRail.test.tsx` | ❌ W0 | ⬜ pending |
-| 19-02-XX | 02 pinned | 1 | UI-02, UI-03 | — | `pinned_at` is set/unset atomically; pinned chats appear in both global section and own project | unit + integration | `go test -race ./services/api/internal/repository/... -run TestPin` | ❌ W0 | ⬜ pending |
-| 19-03-XX | 03 search-backend | 2 | SEARCH-01, SEARCH-02, SEARCH-03, SEARCH-05, SEARCH-06, SEARCH-07 | T-19-CROSS-TENANT, T-19-INDEX-503, T-19-LOG-LEAK | empty `business_id`/`user_id` rejected; biz B messages absent in biz A search; query text never logged | integration | `cd test/integration && go test -race -tags=integration -run TestSearchCrossTenant ./...` | ❌ W0 | ⬜ pending |
-| 19-04-XX | 04 search-frontend | 2 | SEARCH-04, UI-06 | — | `?highlight=msgId` scrolls + flashes; Cmd/Ctrl-K focuses search | unit | `pnpm vitest run components/sidebar/SidebarSearch.test.tsx hooks/useHighlightMessage.test.ts` | ❌ W0 | ⬜ pending |
-| 19-05-XX | 05 a11y-and-audit | 3 | UI-04, UI-05 | — | Mobile drawer focus trap + ESC + scroll lock; roving tabindex; axe critical/serious = 0 | unit + a11y | `pnpm vitest run components/sidebar/__a11y__/` | ❌ W0 | ⬜ pending |
+| 19-01-T1 | 01 layout-restructure | 1 | UI-01 | — | Wave-0 scaffolds compile; react-resizable-panels installed | scaffold | `cd services/frontend && cat package.json \| grep -q '"react-resizable-panels"' && test -f components/sidebar/__tests__/NavRail.test.tsx && test -f components/sidebar/__tests__/ProjectPane.test.tsx && test -f __tests__/cmd-k.test.tsx && test -f __tests__/layout.test.tsx` | ❌ W0 | ⬜ pending |
+| 19-01-T2 | 01 layout-restructure | 1 | UI-01 | — | NavRail renders 7 nav items; no project tree leaked into rail | unit | `cd services/frontend && pnpm vitest run components/sidebar/__tests__/NavRail.test.tsx` | ❌ pending | ⬜ pending |
+| 19-01-T3 | 01 layout-restructure | 1 | UI-01 | — | ProjectPane renders on /chat & /projects only; Cmd-K dispatches CustomEvent; PanelGroup autoSaveId persists | unit | `cd services/frontend && pnpm vitest run components/sidebar/__tests__/ProjectPane.test.tsx __tests__/cmd-k.test.tsx __tests__/layout.test.tsx` | ❌ pending | ⬜ pending |
+| 19-02-T1 | 02 pinned | 2 | UI-02, UI-03 | — | Pin/Unpin atomic + scoped by (business_id, user_id); compound index idempotent | unit + repo | `cd services/api && GOWORK=off go build ./... && GOWORK=off go test -race ./internal/repository/... -run "TestPin\|TestUnpin\|TestEnsureConversationIndexes" && GOWORK=off go test -race ./pkg/domain/... -run TestConversation` | ❌ pending | ⬜ pending |
+| 19-02-T2 | 02 pinned | 2 | UI-02, UI-03 | — | BackfillConversationsV19 idempotent + wired into main.go startup; Pin/Unpin handlers + routes | unit + integration | `cd services/api && GOWORK=off go build ./... && grep -q "BackfillConversationsV19" cmd/main.go && GOWORK=off go test -race ./internal/repository/... -run "TestBackfillConversationsV19" && GOWORK=off go test -race ./internal/handler/... -run "TestConversation_Pin\|TestConversation_Unpin"` | ❌ pending | ⬜ pending |
+| 19-02-T3 | 02 pinned | 2 | UI-02, UI-03 | — | Pin mutations invalidate ['conversations']; PinnedSection hidden when empty (D-04); narrow-memo selector mitigates flicker (D-11 reuse); ProjectChip size prop | unit | `cd services/frontend && pnpm vitest run components/sidebar/__tests__/PinnedSection.test.tsx components/chat/__tests__/ChatHeader.isolation.test.tsx components/chat/__tests__/ProjectChip.test.tsx hooks/__tests__/useConversations.test.ts && pnpm typecheck` | ❌ pending | ⬜ pending |
+| 19-03-T1 | 03 search-backend | 2 | SEARCH-01, SEARCH-02, SEARCH-03, SEARCH-05, SEARCH-06, SEARCH-07 | T-19-CROSS-TENANT, T-19-INDEX-503, T-19-LOG-LEAK | Wave-0: snowball lib installed; ErrInvalidScope + ErrSearchIndexNotReady sentinels exist; scaffold tests + integration test compile | scaffold | `cd services/api && GOWORK=off go mod tidy && grep -q "github.com/kljensen/snowball" go.mod && cd /Users/f1xgun/onevoice/.worktrees/milestone-1.3 && grep -q "ErrInvalidScope" pkg/domain/errors.go && grep -q "ErrSearchIndexNotReady" pkg/domain/errors.go && test -f services/api/internal/repository/search_indexes_test.go && test -f services/api/internal/repository/search_messages_test.go && test -f services/api/internal/service/search_test.go && test -f services/api/internal/service/snippet_test.go && test -f services/api/internal/handler/search_test.go && test -f test/integration/search_test.go && cd services/api && GOWORK=off go vet ./...` | ❌ W0 | ⬜ pending |
+| 19-03-T2 | 03 search-backend | 2 | SEARCH-01, SEARCH-02, SEARCH-03, SEARCH-05 | T-19-CROSS-TENANT | EnsureSearchIndexes + SearchTitles + ScopedConversationIDs + SearchByConversationIDs idempotent + scope-filtered | unit + repo | `cd services/api && GOWORK=off go build ./... && GOWORK=off go test -race ./internal/repository/... -run "TestEnsureSearchIndexes\|TestSearchTitles\|TestScopedConversationIDs\|TestSearchByConversationIDs"` | ❌ pending | ⬜ pending |
+| 19-03-T3 | 03 search-backend | 2 | SEARCH-02, SEARCH-03, SEARCH-06, SEARCH-07 | T-19-CROSS-TENANT, T-19-INDEX-503, T-19-LOG-LEAK | Searcher orchestration + BuildSnippet + HighlightRanges; ErrInvalidScope guard; atomic.Bool readiness; metadata-only logs | unit | `cd services/api && GOWORK=off go build ./... && GOWORK=off go test -race ./internal/service/... -run "TestSearcher\|TestBuildSnippet\|TestHighlightRanges\|TestQueryStems"` | ❌ pending | ⬜ pending |
+| 19-03-T4 | 03 search-backend | 2 | SEARCH-01, SEARCH-02, SEARCH-05, SEARCH-06, SEARCH-07 | T-19-CROSS-TENANT (BLOCKING), T-19-INDEX-503, T-19-LOG-LEAK | Handler 400/401/503/200; main.go index-creation BEFORE readiness flip; cross-tenant integration test BLOCKING | unit + integration | `cd services/api && GOWORK=off go build ./... && grep -q "EnsureSearchIndexes" cmd/main.go && grep -q "searcher.MarkIndexesReady" cmd/main.go && python3 -c "import re,sys;src=open('cmd/main.go').read();ei=src.find('EnsureSearchIndexes');mi=src.find('MarkIndexesReady');sys.exit(0 if 0<ei<mi else 1)" && GOWORK=off go test -race ./internal/handler/... -run "TestSearchHandler" && cd /Users/f1xgun/onevoice/.worktrees/milestone-1.3/test/integration && GOWORK=off go test -race -tags=integration -run "TestSearchCrossTenant\|TestSearchProjectScope\|TestSearchAggregatedShape\|TestSearchEmptyQueryReturns400\|TestSearchMissingBearerReturns401" ./...` | ❌ pending | ⬜ pending |
+| 19-04-T1 | 04 search-frontend | 3 | SEARCH-04, UI-06 | — | useDebouncedValue 250 ms behavior; useHighlightMessage scroll + flash + URL cleanup (D-08); CSS keyframes + reduced-motion fallback | unit | `cd services/frontend && pnpm vitest run hooks/__tests__/useDebouncedValue.test.ts hooks/__tests__/useHighlightMessage.test.tsx && pnpm typecheck` | ❌ pending | ⬜ pending |
+| 19-04-T2 | 04 search-frontend | 3 | SEARCH-04, UI-06 | T-19-LOG-LEAK (frontend) | SidebarSearch debounced + Cmd-K + Esc + project-scope checkbox; SearchResultRow with <mark> ranges + +N badge (D-07); MessageBubble data-message-id={message.id}; chat page useHighlightMessage; zero console.* in new files | unit + integration | `cd services/frontend && pnpm vitest run components/sidebar/__tests__/SidebarSearch.test.tsx components/sidebar/__tests__/SearchResultRow.test.tsx __tests__/highlight-flow.test.tsx && pnpm typecheck && pnpm lint` | ❌ pending | ⬜ pending |
+| 19-05-T1 | 05 a11y-and-audit | 4 | UI-04, UI-05 | — | Wave-0: @chialab/vitest-axe installed; vitest.setup.ts extended; useRovingTabIndex hook + scaffold test files compile | scaffold | `cd services/frontend && cat package.json \| grep -q "@chialab/vitest-axe" && grep -q "vitest-axe" vitest.setup.ts && test -f hooks/useRovingTabIndex.ts && test -f hooks/__tests__/useRovingTabIndex.test.tsx && test -f components/sidebar/__a11y__/sidebar-axe.test.tsx && test -f components/sidebar/__tests__/mobile-drawer.test.tsx && pnpm typecheck` | ❌ W0 | ⬜ pending |
+| 19-05-T2 | 05 a11y-and-audit | 4 | UI-04, UI-05 | — | useRovingTabIndex applied to ProjectSection / UnassignedBucket / PinnedSection chat lists (D-17) | unit | `cd services/frontend && pnpm vitest run hooks/__tests__/useRovingTabIndex.test.tsx components/sidebar/__tests__/ProjectSection.test.tsx components/sidebar/__tests__/UnassignedBucket.test.tsx components/sidebar/__tests__/PinnedSection.test.tsx && pnpm typecheck` | ❌ pending | ⬜ pending |
+| 19-05-T3 | 05 a11y-and-audit | 4 | UI-04, UI-05 | — | Mobile drawer auto-close on chat select (D-16); axe-core 3-scenario test; CI gate wired into make test-all (BLOCKING) | unit + a11y + ci | `cd services/frontend && pnpm vitest run components/sidebar/__tests__/mobile-drawer.test.tsx components/sidebar/__a11y__/sidebar-axe.test.tsx && pnpm typecheck && pnpm lint && cd /Users/f1xgun/onevoice/.worktrees/milestone-1.3 && make test-all` | ❌ pending | ⬜ pending |
 
 > **Convention:** the planner replaces these placeholder rows with one row per concrete task on first plan-write. `File Exists` flips to ✅ once the test file lands; `Status` flips to ✅ green when CI passes.
 
@@ -86,14 +96,14 @@ Wave 0 lands all test scaffolding and shared fixtures **before** Wave 1 implemen
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies (planner fills the per-task map after PLAN.md files exist)
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (axe install, test scaffolds)
-- [ ] No watch-mode flags in CI commands
-- [ ] Feedback latency < 30 s (quick) / 120 s (full)
-- [ ] `nyquist_compliant: true` set in frontmatter when planner finishes Per-Task map
-- [ ] Cross-tenant integration test (`test/integration/search_test.go`) is in the per-task map and is `[BLOCKING]`-tagged on a Wave-0 or Wave-1 task per RESEARCH §6
-- [ ] Index-readiness 503 contract test is in the per-task map per RESEARCH §7
-- [ ] axe-core CI gate fails on `critical` + `serious` findings per RESEARCH §3
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies (per-task map filled — 15 rows for 15 tasks)
+- [x] Sampling continuity: every task has an automated command; no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references — 3 Wave-0 tasks: `19-01-T1` (react-resizable-panels + scaffolds), `19-03-T1` (snowball + sentinels + scaffolds), `19-05-T1` (vitest-axe + useRovingTabIndex + scaffolds)
+- [x] No watch-mode flags in CI commands (`grep -i 'vitest.*--watch\|--watch' *-PLAN.md` returns no matches)
+- [x] Feedback latency < 30 s (quick) / 120 s (full)
+- [x] `nyquist_compliant: true` set in frontmatter
+- [x] Cross-tenant integration test (`test/integration/search_test.go::TestSearchCrossTenant`) in per-task map row `19-03-T4` and `[BLOCKING]`-tagged in the plan task name (RESEARCH §6)
+- [x] Index-readiness 503 contract test in per-task map — covered by `19-03-T3` (service unit test) + `19-03-T4` (handler unit test asserts 503 + Retry-After: 5) per RESEARCH §7
+- [x] axe-core CI gate fails on `critical` + `serious` findings — wired in `19-05-T3` via `make test-all` (BLOCKING per RESEARCH §3)
 
-**Approval:** pending
+**Approval:** ready (post-revision)

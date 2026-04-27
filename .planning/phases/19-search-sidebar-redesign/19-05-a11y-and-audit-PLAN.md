@@ -2,7 +2,7 @@
 phase: 19-search-sidebar-redesign
 plan: 05
 type: execute
-wave: 3
+wave: 4
 depends_on: ["19-01", "19-02", "19-04"]
 files_modified:
   - services/frontend/package.json
@@ -66,6 +66,10 @@ must_haves:
       to: chat-row Link onClick
       via: setOpen(false) after router.push
       pattern: "setOpen"
+    - from: services/frontend/components/sidebar/__a11y__/sidebar-axe.test.tsx
+      to: services/frontend/components/sidebar/SidebarSearch.tsx
+      via: import + render in axe audit
+      pattern: "SidebarSearch"
 ---
 
 <objective>
@@ -216,7 +220,7 @@ useRovingTabIndex contract (NEW — no in-repo analog):
    1. `auto-closes on chat select` — render the mobile sheet (sidebar.tsx mobile branch), simulate clicking a chat row Link, assert `setOpen(false)` was called or the Sheet is unmounted.
    2. `stays open on project expand/collapse` — click a project header chevron, assert sheet remains open.
 
-5. Run scaffolds — they MUST currently fail (RED state) for valid reasons (missing implementations); `pnpm vitest run` exits non-zero but `pnpm typecheck` exits 0.
+5. The scaffolds are intentionally RED because they reference implementations landed in Tasks 2 and 3. Acceptance for THIS task is file-existence + `pnpm typecheck` exits 0; `pnpm vitest run` is NOT in the verify or acceptance criteria here — running it would noisily fail. Tasks 2 and 3 turn each scaffold GREEN as its target lands.
   </action>
   <verify>
     <automated>cd services/frontend && cat package.json | grep -q "@chialab/vitest-axe" && grep -q "vitest-axe" vitest.setup.ts && test -f hooks/useRovingTabIndex.ts && test -f hooks/__tests__/useRovingTabIndex.test.tsx && test -f components/sidebar/__a11y__/sidebar-axe.test.tsx && test -f components/sidebar/__tests__/mobile-drawer.test.tsx && pnpm typecheck</automated>

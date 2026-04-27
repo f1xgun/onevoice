@@ -2,8 +2,8 @@
 phase: 19-search-sidebar-redesign
 plan: 02
 type: execute
-wave: 1
-depends_on: []
+wave: 2
+depends_on: ["19-01"]
 files_modified:
   - pkg/domain/mongo_models.go
   - pkg/domain/mongo_models_test.go
@@ -32,10 +32,12 @@ must_haves:
     - "Russian UI copy is locked verbatim («Закреплённые», «Закрепить», «Открепить»)"
     - "pinned_at != nil is the SINGLE SOURCE OF TRUTH for the pinned state (D-02 — bool dropped via $unset in backfill)"
     - "BackfillConversationsV19 is wired into services/api/cmd/main.go startup sequence (not just defined)"
+    - "Serialization note: 19-02 Task 2 and 19-03 Task 4 both modify services/api/cmd/main.go; 19-03 declares depends_on: [19-02], so wave-2 commits land sequentially (one task per commit per GSD default) — V19 backfill block lands first, search index/wiring block lands after"
     - "Pin/Unpin repository methods scope by (user_id, business_id) — defense-in-depth (Pitfalls §19)"
     - "ChatHeader pin button uses NARROW MEMOIZED SELECTOR (Phase 18 D-11 pattern) — subscribes only to `pinned`, not whole conversation row"
     - "Empty pinned section is HIDDEN entirely (D-04 — no header, no placeholder)"
     - "Pinned chats render in BOTH PinnedSection AND under their own project (D-05 ProjectChip mini indicator on the global pinned row only)"
+    - "Pinned chats sort by pinned_at desc — most-recently-pinned first; stable across new chat activity; re-pin = fresh timestamp = top of section (D-03)"
     - "Pin mutation invalidates ['conversations'] React Query cache — extends Phase 18 D-10 pattern"
     - "Compound index {user_id, business_id, project_id, pinned_at:-1, last_message_at:-1} is created idempotently (NEW index, does NOT extend the Phase 18 compound index)"
     - "All Go modules use `replace github.com/f1xgun/onevoice/pkg => ../../pkg`"

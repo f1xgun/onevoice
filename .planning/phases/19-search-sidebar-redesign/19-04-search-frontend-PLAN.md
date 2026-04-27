@@ -2,8 +2,8 @@
 phase: 19-search-sidebar-redesign
 plan: 04
 type: execute
-wave: 2
-depends_on: ["19-01", "19-03"]
+wave: 3
+depends_on: ["19-01", "19-02", "19-03"]
 files_modified:
   - services/frontend/hooks/useDebouncedValue.ts
   - services/frontend/hooks/useHighlightMessage.ts
@@ -33,7 +33,9 @@ must_haves:
     - "Esc clears input AND closes dropdown AND blurs in single keystroke (D-11)"
     - "Default scope is route-aware: project-id when on /chat/projects/{id} else entire business; «По всему бизнесу» checkbox shown only when scoped to project (D-10)"
     - "React Query key = ['search', businessId, projectId, debouncedQuery] (D-12 / RESEARCH §15 Q3)"
-    - "?highlight=msgId scrolls + applies data-highlight=true class for 1.5–2 s; CSS @keyframes onevoice-flash; prefers-reduced-motion branch present"
+    - "?highlight=msgId on chat page mount → useSearchParams → find [data-message-id] → scrollIntoView({behavior: 'smooth', block: 'center'}) → flash class for 1.5–2 s → router.replace to strip the query param (D-08)"
+    - "Result rows render: title + ProjectChipMini + ±40–120 char snippet + relative date + +N совпадений badge when match_count > 1 (D-07)"
+    - "Inline Radix Combobox/Popover dropdown — not an overlay or separate /search page (D-06)"
     - "data-message-id attribute on every MessageBubble; useHighlightMessage uses CSS.escape on the selector"
     - "Frontend NEVER logs the query body (T-19-LOG-LEAK frontend mitigation)"
   artifacts:
@@ -559,7 +561,7 @@ export interface SearchResult {
 
 3. Edit `services/frontend/components/sidebar/ProjectPane.tsx` (created in 19-01). Replace the `<div data-testid="sidebar-search-slot" />` placeholder with `<SidebarSearch />`. Import accordingly.
 
-4. Edit `services/frontend/components/chat/MessageBubble.tsx`. Add `data-message-id={message.id}` attribute to the per-message wrapper element (the outermost div for a single message bubble). Verify by grepping for `data-message-id` after change.
+4. Edit `services/frontend/components/chat/MessageBubble.tsx`. The component receives `{ message }: { message: Message }` (Message type at `services/frontend/types/chat.ts:21-27` declares `id: string`). Add `data-message-id={message.id}` attribute to the per-message wrapper element — concretely, the outermost `<div>` at line 9 of MessageBubble.tsx (the `<div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>`). Verify by `grep -E 'data-message-id=\{[^}]*\.id\}' services/frontend/components/chat/MessageBubble.tsx` returning a match.
 
 5. Edit `services/frontend/app/(app)/chat/[id]/page.tsx`. Find where `useChat` is called and `messages` becomes ready. Add:
    ```tsx
@@ -594,7 +596,7 @@ export interface SearchResult {
     - File exists: `services/frontend/components/sidebar/SidebarSearch.tsx` containing `'use client'`, `useDebouncedValue`, `'onevoice:sidebar-search-focus'`, `Поиск... ⌘K`, `Поиск... Ctrl-K`, `По всему бизнесу`, `Ничего не найдено по`
     - File exists: `services/frontend/components/sidebar/SearchResultRow.tsx` containing `<mark`, `совпадений`, `?highlight=`, `size="xs"`
     - `services/frontend/components/sidebar/ProjectPane.tsx` contains `<SidebarSearch />` (replaces the `sidebar-search-slot` placeholder)
-    - `services/frontend/components/chat/MessageBubble.tsx` contains `data-message-id`
+    - `services/frontend/components/chat/MessageBubble.tsx` contains `data-message-id={message.id}` (verified accessor — `Message` type at services/frontend/types/chat.ts:21-27 declares `id: string`); precise check: `grep -E 'data-message-id=\{[^}]*\.id\}' services/frontend/components/chat/MessageBubble.tsx`
     - `services/frontend/app/(app)/chat/[id]/page.tsx` contains `useHighlightMessage`
     - `grep -rn "console\." services/frontend/components/sidebar/SidebarSearch.tsx services/frontend/hooks/useDebouncedValue.ts services/frontend/hooks/useHighlightMessage.ts` returns 0 matches (T-19-LOG-LEAK frontend)
     - `grep -c "min.*2\|MIN_QUERY" services/frontend/components/sidebar/SidebarSearch.tsx` >= 1 (min query length gate)

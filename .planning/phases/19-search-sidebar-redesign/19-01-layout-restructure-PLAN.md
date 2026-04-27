@@ -144,7 +144,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
    - On `pathname = '/integrations'`, only `<NavRail />` is rendered (`screen.queryByTestId('project-pane')` returns null).
    - Use `data-testid` props on the wrappers; mock `usePathname` per case.
 
-   These four scaffolds MUST currently FAIL on `pnpm vitest run` because the components don't exist yet — that proves Wave 0 RED state.
+   These four scaffolds are intentionally RED — they reference target components that don't exist until Tasks 2 and 3. Verify here is file-existence only (`test -f`); `pnpm vitest run` is NOT part of the verify or acceptance criteria for this task — running it here would noisily fail and waste signal. Wave 0 commits the RED state; Tasks 2 and 3 turn each scaffold GREEN as their target component lands.
   </action>
   <verify>
     <automated>cd services/frontend && cat package.json | grep -q '"react-resizable-panels"' && test -f components/sidebar/__tests__/NavRail.test.tsx && test -f components/sidebar/__tests__/ProjectPane.test.tsx && test -f __tests__/cmd-k.test.tsx && test -f __tests__/layout.test.tsx</automated>
@@ -155,7 +155,6 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
     - `services/frontend/components/sidebar/__tests__/ProjectPane.test.tsx` exists and contains `import.*ProjectPane`
     - `services/frontend/__tests__/cmd-k.test.tsx` exists and contains `'onevoice:sidebar-search-focus'`
     - `services/frontend/__tests__/layout.test.tsx` exists and contains `'/chat'` AND `'/integrations'`
-    - `cd services/frontend && pnpm vitest run __tests__/cmd-k.test.tsx __tests__/layout.test.tsx components/sidebar/__tests__/NavRail.test.tsx components/sidebar/__tests__/ProjectPane.test.tsx` exits NON-ZERO (RED Wave 0; tests fail because target components don't exist yet — proves intent)
   </acceptance_criteria>
   <done>react-resizable-panels installed, four scaffold test files exist and currently fail on RED.</done>
 </task>
