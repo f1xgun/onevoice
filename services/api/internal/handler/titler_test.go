@@ -79,6 +79,7 @@ func (r *titlerConvRepo) UpdateTitleIfPending(_ context.Context, id, title strin
 	r.updateTitleCalls = append(r.updateTitleCalls, struct{ ID, Title string }{id, title})
 	return r.updateTitleErr
 }
+
 // Pin / Unpin — Phase 19 / D-02 atomic conditional updates (Plan 19-02 Task 1).
 // Titler tests don't exercise pin lifecycle; stubs return nil.
 func (r *titlerConvRepo) Pin(_ context.Context, _, _, _ string) error   { return nil }
