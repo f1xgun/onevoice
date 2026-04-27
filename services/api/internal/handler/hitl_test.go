@@ -185,6 +185,8 @@ func (c *hitlConvRepo) Delete(_ context.Context, _ string) error               {
 func (c *hitlConvRepo) UpdateProjectAssignment(_ context.Context, _ string, _ *string) error {
 	return nil
 }
+func (c *hitlConvRepo) UpdateTitleIfPending(_ context.Context, _, _ string) error { return nil }
+func (c *hitlConvRepo) TransitionToAutoPending(_ context.Context, _ string) error { return nil }
 
 // -- helpers -----------------------------------------------------------------
 
@@ -576,15 +578,63 @@ func TestResolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.T) {
 
 // -- resume tests ------------------------------------------------------------
 
-func TestResume_BatchResolving_Returns409(t *testing.T) {
+// TestResume_BatchResolving_Allowed — Plan 17-11 / GAP-04 regression.
+// `status=resolving` is the legitimate post-resolve state (Resolve atomically
+// transitions pending→resolving and the orchestrator's resume goroutine is the
+// only writer that transitions resolving→resolved). The api Resume handler
+// MUST proxy the request to the orchestrator instead of rejecting with 409.
+// Pre-fix: this returned 409 unconditionally and bricked every approval flow
+// once GAP-03's 403 short-circuit was lifted.
+func TestResume_BatchResolving_Allowed(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
 		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
 	})
-	// Move batch to status=resolving.
+	// Move batch to status=resolving (post-resolve, pre-dispatch).
 	pr.mu.Lock()
 	pr.batches["b1"].Status = "resolving"
+	pr.mu.Unlock()
+
+	// Stub the orchestrator so we can verify the api forwards instead of
+	// rejecting with 409. The orchestrator returns a tiny SSE-like payload.
+	orchHits := 0
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		orchHits++
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
+	}))
+	defer orch.Close()
+
+	h := buildHITLHandler(t, pr, biz, nil, orch.URL)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/c1/resume?batch_id=b1", http.NoBody)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, uuid.New())
+	req = req.WithContext(ctx)
+	r := chi.NewRouter()
+	r.Post("/api/v1/chat/{id}/resume", h.Resume)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (forwarded to orchestrator); body=%q", rec.Code, rec.Body.String())
+	}
+	if orchHits != 1 {
+		t.Fatalf("orchestrator hits = %d, want 1 (api must forward, not reject)", orchHits)
+	}
+}
+
+// TestResume_BatchResolved_Returns409 — `resolved` is the terminal state
+// (orchestrator has dispatched all calls). A second resume against a resolved
+// batch is a true conflict.
+func TestResume_BatchResolved_Returns409(t *testing.T) {
+	biz := &domain.Business{ID: uuid.New()}
+	pr := newFakeHITLPendingRepo()
+	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
+		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+	})
+	pr.mu.Lock()
+	pr.batches["b1"].Status = "resolved"
 	pr.mu.Unlock()
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
@@ -599,8 +649,8 @@ func TestResume_BatchResolving_Returns409(t *testing.T) {
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "batch resolving") {
-		t.Errorf("body missing reason: %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "already_resolved") {
+		t.Errorf("body missing already_resolved reason: %s", rec.Body.String())
 	}
 }
 

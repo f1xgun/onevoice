@@ -32,6 +32,8 @@ type MockConversationRepository struct {
 	UpdateFunc                  func(ctx context.Context, conv *domain.Conversation) error
 	DeleteFunc                  func(ctx context.Context, id string) error
 	UpdateProjectAssignmentFunc func(ctx context.Context, id string, projectID *string) error
+	UpdateTitleIfPendingFunc    func(ctx context.Context, id, title string) error
+	TransitionToAutoPendingFunc func(ctx context.Context, id string) error
 }
 
 func (m *MockConversationRepository) Create(ctx context.Context, conv *domain.Conversation) error {
@@ -72,6 +74,20 @@ func (m *MockConversationRepository) Delete(ctx context.Context, id string) erro
 func (m *MockConversationRepository) UpdateProjectAssignment(ctx context.Context, id string, projectID *string) error {
 	if m.UpdateProjectAssignmentFunc != nil {
 		return m.UpdateProjectAssignmentFunc(ctx, id, projectID)
+	}
+	return nil
+}
+
+func (m *MockConversationRepository) UpdateTitleIfPending(ctx context.Context, id, title string) error {
+	if m.UpdateTitleIfPendingFunc != nil {
+		return m.UpdateTitleIfPendingFunc(ctx, id, title)
+	}
+	return nil
+}
+
+func (m *MockConversationRepository) TransitionToAutoPending(ctx context.Context, id string) error {
+	if m.TransitionToAutoPendingFunc != nil {
+		return m.TransitionToAutoPendingFunc(ctx, id)
 	}
 	return nil
 }
@@ -1514,4 +1530,104 @@ func TestGetMessages_MultiplePendingBatches_AllReturned(t *testing.T) {
 	assert.Equal(t, "pending", body.PendingApprovals[0].Status)
 	assert.Equal(t, "b2", body.PendingApprovals[1].BatchID)
 	assert.Equal(t, "resolving", body.PendingApprovals[1].Status)
+}
+
+// TestUpdateConversation_TitleStatusManual is the Plan 18-05 D-06 plumbing
+// regression test (Landmine 7): a successful PUT /conversations/{id} with a
+// title field MUST flip TitleStatus to "manual" and the repo's Update method
+// MUST receive a Conversation whose TitleStatus is "manual" — anything less
+// allows the next auto-titler turn to clobber the user's manual rename
+// (PITFALLS §12 — the trust-critical contract).
+//
+// The handler's Update assignment is the load-bearing line; this test
+// asserts the assignment survives the request roundtrip and reaches the
+// repository layer. Plan 03's repo Update writes title_status into the $set
+// block so the flag persists; this test guards the handler half.
+func TestUpdateConversation_TitleStatusManual(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439040"
+	original := &domain.Conversation{
+		ID:          convID,
+		UserID:      userID.String(),
+		BusinessID:  "biz-1",
+		Title:       "Старый",
+		TitleStatus: domain.TitleStatusAuto, // pre-rename
+	}
+
+	var updated *domain.Conversation
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			cp := *original
+			return &cp, nil
+		},
+		UpdateFunc: func(_ context.Context, conv *domain.Conversation) error {
+			c := *conv
+			updated = &c
+			return nil
+		},
+	}
+	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
+
+	body, _ := json.Marshal(UpdateConversationRequest{Title: "Новый ручной заголовок"})
+	req := makeAuthedReq(t, http.MethodPut,
+		"/api/v1/conversations/"+convID, body, userID, convID)
+	w := httptest.NewRecorder()
+	h.UpdateConversation(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "body=%s", w.Body.String())
+	require.NotNil(t, updated, "repo Update must be invoked")
+
+	// Trust-critical assertion: TitleStatus is now "manual".
+	assert.Equal(t, domain.TitleStatusManual, updated.TitleStatus,
+		"D-06: PUT /conversations/{id} must unconditionally flip TitleStatus to manual")
+	assert.Equal(t, "Новый ручной заголовок", updated.Title,
+		"new title must be persisted alongside the manual flag")
+
+	// Response body also carries the post-update conversation; it must
+	// reflect the manual flag so the frontend updates its React Query cache
+	// without an extra refetch (the cache hydrates the sidebar header).
+	var resp domain.Conversation
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, domain.TitleStatusManual, resp.TitleStatus)
+}
+
+// TestUpdateConversation_TitleStatusManual_FromAutoPending is a stricter
+// regression: even when the conversation is currently auto_pending (a titler
+// goroutine is mid-flight), PUT /conversations/{id} MUST flip to manual.
+// D-06 is unconditional — there's no "only flip if status was auto" branch.
+func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439041"
+	original := &domain.Conversation{
+		ID:          convID,
+		UserID:      userID.String(),
+		BusinessID:  "biz-1",
+		Title:       "",
+		TitleStatus: domain.TitleStatusAutoPending, // job mid-flight
+	}
+
+	var updated *domain.Conversation
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			cp := *original
+			return &cp, nil
+		},
+		UpdateFunc: func(_ context.Context, conv *domain.Conversation) error {
+			c := *conv
+			updated = &c
+			return nil
+		},
+	}
+	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
+
+	body, _ := json.Marshal(UpdateConversationRequest{Title: "Победил гонку"})
+	req := makeAuthedReq(t, http.MethodPut,
+		"/api/v1/conversations/"+convID, body, userID, convID)
+	w := httptest.NewRecorder()
+	h.UpdateConversation(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, updated)
+	assert.Equal(t, domain.TitleStatusManual, updated.TitleStatus,
+		"D-06: PUT must flip auto_pending → manual; the repo's atomic UpdateTitleIfPending will then no-op when the titler returns")
 }

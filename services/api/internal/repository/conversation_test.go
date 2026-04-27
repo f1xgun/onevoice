@@ -404,3 +404,174 @@ func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
 	})
 }
+
+// insertConvWithStatus inserts a conversation document directly via the Mongo
+// driver so tests can assert behavior across all four representable
+// title_status states, INCLUDING the absent-field case (status == "" sentinel
+// in the table). When status == "" the document is inserted WITHOUT the
+// title_status field at all — this is the "legacy / pre-Phase-18 row" case
+// that the $in:[..., nil] filter MUST treat as eligible.
+func insertConvWithStatus(t *testing.T, db *mongo.Database, status string) string {
+	t.Helper()
+	id := bson.NewObjectID().Hex()
+	now := time.Now()
+	doc := bson.M{
+		"_id":         id,
+		"user_id":     "user-phase18",
+		"business_id": "biz-phase18",
+		"project_id":  nil,
+		"title":       "seed",
+		"created_at":  now,
+		"updated_at":  now,
+	}
+	if status != "" {
+		doc["title_status"] = status
+	}
+	_, err := db.Collection("conversations").InsertOne(context.Background(), doc)
+	require.NoError(t, err)
+	return id
+}
+
+// TestUpdateTitleIfPending — Phase 18 / TITLE-04 / D-08. Trust-critical:
+// manual renames mid-flight MUST NOT be clobbered by the auto-titler.
+func TestUpdateTitleIfPending(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewConversationRepository(db)
+	ctx := context.Background()
+
+	cases := []struct {
+		name            string
+		initialStatus   string // "" means field absent (legacy / null)
+		wantSuccess     bool
+		wantStatusAfter string
+	}{
+		{"success: status=auto_pending", domain.TitleStatusAutoPending, true, domain.TitleStatusAuto},
+		{"success: status=null/empty (legacy row)", "", true, domain.TitleStatusAuto},
+		{"no-op: status=manual (race lost)", domain.TitleStatusManual, false, domain.TitleStatusManual},
+		{"no-op: status=auto (already terminal)", domain.TitleStatusAuto, false, domain.TitleStatusAuto},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			id := insertConvWithStatus(t, db, c.initialStatus)
+
+			err := repo.UpdateTitleIfPending(ctx, id, "Generated Title")
+			if c.wantSuccess {
+				require.NoError(t, err, "want success, got err=%v", err)
+			} else {
+				require.ErrorIs(t, err, domain.ErrConversationNotFound,
+					"want ErrConversationNotFound on filter-fail")
+			}
+
+			got, err := repo.GetByID(ctx, id)
+			require.NoError(t, err, "GetByID after UpdateTitleIfPending")
+			assert.Equal(t, c.wantStatusAfter, got.TitleStatus,
+				"title_status mismatch")
+			if c.wantSuccess {
+				assert.Equal(t, "Generated Title", got.Title,
+					"title was not updated on success path")
+			} else {
+				assert.Equal(t, "seed", got.Title,
+					"title MUST be untouched on filter-fail (manual won race)")
+			}
+		})
+	}
+
+	t.Run("missing id returns ErrConversationNotFound", func(t *testing.T) {
+		err := repo.UpdateTitleIfPending(ctx, "nonexistent-id-xyz", "X")
+		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
+	})
+}
+
+// TestTransitionToAutoPending — Phase 18 / TITLE-09 / D-07. Used by
+// /regenerate-title; manual rows MUST refuse the transition.
+func TestTransitionToAutoPending(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewConversationRepository(db)
+	ctx := context.Background()
+
+	cases := []struct {
+		name            string
+		initialStatus   string
+		wantSuccess     bool
+		wantStatusAfter string
+	}{
+		{"success: status=auto", domain.TitleStatusAuto, true, domain.TitleStatusAutoPending},
+		{"success: status=null/empty (legacy row)", "", true, domain.TitleStatusAutoPending},
+		{"no-op: status=manual (sovereign per D-02)", domain.TitleStatusManual, false, domain.TitleStatusManual},
+		{"no-op: status=auto_pending (in-flight per D-03)", domain.TitleStatusAutoPending, false, domain.TitleStatusAutoPending},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			id := insertConvWithStatus(t, db, c.initialStatus)
+
+			err := repo.TransitionToAutoPending(ctx, id)
+			if c.wantSuccess {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, domain.ErrConversationNotFound)
+			}
+
+			got, err := repo.GetByID(ctx, id)
+			require.NoError(t, err)
+			assert.Equal(t, c.wantStatusAfter, got.TitleStatus)
+			// Title is never touched by TransitionToAutoPending regardless of
+			// branch — only the status field flips.
+			assert.Equal(t, "seed", got.Title,
+				"TransitionToAutoPending MUST NOT touch title")
+		})
+	}
+
+	t.Run("missing id returns ErrConversationNotFound", func(t *testing.T) {
+		err := repo.TransitionToAutoPending(ctx, "nonexistent-id-xyz")
+		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
+	})
+}
+
+// TestUpdate_PersistsTitleStatus — Phase 18 / D-06 / Landmine 7 regression.
+// Without title_status in the Update $set block, the handler-level flip to
+// "manual" in PUT /conversations/{id} would be silently dropped at the repo
+// layer and an in-flight titler could clobber the user's chosen title. This
+// test guards against the repo bug returning.
+func TestUpdate_PersistsTitleStatus(t *testing.T) {
+	db := setupMongoTestDB(t)
+	repo := NewConversationRepository(db)
+	ctx := context.Background()
+
+	id := insertConvWithStatus(t, db, domain.TitleStatusAutoPending)
+
+	// Simulate Plan 05's PUT handler: read, mutate Title + TitleStatus, Update.
+	conv, err := repo.GetByID(ctx, id)
+	require.NoError(t, err)
+	conv.Title = "User-Picked Title"
+	conv.TitleStatus = domain.TitleStatusManual
+	require.NoError(t, repo.Update(ctx, conv))
+
+	got, err := repo.GetByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, domain.TitleStatusManual, got.TitleStatus,
+		"Landmine 7: $set must include title_status — otherwise PUT /conversations/{id} flip is silently dropped")
+	assert.Equal(t, "User-Picked Title", got.Title)
+}
+
+// TestEnsureConversationIndexes_Idempotent — Phase 18 / D-08a. Index
+// creation must be idempotent across boots and the named index must exist
+// after the helper returns.
+func TestEnsureConversationIndexes_Idempotent(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+
+	require.NoError(t, EnsureConversationIndexes(ctx, db), "first call")
+	require.NoError(t, EnsureConversationIndexes(ctx, db), "second call (idempotent)")
+
+	specs, err := db.Collection("conversations").Indexes().ListSpecifications(ctx)
+	require.NoError(t, err)
+
+	found := false
+	for _, s := range specs {
+		if s.Name == "conversations_user_biz_title_status" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "named index conversations_user_biz_title_status must exist after EnsureConversationIndexes")
+}

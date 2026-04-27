@@ -61,6 +61,16 @@ type ConversationRepository interface {
 	// Plan 15-04 relies on the `bson:"project_id"` tag (no omitempty) so the
 	// Mongo field becomes explicit null rather than missing.
 	UpdateProjectAssignment(ctx context.Context, id string, projectID *string) error
+	// UpdateTitleIfPending atomically writes title + title_status="auto" only
+	// when current status is "auto_pending" or null. Returns ErrConversationNotFound
+	// when the filter matches zero docs (manual rename won the race, or doc deleted).
+	// TITLE-04 / D-08: trust-critical path — manual renames MUST NOT be clobbered.
+	UpdateTitleIfPending(ctx context.Context, id, title string) error
+	// TransitionToAutoPending atomically flips title_status from "auto" or null
+	// → "auto_pending". Used by POST /regenerate-title (Plan 05). Returns
+	// ErrConversationNotFound when filter matches zero docs (status was "manual"
+	// OR "auto_pending" — caller maps each disposition to its 409 body).
+	TransitionToAutoPending(ctx context.Context, id string) error
 }
 
 type MessageRepository interface {
@@ -166,9 +176,28 @@ type PendingToolCallBatch struct {
 // Dispatched is the orchestrator-side double-execution guard (Overview
 // invariant #3): on resume, any entry with Dispatched=true is skipped.
 type PendingCall struct {
-	CallID       string                 `bson:"call_id"`
-	ToolName     string                 `bson:"tool_name"`
-	Arguments    map[string]interface{} `bson:"arguments"`
+	CallID    string                 `bson:"call_id"`
+	ToolName  string                 `bson:"tool_name"`
+	Arguments map[string]interface{} `bson:"arguments"`
+
+	// FloorAtPause is the effective ToolFloor at the moment the orchestrator
+	// paused the turn for this call. Persisted so the resolve-time TOCTOU
+	// re-check can consult the same registry that classified the call at
+	// pause time, eliminating divergence between the orchestrator's
+	// in-process tools.Registry (always warm) and the api's
+	// service.ToolsRegistryCache (HTTP-backed, lazily warmed). See
+	// 17-VERIFICATION.md §GAP-04 for the divergence root cause.
+	//
+	// For pause-time-persisted calls this is always ToolFloorManual (only
+	// manual-floor calls reach the orchestrator's pause path; auto and
+	// forbidden are bucketed elsewhere). bson:",omitempty" so legacy
+	// batches written before plan 17-11 decode with FloorAtPause == ""
+	// (ToolFloorRank returns -1 for invalid values, so an empty floor
+	// cannot dominate a valid business/project override — strictest-wins
+	// still detects a post-pause forbidden flip; the orchestrator-side
+	// TOCTOU recheck remains the load-bearing primitive for safety).
+	FloorAtPause ToolFloor `bson:"floor_at_pause,omitempty"`
+
 	Verdict      string                 `bson:"verdict,omitempty"` // "approve" | "edit" | "reject"
 	EditedArgs   map[string]interface{} `bson:"edited_args,omitempty"`
 	RejectReason string                 `bson:"reject_reason,omitempty"`

@@ -279,6 +279,14 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 			CallID:    tc.ID,
 			ToolName:  tc.Function.Name,
 			Arguments: args,
+			// Plan 17-11 / GAP-04: persist the pause-time floor on every
+			// PendingCall so the resolve-time TOCTOU re-check consults the
+			// same registry the orchestrator used at pause. Only manual-
+			// floor calls reach the manualCalls bucket (bucketing in
+			// stepRun guarantees this), so the constant is correct without
+			// an extra registry lookup. The orchestrator-side recheck in
+			// resume.go remains the load-bearing TOCTOU primitive.
+			FloorAtPause: domain.ToolFloorManual,
 			// Verdict/EditedArgs/Dispatched left zero — populated by
 			// Plan 16-07's resolve handler.
 		})

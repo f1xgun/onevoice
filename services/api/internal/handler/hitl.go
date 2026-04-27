@@ -268,12 +268,20 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusGone, map[string]string{"error": "approval_expired"})
 		return
 	}
-	if batch.Status == "resolving" {
-		// The client may be racing its own resolve. Tell them to retry shortly.
+	// Plan 17-11 / GAP-04: previously rejected `status=resolving` here, but
+	// that was wrong — `Resolve` atomically transitions `pending → resolving`
+	// and the orchestrator's resume goroutine is the only writer that
+	// transitions `resolving → resolved` (via `MarkResolved` after dispatch
+	// completes). So the legitimate first resume call ALWAYS finds the batch
+	// in `resolving`; rejecting it bricked every approval flow once GAP-03's
+	// 403 short-circuit was lifted. The truly-conflicting terminal state is
+	// `resolved` (already-dispatched), and `expired` is handled above as 410.
+	// Per-call double-dispatch protection lives in the orchestrator's
+	// `MarkDispatched` idempotence guard, not here.
+	if batch.Status == "resolved" {
 		writeJSON(w, http.StatusConflict, map[string]interface{}{
-			"error":          "batch resolving",
-			"retry_after_ms": 500,
-			"reason":         "resolve in flight",
+			"error":  "batch already resolved",
+			"reason": "already_resolved",
 		})
 		return
 	}
