@@ -82,6 +82,36 @@ type ConversationRepository interface {
 	// conversation, scoped by (id, business_id, user_id). Returns
 	// ErrConversationNotFound on mismatch.
 	Unpin(ctx context.Context, id, businessID, userID string) error
+	// SearchTitles — Phase 19 / Plan 19-03 / D-12 phase 1. Runs the $text
+	// query against conversations.title scoped by (user_id, business_id,
+	// project_id?). Returns title hits AND the slice of matching conversation
+	// IDs. Empty businessID or userID returns ErrInvalidScope (cross-tenant
+	// defense-in-depth). Result types live in
+	// services/api/internal/repository.ConversationTitleHit.
+	SearchTitles(ctx context.Context, businessID, userID, query string, projectID *string, limit int) ([]ConversationTitleHit, []string, error)
+	// ScopedConversationIDs — Phase 19 / Plan 19-03 / D-12 phase 1
+	// allowlist. Returns the conversation IDs visible to (user_id,
+	// business_id, project_id?) ordered by last_message_at desc, capped at
+	// MaxScopedConversations (overflow logged + truncated). Empty
+	// businessID or userID returns ErrInvalidScope.
+	ScopedConversationIDs(ctx context.Context, businessID, userID string, projectID *string) ([]string, error)
+}
+
+// ConversationTitleHit is the per-row projection returned by
+// ConversationRepository.SearchTitles. Mirrors the BSON shape decoded from
+// a Find()+SetProjection that includes the $meta:textScore virtual field.
+//
+// Lives in pkg/domain (not services/api/internal/repository) so the
+// interface signature does not import the implementation package — Go's
+// "implementations import interfaces, not the other way around" idiom.
+type ConversationTitleHit struct {
+	ID            string     `bson:"_id"`
+	Title         string     `bson:"title"`
+	ProjectID     *string    `bson:"project_id"`
+	UserID        string     `bson:"user_id"`
+	BusinessID    string     `bson:"business_id"`
+	Score         float64    `bson:"score"`
+	LastMessageAt *time.Time `bson:"last_message_at"`
 }
 
 type MessageRepository interface {
@@ -100,6 +130,29 @@ type MessageRepository interface {
 	// D-04 stream-open gate (Plan 16-06) to detect in-flight turns before
 	// creating a new assistant Message.
 	FindByConversationActive(ctx context.Context, conversationID string) (*Message, error)
+	// SearchByConversationIDs — Phase 19 / Plan 19-03 / D-12 phase 2.
+	// Aggregation pipeline that runs $text on messages.content scoped by
+	// the conversation_id allowlist (computed in phase 1 from
+	// ConversationRepository.ScopedConversationIDs). Returns one row per
+	// conversation: (top_message_id, top_content, top_score, match_count).
+	// Empty allowlist returns (nil, nil) without invoking Mongo.
+	// Cross-tenant scope is enforced ENTIRELY by the allowlist — Message
+	// documents have no business_id field.
+	SearchByConversationIDs(ctx context.Context, query string, convIDs []string, limit int) ([]MessageSearchHit, error)
+}
+
+// MessageSearchHit is the per-conversation projection produced by the
+// SearchByConversationIDs aggregation. ConversationID is the group key
+// (the $group stage maps the grouping value into _id). TopMessageID,
+// TopContent, TopScore come from $first over the per-message score sort;
+// MatchCount counts the messages in the conversation that hit the $text
+// query.
+type MessageSearchHit struct {
+	ConversationID string  `bson:"_id"`
+	TopMessageID   string  `bson:"top_message_id"`
+	TopContent     string  `bson:"top_content"`
+	TopScore       float64 `bson:"top_score"`
+	MatchCount     int     `bson:"match_count"`
 }
 
 // Filter types

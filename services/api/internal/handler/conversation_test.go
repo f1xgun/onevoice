@@ -112,6 +112,20 @@ func (m *MockConversationRepository) Unpin(ctx context.Context, id, businessID, 
 	return nil
 }
 
+// SearchTitles / ScopedConversationIDs — Phase 19 / Plan 19-03 / SEARCH-02
+// stubs. The conversation handler under test never calls these (search is
+// owned by SearchHandler, Plan 19-03 Task 4); the methods exist solely so
+// MockConversationRepository continues to satisfy domain.ConversationRepository
+// after the Phase 19 interface extension. Test files exercising the search
+// path use a dedicated fake in services/api/internal/service/search_test.go.
+func (m *MockConversationRepository) SearchTitles(_ context.Context, _, _, _ string, _ *string, _ int) ([]domain.ConversationTitleHit, []string, error) {
+	return nil, nil, nil
+}
+
+func (m *MockConversationRepository) ScopedConversationIDs(_ context.Context, _, _ string, _ *string) ([]string, error) {
+	return nil, nil
+}
+
 // MockPendingToolCallRepository is a minimal test double for Phase 16's
 // PendingToolCallRepository. Only the methods actually called by the handler
 // under test need a *Func field; others return nil / empty slices.
@@ -190,6 +204,15 @@ func (m *MockMessageRepository) FindByConversationActive(ctx context.Context, co
 		return m.FindByConversationActiveFunc(ctx, conversationID)
 	}
 	return nil, domain.ErrMessageNotFound
+}
+
+// SearchByConversationIDs — Phase 19 / Plan 19-03 / SEARCH-03 stub. The
+// conversation handler under test never calls this (search is owned by
+// SearchHandler, Plan 19-03 Task 4); the method exists solely so
+// MockMessageRepository continues to satisfy domain.MessageRepository
+// after the Phase 19 interface extension.
+func (m *MockMessageRepository) SearchByConversationIDs(_ context.Context, _ string, _ []string, _ int) ([]domain.MessageSearchHit, error) {
+	return nil, nil
 }
 
 // noopBusinessService returns ErrBusinessNotFound by default. Tests that need

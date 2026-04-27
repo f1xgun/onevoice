@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -305,4 +306,128 @@ func (r *conversationRepository) Unpin(ctx context.Context, id, businessID, user
 		return domain.ErrConversationNotFound
 	}
 	return nil
+}
+
+// MaxScopedConversations caps the conversation-id allowlist that
+// SearchByConversationIDs receives in phase 2 of D-12's two-phase strategy.
+// At v1.3 single-owner scale this is well above ceiling; the cap exists
+// to bound query cost (and Mongo's $in size) on future paths. Overflow is
+// logged + truncated to the most-recently-active 1000 (Pitfalls §15 Q10).
+const MaxScopedConversations = 1000
+
+// SearchTitles — Phase 19 / Plan 19-03 / D-12 phase 1.
+//
+// Runs the $text query against conversations.title scoped by
+// (user_id, business_id, project_id?). Returns title hits AND the slice
+// of conversation IDs that matched the title query (callers may use the
+// IDs to short-circuit phase 2 if every match was title-only).
+//
+// Defense-in-depth: empty businessID or userID returns
+// domain.ErrInvalidScope immediately. Repository-level guard parallel to
+// the service-layer guard so cross-tenant leak (T-19-CROSS-TENANT) cannot
+// happen even if a future caller forgets to scope.
+//
+// Mongo $text rule (RESEARCH §5): $text MUST be the FIRST $match stage in
+// any aggregation. We use Find() (no aggregation pipeline) which is
+// equivalent: $text + non-$text equality filters in a single filter
+// document. Avoid $or wrapping.
+func (r *conversationRepository) SearchTitles(
+	ctx context.Context,
+	businessID, userID, query string,
+	projectID *string,
+	limit int,
+) ([]domain.ConversationTitleHit, []string, error) {
+	if businessID == "" || userID == "" {
+		return nil, nil, domain.ErrInvalidScope
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	filter := bson.M{
+		"$text":       bson.M{"$search": query},
+		"user_id":     userID,
+		"business_id": businessID,
+	}
+	if projectID != nil {
+		filter["project_id"] = *projectID
+	}
+	opts := options.Find().
+		SetProjection(bson.M{
+			"score":           bson.M{"$meta": "textScore"},
+			"title":           1,
+			"project_id":      1,
+			"user_id":         1,
+			"business_id":     1,
+			"last_message_at": 1,
+		}).
+		SetSort(bson.D{{Key: "score", Value: bson.M{"$meta": "textScore"}}}).
+		SetLimit(int64(limit))
+
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, nil, fmt.Errorf("search titles: %w", err)
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+
+	var hits []domain.ConversationTitleHit
+	if err := cursor.All(ctx, &hits); err != nil {
+		return nil, nil, fmt.Errorf("decode title hits: %w", err)
+	}
+	ids := make([]string, len(hits))
+	for i, h := range hits {
+		ids[i] = h.ID
+	}
+	return hits, ids, nil
+}
+
+// ScopedConversationIDs — Phase 19 / Plan 19-03 / D-12 phase 1 allowlist.
+//
+// Returns the IDs of every conversation visible to (user_id, business_id,
+// project_id?) ordered by last_message_at desc and capped at
+// MaxScopedConversations + 1 (so we can detect overflow). The caller
+// (Searcher) feeds the slice into messageRepository.SearchByConversationIDs
+// as the cross-tenant allowlist for phase 2.
+//
+// Defense-in-depth: empty businessID or userID returns ErrInvalidScope.
+// Overflow above MaxScopedConversations is logged with
+// metadata-only fields (SEARCH-07: never the query, never the IDs) and
+// the slice is truncated to the most-recently-active MaxScopedConversations.
+func (r *conversationRepository) ScopedConversationIDs(
+	ctx context.Context,
+	businessID, userID string,
+	projectID *string,
+) ([]string, error) {
+	if businessID == "" || userID == "" {
+		return nil, domain.ErrInvalidScope
+	}
+	filter := bson.M{"user_id": userID, "business_id": businessID}
+	if projectID != nil {
+		filter["project_id"] = *projectID
+	}
+	opts := options.Find().
+		SetProjection(bson.M{"_id": 1}).
+		SetSort(bson.D{{Key: "last_message_at", Value: -1}}).
+		SetLimit(int64(MaxScopedConversations + 1))
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("scoped conversation ids: %w", err)
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var rows []struct {
+		ID string `bson:"_id"`
+	}
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("decode scoped ids: %w", err)
+	}
+	if len(rows) > MaxScopedConversations {
+		slog.WarnContext(ctx, "search: scoped conversation set exceeds cap",
+			"user_id", userID, "business_id", businessID,
+			"count", len(rows), "cap", MaxScopedConversations)
+		rows = rows[:MaxScopedConversations]
+	}
+	out := make([]string, len(rows))
+	for i, x := range rows {
+		out[i] = x.ID
+	}
+	return out, nil
 }
