@@ -83,8 +83,10 @@ export function SearchResultRow({ result, onSelect }: Props) {
     ? format(parseISO(result.lastMessageAt), 'd MMM', { locale: ru })
     : '';
 
+  // Phase 19 / Plan 19-05 — the parent Popover.Content carries role="listbox"
+  // when results.length > 0; ARIA requires its direct children to be option.
   return (
-    <div className="rounded-md hover:bg-gray-800">
+    <div role="option" aria-selected={false} className="rounded-md hover:bg-gray-800">
       <div className="flex items-center gap-2 px-2 pt-1.5">
         <Link
           href={href}
@@ -94,9 +96,7 @@ export function SearchResultRow({ result, onSelect }: Props) {
           data-roving-item="true"
           className="flex flex-1 items-center gap-2 truncate text-sm text-gray-200"
         >
-          <span className="flex-1 truncate">
-            {result.title || 'Новый диалог'}
-          </span>
+          <span className="flex-1 truncate">{result.title || 'Новый диалог'}</span>
         </Link>
         {result.projectId && <ProjectChip projectId={result.projectId} size="xs" />}
         {dateLabel && <span className="shrink-0 text-xs text-gray-500">{dateLabel}</span>}

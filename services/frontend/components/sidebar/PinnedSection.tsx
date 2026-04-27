@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import type { RefObject } from 'react';
 import Link from 'next/link';
 import { Bookmark, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
 import { ProjectChip } from '@/components/chat/ProjectChip';
 import type { Conversation } from '@/lib/conversations';
 
@@ -43,11 +45,20 @@ export function PinnedSection({
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
 
-  // D-04 — empty section is hidden entirely.
-  if (conversations.length === 0) return null;
-
   const count = conversations.length;
   const visible = conversations.slice(0, MAX_VISIBLE);
+
+  // Phase 19 / Plan 19-05 / D-17 — roving-tabindex on the chat-list portion.
+  // Tab enters the pinned list once, ↑/↓/Home/End navigate. The
+  // «Закреплённые» header chevron sits OUTSIDE the container — it remains a
+  // separate Tab stop, which D-17 explicitly requires.
+  //
+  // The hook MUST be called before the D-04 early return so that the rules
+  // of hooks are respected (hook count must be stable across renders).
+  const { containerRef, onKeyDown } = useRovingTabIndex(visible.length);
+
+  // D-04 — empty section is hidden entirely.
+  if (conversations.length === 0) return null;
 
   return (
     <div className="group/pinned">
@@ -69,14 +80,24 @@ export function PinnedSection({
       </button>
 
       {!collapsed && (
-        <div className="ml-5 mt-0.5 space-y-0.5">
-          {visible.map((conv) => {
+        <div
+          ref={containerRef as RefObject<HTMLDivElement>}
+          onKeyDown={onKeyDown}
+          role="listbox"
+          aria-label="Закреплённые чаты"
+          className="ml-5 mt-0.5 space-y-0.5"
+        >
+          {visible.map((conv, i) => {
             const project = conv.projectId ? projectsById[conv.projectId] : undefined;
             return (
               <div key={conv.id} className="flex items-center gap-1 px-1">
                 <Link
                   href={`/chat/${conv.id}`}
                   onClick={onNavigate}
+                  data-roving-item
+                  tabIndex={i === 0 ? 0 : -1}
+                  role="option"
+                  aria-selected={conv.id === activeConversationId}
                   className={cn(
                     'flex flex-1 items-center gap-1 truncate rounded-md px-2 py-1 text-xs transition-colors',
                     conv.id === activeConversationId

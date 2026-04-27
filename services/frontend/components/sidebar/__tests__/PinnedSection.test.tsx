@@ -29,7 +29,12 @@ function Wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-function makeConv(id: string, title: string, projectId: string | null, pinnedAt: string | null): Conversation {
+function makeConv(
+  id: string,
+  title: string,
+  projectId: string | null,
+  pinnedAt: string | null
+): Conversation {
   return {
     id,
     userId: 'u-1',
@@ -103,8 +108,31 @@ describe('PinnedSection — Phase 19 / D-04 + D-05', () => {
         <PinnedSection conversations={convs} projectsById={{}} />
       </Wrapper>
     );
-    const links = screen.getAllByRole('link');
-    expect(links[0]).toHaveTextContent('Newer pinned');
-    expect(links[1]).toHaveTextContent('Older pinned');
+    // Phase 19 / Plan 19-05 / D-17 — chat-row links carry role="option" (they
+    // are children of a role="listbox" container, per the ARIA listbox
+    // pattern). Query by `option` role to match the live DOM.
+    const options = screen.getAllByRole('option');
+    expect(options[0]).toHaveTextContent('Newer pinned');
+    expect(options[1]).toHaveTextContent('Older pinned');
+  });
+
+  it('chat-row options have data-roving-item AND role="option" (D-17)', () => {
+    const convs = [
+      makeConv('c-1', 'First', null, '2026-04-27T12:00:00Z'),
+      makeConv('c-2', 'Second', null, '2026-04-26T12:00:00Z'),
+    ];
+    const { container } = render(
+      <Wrapper>
+        <PinnedSection conversations={convs} projectsById={{}} />
+      </Wrapper>
+    );
+    const items = container.querySelectorAll('[data-roving-item]');
+    expect(items.length).toBe(2);
+    expect(items[0].getAttribute('role')).toBe('option');
+    // Initial tabindex distribution: first=0, rest=-1.
+    expect(items[0].getAttribute('tabindex')).toBe('0');
+    expect(items[1].getAttribute('tabindex')).toBe('-1');
+    // The roving container itself has role="listbox".
+    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
   });
 });

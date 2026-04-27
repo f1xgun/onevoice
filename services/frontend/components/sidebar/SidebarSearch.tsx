@@ -168,7 +168,15 @@ export function SidebarSearch() {
           align="start"
           sideOffset={4}
           id={listboxId}
-          role="listbox"
+          // role="listbox" requires children with role="option" — applying
+          // it unconditionally and rendering an empty-state text node trips
+          // the axe `aria-required-children` (critical) rule. We apply
+          // role="listbox" only when there are real result rows; the empty
+          // state uses role="status" (a polite live region — also satisfies
+          // aria-controls because the element identity is stable).
+          role={results.length > 0 ? 'listbox' : 'status'}
+          aria-live={results.length === 0 ? 'polite' : undefined}
+          aria-label={results.length > 0 ? 'Результаты поиска' : 'Состояние поиска'}
           className="z-50 max-h-96 w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-md border border-gray-700 bg-gray-900 p-1 shadow-lg"
           // Keep focus in the search <input> so the user can keep typing.
           onOpenAutoFocus={(e) => e.preventDefault()}
