@@ -34,6 +34,9 @@ type MockConversationRepository struct {
 	UpdateProjectAssignmentFunc func(ctx context.Context, id string, projectID *string) error
 	UpdateTitleIfPendingFunc    func(ctx context.Context, id, title string) error
 	TransitionToAutoPendingFunc func(ctx context.Context, id string) error
+	// Phase 19 / D-02 atomic Pin/Unpin (Plan 19-02 Task 1).
+	PinFunc   func(ctx context.Context, id, businessID, userID string) error
+	UnpinFunc func(ctx context.Context, id, businessID, userID string) error
 }
 
 func (m *MockConversationRepository) Create(ctx context.Context, conv *domain.Conversation) error {
@@ -88,6 +91,23 @@ func (m *MockConversationRepository) UpdateTitleIfPending(ctx context.Context, i
 func (m *MockConversationRepository) TransitionToAutoPending(ctx context.Context, id string) error {
 	if m.TransitionToAutoPendingFunc != nil {
 		return m.TransitionToAutoPendingFunc(ctx, id)
+	}
+	return nil
+}
+
+// Pin / Unpin — Phase 19 / D-02 atomic conditional updates (Plan 19-02 Task 1).
+// Default returns nil so unrelated tests stay green; real Pin/Unpin tests
+// install per-call PinFunc / UnpinFunc.
+func (m *MockConversationRepository) Pin(ctx context.Context, id, businessID, userID string) error {
+	if m.PinFunc != nil {
+		return m.PinFunc(ctx, id, businessID, userID)
+	}
+	return nil
+}
+
+func (m *MockConversationRepository) Unpin(ctx context.Context, id, businessID, userID string) error {
+	if m.UnpinFunc != nil {
+		return m.UnpinFunc(ctx, id, businessID, userID)
 	}
 	return nil
 }
@@ -862,10 +882,10 @@ func TestGetConversation_RepositoryError(t *testing.T) {
 // TestConversation_JSONShape_PopulatedFields asserts that json.Marshal of a
 // fully populated domain.Conversation produces the camelCase keys the Phase 15
 // frontend (Plan 06 sidebar) relies on for grouping, pinning, and empty-state
-// filtering. This is the Plan 15-04 Task 1 JSON-shape contract (five keys
-// guaranteed when values are non-zero).
+// filtering. Phase 19 D-02 swaps `pinned` → `pinnedAt` (single source of truth).
 func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	lastMsg := time.Now().UTC()
+	pinnedAt := time.Now().UTC()
 	conv := domain.Conversation{
 		ID:            "c1",
 		UserID:        "u1",
@@ -873,7 +893,7 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 		ProjectID:     ptr("p1"),
 		Title:         "Ошибки после обновления",
 		TitleStatus:   domain.TitleStatusAutoPending,
-		Pinned:        true,
+		PinnedAt:      &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
 		LastMessageAt: &lastMsg,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -884,20 +904,23 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(raw, &m))
 
-	// The five keys Plan 06 sidebar relies on.
-	for _, key := range []string{"projectId", "businessId", "pinned", "titleStatus", "lastMessageAt"} {
+	// The five keys the sidebar relies on (Phase 19 D-02 swaps `pinned` → `pinnedAt`).
+	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
 		_, ok := m[key]
 		assert.Truef(t, ok, "expected key %q in JSON shape; got keys: %v", key, keysOf(m))
 	}
 	assert.Equal(t, "p1", m["projectId"])
 	assert.Equal(t, "b1", m["businessId"])
-	assert.Equal(t, true, m["pinned"])
 	assert.Equal(t, string(domain.TitleStatusAutoPending), m["titleStatus"])
+	// Legacy `pinned` bool MUST NOT appear in the JSON output (D-02 single source of truth).
+	_, hasLegacy := m["pinned"]
+	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed in Phase 19")
 }
 
 // TestConversation_JSONShape_NilProjectIDElided documents that when ProjectID
 // is nil, the `json:"projectId,omitempty"` tag elides the key. The frontend
 // must treat "missing projectId" as "null / Без проекта" per Plan 15-04.
+// Phase 19 D-02: `pinnedAt` is also omitempty so unpinned chats elide that key.
 func TestConversation_JSONShape_NilProjectIDElided(t *testing.T) {
 	conv := domain.Conversation{
 		ID:          "c2",
@@ -915,13 +938,14 @@ func TestConversation_JSONShape_NilProjectIDElided(t *testing.T) {
 
 	_, present := m["projectId"]
 	assert.False(t, present, "projectId must be elided when ProjectID is nil (omitempty); got: %v", m)
-	// businessId/pinned/titleStatus remain present.
+	// businessId / titleStatus remain present.
 	_, ok := m["businessId"]
-	assert.True(t, ok)
-	_, ok = m["pinned"]
 	assert.True(t, ok)
 	_, ok = m["titleStatus"]
 	assert.True(t, ok)
+	// Phase 19 D-02 — pinnedAt is omitempty; nil PinnedAt elides the key.
+	_, hasPinned := m["pinnedAt"]
+	assert.False(t, hasPinned, "pinnedAt must be elided when PinnedAt is nil (omitempty)")
 }
 
 // TestListConversations_JSONShape verifies that GET /api/v1/conversations
@@ -932,6 +956,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 	projID := "proj-1"
 	lastMsg := time.Now().UTC()
 
+	pinnedAt := time.Now().UTC()
 	conversations := []domain.Conversation{
 		{
 			ID:            "507f1f77bcf86cd799439011",
@@ -940,7 +965,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 			ProjectID:     &projID,
 			Title:         "Pinned",
 			TitleStatus:   domain.TitleStatusAuto,
-			Pinned:        true,
+			PinnedAt:      &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
 			LastMessageAt: &lastMsg,
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
@@ -968,14 +993,23 @@ func TestListConversations_JSONShape(t *testing.T) {
 	require.Len(t, items, 1)
 
 	item := items[0]
-	for _, key := range []string{"projectId", "businessId", "pinned", "titleStatus", "lastMessageAt"} {
+	// Phase 19 D-02 swaps `pinned` → `pinnedAt` (single source of truth).
+	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
 		_, ok := item[key]
 		assert.Truef(t, ok, "GET /api/v1/conversations item must carry key %q; got: %v", key, keysOf(item))
 	}
 	assert.Equal(t, "biz-1", item["businessId"])
 	assert.Equal(t, "proj-1", item["projectId"])
-	assert.Equal(t, true, item["pinned"])
+	// `pinnedAt` is the timestamp string; assert merely that it's non-empty
+	// and parseable. Exact value depends on the test fixture (now() at the
+	// pinnedAt := time.Now().UTC() statement above).
+	pa, ok := item["pinnedAt"].(string)
+	require.True(t, ok, "pinnedAt must serialize as a string (ISO timestamp)")
+	assert.NotEmpty(t, pa)
 	assert.Equal(t, string(domain.TitleStatusAuto), item["titleStatus"])
+	// Legacy `pinned` JSON key MUST be absent.
+	_, hasLegacy := item["pinned"]
+	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed in Phase 19 D-02")
 }
 
 // keysOf returns the keys of m (used only in test failure messages).
@@ -1049,7 +1083,9 @@ func TestCreateConversation_WithProjectID(t *testing.T) {
 	assert.Equal(t, pid, *capturedConv.ProjectID)
 	assert.Equal(t, businessID.String(), capturedConv.BusinessID)
 	assert.Equal(t, domain.TitleStatusAutoPending, capturedConv.TitleStatus)
-	assert.False(t, capturedConv.Pinned)
+	// Phase 19 D-02 — newly created chats are unpinned (PinnedAt == nil is the
+	// single source of truth; legacy `Pinned bool` removed).
+	assert.Nil(t, capturedConv.PinnedAt)
 }
 
 // TestCreateConversation_NullAndAbsentProjectIDEquivalent covers Behaviors 2 & 3.
@@ -1630,4 +1666,166 @@ func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 	require.NotNil(t, updated)
 	assert.Equal(t, domain.TitleStatusManual, updated.TitleStatus,
 		"D-06: PUT must flip auto_pending → manual; the repo's atomic UpdateTitleIfPending will then no-op when the titler returns")
+}
+
+// --- Phase 19 / Plan 19-02 — Pin / Unpin handler tests ---------------------
+
+// pinTestHandler builds a ConversationHandler wired with a businessService
+// that returns a fixed business ID so Pin/Unpin handler tests can assert
+// the (id, business_id, user_id) scope filter without re-stubbing each test.
+func pinTestHandler(convRepo domain.ConversationRepository, businessID uuid.UUID, userID uuid.UUID) *ConversationHandler {
+	biz := &noopBusinessService{
+		GetByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return &domain.Business{ID: businessID, UserID: userID, Name: "Test Business"}, nil
+		},
+	}
+	h, err := NewConversationHandler(convRepo, &MockMessageRepository{}, biz, &noopProjectService{}, &MockPendingToolCallRepository{})
+	if err != nil {
+		panic(err)
+	}
+	return h
+}
+
+func TestConversation_Pin_Success(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	now := time.Now().UTC()
+	pinCalls := 0
+	mockRepo := &MockConversationRepository{
+		PinFunc: func(_ context.Context, id, biz, uid string) error {
+			pinCalls++
+			assert.Equal(t, convID, id)
+			assert.Equal(t, businessID.String(), biz)
+			assert.Equal(t, userID.String(), uid)
+			return nil
+		},
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			assert.Equal(t, convID, id)
+			return &domain.Conversation{
+				ID:       convID,
+				UserID:   userID.String(),
+				PinnedAt: &now,
+			}, nil
+		},
+	}
+
+	h := pinTestHandler(mockRepo, businessID, userID)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/pin", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.Pin(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 1, pinCalls)
+
+	var got domain.Conversation
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	require.NotNil(t, got.PinnedAt, "Pin response must carry the persisted pinned_at")
+}
+
+func TestConversation_Pin_CrossTenant_Returns404(t *testing.T) {
+	// Repo's scope filter mismatch returns ErrConversationNotFound; the handler
+	// MUST map this to a uniform 404 (NEVER 403 — uniform 404 is the industry
+	// standard against existence enumeration; threat T-19-02-01).
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	mockRepo := &MockConversationRepository{
+		PinFunc: func(_ context.Context, _, _, _ string) error {
+			return domain.ErrConversationNotFound
+		},
+	}
+
+	h := pinTestHandler(mockRepo, businessID, userID)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/pin", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.Pin(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code, "cross-tenant pin must return 404, not 403 (no existence leak)")
+}
+
+func TestConversation_Pin_NoAuth_Returns401(t *testing.T) {
+	mockRepo := &MockConversationRepository{}
+	h := pinTestHandler(mockRepo, uuid.New(), uuid.New())
+
+	convID := "507f1f77bcf86cd799439011"
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID+"/pin", http.NoBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", convID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	h.Pin(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestConversation_Pin_BadID_Returns400(t *testing.T) {
+	userID := uuid.New()
+	mockRepo := &MockConversationRepository{}
+	h := pinTestHandler(mockRepo, uuid.New(), userID)
+
+	// 23 chars instead of 24 — same shape as the existing GetConversation guard.
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/short-id/pin", nil, userID, "short-id")
+	w := httptest.NewRecorder()
+	h.Pin(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestConversation_Unpin_Success(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	unpinCalls := 0
+	mockRepo := &MockConversationRepository{
+		UnpinFunc: func(_ context.Context, id, biz, uid string) error {
+			unpinCalls++
+			assert.Equal(t, convID, id)
+			assert.Equal(t, businessID.String(), biz)
+			assert.Equal(t, userID.String(), uid)
+			return nil
+		},
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{
+				ID:       convID,
+				UserID:   userID.String(),
+				PinnedAt: nil,
+			}, nil
+		},
+	}
+
+	h := pinTestHandler(mockRepo, businessID, userID)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/unpin", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.Unpin(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 1, unpinCalls)
+
+	var got domain.Conversation
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Nil(t, got.PinnedAt, "Unpin response must carry pinned_at = nil")
+}
+
+func TestConversation_Unpin_CrossTenant_Returns404(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	mockRepo := &MockConversationRepository{
+		UnpinFunc: func(_ context.Context, _, _, _ string) error {
+			return domain.ErrConversationNotFound
+		},
+	}
+
+	h := pinTestHandler(mockRepo, businessID, userID)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/unpin", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.Unpin(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }

@@ -117,6 +117,11 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Get("/conversations/{id}/messages", handlers.Conversation.ListMessages)
 			// Phase 15 (PROJ-06): move a chat between projects (or to "Без проекта")
 			r.Post("/conversations/{id}/move", handlers.Conversation.MoveConversation)
+			// Phase 19 (UI-03 / D-02): pin / unpin a conversation. Atomic
+			// repo writes scoped by (id, business_id, user_id) defend
+			// against cross-tenant pin manipulation (Pitfalls §19).
+			r.Post("/conversations/{id}/pin", handlers.Conversation.Pin)
+			r.Post("/conversations/{id}/unpin", handlers.Conversation.Unpin)
 			// Phase 18 / TITLE-09: regenerate the auto-title for an existing chat.
 			if handlers.Titler != nil {
 				r.Post("/conversations/{id}/regenerate-title", handlers.Titler.RegenerateTitle)

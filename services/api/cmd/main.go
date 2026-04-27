@@ -93,6 +93,23 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	backfillCancel()
 
+	// Phase 19 Mongo backfill (Plan 19-02 / D-02) — pinned_at swap. Migrates
+	// every conversation from the post-Phase-15 shape (legacy `pinned: bool`)
+	// to the Phase-19 shape (`pinned_at: *time.Time`, no legacy field).
+	// Three steps: (1) pinned_at = nil for missing field, (2) legacy
+	// pinned:true → pinned_at = updated_at, (3) $unset legacy pinned bool.
+	// Idempotent via schema_migrations marker (same shape as the V15 backfill
+	// above). Bounded to 30s. BLOCKING: 19-02 must wire this before serving
+	// traffic so the new ConversationRepository.Pin/Unpin atomic methods
+	// operate against a uniform schema across pre- and post-Phase-19 data.
+	backfillCtx2, backfillCancel2 := context.WithTimeout(ctx, 30*time.Second)
+	if err := repository.BackfillConversationsV19(backfillCtx2, mongoDB); err != nil {
+		backfillCancel2()
+		slog.ErrorContext(backfillCtx2, "phase 19 backfill failed", "error", err)
+		return fmt.Errorf("phase 19 backfill: %w", err)
+	}
+	backfillCancel2()
+
 	// HITL-10: pending-tool-calls startup reconciliation.
 	// Phase 16 Plan 16-02. Three things happen here, in order:
 	//   1. EnsurePendingToolCallsIndexes — creates TTL on expires_at,

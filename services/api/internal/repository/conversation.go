@@ -206,21 +206,28 @@ func (r *conversationRepository) TransitionToAutoPending(ctx context.Context, id
 	return nil
 }
 
-// EnsureConversationIndexes — Phase 18 / D-08a.
+// EnsureConversationIndexes — Phase 18 / D-08a + Phase 19 / Plan 19-02.
 //
-// Creates the compound index {user_id, business_id, title_status} on the
-// conversations collection idempotently at API startup. The index supports:
-//   - fast UpdateTitleIfPending lookups for the auto-titler (filter prefix
-//     {_id, title_status} is served by the {_id} primary, but sidebar
-//     queries that filter by user/business and bucket auto_pending rows
-//     benefit from the compound key);
-//   - sidebar list queries that filter by user/business and surface
-//     auto_pending rows distinctly.
+// Creates compound indexes on the conversations collection idempotently at
+// API startup. Two named indexes are managed here:
 //
-// Pattern: mirrors EnsurePendingToolCallsIndexes (pending_tool_call.go:62-94)
-// — CreateMany silently succeeds when specs match existing indexes; we
-// swallow IsDuplicateKeyError defensively even though name-conflict is the
-// more likely failure mode (stable named index spec across boots).
+//  1. conversations_user_biz_title_status (Phase 18 / D-08a — DO NOT MODIFY).
+//     Backs the auto-titler's atomic UpdateTitleIfPending lookups (TITLE-04 /
+//     D-08) and Phase 19's sidebar queries that surface auto_pending rows
+//     distinctly.
+//
+//  2. conversations_user_biz_proj_pinned_recency (Phase 19 / Plan 19-02). NEW
+//     index — DOES NOT extend or replace the Phase 18 index (D-08a is locked).
+//     Compound shape `{user_id, business_id, project_id, pinned_at:-1,
+//     last_message_at:-1}` follows ESR (Equality, Sort, Range) — equality on
+//     user/business/project, descending sort on pinned_at then
+//     last_message_at — so the sidebar PinnedSection's
+//     "pinned-then-recent" sort is index-served per project.
+//
+// Pattern: mirrors EnsurePendingToolCallsIndexes (pending_tool_call.go:62-94).
+// CreateMany silently succeeds when specs match existing indexes; we swallow
+// IsDuplicateKeyError defensively even though name-conflict is the more
+// likely failure mode (stable named index spec across boots).
 func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("conversations")
 	models := []mongo.IndexModel{
@@ -232,12 +239,70 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 			},
 			Options: options.Index().SetName("conversations_user_biz_title_status"),
 		},
+		{
+			// Phase 19 / Plan 19-02 — sidebar PinnedSection compound index.
+			// ESR layout: equality on (user_id, business_id, project_id)
+			// followed by descending sort on (pinned_at, last_message_at).
+			// Pinned chats sort by pinned_at desc (D-03); ties (or unpinned
+			// rows in the same project bucket) tie-break by last_message_at.
+			Keys: bson.D{
+				{Key: "user_id", Value: 1},
+				{Key: "business_id", Value: 1},
+				{Key: "project_id", Value: 1},
+				{Key: "pinned_at", Value: -1},
+				{Key: "last_message_at", Value: -1},
+			},
+			Options: options.Index().SetName("conversations_user_biz_proj_pinned_recency"),
+		},
 	}
 	if _, err := coll.Indexes().CreateMany(ctx, models); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			return nil
 		}
 		return fmt.Errorf("ensure conversation indexes: %w", err)
+	}
+	return nil
+}
+
+// Pin — Phase 19 / D-02 + Pitfalls §19.
+//
+// Atomic conditional update that sets pinned_at = now (UTC) on the
+// conversation, scoped by (id, business_id, user_id) for defense-in-depth.
+// The (business_id, user_id) scope filter prevents cross-tenant pin
+// manipulation even if a caller misroutes IDs: when MatchedCount==0 we
+// return domain.ErrConversationNotFound, which the handler layer maps to
+// uniform HTTP 404 (NEVER 403 — uniform 404 vs ownership-aware 403 is the
+// industry-standard guard against existence enumeration; see threat model
+// T-19-02-01 / T-19-02-02 in 19-02-pinned-PLAN.md).
+//
+// Atomic-conditional-update analog of UpdateTitleIfPending (lines 155-177).
+func (r *conversationRepository) Pin(ctx context.Context, id, businessID, userID string) error {
+	now := time.Now().UTC()
+	filter := bson.M{"_id": id, "business_id": businessID, "user_id": userID}
+	update := bson.M{"$set": bson.M{"pinned_at": now, "updated_at": now}}
+	res, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("pin conversation: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return domain.ErrConversationNotFound
+	}
+	return nil
+}
+
+// Unpin — Phase 19 / D-02. Symmetric to Pin: atomically sets pinned_at = nil
+// on the conversation, scoped by (id, business_id, user_id). Returns
+// domain.ErrConversationNotFound on mismatch.
+func (r *conversationRepository) Unpin(ctx context.Context, id, businessID, userID string) error {
+	now := time.Now().UTC()
+	filter := bson.M{"_id": id, "business_id": businessID, "user_id": userID}
+	update := bson.M{"$set": bson.M{"pinned_at": nil, "updated_at": now}}
+	res, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("unpin conversation: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return domain.ErrConversationNotFound
 	}
 	return nil
 }
