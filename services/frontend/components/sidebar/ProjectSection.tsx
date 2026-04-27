@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import type { RefObject } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bookmark, ChevronDown, ChevronRight, FolderOpen, MoreHorizontal, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useCreateConversation } from '@/hooks/useConversations';
+import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,6 +41,12 @@ export function ProjectSection({
 
   const count = conversations.length;
   const visible = conversations.slice(0, MAX_VISIBLE);
+
+  // Phase 19 / Plan 19-05 / D-17 — roving-tabindex on the chat-list portion.
+  // Tab enters the list once (lands on the first row), ↑/↓/Home/End navigate.
+  // The project header (chevron / link / +) sits OUTSIDE the container — it
+  // remains a separate Tab stop, which D-17 explicitly requires.
+  const { containerRef, onKeyDown } = useRovingTabIndex(visible.length);
 
   async function handleCreate() {
     try {
@@ -87,17 +95,27 @@ export function ProjectSection({
       </div>
 
       {!collapsed && (
-        <div className="ml-5 mt-0.5 space-y-0.5">
+        <div
+          ref={containerRef as RefObject<HTMLDivElement>}
+          onKeyDown={onKeyDown}
+          role="listbox"
+          aria-label={`Чаты проекта «${project.name}»`}
+          className="ml-5 mt-0.5 space-y-0.5"
+        >
           {visible.length === 0 ? (
             <p className="px-2 py-1 text-xs italic text-gray-500">В проекте пока нет чатов</p>
           ) : (
-            visible.map((conv) => {
+            visible.map((conv, i) => {
               const pinned = conv.pinnedAt != null;
               return (
                 <div key={conv.id} className="group/row flex items-center">
                   <Link
                     href={`/chat/${conv.id}`}
                     onClick={onNavigate}
+                    data-roving-item
+                    tabIndex={i === 0 ? 0 : -1}
+                    role="option"
+                    aria-selected={conv.id === activeConversationId}
                     className={cn(
                       'flex flex-1 items-center gap-1 truncate rounded-md px-2 py-1 text-xs transition-colors',
                       conv.id === activeConversationId
