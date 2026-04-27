@@ -28,14 +28,21 @@ describe('usePinConversation / useUnpinConversation — Phase 19 / Plan 19-02', 
 
   it('usePinConversation calls POST /conversations/{id}/pin', async () => {
     apiPost.mockResolvedValue({
-      data: { id: 'c-1', userId: 'u', businessId: 'b', projectId: null, title: 't', pinnedAt: '2026-04-27T12:00:00Z', createdAt: '', updatedAt: '' },
+      data: {
+        id: 'c-1',
+        userId: 'u',
+        businessId: 'b',
+        projectId: null,
+        title: 't',
+        pinnedAt: '2026-04-27T12:00:00Z',
+        createdAt: '',
+        updatedAt: '',
+      },
     });
     const { qc, wrapper } = setup();
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
     const { result } = renderHook(() => usePinConversation(), {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-      ),
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
     });
 
     await act(async () => {
@@ -52,14 +59,21 @@ describe('usePinConversation / useUnpinConversation — Phase 19 / Plan 19-02', 
 
   it('useUnpinConversation calls POST /conversations/{id}/unpin', async () => {
     apiPost.mockResolvedValue({
-      data: { id: 'c-2', userId: 'u', businessId: 'b', projectId: null, title: 't', pinnedAt: null, createdAt: '', updatedAt: '' },
+      data: {
+        id: 'c-2',
+        userId: 'u',
+        businessId: 'b',
+        projectId: null,
+        title: 't',
+        pinnedAt: null,
+        createdAt: '',
+        updatedAt: '',
+      },
     });
     const { qc } = setup();
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
     const { result } = renderHook(() => useUnpinConversation(), {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-      ),
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
     });
 
     await act(async () => {

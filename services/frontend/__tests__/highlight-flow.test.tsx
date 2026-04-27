@@ -57,7 +57,9 @@ describe('highlight-flow integration — Phase 19 / D-08 / SEARCH-04', () => {
     setHighlight('msg-1');
 
     // Spy on Element.prototype.scrollIntoView (set on jsdom by vitest.setup.ts as a no-op).
-    const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {});
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
 
     const { getByTestId } = render(
       <HighlightFlowHarness messagesReady={true} messageIds={['msg-0', 'msg-1', 'msg-2']} />
@@ -79,7 +81,9 @@ describe('highlight-flow integration — Phase 19 / D-08 / SEARCH-04', () => {
 
   it('does not fire when messagesReady=false — even with ?highlight set', () => {
     setHighlight('msg-1');
-    const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {});
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
 
     render(<HighlightFlowHarness messagesReady={false} messageIds={['msg-1']} />);
 
@@ -90,7 +94,9 @@ describe('highlight-flow integration — Phase 19 / D-08 / SEARCH-04', () => {
 
   it('silently bails when ?highlight target not in DOM', () => {
     setHighlight('not-mounted');
-    const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {});
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
 
     expect(() =>
       render(<HighlightFlowHarness messagesReady={true} messageIds={['msg-1']} />)

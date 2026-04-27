@@ -108,11 +108,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           `react-resizable-panels:onevoice:sidebar-width` (D-15). */}
       <div className="hidden h-screen md:flex">
         <NavRail />
-        <PanelGroup
-          direction="horizontal"
-          autoSaveId="onevoice:sidebar-width"
-          className="flex-1"
-        >
+        <PanelGroup direction="horizontal" autoSaveId="onevoice:sidebar-width" className="flex-1">
           {showProjectPane && (
             <>
               {/* defaultSize=22 ≈ 280 px on a 1280 px viewport (D-15
