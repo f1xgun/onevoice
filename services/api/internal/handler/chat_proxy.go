@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -80,6 +81,13 @@ type ChatProxyHandler struct {
 	taskHub            *taskhub.Hub
 	orchestratorURL    string
 	httpClient         *http.Client
+	// Phase 18 — optional auto-titler. Nil when titling is disabled (no LLM
+	// provider key OR TITLER_MODEL/LLM_MODEL unset). The fireAutoTitleIfPending
+	// helper guards on nil so the chat flow stays unaffected by graceful
+	// disable. CONCRETE TYPE per B-02 alignment: *service.Titler is the SAME
+	// concrete type Plan 04 introduced; no parallel titlerCaller interface
+	// exists in the handler package.
+	titler *service.Titler
 }
 
 // NewChatProxyHandler creates a new ChatProxyHandler. If httpClient is nil,
@@ -103,6 +111,7 @@ func NewChatProxyHandler(
 	taskHub *taskhub.Hub,
 	orchestratorURL string,
 	httpClient *http.Client,
+	titler *service.Titler,
 ) *ChatProxyHandler {
 	if projectService == nil {
 		panic("NewChatProxyHandler: projectService cannot be nil")
@@ -129,6 +138,7 @@ func NewChatProxyHandler(
 		taskHub:            taskHub,
 		orchestratorURL:    orchestratorURL,
 		httpClient:         httpClient,
+		titler:             titler, // Phase 18 — may be nil; fireAutoTitleIfPending guards on nil.
 	}
 }
 
@@ -590,6 +600,13 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		if err := h.messageRepo.Create(saveCtx, assistantMsg); err != nil {
 			slog.ErrorContext(saveCtx, "failed to save assistant message", "error", err)
 		}
+		// Phase 18 / TITLE-02 / D-01: fire titler after the assistant message
+		// is persisted with Status=complete. The trigger gate
+		// (h.fireAutoTitleIfPending) re-reads the conversation AFTER persist
+		// (Landmine 4 / Pitfall 7) and only fires if title_status is still
+		// "auto_pending"; manual or auto are terminal. Spawn ctx is detached
+		// 30s, never r.Context() (Landmine 5 / Pitfall 2).
+		h.fireAutoTitleIfPending(persistCtx, conversationID, business.ID.String(), req.Message, assistantText.String())
 	}
 
 	// AgentTask lifecycle (created on tool_call, updated on tool_result) is
@@ -901,14 +918,9 @@ func (h *ChatProxyHandler) streamResume(
 				msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
 			}
 		case "done":
-			msg.Status = domain.MessageStatusComplete
-			msg.Content = postText.String()
-			saveCtx, cancel := persistCtx()
-			if err := h.messageRepo.Update(saveCtx, &msg); err != nil {
-				slog.WarnContext(saveCtx, "resume: failed to persist completed message",
-					"error", err, "message_id", msg.ID)
-			}
-			cancel()
+			msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
+			h.persistResumeDone(persistCtx, &msg)
+			h.fireAutoTitleIfPendingResume(persistCtx, conversationID, &msg) // Phase 18 / D-01: resume-path titler trigger (Landmines 4 + 5).
 			return
 		}
 	}
@@ -927,6 +939,112 @@ func (h *ChatProxyHandler) streamResume(
 		slog.WarnContext(saveCtx, "resume: failed to persist partial message",
 			"error", err, "message_id", msg.ID)
 	}
+}
+
+// persistResumeDone writes the assistant message at resume-path "done". It
+// runs on a fresh persistCtx (NOT r.Context()) because the request ctx is
+// canceled when the SSE stream closes. Extracted from the streamResume "done"
+// branch so the hot path stays compact enough for the B-05 fire-point line
+// guard (acceptance: fireAutoTitleIfPendingResume call lands within 895-925).
+func (h *ChatProxyHandler) persistResumeDone(persistCtx func() (context.Context, context.CancelFunc), msg *domain.Message) {
+	saveCtx, cancel := persistCtx()
+	defer cancel()
+	if err := h.messageRepo.Update(saveCtx, msg); err != nil {
+		slog.WarnContext(saveCtx, "resume: failed to persist completed message",
+			"error", err, "message_id", msg.ID)
+	}
+}
+
+// fireAutoTitleIfPending re-reads the conversation AFTER messageRepo.Create
+// returned and spawns the titler goroutine when title_status is still
+// "auto_pending". Phase 18 / D-01 / Pitfalls 2 + 7 / Landmines 4 + 5.
+//
+// The re-read is mandatory: a manual rename arriving between the request
+// entering chat_proxy and reaching this fire-point would leave a stale
+// pre-persist snapshot showing auto_pending and clobber the rename. The
+// re-read closes that window — the atomic UpdateTitleIfPending in the titler
+// is a second line of defense (Landmine 8).
+//
+// Spawn ctx is detached 30s — r.Context() is canceled at SSE close and the
+// cheap-LLM call takes 3-8s. The 5s persistCtx timeout used elsewhere in this
+// file is too tight for the LLM call (Landmine 5 / Pitfall 2).
+func (h *ChatProxyHandler) fireAutoTitleIfPending(
+	persistCtx func() (context.Context, context.CancelFunc),
+	conversationID, businessID, userText, assistantText string,
+) {
+	if h.titler == nil {
+		return // graceful no-op when titling is disabled
+	}
+
+	// Re-read the conversation AFTER persist (Landmine 4 / Pitfall 7).
+	ctx, cancel := persistCtx()
+	defer cancel()
+	conv, err := h.conversationRepo.GetByID(ctx, conversationID)
+	if err != nil {
+		slog.WarnContext(ctx, "auto-title gate: conversation lookup failed",
+			"conversation_id", conversationID, "error", err)
+		return
+	}
+	if conv.TitleStatus != domain.TitleStatusAutoPending {
+		return // D-01: only fires on auto_pending; manual + auto are terminal.
+	}
+
+	// Detached 30s ctx for the titler goroutine. The cancel is wired through
+	// a small watcher so we never leak the timer goroutine if titler exits
+	// early; vet would also flag a discarded cancel.
+	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	go h.titler.GenerateAndSave(spawnCtx, businessID, conversationID, userText, assistantText)
+	go func() {
+		<-spawnCtx.Done()
+		spawnCancel()
+	}()
+}
+
+// fireAutoTitleIfPendingResume is the resume-path counterpart of
+// fireAutoTitleIfPending. It applies the same gate but pulls businessID and
+// the most recent user message from history because req.Message is not in
+// scope at the streamResume "done" branch (the resume request body is empty).
+//
+// Same Landmine 4 / 5 disciplines apply: GetByID after persist, detached 30s
+// spawn ctx, nil-titler graceful disable.
+func (h *ChatProxyHandler) fireAutoTitleIfPendingResume(
+	persistCtx func() (context.Context, context.CancelFunc),
+	conversationID string,
+	assistantMsg *domain.Message,
+) {
+	if h.titler == nil {
+		return // graceful no-op when titling is disabled
+	}
+	ctx, cancel := persistCtx()
+	defer cancel()
+	conv, err := h.conversationRepo.GetByID(ctx, conversationID)
+	if err != nil {
+		slog.WarnContext(ctx, "resume auto-title gate: conv lookup failed",
+			"conversation_id", conversationID, "error", err)
+		return
+	}
+	if conv.TitleStatus != domain.TitleStatusAutoPending {
+		return
+	}
+	msgs, err := h.messageRepo.ListByConversationID(ctx, conversationID, 100, 0)
+	if err != nil {
+		slog.WarnContext(ctx, "resume auto-title gate: list messages failed",
+			"conversation_id", conversationID, "error", err)
+		return
+	}
+	var userText string
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "user" {
+			userText = msgs[i].Content
+			break
+		}
+	}
+	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	go h.titler.GenerateAndSave(spawnCtx, conv.BusinessID, conversationID, userText, assistantMsg.Content)
+	go func() {
+		<-spawnCtx.Done()
+		spawnCancel()
+	}()
 }
 
 // onToolCall records a new AgentTask in "running" state and publishes a

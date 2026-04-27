@@ -355,6 +355,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		taskHub,
 		cfg.OrchestratorURL,
 		nil,
+		titler, // Phase 18 Plan 05 — optional auto-titler; nil when titling is disabled.
 	)
 
 	// Plan 16-07 HITL: resolve + resume + GET /tools handlers.
