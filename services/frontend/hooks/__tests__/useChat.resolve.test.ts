@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 import { toast } from 'sonner';
 import { useChat } from '../useChat';
 import { useAuthStore } from '@/lib/auth';
@@ -9,6 +11,14 @@ import { singleCallBatch } from '@/test-utils/pending-approval-fixtures';
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
+
+// Phase 18 / D-10: useChat now consumes useQueryClient(); wrap renderHook in
+// a QueryClientProvider so the existing resolve / resume tests keep passing.
+function makeQCWrapper() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: qc }, children);
+}
 
 /**
  * Sets up a `useChat` hook that is already in the `pendingApproval !== null`
@@ -25,7 +35,7 @@ function hydratedHook(conversationId: string, fetchMock: ReturnType<typeof vi.fn
     });
   });
   vi.stubGlobal('fetch', fetchMock);
-  return renderHook(() => useChat(conversationId));
+  return renderHook(() => useChat(conversationId), { wrapper: makeQCWrapper() });
 }
 
 describe('useChat.resolveApproval — happy path', () => {
@@ -98,7 +108,7 @@ describe('useChat.resolveApproval — happy path', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-resolve-1'));
+    const { result } = renderHook(() => useChat('cid-resolve-1'), { wrapper: makeQCWrapper() });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.pendingApproval).not.toBeNull();
 
