@@ -3,6 +3,8 @@ import { render, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import AppLayout from '@/app/(app)/layout';
+import type * as ConvHooks from '@/hooks/useConversations';
+import type * as ProjHooks from '@/hooks/useProjects';
 
 // Pathname mock — toggled per test.
 const usePathnameMock = vi.fn(() => '/chat');
@@ -57,15 +59,14 @@ vi.mock('sonner', () => ({
 }));
 
 vi.mock('@/hooks/useConversations', async () => {
-  const actual =
-    await vi.importActual<typeof import('@/hooks/useConversations')>('@/hooks/useConversations');
+  const actual = await vi.importActual<typeof ConvHooks>('@/hooks/useConversations');
   return {
     ...actual,
     useConversationsQuery: () => ({ data: [], isLoading: false, error: null }),
   };
 });
 vi.mock('@/hooks/useProjects', async () => {
-  const actual = await vi.importActual<typeof import('@/hooks/useProjects')>('@/hooks/useProjects');
+  const actual = await vi.importActual<typeof ProjHooks>('@/hooks/useProjects');
   return {
     ...actual,
     useProjectsQuery: () => ({ data: [], isLoading: false, error: null }),
