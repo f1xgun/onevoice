@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useConversationsQuery } from '@/hooks/useConversations';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { PinnedSection } from '@/components/sidebar/PinnedSection';
+import { SidebarSearch } from '@/components/sidebar/SidebarSearch';
 import { UnassignedBucket } from '@/components/sidebar/UnassignedBucket';
 import { ProjectSection } from '@/components/sidebar/ProjectSection';
 import type { Conversation } from '@/lib/conversations';
@@ -70,8 +71,13 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
       data-testid="project-pane"
       className="flex h-full flex-col gap-2 overflow-y-auto bg-gray-900 px-2 py-2 text-white"
     >
-      {/* Slot for SidebarSearch (19-04) */}
-      <div data-testid="sidebar-search-slot" />
+      {/* Phase 19 / Plan 19-04 — SidebarSearch. The data-testid wrapper is
+          preserved so 19-01 wave-1 tests that probed for the slot keep
+          passing; the slot now hosts the live search input + Radix Popover
+          dropdown (Cmd/Ctrl-K consumer, 250 ms debounce, route-aware scope). */}
+      <div data-testid="sidebar-search-slot">
+        <SidebarSearch />
+      </div>
 
       {/* Phase 19 / Plan 19-02 — PinnedSection. Hidden entirely when empty
           (D-04). The data-testid is preserved for upstream callers/tests
