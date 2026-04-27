@@ -95,7 +95,7 @@ func TestChatProxy_ToolCallIDCorrelation(t *testing.T) {
 		},
 		msgRepo,
 		&MockPendingToolCallRepository{},
-		nil, nil, nil, nil, orchServer.URL, nil,
+		nil, nil, nil, nil, orchServer.URL, nil, nil,
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-1", strings.NewReader(`{"message":"send two"}`))
