@@ -3,12 +3,14 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // newChatProxyNoProject returns a ChatProxyHandler wired with a stub
@@ -38,7 +41,7 @@ func newChatProxyNoProject(
 		},
 	}
 	proj := &noopProjectService{}
-	return NewChatProxyHandler(biz, integ, proj, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orchURL, nil)
+	return NewChatProxyHandler(biz, integ, proj, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orchURL, nil, nil)
 }
 
 // TestChatProxy_EnrichesContext verifies that business and integration context
@@ -276,7 +279,7 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 			return nil, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil, nil)
 
 	body := `{"message":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
@@ -349,7 +352,7 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 			}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil, nil)
 
 	body := `{"message":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
@@ -625,7 +628,7 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 			return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -698,7 +701,7 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 			return &domain.Conversation{ID: id, UserID: "any"}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	req.Header.Set(ResumeBatchHeader, "batch-missing")
@@ -779,7 +782,7 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 			return &domain.Conversation{ID: id, UserID: "any"}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{"message":"(empty resume body)"}`))
 	// NO ResumeBatchHeader here — implicit resume.
@@ -848,7 +851,7 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 			return &domain.Conversation{ID: id, UserID: "any"}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	// No resume header.
@@ -909,7 +912,7 @@ func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testin
 			return &domain.Conversation{ID: id, UserID: "any"}, nil
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
@@ -1014,7 +1017,7 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 			return nil, domain.ErrProjectNotFound
 		},
 	}
-	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil)
+	h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil, nil)
 
 	body := `{"message":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
@@ -1035,4 +1038,413 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 	assert.Equal(t, "", captured["project_id"])
 	assert.Equal(t, "", captured["project_name"])
 	assert.Equal(t, "", captured["project_whitelist_mode"])
+}
+
+// TestChatProxy_ForwardsPhase16Fields covers Plan 17-07 GAP-03 closure on the
+// API side: the proxy MUST forward five Phase-16 keys to the orchestrator on
+// every fresh-turn request — user_id (JWT subject), message_id (the just-
+// saved userMsg.ID), tier, business_approvals (from Business.ToolApprovals()),
+// project_approval_overrides (from project.ApprovalOverrides). Without these,
+// the orchestrator persists PendingToolCallBatch with empty IDs and HITL-11
+// hydration is impossible. See VERIFICATION.md §GAP-03.
+func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
+	t.Run("with project — all five keys present and populated", func(t *testing.T) {
+		userID := uuid.New()
+		businessID := uuid.New()
+		projectID := uuid.New()
+		conversationID := "conv-p16-1"
+
+		business := &domain.Business{
+			ID:     businessID,
+			UserID: userID,
+			Name:   "Biz",
+			Settings: map[string]interface{}{
+				"tool_approvals": map[string]interface{}{
+					"telegram__send_channel_post": "manual",
+				},
+			},
+		}
+
+		var captured map[string]interface{}
+		orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(body, &captured))
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
+		}))
+		defer orch.Close()
+
+		mockBiz := new(MockBusinessService)
+		mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+		mockInteg := new(MockIntegrationService)
+		mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+		// Capture the userMsg.ID assigned by chat_proxy before Create.
+		var capturedUserMsgID string
+		msgRepo := &MockMessageRepository{
+			CreateFunc: func(_ context.Context, m *domain.Message) error {
+				if m.Role == "user" {
+					capturedUserMsgID = m.ID
+				}
+				return nil
+			},
+		}
+
+		projIDStr := projectID.String()
+		convRepo := &MockConversationRepository{
+			GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+				return &domain.Conversation{ID: conversationID, UserID: userID.String(), ProjectID: &projIDStr}, nil
+			},
+		}
+		proj := &noopProjectService{
+			GetByIDFunc: func(_ context.Context, bizID, pid uuid.UUID) (*domain.Project, error) {
+				assert.Equal(t, businessID, bizID)
+				assert.Equal(t, projectID, pid)
+				return &domain.Project{
+					ID:         projectID,
+					BusinessID: businessID,
+					Name:       "Отзывы",
+					ApprovalOverrides: map[string]domain.ToolFloor{
+						"vk__publish_post": "auto",
+					},
+				}, nil
+			},
+		}
+		h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, msgRepo, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil, nil)
+
+		body := `{"message":"hi"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("conversationID", conversationID)
+		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+		req = req.WithContext(ctx)
+
+		rr := httptest.NewRecorder()
+		h.Chat(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		require.NotNil(t, captured, "orchestrator request body should be captured")
+
+		// All five Phase-16 keys MUST be present.
+		assert.Contains(t, captured, "user_id")
+		assert.Contains(t, captured, "message_id")
+		assert.Contains(t, captured, "tier")
+		assert.Contains(t, captured, "business_approvals")
+		assert.Contains(t, captured, "project_approval_overrides")
+
+		// user_id is the JWT subject (uuid).
+		assert.Equal(t, userID.String(), captured["user_id"])
+
+		// message_id matches the userMsg.ID set on the wire (non-empty).
+		mid, ok := captured["message_id"].(string)
+		require.True(t, ok, "message_id must be a string, got %T", captured["message_id"])
+		assert.NotEmpty(t, mid, "message_id must be non-empty")
+		assert.Equal(t, capturedUserMsgID, mid, "message_id must equal the just-saved userMsg.ID")
+
+		// tier — string (empty acceptable per Plan 17-07; v1.3 has no tier model).
+		_, ok = captured["tier"].(string)
+		assert.True(t, ok, "tier must be a string, got %T", captured["tier"])
+
+		// business_approvals: non-nil map echoing Business.ToolApprovals().
+		ba, ok := captured["business_approvals"].(map[string]interface{})
+		require.True(t, ok, "business_approvals must be a JSON object, got %T", captured["business_approvals"])
+		assert.Equal(t, "manual", ba["telegram__send_channel_post"])
+
+		// project_approval_overrides: non-nil map echoing project.ApprovalOverrides.
+		po, ok := captured["project_approval_overrides"].(map[string]interface{})
+		require.True(t, ok, "project_approval_overrides must be a JSON object, got %T", captured["project_approval_overrides"])
+		assert.Equal(t, "auto", po["vk__publish_post"])
+	})
+
+	t.Run("without project — project_approval_overrides marshals as {} not null", func(t *testing.T) {
+		userID := uuid.New()
+		businessID := uuid.New()
+		conversationID := "conv-p16-noproj"
+
+		business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+		var captured map[string]interface{}
+		orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(body, &captured))
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
+		}))
+		defer orch.Close()
+
+		mockBiz := new(MockBusinessService)
+		mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+		mockInteg := new(MockIntegrationService)
+		mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+		convRepo := &MockConversationRepository{
+			GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+				return &domain.Conversation{ID: id, UserID: userID.String(), ProjectID: nil}, nil
+			},
+		}
+		proj := &noopProjectService{}
+		h := NewChatProxyHandler(mockBiz, mockInteg, proj, convRepo, &MockMessageRepository{}, &MockPendingToolCallRepository{}, nil, nil, nil, nil, orch.URL, nil, nil)
+
+		body := `{"message":"hi"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("conversationID", conversationID)
+		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+		req = req.WithContext(ctx)
+
+		rr := httptest.NewRecorder()
+		h.Chat(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		require.NotNil(t, captured)
+
+		// project_approval_overrides MUST be present and a non-nil map (empty
+		// object) — never null. The frontend / orchestrator's JSON decode
+		// behaves differently for {} vs null.
+		require.Contains(t, captured, "project_approval_overrides")
+		po, ok := captured["project_approval_overrides"].(map[string]interface{})
+		require.True(t, ok, "project_approval_overrides must be a JSON object {}, not null. got %T", captured["project_approval_overrides"])
+		assert.Empty(t, po, "without project, project_approval_overrides must be an empty object")
+
+		// business_approvals also non-nil empty map.
+		require.Contains(t, captured, "business_approvals")
+		ba, ok := captured["business_approvals"].(map[string]interface{})
+		require.True(t, ok, "business_approvals must be a JSON object {}, not null. got %T", captured["business_approvals"])
+		assert.Empty(t, ba)
+
+		// user_id still populated from JWT subject.
+		assert.Equal(t, userID.String(), captured["user_id"])
+	})
+}
+
+// TestFireAutoTitleIfPending exercises the gate predicate of
+// fireAutoTitleIfPending directly — bypasses the SSE machinery so the test
+// is fast and deterministic. Covers the full branch matrix that drives
+// Plan 18-05's trust contract:
+//
+//   - status=auto_pending → fires (FakeChatCaller.Calls() ≥ 1)
+//   - status=manual       → no-op (D-01 / D-02: manual is sovereign)
+//   - status=auto         → no-op (D-01: only auto_pending fires)
+//   - GetByID error       → no-op + warn log (graceful degradation)
+//   - h.titler == nil     → no-op (graceful disable per A6 / Pitfall 1)
+//
+// Each subcase constructs its own ChatProxyHandler so the test stays
+// isolated from the others' fakes. The persistCtx closure mirrors the
+// production helper at chat_proxy.go:166-172 (5s detached ctx).
+func TestFireAutoTitleIfPending(t *testing.T) {
+	persistCtx := func() (context.Context, context.CancelFunc) {
+		return context.WithTimeout(context.Background(), 5*time.Second)
+	}
+	convID := "507f1f77bcf86cd799439200"
+	bizID := "biz-1"
+	userText := "помоги опубликовать пост"
+	assistantText := "конечно, какая платформа?"
+
+	// Helper: build ChatProxyHandler with a real *service.Titler driven by a
+	// FakeChatCaller, and a stub conversation repo with the given snapshot.
+	build := func(t *testing.T, conv *domain.Conversation, getByIDErr error, withTitler bool) (*ChatProxyHandler, *service.FakeChatCaller) {
+		t.Helper()
+		repo := &MockConversationRepository{
+			GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+				if getByIDErr != nil {
+					return nil, getByIDErr
+				}
+				cp := *conv
+				return &cp, nil
+			},
+		}
+		fc := &service.FakeChatCaller{ReturnContent: "Опубликование поста"}
+		var titler *service.Titler
+		if withTitler {
+			titler = service.NewTitler(fc, repo, "test-model")
+		}
+		mockBiz := new(MockBusinessService)
+		mockInteg := new(MockIntegrationService)
+		h := NewChatProxyHandler(
+			mockBiz, mockInteg, &noopProjectService{}, repo,
+			&MockMessageRepository{}, &MockPendingToolCallRepository{},
+			nil, nil, nil, nil, "", nil, titler,
+		)
+		return h, fc
+	}
+
+	// Settle helper: the goroutine spawned inside fireAutoTitleIfPending
+	// races us; poll the FakeChatCaller for up to 500ms.
+	waitForFire := func(fc *service.FakeChatCaller, want bool) bool {
+		deadline := time.Now().Add(500 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			if (fc.Calls() > 0) == want {
+				return true
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return (fc.Calls() > 0) == want
+	}
+
+	t.Run("fires_on_auto_pending", func(t *testing.T) {
+		conv := &domain.Conversation{
+			ID: convID, BusinessID: bizID,
+			TitleStatus: domain.TitleStatusAutoPending,
+		}
+		h, fc := build(t, conv, nil, true)
+
+		h.fireAutoTitleIfPending(persistCtx, convID, bizID, userText, assistantText)
+
+		require.True(t, waitForFire(fc, true), "expected FakeChatCaller to fire on auto_pending; calls=%d", fc.Calls())
+		assert.GreaterOrEqual(t, fc.Calls(), 1)
+	})
+
+	t.Run("noop_on_manual", func(t *testing.T) {
+		conv := &domain.Conversation{
+			ID: convID, BusinessID: bizID,
+			TitleStatus: domain.TitleStatusManual,
+		}
+		h, fc := build(t, conv, nil, true)
+
+		h.fireAutoTitleIfPending(persistCtx, convID, bizID, userText, assistantText)
+
+		// Negative settle: ensure NO fire even after settle window. D-01 / D-02.
+		require.True(t, waitForFire(fc, false), "manual must not fire titler; calls=%d", fc.Calls())
+		assert.Equal(t, 0, fc.Calls())
+	})
+
+	t.Run("noop_on_auto", func(t *testing.T) {
+		conv := &domain.Conversation{
+			ID: convID, BusinessID: bizID,
+			TitleStatus: domain.TitleStatusAuto,
+		}
+		h, fc := build(t, conv, nil, true)
+
+		h.fireAutoTitleIfPending(persistCtx, convID, bizID, userText, assistantText)
+
+		require.True(t, waitForFire(fc, false), "auto (terminal) must not fire titler; calls=%d", fc.Calls())
+		assert.Equal(t, 0, fc.Calls())
+	})
+
+	t.Run("noop_when_titler_nil", func(t *testing.T) {
+		conv := &domain.Conversation{
+			ID: convID, BusinessID: bizID,
+			TitleStatus: domain.TitleStatusAutoPending,
+		}
+		h, fc := build(t, conv, nil, false) // titler nil — graceful disable
+		assert.NotPanics(t, func() {
+			h.fireAutoTitleIfPending(persistCtx, convID, bizID, userText, assistantText)
+		})
+		// fc isn't wired into the handler since titler is nil; just confirm
+		// no panic and no Chat dispatched (counter stays at 0 because no
+		// goroutine was spawned).
+		assert.Equal(t, 0, fc.Calls())
+	})
+
+	t.Run("noop_on_getbyid_error", func(t *testing.T) {
+		h, fc := build(t, nil, errors.New("mongo: connection refused"), true)
+
+		h.fireAutoTitleIfPending(persistCtx, convID, bizID, userText, assistantText)
+
+		require.True(t, waitForFire(fc, false), "lookup error must not fire titler; calls=%d", fc.Calls())
+		assert.Equal(t, 0, fc.Calls())
+	})
+}
+
+// TestFireAutoTitleIfPendingResume exercises the resume-path counterpart.
+// It uses the assistant message provided directly (resume path doesn't have
+// req.Message in scope and walks history backward).
+func TestFireAutoTitleIfPendingResume(t *testing.T) {
+	persistCtx := func() (context.Context, context.CancelFunc) {
+		return context.WithTimeout(context.Background(), 5*time.Second)
+	}
+	convID := "507f1f77bcf86cd799439210"
+	bizID := "biz-resume"
+
+	build := func(t *testing.T, conv *domain.Conversation, msgs []domain.Message, withTitler bool) (*ChatProxyHandler, *service.FakeChatCaller) {
+		t.Helper()
+		repo := &MockConversationRepository{
+			GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+				if conv == nil {
+					return nil, domain.ErrConversationNotFound
+				}
+				cp := *conv
+				return &cp, nil
+			},
+		}
+		msgRepo := &MockMessageRepository{
+			ListByConversationIDFunc: func(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
+				return msgs, nil
+			},
+		}
+		fc := &service.FakeChatCaller{ReturnContent: "Возобновлённая беседа"}
+		var titler *service.Titler
+		if withTitler {
+			titler = service.NewTitler(fc, repo, "test-model")
+		}
+		mockBiz := new(MockBusinessService)
+		mockInteg := new(MockIntegrationService)
+		h := NewChatProxyHandler(
+			mockBiz, mockInteg, &noopProjectService{}, repo,
+			msgRepo, &MockPendingToolCallRepository{},
+			nil, nil, nil, nil, "", nil, titler,
+		)
+		return h, fc
+	}
+
+	waitForFire := func(fc *service.FakeChatCaller, want bool) bool {
+		deadline := time.Now().Add(500 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			if (fc.Calls() > 0) == want {
+				return true
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return (fc.Calls() > 0) == want
+	}
+
+	t.Run("fires_on_auto_pending_with_user_history", func(t *testing.T) {
+		conv := &domain.Conversation{
+			ID: convID, BusinessID: bizID,
+			TitleStatus: domain.TitleStatusAutoPending,
+		}
+		msgs := []domain.Message{
+			{ID: "m1", ConversationID: convID, Role: "user", Content: "проверка статуса"},
+			{ID: "m2", ConversationID: convID, Role: "assistant", Content: "выполнено", Status: domain.MessageStatusComplete},
+		}
+		h, fc := build(t, conv, msgs, true)
+
+		assistantMsg := &domain.Message{ID: "m2", ConversationID: convID, Role: "assistant", Content: "выполнено"}
+		h.fireAutoTitleIfPendingResume(persistCtx, convID, assistantMsg)
+
+		require.True(t, waitForFire(fc, true), "resume path must fire on auto_pending; calls=%d", fc.Calls())
+		assert.GreaterOrEqual(t, fc.Calls(), 1)
+	})
+
+	t.Run("noop_on_manual_resume", func(t *testing.T) {
+		conv := &domain.Conversation{
+			ID: convID, BusinessID: bizID,
+			TitleStatus: domain.TitleStatusManual,
+		}
+		h, fc := build(t, conv, nil, true)
+
+		assistantMsg := &domain.Message{ID: "m1", Role: "assistant", Content: "ok"}
+		h.fireAutoTitleIfPendingResume(persistCtx, convID, assistantMsg)
+
+		require.True(t, waitForFire(fc, false), "resume manual must not fire; calls=%d", fc.Calls())
+	})
+
+	t.Run("noop_when_titler_nil_resume", func(t *testing.T) {
+		conv := &domain.Conversation{
+			ID: convID, BusinessID: bizID,
+			TitleStatus: domain.TitleStatusAutoPending,
+		}
+		h, _ := build(t, conv, nil, false)
+
+		assistantMsg := &domain.Message{ID: "m1", Role: "assistant", Content: "ok"}
+		assert.NotPanics(t, func() {
+			h.fireAutoTitleIfPendingResume(persistCtx, convID, assistantMsg)
+		})
+	})
 }

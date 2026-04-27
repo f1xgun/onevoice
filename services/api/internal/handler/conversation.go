@@ -324,6 +324,7 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 	}
 
 	conversation.Title = req.Title
+	conversation.TitleStatus = domain.TitleStatusManual // Phase 18 / D-06: PUT title is unconditional manual rename. Plan 03's repo Update persists this in $set block.
 	if err := h.conversationRepo.Update(r.Context(), conversation); err != nil {
 		slog.Error("failed to update conversation", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")

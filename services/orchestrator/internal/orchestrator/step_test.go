@@ -483,3 +483,60 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 	assert.True(t, strings.Contains(errs[0].Content, "HITL not configured"),
 		"nil pendingRepo + manual-floor must emit EventError 'HITL not configured'")
 }
+
+// TestBuildPendingBatch_PopulatesFloorAtPauseManual — Plan 17-11 / GAP-04.
+// Every PendingCall persisted at orchestrator pause time must carry
+// FloorAtPause=ToolFloorManual so the resolve-time TOCTOU re-check can
+// consult the same registry that classified the call at pause (eliminating
+// divergence with the api-side ToolsRegistryCache, which is HTTP-backed and
+// lazily warmed). We exercise this via the public Run path (buildPendingBatch
+// is package-private) and assert on repo.insertedBatches.
+func TestBuildPendingBatch_PopulatesFloorAtPauseManual(t *testing.T) {
+	manualArgs1, _ := json.Marshal(map[string]interface{}{"text": "hi"})
+	manualArgs2, _ := json.Marshal(map[string]interface{}{"text": "yo"})
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{
+			FinishReason: "tool_calls",
+			ToolCalls: []llm.ToolCall{
+				{ID: "tc-1", Type: "function", Function: llm.FunctionCall{Name: "telegram_post", Arguments: string(manualArgs1)}},
+				{ID: "tc-2", Type: "function", Function: llm.FunctionCall{Name: "vk_post", Arguments: string(manualArgs2)}},
+			},
+		},
+	}}
+
+	reg := tools.NewRegistry()
+	reg.Register(llm.ToolDefinition{
+		Type:     "function",
+		Function: llm.FunctionDefinition{Name: "telegram_post", Description: "x", Parameters: map[string]interface{}{}},
+	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+		return map[string]interface{}{"ok": true}, nil
+	}), domain.ToolFloorManual, []string{"text"})
+	reg.Register(llm.ToolDefinition{
+		Type:     "function",
+		Function: llm.FunctionDefinition{Name: "vk_post", Description: "x", Parameters: map[string]interface{}{}},
+	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+		return map[string]interface{}{"ok": true}, nil
+	}), domain.ToolFloorManual, []string{"text"})
+
+	repo := newMockPendingRepo()
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "post both"}},
+		ConversationID:  "conv-fap",
+		BusinessID:      "biz-fap",
+		UserIDString:    "user-fap",
+		MessageID:       "msg-fap",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	require.Len(t, repo.insertedBatches, 1, "must persist exactly one batch")
+	b := repo.insertedBatches[0]
+	require.Len(t, b.Calls, 2, "two manual calls must be persisted")
+	for i, c := range b.Calls {
+		assert.Equal(t, domain.ToolFloorManual, c.FloorAtPause,
+			"Calls[%d].FloorAtPause = %q, want %q", i, c.FloorAtPause, domain.ToolFloorManual)
+	}
+}

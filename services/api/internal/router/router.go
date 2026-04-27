@@ -29,7 +29,8 @@ type Handlers struct {
 	AgentTask     *handler.AgentTaskHandler
 	Telemetry     *handler.TelemetryHandler
 	Project       *handler.ProjectHandler
-	HITL          *handler.HITLHandler // Phase 16: resolve + resume + GET /tools
+	HITL          *handler.HITLHandler   // Phase 16: resolve + resume + GET /tools
+	Titler        *handler.TitlerHandler // Phase 18: POST /conversations/{id}/regenerate-title
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
@@ -116,6 +117,10 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Get("/conversations/{id}/messages", handlers.Conversation.ListMessages)
 			// Phase 15 (PROJ-06): move a chat between projects (or to "Без проекта")
 			r.Post("/conversations/{id}/move", handlers.Conversation.MoveConversation)
+			// Phase 18 / TITLE-09: regenerate the auto-title for an existing chat.
+			if handlers.Titler != nil {
+				r.Post("/conversations/{id}/regenerate-title", handlers.Titler.RegenerateTitle)
+			}
 
 			// Project routes (Phase 15 — projects foundation)
 			r.Get("/projects", handlers.Project.List)
