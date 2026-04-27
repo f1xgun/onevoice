@@ -84,7 +84,7 @@ func newSearchHandlerForTest(t *testing.T, ready bool) (*SearchHandler, *fakeSea
 // requestWithUser injects a userID into the chi-style auth context the
 // real handler reads via middleware.GetUserID.
 func requestWithUser(method, target string, userID uuid.UUID) *http.Request {
-	req := httptest.NewRequest(method, target, nil)
+	req := httptest.NewRequest(method, target, http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	return req.WithContext(ctx)
 }
@@ -128,7 +128,7 @@ func TestSearchHandler_400OnShortQuery(t *testing.T) {
 // userID, GetUserID returns an error and the handler responds 401.
 func TestSearchHandler_401OnMissingBearer(t *testing.T) {
 	h, _ := newSearchHandlerForTest(t, true)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=инвойс", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=инвойс", http.NoBody)
 	rec := httptest.NewRecorder()
 	h.Search(rec, req)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)

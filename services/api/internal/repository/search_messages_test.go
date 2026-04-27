@@ -33,14 +33,14 @@ func TestSearchByConversationIDs_GroupsByConversation(t *testing.T) {
 	id1 := bson.NewObjectID().Hex()
 	_, err := db.Collection("messages").InsertOne(ctx, bson.M{
 		"_id": id1, "conversation_id": convA, "role": "user",
-		"content": "Можно ли отправить инвойс по электронной почте?",
+		"content":    "Можно ли отправить инвойс по электронной почте?",
 		"created_at": now.Add(-2 * time.Hour),
 	})
 	require.NoError(t, err)
 	id2 := bson.NewObjectID().Hex()
 	_, err = db.Collection("messages").InsertOne(ctx, bson.M{
 		"_id": id2, "conversation_id": convA, "role": "assistant",
-		"content": "Да, инвойс будет отправлен сегодня.",
+		"content":    "Да, инвойс будет отправлен сегодня.",
 		"created_at": now.Add(-1 * time.Hour),
 	})
 	require.NoError(t, err)
@@ -49,7 +49,7 @@ func TestSearchByConversationIDs_GroupsByConversation(t *testing.T) {
 	id3 := bson.NewObjectID().Hex()
 	_, err = db.Collection("messages").InsertOne(ctx, bson.M{
 		"_id": id3, "conversation_id": convB, "role": "user",
-		"content": "Нужен инвойс срочно",
+		"content":    "Нужен инвойс срочно",
 		"created_at": now,
 	})
 	require.NoError(t, err)

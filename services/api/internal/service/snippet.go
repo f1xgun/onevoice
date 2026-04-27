@@ -58,7 +58,7 @@ func BuildSnippet(content string, queryStems map[string]struct{}) string {
 		snippet = "…" + snippet
 	}
 	if end < len(content) {
-		snippet = snippet + "…"
+		snippet += "…"
 	}
 	return snippet
 }
@@ -66,7 +66,7 @@ func BuildSnippet(content string, queryStems map[string]struct{}) string {
 // firstStemMatch scans content token-by-token and returns the byte
 // range of the first token whose stem hits queryStems. Returns
 // (-1, -1) on no match.
-func firstStemMatch(content string, queryStems map[string]struct{}) (int, int) {
+func firstStemMatch(content string, queryStems map[string]struct{}) (start, end int) {
 	runes := []rune(content)
 	pos := 0
 	for pos < len(runes) {

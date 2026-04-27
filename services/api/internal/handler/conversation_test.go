@@ -1696,7 +1696,7 @@ func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 // pinTestHandler builds a ConversationHandler wired with a businessService
 // that returns a fixed business ID so Pin/Unpin handler tests can assert
 // the (id, business_id, user_id) scope filter without re-stubbing each test.
-func pinTestHandler(convRepo domain.ConversationRepository, businessID uuid.UUID, userID uuid.UUID) *ConversationHandler {
+func pinTestHandler(convRepo domain.ConversationRepository, businessID, userID uuid.UUID) *ConversationHandler {
 	biz := &noopBusinessService{
 		GetByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
 			return &domain.Business{ID: businessID, UserID: userID, Name: "Test Business"}, nil

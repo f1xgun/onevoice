@@ -702,4 +702,3 @@ func TestUnpin(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrConversationNotFound)
 	})
 }
-

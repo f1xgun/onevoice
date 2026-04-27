@@ -41,8 +41,8 @@ type searchBusinessLookup interface {
 // {user_id, business_id, query_length}. NEVER the literal query text.
 // NO `"query"` slog field key.
 type SearchHandler struct {
-	searcher        *service.Searcher
-	businessLookup  searchBusinessLookup
+	searcher       *service.Searcher
+	businessLookup searchBusinessLookup
 }
 
 // NewSearchHandler — both deps are mandatory. Pattern parallels
