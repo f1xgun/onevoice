@@ -77,7 +77,7 @@ describe('useChat — hydration from GET /messages pendingApprovals', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-hydrate-1'));
+    const { result } = renderHook(() => useChat('cid-hydrate-1'), { wrapper: QueryWrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.pendingApproval).not.toBeNull();
@@ -98,7 +98,7 @@ describe('useChat — hydration from GET /messages pendingApprovals', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-hydrate-empty'));
+    const { result } = renderHook(() => useChat('cid-hydrate-empty'), { wrapper: QueryWrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.pendingApproval).toBeNull();
@@ -114,7 +114,7 @@ describe('useChat — hydration from GET /messages pendingApprovals', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-hydrate-legacy'));
+    const { result } = renderHook(() => useChat('cid-hydrate-legacy'), { wrapper: QueryWrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.pendingApproval).toBeNull();
@@ -133,7 +133,7 @@ describe('useChat — hydration from GET /messages pendingApprovals', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-hydrate-expired'));
+    const { result } = renderHook(() => useChat('cid-hydrate-expired'), { wrapper: QueryWrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.pendingApproval).not.toBeNull();
@@ -165,7 +165,7 @@ describe('useChat — hydration from GET /messages pendingApprovals', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-hydrate-gap03'));
+    const { result } = renderHook(() => useChat('cid-hydrate-gap03'), { wrapper: QueryWrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.pendingApproval).not.toBeNull();
