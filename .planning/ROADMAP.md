@@ -48,7 +48,7 @@
 - [ ] **Phase 15: Projects Foundation** — Postgres CRUD, conversation fields, prompt layering, per-project tool whitelist + quick actions
 - [ ] **Phase 16: HITL Backend** — Policy resolution, pausable agent loop, pending tool calls collection, resume endpoint
 - [x] **Phase 17: HITL Frontend** — Batched approval card with inline JSON arg editor and approve/edit/reject flow (completed 2026-04-26)
-- [ ] **Phase 18: Auto-Title** — Fire-and-forget cheap-model title generation with manual-rename protection
+- [x] **Phase 18: Auto-Title** — Fire-and-forget cheap-model title generation with manual-rename protection (completed 2026-04-27)
 - [ ] **Phase 19: Search & Sidebar Redesign** — Mongo $text search (Russian stemming) and master/detail sidebar with pinned chats
 
 ## Phase Details
@@ -119,14 +119,14 @@ Plans:
   3. A user who renames a chat sees the rename persist permanently — any auto-title job still in flight uses an atomic conditional update on `title_status ∈ {null, "auto_pending"}` and becomes a no-op the moment the rename lands.
   4. A user who picks "Regenerate title" from the chat context menu sees the job re-run exactly once; title-job failures degrade silently to "Новый диалог" and never block the chat.
   5. Generated titles that match credit-card / phone / email regexes fall back to `"Untitled chat <date>"` server-side, and title-job logs record only `{conversation_id, business_id, prompt_length, response_length}` — prompt and response bodies never reach Loki.
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans complete
 Plans:
 - [x] 18-01-PLAN.md — pkg/security/pii.go + tests (RedactPII / ContainsPIIClass; CC + phone-RU + email + IBAN + passport-RU + INN with named classes; Russian false-positive corpus)
 - [x] 18-02-PLAN.md — services/api config (TITLER_MODEL fallback to LLM_MODEL + provider keys + SelfHostedEndpoints) + lift buildProviderOpts + Router wiring with graceful disable
 - [x] 18-03-PLAN.md — Repo: UpdateTitleIfPending + TransitionToAutoPending atomic methods; Update $set extended with title_status (D-06 plumbing); EnsureConversationIndexes startup helper
 - [x] 18-04-PLAN.md — service.Titler (composes pkg/security + llm.Router + ConversationRepository; pre-redact / sanitize / post-hoc PII gate / terminal Untitled chat) + auto_title_attempts_total Prometheus counter + unit tests with negative log-shape assertion
 - [x] 18-05-PLAN.md — PUT /conversations/{id} flips title_status="manual" (D-06); POST /regenerate-title with verbatim Russian 409 bodies (D-02 / D-03); chat_proxy fire-points at auto/done (~593) and streamResume done (~911); fireAutoTitleIfPending helper; main.go finalized
-- [ ] 18-06-PLAN.md — Frontend: 'Новый диалог' fallback in ConversationItem; 'Обновить заголовок' DropdownMenuItem (hidden on manual) with regenerate mutation + toast; useChat invalidates ['conversations'] on SSE 'done'; ChatHeader extracted as memoized isolated subtree (D-11 USER OVERRIDE / Landmine 1)
+- [x] 18-06-PLAN.md — Frontend: 'Новый диалог' fallback in ConversationItem; 'Обновить заголовок' DropdownMenuItem (hidden on manual) with regenerate mutation + toast; useChat invalidates ['conversations'] on SSE 'done'; ChatHeader extracted as memoized isolated subtree (D-11 USER OVERRIDE / Landmine 1)
 
 ### Phase 19: Search & Sidebar Redesign
 **Goal**: Users navigate chats through a master/detail sidebar with projects, pinned chats, mobile drawer, and Russian-stemmed Mongo text search across message content and conversation titles — scoped tightly to the current user/business.
@@ -167,7 +167,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19
 | 15. Projects Foundation | v1.3 | 0/6 | Not started | - |
 | 16. HITL Backend | v1.3 | 0/TBD | Not started | - |
 | 17. HITL Frontend | v1.3 | 11/11 | Complete   | 2026-04-26 |
-| 18. Auto-Title | v1.3 | 5/6 | In Progress|  |
+| 18. Auto-Title | v1.3 | 6/6 | Complete   | 2026-04-27 |
 | 19. Search & Sidebar Redesign | v1.3 | 0/TBD | Not started | - |
 
 ---
