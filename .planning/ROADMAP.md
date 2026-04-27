@@ -140,12 +140,12 @@ Plans:
   5. Every search request is scoped by `(business_id, user_id)` at the repository signature level (empty values are rejected) so a two-user integration test confirms no cross-tenant leak; search logs record only `{user_id, business_id, query_length}` — never the query text.
   6. On API startup, both text indexes and the compound conversation index are created idempotently with `background: true`; the `/search` endpoint is enabled only after index readiness is confirmed, so a deploy never 504s chat load.
 **UI hint**: yes
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 Plans:
 - [x] 19-01-layout-restructure-PLAN.md — Wave 1: NavRail + ProjectPane split, react-resizable-panels v4 with autoSaveId, Cmd/Ctrl-K listener (UI-01)
 - [x] 19-02-pinned-PLAN.md — Wave 1: PinnedAt domain swap + idempotent V19 backfill + atomic Pin/Unpin + new compound index + PinnedSection + ChatHeader bookmark (UI-02, UI-03)
 - [x] 19-03-search-backend-PLAN.md — Wave 2: kljensen/snowball lib + text indexes + two-phase query + Searcher + GET /search handler + atomic.Bool readiness + cross-tenant integration test (SEARCH-01..03, 05, 06, 07)
-- [ ] 19-04-search-frontend-PLAN.md — Wave 2: SidebarSearch (Radix Popover, 250 ms debounce, Cmd-K consumer, route-aware scope) + SearchResultRow + useDebouncedValue + useHighlightMessage + ?highlight=msgId flash (SEARCH-04, UI-06)
+- [x] 19-04-search-frontend-PLAN.md — Wave 2: SidebarSearch (Radix Popover, 250 ms debounce, Cmd-K consumer, route-aware scope) + SearchResultRow + useDebouncedValue + useHighlightMessage + ?highlight=msgId flash (SEARCH-04, UI-06)
 - [ ] 19-05-a11y-and-audit-PLAN.md — Wave 3: @chialab/vitest-axe install + useRovingTabIndex + mobile auto-close + axe CI gate on critical+serious wired into make test-all (UI-04, UI-05)
 
 ## Progress
@@ -174,7 +174,7 @@ Phases execute in numeric order: 15 → 16 → 17 → 18 → 19
 | 16. HITL Backend | v1.3 | 0/TBD | Not started | - |
 | 17. HITL Frontend | v1.3 | 11/11 | Complete   | 2026-04-26 |
 | 18. Auto-Title | v1.3 | 6/6 | Complete   | 2026-04-27 |
-| 19. Search & Sidebar Redesign | v1.3 | 3/5 | In Progress|  |
+| 19. Search & Sidebar Redesign | v1.3 | 4/5 | In Progress|  |
 
 ---
 *Last updated: 2026-04-27 — Phase 19 plans created (5 plans across 3 waves)*
