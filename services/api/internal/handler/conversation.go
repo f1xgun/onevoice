@@ -580,3 +580,118 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 	}
 	writeJSON(w, http.StatusOK, updated)
 }
+
+// Pin handles POST /api/v1/conversations/{id}/pin.
+//
+// Phase 19 / Plan 19-02 / D-02. Atomically sets pinned_at = now (UTC) on the
+// conversation, scoped by (id, business_id, user_id) at the repository layer
+// for defense-in-depth (Pitfalls §19; threat T-19-02-01). On success returns
+// the refreshed conversation; cross-tenant attempts surface as a uniform 404
+// (NEVER 403 — uniform 404 is the industry-standard guard against existence
+// enumeration; threat T-19-02-02).
+func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	conversationID := chi.URLParam(r, "id")
+	if len(conversationID) != 24 {
+		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
+		return
+	}
+	if _, err := primitive.ObjectIDFromHex(conversationID); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "pin conversation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	if err := h.conversationRepo.Pin(r.Context(), conversationID, business.ID.String(), userID.String()); err != nil {
+		if errors.Is(err, domain.ErrConversationNotFound) {
+			writeJSONError(w, http.StatusNotFound, "conversation not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "pin conversation failed",
+			"conversation_id", conversationID,
+			"user_id", userID.String(),
+			"business_id", business.ID.String(),
+			"error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	conv, err := h.conversationRepo.GetByID(r.Context(), conversationID)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "pin conversation: refetch failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, conv)
+}
+
+// Unpin handles POST /api/v1/conversations/{id}/unpin.
+//
+// Phase 19 / Plan 19-02 / D-02. Symmetric to Pin: atomically sets
+// pinned_at = nil on the conversation, scoped by (id, business_id, user_id).
+// Cross-tenant attempts surface as a uniform 404.
+func (h *ConversationHandler) Unpin(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	conversationID := chi.URLParam(r, "id")
+	if len(conversationID) != 24 {
+		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
+		return
+	}
+	if _, err := primitive.ObjectIDFromHex(conversationID); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "unpin conversation: failed to resolve business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	if err := h.conversationRepo.Unpin(r.Context(), conversationID, business.ID.String(), userID.String()); err != nil {
+		if errors.Is(err, domain.ErrConversationNotFound) {
+			writeJSONError(w, http.StatusNotFound, "conversation not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "unpin conversation failed",
+			"conversation_id", conversationID,
+			"user_id", userID.String(),
+			"business_id", business.ID.String(),
+			"error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	conv, err := h.conversationRepo.GetByID(r.Context(), conversationID)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "unpin conversation: refetch failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, conv)
+}

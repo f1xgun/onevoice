@@ -1667,3 +1667,165 @@ func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 	assert.Equal(t, domain.TitleStatusManual, updated.TitleStatus,
 		"D-06: PUT must flip auto_pending → manual; the repo's atomic UpdateTitleIfPending will then no-op when the titler returns")
 }
+
+// --- Phase 19 / Plan 19-02 — Pin / Unpin handler tests ---------------------
+
+// pinTestHandler builds a ConversationHandler wired with a businessService
+// that returns a fixed business ID so Pin/Unpin handler tests can assert
+// the (id, business_id, user_id) scope filter without re-stubbing each test.
+func pinTestHandler(convRepo domain.ConversationRepository, businessID uuid.UUID, userID uuid.UUID) *ConversationHandler {
+	biz := &noopBusinessService{
+		GetByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
+			return &domain.Business{ID: businessID, UserID: userID, Name: "Test Business"}, nil
+		},
+	}
+	h, err := NewConversationHandler(convRepo, &MockMessageRepository{}, biz, &noopProjectService{}, &MockPendingToolCallRepository{})
+	if err != nil {
+		panic(err)
+	}
+	return h
+}
+
+func TestConversation_Pin_Success(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	now := time.Now().UTC()
+	pinCalls := 0
+	mockRepo := &MockConversationRepository{
+		PinFunc: func(_ context.Context, id, biz, uid string) error {
+			pinCalls++
+			assert.Equal(t, convID, id)
+			assert.Equal(t, businessID.String(), biz)
+			assert.Equal(t, userID.String(), uid)
+			return nil
+		},
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			assert.Equal(t, convID, id)
+			return &domain.Conversation{
+				ID:       convID,
+				UserID:   userID.String(),
+				PinnedAt: &now,
+			}, nil
+		},
+	}
+
+	h := pinTestHandler(mockRepo, businessID, userID)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/pin", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.Pin(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 1, pinCalls)
+
+	var got domain.Conversation
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	require.NotNil(t, got.PinnedAt, "Pin response must carry the persisted pinned_at")
+}
+
+func TestConversation_Pin_CrossTenant_Returns404(t *testing.T) {
+	// Repo's scope filter mismatch returns ErrConversationNotFound; the handler
+	// MUST map this to a uniform 404 (NEVER 403 — uniform 404 is the industry
+	// standard against existence enumeration; threat T-19-02-01).
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	mockRepo := &MockConversationRepository{
+		PinFunc: func(_ context.Context, _, _, _ string) error {
+			return domain.ErrConversationNotFound
+		},
+	}
+
+	h := pinTestHandler(mockRepo, businessID, userID)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/pin", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.Pin(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code, "cross-tenant pin must return 404, not 403 (no existence leak)")
+}
+
+func TestConversation_Pin_NoAuth_Returns401(t *testing.T) {
+	mockRepo := &MockConversationRepository{}
+	h := pinTestHandler(mockRepo, uuid.New(), uuid.New())
+
+	convID := "507f1f77bcf86cd799439011"
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID+"/pin", http.NoBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", convID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	h.Pin(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestConversation_Pin_BadID_Returns400(t *testing.T) {
+	userID := uuid.New()
+	mockRepo := &MockConversationRepository{}
+	h := pinTestHandler(mockRepo, uuid.New(), userID)
+
+	// 23 chars instead of 24 — same shape as the existing GetConversation guard.
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/short-id/pin", nil, userID, "short-id")
+	w := httptest.NewRecorder()
+	h.Pin(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestConversation_Unpin_Success(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	unpinCalls := 0
+	mockRepo := &MockConversationRepository{
+		UnpinFunc: func(_ context.Context, id, biz, uid string) error {
+			unpinCalls++
+			assert.Equal(t, convID, id)
+			assert.Equal(t, businessID.String(), biz)
+			assert.Equal(t, userID.String(), uid)
+			return nil
+		},
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{
+				ID:       convID,
+				UserID:   userID.String(),
+				PinnedAt: nil,
+			}, nil
+		},
+	}
+
+	h := pinTestHandler(mockRepo, businessID, userID)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/unpin", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.Unpin(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 1, unpinCalls)
+
+	var got domain.Conversation
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	assert.Nil(t, got.PinnedAt, "Unpin response must carry pinned_at = nil")
+}
+
+func TestConversation_Unpin_CrossTenant_Returns404(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd799439011"
+
+	mockRepo := &MockConversationRepository{
+		UnpinFunc: func(_ context.Context, _, _, _ string) error {
+			return domain.ErrConversationNotFound
+		},
+	}
+
+	h := pinTestHandler(mockRepo, businessID, userID)
+	req := makeAuthedReq(t, http.MethodPost, "/api/v1/conversations/"+convID+"/unpin", nil, userID, convID)
+	w := httptest.NewRecorder()
+	h.Unpin(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
