@@ -5,7 +5,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { MessageCircle, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
+import { MessageCircle, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import type { AxiosError } from 'axios';
 import { api } from '@/lib/api';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
@@ -32,20 +34,24 @@ import {
 interface Conversation {
   id: string;
   title: string;
+  titleStatus?: 'auto_pending' | 'auto' | 'manual'; // Phase 18 / TITLE-01 (D-09): drives placeholder + regen visibility (D-12)
   createdAt: string;
   projectId?: string | null;
 }
 
-function ConversationItem({
+// Exported for unit testing — Phase 18 / TITLE-01 (D-09) + TITLE-09 (D-12).
+export function ConversationItem({
   conv,
   onOpen,
   onRename,
   onDelete,
+  onRegenerateTitle,
 }: {
   conv: Conversation;
   onOpen: () => void;
   onRename: (title: string) => void;
   onDelete: () => void;
+  onRegenerateTitle: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(conv.title);
@@ -67,6 +73,12 @@ function ConversationItem({
     }
     setEditing(false);
   };
+
+  // Phase 18 / TITLE-01 / D-09 (verbatim): placeholder when title is empty
+  // OR an auto-title job is in flight. NO shimmer / skeleton / animation —
+  // CONTEXT.md "Sidebar Pending UX" pins the literal Russian copy.
+  const displayTitle =
+    conv.title === '' || conv.titleStatus === 'auto_pending' ? 'Новый диалог' : conv.title;
 
   return (
     <div className="group flex items-center gap-3 rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">
@@ -91,7 +103,7 @@ function ConversationItem({
           />
         ) : (
           <button type="button" className="block w-full text-left" onClick={onOpen}>
-            <p className="truncate font-medium">{conv.title}</p>
+            <p className="truncate font-medium">{displayTitle}</p>
             <p className="text-sm text-gray-400">
               {formatDistanceToNow(new Date(conv.createdAt), {
                 addSuffix: true,
@@ -125,6 +137,20 @@ function ConversationItem({
               <Pencil size={14} className="mr-2" />
               Переименовать
             </DropdownMenuItem>
+            {/* Phase 18 / TITLE-09 / D-12: between Переименовать and Удалить.
+                Hidden when titleStatus === 'manual' so manual renames stay
+                sovereign (D-02 hard rule). */}
+            {conv.titleStatus !== 'manual' && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRegenerateTitle();
+                }}
+              >
+                <RefreshCw size={14} className="mr-2" />
+                Обновить заголовок
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <MoveChatMenuItem conversationId={conv.id} currentProjectId={conv.projectId ?? null} />
             <DropdownMenuSeparator />
@@ -170,6 +196,21 @@ export default function ChatListPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
   });
 
+  // Phase 18 / TITLE-09 / D-12: kicks off the auto-title goroutine on the API
+  // side. 200 → silently invalidates so the new title arrives via React Query;
+  // 409 → server-supplied Russian copy (D-02 / D-03 verbatim) surfaced via
+  // sonner toast. Network failure → 'Ошибка соединения' fallback.
+  const { mutate: regenerateTitle } = useMutation({
+    mutationFn: (id: string) =>
+      api.post(`/conversations/${id}/regenerate-title`).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+    onError: (err: unknown) => {
+      const axErr = err as AxiosError<{ message?: string }> | undefined;
+      const msg = axErr?.response?.data?.message ?? 'Ошибка соединения';
+      toast.error(msg);
+    },
+  });
+
   const { mutate: deleteConversation } = useMutation({
     mutationFn: (id: string) => api.delete(`/conversations/${id}`),
     onSuccess: () => {
@@ -210,6 +251,7 @@ export default function ChatListPage() {
               onOpen={() => router.push(`/chat/${conv.id}`)}
               onRename={(title) => renameConversation({ id: conv.id, title })}
               onDelete={() => setDeleteTarget(conv.id)}
+              onRegenerateTitle={() => regenerateTitle(conv.id)}
             />
           ))}
         </div>
