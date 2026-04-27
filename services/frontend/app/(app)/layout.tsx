@@ -2,11 +2,20 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { trackEvent } from '@/lib/telemetry';
 import { Sidebar } from '@/components/sidebar';
+import { NavRail } from '@/components/sidebar/NavRail';
+import { ProjectPane } from '@/components/sidebar/ProjectPane';
 import type { ReactNode } from 'react';
+
+// Module-level event-name singleton: any input/element listening for this
+// CustomEvent will focus itself. Decouples the layout (broadcaster) from
+// the SearchBar (consumer) — consumers can mount/unmount as the route
+// changes without re-binding the global keyboard listener.
+const SIDEBAR_FOCUS_EVENT = 'onevoice:sidebar-search-focus';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -61,14 +70,73 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [pathname, ready]);
 
+  // D-11: Cmd/Ctrl-K global focus listener. Steals focus from any input
+  // INCLUDING the chat composer — Slack/Linear convention. Mount-only.
+  useEffect(() => {
+    function onKeydown(e: KeyboardEvent) {
+      // metaKey covers Cmd on macOS; ctrlKey covers Ctrl on every other
+      // platform. Match `K`/`k` — different keyboard layouts may emit either.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent(SIDEBAR_FOCUS_EVENT));
+      }
+    }
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
+  }, []);
+
   if (!ready) {
     return null;
   }
 
+  // D-14: project-pane is route-conditional. Rendered on /chat/* and
+  // /projects/* only. Other authenticated routes show NavRail + content.
+  const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
+
   return (
-    <div className="flex h-screen flex-col overflow-hidden md:flex-row">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto bg-gray-50">{children}</main>
-    </div>
+    <>
+      {/* Mobile: keep the existing Sheet-based drawer (Sidebar) which
+          renders top bar + drawer with the full nav + project tree. */}
+      <div className="md:hidden">
+        <Sidebar />
+        <main className="overflow-y-auto bg-gray-50">{children}</main>
+      </div>
+
+      {/* Desktop: NavRail (always) + PanelGroup hosting conditional
+          ProjectPane and main content. autoSaveId persists the resized
+          width to localStorage under
+          `react-resizable-panels:onevoice:sidebar-width` (D-15). */}
+      <div className="hidden h-screen md:flex">
+        <NavRail />
+        <PanelGroup
+          direction="horizontal"
+          autoSaveId="onevoice:sidebar-width"
+          className="flex-1"
+        >
+          {showProjectPane && (
+            <>
+              {/* defaultSize=22 ≈ 280 px on a 1280 px viewport (D-15
+                  default 280 px). minSize=12 / maxSize=35 cover the
+                  locked 200–480 px range without clipping. */}
+              <Panel
+                defaultSize={22}
+                minSize={12}
+                maxSize={35}
+                className="motion-reduce:transition-none"
+              >
+                <ProjectPane />
+              </Panel>
+              <PanelResizeHandle
+                aria-label="Изменить ширину боковой панели"
+                className="w-px bg-gray-700 transition-colors hover:bg-gray-500"
+              />
+            </>
+          )}
+          <Panel defaultSize={78} className="motion-reduce:transition-none">
+            <main className="h-full overflow-y-auto bg-gray-50">{children}</main>
+          </Panel>
+        </PanelGroup>
+      </div>
+    </>
   );
 }

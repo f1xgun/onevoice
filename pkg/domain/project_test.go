@@ -93,6 +93,7 @@ func TestProject_JSON_CamelCaseKeys(t *testing.T) {
 func TestConversation_JSON_IncludesNewFields(t *testing.T) {
 	projID := "11111111-1111-1111-1111-111111111111"
 	lm := time.Now().Truncate(time.Second)
+	pinned := time.Now().UTC().Truncate(time.Second)
 	c := Conversation{
 		ID:            "conv-1",
 		UserID:        "user-1",
@@ -100,7 +101,7 @@ func TestConversation_JSON_IncludesNewFields(t *testing.T) {
 		ProjectID:     &projID,
 		Title:         "Hello",
 		TitleStatus:   TitleStatusAuto,
-		Pinned:        true,
+		PinnedAt:      &pinned, // Phase 19 D-02 — replaced legacy `Pinned bool`
 		LastMessageAt: &lm,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -113,7 +114,7 @@ func TestConversation_JSON_IncludesNewFields(t *testing.T) {
 	assert.Contains(t, out, `"businessId"`)
 	assert.Contains(t, out, `"projectId"`)
 	assert.Contains(t, out, `"titleStatus"`)
-	assert.Contains(t, out, `"pinned"`)
+	assert.Contains(t, out, `"pinnedAt"`)
 	assert.Contains(t, out, `"lastMessageAt"`)
 }
 
@@ -167,7 +168,11 @@ func TestConversation_BSONTags(t *testing.T) {
 		{"ProjectID", "project_id"},
 		{"BusinessID", "business_id"},
 		{"TitleStatus", "title_status"},
-		{"Pinned", "pinned"},
+		// Phase 19 D-02 — `PinnedAt *time.Time` replaces legacy `Pinned bool`.
+		// `pinned_at,omitempty` so unpinned chats serialize without the key
+		// (the backfill's $exists:false guard relies on missing-key semantics
+		// — see services/api/internal/repository/mongo_backfill.go:BackfillConversationsV19).
+		{"PinnedAt", "pinned_at,omitempty"},
 		// last_message_at has ,omitempty — nil pointer omits the key.
 		{"LastMessageAt", "last_message_at,omitempty"},
 	}

@@ -79,6 +79,20 @@ func (r *titlerConvRepo) UpdateTitleIfPending(_ context.Context, id, title strin
 	r.updateTitleCalls = append(r.updateTitleCalls, struct{ ID, Title string }{id, title})
 	return r.updateTitleErr
 }
+// Pin / Unpin — Phase 19 / D-02 atomic conditional updates (Plan 19-02 Task 1).
+// Titler tests don't exercise pin lifecycle; stubs return nil.
+func (r *titlerConvRepo) Pin(_ context.Context, _, _, _ string) error   { return nil }
+func (r *titlerConvRepo) Unpin(_ context.Context, _, _, _ string) error { return nil }
+
+// SearchTitles / ScopedConversationIDs — Phase 19 / Plan 19-03 stubs.
+// Titler tests don't exercise the search path; stubs return nil.
+func (r *titlerConvRepo) SearchTitles(_ context.Context, _, _, _ string, _ *string, _ int) ([]domain.ConversationTitleHit, []string, error) {
+	return nil, nil, nil
+}
+func (r *titlerConvRepo) ScopedConversationIDs(_ context.Context, _, _ string, _ *string) ([]string, error) {
+	return nil, nil
+}
+
 func (r *titlerConvRepo) TransitionToAutoPending(_ context.Context, _ string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -115,6 +129,12 @@ func (m *titlerMsgRepo) CountByConversationID(_ context.Context, _ string) (int6
 func (m *titlerMsgRepo) Update(_ context.Context, _ *domain.Message) error { return nil }
 func (m *titlerMsgRepo) FindByConversationActive(_ context.Context, _ string) (*domain.Message, error) {
 	return nil, domain.ErrMessageNotFound
+}
+
+// SearchByConversationIDs — Phase 19 / Plan 19-03 stub. Titler tests
+// don't exercise the search path.
+func (m *titlerMsgRepo) SearchByConversationIDs(_ context.Context, _ string, _ []string, _ int) ([]domain.MessageSearchHit, error) {
+	return nil, nil
 }
 
 // newTitlerHandlerWithRealTitler builds a TitlerHandler with a REAL

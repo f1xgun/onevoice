@@ -166,3 +166,127 @@ func TestBackfillConversationsV15_PreservesExistingFields(t *testing.T) {
 	assert.Equal(t, domain.TitleStatusManual, after["title_status"],
 		"user-set title_status must not be overwritten")
 }
+
+// --- Phase 19 / Plan 19-02 — V19 backfill tests ----------------------------
+
+// insertPhase15Conversation inserts a document in the post-Phase-15 shape
+// (legacy `pinned: <bool>` field present, no `pinned_at`). This is the
+// realistic on-disk shape V19 must migrate.
+func insertPhase15Conversation(t *testing.T, db *mongo.Database, id string, pinned bool, updatedAt time.Time) {
+	t.Helper()
+	_, err := db.Collection("conversations").InsertOne(context.Background(), bson.M{
+		"_id":             id,
+		"user_id":         "user-19",
+		"business_id":     "biz-19",
+		"project_id":      nil,
+		"title":           "phase-15-shape",
+		"title_status":    "auto",
+		"pinned":          pinned,
+		"last_message_at": updatedAt,
+		"created_at":      updatedAt.Add(-time.Hour),
+		"updated_at":      updatedAt,
+	})
+	require.NoError(t, err)
+}
+
+// TestBackfillConversationsV19_EmptyCollection — empty conversations collection
+// → V19 succeeds, writes the marker, no document writes.
+func TestBackfillConversationsV19_EmptyCollection(t *testing.T) {
+	db := setupBackfillTestDB(t, "v19_empty")
+	ctx := context.Background()
+
+	require.NoError(t, BackfillConversationsV19(ctx, db))
+
+	// Marker written even on empty collection (so subsequent boots are no-ops).
+	var marker bson.M
+	err := db.Collection("schema_migrations").FindOne(ctx, bson.M{"_id": SchemaMigrationPhase19}).Decode(&marker)
+	require.NoError(t, err)
+	assert.Equal(t, SchemaMigrationPhase19, marker["_id"])
+	assert.NotNil(t, marker["applied_at"])
+
+	// Idempotent re-run.
+	require.NoError(t, BackfillConversationsV19(ctx, db))
+	count, err := db.Collection("schema_migrations").CountDocuments(ctx, bson.M{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), count, "marker must be a single row even after re-run")
+}
+
+// TestBackfillConversationsV19_PinnedTrueLegacyMigration — Step 2 of V19:
+// legacy `pinned: true` rows (with no pinned_at) get pinned_at = updated_at,
+// and Step 3 drops the legacy `pinned` field entirely.
+func TestBackfillConversationsV19_PinnedTrueLegacyMigration(t *testing.T) {
+	db := setupBackfillTestDB(t, "v19_legacy_true")
+	ctx := context.Background()
+
+	updatedAt := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	insertPhase15Conversation(t, db, "conv-pinned", true, updatedAt)
+	insertPhase15Conversation(t, db, "conv-unpinned", false, updatedAt.Add(-time.Hour))
+
+	require.NoError(t, BackfillConversationsV19(ctx, db))
+
+	// conv-pinned: pinned_at must equal updated_at; legacy `pinned` field absent.
+	var pinned bson.M
+	require.NoError(t,
+		db.Collection("conversations").FindOne(ctx, bson.M{"_id": "conv-pinned"}).Decode(&pinned))
+	pa, hasPA := pinned["pinned_at"]
+	require.True(t, hasPA, "pinned conv must have pinned_at after V19 migration")
+	require.NotNil(t, pa, "pinned conv must have non-nil pinned_at after legacy migration")
+	_, hasLegacy := pinned["pinned"]
+	assert.False(t, hasLegacy, "Step 3 of V19 must $unset the legacy `pinned` bool field")
+
+	// conv-unpinned: pinned_at must be nil (Step 1 wrote nil since field was missing
+	// before V19; Step 2 left it alone since pinned was false). Legacy field gone.
+	var unpinned bson.M
+	require.NoError(t,
+		db.Collection("conversations").FindOne(ctx, bson.M{"_id": "conv-unpinned"}).Decode(&unpinned))
+	paUnp, hasPAUnp := unpinned["pinned_at"]
+	require.True(t, hasPAUnp, "Step 1 of V19 must add pinned_at: nil to legacy rows missing the field")
+	assert.Nil(t, paUnp, "unpinned legacy row must end up with pinned_at = nil")
+	_, hasLegacyUnp := unpinned["pinned"]
+	assert.False(t, hasLegacyUnp, "Step 3 of V19 must $unset the legacy `pinned` field for unpinned rows too")
+}
+
+// TestBackfillConversationsV19_Idempotent — second invocation is a no-op (marker
+// fast-path). State unchanged across reruns.
+func TestBackfillConversationsV19_Idempotent(t *testing.T) {
+	db := setupBackfillTestDB(t, "v19_idempotent")
+	ctx := context.Background()
+
+	updatedAt := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	insertPhase15Conversation(t, db, "conv-x", true, updatedAt)
+
+	require.NoError(t, BackfillConversationsV19(ctx, db))
+
+	// Snapshot.
+	var snap bson.M
+	require.NoError(t,
+		db.Collection("conversations").FindOne(ctx, bson.M{"_id": "conv-x"}).Decode(&snap))
+
+	// Second run.
+	require.NoError(t, BackfillConversationsV19(ctx, db))
+
+	var after bson.M
+	require.NoError(t,
+		db.Collection("conversations").FindOne(ctx, bson.M{"_id": "conv-x"}).Decode(&after))
+	assert.Equal(t, snap, after, "rerun must be a no-op (marker fast-path)")
+
+	// Marker count remains 1.
+	count, err := db.Collection("schema_migrations").CountDocuments(ctx, bson.M{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), count)
+}
+
+// TestBackfillConversationsV19_MarkerSchema — marker row contains _id and
+// applied_at fields with the expected values/types.
+func TestBackfillConversationsV19_MarkerSchema(t *testing.T) {
+	db := setupBackfillTestDB(t, "v19_marker")
+	ctx := context.Background()
+
+	require.NoError(t, BackfillConversationsV19(ctx, db))
+
+	var marker bson.M
+	require.NoError(t,
+		db.Collection("schema_migrations").FindOne(ctx, bson.M{"_id": SchemaMigrationPhase19}).Decode(&marker))
+	assert.Equal(t, SchemaMigrationPhase19, marker["_id"])
+	assert.NotNil(t, marker["applied_at"])
+}

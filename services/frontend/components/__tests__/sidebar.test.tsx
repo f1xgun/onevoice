@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Sidebar } from '../sidebar';
@@ -59,52 +60,59 @@ function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-function renderSidebar(pathname: string) {
+async function renderAndOpenDrawer(pathname: string) {
   pathnameRef.current = pathname;
-  return render(
+  const result = render(
     <Providers>
       <Sidebar />
     </Providers>
   );
+  // Phase 19 D-14: Sidebar is now mobile-only. The desktop layout is
+  // owned by app/(app)/layout.tsx (NavRail + ProjectPane). To assert
+  // projects-subtree visibility (GAP-03 contract preserved) we open the
+  // mobile drawer first.
+  const trigger = screen.getByRole('button', { name: 'Открыть боковое меню' });
+  await userEvent.setup().click(trigger);
+  return result;
 }
 
-describe('Sidebar — projects subtree visibility (GAP-03)', () => {
+describe('Sidebar — projects subtree visibility (GAP-03 — preserved on mobile drawer)', () => {
   beforeEach(() => {
     pathnameRef.current = '/chat';
   });
 
-  it('renders projects subtree on /chat', () => {
-    renderSidebar('/chat');
+  it('renders projects subtree on /chat (drawer open)', async () => {
+    await renderAndOpenDrawer('/chat');
     expect(screen.getByText('Без проекта')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
   });
 
-  it('renders projects subtree on /chat/:id', () => {
-    renderSidebar('/chat/69e486f230986d87c50887cc');
+  it('renders projects subtree on /chat/:id (drawer open)', async () => {
+    await renderAndOpenDrawer('/chat/69e486f230986d87c50887cc');
     expect(screen.getByText('Без проекта')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
   });
 
-  it('renders projects subtree on /projects/new', () => {
-    renderSidebar('/projects/new');
+  it('renders projects subtree on /projects/new (drawer open)', async () => {
+    await renderAndOpenDrawer('/projects/new');
     expect(screen.getByText('Без проекта')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
   });
 
-  it('renders projects subtree on /projects/:id', () => {
-    renderSidebar('/projects/55f5dafe-2cc0-4540-9783-9b831b248ea0');
+  it('renders projects subtree on /projects/:id (drawer open)', async () => {
+    await renderAndOpenDrawer('/projects/55f5dafe-2cc0-4540-9783-9b831b248ea0');
     expect(screen.getByText('Без проекта')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
   });
 
-  it('renders projects subtree on /projects/:id/chats', () => {
-    renderSidebar('/projects/55f5dafe-2cc0-4540-9783-9b831b248ea0/chats');
+  it('renders projects subtree on /projects/:id/chats (drawer open)', async () => {
+    await renderAndOpenDrawer('/projects/55f5dafe-2cc0-4540-9783-9b831b248ea0/chats');
     expect(screen.getByText('Без проекта')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /\+ Новый проект/ })).toBeInTheDocument();
   });
 
-  it('hides projects subtree on /integrations (guard against over-widening the gate)', () => {
-    renderSidebar('/integrations');
+  it('hides projects subtree on /integrations (drawer open — guard against over-widening the gate)', async () => {
+    await renderAndOpenDrawer('/integrations');
     expect(screen.queryByText('Без проекта')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /\+ Новый проект/ })).not.toBeInTheDocument();
   });
