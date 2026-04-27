@@ -85,7 +85,9 @@ describe('ConversationItem placeholder (D-09)', () => {
       titleStatus: 'auto_pending',
     });
     expect(screen.getByText('Новый диалог')).toBeInTheDocument();
-    expect(screen.queryByText('Stale title leaking from a previous render')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Stale title leaking from a previous render')
+    ).not.toBeInTheDocument();
   });
 
   it("renders the actual title when titleStatus is 'auto' with non-empty title", () => {
