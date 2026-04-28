@@ -719,6 +719,181 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "no_active_approval_for_conversation")
 }
 
+// TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval covers the
+// resume-path bug where an LLM error / ctx cancellation / max-iterations cap
+// during the post-resolve agent loop emitted SSE `error` and closed the stream
+// without ever sending `done`. Pre-fix the assistant Message stayed in
+// pending_approval forever, so the next POST /chat hit the D-04 gate's
+// "turn_already_in_progress" branch and the conversation was permanently stuck
+// behind a hanging loader. After the fix: the error event flips Status to
+// complete (Content / ToolCall statuses preserved) so the chat unblocks.
+func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "conv-resume-error"
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	activeMsg := &domain.Message{
+		ID:             "msg-stuck",
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        "",
+		ToolCalls: []domain.ToolCall{
+			{ID: "call-a", Name: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "x"}, Status: domain.ToolCallStatusPending},
+		},
+		Status: domain.MessageStatusPendingApproval,
+	}
+
+	// Orchestrator mock — emit a tool_rejected event then an error and close.
+	// Mirrors the real production trace: user rejected the call, orchestrator
+	// sent the rejection ack, then stepRun's LLM follow-up was canceled.
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"tool_rejected","tool_call_id":"call-a","tool_name":"telegram__send_channel_post","content":"user_rejected"}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"error","content":"context canceled"}` + "\n\n"))
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	var persistedUpdates []*domain.Message
+	msgRepo := &MockMessageRepository{
+		FindByConversationActiveFunc: func(_ context.Context, _ string) (*domain.Message, error) {
+			cp := *activeMsg
+			cp.ToolCalls = append([]domain.ToolCall{}, activeMsg.ToolCalls...)
+			return &cp, nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			cp.ToolCalls = append([]domain.ToolCall{}, m.ToolCalls...)
+			cp.ToolResults = append([]domain.ToolResult{}, m.ToolResults...)
+			persistedUpdates = append(persistedUpdates, &cp)
+			return nil
+		},
+	}
+	pendingRepo := &MockPendingToolCallRepository{
+		GetByBatchIDFunc: func(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+			return &domain.PendingToolCallBatch{ID: "batch-1", ConversationID: convID, Status: "resolving"}, nil
+		},
+	}
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+		},
+	}
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(ResumeBatchHeader, "batch-1")
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", convID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	// Error event must reach the client — frontend renders it via SSE handler.
+	assert.Contains(t, rr.Body.String(), `"type":"error"`)
+
+	// The persistResumeDone path triggered by the error event must have run,
+	// transitioning Status off pending_approval. Without this, the D-04 gate
+	// keeps blocking new turns.
+	require.NotEmpty(t, persistedUpdates, "Update must be called when error event fires")
+	final := persistedUpdates[len(persistedUpdates)-1]
+	assert.Equal(t, "msg-stuck", final.ID, "same message ID preserved (D-17)")
+	assert.Equal(t, domain.MessageStatusComplete, final.Status, "error must clear pending_approval")
+	require.Len(t, final.ToolCalls, 1)
+	assert.Equal(t, domain.ToolCallStatusRejected, final.ToolCalls[0].Status, "tool_rejected status preserved")
+}
+
+// TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval
+// covers the fall-through path: the orchestrator closes the connection after
+// streaming non-terminal events (e.g. tool_rejected) but never emits an error
+// or done event. Pre-fix the partial-state Update kept Status=pending_approval
+// → conversation stuck. Post-fix: status flips to complete on stream-end too.
+func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "conv-resume-no-done"
+
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	activeMsg := &domain.Message{
+		ID:             "msg-stuck-2",
+		ConversationID: convID,
+		Role:           "assistant",
+		ToolCalls: []domain.ToolCall{
+			{ID: "call-a", Name: "telegram__send_channel_post", Arguments: map[string]interface{}{}, Status: domain.ToolCallStatusPending},
+		},
+		Status: domain.MessageStatusPendingApproval,
+	}
+
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"tool_rejected","tool_call_id":"call-a","tool_name":"telegram__send_channel_post","content":"user_rejected"}` + "\n\n"))
+		// Connection closes without done or error.
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	var persistedUpdates []*domain.Message
+	msgRepo := &MockMessageRepository{
+		FindByConversationActiveFunc: func(_ context.Context, _ string) (*domain.Message, error) {
+			cp := *activeMsg
+			cp.ToolCalls = append([]domain.ToolCall{}, activeMsg.ToolCalls...)
+			return &cp, nil
+		},
+		UpdateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			cp.ToolCalls = append([]domain.ToolCall{}, m.ToolCalls...)
+			persistedUpdates = append(persistedUpdates, &cp)
+			return nil
+		},
+	}
+	pendingRepo := &MockPendingToolCallRepository{
+		GetByBatchIDFunc: func(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+			return &domain.PendingToolCallBatch{ID: "batch-1", ConversationID: convID, Status: "resolving"}, nil
+		},
+	}
+	convRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, id string) (*domain.Conversation, error) {
+			return &domain.Conversation{ID: id, UserID: "any", ProjectID: nil}, nil
+		},
+	}
+	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orch.URL, nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(ResumeBatchHeader, "batch-1")
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", convID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	require.NotEmpty(t, persistedUpdates, "Update must run on stream-end-without-done")
+	final := persistedUpdates[len(persistedUpdates)-1]
+	assert.Equal(t, domain.MessageStatusComplete, final.Status, "fall-through must clear pending_approval")
+	require.Len(t, final.ToolCalls, 1)
+	assert.Equal(t, domain.ToolCallStatusRejected, final.ToolCalls[0].Status, "tool_rejected status preserved on fall-through")
+}
+
 // TestChatProxy_ImplicitResume_InProgressMessage_Rejoins covers D-04 case (b):
 // no resume header, but the conversation has an in_progress message AND a
 // resolving batch → implicit rejoin via the orchestrator's resume endpoint.

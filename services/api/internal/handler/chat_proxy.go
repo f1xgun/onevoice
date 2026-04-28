@@ -834,8 +834,21 @@ func (h *ChatProxyHandler) streamResume(
 		return
 	}
 
+	// Detach the orchestrator request from the client's request context so a
+	// client-side reconnect (the SSE EventSource closes the old request when
+	// the user navigates or React StrictMode remounts the chat page) cannot
+	// cancel the in-flight resume mid-LLM-call. Without this, ctx cancellation
+	// kills the resume goroutine before it emits "done", leaving the assistant
+	// Message stuck in pending_approval and bricking the conversation. Mirrors
+	// the same detach the fresh-turn Chat path already does (line 414).
+	orchCtx, orchCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
+		orchCtx = logger.WithCorrelationID(orchCtx, corrID)
+	}
+	defer orchCancel()
+
 	orchURL := fmt.Sprintf("%s/chat/%s/resume?batch_id=%s", h.orchestratorURL, conversationID, batchID)
-	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, orchURL, http.NoBody)
+	proxyReq, err := http.NewRequestWithContext(orchCtx, http.MethodPost, orchURL, http.NoBody)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
@@ -917,6 +930,18 @@ func (h *ChatProxyHandler) streamResume(
 			if idx, ok := callIdx[ev.ToolCallID]; ok {
 				msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
 			}
+		case "error":
+			// Resume failed mid-stream (LLM error, ctx cancellation,
+			// max-iterations cap). The error event is already forwarded
+			// to the client; here we MUST transition the assistant
+			// Message off pending_approval/in_progress, otherwise every
+			// subsequent POST /chat hits the D-04 gate's
+			// "turn_already_in_progress" branch and the conversation is
+			// permanently stuck (FindByConversationActive keeps matching
+			// this message, but no batch is pending).
+			msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
+			h.persistResumeDone(persistCtx, &msg)
+			return
 		case "done":
 			msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
 			h.persistResumeDone(persistCtx, &msg)
@@ -930,9 +955,15 @@ func (h *ChatProxyHandler) streamResume(
 			"error", err, "conversation_id", conversationID)
 	}
 
-	// Stream ended without EventDone (e.g. transient network drop). Persist
-	// whatever partial state we accumulated so the next reopen sees it.
+	// Stream ended without EventDone — transient network drop, orchestrator
+	// closed the connection after an unhandled event, or any other non-terminal
+	// exit. We MUST transition the message off pending_approval/in_progress
+	// here; leaving it active permanently bricks the conversation (D-04 gate
+	// would loop on "turn_already_in_progress" forever).
 	msg.Content = postText.String()
+	if msg.Status == domain.MessageStatusPendingApproval || msg.Status == domain.MessageStatusInProgress {
+		msg.Status = domain.MessageStatusComplete
+	}
 	saveCtx, cancel := persistCtx()
 	defer cancel()
 	if err := h.messageRepo.Update(saveCtx, &msg); err != nil {
