@@ -148,6 +148,17 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 // (POLICY-05) replaces this with a business-level tool_approvals map that
 // will serve as the actual "inherited" baseline; until then, the baseline is
 // "every registered tool for the active integrations".
+//
+// Auto-floor read tools are always included in WhitelistModeExplicit. Tools
+// registered with ToolFloorAuto are read-only / safe queries by definition
+// (cmd/main.go's policy guideline: "no external side effects") — denying
+// the LLM a way to read public state forces it to hallucinate around the
+// missing context (e.g. clicking "Проверить отзывы" with only a write tool
+// in the whitelist made the LLM publish posts ABOUT checking reviews
+// instead of fetching them). Whitelist intent is to gate write actions;
+// HITL still gates execution of every Manual-floor tool, so this exemption
+// does not weaken the security posture. WhitelistModeNone remains absolute
+// — if the operator picks "no tools", we honor it.
 func (r *Registry) AvailableForWhitelist(
 	ctx context.Context,
 	activeIntegrations []string,
@@ -177,7 +188,8 @@ func (r *Registry) AvailableForWhitelist(
 		}
 		result := make([]llm.ToolDefinition, 0, len(base))
 		for _, def := range base {
-			if allowSet[def.Function.Name] {
+			name := def.Function.Name
+			if allowSet[name] || r.tools[name].floor == domain.ToolFloorAuto {
 				result = append(result, def)
 			}
 		}

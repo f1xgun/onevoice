@@ -96,13 +96,24 @@ func toolNames(defs []llm.ToolDefinition) []string {
 	return out
 }
 
-// fixtureRegistry returns a registry populated with two platform tools plus
-// one internal tool. Used by whitelist subtests.
+// fixtureRegistry returns a registry populated with a realistic mix of
+// Manual-floor write tools (matches services/orchestrator/cmd/main.go's
+// production registrations) plus Auto-floor read tools. The Auto/Manual
+// split is the basis for "auto-floor read tools always available under
+// ModeExplicit" — see AvailableForWhitelist's docstring.
 func fixtureRegistry() *tools.Registry {
 	reg := tools.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("telegram__send_notification"), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorAuto, nil)
+	// Write tools — Manual floor, fully gated by whitelist + HITL.
+	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, nil)
+	reg.Register(makeDef("telegram__send_notification"), "", nil, domain.ToolFloorManual, nil)
+	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorManual, nil)
+	// Read tools — Auto floor, always available under ModeExplicit so the
+	// LLM can fetch context (Pitfall: clicking "Проверить отзывы" with only
+	// a write tool in whitelist made the LLM publish posts ABOUT checking
+	// reviews instead of fetching them).
+	reg.Register(makeDef("telegram__get_reviews"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef("vk__get_comments"), "", nil, domain.ToolFloorAuto, nil)
+	// Internal — no platform prefix, always available.
 	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
 	return reg
 }
@@ -144,11 +155,23 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_Intersection(t *testing.T) 
 		[]string{"telegram__send_channel_post"},
 	)
 	names := toolNames(got)
-	assert.Equal(t, []string{"telegram__send_channel_post"}, names)
+	// Explicit allowlist returns the named Manual-floor write tool PLUS
+	// every Auto-floor read tool for active integrations (always-available
+	// exemption — see AvailableForWhitelist docstring).
+	assert.ElementsMatch(t,
+		[]string{
+			"telegram__send_channel_post", // explicitly allowed
+			"telegram__get_reviews",       // Auto floor, telegram active
+			"vk__get_comments",            // Auto floor, vk active
+			"get_business_info",           // Auto floor, internal (no platform prefix)
+		},
+		names,
+	)
 }
 
 func TestRegistry_AvailableForWhitelist_ModeExplicit_FiltersOutInactivePlatform(t *testing.T) {
-	// VK whitelisted but VK not active → empty.
+	// VK whitelisted but VK not active → vk__publish_post dropped.
+	// Auto-floor tools for the ACTIVE platform (telegram) still come through.
 	reg := fixtureRegistry()
 	got := reg.AvailableForWhitelist(
 		context.Background(),
@@ -156,7 +179,17 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_FiltersOutInactivePlatform(
 		domain.WhitelistModeExplicit,
 		[]string{"vk__publish_post"},
 	)
-	assert.Empty(t, got)
+	names := toolNames(got)
+	assert.NotContains(t, names, "vk__publish_post", "VK platform inactive")
+	assert.NotContains(t, names, "vk__get_comments", "VK platform inactive")
+	assert.NotContains(t, names, "telegram__send_channel_post", "Manual write tool not in allowlist")
+	assert.ElementsMatch(t,
+		[]string{
+			"telegram__get_reviews", // Auto, telegram active
+			"get_business_info",     // Auto, internal
+		},
+		names,
+	)
 }
 
 func TestRegistry_AvailableForWhitelist_ModeExplicit_UnknownTool_LogsAndDrops(t *testing.T) {
@@ -168,7 +201,19 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_UnknownTool_LogsAndDrops(t 
 		domain.WhitelistModeExplicit,
 		[]string{"unknown__tool"},
 	)
-	assert.Empty(t, got)
+	names := toolNames(got)
+	// Unknown tool dropped; no Manual-floor write tools come through;
+	// Auto-floor read tools for active platform still available.
+	assert.NotContains(t, names, "unknown__tool")
+	assert.NotContains(t, names, "telegram__send_channel_post")
+	assert.NotContains(t, names, "telegram__send_notification")
+	assert.ElementsMatch(t,
+		[]string{
+			"telegram__get_reviews",
+			"get_business_info",
+		},
+		names,
+	)
 	logs := buf.String()
 	assert.Contains(t, logs, "project whitelist contains unknown tool")
 	assert.Contains(t, logs, "unknown__tool")
@@ -198,8 +243,62 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_MixedKnownAndUnknown(t *tes
 		[]string{"telegram__send_channel_post", "bogus__tool"},
 	)
 	names := toolNames(got)
-	assert.Equal(t, []string{"telegram__send_channel_post"}, names)
+	// Known tool + auto-floor exemptions; unknown dropped + logged.
+	assert.ElementsMatch(t,
+		[]string{
+			"telegram__send_channel_post",
+			"telegram__get_reviews",
+			"vk__get_comments",
+			"get_business_info",
+		},
+		names,
+	)
+	assert.NotContains(t, names, "bogus__tool")
 	assert.True(t, strings.Contains(buf.String(), "bogus__tool"))
+}
+
+// TestRegistry_AvailableForWhitelist_ModeExplicit_AutoFloorAlwaysIncluded
+// locks the read-tools-by-default contract: even with an EMPTY allowlist,
+// every Auto-floor tool for the active integrations is exposed to the LLM.
+// Quick-actions like "Проверить отзывы" only work if get_*-style tools can
+// be called regardless of the explicit whitelist (which is intended to gate
+// write actions, not read).
+func TestRegistry_AvailableForWhitelist_ModeExplicit_AutoFloorAlwaysIncluded(t *testing.T) {
+	reg := fixtureRegistry()
+	got := reg.AvailableForWhitelist(
+		context.Background(),
+		[]string{"telegram", "vk"},
+		domain.WhitelistModeExplicit,
+		nil, // empty allowlist — only auto-floor tools should come through
+	)
+	names := toolNames(got)
+	assert.NotContains(t, names, "telegram__send_channel_post", "Manual floor must require explicit whitelist")
+	assert.NotContains(t, names, "telegram__send_notification", "Manual floor must require explicit whitelist")
+	assert.NotContains(t, names, "vk__publish_post", "Manual floor must require explicit whitelist")
+	assert.ElementsMatch(t,
+		[]string{
+			"telegram__get_reviews",
+			"vk__get_comments",
+			"get_business_info",
+		},
+		names,
+	)
+}
+
+// TestRegistry_AvailableForWhitelist_ModeNone_BlocksEverythingIncludingAuto
+// locks the absolute-stop semantics of WhitelistModeNone: when the operator
+// explicitly says "no tools at all", we honor it — auto-floor read tools
+// do NOT bypass this. The exemption only applies under ModeExplicit, where
+// the whitelist is a positive allowlist for write tools.
+func TestRegistry_AvailableForWhitelist_ModeNone_BlocksEverythingIncludingAuto(t *testing.T) {
+	reg := fixtureRegistry()
+	got := reg.AvailableForWhitelist(
+		context.Background(),
+		[]string{"telegram", "vk"},
+		domain.WhitelistModeNone,
+		[]string{"telegram__get_reviews"}, // even allowlisting an auto tool doesn't matter
+	)
+	assert.Empty(t, got)
 }
 
 // --- Phase 16 Plan 16-03 additions: Floor, EditableFields, Has, AllEntries ---
