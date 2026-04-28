@@ -166,6 +166,110 @@ func TestChatProxy_StreamsSSE(t *testing.T) {
 	assert.Contains(t, responseBody, `data: {"type":"done"}`)
 }
 
+// TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError covers the
+// fresh-turn analog of TestChatProxy_Resume_ErrorEvent_TransitionsOff…:
+// when the orchestrator emits only an SSE `error` event (e.g. upstream LLM
+// 400), pre-fix nothing was persisted — neither text nor tool_calls — so the
+// user message was orphaned and the next turn's loadHistory fed an OpenAI-
+// format violation (consecutive user messages OR empty assistant content)
+// causing the LLM to 400 every subsequent turn until manual DB cleanup.
+//
+// Post-fix: streamErrContent triggers the persist branch, the assistant
+// Message lands with a non-empty content marker, and the chat keeps working.
+func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+
+	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"error","content":"openrouter chat: 400 Bad Request"}` + "\n\n"))
+	}))
+	defer orch.Close()
+
+	mockBiz := new(MockBusinessService)
+	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockInteg := new(MockIntegrationService)
+	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
+
+	var created []*domain.Message
+	msgRepo := &MockMessageRepository{
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			cp := *m
+			created = append(created, &cp)
+			return nil
+		},
+		ListByConversationIDFunc: func(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
+			return nil, nil
+		},
+	}
+	h := newChatProxyNoProject(mockBiz, mockInteg, msgRepo, orch.URL)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-err", strings.NewReader(`{"message":"hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("conversationID", "conv-err")
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.Chat(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"type":"error"`, "error event must be forwarded to the client")
+
+	// Two Create calls expected: 1 user message + 1 assistant error message.
+	require.GreaterOrEqual(t, len(created), 2, "user + assistant must both be persisted")
+	var assistant *domain.Message
+	for _, m := range created {
+		if m.Role == "assistant" {
+			assistant = m
+		}
+	}
+	require.NotNil(t, assistant, "assistant message must be persisted on error")
+	assert.NotEmpty(t, assistant.Content, "assistant content must NOT be empty on error (poisons OpenAI history)")
+	assert.Contains(t, assistant.Content, "openrouter chat", "error reason must be carried in content")
+	assert.Equal(t, domain.MessageStatusComplete, assistant.Status)
+}
+
+// TestChatProxy_LoadHistory_SkipsEmptyAssistant guards against the OpenAI
+// 400 vector that bricked conversation 69f05dcb…: an assistant Message left
+// in DB with content="" and no tool_calls. Even one such row makes every
+// subsequent turn 400 with `Provider returned error`. loadHistory now drops
+// these rows so a stale empty assistant cannot poison the next turn.
+func TestChatProxy_LoadHistory_SkipsEmptyAssistant(t *testing.T) {
+	convID := "conv-skip-empty"
+	msgRepo := &MockMessageRepository{
+		ListByConversationIDFunc: func(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
+			return []domain.Message{
+				{ID: "u1", ConversationID: convID, Role: "user", Content: "hello"},
+				{ID: "a1", ConversationID: convID, Role: "assistant", Content: "hi there"},
+				{ID: "u2", ConversationID: convID, Role: "user", Content: "still there?"},
+				// Poison: empty assistant with no tool_calls. Pre-fix this would
+				// be passed straight through and the LLM would 400.
+				{ID: "a2", ConversationID: convID, Role: "assistant", Content: ""},
+				{ID: "u3", ConversationID: convID, Role: "user", Content: "?"},
+				// Tool-call assistant with empty content is LEGITIMATE and must
+				// be preserved (the assistant emits an empty content + tool_calls
+				// when it decides to call a tool).
+				{ID: "a3", ConversationID: convID, Role: "assistant", Content: "", ToolCalls: []domain.ToolCall{{ID: "tc-1", Name: "x"}}},
+			}, nil
+		},
+	}
+	h := &ChatProxyHandler{messageRepo: msgRepo}
+	got := h.loadHistory(context.Background(), convID)
+
+	require.Len(t, got, 5, "5 entries: 3 user + 1 non-empty assistant + 1 tool-call assistant; empty bare assistant dropped")
+	assert.Equal(t, "user", got[0]["role"])
+	assert.Equal(t, "assistant", got[1]["role"])
+	assert.Equal(t, "hi there", got[1]["content"])
+	assert.Equal(t, "user", got[2]["role"])
+	assert.Equal(t, "user", got[3]["role"], "after dropping empty assistant, the two user turns are now adjacent — expected; LLM tolerates this")
+	assert.Equal(t, "assistant", got[4]["role"])
+	assert.Empty(t, got[4]["content"], "tool-call assistant content stays empty (the tool_calls metadata isn't in this projection)")
+}
+
 // TestChatProxy_NoBusiness verifies that a 404 is returned when the user
 // has no business profile.
 func TestChatProxy_NoBusiness(t *testing.T) {

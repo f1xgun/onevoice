@@ -484,6 +484,13 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// persistence continue regardless.
 	clientGone := r.Context().Done()
 
+	// Captures the orchestrator's SSE `error` event so the persist branch
+	// below can record it on the assistant Message instead of dropping it.
+	// Without this, an upstream LLM 400 (or any other terminal error) leaves
+	// the user message orphaned with no assistant reply persisted, the chat
+	// loader spins forever, and the broken history feeds the next turn.
+	var streamErrContent string
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		select {
@@ -540,6 +547,14 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			// policy_revoked / user_rejected). Forward-only — no
 			// persistence change here; any paired assistant Message is
 			// persisted by the pause or done path.
+		case "error":
+			// Upstream LLM / orchestrator failure. Forwarded to the client
+			// already; capture for persistence so the assistant Message
+			// records SOMETHING. Without this, an empty assistant + the
+			// next user turn produces an OpenAI-format violation in
+			// loadHistory and the conversation deadlocks (the LLM 400s
+			// every subsequent turn).
+			streamErrContent = ev.Content
 		}
 	}
 
@@ -584,15 +599,23 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Persist assistant response after stream ends (auto / done path).
-	if assistantText.Len() > 0 || len(toolCalls) > 0 {
+	// Persist assistant response after stream ends (auto / done / error path).
+	// streamErrContent is included so an upstream failure produces a non-empty
+	// assistant Message — leaving the user message orphaned with no assistant
+	// reply makes the next turn's loadHistory feed an OpenAI-format violation
+	// (consecutive user messages or empty-content assistant) and 400 forever.
+	if assistantText.Len() > 0 || len(toolCalls) > 0 || streamErrContent != "" {
 		saveCtx, cancel := persistCtx()
 		defer cancel()
+		content := assistantText.String()
+		if content == "" && streamErrContent != "" {
+			content = "[Ошибка: " + streamErrContent + "]"
+		}
 		assistantMsg := &domain.Message{
 			ID:             streamStartMessageID,
 			ConversationID: conversationID,
 			Role:           "assistant",
-			Content:        assistantText.String(),
+			Content:        content,
 			ToolCalls:      toolCalls,
 			ToolResults:    toolResults,
 			Status:         domain.MessageStatusComplete,
@@ -605,8 +628,11 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		// (h.fireAutoTitleIfPending) re-reads the conversation AFTER persist
 		// (Landmine 4 / Pitfall 7) and only fires if title_status is still
 		// "auto_pending"; manual or auto are terminal. Spawn ctx is detached
-		// 30s, never r.Context() (Landmine 5 / Pitfall 2).
-		h.fireAutoTitleIfPending(persistCtx, conversationID, business.ID.String(), req.Message, assistantText.String())
+		// 30s, never r.Context() (Landmine 5 / Pitfall 2). Skip on errors —
+		// no point asking the titler to summarize a failed turn.
+		if streamErrContent == "" {
+			h.fireAutoTitleIfPending(persistCtx, conversationID, business.ID.String(), req.Message, assistantText.String())
+		}
 	}
 
 	// AgentTask lifecycle (created on tool_call, updated on tool_result) is
@@ -1176,6 +1202,13 @@ func (h *ChatProxyHandler) onToolResult(
 
 // loadHistory fetches prior messages for the conversation and converts them
 // to the simple role/content map format expected by the orchestrator.
+//
+// Skips assistant messages with empty content AND no tool_calls — OpenAI/
+// OpenRouter 400 on `{role:"assistant", content:""}` between user turns,
+// which permanently bricks the conversation. We can't reconstruct what the
+// assistant intended to say, so the cleanest move is to drop the bad turn
+// from history and let the LLM see only the surrounding user/assistant
+// exchange.
 func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID string) []map[string]string {
 	msgs, err := h.messageRepo.ListByConversationID(ctx, conversationID, 100, 0)
 	if err != nil {
@@ -1185,11 +1218,14 @@ func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID strin
 
 	history := make([]map[string]string, 0, len(msgs))
 	for _, m := range msgs {
-		if m.Role == "user" || m.Role == "assistant" {
-			history = append(history, map[string]string{
-				"role":    m.Role,
-				"content": m.Content,
-			})
+		switch m.Role {
+		case "user":
+			history = append(history, map[string]string{"role": "user", "content": m.Content})
+		case "assistant":
+			if m.Content == "" && len(m.ToolCalls) == 0 {
+				continue
+			}
+			history = append(history, map[string]string{"role": "assistant", "content": m.Content})
 		}
 	}
 	return history
