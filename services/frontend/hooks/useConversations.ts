@@ -36,3 +36,27 @@ export function useMoveConversation() {
     },
   });
 }
+
+// Phase 19 / Plan 19-02 — pin / unpin a conversation. Both mutations
+// invalidate the ['conversations'] cache on success, extending the
+// established Phase 18 D-10 invalidation pattern (the sidebar list + the
+// ChatHeader narrow-memo selector both refresh from a single source).
+export function usePinConversation() {
+  const qc = useQueryClient();
+  return useMutation<Conversation, Error, string>({
+    mutationFn: (conversationId) => conversationsApi.pinConversation(conversationId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+    },
+  });
+}
+
+export function useUnpinConversation() {
+  const qc = useQueryClient();
+  return useMutation<Conversation, Error, string>({
+    mutationFn: (conversationId) => conversationsApi.unpinConversation(conversationId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+    },
+  });
+}

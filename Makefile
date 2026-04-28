@@ -1,4 +1,4 @@
-.PHONY: help build run test test-all test-coverage test-integration
+.PHONY: help build run test test-all test-frontend test-a11y test-coverage test-integration
 .PHONY: lint lint-frontend lint-all fmt fmt-fix docs-check
 .PHONY: migrate-up migrate-down migrate-create db-seed
 .PHONY: up down logs restart restart-service docker-up docker-down docker-logs docker-clean
@@ -39,11 +39,27 @@ test: ## Run all Go tests with race detector
 	done
 	@echo "All Go tests passed"
 
-test-all: test test-frontend ## Run all tests (Go + frontend)
+test-all: test test-frontend test-a11y ## Run all tests (Go + frontend + axe a11y gate)
 
 test-frontend: ## Run frontend tests
 	@echo "Running frontend tests..."
 	@cd services/frontend && pnpm test
+
+# Phase 19 / Plan 19-05 — BLOCKING accessibility gate.
+#
+# Runs vitest only on the axe-core audit suite. The audit fails (non-zero
+# exit) when any `critical` or `serious` violation is detected on the
+# OPEN mobile drawer + chat list, the SidebarSearch dropdown, or the
+# ProjectSection context menu. `moderate` and `minor` violations are
+# logged-only — they do NOT fail the build.
+#
+# Reuses the same vitest run that `pnpm test` already executes (the
+# axe spec is part of the broader suite); this dedicated target makes
+# the a11y gate independently invokable for CI debugging and grep-clean
+# verification (`grep -E 'a11y|axe' Makefile`).
+test-a11y: ## Run the axe-core a11y gate (BLOCKING on critical+serious)
+	@echo "Running axe-core a11y gate..."
+	@cd services/frontend && pnpm test:a11y
 
 test-coverage: ## Run tests with coverage
 	@echo "Running tests with coverage..."

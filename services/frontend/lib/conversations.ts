@@ -12,7 +12,11 @@ export interface Conversation {
   projectId: string | null;
   title: string;
   titleStatus?: TitleStatus;
-  pinned: boolean;
+  // Phase 19 / Plan 19-02 / D-02: PinnedAt is the SINGLE SOURCE OF TRUTH for
+  // the pinned state. Backend serializes ISO timestamp under JSON key
+  // `pinnedAt` (omitted when nil). Frontend treats `null` and `undefined`
+  // identically (chat is unpinned).
+  pinnedAt?: string | null;
   lastMessageAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -36,5 +40,19 @@ export async function moveConversation(
   projectId: string | null
 ): Promise<Conversation> {
   const { data } = await api.post<Conversation>(`/conversations/${id}/move`, { projectId });
+  return data;
+}
+
+// Phase 19 / Plan 19-02 — pin / unpin a conversation.
+// Both endpoints are scoped server-side by (id, business_id, user_id) per
+// threat T-19-02-01; cross-tenant attempts return 404 (uniform — see threat
+// T-19-02-02). Frontend just propagates the axios error.
+export async function pinConversation(id: string): Promise<Conversation> {
+  const { data } = await api.post<Conversation>(`/conversations/${id}/pin`);
+  return data;
+}
+
+export async function unpinConversation(id: string): Promise<Conversation> {
+  const { data } = await api.post<Conversation>(`/conversations/${id}/unpin`);
   return data;
 }

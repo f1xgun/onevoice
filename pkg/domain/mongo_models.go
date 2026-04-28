@@ -31,11 +31,16 @@ const (
 )
 
 // Conversation is a chat thread stored in MongoDB. Phase 15 adds
-// BusinessID, ProjectID, TitleStatus, Pinned, and LastMessageAt.
+// BusinessID, ProjectID, TitleStatus, and LastMessageAt.
 // ProjectID intentionally omits bson `omitempty` so nil serializes as
 // explicit `null` (the virtual "Без проекта" bucket in UI-11) rather
 // than as a missing field — matters for the move-chat endpoint in
 // Plan 04 which must be able to clear the field.
+//
+// Pinned bool removed Phase 19 D-02 — single source of truth is
+// PinnedAt != nil. See repository/mongo_backfill.go:BackfillConversationsV19
+// for the migration that drops the legacy bool via $unset and migrates
+// any pinned:true rows to pinned_at = updated_at.
 type Conversation struct {
 	ID            string     `json:"id" bson:"_id,omitempty"`
 	UserID        string     `json:"userId" bson:"user_id"`
@@ -43,7 +48,7 @@ type Conversation struct {
 	ProjectID     *string    `json:"projectId,omitempty" bson:"project_id"`
 	Title         string     `json:"title" bson:"title"`
 	TitleStatus   string     `json:"titleStatus" bson:"title_status"`
-	Pinned        bool       `json:"pinned" bson:"pinned"`
+	PinnedAt      *time.Time `json:"pinnedAt,omitempty" bson:"pinned_at,omitempty"`
 	LastMessageAt *time.Time `json:"lastMessageAt,omitempty" bson:"last_message_at,omitempty"`
 	CreatedAt     time.Time  `json:"createdAt" bson:"created_at"`
 	UpdatedAt     time.Time  `json:"updatedAt" bson:"updated_at"`

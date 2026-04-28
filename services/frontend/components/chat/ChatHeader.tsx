@@ -2,7 +2,10 @@
 
 import { memo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Bookmark } from 'lucide-react';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { usePinConversation, useUnpinConversation } from '@/hooks/useConversations';
 import type { Conversation } from '@/lib/conversations';
 
 interface ChatHeaderProps {
@@ -45,12 +48,51 @@ function useConversationTitle(conversationId: string): string {
   return data ?? '';
 }
 
+/**
+ * Phase 19 / Plan 19-02 / D-11 mitigation — narrow-memo selector for the
+ * pinned state. The `select` projection returns a primitive `boolean`, so a
+ * cache mutation that changes any UNRELATED field (title of a different
+ * chat, lastMessageAt of this chat, etc.) does not re-render the bookmark
+ * button. Same isolation contract as useConversationTitle above.
+ */
+function useConversationPinned(conversationId: string): boolean {
+  const { data } = useQuery<Conversation[], Error, boolean>({
+    queryKey: ['conversations'],
+    queryFn: () => api.get('/conversations').then((r) => r.data),
+    select: (list) => list.find((c) => c.id === conversationId)?.pinnedAt != null,
+    enabled: !!conversationId,
+  });
+  return data ?? false;
+}
+
 function ChatHeaderImpl({ conversationId, rightSlot }: ChatHeaderProps) {
   const title = useConversationTitle(conversationId);
+  const pinned = useConversationPinned(conversationId);
+  const pinMutation = usePinConversation();
+  const unpinMutation = useUnpinConversation();
+
   return (
     <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-4">
       <span className="truncate text-sm font-medium">{title}</span>
-      {rightSlot}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (pinned) unpinMutation.mutate(conversationId);
+            else pinMutation.mutate(conversationId);
+          }}
+          aria-label={pinned ? 'Открепить чат' : 'Закрепить чат'}
+          title={pinned ? 'Открепить чат' : 'Закрепить чат'}
+          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 disabled:opacity-50"
+          disabled={pinMutation.isPending || unpinMutation.isPending}
+        >
+          <Bookmark
+            size={16}
+            className={cn(pinned ? 'fill-yellow-400 text-yellow-400' : 'text-gray-400')}
+          />
+        </button>
+        {rightSlot}
+      </div>
     </div>
   );
 }

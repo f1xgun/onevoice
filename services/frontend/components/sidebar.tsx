@@ -1,211 +1,58 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { Menu } from 'lucide-react';
 import {
-  MessageCircle,
-  Plug,
-  Building2,
-  Star,
-  FileText,
-  ListTodo,
-  Settings,
-  LogOut,
-  Menu,
-} from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/lib/auth';
-import { api } from '@/lib/api';
-import { useProjectsQuery } from '@/hooks/useProjects';
-import { useConversationsQuery } from '@/hooks/useConversations';
-import { UnassignedBucket } from '@/components/sidebar/UnassignedBucket';
-import { ProjectSection } from '@/components/sidebar/ProjectSection';
-import type { Conversation } from '@/lib/conversations';
+import { NavRail } from '@/components/sidebar/NavRail';
+import { ProjectPane } from '@/components/sidebar/ProjectPane';
 
-interface Integration {
-  platform: string;
-  status: string;
-  last_sync_at?: string;
-}
-
-const navItems = [
-  { href: '/chat', label: 'Чат', icon: MessageCircle },
-  { href: '/integrations', label: 'Интеграции', icon: Plug },
-  { href: '/business', label: 'Бизнес', icon: Building2 },
-  { href: '/reviews', label: 'Отзывы', icon: Star },
-  { href: '/posts', label: 'Посты', icon: FileText },
-  { href: '/tasks', label: 'Задачи', icon: ListTodo },
-  { href: '/settings', label: 'Настройки', icon: Settings },
-];
-
-const platformLabels: Record<string, string> = {
-  telegram: 'Telegram',
-  vk: 'ВКонтакте',
-  yandex_business: 'Яндекс.Бизнес',
-};
-
-function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const logout = useAuthStore((s) => s.logout);
-  const user = useAuthStore((s) => s.user);
-
-  const { data: integrations } = useQuery<Integration[]>({
-    queryKey: ['integrations'],
-    queryFn: () =>
-      api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
-    retry: false,
-    placeholderData: [],
-  });
-
-  const { data: projects } = useProjectsQuery();
-  const { data: conversations } = useConversationsQuery();
-
-  // Projects subtree stays visible while the user is managing projects or
-  // browsing chats. Anywhere else (integrations, businesses, billing) it
-  // collapses back to a flat "Чат" link. See GAP-03 in 15-VERIFICATION.md.
-  const isProjectsOrChatArea = pathname.startsWith('/chat') || pathname.startsWith('/projects');
-  const activeConversationId = useMemo(() => {
-    if (!pathname.startsWith('/chat/')) return undefined;
-    return pathname.split('/')[2];
-  }, [pathname]);
-
-  const { unassigned, byProject } = useMemo(() => {
-    const convs: Conversation[] = conversations ?? [];
-    const unassignedList = convs.filter((c) => c.projectId == null);
-    const grouped: Record<string, Conversation[]> = {};
-    for (const c of convs) {
-      if (c.projectId != null) {
-        (grouped[c.projectId] ??= []).push(c);
-      }
-    }
-    return { unassigned: unassignedList, byProject: grouped };
-  }, [conversations]);
-
-  const sortedProjects = useMemo(() => {
-    const list = projects ?? [];
-    return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  }, [projects]);
-
-  return (
-    <div className="flex h-full flex-col bg-gray-900 text-white">
-      {/* Logo */}
-      <div className="border-b border-gray-700 p-4">
-        <h1 className="text-xl font-bold text-white">OneVoice</h1>
-        <p className="truncate text-xs text-gray-400">{user?.email}</p>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 space-y-1 overflow-y-auto p-2">
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname.startsWith(href);
-          return (
-            <div key={href}>
-              <Link
-                href={href}
-                onClick={onNavigate}
-                className={cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-                  isActive
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                )}
-              >
-                <Icon size={18} />
-                {label}
-              </Link>
-
-              {href === '/chat' && isProjectsOrChatArea && (
-                <div className="mt-1 space-y-1 border-l border-gray-700 pl-2">
-                  <UnassignedBucket
-                    conversations={unassigned}
-                    activeConversationId={activeConversationId}
-                    onNavigate={onNavigate}
-                  />
-                  {sortedProjects.map((p) => (
-                    <ProjectSection
-                      key={p.id}
-                      project={p}
-                      conversations={byProject[p.id] ?? []}
-                      activeConversationId={activeConversationId}
-                      onNavigate={onNavigate}
-                    />
-                  ))}
-                  <Link
-                    href="/projects/new"
-                    onClick={onNavigate}
-                    className="mt-1 block px-2 py-1 text-xs text-gray-500 hover:text-white"
-                  >
-                    + Новый проект
-                  </Link>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-
-      {/* Platform status */}
-      <div className="space-y-2 border-t border-gray-700 p-4">
-        <p className="text-xs uppercase tracking-wide text-gray-500">Платформы</p>
-        {['telegram', 'vk', 'yandex_business'].map((platform) => {
-          const integration = integrations?.find((i) => i.platform === platform);
-          const connected = integration?.status === 'active';
-          return (
-            <div key={platform} className="flex items-center gap-2 text-xs text-gray-300">
-              <span
-                className={cn('h-2 w-2 rounded-full', connected ? 'bg-green-500' : 'bg-gray-500')}
-              />
-              {platformLabels[platform]}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Logout */}
-      <button
-        onClick={() => {
-          onNavigate?.();
-          logout();
-          router.push('/login');
-        }}
-        className="flex items-center gap-3 border-t border-gray-700 p-4 text-sm text-gray-400 hover:bg-gray-800 hover:text-white"
-      >
-        <LogOut size={18} />
-        Выйти
-      </button>
-    </div>
-  );
-}
-
+// Mobile-only shell. Desktop layout lives in app/(app)/layout.tsx (see
+// 19-01 D-14: NavRail + PanelGroup with conditional ProjectPane). Phase
+// 19-05 will own the mobile drawer auto-close-on-chat-select work.
 export function Sidebar() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  // Same route-gating contract as desktop: ProjectPane only renders on
+  // /chat/* and /projects/*. Other routes show only the NavRail in the
+  // drawer.
+  const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
 
   return (
-    <>
-      {/* Mobile top bar */}
-      <div className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden">
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-60 p-0">
-            <SidebarContent onNavigate={() => setOpen(false)} />
-          </SheetContent>
-        </Sheet>
-        <span className="text-lg font-semibold">OneVoice</span>
-      </div>
-
-      {/* Desktop sidebar */}
-      <aside className="hidden h-screen w-60 shrink-0 flex-col md:flex">
-        <SidebarContent />
-      </aside>
-    </>
+    <div className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden">
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Открыть боковое меню"
+            className="md:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="flex w-72 gap-0 p-0">
+          <SheetTitle className="sr-only">Боковое меню</SheetTitle>
+          <SheetDescription className="sr-only">
+            Навигация по приложению и список проектов
+          </SheetDescription>
+          <NavRail />
+          {showProjectPane && (
+            <div className="flex-1">
+              <ProjectPane onNavigate={() => setOpen(false)} />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+      <span className="text-lg font-semibold">OneVoice</span>
+    </div>
   );
 }
