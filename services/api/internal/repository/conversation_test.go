@@ -24,13 +24,22 @@ func setupMongoTestDB(t *testing.T) *mongo.Database {
 		mongoURI = "mongodb://localhost:27017"
 	}
 
-	client, err := mongo.Connect(options.Client().ApplyURI(mongoURI))
+	// Short server-selection timeout so CI without Mongo skips fast.
+	// Default mongo-driver timeout is 30s — multiplied across 30+ test
+	// functions that's >15 min and blows the 10-min `go test` budget.
+	clientOpts := options.Client().
+		ApplyURI(mongoURI).
+		SetServerSelectionTimeout(2 * time.Second).
+		SetConnectTimeout(2 * time.Second)
+	client, err := mongo.Connect(clientOpts)
 	if err != nil {
 		t.Skipf("MongoDB not available: %v", err)
 	}
 
 	// Test connection
-	if err := client.Ping(ctx, nil); err != nil {
+	pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer pingCancel()
+	if err := client.Ping(pingCtx, nil); err != nil {
 		t.Skipf("MongoDB not reachable: %v", err)
 	}
 
