@@ -93,6 +93,23 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	backfillCancel()
 
+	// Phase 19 Mongo backfill (Plan 19-02 / D-02) — pinned_at swap. Migrates
+	// every conversation from the post-Phase-15 shape (legacy `pinned: bool`)
+	// to the Phase-19 shape (`pinned_at: *time.Time`, no legacy field).
+	// Three steps: (1) pinned_at = nil for missing field, (2) legacy
+	// pinned:true → pinned_at = updated_at, (3) $unset legacy pinned bool.
+	// Idempotent via schema_migrations marker (same shape as the V15 backfill
+	// above). Bounded to 30s. BLOCKING: 19-02 must wire this before serving
+	// traffic so the new ConversationRepository.Pin/Unpin atomic methods
+	// operate against a uniform schema across pre- and post-Phase-19 data.
+	backfillCtx2, backfillCancel2 := context.WithTimeout(ctx, 30*time.Second)
+	if err := repository.BackfillConversationsV19(backfillCtx2, mongoDB); err != nil {
+		backfillCancel2()
+		slog.ErrorContext(backfillCtx2, "phase 19 backfill failed", "error", err)
+		return fmt.Errorf("phase 19 backfill: %w", err)
+	}
+	backfillCancel2()
+
 	// HITL-10: pending-tool-calls startup reconciliation.
 	// Phase 16 Plan 16-02. Three things happen here, in order:
 	//   1. EnsurePendingToolCallsIndexes — creates TTL on expires_at,
@@ -116,11 +133,11 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	indexesCancel()
 
-	// Phase 18 Plan 03 (D-08a): compound index {user_id, business_id,
-	// title_status} on conversations. Backs the auto-titler's atomic
-	// UpdateTitleIfPending lookups (TITLE-04 / D-08) and Phase 19's sidebar
-	// queries that surface auto_pending rows distinctly. Idempotent — safe
-	// on every boot.
+	// Phase 18 Plan 03 (D-08a) + Phase 19 Plan 19-02: compound indexes on
+	// conversations. EnsureConversationIndexes manages BOTH the Phase-18
+	// `conversations_user_biz_title_status` (auto-titler hot path) AND the
+	// Phase-19 `conversations_user_biz_proj_pinned_recency` (sidebar list
+	// ordering) indexes. Idempotent — safe on every boot.
 	indexesCtx2, indexesCancel2 := context.WithTimeout(ctx, 30*time.Second)
 	if err := repository.EnsureConversationIndexes(indexesCtx2, mongoDB); err != nil {
 		indexesCancel2()
@@ -128,6 +145,28 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("ensure conversation indexes: %w", err)
 	}
 	indexesCancel2()
+
+	// Phase 19 Plan 19-03 / SEARCH-01 / SEARCH-06 — text indexes for
+	// sidebar search. Two text indexes are created idempotently:
+	//   - conversations_title_text_v19  (default_language: russian, weight 20)
+	//   - messages_content_text_v19     (default_language: russian, weight 10)
+	//
+	// 60s timeout (vs the 30s used for compound indexes) because text-index
+	// builds on a non-empty corpus take longer than equality-key indexes.
+	//
+	// CRITICAL ORDERING (T-19-INDEX-503 mitigation): the readiness flag
+	// on the Searcher MUST be flipped only AFTER this call returns nil.
+	// The Searcher is constructed below in the service-wiring block; the
+	// readiness flip fires there. The atomic.Bool.Store provides a
+	// happens-before edge against every subsequent Load by handler
+	// goroutines.
+	indexesCtx3, indexesCancel3 := context.WithTimeout(ctx, 60*time.Second)
+	if err := repository.EnsureSearchIndexes(indexesCtx3, mongoDB); err != nil {
+		indexesCancel3()
+		slog.ErrorContext(indexesCtx3, "failed to ensure search text indexes", "error", err)
+		return fmt.Errorf("ensure search indexes: %w", err)
+	}
+	indexesCancel3()
 	pendingToolCallRepo := repository.NewPendingToolCallRepository(mongoDB)
 	_ = pendingToolCallRepo // consumed by chat_proxy (16-06) and HITL handlers (16-07)
 	go func() {
@@ -225,6 +264,25 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// titler may be nil here (graceful disable per A6); the handler returns 503
 	// in that case. conversationRepo + messageRepo are required (panic-on-nil).
 	titlerHandler := handler.NewTitlerHandler(titler, conversationRepo, messageRepo)
+
+	// Phase 19 Plan 19-03 — Search service + handler.
+	//
+	// CRITICAL ORDERING (T-19-INDEX-503 mitigation): MarkIndexesReady is
+	// called HERE, AFTER repository.EnsureSearchIndexes has already
+	// returned nil in the index-creation block above. The atomic.Bool's
+	// Store ensures a happens-before edge against every subsequent Load
+	// by handler goroutines (RESEARCH §7). Reordering this would cause
+	// the readiness flag to flip before indexes exist — Searcher.Search
+	// would no longer return ErrSearchIndexNotReady on a cold boot, and
+	// queries would hit a missing $text index.
+	//
+	// Verified by the plan's BLOCKING grep ordering check:
+	//   python3 -c "src=open('services/api/cmd/main.go').read();
+	//               ei=src.find('EnsureSearchIndexes');
+	//               mi=src.find('MarkIndexesReady');
+	//               exit(0 if 0 < ei < mi else 1)"
+	searcher := service.NewSearcher(conversationRepo, messageRepo)
+	searcher.MarkIndexesReady()
 
 	// In-process hub that fans out task lifecycle events to SSE subscribers.
 	taskHub := taskhub.New()
@@ -382,6 +440,18 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	businessHandler.SetToolsCache(toolsCache)
 	projectHandler.SetToolsCache(toolsCache)
 
+	// Phase 19 Plan 19-03 — search handler. Constructed with the searcher
+	// (built above; readiness flag already flipped) + businessService for
+	// resolving the caller's businessID server-side from the bearer's
+	// userID. Returns 503 + Retry-After: 5 only if MarkIndexesReady was
+	// somehow not called — which cannot happen on the success path of
+	// run() because EnsureSearchIndexes either returns nil and we flip
+	// the flag, or returns an error and we abort startup.
+	searchHandler, err := handler.NewSearchHandler(searcher, businessService)
+	if err != nil {
+		return fmt.Errorf("create search handler: %w", err)
+	}
+
 	handlers := &router.Handlers{
 		Auth:          authHandler,
 		Business:      businessHandler,
@@ -396,6 +466,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		Project:       projectHandler,
 		HITL:          hitlHandler,
 		Titler:        titlerHandler,
+		Search:        searchHandler,
 	}
 
 	// Health checker

@@ -31,6 +31,7 @@ type Handlers struct {
 	Project       *handler.ProjectHandler
 	HITL          *handler.HITLHandler   // Phase 16: resolve + resume + GET /tools
 	Titler        *handler.TitlerHandler // Phase 18: POST /conversations/{id}/regenerate-title
+	Search        *handler.SearchHandler // Phase 19 / Plan 19-03: GET /api/v1/search
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
@@ -117,9 +118,24 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Get("/conversations/{id}/messages", handlers.Conversation.ListMessages)
 			// Phase 15 (PROJ-06): move a chat between projects (or to "Без проекта")
 			r.Post("/conversations/{id}/move", handlers.Conversation.MoveConversation)
+			// Phase 19 (UI-03 / D-02): pin / unpin a conversation. Atomic
+			// repo writes scoped by (id, business_id, user_id) defend
+			// against cross-tenant pin manipulation (Pitfalls §19).
+			r.Post("/conversations/{id}/pin", handlers.Conversation.Pin)
+			r.Post("/conversations/{id}/unpin", handlers.Conversation.Unpin)
 			// Phase 18 / TITLE-09: regenerate the auto-title for an existing chat.
 			if handlers.Titler != nil {
 				r.Post("/conversations/{id}/regenerate-title", handlers.Titler.RegenerateTitle)
+			}
+
+			// Phase 19 / Plan 19-03 / SEARCH-02: sidebar search.
+			// Mongo $text against conversations.title + messages.content,
+			// scoped by (business_id, user_id, project_id?). Returns 503 +
+			// Retry-After: 5 until EnsureSearchIndexes completes at startup
+			// (T-19-INDEX-503 mitigation; readiness flag flips after the
+			// happens-before edge in service.Searcher.MarkIndexesReady).
+			if handlers.Search != nil {
+				r.Get("/search", handlers.Search.Search)
 			}
 
 			// Project routes (Phase 15 — projects foundation)

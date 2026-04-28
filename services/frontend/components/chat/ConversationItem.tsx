@@ -18,7 +18,7 @@ import { MoveChatMenuItem } from '@/components/chat/MoveChatMenuItem';
 export interface Conversation {
   id: string;
   title: string;
-  titleStatus?: 'auto_pending' | 'auto' | 'manual'; // Phase 18 / TITLE-01 (D-09): drives placeholder + regen visibility (D-12)
+  titleStatus?: 'auto_pending' | 'auto' | 'manual';
   createdAt: string;
   projectId?: string | null;
 }

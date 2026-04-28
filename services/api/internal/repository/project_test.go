@@ -293,12 +293,20 @@ func setupMongoTestDBForProject(t *testing.T) *mongo.Database {
 		mongoURI = "mongodb://localhost:27017"
 	}
 
-	client, err := mongo.Connect(options.Client().ApplyURI(mongoURI))
+	// Short timeouts so CI without Mongo skips fast (see conversation_test.go
+	// setupMongoTestDB rationale).
+	clientOpts := options.Client().
+		ApplyURI(mongoURI).
+		SetServerSelectionTimeout(2 * time.Second).
+		SetConnectTimeout(2 * time.Second)
+	client, err := mongo.Connect(clientOpts)
 	if err != nil {
 		t.Skipf("MongoDB not available: %v", err)
 	}
 
-	if err := client.Ping(ctx, nil); err != nil {
+	pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer pingCancel()
+	if err := client.Ping(pingCtx, nil); err != nil {
 		t.Skipf("MongoDB not reachable: %v", err)
 	}
 

@@ -9,7 +9,6 @@ import type { AxiosError } from 'axios';
 import { api } from '@/lib/api';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
-import { ConversationItem, type Conversation } from '@/components/chat/ConversationItem';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { ConversationItem, type Conversation } from '@/components/chat/ConversationItem';
 
 export default function ChatListPage() {
   const router = useRouter();
