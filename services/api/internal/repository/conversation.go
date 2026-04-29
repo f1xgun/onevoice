@@ -187,7 +187,7 @@ func (r *conversationRepository) UpdateTitleIfPending(ctx context.Context, id, t
 // the click is either (a) auto/null → first generation or (b) stuck
 // auto_pending older than the grace window. Including auto_pending in
 // the filter makes that recovery path a deterministic no-op-then-bump
-// rather than a confusing ErrConversationNotFound-flavoured 409.
+// rather than a confusing ErrConversationNotFound-flavored 409.
 func (r *conversationRepository) TransitionToAutoPending(ctx context.Context, id string) error {
 	filter := bson.M{
 		"_id": id,
