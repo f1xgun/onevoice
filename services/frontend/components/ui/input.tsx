@@ -18,8 +18,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           'border border-[var(--ov-line)] bg-[var(--ov-paper-raised)]',
           'px-3 py-2 text-sm text-[var(--ov-ink)]',
           'placeholder:text-[var(--ov-ink-soft)]',
-          'transition-[border-color,box-shadow] duration-150',
-          'focus:outline-none focus:border-[var(--ov-accent)] focus:ring-2 focus:ring-[var(--ov-accent)]/20',
+          // Linen motion: 120ms ease-out border/shadow shift; focus-visible ochre ring per spec.
+          'transition-[border-color,box-shadow] duration-[120ms] ease-out',
+          'focus-visible:outline-none focus-visible:border-[var(--ov-accent)] focus-visible:ring-2 focus-visible:ring-[var(--ov-accent)]/20',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'file:border-0 file:bg-transparent file:text-sm file:font-medium',
           mono && 'font-mono tracking-[0]',
