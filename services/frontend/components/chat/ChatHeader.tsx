@@ -105,12 +105,12 @@ function ChatHeaderImpl({
           }}
           aria-label={pinned ? 'Открепить чат' : 'Закрепить чат'}
           title={pinned ? 'Открепить чат' : 'Закрепить чат'}
-          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 disabled:opacity-50"
+          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-paper-sunken disabled:opacity-50"
           disabled={pinMutation.isPending || unpinMutation.isPending}
         >
           <Bookmark
             size={16}
-            className={cn(pinned ? 'fill-yellow-400 text-yellow-400' : 'text-gray-400')}
+            className={cn(pinned ? 'fill-yellow-400 text-yellow-400' : 'text-ink-soft')}
           />
         </button>
         {showMenu && (

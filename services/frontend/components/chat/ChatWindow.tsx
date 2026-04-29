@@ -125,7 +125,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
           <div className="flex h-full items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-indigo-600" />
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
@@ -133,7 +133,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
               value={conversation?.projectId ?? null}
               onChange={handlePickerChange}
             />
-            <p className="text-lg text-gray-400">Чем могу помочь?</p>
+            <p className="text-lg text-ink-soft">Чем могу помочь?</p>
             <div className="flex flex-wrap justify-center gap-2">
               {quickActions.map((action) => (
                 <button
@@ -141,7 +141,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
                   type="button"
                   onClick={() => sendMessage(action)}
                   disabled={composerDisabled}
-                  className="rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-full border border-line px-4 py-2 text-sm text-ink-mid hover:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {action}
                 </button>
@@ -165,7 +165,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       )}
 
       {/* Input */}
-      <div className="flex gap-2 border-t bg-white p-4">
+      <div className="flex gap-2 border-t bg-paper-raised p-4">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}

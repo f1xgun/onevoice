@@ -14,15 +14,15 @@ export function MessageBubble({ message }: { message: Message }) {
         <div
           className={`rounded-2xl px-4 py-3 text-sm ${
             isUser
-              ? 'rounded-br-sm bg-blue-600 text-white'
-              : 'rounded-bl-sm border border-gray-200 bg-white text-gray-800'
+              ? 'rounded-br-sm bg-info text-paper'
+              : 'rounded-bl-sm border border-line bg-paper-raised text-ink'
           }`}
         >
           {message.status === 'streaming' && !message.content ? (
             <span className="flex gap-1">
-              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
-              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
-              <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-ink-faint [animation-delay:0ms]" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-ink-faint [animation-delay:150ms]" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-ink-faint [animation-delay:300ms]" />
             </span>
           ) : isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
