@@ -193,6 +193,33 @@
   }
 }
 
+/* ─── App-specific: message highlight pulse ───────────────────────────
+ * Used by useHighlightMessage when a deep-link or scroll-to-message
+ * lands on a target — gives a one-time ochre wash instead of a yellow
+ * flash so it sits inside the Linen palette. Not part of the design
+ * system itself; safe to retune the duration/colors per UX feedback.
+ */
+[data-highlight='true'] {
+  animation: onevoice-flash 1.75s ease-out;
+}
+
+@keyframes onevoice-flash {
+  0% {
+    background-color: var(--ov-accent-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-highlight='true'] {
+    animation: none;
+    background-color: var(--ov-accent-soft);
+    transition: background-color 200ms;
+  }
+}
+
 /* ─── tailwind.config.ts addition (drop into theme.extend.colors) ─────
  *
  * colors: {
