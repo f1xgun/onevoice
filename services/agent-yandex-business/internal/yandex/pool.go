@@ -502,6 +502,14 @@ func scrapeReviewCards(page playwright.Page, maxCards int) ([]map[string]interfa
 	return results, nil
 }
 
+// normalizeWhitespace collapses runs of whitespace (incl. newlines and NBSP)
+// into single spaces and trims the result. Useful for scraped TextContent that
+// may include layout newlines from sibling text nodes.
+func normalizeWhitespace(s string) string {
+	s = strings.ReplaceAll(s, " ", " ")
+	return strings.Join(strings.Fields(s), " ")
+}
+
 // extractText tries multiple selectors on a parent locator and returns the first non-empty text.
 func extractText(parent playwright.Locator, selectors []string, fallback string) string {
 	for _, sel := range selectors {
@@ -730,10 +738,39 @@ func (bb *BusinessBrowser) GetInfo(ctx context.Context) (map[string]interface{},
 				info["description"] = val
 			}
 
-			// Address from sidebar/page
-			addrEl := page.Locator(".InfoAddress, [class*='Address']").First()
-			if text, err := addrEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(3000)}); err == nil {
-				info["address"] = strings.TrimSpace(text)
+			// Address — Yandex.Business calls this "Территория оказания услуг".
+			// The .InfoAddress container is a tab widget with two modes
+			// ("По регионам" / "Вокруг точки") and is NOT a plain text field, so
+			// we cannot just read its textContent (that returns UI labels like
+			// "По регионамВокруг точкиРегионыМосква Условия Радиус в км 1 100").
+			// Instead, scope to the active mode and extract the human-readable
+			// value via a single in-page evaluator.
+			if rawAddr, evalErr := page.Evaluate(`() => {
+				const root = document.querySelector('.InfoAddress');
+				if (!root) return '';
+				const mode = root.querySelector('.ya-business-tab-line-item_checked .ya-business-tab-line-item__child');
+				const modeName = mode ? (mode.textContent || '').trim() : '';
+				if (modeName === 'По регионам') {
+					const items = Array.from(root.querySelectorAll('[data-name="multiselect-region-item"] > div:first-child'))
+						.map(el => (el.textContent || '').trim())
+						.filter(Boolean);
+					if (items.length === 0) return '';
+					return 'Регионы: ' + items.join(', ');
+				}
+				if (modeName === 'Вокруг точки') {
+					const addr = root.querySelector('.Suggest.InfoAddressMap-Input input.Textinput-Control');
+					const addrVal = addr ? (addr.value || '').trim() : '';
+					const radius = root.querySelector('input[data-name="radius"]');
+					const radiusVal = radius ? (radius.value || '').trim() : '';
+					if (!addrVal && !radiusVal) return '';
+					if (radiusVal) return addrVal ? addrVal + ' (радиус ' + radiusVal + ' км)' : 'Радиус ' + radiusVal + ' км';
+					return addrVal;
+				}
+				return '';
+			}`); evalErr == nil {
+				if s, ok := rawAddr.(string); ok && s != "" {
+					info["address"] = normalizeWhitespace(s)
+				}
 			}
 
 			// Status

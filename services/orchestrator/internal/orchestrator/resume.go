@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/hitl"
@@ -111,6 +112,13 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 		Tier:                     req.Tier,
 		Iter:                     batch.IterationIdx + 1,
 	}
+
+	// Inject batch.BusinessID into the dispatch context so the NATS executor's
+	// a2a.BusinessIDFromContext lookup picks it up. The handler entrypoint for
+	// /chat does this on the regular path (handler/chat.go), but the resume
+	// handler does not — without this line, every HITL-approved tool call
+	// reaches platform agents with business_id="" and fails token resolution.
+	ctx = a2a.WithBusinessID(ctx, batch.BusinessID)
 
 	// 2. Dispatch approved calls in parallel with TOCTOU re-check. Pass
 	//    the ResumeRequest so that hitl.Resolve inside the fan-out uses
