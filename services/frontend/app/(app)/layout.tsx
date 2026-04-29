@@ -113,8 +113,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <>
               {/* defaultSize=22 ≈ 280 px on a 1280 px viewport (D-15
                   default 280 px). minSize=12 / maxSize=35 cover the
-                  locked 200–480 px range without clipping. */}
+                  locked 200–480 px range without clipping.
+                  Explicit id+order keep the panel registry stable when
+                  showProjectPane toggles between routes — without them
+                  react-resizable-panels v3 re-keys panels on remount and
+                  the resize handle ends up reporting deltas against the
+                  wrong neighbour, inverting the drag direction. */}
               <Panel
+                id="project-pane"
+                order={1}
                 defaultSize={22}
                 minSize={12}
                 maxSize={35}
@@ -123,12 +130,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <ProjectPane />
               </Panel>
               <PanelResizeHandle
+                id="project-pane-handle"
                 aria-label="Изменить ширину боковой панели"
                 className="w-px bg-gray-700 transition-colors hover:bg-gray-500"
               />
             </>
           )}
-          <Panel defaultSize={78} className="motion-reduce:transition-none">
+          <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
             <main className="h-full overflow-y-auto bg-gray-50">{children}</main>
           </Panel>
         </PanelGroup>
