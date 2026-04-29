@@ -67,11 +67,11 @@ export function ProjectSection({
 
   return (
     <div className="group/project">
-      <div className="flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-800">
+      <div className="flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-ink-mid hover:bg-paper-sunken">
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="shrink-0 text-gray-500 hover:text-white"
+          className="shrink-0 text-ink-faint hover:text-ink"
           aria-expanded={!collapsed}
           aria-label={collapsed ? `Развернуть «${project.name}»` : `Свернуть «${project.name}»`}
         >
@@ -82,9 +82,9 @@ export function ProjectSection({
           onClick={onNavigate}
           className="flex flex-1 items-center gap-2 truncate"
         >
-          <FolderOpen size={12} className="shrink-0 text-gray-500" />
+          <FolderOpen size={12} className="shrink-0 text-ink-faint" />
           <span className="flex-1 truncate">{project.name}</span>
-          <span className="text-xs text-gray-500">· {count}</span>
+          <span className="text-xs text-ink-faint">· {count}</span>
         </Link>
         <button
           type="button"
@@ -92,7 +92,7 @@ export function ProjectSection({
           disabled={createConversation.isPending}
           aria-label={`Новый чат в проекте «${project.name}»`}
           title={`Новый чат в проекте «${project.name}»`}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition-opacity hover:bg-gray-700 hover:text-white focus-visible:opacity-100 group-hover/project:opacity-100 md:h-8 md:w-8"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100 md:h-8 md:w-8"
         >
           <Plus size={14} />
         </button>
@@ -101,7 +101,7 @@ export function ProjectSection({
       {!collapsed && visible.length === 0 && (
         // Empty-state: NOT a listbox (a listbox MUST contain options —
         // otherwise axe flags `aria-required-children` (critical)).
-        <p className="ml-5 mt-0.5 px-2 py-1 text-xs italic text-gray-500">
+        <p className="ml-5 mt-0.5 px-2 py-1 text-xs italic text-ink-faint">
           В проекте пока нет чатов
         </p>
       )}
@@ -127,8 +127,8 @@ export function ProjectSection({
                   className={cn(
                     'flex flex-1 items-center gap-1 truncate rounded-md px-2 py-1 text-xs transition-colors',
                     conv.id === activeConversationId
-                      ? 'bg-gray-700 text-white'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-paper-sunken text-ink'
+                      : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                   )}
                 >
                   {/* Phase 19 / Plan 19-02 / D-05 — pinned chats render the
@@ -146,7 +146,7 @@ export function ProjectSection({
                     <button
                       type="button"
                       aria-label={`Меню чата «${conv.title || 'Новый диалог'}»`}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition-opacity hover:bg-gray-700 hover:text-white focus-visible:opacity-100 group-hover/row:opacity-100"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/row:opacity-100"
                     >
                       <MoreHorizontal size={12} />
                     </button>
@@ -156,7 +156,7 @@ export function ProjectSection({
             );
           })}
           {count > MAX_VISIBLE && (
-            <p className="px-2 py-1 text-xs text-gray-500">…и ещё {count - MAX_VISIBLE}</p>
+            <p className="px-2 py-1 text-xs text-ink-faint">…и ещё {count - MAX_VISIBLE}</p>
           )}
         </div>
       )}

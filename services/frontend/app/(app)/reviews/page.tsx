@@ -1,14 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+// app/(app)/reviews/page.tsx — OneVoice (Linen) Reviews
+// Customer feedback aggregated across connected platforms. Per brand voice
+// "AI suggests, never commits": when a draft reply exists for a pending
+// review, OneVoice surfaces it as an offer (paper-sunken sub-panel with
+// "Образец ответа AI") that the operator must explicitly send or edit.
+// No mock for this page — extrapolated from mock-states.jsx (empty state)
+// and the patterns established in mock-posts.jsx (filter bar, stat strip).
+
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Star, MessageSquare, Send } from 'lucide-react';
+import { Star } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -25,33 +33,54 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { PageHeader } from '@/components/ui/page-header';
+import { MonoLabel } from '@/components/ui/mono-label';
+import { ChannelMark } from '@/components/ui/channel-mark';
+import { cn } from '@/lib/utils';
 import type { Review } from '@/types/review';
 
-const platformLabels: Record<string, string> = {
-  yandex_business: 'Яндекс',
-  google: 'Google',
-  '2gis': '2ГИС',
+// Platform id → display label + ChannelMark name. Reviews can land from
+// any connected channel — Telegram/VK forward DMs that read as feedback,
+// Yandex.Business is the canonical reviews surface.
+const platformMeta: Record<string, { label: string; channel: string }> = {
+  yandex_business: { label: 'Яндекс.Бизнес', channel: 'Yandex.Business' },
+  yandex: { label: 'Яндекс', channel: 'Yandex' },
+  google: { label: 'Google', channel: 'Google' },
+  google_business: { label: 'Google Business', channel: 'Google' },
+  '2gis': { label: '2ГИС', channel: '2GIS' },
+  telegram: { label: 'Telegram', channel: 'Telegram' },
+  vk: { label: 'ВКонтакте', channel: 'VK' },
 };
 
-const platformColors: Record<string, string> = {
-  yandex_business: 'bg-yellow-100 text-yellow-800',
-  google: 'bg-blue-100 text-blue-800',
-  '2gis': 'bg-green-100 text-green-800',
+function platformInfo(id: string): { label: string; channel: string } {
+  return platformMeta[id] ?? { label: id, channel: id };
+}
+
+// Reply status → tone-mapped badge config. Per brand voice the labels
+// are matter-of-fact, not celebratory.
+type StatusKey = 'pending' | 'replied' | 'error' | 'read';
+const statusBadge: Record<
+  StatusKey,
+  { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }
+> = {
+  pending: { label: 'Ждёт ответа', tone: 'warning' },
+  replied: { label: 'Ответ отправлен', tone: 'success' },
+  error: { label: 'Ошибка отправки', tone: 'danger' },
+  read: { label: 'Прочитано', tone: 'neutral' },
 };
 
-const replyStatusLabels: Record<string, string> = {
-  pending: 'Без ответа',
-  replied: 'Ответ отправлен',
-  error: 'Ошибка',
-};
-
-function StarRating({ rating }: { rating: number }) {
+function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-0.5" aria-label={`Оценка ${rating} из 5`}>
       {Array.from({ length: 5 }, (_, i) => (
         <Star
           key={i}
-          className={`h-4 w-4 ${i < rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}
+          aria-hidden
+          style={{ width: size, height: size }}
+          className={cn(
+            'transition-colors',
+            i < rating ? 'fill-ochre text-ochre' : 'fill-transparent text-ink-faint'
+          )}
         />
       ))}
     </div>
@@ -60,20 +89,31 @@ function StarRating({ rating }: { rating: number }) {
 
 function ReviewSkeleton() {
   return (
-    <Card>
-      <CardContent className="space-y-3 p-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-5 w-16 rounded-full" />
-            <Skeleton className="h-4 w-24" />
-          </div>
-          <Skeleton className="h-4 w-20" />
-        </div>
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-3/4" />
-      </CardContent>
-    </Card>
+    <div className="rounded-lg border border-line bg-paper-raised p-6">
+      <div className="flex items-center gap-3">
+        <Skeleton className="size-7 rounded-full bg-paper-sunken" />
+        <Skeleton className="h-3.5 w-32 bg-paper-sunken" />
+        <Skeleton className="h-3.5 w-20 bg-paper-sunken" />
+        <span className="ml-auto">
+          <Skeleton className="h-3 w-16 bg-paper-sunken" />
+        </span>
+      </div>
+      <div className="mt-4 space-y-2">
+        <Skeleton className="h-3 w-full bg-paper-sunken" />
+        <Skeleton className="h-3 w-3/4 bg-paper-sunken" />
+      </div>
+    </div>
   );
+}
+
+// Format YYYY-MM-DD-ish ISO into "23 апр" style for the timestamp slot.
+function formatReviewDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(d);
+  } catch {
+    return iso;
+  }
 }
 
 export default function ReviewsPage() {
@@ -89,7 +129,14 @@ export default function ReviewsPage() {
       const params = new URLSearchParams();
       if (platform !== 'all') params.set('platform', platform);
       if (replyStatus !== 'all') params.set('reply_status', replyStatus);
-      return api.get(`/reviews?${params}`).then((r) => r.data as Review[]);
+      return api.get(`/reviews?${params}`).then((r) => {
+        // API shape: { reviews: Review[], total: number }. Older
+        // callers expected a bare array — accept both for safety.
+        const data = r.data as unknown;
+        if (Array.isArray(data)) return data as Review[];
+        const reviews = (data as { reviews?: Review[] } | null)?.reviews;
+        return Array.isArray(reviews) ? reviews : [];
+      });
     },
   });
 
@@ -102,137 +149,267 @@ export default function ReviewsPage() {
       setReplyDialog(null);
       setReplyText('');
     },
-    onError: () => toast.error('Ошибка отправки ответа'),
+    onError: () => toast.error('Не получилось отправить ответ'),
   });
 
-  function openReply(review: Review) {
+  // Stats are computed from the loaded slice — they reflect what the
+  // operator currently sees, not a global count. That keeps the strip
+  // honest under platform/status filters.
+  const stats = useMemo(() => {
+    const total = reviews.length;
+    const pending = reviews.filter((r) => r.replyStatus === 'pending').length;
+    const ratings = reviews.map((r) => r.rating).filter((n) => Number.isFinite(n));
+    const avg = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+    return { total, pending, avg };
+  }, [reviews]);
+
+  function openReply(review: Review, prefill?: string) {
     setReplyDialog(review);
-    setReplyText(review.replyText ?? '');
+    setReplyText(prefill ?? review.replyText ?? '');
+  }
+
+  function sendDraftAsIs(review: Review) {
+    if (!review.replyText) return;
+    replyMutation.mutate({ id: review.id, text: review.replyText });
   }
 
   return (
-    <div className="max-w-3xl space-y-6 p-8">
-      <div>
-        <h1 className="mb-1 text-2xl font-bold">Отзывы</h1>
-        <p className="text-sm text-muted-foreground">Управляйте отзывами с подключённых платформ</p>
+    <>
+      <PageHeader
+        title="Отзывы"
+        sub="Здесь собираются отзывы клиентов с подключённых каналов. OneVoice предложит образец ответа — отправлять решаете вы."
+      />
+
+      <div className="px-4 pb-10 sm:px-12 sm:pb-16">
+        {/* Stat strip — three quiet metrics. No celebratory tone. */}
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatCell
+            label="Ждут ответа"
+            value={stats.pending}
+            hint={stats.pending === 0 ? 'нет открытых' : 'требуют решения'}
+          />
+          <StatCell label="Всего в выборке" value={stats.total} hint="по выбранным фильтрам" />
+          <StatCell
+            label="Средняя оценка"
+            value={stats.avg == null ? '—' : stats.avg.toFixed(1)}
+            hint={stats.avg == null ? 'нет данных' : 'из 5'}
+          />
+        </div>
+
+        {/* Filter bar — platform select + reply-status tabs. */}
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-line bg-paper-raised px-4 py-3">
+          <Select value={platform} onValueChange={setPlatform}>
+            <SelectTrigger className="h-9 w-[200px]">
+              <SelectValue placeholder="Платформа" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все платформы</SelectItem>
+              <SelectItem value="yandex_business">Яндекс.Бизнес</SelectItem>
+              <SelectItem value="google">Google</SelectItem>
+              <SelectItem value="2gis">2ГИС</SelectItem>
+              <SelectItem value="telegram">Telegram</SelectItem>
+              <SelectItem value="vk">ВКонтакте</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Tabs value={replyStatus} onValueChange={setReplyStatus}>
+            <TabsList>
+              <TabsTrigger value="all">Все</TabsTrigger>
+              <TabsTrigger value="pending">Без ответа</TabsTrigger>
+              <TabsTrigger value="replied">С ответом</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {isLoading && (
+          <div className="space-y-3 duration-200 animate-in fade-in">
+            {Array.from({ length: 3 }, (_, i) => (
+              <ReviewSkeleton key={i} />
+            ))}
+          </div>
+        )}
+
+        {!isLoading && reviews.length === 0 && <ReviewsEmptyState replyStatus={replyStatus} />}
+
+        {!isLoading && reviews.length > 0 && (
+          <div className="space-y-3 duration-300 animate-in fade-in">
+            {reviews.map((review) => (
+              <ReviewCard
+                key={review.id}
+                review={review}
+                onSendDraft={() => sendDraftAsIs(review)}
+                onEdit={() => openReply(review, review.replyText ?? '')}
+                onWriteOwn={() => openReply(review, '')}
+                isSending={replyMutation.isPending && replyMutation.variables?.id === review.id}
+              />
+            ))}
+          </div>
+        )}
       </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={platform} onValueChange={setPlatform}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Платформа" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все платформы</SelectItem>
-            <SelectItem value="yandex_business">Яндекс</SelectItem>
-            <SelectItem value="google">Google</SelectItem>
-            <SelectItem value="2gis">2ГИС</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Tabs value={replyStatus} onValueChange={setReplyStatus}>
-          <TabsList>
-            <TabsTrigger value="all">Все</TabsTrigger>
-            <TabsTrigger value="pending">Без ответа</TabsTrigger>
-            <TabsTrigger value="replied">С ответом</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-
-      {isLoading && (
-        <div className="space-y-4 duration-200 animate-in fade-in">
-          {Array.from({ length: 3 }, (_, i) => (
-            <ReviewSkeleton key={i} />
-          ))}
-        </div>
-      )}
-
-      {!isLoading && reviews.length === 0 && (
-        <div className="py-16 text-center duration-300 animate-in fade-in">
-          <MessageSquare className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
-          <p className="text-muted-foreground">Отзывов пока нет</p>
-        </div>
-      )}
-
-      {!isLoading && reviews.length > 0 && (
-        <div className="space-y-4 duration-300 animate-in fade-in slide-in-from-bottom-2">
-          {reviews.map((review) => (
-            <Card key={review.id}>
-              <CardContent className="space-y-3 p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className={platformColors[review.platform] ?? ''}>
-                      {platformLabels[review.platform] ?? review.platform}
-                    </Badge>
-                    <span className="text-sm font-medium">{review.authorName}</span>
-                    <StarRating rating={review.rating} />
-                  </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {new Date(review.createdAt).toLocaleDateString('ru-RU')}
-                  </span>
-                </div>
-
-                <p className="text-sm leading-relaxed">{review.text}</p>
-
-                {review.replyText && (
-                  <div className="rounded-md bg-muted/50 p-3">
-                    <p className="mb-1 text-xs font-medium text-muted-foreground">Ваш ответ</p>
-                    <p className="text-sm">{review.replyText}</p>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between pt-1">
-                  <Badge variant={review.replyStatus === 'replied' ? 'default' : 'secondary'}>
-                    {replyStatusLabels[review.replyStatus] ?? review.replyStatus}
-                  </Badge>
-                  <Button variant="outline" size="sm" onClick={() => openReply(review)}>
-                    <Send className="mr-1.5 h-3.5 w-3.5" />
-                    {review.replyText ? 'Изменить ответ' : 'Ответить'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
 
       <Dialog open={!!replyDialog} onOpenChange={(open) => !open && setReplyDialog(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Ответ на отзыв</DialogTitle>
+            <DialogTitle className="text-ink">Ответ на отзыв</DialogTitle>
           </DialogHeader>
           {replyDialog && (
             <div className="space-y-4">
-              <div className="rounded-md bg-muted/50 p-3">
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="text-sm font-medium">{replyDialog.authorName}</span>
-                  <StarRating rating={replyDialog.rating} />
+              <div className="rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <ChannelMark name={platformInfo(replyDialog.platform).channel} size={20} />
+                  <span className="text-sm font-medium text-ink">{replyDialog.authorName}</span>
+                  <StarRating rating={replyDialog.rating} size={14} />
                 </div>
-                <p className="text-sm">{replyDialog.text}</p>
+                <p className="text-sm leading-relaxed text-ink-mid">{replyDialog.text}</p>
               </div>
-              <Textarea
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                placeholder="Введите ответ..."
-                rows={4}
-              />
+              <div className="space-y-1.5">
+                <MonoLabel>Ваш ответ</MonoLabel>
+                <Textarea
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder="Напишите ответ клиенту…"
+                  rows={5}
+                  className="resize-none"
+                />
+              </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReplyDialog(null)}>
+            <Button variant="ghost" onClick={() => setReplyDialog(null)}>
               Отмена
             </Button>
             <Button
+              variant="primary"
               onClick={() =>
                 replyDialog && replyMutation.mutate({ id: replyDialog.id, text: replyText })
               }
               disabled={!replyText.trim() || replyMutation.isPending}
             >
-              {replyMutation.isPending ? 'Отправка...' : 'Отправить'}
+              {replyMutation.isPending ? 'Отправляем…' : 'Отправить'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+// ─── Subcomponents ─────────────────────────────────────────────────
+
+function StatCell({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-paper-raised px-5 py-4">
+      <MonoLabel>{label}</MonoLabel>
+      <div className="mt-1.5 text-[26px] font-medium leading-none tracking-[-0.015em] text-ink">
+        {value}
+      </div>
+      {hint && <div className="mt-1.5 text-xs text-ink-soft">{hint}</div>}
     </div>
   );
+}
+
+function ReviewCard({
+  review,
+  onSendDraft,
+  onEdit,
+  onWriteOwn,
+  isSending,
+}: {
+  review: Review;
+  onSendDraft: () => void;
+  onEdit: () => void;
+  onWriteOwn: () => void;
+  isSending: boolean;
+}) {
+  const meta = platformInfo(review.platform);
+  const status =
+    (review.replyStatus as StatusKey) in statusBadge ? (review.replyStatus as StatusKey) : 'read';
+  const badge = statusBadge[status];
+
+  // Per brand voice: AI's draft is an offer, not a fait accompli. We only
+  // show the draft sub-panel when the review is still awaiting a reply
+  // AND a draft exists. Once status flips to "replied", the same text
+  // becomes the sent reply (rendered in the "Отправленный ответ" block).
+  const hasAIDraft =
+    status === 'pending' && !!review.replyText && review.replyText.trim().length > 0;
+  const hasSentReply = status === 'replied' && !!review.replyText;
+
+  return (
+    <article className="rounded-lg border border-line bg-paper-raised p-6 shadow-ov-1">
+      {/* Header — channel mark, name, stars, date, status badge */}
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <ChannelMark name={meta.channel} size={22} />
+        <span className="text-sm font-medium text-ink">{review.authorName}</span>
+        <span aria-hidden className="size-1 rounded-full bg-ink-faint" />
+        <span className="text-xs text-ink-soft">{meta.label}</span>
+        <StarRating rating={review.rating} />
+        <span className="ml-auto flex items-center gap-3">
+          <MonoLabel>{formatReviewDate(review.createdAt)}</MonoLabel>
+          <Badge tone={badge.tone} dot>
+            {badge.label}
+          </Badge>
+        </span>
+      </header>
+
+      {/* Review body */}
+      <p className="mt-4 whitespace-pre-wrap text-[15px] leading-relaxed text-ink-mid">
+        {review.text}
+      </p>
+
+      {/* Sent reply — quiet sub-panel, no actions */}
+      {hasSentReply && (
+        <div className="mt-4 rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
+          <MonoLabel>Отправленный ответ</MonoLabel>
+          <p className="mt-1.5 text-sm leading-relaxed text-ink">{review.replyText}</p>
+        </div>
+      )}
+
+      {/* AI draft — offered, not committed. Two actions: send / edit. */}
+      {hasAIDraft && (
+        <div className="mt-4 rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <MonoLabel tone="ochre">Образец ответа AI</MonoLabel>
+            <span className="text-xs text-ink-soft">Можно отправить или отредактировать</span>
+          </div>
+          <p className="mt-2 text-sm leading-relaxed text-ink">{review.replyText}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button variant="primary" size="sm" onClick={onSendDraft} disabled={isSending}>
+              {isSending ? 'Отправляем…' : 'Отправить'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onEdit} disabled={isSending}>
+              Отредактировать
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* No-draft fallback: explicit action to author a reply ourselves. */}
+      {status === 'pending' && !hasAIDraft && (
+        <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
+          <span className="text-sm text-ink-mid">
+            Образец ещё не подготовлен. Можно ответить вручную.
+          </span>
+          <Button variant="secondary" size="sm" onClick={onWriteOwn}>
+            Написать ответ
+          </Button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ReviewsEmptyState({ replyStatus }: { replyStatus: string }) {
+  // Tailor the copy to the active filter so the page doesn't claim
+  // there are zero reviews when really we're just filtered to "pending".
+  const mode: ReviewsEmptyMode =
+    replyStatus === 'pending' ? 'pending' : replyStatus === 'replied' ? 'replied' : 'all';
+  return <EmptyReviews mode={mode} />;
 }

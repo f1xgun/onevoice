@@ -60,7 +60,7 @@ export function DeleteProjectDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Отмена</AlertDialogCancel>
           <AlertDialogAction
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            className="hover:bg-destructive/90 bg-destructive text-destructive-foreground"
             disabled={pending}
             onClick={(e) => {
               // Prevent default close so we can await the mutation.

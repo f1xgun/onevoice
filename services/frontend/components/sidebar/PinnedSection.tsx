@@ -68,16 +68,16 @@ export function PinnedSection({
         onClick={() => setCollapsed((v) => !v)}
         aria-expanded={!collapsed}
         aria-label={collapsed ? 'Развернуть «Закреплённые»' : 'Свернуть «Закреплённые»'}
-        className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-800"
+        className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-sm text-ink-mid hover:bg-paper-sunken"
       >
         {collapsed ? (
-          <ChevronRight size={12} className="shrink-0 text-gray-500" />
+          <ChevronRight size={12} className="shrink-0 text-ink-faint" />
         ) : (
-          <ChevronDown size={12} className="shrink-0 text-gray-500" />
+          <ChevronDown size={12} className="shrink-0 text-ink-faint" />
         )}
         <Bookmark size={12} className="shrink-0 text-yellow-400" />
         <span className="flex-1 truncate text-left">Закреплённые</span>
-        <span className="text-xs text-gray-500">· {count}</span>
+        <span className="text-xs text-ink-faint">· {count}</span>
       </button>
 
       {!collapsed && (
@@ -102,8 +102,8 @@ export function PinnedSection({
                   className={cn(
                     'flex flex-1 items-center gap-1 truncate rounded-md px-2 py-1 text-xs transition-colors',
                     conv.id === activeConversationId
-                      ? 'bg-gray-700 text-white'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-paper-sunken text-ink'
+                      : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                   )}
                 >
                   <span className="flex-1 truncate">{conv.title || 'Новый диалог'}</span>
@@ -130,7 +130,7 @@ export function PinnedSection({
             );
           })}
           {count > MAX_VISIBLE && (
-            <p className="px-2 py-1 text-xs text-gray-500">…и ещё {count - MAX_VISIBLE}</p>
+            <p className="px-2 py-1 text-xs text-ink-faint">…и ещё {count - MAX_VISIBLE}</p>
           )}
         </div>
       )}

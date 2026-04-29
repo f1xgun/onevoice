@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -105,12 +105,10 @@ describe('ToolsPageClient — /settings/tools (POLICY-05)', () => {
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
   });
 
-  it('renders the Russian page title exactly', async () => {
+  it('renders the Linen-era Russian page title', async () => {
     setupDefaultMocks();
     renderPage();
-    expect(
-      await screen.findByRole('heading', { name: /«Настройки одобрения инструментов»/ })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Что разрешено ИИ/ })).toBeInTheDocument();
   });
 
   it('shows a switch for manual-floor tools and omits auto-floor tools', async () => {
@@ -152,7 +150,15 @@ describe('ToolsPageClient — /settings/tools (POLICY-05)', () => {
     const saveBtn = await screen.findByRole('button', { name: /Сохранить/ });
     expect(saveBtn).toBeDisabled();
 
-    await userEvent.click(screen.getByLabelText(`Режим одобрения для ${TELEGRAM_POST.name}`));
+    // The 2-mode segmented control replaces the legacy Switch. Clicking the
+    // «Сам» segment of the TELEGRAM_POST row flips it from manual → auto.
+    // Tools / approvals load async after PageHeader, so the radiogroup
+    // doesn't exist on first render — `findByRole` waits for it.
+    const radiogroup = await screen.findByRole('radiogroup', {
+      name: `Режим одобрения для ${TELEGRAM_POST.name}`,
+    });
+    const samBtn = within(radiogroup).getByRole('radio', { name: 'Сам' });
+    await userEvent.click(samBtn);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Сохранить/ })).toBeEnabled();
@@ -169,7 +175,10 @@ describe('ToolsPageClient — /settings/tools (POLICY-05)', () => {
 
     // Flip telegram post auto; leave telegram photo untouched (manual by
     // default); yandex reply starts at auto from server.
-    await userEvent.click(screen.getByLabelText(`Режим одобрения для ${TELEGRAM_POST.name}`));
+    const radiogroup = screen.getByRole('radiogroup', {
+      name: `Режим одобрения для ${TELEGRAM_POST.name}`,
+    });
+    await userEvent.click(within(radiogroup).getByRole('radio', { name: 'Сам' }));
 
     await userEvent.click(screen.getByRole('button', { name: /Сохранить/ }));
 

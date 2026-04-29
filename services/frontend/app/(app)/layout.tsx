@@ -96,10 +96,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <>
       {/* Mobile: keep the existing Sheet-based drawer (Sidebar) which
-          renders top bar + drawer with the full nav + project tree. */}
-      <div className="md:hidden">
+          renders top bar + drawer with the full nav + project tree.
+          The flex-column + h-screen pair gives <main> a real height so
+          h-full layouts inside (chat composer at the bottom, etc.)
+          actually work — without it h-full collapses to 0 and the
+          composer drifts to wherever content ends. */}
+      <div className="flex h-screen flex-col md:hidden">
         <Sidebar />
-        <main className="overflow-y-auto bg-gray-50">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto bg-background">{children}</main>
       </div>
 
       {/* Desktop: NavRail (always) + PanelGroup hosting conditional
@@ -132,12 +136,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <PanelResizeHandle
                 id="project-pane-handle"
                 aria-label="Изменить ширину боковой панели"
-                className="w-px bg-gray-700 transition-colors hover:bg-gray-500"
+                className="w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
               />
             </>
           )}
           <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
-            <main className="h-full overflow-y-auto bg-gray-50">{children}</main>
+            <main className="h-full overflow-y-auto bg-background">{children}</main>
           </Panel>
         </PanelGroup>
       </div>

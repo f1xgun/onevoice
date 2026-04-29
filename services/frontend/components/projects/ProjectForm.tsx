@@ -151,12 +151,16 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         {isEdit ? (
           <Tabs defaultValue="basics" className="w-full">
-            <TabsList className="w-full justify-start">
-              <TabsTrigger value="basics">Основное</TabsTrigger>
-              <TabsTrigger value="prompt">Промпт</TabsTrigger>
-              <TabsTrigger value="tools">Инструменты</TabsTrigger>
-              <TabsTrigger value="quick-actions">Быстрые действия</TabsTrigger>
-            </TabsList>
+            {/* Tabs scroll horizontally on narrow viewports — «Быстрые
+                действия» otherwise clips off-screen on phones. */}
+            <div className="-mx-1 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0">
+              <TabsList className="justify-start sm:w-full">
+                <TabsTrigger value="basics">Основное</TabsTrigger>
+                <TabsTrigger value="prompt">Промпт</TabsTrigger>
+                <TabsTrigger value="tools">Инструменты</TabsTrigger>
+                <TabsTrigger value="quick-actions">Быстрые действия</TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="basics" className="space-y-6 pt-4">
               <FormField
@@ -358,7 +362,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
               )}
             />
 
-            <p className="rounded-md border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+            <p className="bg-muted/30 rounded-md border px-4 py-3 text-xs text-muted-foreground">
               Системный промпт, доступные инструменты и быстрые действия можно настроить после
               создания проекта.
             </p>
@@ -381,7 +385,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
             <Button
               type="button"
               variant="outline"
-              className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+              className="hover:bg-destructive/10 ml-auto text-destructive hover:text-destructive"
               onClick={() => setDeleteOpen(true)}
               disabled={submitting || deleteMutation.isPending}
             >

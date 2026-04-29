@@ -56,7 +56,7 @@ export function ProjectChip({ projectId, projectName, size = 'sm' }: Props) {
       className={cn(
         chipBase,
         sizeClasses[size],
-        'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
+        'hover:border-primary/40 border-border text-muted-foreground hover:text-foreground'
       )}
     >
       <FolderOpen size={iconSize[size]} />
