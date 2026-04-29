@@ -14,6 +14,7 @@ import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
 import { GoogleLocationModal } from '@/components/integrations/GoogleLocationModal';
+import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
 import type { Business } from '@/types/business';
 
@@ -54,6 +55,7 @@ export default function IntegrationsPage() {
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
   const [googleLocationOpen, setGoogleLocationOpen] = useState(false);
+  const [yandexOpen, setYandexOpen] = useState(false);
   const [lastRegistered, setLastRegistered] = useState<LastRegistered | null>(null);
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
 
@@ -161,11 +163,10 @@ export default function IntegrationsPage() {
       }
       return;
     }
-    try {
-      const { data } = await api.get(`/integrations/${platformId}/auth-url`);
-      window.location.href = data.url;
-    } catch {
-      toast.error('Не получилось открыть авторизацию');
+    if (platformId === 'yandex_business') {
+      // Cookie-paste flow — Yandex has no public OAuth API for the actions
+      // we automate, so the agent needs real session cookies.
+      setYandexOpen(true);
     }
   };
 
@@ -274,6 +275,8 @@ export default function IntegrationsPage() {
           qc.invalidateQueries({ queryKey: ['integrations'] });
         }}
       />
+
+      <YandexBusinessConnectModal open={yandexOpen} onClose={() => setYandexOpen(false)} />
     </>
   );
 }
