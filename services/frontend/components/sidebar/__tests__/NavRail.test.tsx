@@ -75,7 +75,15 @@ describe('NavRail', () => {
     );
     // Each nav item exposes an aria-label so we can find it via role + name
     // even though the visible text is replaced by an icon-only column.
-    const labels = ['Чат', 'Интеграции', 'Бизнес', 'Отзывы', 'Посты', 'Задачи', 'Настройки'];
+    const labels = [
+      'Чат',
+      'Интеграции',
+      'Профиль бизнеса',
+      'Отзывы',
+      'Посты',
+      'Задачи',
+      'Настройки',
+    ];
     for (const label of labels) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     }
@@ -103,7 +111,7 @@ describe('NavRail', () => {
     expect(rail?.className ?? '').toMatch(/\bw-(14|16)\b/);
   });
 
-  it('marks the active route with a highlight class (pathname.startsWith)', () => {
+  it('marks the active route with the Linen indicator (ink text + ochre left bar)', () => {
     usePathnameMock.mockReturnValue('/integrations');
     render(
       <Wrapper>
@@ -111,8 +119,13 @@ describe('NavRail', () => {
       </Wrapper>
     );
     const active = screen.getByRole('link', { name: 'Интеграции' });
-    // Active visual indicator: bg-gray-700 (matches existing sidebar.tsx pattern).
-    expect(active.className).toMatch(/bg-gray-7\d{2}/);
+    // Active state under the Linen design (mock-shell.jsx): no bg change,
+    // just `text-ink` on the icon + `aria-current="page"` + a 2 px ochre
+    // bar rendered as an absolutely-positioned span (`bg-ochre`) inside
+    // the link. Asserting all three keeps the contract honest.
+    expect(active).toHaveAttribute('aria-current', 'page');
+    expect(active.className).toMatch(/\btext-ink\b/);
+    expect(active.querySelector('span.bg-ochre')).not.toBeNull();
   });
 
   it('logout button calls useAuthStore.logout()', async () => {
