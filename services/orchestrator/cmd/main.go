@@ -141,6 +141,12 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// and resolve handler (this plan) forward to this endpoint.
 	resumeHandler := handler.NewResumeHandler(orch)
 
+	// AI review-draft endpoint: api's review_sync hook posts here after each
+	// platform poll for every (business, platform) pair that has new pending
+	// reviews. Single source of truth for LLM access — the api service is
+	// kept as the data layer and never imports pkg/llm directly.
+	draftReplyHandler := handler.NewDraftReplyHandler(router, cfg.LLMModel)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(func(next http.Handler) http.Handler {
@@ -160,6 +166,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	r.Post("/chat/{conversationID}/resume", resumeHandler.Resume)
 	r.Get("/internal/tools/names", internalToolsHandler.Names)
 	r.Get("/internal/tools", internalToolsAllHandler.ServeHTTP)
+	r.Post("/internal/draft-reply", draftReplyHandler.ServeHTTP)
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health/live", hc.LiveHandler())
 	r.Get("/health/ready", hc.ReadyHandler())
