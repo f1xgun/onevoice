@@ -58,6 +58,7 @@ type OAuthConfig struct {
 	// Overridable base URLs for testing
 	vkTokenBaseURL        string
 	yandexTokenBaseURL    string
+	yandexProbeBaseURL    string // test override for the cookie-validity probe
 	telegramAPIBaseURL    string
 	googleTokenBaseURL    string // test override
 	googleAccountsBaseURL string // test override for account management API

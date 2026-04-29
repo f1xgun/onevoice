@@ -93,6 +93,13 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Get("/integrations/vk/community-auth-url", handlers.OAuth.VKCommunityAuthURL)
 			r.Get("/integrations/yandex_business/auth-url", handlers.OAuth.GetYandexAuthURL)
 
+			// Yandex.Business cookie-paste flow (replaces the broken OAuth-only path:
+			// Yandex doesn't expose a Sprav API for the actions we automate, so the
+			// Playwright agent needs real browser session cookies. See AGENTS.md +
+			// memory/project_yandex_business_no_oauth_api.md for the full rationale.)
+			r.Post("/integrations/yandex_business/probe", handlers.OAuth.ProbeYandexBusiness)
+			r.Post("/integrations/yandex_business/connect", handlers.OAuth.ConnectYandexBusiness)
+
 			// VK community token route
 			r.Post("/integrations/vk/connect", handlers.OAuth.ConnectVK)
 
