@@ -82,7 +82,7 @@ function PlatformSection({
       style={{ borderLeftColor: color, borderLeftWidth: 3 }}
     >
       <CollapsibleTrigger
-        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/50"
+        className="hover:bg-muted/50 flex w-full items-center justify-between px-4 py-3 text-left"
         type="button"
       >
         <div className="flex items-center gap-2">

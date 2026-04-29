@@ -383,6 +383,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		"business_phone":         business.Phone,
 		"business_website":       derefString(business.Website),
 		"business_description":   business.Description,
+		"business_voice_tone":    extractVoiceTone(business.Settings),
 		"active_integrations":    activeIntegrations,
 		"history":                history,
 		"project_id":             projectID,

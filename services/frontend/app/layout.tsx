@@ -1,10 +1,23 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { Inter } from 'next/font/google';
+import { Manrope, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/providers';
 
-const inter = Inter({ subsets: ['latin', 'cyrillic'] });
+// Manrope is the cyrillic-supporting fallback for Mona Sans (the design spec's
+// preferred sans). Mona Sans on Google Fonts ships latin only — see
+// design_handoff/tokens/PRODUCTION-README §1. Switch to self-hosted Mona Sans
+// from github.com/github/mona-sans if cyrillic glyphs are added upstream.
+const sans = Manrope({
+  subsets: ['latin', 'cyrillic'],
+  variable: '--font-sans',
+  display: 'swap',
+});
+const mono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'OneVoice — управление цифровым присутствием',
@@ -13,8 +26,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru">
-      <body className={inter.className}>
+    <html lang="ru" className={`${sans.variable} ${mono.variable}`}>
+      <body className="font-sans antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

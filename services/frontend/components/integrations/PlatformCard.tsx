@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { AlertTriangle } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,10 +17,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { PlatformIcon } from '@/components/integrations/PlatformIcons';
+import { MonoLabel } from '@/components/ui/mono-label';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 interface Integration {
   id: string;
@@ -33,7 +34,6 @@ interface Props {
   platform: string;
   label: string;
   description: string;
-  color: string;
   integrations: Integration[];
   onConnect: () => void;
   onDisconnect: (integrationId: string) => void;
@@ -48,27 +48,29 @@ const statusLabels: Record<string, string> = {
   token_expired: 'Токен истёк',
 };
 
-const statusVariants: Record<string, 'default' | 'secondary' | 'destructive'> = {
-  active: 'default',
-  inactive: 'secondary',
-  error: 'destructive',
-  pending_cookies: 'secondary',
-  token_expired: 'destructive',
+// Linen Badge tones — replaces the old default/secondary/destructive variants.
+const statusTones: Record<string, 'success' | 'neutral' | 'danger' | 'warning'> = {
+  active: 'success',
+  inactive: 'neutral',
+  error: 'danger',
+  pending_cookies: 'warning',
+  token_expired: 'danger',
 };
 
-const statusColors: Record<string, string> = {
-  active: 'bg-green-500',
-  inactive: 'bg-gray-400',
-  error: 'bg-red-500',
-  pending_cookies: 'bg-yellow-500',
-  token_expired: 'bg-red-500',
-};
+// Two-letter mono initials for the platform mark — paper-sunken square per
+// mock-integrations-v2.jsx IntegrationCard (no colored brand block).
+function platformInitials(platform: string, label: string): string {
+  if (platform === 'yandex_business') return 'ЯБ';
+  if (platform === 'vk') return 'VK';
+  if (platform === 'google_business') return 'GB';
+  if (platform === 'telegram') return 'TG';
+  return label.slice(0, 2).toUpperCase();
+}
 
 export function PlatformCard({
   platform,
   label,
   description,
-  color,
   integrations,
   onConnect,
   onDisconnect,
@@ -85,7 +87,7 @@ export function PlatformCard({
         { channel_id: i.externalId }
       );
       if (data.linked_group_status === 'ok') {
-        toast.success('Бот найден в группе обсуждений — комментарии будут собираться.');
+        toast.success('Бот в группе обсуждений — комментарии будут собираться.');
       } else {
         toast.warning('Бот всё ещё не в группе обсуждений.');
       }
@@ -101,33 +103,134 @@ export function PlatformCard({
   }
 
   const hasActive = integrations.some((i) => i.status === 'active');
-  const channelList = (
-    <div className="space-y-2">
-      {integrations.map((i) => (
-        <div
-          key={i.id}
-          className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
+  const initials = platformInitials(platform, label);
+
+  return (
+    <div
+      className={cn(
+        'overflow-hidden rounded-lg border border-line bg-paper-raised',
+        disabled && 'pointer-events-none opacity-50'
+      )}
+    >
+      {/* Header */}
+      <div className="flex items-start gap-4 px-5 py-5">
+        <span
+          aria-hidden
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line-soft bg-paper-sunken font-mono text-[11px] text-ink-soft"
         >
-          <div className="flex min-w-0 items-center gap-2">
-            <span
-              className={`h-2 w-2 shrink-0 rounded-full ${statusColors[i.status] ?? 'bg-gray-400'}`}
-            />
-            <span className="min-w-0 truncate text-sm">
-              {(i.metadata as Record<string, string>)?.channel_title ?? i.externalId}
-            </span>
+          {initials}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2.5">
+            <span className="text-[15px] font-semibold text-ink">{label}</span>
+            {hasActive ? (
+              <Badge tone="success" dot>
+                Подключено
+              </Badge>
+            ) : (
+              <Badge tone="neutral">Не подключено</Badge>
+            )}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {platform === 'telegram' &&
-              (i.metadata as Record<string, unknown>)?.linked_group_status === 'bot_not_member' && (
+          <div className="mt-0.5 text-[13px] text-ink-mid">{description}</div>
+        </div>
+      </div>
+
+      {/* Channels list */}
+      {integrations.length > 0 && (
+        <div className="px-5 pb-5">
+          <MonoLabel>Каналы</MonoLabel>
+          <div className="mt-2.5">
+            {integrations.length > 3 ? (
+              <ScrollArea className="max-h-44">
+                <ChannelList
+                  integrations={integrations}
+                  platform={platform}
+                  onDisconnect={onDisconnect}
+                  refreshingID={refreshingID}
+                  onRefreshTelegram={refreshTelegramLinkedGroup}
+                />
+              </ScrollArea>
+            ) : (
+              <ChannelList
+                integrations={integrations}
+                platform={platform}
+                onDisconnect={onDisconnect}
+                refreshingID={refreshingID}
+                onRefreshTelegram={refreshTelegramLinkedGroup}
+              />
+            )}
+            <Button variant="secondary" size="sm" className="mt-3" onClick={onConnect}>
+              + Добавить канал
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {integrations.length === 0 && (
+        <div className="px-5 pb-5">
+          <Button variant="primary" size="sm" onClick={onConnect}>
+            Подключить
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChannelList({
+  integrations,
+  platform,
+  onDisconnect,
+  refreshingID,
+  onRefreshTelegram,
+}: {
+  integrations: Integration[];
+  platform: string;
+  onDisconnect: (integrationId: string) => void;
+  refreshingID: string | null;
+  onRefreshTelegram: (i: Integration) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {integrations.map((i) => {
+        const tone = statusTones[i.status] ?? 'neutral';
+        const label = statusLabels[i.status] ?? i.status;
+        const channelTitle = (i.metadata as Record<string, string>)?.channel_title ?? i.externalId;
+        const showLinkedGroupWarn =
+          platform === 'telegram' &&
+          (i.metadata as Record<string, unknown>)?.linked_group_status === 'bot_not_member';
+
+        return (
+          <div
+            key={i.id}
+            className="flex items-center gap-3 rounded-md border border-line-soft bg-paper px-3.5 py-2.5"
+          >
+            <span
+              aria-hidden
+              className={cn(
+                'h-2 w-2 shrink-0 rounded-full',
+                i.status === 'active' && 'bg-success',
+                i.status === 'inactive' && 'bg-ink-faint',
+                i.status === 'error' && 'bg-danger',
+                i.status === 'pending_cookies' && 'bg-warning',
+                i.status === 'token_expired' && 'bg-danger'
+              )}
+            />
+            <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink">
+              {channelTitle}
+            </span>
+
+            <div className="flex shrink-0 items-center gap-1.5">
+              {showLinkedGroupWarn && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <button
                       type="button"
                       aria-label="Бот не в группе обсуждений"
                       title="Бот не в группе обсуждений — комментарии не собираются"
-                      className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-sm text-amber-700 hover:bg-amber-200"
+                      className="flex h-6 w-6 items-center justify-center rounded-full bg-warning-soft text-[var(--ov-warning-ink)] hover:bg-warning"
                     >
-                      ⚠
+                      <AlertTriangle size={12} />
                     </button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
@@ -136,7 +239,7 @@ export function PlatformCard({
                       <AlertDialogDescription>
                         У этого канала есть связанная группа для комментариев, но бот в неё не
                         добавлен — поэтому комментарии к постам не собираются. Откройте группу
-                        обсуждений → участники → пригласите бота каналa. После этого отключите и
+                        обсуждений → участники → пригласите бота канала. После этого отключите и
                         подключите канал заново, чтобы обновить статус.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -145,87 +248,48 @@ export function PlatformCard({
                       <AlertDialogAction
                         disabled={refreshingID === i.id}
                         onClick={(e) => {
-                          // Keep the dialog open until refresh resolves so
-                          // the user sees the toast feedback in context.
                           e.preventDefault();
-                          void refreshTelegramLinkedGroup(i);
+                          onRefreshTelegram(i);
                         }}
                       >
-                        {refreshingID === i.id ? 'Проверка...' : 'Я добавил бота — проверить'}
+                        {refreshingID === i.id ? 'Проверяем…' : 'Я добавил бота — проверить'}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
               )}
-            <Badge variant={statusVariants[i.status] ?? 'secondary'} className="text-xs">
-              {statusLabels[i.status] ?? i.status}
-            </Badge>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-destructive hover:text-destructive"
-                >
-                  Отключить
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Отключить канал?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Канал будет отключён от OneVoice. Вы сможете подключить его снова.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Отмена</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => onDisconnect(i.id)}>
+
+              <Badge tone={tone}>{label}</Badge>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-[var(--ov-danger)]">
                     Отключить
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{`Отключить ${label}?`}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      История сообщений останется в архиве. Чтобы снова получать сообщения из{' '}
+                      {label}, канал нужно будет подключить заново.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Отмена</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="hover:bg-[var(--ov-danger)]/90 border-[var(--ov-danger)] bg-[var(--ov-danger)] text-[oklch(0.99_0_0)]"
+                      onClick={() => onDisconnect(i.id)}
+                    >
+                      Отключить
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
-  );
-
-  return (
-    <Card className={disabled ? 'pointer-events-none opacity-40' : ''}>
-      <CardContent className="space-y-4 p-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-white"
-              style={{ backgroundColor: color }}
-            >
-              <PlatformIcon platform={platform} className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="font-medium">{label}</p>
-              <p className="text-xs text-muted-foreground">{description}</p>
-            </div>
-          </div>
-          {hasActive && <Badge variant="default">Подключено</Badge>}
-          {!hasActive && integrations.length === 0 && <Badge variant="secondary">Отключено</Badge>}
-        </div>
-
-        {integrations.length > 0 && (
-          <div className="border-t pt-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Каналы</p>
-            {integrations.length > 3 ? (
-              <ScrollArea className="max-h-40">{channelList}</ScrollArea>
-            ) : (
-              channelList
-            )}
-          </div>
-        )}
-
-        <Button size="sm" onClick={onConnect}>
-          {integrations.length > 0 ? 'Добавить канал' : 'Подключить'}
-        </Button>
-      </CardContent>
-    </Card>
   );
 }

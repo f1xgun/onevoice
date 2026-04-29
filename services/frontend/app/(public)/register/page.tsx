@@ -3,15 +3,16 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth';
 import { registerSchema, type RegisterInput } from '@/lib/schemas';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { MonoLabel } from '@/components/ui/mono-label';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -47,47 +48,117 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl">Создать аккаунт</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="name">Имя</Label>
-              <Input id="name" {...register('name')} />
-              {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
+    <AuthShell
+      eyebrow="Создание аккаунта"
+      title="Начнём знакомство."
+      description="Минута на регистрацию — потом подключим каналы и поговорим о голосе бизнеса."
+      aside={<RegisterEditorial />}
+    >
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="name" className="text-xs font-medium text-ink-mid">
+            Как к вам обращаться
+          </Label>
+          <Input id="name" placeholder="Алина" autoComplete="given-name" {...register('name')} />
+          {errors.name && <p className="text-sm text-[var(--ov-danger)]">{errors.name.message}</p>}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="email" className="text-xs font-medium text-ink-mid">
+            Почта
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="vy@example.com"
+            autoComplete="email"
+            {...register('email')}
+          />
+          {errors.email && (
+            <p className="text-sm text-[var(--ov-danger)]">{errors.email.message}</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password" className="text-xs font-medium text-ink-mid">
+              Пароль
+            </Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              {...register('password')}
+            />
+            {errors.password && (
+              <p className="text-sm text-[var(--ov-danger)]">{errors.password.message}</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="confirmPassword" className="text-xs font-medium text-ink-mid">
+              Ещё раз
+            </Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              {...register('confirmPassword')}
+            />
+            {errors.confirmPassword && (
+              <p className="text-sm text-[var(--ov-danger)]">{errors.confirmPassword.message}</p>
+            )}
+          </div>
+        </div>
+
+        <Button type="submit" size="lg" className="mt-2 w-full" disabled={isSubmitting}>
+          {isSubmitting ? 'Создаём аккаунт…' : 'Создать аккаунт'}
+        </Button>
+
+        <p className="mt-6 text-sm text-ink-soft">
+          Уже зарегистрированы?{' '}
+          <Link href="/login" className="font-medium text-ink hover:underline">
+            Войти
+          </Link>
+        </p>
+      </form>
+    </AuthShell>
+  );
+}
+
+function RegisterEditorial() {
+  return (
+    <>
+      <MonoLabel>Что вы получите</MonoLabel>
+
+      <div className="my-auto flex flex-col gap-4">
+        {[
+          {
+            title: 'Один разговор — все каналы',
+            body: 'Telegram, ВКонтакте, Яндекс.Бизнес отвечают по одной команде, без переключения между вкладками.',
+          },
+          {
+            title: 'AI говорит вашим голосом',
+            body: 'Опишете тон один раз — на «Здравствуйте, у нас тихо в среду» он не ответит «Хей! 👋».',
+          },
+          {
+            title: 'Спокойнее по утрам',
+            body: 'Ничего не пропустите: AI готовит черновики, вы пьёте кофе и подтверждаете в один клик.',
+          },
+        ].map(({ title, body }) => (
+          <div key={title} className="rounded-lg border border-line bg-paper-raised p-4">
+            <div className="text-base font-medium leading-tight tracking-[-0.005em] text-ink">
+              {title}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" {...register('email')} />
-              {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="password">Пароль</Label>
-              <Input id="password" type="password" {...register('password')} />
-              {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="confirmPassword">Повторите пароль</Label>
-              <Input id="confirmPassword" type="password" {...register('confirmPassword')} />
-              {errors.confirmPassword && (
-                <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>
-              )}
-            </div>
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? 'Регистрация...' : 'Зарегистрироваться'}
-            </Button>
-            <p className="text-center text-sm text-gray-500">
-              Уже есть аккаунт?{' '}
-              <Link href="/login" className="text-blue-600 hover:underline">
-                Войти
-              </Link>
-            </p>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+            <p className="mt-1.5 text-sm leading-relaxed text-ink-mid">{body}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-md border border-line-soft bg-paper-raised p-4 text-sm leading-relaxed text-ink-mid">
+        После регистрации подключим каналы (Telegram, VK, Яндекс…). Можно пройти всё за пару минут.
+      </div>
+    </>
   );
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -51,6 +52,7 @@ type chatRequest struct {
 	BusinessPhone      string         `json:"business_phone"`
 	BusinessWebsite    string         `json:"business_website"`
 	BusinessDesc       string         `json:"business_description"`
+	BusinessVoiceTone  []string       `json:"business_voice_tone"`
 	ActiveIntegrations []string       `json:"active_integrations"`
 	History            []historyEntry `json:"history"`
 
@@ -136,6 +138,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Phone:              req.BusinessPhone,
 		Website:            req.BusinessWebsite,
 		Description:        req.BusinessDesc,
+		Tone:               joinTone(req.BusinessVoiceTone),
 		ActiveIntegrations: req.ActiveIntegrations,
 		Now:                time.Now(),
 	}
@@ -260,4 +263,58 @@ func writeSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, 
 		return
 	}
 	flusher.Flush()
+}
+
+// toneIDToRu maps stable enum ids (frontend lib/tones.ts) to the Russian
+// adjective the prompt builder injects. Keep in sync with lib/tones.ts —
+// id strings are the contract between FE and prompt-time vocabulary.
+var toneIDToRu = map[string]string{
+	"warm":         "тёплый",
+	"calm":         "спокойный",
+	"friendly":     "дружеский",
+	"professional": "профессиональный",
+	"playful":      "игривый",
+	"businesslike": "деловой",
+}
+
+// Legacy Russian display labels that pre-migration records may still hold
+// in business.settings.voiceTone. Recognized so older businesses keep
+// influencing the prompt until the next save flushes the canonical id form.
+var toneLegacyRuToRu = map[string]string{
+	"тёплый":           "тёплый",
+	"теплый":           "тёплый",
+	"спокойный":        "спокойный",
+	"дружеский":        "дружеский",
+	"профессиональный": "профессиональный",
+	"игривый":          "игривый",
+	"деловой":          "деловой",
+}
+
+// joinTone resolves a list of stored tone identifiers (or legacy Russian
+// labels) into a single comma-separated Russian phrase suitable for the
+// "Тон общения: …" line in the system prompt. Unknown / empty entries are
+// dropped — when nothing remains, returns "" so the prompt builder falls
+// back to its default ("профессиональный").
+func joinTone(tags []string) string {
+	out := make([]string, 0, len(tags))
+	seen := make(map[string]struct{}, len(tags))
+	for _, t := range tags {
+		key := strings.ToLower(strings.TrimSpace(t))
+		if key == "" {
+			continue
+		}
+		ru, ok := toneIDToRu[key]
+		if !ok {
+			ru, ok = toneLegacyRuToRu[key]
+		}
+		if !ok {
+			continue
+		}
+		if _, dup := seen[ru]; dup {
+			continue
+		}
+		seen[ru] = struct{}{}
+		out = append(out, ru)
+	}
+	return strings.Join(out, ", ")
 }

@@ -94,8 +94,8 @@ function ChatHeaderImpl({
   const showMenu = menuTitle !== undefined && menuProjectId !== undefined;
 
   return (
-    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-4">
-      <span className="truncate text-sm font-medium">{title}</span>
+    <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-paper-raised px-6">
+      <span className="truncate text-[15px] font-medium text-ink">{title}</span>
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -105,13 +105,10 @@ function ChatHeaderImpl({
           }}
           aria-label={pinned ? 'Открепить чат' : 'Закрепить чат'}
           title={pinned ? 'Открепить чат' : 'Закрепить чат'}
-          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-100 disabled:opacity-50"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
           disabled={pinMutation.isPending || unpinMutation.isPending}
         >
-          <Bookmark
-            size={16}
-            className={cn(pinned ? 'fill-yellow-400 text-yellow-400' : 'text-gray-400')}
-          />
+          <Bookmark size={16} className={cn(pinned ? 'fill-ochre text-ochre' : 'text-ink-soft')} />
         </button>
         {showMenu && (
           <ChatRowMenu

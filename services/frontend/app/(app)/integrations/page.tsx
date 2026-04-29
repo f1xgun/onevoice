@@ -6,6 +6,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { trackClick } from '@/lib/telemetry';
+import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/page-header';
+import { MonoLabel } from '@/components/ui/mono-label';
+import { EmptyChannels, SkeletonChannels } from '@/components/states';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
@@ -22,31 +26,20 @@ interface Integration {
   createdAt: string;
 }
 
+// MVP-supported platforms — backend can connect, OneVoice can post/read.
+// Per design_handoff README v2 §5: Google Business + 2GIS render only in
+// the "Скоро" section, never as live integrations.
 const PLATFORMS = [
-  {
-    id: 'telegram',
-    label: 'Telegram',
-    description: 'Бот для канала и уведомлений',
-    color: '#2AABEE',
-  },
-  { id: 'vk', label: 'ВКонтакте', description: 'Публикации и комментарии', color: '#4680C2' },
-  {
-    id: 'yandex_business',
-    label: 'Яндекс.Бизнес',
-    description: 'Отзывы и информация',
-    color: '#FC3F1D',
-  },
-  {
-    id: 'google_business',
-    label: 'Google Business',
-    description: 'Отзывы и информация о бизнесе',
-    color: '#4285F4',
-  },
+  { id: 'telegram', label: 'Telegram', description: 'Бот для канала и уведомлений' },
+  { id: 'vk', label: 'ВКонтакте', description: 'Публикации и комментарии' },
+  { id: 'yandex_business', label: 'Яндекс.Бизнес', description: 'Отзывы и информация' },
 ];
 
-const DISABLED_PLATFORMS = [
-  { id: '2gis', label: '2ГИС', description: 'Скоро', color: '#1DA045' },
-  { id: 'avito', label: 'Авито', description: 'Скоро', color: '#00AAFF' },
+const SOON_PLATFORMS = [
+  { id: 'google_business', label: 'Google Business', when: 'оценивается' },
+  { id: '2gis', label: '2ГИС', when: 'Q3 2026' },
+  { id: 'avito', label: 'Авито', when: 'Q4 2026' },
+  { id: 'whatsapp', label: 'WhatsApp', when: 'оценивается' },
 ];
 
 interface LastRegistered {
@@ -70,12 +63,12 @@ export default function IntegrationsPage() {
     const error = searchParams.get('error');
 
     if (connected === 'vk') {
-      toast.success('VK сообщество подключено!');
+      toast.success('VK сообщество подключено');
       qc.invalidateQueries({ queryKey: ['integrations'] });
       window.history.replaceState({}, '', '/integrations');
     }
     if (connected === 'google_business') {
-      toast.success('Google Business Profile подключен!');
+      toast.success('Google Business Profile подключён');
       qc.invalidateQueries({ queryKey: ['integrations'] });
       window.history.replaceState({}, '', '/integrations');
     }
@@ -88,21 +81,21 @@ export default function IntegrationsPage() {
 
     if (error) {
       const messages: Record<string, string> = {
-        missing_params: 'Ошибка авторизации: отсутствуют параметры',
-        invalid_state: 'Ошибка авторизации: невалидная сессия',
-        token_exchange: 'Ошибка обмена токена',
-        connect_failed: 'Ошибка подключения интеграции',
+        missing_params: 'Не получилось войти: не хватает параметров',
+        invalid_state: 'Не получилось войти: сессия истекла',
+        token_exchange: 'Не удалось обменять токен',
+        connect_failed: 'Не удалось подключить',
         no_community_token: 'Не удалось получить токен сообщества',
-        internal: 'Внутренняя ошибка. Попробуйте ещё раз.',
-        no_refresh_token: 'Ошибка авторизации Google: не получен refresh token. Попробуйте снова.',
-        no_locations: 'Не найдены бизнес-локации в вашем аккаунте Google.',
+        internal: 'Что-то пошло не так. Попробуйте ещё раз.',
+        no_refresh_token: 'Google не вернул refresh-токен. Попробуйте подключить снова.',
+        no_locations: 'В этом аккаунте Google нет бизнес-локаций.',
       };
-      toast.error(messages[error] || `Ошибка: ${error}`);
+      toast.error(messages[error] || `Не получилось: ${error}`);
       window.history.replaceState({}, '', '/integrations');
     }
   }, [searchParams, qc]);
 
-  const { data: integrations = [] } = useQuery<Integration[]>({
+  const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
     queryKey: ['integrations'],
     queryFn: () =>
       api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
@@ -113,9 +106,8 @@ export default function IntegrationsPage() {
     queryFn: () => api.get('/business').then((r) => r.data as Business),
   });
 
-  // Detect newly-registered integrations by diffing the integration-id set
-  // across refetches. On first load we just seed the baseline so existing
-  // integrations do not trigger the banner.
+  // Detect newly-registered integrations to show the post-connect banner
+  // (whitelist heads-up).
   useEffect(() => {
     const currentIds = new Set(integrations.map((i) => i.id));
     const prev = prevIntegrationIdsRef.current;
@@ -142,9 +134,9 @@ export default function IntegrationsPage() {
     onSuccess: () => {
       trackClick('disconnect_integration');
       qc.invalidateQueries({ queryKey: ['integrations'] });
-      toast.success('Отключено');
+      toast.success('Канал отключён');
     },
-    onError: () => toast.error('Ошибка отключения'),
+    onError: () => toast.error('Не получилось отключить'),
   });
 
   const getIntegrationsForPlatform = (platformId: string): Integration[] =>
@@ -156,76 +148,107 @@ export default function IntegrationsPage() {
       setTelegramOpen(true);
       return;
     }
-
     if (platformId === 'vk') {
-      // Community OAuth only: the user pastes the community URL/screen_name,
-      // the API resolves it via the Mini-App service key, then redirects
-      // to oauth.vk.com with group_ids to issue the community token used
-      // for writes. Reads run through the service key server-side.
       setVkCommunityOpen(true);
       return;
     }
-
     if (platformId === 'google_business') {
       try {
         const { data } = await api.get('/integrations/google_business/auth-url');
         window.location.href = data.url;
       } catch {
-        toast.error('Ошибка получения ссылки авторизации Google');
+        toast.error('Не получилось открыть авторизацию Google');
       }
       return;
     }
-
-    // Yandex.Business: OAuth redirect flow
     try {
       const { data } = await api.get(`/integrations/${platformId}/auth-url`);
       window.location.href = data.url;
     } catch {
-      toast.error('Ошибка получения ссылки авторизации');
+      toast.error('Не получилось открыть авторизацию');
     }
   };
 
   return (
-    <div className="max-w-5xl p-8">
-      <h1 className="mb-6 text-2xl font-bold">Интеграции</h1>
+    <>
+      <PageHeader
+        title="Интеграции"
+        sub="Подключите каналы, по которым с вами общаются клиенты. OneVoice будет принимать в них сообщения и публиковать посты."
+        actions={
+          <Button variant="ghost" size="md" disabled>
+            Журнал событий
+          </Button>
+        }
+      />
 
-      {lastRegistered && (
-        <WhitelistWarningBanner
-          integrationId={lastRegistered.integrationId}
-          businessId={lastRegistered.businessId}
-          platform={lastRegistered.platform}
-        />
-      )}
-
-      <div className="mb-8 grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-        {PLATFORMS.map((p) => {
-          const platformIntegrations = getIntegrationsForPlatform(p.id);
-          return (
-            <PlatformCard
-              key={p.id}
-              {...p}
-              platform={p.id}
-              integrations={platformIntegrations}
-              onConnect={() => handleConnect(p.id)}
-              onDisconnect={(integrationId) => disconnectMutation.mutate(integrationId)}
+      <div className="px-4 pb-10 sm:px-12 sm:pb-16">
+        {lastRegistered && (
+          <div className="mb-8">
+            <WhitelistWarningBanner
+              integrationId={lastRegistered.integrationId}
+              businessId={lastRegistered.businessId}
+              platform={lastRegistered.platform}
             />
-          );
-        })}
-      </div>
+          </div>
+        )}
 
-      <h2 className="mb-4 text-lg font-medium text-gray-400">Скоро</h2>
-      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-        {DISABLED_PLATFORMS.map((p) => (
-          <PlatformCard
-            key={p.id}
-            {...p}
-            platform={p.id}
-            integrations={[]}
-            disabled
-            onConnect={() => {}}
-            onDisconnect={() => {}}
+        <SectionLabel>Подключённые</SectionLabel>
+        {integrationsLoading ? (
+          // Static paper-sunken skeletons per Linen loading rule (no shimmer).
+          <SkeletonChannels count={3} />
+        ) : integrations.length === 0 ? (
+          // First-run state per mock-states.jsx "Каналы не подключены" — single
+          // ochre-emphasis CTA scrolls to the platform list below so the user
+          // can pick where to start.
+          <EmptyChannels
+            onConnect={() => {
+              const target = document.getElementById('integrations-platform-grid');
+              if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
           />
-        ))}
+        ) : null}
+        <div
+          id="integrations-platform-grid"
+          className="grid grid-cols-1 items-start gap-4 md:grid-cols-2"
+        >
+          {PLATFORMS.map((p) => {
+            const platformIntegrations = getIntegrationsForPlatform(p.id);
+            return (
+              <PlatformCard
+                key={p.id}
+                platform={p.id}
+                label={p.label}
+                description={p.description}
+                integrations={platformIntegrations}
+                onConnect={() => handleConnect(p.id)}
+                onDisconnect={(integrationId) => disconnectMutation.mutate(integrationId)}
+              />
+            );
+          })}
+        </div>
+
+        <SectionLabel className="mt-12">Скоро</SectionLabel>
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {SOON_PLATFORMS.map((p) => (
+            <SoonCard key={p.id} label={p.label} when={p.when} />
+          ))}
+        </div>
+
+        <div className="mt-14 flex flex-col items-stretch gap-4 rounded-lg border border-line bg-paper-sunken p-6 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-medium text-ink">Не нашли свой канал?</div>
+            <div className="mt-1 text-sm text-ink-mid">
+              Напишите нам — добавим в ближайших обновлениях.
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="secondary" size="md" asChild>
+              <a href="mailto:hello@onevoice.app?subject=Запрос%20канала">Запросить канал</a>
+            </Button>
+          </div>
+        </div>
       </div>
 
       <TelegramConnectModal
@@ -251,6 +274,33 @@ export default function IntegrationsPage() {
           qc.invalidateQueries({ queryKey: ['integrations'] });
         }}
       />
+    </>
+  );
+}
+
+function SectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`mb-4 mt-2 flex items-center gap-3 ${className ?? ''}`}>
+      <MonoLabel>{children}</MonoLabel>
+      <span aria-hidden className="h-px flex-1 bg-line-soft" />
+    </div>
+  );
+}
+
+function SoonCard({ label, when }: { label: string; when: string }) {
+  return (
+    <div className="flex items-center gap-4 rounded-lg border border-dashed border-line bg-paper-raised p-5">
+      <span
+        aria-hidden
+        className="h-10 w-10 shrink-0 rounded-md border border-line-soft bg-paper-sunken"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-[15px] font-medium text-ink">{label}</div>
+        <MonoLabel className="mt-0.5">{when}</MonoLabel>
+      </div>
+      <Button variant="ghost" size="sm" disabled>
+        Подписаться
+      </Button>
     </div>
   );
 }
