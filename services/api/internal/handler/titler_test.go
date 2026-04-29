@@ -214,7 +214,10 @@ func TestRegenerateTitle_409_Manual(t *testing.T) {
 }
 
 // TestRegenerateTitle_409_InFlight asserts that status=auto_pending returns
-// 409 with the verbatim Russian copy from CONTEXT.md D-03.
+// 409 with the verbatim Russian copy from CONTEXT.md D-03 — but ONLY when
+// the pending state is fresh (UpdatedAt within the 30s grace window).
+// Stale auto_pending (e.g., goroutine never ran) falls into the
+// stuck-recovery path and re-triggers titling instead.
 func TestRegenerateTitle_409_InFlight(t *testing.T) {
 	userID := uuid.New()
 	convID := "507f1f77bcf86cd799439021"
@@ -223,6 +226,7 @@ func TestRegenerateTitle_409_InFlight(t *testing.T) {
 		UserID:      userID.String(),
 		BusinessID:  "biz-1",
 		TitleStatus: domain.TitleStatusAutoPending,
+		UpdatedAt:   time.Now(), // fresh pending — within the in-flight window
 	}
 	h, convRepo, fc := newTitlerHandlerWithRealTitler(t, conv, nil)
 
@@ -237,6 +241,31 @@ func TestRegenerateTitle_409_InFlight(t *testing.T) {
 
 	assert.Equal(t, 0, convRepo.transitionCalls)
 	assert.Equal(t, 0, fc.Calls(), "in-flight must not fire a second titler call")
+}
+
+// Stuck pending recovery: a chat that's been auto_pending longer than the
+// grace window (30s) is treated as abandoned and the regenerate-title call
+// re-triggers the titler. Without this, chats that got stuck during periods
+// when the titler was disabled (e.g., missing TITLER_MODEL) trap the user
+// in 409 forever.
+func TestRegenerateTitle_StuckAutoPendingProceeds(t *testing.T) {
+	userID := uuid.New()
+	convID := "507f1f77bcf86cd799439023"
+	conv := &domain.Conversation{
+		ID:          convID,
+		UserID:      userID.String(),
+		BusinessID:  "biz-1",
+		TitleStatus: domain.TitleStatusAutoPending,
+		// 1 hour stale — well past the 30s in-flight window.
+		UpdatedAt: time.Now().Add(-1 * time.Hour),
+	}
+	h, convRepo, _ := newTitlerHandlerWithRealTitler(t, conv, nil)
+
+	rec := titlerRoute(t, h, userID, convID)
+
+	require.Equal(t, http.StatusOK, rec.Code, "stale pending must NOT return 409")
+	assert.Equal(t, 1, convRepo.transitionCalls,
+		"stale pending must re-bump updated_at via TransitionToAutoPending")
 }
 
 // TestRegenerateTitle_503_TitlerDisabled asserts the graceful-disable path
@@ -395,6 +424,10 @@ func TestRegenerateTitle_BodyVerbatimRussianCopy(t *testing.T) {
 			conv := &domain.Conversation{
 				ID: convID, UserID: userID.String(), BusinessID: "biz-1",
 				TitleStatus: c.titleStatus,
+				// Fresh UpdatedAt so an auto_pending row hits the in-flight 409
+				// path (not the stuck-recovery 200 path) and the verbatim copy
+				// surfaces. Stuck-pending recovery is covered by a dedicated test.
+				UpdatedAt: time.Now(),
 			}
 			h, _, _ := newTitlerHandlerWithRealTitler(t, conv, nil)
 
