@@ -7,17 +7,18 @@
 // are owned per section (ProfileForm, HoursForm, SpecialDatesForm,
 // VoiceToneSection) so a save in one section doesn't block another.
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { api } from '@/lib/api';
 import { ProfileForm } from '@/components/business/ProfileForm';
 import { HoursForm, SpecialDatesForm } from '@/components/business/ScheduleForm';
-import { VoiceToneSection, type ToneTag } from '@/components/business/VoiceToneSection';
+import { VoiceToneSection } from '@/components/business/VoiceToneSection';
 import { AISummaryRail } from '@/components/business/AISummaryRail';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { normalizeStoredTones, type ToneId } from '@/lib/tones';
 import type { Business, ScheduleDay, SpecialDate } from '@/types/business';
 
 function BusinessSkeleton() {
@@ -27,7 +28,7 @@ function BusinessSkeleton() {
         title="Профиль бизнеса"
         sub="Чем подробнее вы расскажете о себе, тем точнее AI будет говорить вашим голосом."
       />
-      <div className="grid grid-cols-1 gap-8 px-12 pb-16 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-6">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="rounded-lg border border-line bg-paper-raised p-6">
@@ -56,9 +57,17 @@ export default function BusinessPage() {
     retry: false,
   });
 
-  // Voice/tone is UI-only state for now (TODO(api) — see VoiceToneSection).
-  // Lifted here so the AI-understanding rail reflects it live.
-  const [tones, setTones] = useState<ToneTag[]>(['Тёплый']);
+  // Persisted in business.settings.voiceTone as stable enum ids
+  // ("warm", "businesslike", …). normalizeStoredTones() also accepts the
+  // legacy Russian-label form so pre-migration records ("Деловой") still
+  // light up the right chips — the next save flushes the canonical form.
+  const persistedTones = useMemo<ToneId[]>(
+    () => normalizeStoredTones(data?.settings?.voiceTone),
+    [data?.settings?.voiceTone]
+  );
+  const [tones, setTones] = useState<ToneId[]>(persistedTones);
+  // Sync local state when the underlying business record changes.
+  useEffect(() => setTones(persistedTones), [persistedTones]);
 
   const is404 = isError && isAxiosError(error) && error.response?.status === 404;
 
@@ -67,7 +76,7 @@ export default function BusinessPage() {
     return (
       <>
         <PageHeader title="Профиль бизнеса" />
-        <div className="px-12 pb-16">
+        <div className="px-4 pb-10 sm:px-12 sm:pb-16">
           <div className="rounded-lg border border-[var(--ov-danger)]/40 bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
             Не получилось загрузить данные. Попробуйте обновить страницу.
           </div>
@@ -96,7 +105,7 @@ export default function BusinessPage() {
     <>
       <PageHeader title={title} sub={sub} />
 
-      <div className="grid grid-cols-1 gap-8 px-12 pb-16 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
         {/* Main column */}
         <div className="flex flex-col gap-6">
           <Section caption="Основное" title="О бизнесе" sub="Имя, контакты и описание для ИИ-ассистента.">

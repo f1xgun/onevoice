@@ -7,7 +7,7 @@
 
 import { MonoLabel } from '@/components/ui/mono-label';
 import type { Business } from '@/types/business';
-import type { ToneTag } from './VoiceToneSection';
+import { toneLabel, type ToneId } from '@/lib/tones';
 
 const CATEGORY_LABEL: Record<string, string> = {
   cafe: 'кофейня',
@@ -18,7 +18,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   other: 'локальный бизнес',
 };
 
-function buildSummary(business: Partial<Business> | undefined, tones: ToneTag[]): string {
+function buildSummary(business: Partial<Business> | undefined, tones: ToneId[]): string {
   if (!business) {
     return 'Заполните основное и OneVoice опишет ваш бизнес здесь — так вы увидите, как это прозвучит для клиентов.';
   }
@@ -34,7 +34,7 @@ function buildSummary(business: Partial<Business> | undefined, tones: ToneTag[])
     parts.push(short);
   }
   if (tones.length > 0) {
-    const list = tones.map((t) => t.toLowerCase()).join(', ');
+    const list = tones.map((id) => toneLabel(id).toLowerCase()).join(', ');
     parts.push(`Тон — ${list}.`);
   }
   return parts.join(' ');
@@ -42,7 +42,7 @@ function buildSummary(business: Partial<Business> | undefined, tones: ToneTag[])
 
 export interface AISummaryRailProps {
   business?: Partial<Business>;
-  tones: ToneTag[];
+  tones: ToneId[];
 }
 
 export function AISummaryRail({ business, tones }: AISummaryRailProps) {
