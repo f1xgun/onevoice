@@ -165,12 +165,16 @@ export default function ReviewsPage() {
 
   function openReply(review: Review, prefill?: string) {
     setReplyDialog(review);
-    setReplyText(prefill ?? review.replyText ?? '');
+    // Edit-prefill priority: explicit prefill > AI draft > already-sent reply.
+    // The drafter writes draftReply only on pending reviews, so once the
+    // operator sends, draftReply is unset and replyText fills the slot.
+    setReplyText(prefill ?? review.draftReply ?? review.replyText ?? '');
   }
 
   function sendDraftAsIs(review: Review) {
-    if (!review.replyText) return;
-    replyMutation.mutate({ id: review.id, text: review.replyText });
+    const draft = review.draftReply?.trim();
+    if (!draft) return;
+    replyMutation.mutate({ id: review.id, text: draft });
   }
 
   return (
@@ -238,7 +242,7 @@ export default function ReviewsPage() {
                 key={review.id}
                 review={review}
                 onSendDraft={() => sendDraftAsIs(review)}
-                onEdit={() => openReply(review, review.replyText ?? '')}
+                onEdit={() => openReply(review, review.draftReply ?? '')}
                 onWriteOwn={() => openReply(review, '')}
                 isSending={replyMutation.isPending && replyMutation.variables?.id === review.id}
               />
@@ -334,12 +338,17 @@ function ReviewCard({
     (review.replyStatus as StatusKey) in statusBadge ? (review.replyStatus as StatusKey) : 'read';
   const badge = statusBadge[status];
 
-  // Per brand voice: AI's draft is an offer, not a fait accompli. We only
-  // show the draft sub-panel when the review is still awaiting a reply
-  // AND a draft exists. Once status flips to "replied", the same text
-  // becomes the sent reply (rendered in the "Отправленный ответ" block).
-  const hasAIDraft =
-    status === 'pending' && !!review.replyText && review.replyText.trim().length > 0;
+  // AI-draft surface conditions. Status semantics:
+  //   draftStatus=ready  → show "Образец ответа AI" with send/edit actions
+  //   draftStatus=generating → show a quiet "готовим черновик" block
+  //   draftStatus=failed → fall through to the "write your own" fallback
+  //   draftStatus=""|undefined → not yet attempted (also fallback)
+  const draftReady =
+    status === 'pending' &&
+    review.draftStatus === 'ready' &&
+    !!review.draftReply &&
+    review.draftReply.trim().length > 0;
+  const draftGenerating = status === 'pending' && review.draftStatus === 'generating';
   const hasSentReply = status === 'replied' && !!review.replyText;
 
   return (
@@ -373,13 +382,13 @@ function ReviewCard({
       )}
 
       {/* AI draft — offered, not committed. Two actions: send / edit. */}
-      {hasAIDraft && (
+      {draftReady && (
         <div className="mt-4 rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <MonoLabel tone="ochre">Образец ответа AI</MonoLabel>
             <span className="text-xs text-ink-soft">Можно отправить или отредактировать</span>
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-ink">{review.replyText}</p>
+          <p className="mt-2 text-sm leading-relaxed text-ink">{review.draftReply}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button variant="primary" size="sm" onClick={onSendDraft} disabled={isSending}>
               {isSending ? 'Отправляем…' : 'Отправить'}
@@ -391,11 +400,24 @@ function ReviewCard({
         </div>
       )}
 
-      {/* No-draft fallback: explicit action to author a reply ourselves. */}
-      {status === 'pending' && !hasAIDraft && (
+      {/* Generating state — quiet hint, no actions until ready. */}
+      {draftGenerating && (
+        <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
+          <span className="text-sm text-ink-mid">Готовим образец ответа…</span>
+          <Button variant="secondary" size="sm" onClick={onWriteOwn}>
+            Ответить сейчас
+          </Button>
+        </div>
+      )}
+
+      {/* No-draft fallback: covers draft_status ∈ {"", "failed"} and any
+          unexpected value. The operator can always author a reply by hand. */}
+      {status === 'pending' && !draftReady && !draftGenerating && (
         <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
           <span className="text-sm text-ink-mid">
-            Образец ещё не подготовлен. Можно ответить вручную.
+            {review.draftStatus === 'failed'
+              ? 'Не получилось подготовить образец. Можно ответить вручную.'
+              : 'Образец ещё не подготовлен. Можно ответить вручную.'}
           </span>
           <Button variant="secondary" size="sm" onClick={onWriteOwn}>
             Написать ответ
