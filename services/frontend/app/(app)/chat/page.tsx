@@ -119,7 +119,7 @@ export default function ChatListPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Отмена</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-[var(--ov-danger)] text-[oklch(0.99_0_0)] border-[var(--ov-danger)] hover:bg-[var(--ov-danger)]/90"
+              className="hover:bg-[var(--ov-danger)]/90 border-[var(--ov-danger)] bg-[var(--ov-danger)] text-[oklch(0.99_0_0)]"
               onClick={() => deleteTarget && deleteConversation(deleteTarget)}
             >
               Удалить

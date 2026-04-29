@@ -18,7 +18,7 @@ const buttonVariants = cva(
     'ring-offset-background transition-[background,border-color,color] duration-[120ms] ease-out active:duration-[80ms]',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
     'disabled:pointer-events-none disabled:opacity-50',
-    "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+    '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
   ].join(' '),
   {
     variants: {
@@ -37,8 +37,7 @@ const buttonVariants = cva(
           'bg-transparent text-[var(--ov-ink)] border border-[var(--ov-line)] hover:bg-[var(--ov-paper-sunken)]',
         danger:
           'bg-[var(--ov-paper-raised)] text-[var(--ov-danger)] border border-[var(--ov-line)] hover:bg-[var(--ov-danger-soft)]',
-        link:
-          'bg-transparent text-[var(--ov-accent)] underline-offset-4 hover:underline px-0',
+        link: 'bg-transparent text-[var(--ov-accent)] underline-offset-4 hover:underline px-0',
         // ─── Backwards-compat aliases (deprecated) ──────────────────
         // `default` → `primary`. `destructive` → `danger`.
         // Per-page rebuilds in Phase 4 will migrate call-sites.
@@ -61,8 +60,7 @@ const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
   asChild?: boolean;
 }
 
@@ -70,11 +68,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : 'button';
     return (
-      <Comp
-        ref={ref}
-        className={cn(buttonVariants({ variant, size, className }))}
-        {...props}
-      />
+      <Comp ref={ref} className={cn(buttonVariants({ variant, size, className }))} {...props} />
     );
   }
 );

@@ -20,12 +20,9 @@ describe('lib/toast helpers', () => {
     const { errorWithAction } = await import('../toast');
     const onClick = vi.fn();
 
-    errorWithAction(
-      'Не получилось отправить',
-      'Разбить и отправить',
-      onClick,
-      { description: 'Telegram отклонил сообщение — слишком длинное.' }
-    );
+    errorWithAction('Не получилось отправить', 'Разбить и отправить', onClick, {
+      description: 'Telegram отклонил сообщение — слишком длинное.',
+    });
 
     expect(errorMock).toHaveBeenCalledTimes(1);
     const [message, opts] = errorMock.mock.calls[0];

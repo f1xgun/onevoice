@@ -15,11 +15,11 @@ const badgeVariants = cva(
     variants: {
       tone: {
         neutral: 'bg-[var(--ov-paper-sunken)] text-[var(--ov-ink-mid)]',
-        accent:  'bg-[var(--ov-accent-soft)]  text-[var(--ov-accent-ink)]',
+        accent: 'bg-[var(--ov-accent-soft)]  text-[var(--ov-accent-ink)]',
         success: 'bg-[var(--ov-success-soft)] text-[var(--ov-success)]',
         warning: 'bg-[var(--ov-warning-soft)] text-[var(--ov-warning-ink)]',
-        danger:  'bg-[var(--ov-danger-soft)]  text-[var(--ov-danger)]',
-        info:    'bg-[var(--ov-info-soft)]    text-[var(--ov-info)]',
+        danger: 'bg-[var(--ov-danger-soft)]  text-[var(--ov-danger)]',
+        info: 'bg-[var(--ov-info-soft)]    text-[var(--ov-info)]',
       },
     },
     defaultVariants: { tone: 'neutral' },
@@ -30,11 +30,11 @@ type Tone = NonNullable<VariantProps<typeof badgeVariants>['tone']>;
 
 const dotColor: Record<Tone, string> = {
   neutral: 'bg-[var(--ov-ink-soft)]',
-  accent:  'bg-[var(--ov-accent)]',
+  accent: 'bg-[var(--ov-accent)]',
   success: 'bg-[var(--ov-success)]',
   warning: 'bg-[var(--ov-warning)]',
-  danger:  'bg-[var(--ov-danger)]',
-  info:    'bg-[var(--ov-info)]',
+  danger: 'bg-[var(--ov-danger)]',
+  info: 'bg-[var(--ov-info)]',
 };
 
 // Legacy variant → new tone. `outline` collapses to neutral; the visual
@@ -55,15 +55,11 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 function Badge({ className, tone, variant, dot, children, ...props }: BadgeProps) {
-  const resolvedTone: Tone = tone ?? (variant ? legacyVariantToTone[variant] : undefined) ?? 'neutral';
+  const resolvedTone: Tone =
+    tone ?? (variant ? legacyVariantToTone[variant] : undefined) ?? 'neutral';
   return (
     <span className={cn(badgeVariants({ tone: resolvedTone }), className)} {...props}>
-      {dot && (
-        <span
-          className={cn('size-1.5 rounded-full', dotColor[resolvedTone])}
-          aria-hidden
-        />
-      )}
+      {dot && <span className={cn('size-1.5 rounded-full', dotColor[resolvedTone])} aria-hidden />}
       {children}
     </span>
   );

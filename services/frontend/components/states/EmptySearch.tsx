@@ -29,7 +29,7 @@ export function EmptySearch({ query, onResetFilters, body }: EmptySearchProps) {
       title={
         <>
           Ничего не нашлось по запросу{' '}
-          <MonoLabel tone="ink" className="ml-0.5 normal-case tracking-normal text-[14px]">
+          <MonoLabel tone="ink" className="ml-0.5 text-[14px] normal-case tracking-normal">
             «{query}»
           </MonoLabel>
         </>

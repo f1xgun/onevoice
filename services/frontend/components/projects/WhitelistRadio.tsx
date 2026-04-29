@@ -55,7 +55,7 @@ export function WhitelistRadio({ value, onChange, name }: WhitelistRadioProps) {
             key={opt.value}
             className={cn(
               'flex items-start gap-3 rounded-md border p-3 transition-colors',
-              value === opt.value ? 'border-primary bg-accent/40' : 'border-border'
+              value === opt.value ? 'bg-accent/40 border-primary' : 'border-border'
             )}
           >
             <RadioGroupItem value={opt.value} id={id} className="mt-0.5" />

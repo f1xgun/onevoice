@@ -28,10 +28,7 @@ export function AIWritingProgress({
   progress,
   className,
 }: AIWritingProgressProps) {
-  const pct =
-    typeof progress === 'number'
-      ? Math.max(0, Math.min(1, progress)) * 100
-      : null;
+  const pct = typeof progress === 'number' ? Math.max(0, Math.min(1, progress)) * 100 : null;
 
   return (
     <div

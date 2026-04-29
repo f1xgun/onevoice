@@ -55,10 +55,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Настройки"
-        sub="Аккаунт, безопасность и поведение OneVoice."
-      />
+      <PageHeader title="Настройки" sub="Аккаунт, безопасность и поведение OneVoice." />
 
       <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-6">
@@ -163,9 +160,7 @@ function ReadOnlyField({ label, value, mono }: { label: string; value?: string; 
   return (
     <div className="flex flex-col gap-1">
       <MonoLabel>{label}</MonoLabel>
-      <div className={mono ? 'font-mono text-sm text-ink' : 'text-sm text-ink'}>
-        {value ?? '—'}
-      </div>
+      <div className={mono ? 'font-mono text-sm text-ink' : 'text-sm text-ink'}>{value ?? '—'}</div>
     </div>
   );
 }
@@ -184,7 +179,7 @@ function RailTile({
   return (
     <Link
       href={href}
-      className="group flex items-start gap-3 rounded-lg border border-line bg-paper-raised p-4 transition-colors hover:border-ochre/40 hover:bg-paper-sunken"
+      className="hover:border-ochre/40 group flex items-start gap-3 rounded-lg border border-line bg-paper-raised p-4 transition-colors hover:bg-paper-sunken"
     >
       <span className="mt-0.5 shrink-0 text-ink-soft group-hover:text-ink">{icon}</span>
       <div className="min-w-0 flex-1">

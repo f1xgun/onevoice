@@ -128,11 +128,7 @@ export default function PostsPage() {
           <SkeletonMetricStrip count={4} />
         ) : (
           <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard
-              label="Опубликовано"
-              value={String(counts.published)}
-              hint="за всё время"
-            />
+            <StatCard label="Опубликовано" value={String(counts.published)} hint="за всё время" />
             <StatCard
               label="Запланировано"
               value={String(counts.scheduled)}
@@ -216,10 +212,7 @@ export default function PostsPage() {
           {isLoading && <PostsSkeleton />}
 
           {!isLoading && visiblePosts.length === 0 && (
-            <PostsEmpty
-              search={search}
-              onResetSearch={() => setSearch('')}
-            />
+            <PostsEmpty search={search} onResetSearch={() => setSearch('')} />
           )}
 
           {!isLoading &&
@@ -229,9 +222,7 @@ export default function PostsPage() {
                 post={post}
                 last={i === visiblePosts.length - 1}
                 expanded={expandedId === post.id}
-                onToggle={() =>
-                  setExpandedId((prev) => (prev === post.id ? null : post.id))
-                }
+                onToggle={() => setExpandedId((prev) => (prev === post.id ? null : post.id))}
               />
             ))}
         </div>
@@ -275,19 +266,10 @@ function StatCard({
   );
 }
 
-function SearchField({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
+function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <label className="relative inline-flex h-8 w-[260px] items-center">
-      <Search
-        aria-hidden
-        className="pointer-events-none absolute left-3 size-3.5 text-ink-soft"
-      />
+      <Search aria-hidden className="pointer-events-none absolute left-3 size-3.5 text-ink-soft" />
       <Input
         type="search"
         value={value}
@@ -325,13 +307,7 @@ function PostsSkeleton() {
   );
 }
 
-function PostsEmpty({
-  search,
-  onResetSearch,
-}: {
-  search: string;
-  onResetSearch: () => void;
-}) {
+function PostsEmpty({ search, onResetSearch }: { search: string; onResetSearch: () => void }) {
   // Two flavours: "no posts at all" vs "no match for current search".
   // Search variant uses the shared EmptySearch component so the mono
   // query rendering matches mock-states.jsx.
@@ -375,7 +351,7 @@ function PostRow({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="grid w-full min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] items-center gap-4 px-5 py-3.5 text-left transition-colors hover:bg-paper-sunken/60"
+        className="hover:bg-paper-sunken/60 grid w-full min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] items-center gap-4 px-5 py-3.5 text-left transition-colors"
       >
         <span aria-hidden className="text-ink-soft">
           {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
@@ -388,12 +364,10 @@ function PostRow({
           {platforms.length === 0 ? (
             <span className="text-xs text-ink-faint">—</span>
           ) : (
-            platforms.map((id) => (
-              <ChannelChip key={id} platform={id} />
-            ))
+            platforms.map((id) => <ChannelChip key={id} platform={id} />)
           )}
         </span>
-        <MonoLabel tone="mid" className="normal-case tracking-normal text-[12px]">
+        <MonoLabel tone="mid" className="text-[12px] normal-case tracking-normal">
           {dateLabel}
         </MonoLabel>
         <span aria-hidden className="text-right text-ink-soft">
@@ -415,9 +389,7 @@ function ExpandedPanel({ post }: { post: Post }) {
   return (
     <div className="grid grid-cols-1 gap-6 px-[60px] pb-5 lg:grid-cols-[1fr_300px]">
       <div className="rounded-md border border-line-soft bg-paper p-4">
-        <div className="whitespace-pre-wrap text-sm leading-relaxed text-ink">
-          {post.content}
-        </div>
+        <div className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{post.content}</div>
 
         {post.mediaUrls && post.mediaUrls.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -429,13 +401,8 @@ function ExpandedPanel({ post }: { post: Post }) {
 
         {failureMessage && (
           <div className="mt-3 flex items-center gap-3 rounded-sm border border-[var(--ov-danger-soft)] bg-[var(--ov-danger-soft)] px-3.5 py-2.5">
-            <span
-              aria-hidden
-              className="size-1.5 shrink-0 rounded-full bg-[var(--ov-danger)]"
-            />
-            <span className="flex-1 text-sm text-[var(--ov-danger)]">
-              {failureMessage}
-            </span>
+            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--ov-danger)]" />
+            <span className="flex-1 text-sm text-[var(--ov-danger)]">{failureMessage}</span>
             <Button
               variant="ghost"
               size="sm"
@@ -484,12 +451,16 @@ function PlatformResultCard({
   result: NonNullable<Post['platformResults']>[string];
 }) {
   const ok = !result.error && (result.status === 'published' || result.status === 'ok');
-  const display = platformDisplay[platform] ?? (platformShort[platform] ?? platform);
+  const display = platformDisplay[platform] ?? platformShort[platform] ?? platform;
   return (
     <div className="flex items-center gap-2.5 rounded-sm border border-line-soft bg-paper px-3 py-2">
       <ChannelMark name={display} size={20} />
       <span className="flex-1 truncate text-[13px] text-ink-mid">
-        {ok ? (result.url ? 'Опубликовано' : platformShort[platform] ?? display) : (result.error ?? result.status)}
+        {ok
+          ? result.url
+            ? 'Опубликовано'
+            : (platformShort[platform] ?? display)
+          : (result.error ?? result.status)}
       </span>
       <span
         aria-hidden
@@ -503,7 +474,7 @@ function PlatformResultCard({
 }
 
 function ChannelChip({ platform }: { platform: string }) {
-  const display = platformDisplay[platform] ?? (platformShort[platform] ?? platform);
+  const display = platformDisplay[platform] ?? platformShort[platform] ?? platform;
   const short = platformShort[platform] ?? display;
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-line-soft bg-paper px-2 py-0.5 text-[11px] text-ink-mid">
@@ -517,14 +488,30 @@ function StatusBadge({ status }: { status: string }) {
   const label = statusLabel[status] ?? status;
   switch (status) {
     case 'published':
-      return <Badge tone="success" dot>{label}</Badge>;
+      return (
+        <Badge tone="success" dot>
+          {label}
+        </Badge>
+      );
     case 'scheduled':
-      return <Badge tone="info" dot>{label}</Badge>;
+      return (
+        <Badge tone="info" dot>
+          {label}
+        </Badge>
+      );
     case 'error':
-      return <Badge tone="danger" dot>{label}</Badge>;
+      return (
+        <Badge tone="danger" dot>
+          {label}
+        </Badge>
+      );
     case 'draft':
     default:
-      return <Badge tone="neutral" dot>{label}</Badge>;
+      return (
+        <Badge tone="neutral" dot>
+          {label}
+        </Badge>
+      );
   }
 }
 

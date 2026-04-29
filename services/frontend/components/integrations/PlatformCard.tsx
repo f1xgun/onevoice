@@ -195,8 +195,7 @@ function ChannelList({
       {integrations.map((i) => {
         const tone = statusTones[i.status] ?? 'neutral';
         const label = statusLabels[i.status] ?? i.status;
-        const channelTitle =
-          (i.metadata as Record<string, string>)?.channel_title ?? i.externalId;
+        const channelTitle = (i.metadata as Record<string, string>)?.channel_title ?? i.externalId;
         const showLinkedGroupWarn =
           platform === 'telegram' &&
           (i.metadata as Record<string, unknown>)?.linked_group_status === 'bot_not_member';
@@ -272,13 +271,14 @@ function ChannelList({
                   <AlertDialogHeader>
                     <AlertDialogTitle>{`Отключить ${label}?`}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      История сообщений останется в архиве. Чтобы снова получать сообщения из {label}, канал нужно будет подключить заново.
+                      История сообщений останется в архиве. Чтобы снова получать сообщения из{' '}
+                      {label}, канал нужно будет подключить заново.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Отмена</AlertDialogCancel>
                     <AlertDialogAction
-                      className="bg-[var(--ov-danger)] text-[oklch(0.99_0_0)] border-[var(--ov-danger)] hover:bg-[var(--ov-danger)]/90"
+                      className="hover:bg-[var(--ov-danger)]/90 border-[var(--ov-danger)] bg-[var(--ov-danger)] text-[oklch(0.99_0_0)]"
                       onClick={() => onDisconnect(i.id)}
                     >
                       Отключить

@@ -50,10 +50,7 @@ export function SkeletonChat({ className }: SkeletonChatProps) {
       role="status"
       aria-label="Загружаем диалог"
       aria-busy="true"
-      className={cn(
-        'flex flex-col gap-3.5 rounded-lg bg-paper-well p-6',
-        className
-      )}
+      className={cn('flex flex-col gap-3.5 rounded-lg bg-paper-well p-6', className)}
     >
       <Bubble side="left" width="60%" lines={2} />
       <Bubble side="left" width="42%" lines={1} />

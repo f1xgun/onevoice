@@ -21,7 +21,7 @@ export function PageHeader({ title, sub, actions, className }: PageHeaderProps) 
       className={cn(
         // Stacks vertically on phones so a long title + actions don't share
         // one cramped row. Padding shrinks to 16 px on mobile.
-        'flex flex-col items-stretch gap-3 px-4 pt-6 pb-5 sm:flex-row sm:items-end sm:justify-between sm:gap-6 sm:px-12 sm:pt-10 sm:pb-6',
+        'flex flex-col items-stretch gap-3 px-4 pb-5 pt-6 sm:flex-row sm:items-end sm:justify-between sm:gap-6 sm:px-12 sm:pb-6 sm:pt-10',
         className
       )}
     >
@@ -29,15 +29,9 @@ export function PageHeader({ title, sub, actions, className }: PageHeaderProps) 
         <h1 className="text-[24px] font-medium leading-tight tracking-[-0.015em] text-ink sm:text-[28px]">
           {title}
         </h1>
-        {sub && (
-          <p className="mt-1 max-w-[640px] text-sm leading-relaxed text-ink-mid">
-            {sub}
-          </p>
-        )}
+        {sub && <p className="mt-1 max-w-[640px] text-sm leading-relaxed text-ink-mid">{sub}</p>}
       </div>
-      {actions && (
-        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>
-      )}
+      {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}
     </header>
   );
 }

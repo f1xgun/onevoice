@@ -59,7 +59,10 @@ function platformInfo(id: string): { label: string; channel: string } {
 // Reply status → tone-mapped badge config. Per brand voice the labels
 // are matter-of-fact, not celebratory.
 type StatusKey = 'pending' | 'replied' | 'error' | 'read';
-const statusBadge: Record<StatusKey, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+const statusBadge: Record<
+  StatusKey,
+  { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }
+> = {
   pending: { label: 'Ждёт ответа', tone: 'warning' },
   replied: { label: 'Ответ отправлен', tone: 'success' },
   error: { label: 'Ошибка отправки', tone: 'danger' },
@@ -185,11 +188,7 @@ export default function ReviewsPage() {
             value={stats.pending}
             hint={stats.pending === 0 ? 'нет открытых' : 'требуют решения'}
           />
-          <StatCell
-            label="Всего в выборке"
-            value={stats.total}
-            hint="по выбранным фильтрам"
-          />
+          <StatCell label="Всего в выборке" value={stats.total} hint="по выбранным фильтрам" />
           <StatCell
             label="Средняя оценка"
             value={stats.avg == null ? '—' : stats.avg.toFixed(1)}
@@ -331,16 +330,16 @@ function ReviewCard({
   isSending: boolean;
 }) {
   const meta = platformInfo(review.platform);
-  const status = (review.replyStatus as StatusKey) in statusBadge
-    ? (review.replyStatus as StatusKey)
-    : 'read';
+  const status =
+    (review.replyStatus as StatusKey) in statusBadge ? (review.replyStatus as StatusKey) : 'read';
   const badge = statusBadge[status];
 
   // Per brand voice: AI's draft is an offer, not a fait accompli. We only
   // show the draft sub-panel when the review is still awaiting a reply
   // AND a draft exists. Once status flips to "replied", the same text
   // becomes the sent reply (rendered in the "Отправленный ответ" block).
-  const hasAIDraft = status === 'pending' && !!review.replyText && review.replyText.trim().length > 0;
+  const hasAIDraft =
+    status === 'pending' && !!review.replyText && review.replyText.trim().length > 0;
   const hasSentReply = status === 'replied' && !!review.replyText;
 
   return (
@@ -394,7 +393,7 @@ function ReviewCard({
 
       {/* No-draft fallback: explicit action to author a reply ourselves. */}
       {status === 'pending' && !hasAIDraft && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line bg-paper-sunken/60 px-4 py-3">
+        <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
           <span className="text-sm text-ink-mid">
             Образец ещё не подготовлен. Можно ответить вручную.
           </span>

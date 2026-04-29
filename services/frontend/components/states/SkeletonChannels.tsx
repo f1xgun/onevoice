@@ -23,10 +23,7 @@ export function SkeletonChannels({ count = 3, className }: SkeletonChannelsProps
       className={cn('grid grid-cols-1 gap-4 md:grid-cols-2', className)}
     >
       {Array.from({ length: count }, (_, i) => (
-        <div
-          key={i}
-          className="overflow-hidden rounded-lg border border-line bg-paper-raised"
-        >
+        <div key={i} className="overflow-hidden rounded-lg border border-line bg-paper-raised">
           <div className="flex items-start gap-4 px-5 py-5">
             <Skeleton className="h-10 w-10 rounded-md" />
             <div className="flex-1 space-y-2">

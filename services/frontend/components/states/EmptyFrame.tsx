@@ -50,9 +50,7 @@ export function EmptyFrame({
           aria-hidden
           className={cn(
             'rounded-full bg-paper-sunken',
-            mark === 'dashed'
-              ? 'border-[1.5px] border-dashed border-line'
-              : 'border border-line'
+            mark === 'dashed' ? 'border-[1.5px] border-dashed border-line' : 'border border-line'
           )}
           style={{ width: size, height: size }}
         />
@@ -61,9 +59,7 @@ export function EmptyFrame({
         <h3 className="text-[19px] font-medium leading-snug tracking-[-0.005em] text-ink">
           {title}
         </h3>
-        {body && (
-          <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{body}</p>
-        )}
+        {body && <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{body}</p>}
       </div>
       {action && <div className="flex flex-wrap items-center justify-center gap-2">{action}</div>}
     </div>

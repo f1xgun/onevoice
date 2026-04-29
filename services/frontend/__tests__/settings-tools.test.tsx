@@ -108,9 +108,7 @@ describe('ToolsPageClient — /settings/tools (POLICY-05)', () => {
   it('renders the Linen-era Russian page title', async () => {
     setupDefaultMocks();
     renderPage();
-    expect(
-      await screen.findByRole('heading', { name: /Что разрешено ИИ/ })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Что разрешено ИИ/ })).toBeInTheDocument();
   });
 
   it('shows a switch for manual-floor tools and omits auto-floor tools', async () => {

@@ -55,7 +55,7 @@ export default function ProjectChatsPage() {
       <>
         <PageHeader title="Проект" />
         <div className="mx-auto w-full max-w-2xl px-4 pb-10 sm:px-12 sm:pb-16">
-          <div className="rounded-lg border border-[var(--ov-danger)]/40 bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
+          <div className="border-[var(--ov-danger)]/40 rounded-lg border bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
             Не удалось загрузить проект. Обновите страницу или попробуйте позже.
           </div>
         </div>
@@ -106,9 +106,7 @@ export default function ProjectChatsPage() {
             <p className="mt-2 text-sm text-ink">
               В этом проекте {chatCount} {pluralizeChats(chatCount)}.
             </p>
-            <p className="mt-1 text-sm text-ink-mid">
-              Откройте нужный через боковую панель.
-            </p>
+            <p className="mt-1 text-sm text-ink-mid">Откройте нужный через боковую панель.</p>
           </section>
         )}
       </div>

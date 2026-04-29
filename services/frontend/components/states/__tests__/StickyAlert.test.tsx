@@ -22,10 +22,7 @@ describe('StickyAlert', () => {
     const onClick = vi.fn();
     const user = userEvent.setup();
     render(
-      <StickyAlert
-        title="VK потерял авторизацию"
-        action={{ label: 'Переподключить', onClick }}
-      />
+      <StickyAlert title="VK потерял авторизацию" action={{ label: 'Переподключить', onClick }} />
     );
     await user.click(screen.getByRole('button', { name: 'Переподключить' }));
     expect(onClick).toHaveBeenCalledTimes(1);
@@ -35,9 +32,7 @@ describe('StickyAlert', () => {
     const onDismiss = vi.fn();
     const user = userEvent.setup();
     const { rerender } = render(<StickyAlert title="Heads up" />);
-    expect(
-      screen.queryByRole('button', { name: 'Скрыть уведомление' })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Скрыть уведомление' })).not.toBeInTheDocument();
 
     rerender(<StickyAlert title="Heads up" onDismiss={onDismiss} />);
     await user.click(screen.getByRole('button', { name: 'Скрыть уведомление' }));

@@ -97,7 +97,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={logoMutation.isPending}
-          className="relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-paper-sunken text-ink-soft transition-colors hover:border-ochre/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+          className="hover:border-ochre/40 relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-paper-sunken text-ink-soft transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
           aria-label="Загрузить логотип"
         >
           {logoUrl ? (
@@ -113,7 +113,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
             <span className="font-mono text-[11px] uppercase tracking-[0.04em]">лого</span>
           )}
           {logoMutation.isPending && (
-            <span className="absolute inset-0 grid place-items-center bg-paper/70 font-mono text-[11px] uppercase tracking-[0.04em] text-ink-soft">
+            <span className="bg-paper/70 absolute inset-0 grid place-items-center font-mono text-[11px] uppercase tracking-[0.04em] text-ink-soft">
               …
             </span>
           )}
@@ -204,7 +204,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
             {...register('description')}
             rows={4}
             placeholder="Маленькая кофейня у метро. Спешелти, выпекаем круассаны утром."
-            className="flex w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-ink placeholder:text-ink-soft transition-[border-color,box-shadow] duration-150 focus:border-ochre focus:outline-none focus:ring-2 focus:ring-ochre/20 disabled:cursor-not-allowed disabled:opacity-50"
+            className="focus:ring-ochre/20 flex w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-ink transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft focus:border-ochre focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </Field>
       </div>

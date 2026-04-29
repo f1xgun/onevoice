@@ -58,9 +58,7 @@ export function ToolNeedsHelpCard({
           aria-hidden="true"
           className="inline-block h-[22px] w-[22px] shrink-0 rounded-md border border-line-soft bg-paper-sunken"
         />
-        <span className="truncate font-mono text-[13px] font-medium text-ink">
-          {toolName}
-        </span>
+        <span className="truncate font-mono text-[13px] font-medium text-ink">{toolName}</span>
         <span
           className={cn(
             'ml-auto inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium',

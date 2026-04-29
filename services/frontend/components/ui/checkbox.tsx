@@ -14,7 +14,7 @@ const Checkbox = React.forwardRef<
     ref={ref}
     className={cn(
       // Linen motion + focus: 120ms ease-out, focus-visible ochre ring (2px + 2px offset).
-      'peer grid h-4 w-4 shrink-0 place-content-center rounded-sm border border-primary shadow ring-offset-background transition-colors duration-[120ms] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
+      'duration-[120ms] peer grid h-4 w-4 shrink-0 place-content-center rounded-sm border border-primary shadow ring-offset-background transition-colors ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
       className
     )}
     {...props}

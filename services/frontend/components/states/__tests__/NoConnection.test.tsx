@@ -10,10 +10,7 @@ describe('NoConnection', () => {
     expect(
       screen.getByRole('heading', { name: /Не получается дотянуться до OneVoice/ })
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Открыть статус' })).toHaveAttribute(
-      'href',
-      '/status'
-    );
+    expect(screen.getByRole('link', { name: 'Открыть статус' })).toHaveAttribute('href', '/status');
   });
 
   it('uses a custom statusUrl when provided', () => {
