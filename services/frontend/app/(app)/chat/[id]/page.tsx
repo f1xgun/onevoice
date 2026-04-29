@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { useHighlightMessage } from '@/hooks/useHighlightMessage';
 
@@ -56,10 +56,11 @@ function useMessagesReadyWhenHighlightTargetMounts(targetId: string | null): boo
 
 export default function ConversationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const highlightTarget = searchParams.get('highlight');
   const ready = useMessagesReadyWhenHighlightTargetMounts(highlightTarget);
   useHighlightMessage(ready);
 
-  return <ChatWindow conversationId={id} />;
+  return <ChatWindow conversationId={id} onConversationDeleted={() => router.push('/chat')} />;
 }

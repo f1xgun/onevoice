@@ -16,14 +16,9 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useCreateConversation } from '@/hooks/useConversations';
 import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-// PinChatMenuItem renders the «Закрепить» / «Открепить» context-menu entry
-// (Phase 19 / Plan 19-02 / UI-03 — locked Russian copy per 19-CONTEXT.md).
-import { PinChatMenuItem } from '@/components/chat/PinChatMenuItem';
+// ChatRowMenu hosts the per-row actions (rename, regenerate title, move,
+// pin/unpin, delete). Shared with ProjectSection / PinnedSection / ChatHeader.
+import { ChatRowMenu } from '@/components/chat/ChatRowMenu';
 import type { Conversation } from '@/lib/conversations';
 
 interface Props {
@@ -131,8 +126,10 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
                   )}
                   <span className="flex-1 truncate">{conv.title}</span>
                 </Link>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                <ChatRowMenu
+                  conversation={conv}
+                  pinned={pinned}
+                  trigger={
                     <button
                       type="button"
                       aria-label={`Меню чата «${conv.title || 'Новый диалог'}»`}
@@ -140,11 +137,8 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
                     >
                       <MoreHorizontal size={12} />
                     </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <PinChatMenuItem conversationId={conv.id} pinned={pinned} />
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  }
+                />
               </div>
             );
           })}
