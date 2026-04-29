@@ -1,8 +1,9 @@
 // components/chat/MessageBubble.tsx — OneVoice (Linen) chat message
 //
 // Design contract from design_handoff_onevoice 2/mocks/mock-ai-chat.jsx:
-//   - User messages: right-aligned, NO bubble background, plain ink text
-//     (a gentle right-shift, no dark fill, no platform-tinted bubble).
+//   - User messages: right-aligned ink-fill bubble (dark graphite bg,
+//     paper text), rounded with a smaller top-right corner — the
+//     conventional chat "tail" trick.
 //   - Assistant messages: left-aligned, prefixed with the OneVoice
 //     ChannelMark, body on a quiet paper-raised card with a 1 px line
 //     border. Markdown rendered inside.
@@ -25,7 +26,7 @@ export function MessageBubble({ message }: { message: Message }) {
   if (isUser) {
     return (
       <div data-message-id={message.id} className="mb-5 flex justify-end">
-        <div className="max-w-[78%] whitespace-pre-wrap text-right text-sm leading-relaxed text-ink">
+        <div className="max-w-[78%] whitespace-pre-wrap rounded-md rounded-tr-[4px] bg-ink px-4 py-3 text-sm leading-relaxed text-paper">
           {message.content}
         </div>
       </div>

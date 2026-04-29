@@ -113,8 +113,8 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
         )}
         {tool.status === 'expired' && <Badge tone="warning">{RU.expiredBadge}</Badge>}
       </div>
-      {tool.result && (
-        <p className="truncate text-xs text-ink-soft">{JSON.stringify(tool.result).slice(0, 80)}</p>
+      {tool.result && summarizeResult(tool.name, tool.result) && (
+        <p className="text-xs text-ink-soft">{summarizeResult(tool.name, tool.result)}</p>
       )}
       {tool.error && <p className="text-xs text-[var(--ov-danger)]">{tool.error}</p>}
       {tool.status === 'rejected' && tool.rejectReason && (
@@ -129,3 +129,51 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
     </div>
   );
 }
+
+// Human-readable, locale-aware summary of a tool result. Returns null when
+// nothing useful can be said — in that case the success badge alone is the
+// signal. Per brand voice we never surface raw JSON to the operator.
+function summarizeResult(toolName: string, result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null;
+  const r = result as Record<string, unknown>;
+
+  // Common get-list shapes across platforms.
+  const lists: { key: string; word: (n: number) => string }[] = [
+    { key: 'reviews', word: pluralReviews },
+    { key: 'comments', word: pluralComments },
+    { key: 'posts', word: pluralPosts },
+    { key: 'messages', word: pluralMessages },
+    { key: 'items', word: pluralItems },
+  ];
+  for (const { key, word } of lists) {
+    const v = r[key];
+    if (Array.isArray(v)) {
+      const n = typeof r.count === 'number' ? r.count : v.length;
+      return n === 0 ? `Ничего не нашлось` : `Получено: ${n} ${word(n)}`;
+    }
+  }
+  if (typeof r.count === 'number') {
+    return r.count === 0 ? 'Ничего не нашлось' : `Получено: ${r.count}`;
+  }
+
+  // Send-action shape — orchestrator returns ok/sent/posted booleans.
+  if (toolName.includes('send') || toolName.includes('post') || toolName.includes('reply')) {
+    if (r.ok === true || r.sent === true || r.posted === true) return 'Отправлено';
+  }
+
+  return null;
+}
+
+function pluralRu(n: number, [one, few, many]: [string, string, string]): string {
+  const last = n % 10;
+  const lastTwo = n % 100;
+  if (lastTwo >= 11 && lastTwo <= 14) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+const pluralReviews = (n: number) => pluralRu(n, ['отзыв', 'отзыва', 'отзывов']);
+const pluralComments = (n: number) => pluralRu(n, ['комментарий', 'комментария', 'комментариев']);
+const pluralPosts = (n: number) => pluralRu(n, ['пост', 'поста', 'постов']);
+const pluralMessages = (n: number) => pluralRu(n, ['сообщение', 'сообщения', 'сообщений']);
+const pluralItems = (n: number) => pluralRu(n, ['элемент', 'элемента', 'элементов']);
