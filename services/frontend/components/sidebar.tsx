@@ -39,12 +39,18 @@ export function Sidebar() {
             <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="flex w-72 gap-0 p-0">
+        <SheetContent
+          side="left"
+          // Drawer width follows content: full 288 px when the project tree
+          // is shown (chat / projects routes), tight 56 px (just the
+          // NavRail) on every other route — no awkward empty cream gap.
+          className={`flex gap-0 p-0 ${showProjectPane ? 'w-72' : 'w-14'}`}
+        >
           <SheetTitle className="sr-only">Боковое меню</SheetTitle>
           <SheetDescription className="sr-only">
             Навигация по приложению и список проектов
           </SheetDescription>
-          <NavRail />
+          <NavRail onNavigate={() => setOpen(false)} />
           {showProjectPane && (
             <div className="flex-1">
               <ProjectPane onNavigate={() => setOpen(false)} />

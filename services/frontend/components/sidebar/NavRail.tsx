@@ -46,7 +46,16 @@ const platformLabels: Record<string, string> = {
   yandex_business: 'Яндекс.Бизнес',
 };
 
-export function NavRail() {
+export interface NavRailProps {
+  /**
+   * Called whenever the user activates a nav item (logo, tab icon, logout).
+   * The mobile drawer passes a setter that closes the Sheet so the user
+   * isn't left staring at a half-open menu after tapping a tab.
+   */
+  onNavigate?: () => void;
+}
+
+export function NavRail({ onNavigate }: NavRailProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
@@ -74,6 +83,7 @@ export function NavRail() {
         <Link
           href="/chat"
           aria-label="OneVoice"
+          onClick={onNavigate}
           className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-ink text-sm font-semibold tracking-tight text-paper"
         >
           OV
@@ -92,6 +102,7 @@ export function NavRail() {
                     href={href}
                     aria-label={label}
                     aria-current={isActive ? 'page' : undefined}
+                    onClick={onNavigate}
                     className={cn(
                       'relative flex h-10 w-10 items-center justify-center rounded-md transition-colors',
                       isActive
