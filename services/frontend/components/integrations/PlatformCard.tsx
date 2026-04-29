@@ -270,14 +270,17 @@ function ChannelList({
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Отключить канал?</AlertDialogTitle>
+                    <AlertDialogTitle>{`Отключить ${label}?`}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Канал будет отключён от OneVoice. Вы сможете подключить его снова.
+                      История сообщений останется в архиве. Чтобы снова получать сообщения из {label}, канал нужно будет подключить заново.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Отмена</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => onDisconnect(i.id)}>
+                    <AlertDialogAction
+                      className="bg-[var(--ov-danger)] text-[oklch(0.99_0_0)] border-[var(--ov-danger)] hover:bg-[var(--ov-danger)]/90"
+                      onClick={() => onDisconnect(i.id)}
+                    >
                       Отключить
                     </AlertDialogAction>
                   </AlertDialogFooter>
