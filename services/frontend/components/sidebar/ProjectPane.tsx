@@ -69,7 +69,7 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
   return (
     <aside
       data-testid="project-pane"
-      className="flex h-full flex-col gap-2 overflow-y-auto bg-gray-900 px-2 py-2 text-white"
+      className="flex h-full flex-col gap-2 overflow-y-auto bg-paper-raised px-2 py-2 text-ink"
     >
       {/* Phase 19 / Plan 19-04 — SidebarSearch. The data-testid wrapper is
           preserved so 19-01 wave-1 tests that probed for the slot keep
@@ -109,7 +109,7 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
       <Link
         href="/projects/new"
         onClick={onNavigate}
-        className="mt-1 block px-2 py-1 text-xs text-gray-500 hover:text-white"
+        className="mt-1 block px-2 py-1 text-xs text-ink-faint hover:text-ink"
       >
         + Новый проект
       </Link>

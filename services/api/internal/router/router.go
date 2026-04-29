@@ -81,6 +81,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Get("/business", handlers.Business.GetBusiness)
 			r.Put("/business", handlers.Business.UpdateBusiness)
 			r.Put("/business/schedule", handlers.Business.UpdateSchedule)
+			r.Put("/business/voice-tone", handlers.Business.UpdateVoiceTone)
 			r.Put("/business/logo", handlers.Business.UploadLogo)
 
 			// Integration routes

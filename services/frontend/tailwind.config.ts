@@ -1,5 +1,8 @@
 import type { Config } from 'tailwindcss';
 
+// OneVoice — Linen design system.
+// Tokens are OKLCH (defined in app/globals.css). Tailwind reads them via
+// bare var(--token) — wrapping in hsl(var(...)) silently fails against OKLCH.
 const config: Config = {
   darkMode: ['class'],
   content: [
@@ -10,51 +13,103 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
+        // shadcn aliases — keep existing components working
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
         card: {
-          DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))',
+          DEFAULT: 'var(--card)',
+          foreground: 'var(--card-foreground)',
         },
         popover: {
-          DEFAULT: 'hsl(var(--popover))',
-          foreground: 'hsl(var(--popover-foreground))',
+          DEFAULT: 'var(--popover)',
+          foreground: 'var(--popover-foreground)',
         },
         primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
+          DEFAULT: 'var(--primary)',
+          foreground: 'var(--primary-foreground)',
         },
         secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))',
+          DEFAULT: 'var(--secondary)',
+          foreground: 'var(--secondary-foreground)',
         },
         muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))',
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)',
         },
         accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))',
+          DEFAULT: 'var(--accent)',
+          foreground: 'var(--accent-foreground)',
         },
         destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))',
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)',
         },
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
+        border: 'var(--border)',
+        input: 'var(--input)',
+        ring: 'var(--ring)',
         chart: {
-          '1': 'hsl(var(--chart-1))',
-          '2': 'hsl(var(--chart-2))',
-          '3': 'hsl(var(--chart-3))',
-          '4': 'hsl(var(--chart-4))',
-          '5': 'hsl(var(--chart-5))',
+          '1': 'var(--chart-1)',
+          '2': 'var(--chart-2)',
+          '3': 'var(--chart-3)',
+          '4': 'var(--chart-4)',
+          '5': 'var(--chart-5)',
+        },
+
+        // Direct OneVoice tokens — use where shadcn aliases don't fit
+        paper: {
+          DEFAULT: 'var(--ov-paper)',
+          raised: 'var(--ov-paper-raised)',
+          sunken: 'var(--ov-paper-sunken)',
+          well: 'var(--ov-paper-well)',
+        },
+        ink: {
+          DEFAULT: 'var(--ov-ink)',
+          mid: 'var(--ov-ink-mid)',
+          soft: 'var(--ov-ink-soft)',
+          faint: 'var(--ov-ink-faint)',
+        },
+        line: {
+          DEFAULT: 'var(--ov-line)',
+          soft: 'var(--ov-line-soft)',
+        },
+        ochre: {
+          DEFAULT: 'var(--ov-accent)',
+          deep: 'var(--ov-accent-deep)',
+          soft: 'var(--ov-accent-soft)',
+          ink: 'var(--ov-accent-ink)',
+        },
+        success: {
+          DEFAULT: 'var(--ov-success)',
+          soft: 'var(--ov-success-soft)',
+        },
+        warning: {
+          DEFAULT: 'var(--ov-warning)',
+          soft: 'var(--ov-warning-soft)',
+          ink: 'var(--ov-warning-ink)',
+        },
+        danger: {
+          DEFAULT: 'var(--ov-danger)',
+          soft: 'var(--ov-danger-soft)',
+        },
+        info: {
+          DEFAULT: 'var(--ov-info)',
+          soft: 'var(--ov-info-soft)',
         },
       },
+      fontFamily: {
+        sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
+      },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        sm: 'var(--ov-radius-sm)',
+        md: 'var(--ov-radius-md)',
+        lg: 'var(--ov-radius-lg)',
+        xl: 'var(--ov-radius-xl)',
+      },
+      boxShadow: {
+        'ov-1': 'var(--ov-shadow-1)',
+        'ov-2': 'var(--ov-shadow-2)',
+        'ov-3': 'var(--ov-shadow-3)',
       },
     },
   },

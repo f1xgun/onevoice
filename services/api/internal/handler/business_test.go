@@ -397,6 +397,113 @@ func TestUpdateBusiness(t *testing.T) {
 	}
 }
 
+// fakeScheduleSyncer captures SyncBusiness calls for UpdateSchedule tests.
+// SyncBusiness runs in a goroutine in the handler, so the test waits on the
+// `called` channel before asserting.
+type fakeScheduleSyncer struct {
+	called chan *domain.Business
+}
+
+func (f *fakeScheduleSyncer) SyncBusiness(b *domain.Business) {
+	f.called <- b
+}
+
+func TestUpdateSchedule(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	testBusinessID := uuid.MustParse("223e4567-e89b-12d3-a456-426614174000")
+
+	existing := func() *domain.Business {
+		return &domain.Business{
+			ID:       testBusinessID,
+			UserID:   testUserID,
+			Name:     "Cafe",
+			Settings: map[string]interface{}{},
+		}
+	}
+
+	t.Run("persists schedule and specialDates and triggers syncer", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		syncer := &fakeScheduleSyncer{called: make(chan *domain.Business, 1)}
+
+		mockSvc.On("GetByUserID", mock.Anything, testUserID).Return(existing(), nil)
+
+		var captured *domain.Business
+		mockSvc.On("Update", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
+			captured = b
+			return true
+		})).Return(&domain.Business{
+			ID:       testBusinessID,
+			UserID:   testUserID,
+			Name:     "Cafe",
+			Settings: map[string]interface{}{}, // service returns the saved record; content is asserted via captured
+		}, nil)
+
+		h, err := NewBusinessHandler(mockSvc, syncer, nil)
+		require.NoError(t, err)
+
+		body := `{"schedule":[{"day":"mon","open":"09:00","close":"21:00","closed":false},{"day":"sun","open":"","close":"","closed":true}],"specialDates":[{"date":"2026-01-01","closed":true}]}`
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/business/schedule", bytes.NewBufferString(body))
+		req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, testUserID))
+		w := httptest.NewRecorder()
+
+		h.UpdateSchedule(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		require.NotNil(t, captured)
+		require.NotNil(t, captured.Settings["schedule"], "schedule must be stored in Settings")
+		require.NotNil(t, captured.Settings["specialDates"], "specialDates must be stored in Settings")
+
+		select {
+		case b := <-syncer.called:
+			assert.Equal(t, testBusinessID, b.ID, "syncer must be called with the updated business")
+		case <-time.After(2 * time.Second):
+			t.Fatal("syncer.SyncBusiness was not called within 2s")
+		}
+
+		mockSvc.AssertExpectations(t)
+	})
+
+	t.Run("returns 401 without user context", func(t *testing.T) {
+		h, err := NewBusinessHandler(new(MockBusinessService), nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/business/schedule", bytes.NewBufferString(`{"schedule":[]}`))
+		w := httptest.NewRecorder()
+		h.UpdateSchedule(w, req)
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+
+	t.Run("returns 400 on invalid json", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByUserID", mock.Anything, testUserID).Return(existing(), nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/business/schedule", bytes.NewBufferString(`{not json`))
+		req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, testUserID))
+		w := httptest.NewRecorder()
+		h.UpdateSchedule(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("nil syncer is allowed (skip dispatch)", func(t *testing.T) {
+		mockSvc := new(MockBusinessService)
+		mockSvc.On("GetByUserID", mock.Anything, testUserID).Return(existing(), nil)
+		mockSvc.On("Update", mock.Anything, mock.Anything).Return(existing(), nil)
+
+		h, err := NewBusinessHandler(mockSvc, nil, nil) // syncer = nil
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/business/schedule",
+			bytes.NewBufferString(`{"schedule":[]}`))
+		req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, testUserID))
+		w := httptest.NewRecorder()
+		h.UpdateSchedule(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+}
+
 // mockUploader is a test double for storage.Uploader.
 type mockUploader struct {
 	mock.Mock

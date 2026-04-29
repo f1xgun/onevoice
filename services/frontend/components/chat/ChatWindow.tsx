@@ -12,6 +12,7 @@ import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SkeletonChat } from '@/components/states';
 import { useChat } from '@/hooks/useChat';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
@@ -121,19 +122,20 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
         />
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* Messages — paper-well backdrop matches mock-ai-chat.jsx (line 146). */}
+      <div className="flex-1 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6">
         {isLoading ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
-          </div>
+          // Static AI conversation skeleton per mock-states.jsx loading
+          // section — no spinner, paper-sunken bubble shapes that mirror
+          // the real message layout.
+          <SkeletonChat className="bg-transparent p-0" />
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
             <ProjectPickerChip
               value={conversation?.projectId ?? null}
               onChange={handlePickerChange}
             />
-            <p className="text-lg text-gray-400">Чем могу помочь?</p>
+            <p className="text-lg text-ink-soft">Чем могу помочь?</p>
             <div className="flex flex-wrap justify-center gap-2">
               {quickActions.map((action) => (
                 <button
@@ -141,7 +143,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
                   type="button"
                   onClick={() => sendMessage(action)}
                   disabled={composerDisabled}
-                  className="rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-full border border-line bg-paper-raised px-4 py-2 text-sm text-ink-mid transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {action}
                 </button>
@@ -159,24 +161,44 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
       {/* Inline approval card — renders only when a pending batch exists. */}
       {pendingApproval?.status === 'pending' && (
-        <div className="border-t bg-background px-4 py-4">
+        <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
           <ToolApprovalCard batch={pendingApproval} onSubmit={resolveApproval} />
         </div>
       )}
 
-      {/* Input */}
-      <div className="flex gap-2 border-t bg-white p-4">
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void handleSend()}
-          placeholder="Напишите сообщение..."
-          disabled={composerDisabled}
-          className="flex-1"
-        />
-        <Button onClick={handleSend} disabled={composerDisabled || !input.trim()}>
-          <Send size={16} />
-        </Button>
+      {/* Composer — Linen rebuild per mock-ai-chat.jsx Composer (lines
+          308–325): an outer paper section that hosts a paper-sunken
+          inner card. Input handles the ochre focus ring; the send button
+          stays graphite (variant="primary") because ochre is reserved
+          for the single moment of emphasis in this surface (the inline
+          ApprovalCard). The keep-disabled-while-streaming-or-pending
+          contract is unchanged. */}
+      <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
+        <div className="flex gap-2 rounded-md border border-line bg-paper-sunken p-2 transition-colors focus-within:border-ochre">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void handleSend()}
+            placeholder="Напишите сообщение..."
+            disabled={composerDisabled}
+            // Inner Input loses its own border/focus ring — the outer
+            // shell now owns the focused state. Background goes to paper
+            // so the ink-on-paper text reads on the sunken surround.
+            className="flex-1 border-0 bg-paper text-ink shadow-none focus:border-0 focus:ring-0"
+          />
+          {/* TODO(design): slash-commands chip rail (`/ Команды`) per
+              mock — backend command registry not in scope for v1.3, so
+              the placeholder is deferred. */}
+          <Button
+            variant="primary"
+            size="md"
+            onClick={handleSend}
+            disabled={composerDisabled || !input.trim()}
+            aria-label="Отправить"
+          >
+            <Send size={16} />
+          </Button>
+        </div>
       </div>
     </div>
   );

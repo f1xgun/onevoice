@@ -49,7 +49,7 @@ export function QuickActionsEditor({ value, onChange }: QuickActionsEditorProps)
                 type="button"
                 variant="outline"
                 size="icon"
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="hover:bg-destructive/10 text-destructive hover:text-destructive"
                 onClick={() => removeItem(index)}
                 aria-label={`Удалить быстрое действие ${index + 1}`}
               >

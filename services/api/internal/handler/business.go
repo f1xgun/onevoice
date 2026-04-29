@@ -226,7 +226,8 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	}
 
 	var req struct {
-		Schedule interface{} `json:"schedule"`
+		Schedule     interface{} `json:"schedule"`
+		SpecialDates interface{} `json:"specialDates"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -237,11 +238,64 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 		business.Settings = make(map[string]interface{})
 	}
 	business.Settings["schedule"] = req.Schedule
+	if req.SpecialDates != nil {
+		business.Settings["specialDates"] = req.SpecialDates
+	}
 	business.UpdatedAt = time.Now()
 
 	updated, err := h.businessService.Update(r.Context(), business)
 	if err != nil {
 		slog.Error("failed to update schedule", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	if h.syncer != nil {
+		go h.syncer.SyncBusiness(updated)
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
+// UpdateVoiceTone updates the business voice/tone tags (stored in settings).
+// Body: {"tones": ["Тёплый", "Дружеский"]}.
+// Mirrors UpdateSchedule — settings entries live alongside other settings
+// keys so reads of /business return the full dict.
+func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to get business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	var req struct {
+		Tones []string `json:"tones"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if business.Settings == nil {
+		business.Settings = make(map[string]interface{})
+	}
+	business.Settings["voiceTone"] = req.Tones
+	business.UpdatedAt = time.Now()
+
+	updated, err := h.businessService.Update(r.Context(), business)
+	if err != nil {
+		slog.Error("failed to update voice tone", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
