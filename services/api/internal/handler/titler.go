@@ -113,7 +113,16 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// D-03: in-flight job already running — verbatim Russian copy locked in CONTEXT.md.
-	if conv.TitleStatus == domain.TitleStatusAutoPending {
+	//
+	// Stuck-pending recovery: a chat may sit in auto_pending forever if the
+	// titler goroutine never ran (e.g., titler was disabled at the time the
+	// chat was created, or the goroutine errored without flipping status).
+	// The cheap LLM call is bounded by a 30s timeout downstream — anything
+	// older than that is provably NOT in flight, so allow regenerate to
+	// re-trigger the goroutine instead of trapping the user in 409 forever.
+	const stuckPendingThreshold = 30 * time.Second
+	if conv.TitleStatus == domain.TitleStatusAutoPending &&
+		time.Since(conv.UpdatedAt) < stuckPendingThreshold {
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error":   "title_in_flight",
 			"message": "Заголовок уже генерируется",

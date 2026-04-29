@@ -24,7 +24,15 @@ async function fetchConversation(id: string): Promise<Conversation> {
   return data;
 }
 
-export function ChatWindow({ conversationId }: { conversationId: string }) {
+interface ChatWindowProps {
+  conversationId: string;
+  // Forwarded to ChatHeader → ChatRowMenu so the chat owner (chat/[id]/page)
+  // can redirect after delete without ChatWindow/ChatHeader pulling the
+  // Next.js router into their isolated test fixtures.
+  onConversationDeleted?: () => void;
+}
+
+export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindowProps) {
   const { messages, isLoading, isStreaming, pendingApproval, resolveApproval, sendMessage } =
     useChat(conversationId);
   const [input, setInput] = useState('');
@@ -100,6 +108,10 @@ export function ChatWindow({ conversationId }: { conversationId: string }) {
       {!showEmptyState && (
         <ChatHeader
           conversationId={conversationId}
+          onConversationDeleted={onConversationDeleted}
+          menuTitle={conversation?.title}
+          menuTitleStatus={conversation?.titleStatus}
+          menuProjectId={conversation?.projectId ?? null}
           rightSlot={
             <ProjectChip
               projectId={currentProject?.id ?? null}

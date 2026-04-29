@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import type { RefObject } from 'react';
 import Link from 'next/link';
-import { Bookmark, ChevronDown, ChevronRight } from 'lucide-react';
+import { Bookmark, ChevronDown, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
 import { ProjectChip } from '@/components/chat/ProjectChip';
+import { ChatRowMenu } from '@/components/chat/ChatRowMenu';
 import type { Conversation } from '@/lib/conversations';
 
 // PinnedSection — Phase 19 / Plan 19-02 / D-04 + D-05.
@@ -90,7 +91,7 @@ export function PinnedSection({
           {visible.map((conv, i) => {
             const project = conv.projectId ? projectsById[conv.projectId] : undefined;
             return (
-              <div key={conv.id} className="flex items-center gap-1 px-1">
+              <div key={conv.id} className="group/row flex items-center gap-1 px-1">
                 <Link
                   href={`/chat/${conv.id}`}
                   onClick={onNavigate}
@@ -112,6 +113,19 @@ export function PinnedSection({
                 {project && (
                   <ProjectChip projectId={project.id} projectName={project.name} size="xs" />
                 )}
+                <ChatRowMenu
+                  conversation={conv}
+                  pinned
+                  trigger={
+                    <button
+                      type="button"
+                      aria-label={`Меню чата «${conv.title || 'Новый диалог'}»`}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition-opacity hover:bg-gray-700 hover:text-white focus-visible:opacity-100 group-hover/row:opacity-100"
+                    >
+                      <MoreHorizontal size={12} />
+                    </button>
+                  }
+                />
               </div>
             );
           })}
