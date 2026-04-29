@@ -2,15 +2,29 @@
 
 import { memo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Bookmark } from 'lucide-react';
+import { Bookmark, MoreHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { usePinConversation, useUnpinConversation } from '@/hooks/useConversations';
-import type { Conversation } from '@/lib/conversations';
+import { ChatRowMenu } from '@/components/chat/ChatRowMenu';
+import type { Conversation, TitleStatus } from '@/lib/conversations';
 
 interface ChatHeaderProps {
   conversationId: string;
   rightSlot?: ReactNode;
+  // Fired after the chat has been deleted via the actions menu. The chat
+  // owner (chat/[id]/page.tsx) wires this to router.push('/chat'). Kept
+  // optional so existing isolation tests can mount ChatHeader without a
+  // Next.js router context.
+  onConversationDeleted?: () => void;
+  // Menu data passed in as primitive props from ChatWindow (which already
+  // owns the per-conversation query). ChatHeader does NOT add a third
+  // useQuery subscription here — D-11 isolation tests assert exact commit
+  // counts that scale with the number of useQuery hooks. Render the menu
+  // only when these primitives are present.
+  menuTitle?: string;
+  menuTitleStatus?: TitleStatus;
+  menuProjectId?: string | null;
 }
 
 /**
@@ -65,11 +79,19 @@ function useConversationPinned(conversationId: string): boolean {
   return data ?? false;
 }
 
-function ChatHeaderImpl({ conversationId, rightSlot }: ChatHeaderProps) {
+function ChatHeaderImpl({
+  conversationId,
+  rightSlot,
+  onConversationDeleted,
+  menuTitle,
+  menuTitleStatus,
+  menuProjectId,
+}: ChatHeaderProps) {
   const title = useConversationTitle(conversationId);
   const pinned = useConversationPinned(conversationId);
   const pinMutation = usePinConversation();
   const unpinMutation = useUnpinConversation();
+  const showMenu = menuTitle !== undefined && menuProjectId !== undefined;
 
   return (
     <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-4">
@@ -91,6 +113,28 @@ function ChatHeaderImpl({ conversationId, rightSlot }: ChatHeaderProps) {
             className={cn(pinned ? 'fill-yellow-400 text-yellow-400' : 'text-gray-400')}
           />
         </button>
+        {showMenu && (
+          <ChatRowMenu
+            conversation={{
+              id: conversationId,
+              title: menuTitle ?? '',
+              titleStatus: menuTitleStatus,
+              projectId: menuProjectId ?? null,
+            }}
+            pinned={pinned}
+            onDeleted={onConversationDeleted}
+            trigger={
+              <button
+                type="button"
+                aria-label="Меню чата"
+                title="Действия"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+            }
+          />
+        )}
         {rightSlot}
       </div>
     </div>
