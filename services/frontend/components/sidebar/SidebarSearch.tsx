@@ -134,7 +134,7 @@ export function SidebarSearch() {
       <Popover.Anchor asChild>
         <div className="relative">
           <Search
-            className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"
+            className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-ink-soft"
             size={14}
             aria-hidden
           />
@@ -152,11 +152,11 @@ export function SidebarSearch() {
             }}
             onKeyDown={onKeyDown}
             placeholder={detectPlaceholder()}
-            className="w-full rounded-md border border-gray-700 bg-gray-800 py-1 pl-7 pr-7 text-sm text-gray-200 placeholder-gray-500 focus:border-gray-500 focus:outline-none"
+            className="w-full rounded-md border border-line bg-paper-sunken py-1 pl-7 pr-7 text-sm text-ink placeholder:text-ink-faint focus:border-ochre focus:outline-none"
           />
           {isFetching && (
             <Loader2
-              className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-gray-400"
+              className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-ink-soft"
               size={14}
               aria-hidden
             />
@@ -177,12 +177,12 @@ export function SidebarSearch() {
           role={results.length > 0 ? 'listbox' : 'status'}
           aria-live={results.length === 0 ? 'polite' : undefined}
           aria-label={results.length > 0 ? 'Результаты поиска' : 'Состояние поиска'}
-          className="z-50 max-h-96 w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-md border border-gray-700 bg-gray-900 p-1 shadow-lg"
+          className="z-50 max-h-96 w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-md border border-line bg-paper-raised p-1 shadow-ov-2"
           // Keep focus in the search <input> so the user can keep typing.
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           {projectIdFromRoute && (
-            <label className="flex items-center gap-2 px-2 py-1 text-xs text-gray-400">
+            <label className="flex items-center gap-2 px-2 py-1 text-xs text-ink-soft">
               <input
                 type="checkbox"
                 checked={scopeAllBusiness}
@@ -192,7 +192,7 @@ export function SidebarSearch() {
             </label>
           )}
           {results.length === 0 && !isFetching && (
-            <div className="px-2 py-2 text-sm text-gray-500">
+            <div className="px-2 py-2 text-sm text-ink-faint">
               Ничего не найдено по «{debounced}»
             </div>
           )}

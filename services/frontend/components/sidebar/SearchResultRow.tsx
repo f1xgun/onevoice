@@ -86,7 +86,7 @@ export function SearchResultRow({ result, onSelect }: Props) {
   // Phase 19 / Plan 19-05 — the parent Popover.Content carries role="listbox"
   // when results.length > 0; ARIA requires its direct children to be option.
   return (
-    <div role="option" aria-selected={false} className="rounded-md hover:bg-gray-800">
+    <div role="option" aria-selected={false} className="rounded-md hover:bg-paper-sunken">
       <div className="flex items-center gap-2 px-2 pt-1.5">
         <Link
           href={href}
@@ -94,12 +94,12 @@ export function SearchResultRow({ result, onSelect }: Props) {
           // Phase 19 / Plan 19-05 will install useRovingTabIndex; this attribute
           // is the contract anchor.
           data-roving-item="true"
-          className="flex flex-1 items-center gap-2 truncate text-sm text-gray-200"
+          className="flex flex-1 items-center gap-2 truncate text-sm text-ink"
         >
           <span className="flex-1 truncate">{result.title || 'Новый диалог'}</span>
         </Link>
         {result.projectId && <ProjectChip projectId={result.projectId} size="xs" />}
-        {dateLabel && <span className="shrink-0 text-xs text-gray-500">{dateLabel}</span>}
+        {dateLabel && <span className="shrink-0 text-xs text-ink-faint">{dateLabel}</span>}
       </div>
       {result.snippet && (
         <Link
@@ -107,13 +107,13 @@ export function SearchResultRow({ result, onSelect }: Props) {
           onClick={onSelect}
           tabIndex={-1}
           aria-hidden="true"
-          className="mt-0.5 block truncate px-2 text-xs text-gray-400"
+          className="mt-0.5 block truncate px-2 text-xs text-ink-soft"
         >
           {renderHighlightedSnippet(result.snippet, result.marks)}
         </Link>
       )}
       {result.matchCount > 1 && (
-        <span className="mb-1 ml-2 mt-0.5 inline-block text-[10px] text-gray-500">
+        <span className="mb-1 ml-2 mt-0.5 inline-block text-[10px] text-ink-faint">
           +{result.matchCount - 1} совпадений
         </span>
       )}
