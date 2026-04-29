@@ -164,6 +164,15 @@ services:
       S3_BUCKET: ${S3_BUCKET:-onevoice}
       S3_USE_SSL: ${S3_USE_SSL:-false}
       S3_PUBLIC_URL_PREFIX: ${S3_PUBLIC_URL_PREFIX:-/media}
+      # Auto-titler (Phase 18). TITLER_MODEL takes precedence; falls back to
+      # LLM_MODEL when unset. At least one provider key must be present, or
+      # the titler is left disabled and POST /conversations/{id}/regenerate-title
+      # returns 503.
+      TITLER_MODEL: ${TITLER_MODEL:-}
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-4o-mini}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "8080:8080"
       - "8443:8443"
