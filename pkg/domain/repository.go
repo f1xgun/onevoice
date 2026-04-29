@@ -186,6 +186,25 @@ type ReviewRepository interface {
 	GetByID(ctx context.Context, id string) (*Review, error)
 	UpdateReply(ctx context.Context, id, replyText, replyStatus string) error
 	Upsert(ctx context.Context, review *Review) error
+
+	// ListPendingWithoutDraft returns reviews that need an AI draft —
+	// reply_status="pending" AND draft_status in {missing, "", "failed"}.
+	// "generating" rows are excluded so concurrent passes don't double-call
+	// the LLM. limit caps the per-call work; ordering is created_at desc.
+	// Empty platform means "any platform for the business".
+	ListPendingWithoutDraft(ctx context.Context, businessID, platform string, limit int) ([]Review, error)
+
+	// ListRepliedExamples returns up to limit prior reviews of the same
+	// business (and platform when non-empty) that already have a non-empty
+	// reply_text and reply_status="replied". Used as few-shot examples for
+	// the AI drafter to mirror the owner's tone and length.
+	ListRepliedExamples(ctx context.Context, businessID, platform string, limit int) ([]Review, error)
+
+	// UpdateDraft writes the four draft_* fields atomically. On status="ready"
+	// callers pass the generated text; on "failed" they pass errMsg. On
+	// "generating" both are empty strings — used to claim a row before the
+	// LLM call.
+	UpdateDraft(ctx context.Context, id, draft, status, errMsg string) error
 }
 
 type PostRepository interface {
