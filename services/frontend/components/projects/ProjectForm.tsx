@@ -151,12 +151,16 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         {isEdit ? (
           <Tabs defaultValue="basics" className="w-full">
-            <TabsList className="w-full justify-start">
-              <TabsTrigger value="basics">Основное</TabsTrigger>
-              <TabsTrigger value="prompt">Промпт</TabsTrigger>
-              <TabsTrigger value="tools">Инструменты</TabsTrigger>
-              <TabsTrigger value="quick-actions">Быстрые действия</TabsTrigger>
-            </TabsList>
+            {/* Tabs scroll horizontally on narrow viewports — «Быстрые
+                действия» otherwise clips off-screen on phones. */}
+            <div className="-mx-1 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0">
+              <TabsList className="justify-start sm:w-full">
+                <TabsTrigger value="basics">Основное</TabsTrigger>
+                <TabsTrigger value="prompt">Промпт</TabsTrigger>
+                <TabsTrigger value="tools">Инструменты</TabsTrigger>
+                <TabsTrigger value="quick-actions">Быстрые действия</TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="basics" className="space-y-6 pt-4">
               <FormField
