@@ -15,6 +15,35 @@ func derefString(s *string) string {
 	return *s
 }
 
+// extractVoiceTone reads the voiceTone tag list out of business.Settings.
+// Tags persist as []string under settings.voiceTone (see UpdateVoiceTone).
+// JSON round-trips via Postgres come back as []interface{}, so handle both.
+// Returns nil when nothing is configured — callers should treat nil/empty as
+// "no tone preference set".
+func extractVoiceTone(settings map[string]interface{}) []string {
+	if settings == nil {
+		return nil
+	}
+	raw, ok := settings["voiceTone"]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch v := raw.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 // ErrorResponse represents a JSON error response
 type ErrorResponse struct {
 	Error string `json:"error"`
