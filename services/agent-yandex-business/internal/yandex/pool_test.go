@@ -164,3 +164,45 @@ func TestPooledContext_Touch(t *testing.T) {
 		t.Fatalf("expected lastUsed between %d and %d, got %d", before, after, lastUsed)
 	}
 }
+
+func TestNormalizeWhitespace(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"whitespace only", "   \n\t  \n", ""},
+		{"already clean", "ул. Тверская, 1", "ул. Тверская, 1"},
+		{"trailing newlines", "Москва, ул. Тверская, 1\n   \n  \n", "Москва, ул. Тверская, 1"},
+		{
+			name: "interior newlines collapsed",
+			in:   "Москва\n\n   ул. Тверская, 1",
+			want: "Москва ул. Тверская, 1",
+		},
+		{
+			name: "non-breaking space collapsed",
+			in:   "Москва, ул. Тверская, 1",
+			want: "Москва, ул. Тверская, 1",
+		},
+		{
+			// Reproduction of garbage seen in chat 69f19ad5b793d06ad276d3a8 — when the
+			// old broad selector matched the service-area tab widget. We assert the
+			// helper only collapses whitespace; the real fix is the narrowed selector
+			// in GetInfo, but if such garbage ever reaches us again we still want
+			// readable text rather than embedded newlines.
+			name: "service-area tab garbage stays single-line",
+			in:   "По регионамВокруг точкиРегионыМосква\n \n \n \n",
+			want: "По регионамВокруг точкиРегионыМосква",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeWhitespace(tc.in)
+			if got != tc.want {
+				t.Fatalf("normalizeWhitespace(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
