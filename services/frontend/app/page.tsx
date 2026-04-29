@@ -24,14 +24,14 @@ const SERIF = '"Iowan Old Style", "Georgia", "Times New Roman", serif';
 const NAV_LINKS = [
   { href: '#features', label: 'Возможности' },
   { href: '#channels', label: 'Каналы' },
-  { href: '#pricing', label: 'Цены' },
+  // { href: '#pricing', label: 'Цены' }, // временно: продукт бесплатный
 ];
 
 const PLATFORMS: Array<{
   name: string;
   display: string;
   meta: string;
-  status: 'есть' | 'скоро' | 'API';
+  status: 'есть' | 'скоро';
 }> = [
   { name: 'Telegram', display: 'Telegram', meta: 'Каналы и боты', status: 'есть' },
   { name: 'VK', display: 'ВКонтакте', meta: 'Сообщества', status: 'есть' },
@@ -42,7 +42,8 @@ const PLATFORMS: Array<{
   { name: 'WhatsApp', display: 'WhatsApp', meta: 'Оценивается', status: 'скоро' },
   { name: 'Instagram', display: 'Instagram', meta: 'Оценивается', status: 'скоро' },
   { name: 'OK', display: 'Одноклассники', meta: 'Оценивается', status: 'скоро' },
-  { name: 'OneVoice', display: 'Свой канал', meta: 'Через API', status: 'API' },
+  // { name: 'OneVoice', display: 'Свой канал', meta: 'Через API', status: 'API' },
+  // — мы не предоставляем публичный API для самостоятельного подключения каналов.
 ];
 
 const STEPS = [
@@ -75,7 +76,7 @@ export default function LandingPage() {
       <HowItWorks />
       <Platforms />
       <Quote />
-      <Pricing />
+      {/* <Pricing /> — временно скрыто: продукт бесплатный */}
       <SiteFooter />
     </div>
   );
@@ -158,8 +159,9 @@ function Hero() {
             </Button>
           </div>
           <p className="mt-6 text-[13px] text-ink-soft">
-            Без карты · 14 дней пробного периода · до 3 каналов
+            Без карты · бесплатно · до 3 каналов
           </p>
+          {/* временно убрана упоминалка пробного периода — продукт бесплатный */}
         </div>
         <HeroPreview />
       </div>
@@ -540,7 +542,7 @@ function Platforms() {
         </p>
         <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           {PLATFORMS.map((p) => {
-            const tone = p.status === 'есть' ? 'success' : p.status === 'API' ? 'info' : 'neutral';
+            const tone = p.status === 'есть' ? 'success' : 'neutral';
             return (
               <div
                 key={p.display}
@@ -591,7 +593,9 @@ function Quote() {
 }
 
 // ─── Pricing CTA ──────────────────────────────────────────────────────
-
+// Временно отключено: продукт бесплатный. Когда вернём оплату — раскомментировать
+// <Pricing /> в LandingPage и пункт «Цены» в NAV_LINKS.
+/*
 function Pricing() {
   return (
     <section id="pricing">
@@ -647,6 +651,7 @@ function Pricing() {
     </section>
   );
 }
+*/
 
 // ─── Footer ──────────────────────────────────────────────────────────
 

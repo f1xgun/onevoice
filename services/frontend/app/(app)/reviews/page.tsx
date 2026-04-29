@@ -126,7 +126,14 @@ export default function ReviewsPage() {
       const params = new URLSearchParams();
       if (platform !== 'all') params.set('platform', platform);
       if (replyStatus !== 'all') params.set('reply_status', replyStatus);
-      return api.get(`/reviews?${params}`).then((r) => r.data as Review[]);
+      return api.get(`/reviews?${params}`).then((r) => {
+        // API shape: { reviews: Review[], total: number }. Older
+        // callers expected a bare array — accept both for safety.
+        const data = r.data as unknown;
+        if (Array.isArray(data)) return data as Review[];
+        const reviews = (data as { reviews?: Review[] } | null)?.reviews;
+        return Array.isArray(reviews) ? reviews : [];
+      });
     },
   });
 
@@ -170,7 +177,7 @@ export default function ReviewsPage() {
         sub="Здесь собираются отзывы клиентов с подключённых каналов. OneVoice предложит образец ответа — отправлять решаете вы."
       />
 
-      <div className="px-12 pb-16">
+      <div className="px-4 pb-10 sm:px-12 sm:pb-16">
         {/* Stat strip — three quiet metrics. No celebratory tone. */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatCell

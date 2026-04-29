@@ -181,7 +181,7 @@ export default function IntegrationsPage() {
         }
       />
 
-      <div className="px-12 pb-16">
+      <div className="px-4 pb-10 sm:px-12 sm:pb-16">
         {lastRegistered && (
           <div className="mb-8">
             <WhitelistWarningBanner
@@ -240,15 +240,14 @@ export default function IntegrationsPage() {
           <div className="min-w-0 flex-1">
             <div className="text-base font-medium text-ink">Не нашли свой канал?</div>
             <div className="mt-1 text-sm text-ink-mid">
-              Подключите его через наш API или напишите — добавим.
+              Напишите нам — добавим в ближайших обновлениях.
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
-            <Button variant="secondary" size="md" disabled>
-              Документация API
-            </Button>
-            <Button variant="ghost" size="md" disabled>
-              Запросить канал
+            <Button variant="secondary" size="md" asChild>
+              <a href="mailto:hello@onevoice.app?subject=Запрос%20канала">
+                Запросить канал
+              </a>
             </Button>
           </div>
         </div>
