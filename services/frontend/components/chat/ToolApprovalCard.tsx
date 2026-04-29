@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -117,6 +117,11 @@ export interface ToolApprovalCardProps {
 export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
   const [drafts, dispatch] = useReducer(draftReducer, batch, initialDrafts);
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous re-entry guard. `submitting` is React state and only flips
+  // `disabled` after a re-render — between the first click and that render,
+  // a fast second click can still invoke handleSubmit. The ref blocks that
+  // window deterministically.
+  const submittingRef = useRef(false);
 
   // Invariant 12: a new batchId arriving mid-render fully resets drafts —
   // keep the `useEffect` dependency list narrow (batchId only) so re-renders
@@ -128,6 +133,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
   const allDecided = drafts.every((d) => d.decision !== 'undecided');
 
   async function handleSubmit() {
+    if (submittingRef.current) return;
     const undecided = drafts.filter((d) => d.decision === 'undecided');
     if (undecided.length > 0) {
       dispatch({
@@ -168,6 +174,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
       return decision;
     });
 
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await onSubmit(decisions);
@@ -175,6 +182,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
       // Parent clears `pendingApproval` on success → the card unmounts
       // and this state is GC'd. On error the card stays open; we
       // re-enable Submit so the user can retry.
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }

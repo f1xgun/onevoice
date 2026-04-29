@@ -226,7 +226,8 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	}
 
 	var req struct {
-		Schedule interface{} `json:"schedule"`
+		Schedule     interface{} `json:"schedule"`
+		SpecialDates interface{} `json:"specialDates"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -237,6 +238,9 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 		business.Settings = make(map[string]interface{})
 	}
 	business.Settings["schedule"] = req.Schedule
+	if req.SpecialDates != nil {
+		business.Settings["specialDates"] = req.SpecialDates
+	}
 	business.UpdatedAt = time.Now()
 
 	updated, err := h.businessService.Update(r.Context(), business)
@@ -244,6 +248,10 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 		slog.Error("failed to update schedule", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
+	}
+
+	if h.syncer != nil {
+		go h.syncer.SyncBusiness(updated)
 	}
 
 	writeJSON(w, http.StatusOK, updated)
