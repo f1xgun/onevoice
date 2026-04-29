@@ -22,8 +22,16 @@ export interface Conversation {
   updatedAt: string;
 }
 
+// API default limit is 20 (services/api/internal/handler/conversation.go).
+// The sidebar renders ALL chats grouped by project + an "Без проекта" bucket,
+// so a 20-row cap silently truncates the list — deleting a chat then makes a
+// formerly-page-2 chat take the freed slot, and the per-bucket counts appear
+// frozen. Request the server-side max (100) so the sidebar reflects reality
+// for typical users. Heavy users (>100 chats) will need real pagination.
 export async function listConversations(): Promise<Conversation[]> {
-  const { data } = await api.get<Conversation[]>('/conversations');
+  const { data } = await api.get<Conversation[]>('/conversations', {
+    params: { limit: 100 },
+  });
   return Array.isArray(data) ? data : [];
 }
 
@@ -55,4 +63,18 @@ export async function pinConversation(id: string): Promise<Conversation> {
 export async function unpinConversation(id: string): Promise<Conversation> {
   const { data } = await api.post<Conversation>(`/conversations/${id}/unpin`);
   return data;
+}
+
+export async function renameConversation(id: string, title: string): Promise<Conversation> {
+  const { data } = await api.put<Conversation>(`/conversations/${id}`, { title });
+  return data;
+}
+
+export async function regenerateConversationTitle(id: string): Promise<Conversation> {
+  const { data } = await api.post<Conversation>(`/conversations/${id}/regenerate-title`);
+  return data;
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  await api.delete(`/conversations/${id}`);
 }

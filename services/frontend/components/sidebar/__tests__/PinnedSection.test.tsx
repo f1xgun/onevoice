@@ -9,6 +9,7 @@ import type { Conversation } from '@/lib/conversations';
 const pushMock = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, back: vi.fn(), replace: vi.fn() }),
+  usePathname: () => '/chat',
 }));
 
 vi.mock('@/lib/api', () => ({
