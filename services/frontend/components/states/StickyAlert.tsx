@@ -89,25 +89,15 @@ export function StickyAlert({
         className
       )}
     >
-      <span
-        aria-hidden="true"
-        className={cn('h-2 w-2 shrink-0 rounded-full', t.dot)}
-      />
+      <span aria-hidden="true" className={cn('h-2 w-2 shrink-0 rounded-full', t.dot)} />
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium leading-snug">{title}</div>
         {description && (
-          <div className="mt-0.5 text-[13px] leading-snug opacity-85">
-            {description}
-          </div>
+          <div className="mt-0.5 text-[13px] leading-snug opacity-85">{description}</div>
         )}
       </div>
       {action && (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={action.onClick}
-          className="shrink-0"
-        >
+        <Button variant="primary" size="sm" onClick={action.onClick} className="shrink-0">
           {action.label}
         </Button>
       )}

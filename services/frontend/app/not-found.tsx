@@ -31,7 +31,8 @@ export default function NotFound() {
             Такого здесь нет
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-ink-mid">
-            Возможно, ссылка устарела или раздел был перемещён. Попробуйте начать заново — главная всегда на месте.
+            Возможно, ссылка устарела или раздел был перемещён. Попробуйте начать заново — главная
+            всегда на месте.
           </p>
         </div>
         <Button asChild variant="primary" size="md">

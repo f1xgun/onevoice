@@ -147,10 +147,7 @@ function RegisterEditorial() {
             body: 'Ничего не пропустите: AI готовит черновики, вы пьёте кофе и подтверждаете в один клик.',
           },
         ].map(({ title, body }) => (
-          <div
-            key={title}
-            className="rounded-lg border border-line bg-paper-raised p-4"
-          >
+          <div key={title} className="rounded-lg border border-line bg-paper-raised p-4">
             <div className="text-base font-medium leading-tight tracking-[-0.005em] text-ink">
               {title}
             </div>

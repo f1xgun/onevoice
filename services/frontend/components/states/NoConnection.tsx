@@ -76,7 +76,7 @@ export function NoConnection({
       role="alert"
       className={cn(
         'flex w-full items-center justify-center bg-paper',
-        fullscreen ? 'min-h-screen p-6' : 'py-16 px-6',
+        fullscreen ? 'min-h-screen p-6' : 'px-6 py-16',
         className
       )}
     >
@@ -92,7 +92,8 @@ export function NoConnection({
             Не получается дотянуться до OneVoice
           </h2>
           <p className="mt-1.5 text-sm leading-relaxed text-ink-mid">
-            Похоже, проблема на нашей стороне. Мы уже знаем — статус-страница обновляется в реальном времени.
+            Похоже, проблема на нашей стороне. Мы уже знаем — статус-страница обновляется в реальном
+            времени.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">

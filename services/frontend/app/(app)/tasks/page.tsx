@@ -103,8 +103,7 @@ function explainError(task: AgentTask): HumanError {
 
   if (/not.?found|404|канал.*не/.test(raw)) {
     return {
-      summary:
-        'Канал не найден. Проверьте, что он всё ещё подключён и доступен.',
+      summary: 'Канал не найден. Проверьте, что он всё ещё подключён и доступен.',
       cta: { label: 'Открыть каналы', href: '/integrations' },
     };
   }
@@ -117,8 +116,7 @@ function explainError(task: AgentTask): HumanError {
   }
 
   return {
-    summary:
-      'Что-то пошло не так. Мы попробуем ещё раз при следующей синхронизации.',
+    summary: 'Что-то пошло не так. Мы попробуем ещё раз при следующей синхронизации.',
     willAutoRetry: true,
   };
 }
@@ -169,7 +167,7 @@ export default function TasksPage() {
       />
 
       {/* BigStat tiles per v2 mock */}
-      <div className="grid grid-cols-1 gap-3 px-4 pb-6 sm:px-12 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 px-4 pb-6 sm:grid-cols-3 sm:px-12">
         <BigStat
           label="Сделано"
           value={doneToday}
@@ -229,7 +227,10 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
         {/* Status dot — vertically centered on the title line for mobile. */}
         <span
           aria-hidden
-          className={cn('mt-1.5 size-2 shrink-0 rounded-full sm:mt-0 sm:justify-self-center', statusDotClass[status])}
+          className={cn(
+            'mt-1.5 size-2 shrink-0 rounded-full sm:mt-0 sm:justify-self-center',
+            statusDotClass[status]
+          )}
         />
 
         {/* Title (+ optional one-line detail).
@@ -237,9 +238,11 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
             meta line so the row never exceeds the viewport width. */}
         <div className="min-w-0 flex-1">
           <div className={titleClass}>{task.displayName || task.type}</div>
-          {status === 'done' && typeof task.output === 'string' && task.output.trim().length > 0 && (
-            <div className="mt-0.5 truncate text-[13px] text-ink-mid">{task.output}</div>
-          )}
+          {status === 'done' &&
+            typeof task.output === 'string' &&
+            task.output.trim().length > 0 && (
+              <div className="mt-0.5 truncate text-[13px] text-ink-mid">{task.output}</div>
+            )}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-soft sm:hidden">
             <span className="inline-flex items-center gap-1.5">
               <ChannelMark name={platformName} size={16} />
@@ -318,11 +321,13 @@ function BigStat({
     warning: 'border-[oklch(0.85_0.10_75)] bg-warning-soft',
   }[tone];
   return (
-    <div className={cn('flex flex-col gap-2 rounded-md border px-4 py-4 sm:px-6 sm:py-5', toneClass)}>
+    <div
+      className={cn('flex flex-col gap-2 rounded-md border px-4 py-4 sm:px-6 sm:py-5', toneClass)}
+    >
       <MonoLabel tone={tone === 'accent' ? 'ochre' : tone === 'warning' ? 'mid' : 'soft'}>
         {label}
       </MonoLabel>
-      <span className="font-mono text-[32px] font-medium leading-none tracking-[-0.02em] tabular-nums text-ink">
+      <span className="font-mono text-[32px] font-medium tabular-nums leading-none tracking-[-0.02em] text-ink">
         {value}
       </span>
       <span className="text-[13px] leading-relaxed text-ink-mid">{hint}</span>

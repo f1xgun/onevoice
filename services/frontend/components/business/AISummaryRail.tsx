@@ -28,7 +28,9 @@ function buildSummary(business: Partial<Business> | undefined, tones: ToneId[]):
   const description = business.description?.trim();
 
   const parts: string[] = [];
-  parts.push(`OneVoice описывает вас как ${kind}${name ? ` «${name}»` : ''}${where ? ` — ${where}` : ''}.`);
+  parts.push(
+    `OneVoice описывает вас как ${kind}${name ? ` «${name}»` : ''}${where ? ` — ${where}` : ''}.`
+  );
   if (description) {
     const short = description.length > 120 ? `${description.slice(0, 117).trim()}…` : description;
     parts.push(short);

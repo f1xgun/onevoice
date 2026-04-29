@@ -33,11 +33,7 @@ export interface ChannelConnectProgressProps {
   className?: string;
 }
 
-export function ChannelConnectProgress({
-  title,
-  steps,
-  className,
-}: ChannelConnectProgressProps) {
+export function ChannelConnectProgress({ title, steps, className }: ChannelConnectProgressProps) {
   return (
     <div
       role="status"

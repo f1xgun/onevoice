@@ -22,14 +22,7 @@ export interface InlineEmptyProps {
 
 export function InlineEmpty({ children, className }: InlineEmptyProps) {
   return (
-    <div
-      className={cn(
-        'px-5 py-10 text-center text-sm text-ink-soft',
-        className
-      )}
-    >
-      {children}
-    </div>
+    <div className={cn('px-5 py-10 text-center text-sm text-ink-soft', className)}>{children}</div>
   );
 }
 
@@ -55,12 +48,7 @@ export function InlineEmptySection({
   className,
 }: InlineEmptySectionProps) {
   return (
-    <div
-      className={cn(
-        'overflow-hidden rounded-lg border border-line bg-paper-raised',
-        className
-      )}
-    >
+    <div className={cn('overflow-hidden rounded-lg border border-line bg-paper-raised', className)}>
       <div className="flex items-center justify-between border-b border-line-soft px-5 py-3.5">
         <span className="text-[15px] font-semibold text-ink">{title}</span>
         {action}

@@ -23,10 +23,7 @@ export function SkeletonInbox({ rows = 4, className }: SkeletonInboxProps) {
       aria-label="Загружаем список"
       aria-live="polite"
       aria-busy="true"
-      className={cn(
-        'overflow-hidden rounded-lg border border-line bg-paper-raised',
-        className
-      )}
+      className={cn('overflow-hidden rounded-lg border border-line bg-paper-raised', className)}
     >
       {Array.from({ length: rows }, (_, i) => (
         <div
@@ -40,10 +37,7 @@ export function SkeletonInbox({ rows = 4, className }: SkeletonInboxProps) {
           <div className="flex flex-col gap-2">
             {/* Width pseudo-randomised by index so the rows don't read
                 like a perfect rectangle. Static — no animation. */}
-            <Skeleton
-              className="h-[11px]"
-              style={{ width: `${30 + ((i * 7) % 25)}%` }}
-            />
+            <Skeleton className="h-[11px]" style={{ width: `${30 + ((i * 7) % 25)}%` }} />
             <Skeleton
               className="h-[9px] opacity-60"
               style={{ width: `${55 + ((i * 11) % 30)}%` }}

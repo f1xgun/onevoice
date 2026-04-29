@@ -40,11 +40,7 @@ CardTitle.displayName = 'CardTitle';
 
 const CardDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn('text-sm text-[var(--ov-ink-soft)]', className)}
-      {...props}
-    />
+    <div ref={ref} className={cn('text-sm text-[var(--ov-ink-soft)]', className)} {...props} />
   )
 );
 CardDescription.displayName = 'CardDescription';
@@ -61,7 +57,7 @@ const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
     <div
       ref={ref}
       className={cn(
-        'flex items-center p-5 pt-0 border-t border-[var(--ov-line-soft)] gap-2',
+        'flex items-center gap-2 border-t border-[var(--ov-line-soft)] p-5 pt-0',
         className
       )}
       {...props}

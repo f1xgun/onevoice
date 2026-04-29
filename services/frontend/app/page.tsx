@@ -86,7 +86,7 @@ export default function LandingPage() {
 
 function SiteNav() {
   return (
-    <header className="sticky top-0 z-10 border-b border-line-soft bg-paper/85 backdrop-blur">
+    <header className="bg-paper/85 sticky top-0 z-10 border-b border-line-soft backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-[1180px] items-center gap-8 px-6 sm:px-12">
         <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
           <span className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md bg-ink text-[11px] font-semibold text-paper">
@@ -96,20 +96,13 @@ function SiteNav() {
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-ink-mid md:flex">
           {NAV_LINKS.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className="transition-colors hover:text-ink"
-            >
+            <a key={l.href} href={l.href} className="transition-colors hover:text-ink">
               {l.label}
             </a>
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-3">
-          <Link
-            href="/login"
-            className="text-sm text-ink-mid transition-colors hover:text-ink"
-          >
+          <Link href="/login" className="text-sm text-ink-mid transition-colors hover:text-ink">
             Войти
           </Link>
           <Button asChild size="sm" variant="primary">
@@ -129,23 +122,18 @@ function Hero() {
       <div className="mx-auto grid w-full max-w-[1180px] items-center gap-16 px-6 py-20 sm:px-12 md:py-28 lg:grid-cols-[1.1fr_0.9fr]">
         <div>
           <MonoLabel>One Voice · v 0.9 · открытая бета</MonoLabel>
-          <h1
-            className="mt-5 text-[44px] font-medium leading-[1.04] tracking-[-0.025em] text-pretty sm:text-[56px] lg:text-[64px]"
-          >
-            Один разговор<br />
+          <h1 className="mt-5 text-pretty text-[44px] font-medium leading-[1.04] tracking-[-0.025em] sm:text-[56px] lg:text-[64px]">
+            Один разговор
+            <br />
             для всех каналов{' '}
-            <span
-              className="font-normal italic text-ochre-deep"
-              style={{ fontFamily: SERIF }}
-            >
+            <span className="font-normal italic text-ochre-deep" style={{ fontFamily: SERIF }}>
               OneVoice
             </span>
             .
           </h1>
           <p className="mt-6 max-w-[520px] text-[17px] leading-relaxed text-ink-mid sm:text-lg">
-            Telegram, ВКонтакте, Яндекс.Бизнес — в одном ящике. OneVoice пишет
-            черновики ответов, готовит посты для всех каналов и держит отзывы
-            на виду, пока вы заняты делом.
+            Telegram, ВКонтакте, Яндекс.Бизнес — в одном ящике. OneVoice пишет черновики ответов,
+            готовит посты для всех каналов и держит отзывы на виду, пока вы заняты делом.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg" variant="primary">
@@ -158,9 +146,7 @@ function Hero() {
               <a href="#features">Посмотреть, как работает</a>
             </Button>
           </div>
-          <p className="mt-6 text-[13px] text-ink-soft">
-            Без карты · бесплатно · до 3 каналов
-          </p>
+          <p className="mt-6 text-[13px] text-ink-soft">Без карты · бесплатно · до 3 каналов</p>
           {/* временно убрана упоминалка пробного периода — продукт бесплатный */}
         </div>
         <HeroPreview />
@@ -171,10 +157,7 @@ function Hero() {
 
 function HeroPreview() {
   return (
-    <div
-      aria-hidden
-      className="rounded-xl border border-line bg-paper-raised p-4 shadow-ov-3"
-    >
+    <div aria-hidden className="rounded-xl border border-line bg-paper-raised p-4 shadow-ov-3">
       {/* Window chrome */}
       <div className="flex items-center gap-2 px-1.5 pb-3 pt-1">
         <span className="size-[10px] rounded-full border border-line bg-paper-sunken" />
@@ -213,9 +196,7 @@ function HeroPreview() {
         {/* Tool-call composing line */}
         <div className="flex items-center gap-2.5 bg-paper-sunken px-4 py-3">
           <span className="size-2 rounded-full bg-ochre" />
-          <span className="text-[13px] text-ink">
-            OneVoice готовит черновик для Алёны
-          </span>
+          <span className="text-[13px] text-ink">OneVoice готовит черновик для Алёны</span>
           <MonoLabel className="ml-auto">~4 сек</MonoLabel>
         </div>
       </div>
@@ -264,19 +245,15 @@ function Belief() {
     <section className="border-b border-line-soft">
       <div className="mx-auto w-full max-w-[1180px] px-6 py-20 sm:px-12">
         <MonoLabel>Как мы это видим</MonoLabel>
-        <h2 className="mt-3 max-w-[880px] text-[28px] font-medium leading-[1.18] tracking-[-0.015em] text-pretty sm:text-[34px]">
+        <h2 className="mt-3 max-w-[880px] text-pretty text-[28px] font-medium leading-[1.18] tracking-[-0.015em] sm:text-[34px]">
           Малый бизнес проигрывает не потому, что плохо работает. А потому, что{' '}
-          <span
-            className="font-normal italic text-ochre-deep"
-            style={{ fontFamily: SERIF }}
-          >
+          <span className="font-normal italic text-ochre-deep" style={{ fontFamily: SERIF }}>
             не успевает отвечать.
           </span>
         </h2>
         <p className="mt-5 max-w-[720px] text-[17px] leading-relaxed text-ink-mid">
-          Кофейня, салон, мастерская — десять каналов и одна пара рук.
-          OneVoice не заменяет вас. Он отвечает первым, чтобы у вас осталось
-          время ответить лучше.
+          Кофейня, салон, мастерская — десять каналов и одна пара рук. OneVoice не заменяет вас. Он
+          отвечает первым, чтобы у вас осталось время ответить лучше.
         </p>
       </div>
     </section>
@@ -328,10 +305,7 @@ function Features() {
 
         <div className="mt-12 grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-x-16 lg:gap-y-14">
           {items.map((it) => (
-            <article
-              key={it.kicker}
-              className="flex flex-col gap-6 border-t border-line pt-8"
-            >
+            <article key={it.kicker} className="flex flex-col gap-6 border-t border-line pt-8">
               <div>
                 <MonoLabel tone="ochre">{it.kicker}</MonoLabel>
                 <h3 className="mt-2 text-[24px] font-medium leading-snug tracking-[-0.01em]">
@@ -391,7 +365,7 @@ function SampleDraft() {
         <div className="rounded-md bg-paper-sunken px-3.5 py-2.5 text-[13px]">
           Вы открыты в воскресенье?
         </div>
-        <div className="rounded-md border border-ochre-soft bg-ochre-soft/60 px-3.5 py-3 text-[13px] text-ink">
+        <div className="bg-ochre-soft/60 rounded-md border border-ochre-soft px-3.5 py-3 text-[13px] text-ink">
           Да, по воскресеньям мы работаем с 10:00 до 20:00 — будем рады вас видеть.
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" variant="primary">
@@ -465,10 +439,7 @@ function SampleReviews() {
   return (
     <div className={sampleBox} aria-hidden>
       {items.map((r, i) => (
-        <div
-          key={r.name}
-          className={`px-4 py-3 ${i > 0 ? 'border-t border-line-soft' : ''}`}
-        >
+        <div key={r.name} className={`px-4 py-3 ${i > 0 ? 'border-t border-line-soft' : ''}`}>
           <div className="mb-1.5 flex items-center gap-2">
             <span className="text-[13px] tracking-[1px] text-ochre">
               {'★'.repeat(r.stars)}
@@ -512,12 +483,8 @@ function HowItWorks() {
               >
                 {s.n}
               </span>
-              <h3 className="mt-3 text-[22px] font-medium tracking-[-0.005em]">
-                {s.t}
-              </h3>
-              <p className="mt-2.5 text-[15px] leading-relaxed text-ink-mid">
-                {s.d}
-              </p>
+              <h3 className="mt-3 text-[22px] font-medium tracking-[-0.005em]">{s.t}</h3>
+              <p className="mt-2.5 text-[15px] leading-relaxed text-ink-mid">{s.d}</p>
             </div>
           ))}
         </div>
@@ -537,8 +504,7 @@ function Platforms() {
           Поддерживаем то, чем пользуются ваши клиенты.
         </h2>
         <p className="mt-3 max-w-[640px] text-[16px] leading-relaxed text-ink-mid">
-          В России — без компромиссов. Подключаем настоящие каналы, а не их
-          западные аналоги.
+          В России — без компромиссов. Подключаем настоящие каналы, а не их западные аналоги.
         </p>
         <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           {PLATFORMS.map((p) => {
@@ -573,12 +539,12 @@ function Quote() {
       <div className="mx-auto w-full max-w-[880px] px-6 py-28 sm:px-12">
         <MonoLabel>Из писем</MonoLabel>
         <blockquote
-          className="mt-6 text-[26px] font-normal leading-snug tracking-[-0.015em] text-ink text-pretty sm:text-[32px]"
+          className="mt-6 text-pretty text-[26px] font-normal leading-snug tracking-[-0.015em] text-ink sm:text-[32px]"
           style={{ fontFamily: SERIF, fontStyle: 'italic' }}
         >
-          «Раньше я открывала пять вкладок, чтобы понять, где у меня сегодня
-          пожар. Теперь смотрю в один ящик — и вижу, что OneVoice уже ответил
-          на половину, а с другой половиной просит мою подпись.»
+          «Раньше я открывала пять вкладок, чтобы понять, где у меня сегодня пожар. Теперь смотрю в
+          один ящик — и вижу, что OneVoice уже ответил на половину, а с другой половиной просит мою
+          подпись.»
         </blockquote>
         <div className="mt-7 flex items-center gap-3">
           <ChannelMark name="You" size={36} />

@@ -104,7 +104,7 @@ export function ApprovalSwitch({
             onKeyDown={(e) => onKeyDown(idx, e)}
             className={cn(
               // Linen motion + focus: 120ms ease-out, focus-visible ochre ring (2px + 2px offset).
-              'relative rounded-sm px-3 py-1.5 text-xs font-medium transition-colors duration-[120ms] ease-out',
+              'duration-[120ms] relative rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ease-out',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
               selected
                 ? 'border border-line bg-paper text-ink shadow-ov-1'

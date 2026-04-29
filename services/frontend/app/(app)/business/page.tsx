@@ -77,7 +77,7 @@ export default function BusinessPage() {
       <>
         <PageHeader title="Профиль бизнеса" />
         <div className="px-4 pb-10 sm:px-12 sm:pb-16">
-          <div className="rounded-lg border border-[var(--ov-danger)]/40 bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
+          <div className="border-[var(--ov-danger)]/40 rounded-lg border bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
             Не получилось загрузить данные. Попробуйте обновить страницу.
           </div>
         </div>
@@ -108,7 +108,11 @@ export default function BusinessPage() {
       <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
         {/* Main column */}
         <div className="flex flex-col gap-6">
-          <Section caption="Основное" title="О бизнесе" sub="Имя, контакты и описание для ИИ-ассистента.">
+          <Section
+            caption="Основное"
+            title="О бизнесе"
+            sub="Имя, контакты и описание для ИИ-ассистента."
+          >
             <ProfileForm defaultValues={isCreateMode ? undefined : data} />
           </Section>
 

@@ -119,11 +119,7 @@ export function ToolsPageClient() {
         title="Что разрешено ИИ"
         sub="OneVoice выполняет одни действия сам, для других сначала спрашивает вас. Запрещённые инструменты включить отсюда нельзя."
         actions={
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={!dirty || updateMutation.isPending}
-          >
+          <Button type="button" onClick={handleSave} disabled={!dirty || updateMutation.isPending}>
             {updateMutation.isPending ? 'Сохраняем…' : 'Сохранить'}
           </Button>
         }
@@ -171,7 +167,9 @@ export function ToolsPageClient() {
                       <MonoLabel>Платформа</MonoLabel>
                       <h2 className="mt-1 text-base font-medium text-ink">{label}</h2>
                     </div>
-                    <MonoLabel>{toolsForPlatform.length} {pluralizeTools(toolsForPlatform.length)}</MonoLabel>
+                    <MonoLabel>
+                      {toolsForPlatform.length} {pluralizeTools(toolsForPlatform.length)}
+                    </MonoLabel>
                   </header>
                   <div className="flex flex-col gap-2 p-4">
                     {toolsForPlatform.map((tool) => (

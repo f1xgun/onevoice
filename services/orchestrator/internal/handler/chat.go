@@ -278,7 +278,7 @@ var toneIDToRu = map[string]string{
 }
 
 // Legacy Russian display labels that pre-migration records may still hold
-// in business.settings.voiceTone. Recognised so older businesses keep
+// in business.settings.voiceTone. Recognized so older businesses keep
 // influencing the prompt until the next save flushes the canonical id form.
 var toneLegacyRuToRu = map[string]string{
 	"тёплый":           "тёплый",

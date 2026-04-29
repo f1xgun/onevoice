@@ -83,10 +83,10 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
               aria-pressed={on}
               className={cn(
                 'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] transition-colors',
-                'focus:outline-none focus:ring-2 focus:ring-ochre/30',
+                'focus:ring-ochre/30 focus:outline-none focus:ring-2',
                 on
                   ? 'border-ochre bg-ochre-soft text-[var(--ov-accent-ink)]'
-                  : 'border-line bg-paper-raised text-ink-mid hover:border-ochre/40 hover:text-ink'
+                  : 'hover:border-ochre/40 border-line bg-paper-raised text-ink-mid hover:text-ink'
               )}
             >
               {on && <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-ochre" />}

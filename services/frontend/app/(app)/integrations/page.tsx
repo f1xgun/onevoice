@@ -245,9 +245,7 @@ export default function IntegrationsPage() {
           </div>
           <div className="flex shrink-0 gap-2">
             <Button variant="secondary" size="md" asChild>
-              <a href="mailto:hello@onevoice.app?subject=Запрос%20канала">
-                Запросить канал
-              </a>
+              <a href="mailto:hello@onevoice.app?subject=Запрос%20канала">Запросить канал</a>
             </Button>
           </div>
         </div>

@@ -21,13 +21,7 @@ describe('ToolNeedsHelpCard', () => {
   it('invokes onHelp when the primary button is clicked', async () => {
     const onHelp = vi.fn();
     const user = userEvent.setup();
-    render(
-      <ToolNeedsHelpCard
-        toolName="review.draft_reply"
-        message="Помощь"
-        onHelp={onHelp}
-      />
-    );
+    render(<ToolNeedsHelpCard toolName="review.draft_reply" message="Помощь" onHelp={onHelp} />);
     await user.click(screen.getByRole('button', { name: 'Помочь' }));
     expect(onHelp).toHaveBeenCalledTimes(1);
   });
@@ -36,15 +30,9 @@ describe('ToolNeedsHelpCard', () => {
     const onProvideContext = vi.fn();
     const user = userEvent.setup();
     const { rerender } = render(
-      <ToolNeedsHelpCard
-        toolName="review.draft_reply"
-        message="."
-        onHelp={() => undefined}
-      />
+      <ToolNeedsHelpCard toolName="review.draft_reply" message="." onHelp={() => undefined} />
     );
-    expect(
-      screen.queryByRole('button', { name: 'Дать контекст' })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Дать контекст' })).not.toBeInTheDocument();
 
     rerender(
       <ToolNeedsHelpCard

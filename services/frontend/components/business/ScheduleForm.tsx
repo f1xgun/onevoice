@@ -177,7 +177,7 @@ function TimeBox({
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2 focus:ring-ochre/20 disabled:cursor-not-allowed disabled:opacity-60"
+      className="focus:ring-ochre/20 h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
       style={{ minWidth: 78 }}
     />
   );
@@ -190,10 +190,7 @@ interface SpecialDatesFormProps {
   initialSpecialDates?: SpecialDate[];
 }
 
-export function SpecialDatesForm({
-  initialSchedule,
-  initialSpecialDates,
-}: SpecialDatesFormProps) {
+export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: SpecialDatesFormProps) {
   const { schedule, specialDates, setSpecialDates } = useSchedule(
     initialSchedule,
     initialSpecialDates
@@ -247,11 +244,7 @@ export function SpecialDatesForm({
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              mode="single"
-              onSelect={(date) => date && addSpecialDate(date)}
-              locale={ru}
-            />
+            <Calendar mode="single" onSelect={(date) => date && addSpecialDate(date)} locale={ru} />
           </PopoverContent>
         </Popover>
 
@@ -316,7 +309,7 @@ function SpecialDateRow({
             aria-label={`${formatted} — открытие`}
             value={date.open ?? '10:00'}
             onChange={(e) => onChange({ open: e.target.value })}
-            className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2 focus:ring-ochre/20"
+            className="focus:ring-ochre/20 h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2"
             style={{ minWidth: 78 }}
           />
           <span className="text-ink-soft">—</span>
@@ -325,7 +318,7 @@ function SpecialDateRow({
             aria-label={`${formatted} — закрытие`}
             value={date.close ?? '18:00'}
             onChange={(e) => onChange({ close: e.target.value })}
-            className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2 focus:ring-ochre/20"
+            className="focus:ring-ochre/20 h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2"
             style={{ minWidth: 78 }}
           />
         </div>

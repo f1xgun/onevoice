@@ -105,15 +105,13 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
                     onClick={onNavigate}
                     className={cn(
                       'relative flex h-10 w-10 items-center justify-center rounded-md transition-colors',
-                      isActive
-                        ? 'text-ink'
-                        : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
+                      isActive ? 'text-ink' : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                     )}
                   >
                     {isActive && (
                       <span
                         aria-hidden
-                        className="absolute -left-2 top-2 bottom-2 w-0.5 rounded-r bg-ochre"
+                        className="absolute -left-2 bottom-2 top-2 w-0.5 rounded-r bg-ochre"
                       />
                     )}
                     <Icon size={18} />

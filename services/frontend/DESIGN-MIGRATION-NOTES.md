@@ -68,12 +68,12 @@ fixed in a separate infra commit.
   labels and `bg-gray-900`. Design wants 64px icon-only rail with
   `--ov-paper-raised` background, active = ink icon + 2px ochre left bar,
   tooltips on hover. Nav order also changed: `Чат, Интеграции, Профиль
-  бизнеса, Отзывы, Посты, Задачи, Настройки`.
+бизнеса, Отзывы, Посты, Задачи, Настройки`.
 - **Button override (Phase 2)** — new `tokens/button.tsx` uses variants
   `primary` / `accent` / `secondary` / `ghost` / `outline` / `danger` / `link`,
   not the current `default` / `destructive` / `outline` / `secondary` /
   `ghost` / `link`. Either alias `default → primary` and `destructive →
-  danger` in the override or grep-and-replace call sites. **Decision pending.**
+danger` in the override or grep-and-replace call sites. **Decision pending.**
 - **Inbox / `/inbox` route** — README of v2 explicitly says do not build it.
   Drop it from any nav/menu drafts.
 - **Google + 2GIS** — render in "Скоро" / dashed-border section only, never

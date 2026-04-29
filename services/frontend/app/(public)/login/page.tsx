@@ -122,10 +122,7 @@ function LoginEditorial() {
           { k: 'Среднее время ответа', v: '11 мин', d: 'было 38 мин' },
           { k: 'Каналов в одном ящике', v: '5', d: 'TG, VK, Я.Бизнес' },
         ].map(({ k, v, d }) => (
-          <div
-            key={k}
-            className="rounded-lg border border-line bg-paper-raised p-4"
-          >
+          <div key={k} className="rounded-lg border border-line bg-paper-raised p-4">
             <MonoLabel>{k}</MonoLabel>
             <div className="mt-1 text-[28px] font-medium leading-tight tracking-[-0.02em] text-ink">
               {v}

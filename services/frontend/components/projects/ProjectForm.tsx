@@ -362,7 +362,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
               )}
             />
 
-            <p className="rounded-md border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+            <p className="bg-muted/30 rounded-md border px-4 py-3 text-xs text-muted-foreground">
               Системный промпт, доступные инструменты и быстрые действия можно настроить после
               создания проекта.
             </p>
@@ -385,7 +385,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
             <Button
               type="button"
               variant="outline"
-              className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+              className="hover:bg-destructive/10 ml-auto text-destructive hover:text-destructive"
               onClick={() => setDeleteOpen(true)}
               disabled={submitting || deleteMutation.isPending}
             >
