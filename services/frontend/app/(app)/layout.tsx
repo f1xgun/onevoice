@@ -99,7 +99,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           renders top bar + drawer with the full nav + project tree. */}
       <div className="md:hidden">
         <Sidebar />
-        <main className="overflow-y-auto bg-gray-50">{children}</main>
+        <main className="overflow-y-auto bg-background">{children}</main>
       </div>
 
       {/* Desktop: NavRail (always) + PanelGroup hosting conditional
@@ -132,12 +132,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <PanelResizeHandle
                 id="project-pane-handle"
                 aria-label="Изменить ширину боковой панели"
-                className="w-px bg-gray-700 transition-colors hover:bg-gray-500"
+                className="w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
               />
             </>
           )}
           <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
-            <main className="h-full overflow-y-auto bg-gray-50">{children}</main>
+            <main className="h-full overflow-y-auto bg-background">{children}</main>
           </Panel>
         </PanelGroup>
       </div>
