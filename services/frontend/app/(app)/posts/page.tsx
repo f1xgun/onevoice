@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptySearch, SkeletonMetricStrip } from '@/components/states';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Post } from '@/types/post';
 
@@ -120,37 +121,43 @@ export default function PostsPage() {
       />
 
       <div className="px-12 pb-16">
-        {/* Stat strip */}
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard
-            label="Опубликовано"
-            value={String(counts.published)}
-            hint="за всё время"
-          />
-          <StatCard
-            label="Запланировано"
-            value={String(counts.scheduled)}
-            hint={
-              counts.scheduled > 0
-                ? `ближайшая — ${nextScheduledLabel(posts)}`
-                : 'нет запланированных'
-            }
-          />
-          <StatCard
-            label="С ошибкой"
-            value={String(counts.error)}
-            hint={counts.error > 0 ? 'требуют внимания' : 'всё чисто'}
-            tone={counts.error > 0 ? 'danger' : 'neutral'}
-          />
-          <StatCard
-            label="Охват за 30 дней"
-            value="—"
-            hint="скоро"
-            tone="muted"
-            // TODO(api): backend doesn't return reach metrics yet. Render a
-            // placeholder so the strip stays visually balanced.
-          />
-        </section>
+        {/* Stat strip — Linen static skeleton while the first /posts payload
+            lands; the same 4-card geometry as the loaded state so the page
+            doesn't reflow. */}
+        {isLoading ? (
+          <SkeletonMetricStrip count={4} />
+        ) : (
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatCard
+              label="Опубликовано"
+              value={String(counts.published)}
+              hint="за всё время"
+            />
+            <StatCard
+              label="Запланировано"
+              value={String(counts.scheduled)}
+              hint={
+                counts.scheduled > 0
+                  ? `ближайшая — ${nextScheduledLabel(posts)}`
+                  : 'нет запланированных'
+              }
+            />
+            <StatCard
+              label="С ошибкой"
+              value={String(counts.error)}
+              hint={counts.error > 0 ? 'требуют внимания' : 'всё чисто'}
+              tone={counts.error > 0 ? 'danger' : 'neutral'}
+            />
+            <StatCard
+              label="Охват за 30 дней"
+              value="—"
+              hint="скоро"
+              tone="muted"
+              // TODO(api): backend doesn't return reach metrics yet. Render a
+              // placeholder so the strip stays visually balanced.
+            />
+          </section>
+        )}
 
         {/* Filter bar */}
         <div className="mt-6 flex flex-wrap items-center gap-3 rounded-md border border-line bg-paper-raised p-3">
@@ -202,7 +209,10 @@ export default function PostsPage() {
           {isLoading && <PostsSkeleton />}
 
           {!isLoading && visiblePosts.length === 0 && (
-            <EmptyState hasSearch={Boolean(search.trim())} />
+            <PostsEmpty
+              search={search}
+              onResetSearch={() => setSearch('')}
+            />
           )}
 
           {!isLoading &&
@@ -308,18 +318,31 @@ function PostsSkeleton() {
   );
 }
 
-function EmptyState({ hasSearch }: { hasSearch: boolean }) {
+function PostsEmpty({
+  search,
+  onResetSearch,
+}: {
+  search: string;
+  onResetSearch: () => void;
+}) {
+  // Two flavours: "no posts at all" vs "no match for current search".
+  // Search variant uses the shared EmptySearch component so the mono
+  // query rendering matches mock-states.jsx.
+  const hasSearch = search.trim().length > 0;
+  if (hasSearch) {
+    return (
+      <div className="px-5 py-6">
+        <EmptySearch query={search.trim()} onResetFilters={onResetSearch} />
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center px-6 py-16 text-center">
       <FileText aria-hidden className="mb-3 size-9 text-ink-faint" />
-      <p className="text-sm text-ink-mid">
-        {hasSearch ? 'Ничего не нашли по этому запросу' : 'Постов пока нет'}
+      <p className="text-sm text-ink-mid">Постов пока нет</p>
+      <p className="mt-1 max-w-xs text-xs text-ink-soft">
+        Создайте первый пост — OneVoice опубликует его на всех подключённых каналах.
       </p>
-      {!hasSearch && (
-        <p className="mt-1 max-w-xs text-xs text-ink-soft">
-          Создайте первый пост — OneVoice опубликует его на всех подключённых каналах.
-        </p>
-      )}
     </div>
   );
 }

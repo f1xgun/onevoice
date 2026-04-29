@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ConversationItem, type Conversation } from '@/components/chat/ConversationItem';
+import { SkeletonInbox } from '@/components/states';
 
 export default function ChatListPage() {
   const router = useRouter();
@@ -81,11 +82,8 @@ export default function ChatListPage() {
       </div>
 
       {isLoading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 animate-pulse rounded-lg bg-gray-100" />
-          ))}
-        </div>
+        // Static inbox-style skeleton per Linen loading rule (no shimmer).
+        <SkeletonInbox rows={3} />
       ) : conversations.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
           <MessageCircle size={48} className="mb-4 opacity-40" />
