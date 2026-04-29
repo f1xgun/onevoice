@@ -179,16 +179,24 @@ func (r *conversationRepository) UpdateTitleIfPending(ctx context.Context, id, t
 
 // TransitionToAutoPending — Phase 18 / TITLE-09 / D-07.
 //
-// Atomically flips title_status auto→auto_pending (or null→auto_pending).
-// Used by POST /regenerate-title (Plan 05). Filter-fails when status is
-// "manual" (sovereign per D-02) or already "auto_pending" (in-flight per
-// D-03) — the caller maps each disposition to its 409 body via a prior
-// GetByID read.
+// Atomically flips title_status to auto_pending and bumps updated_at.
+// Used by POST /regenerate-title (Plan 05). Filter excludes "manual"
+// (sovereign per D-02). The caller (handler.RegenerateTitle) is the
+// authority on whether re-pending is allowed — it gates double-clicks
+// via a 30s grace window on UpdatedAt and only invokes this method when
+// the click is either (a) auto/null → first generation or (b) stuck
+// auto_pending older than the grace window. Including auto_pending in
+// the filter makes that recovery path a deterministic no-op-then-bump
+// rather than a confusing ErrConversationNotFound-flavoured 409.
 func (r *conversationRepository) TransitionToAutoPending(ctx context.Context, id string) error {
 	filter := bson.M{
 		"_id": id,
 		"title_status": bson.M{
-			"$in": []interface{}{domain.TitleStatusAuto, nil},
+			"$in": []interface{}{
+				domain.TitleStatusAuto,
+				domain.TitleStatusAutoPending,
+				nil,
+			},
 		},
 	}
 	update := bson.M{

@@ -511,7 +511,12 @@ func TestTransitionToAutoPending(t *testing.T) {
 		{"success: status=auto", domain.TitleStatusAuto, true, domain.TitleStatusAutoPending},
 		{"success: status=null/empty (legacy row)", "", true, domain.TitleStatusAutoPending},
 		{"no-op: status=manual (sovereign per D-02)", domain.TitleStatusManual, false, domain.TitleStatusManual},
-		{"no-op: status=auto_pending (in-flight per D-03)", domain.TitleStatusAutoPending, false, domain.TitleStatusAutoPending},
+		// auto_pending is now ALSO accepted (idempotent re-pending). The
+		// handler enforces double-click protection via a 30s grace window
+		// on UpdatedAt; the repo accepts the transition deterministically
+		// so stuck-pending recovery (handler.RegenerateTitle) can bump
+		// updated_at without an ErrConversationNotFound dance.
+		{"success: status=auto_pending (idempotent re-pending)", domain.TitleStatusAutoPending, true, domain.TitleStatusAutoPending},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
