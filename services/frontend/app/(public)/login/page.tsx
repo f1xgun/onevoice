@@ -38,7 +38,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center bg-background">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-center text-2xl">Войти в OneVoice</CardTitle>
@@ -48,19 +48,26 @@ export default function LoginPage() {
             <div className="space-y-1">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" {...register('email')} />
-              {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
+              {errors.email && (
+                <p className="text-sm text-[var(--ov-danger)]">{errors.email.message}</p>
+              )}
             </div>
             <div className="space-y-1">
               <Label htmlFor="password">Пароль</Label>
               <Input id="password" type="password" {...register('password')} />
-              {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
+              {errors.password && (
+                <p className="text-sm text-[var(--ov-danger)]">{errors.password.message}</p>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? 'Вход...' : 'Войти'}
             </Button>
-            <p className="text-center text-sm text-gray-500">
+            <p className="text-center text-sm text-muted-foreground">
               Нет аккаунта?{' '}
-              <Link href="/register" className="text-blue-600 hover:underline">
+              <Link
+                href="/register"
+                className="text-[var(--ov-accent)] hover:text-[var(--ov-accent-deep)] hover:underline"
+              >
                 Зарегистрироваться
               </Link>
             </p>

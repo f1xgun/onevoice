@@ -20,7 +20,25 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      <Toaster richColors position="top-right" />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          // Linen-toned toasts. richColors is too loud for the design;
+          // we lean on tokens so the toast sits on top of paper instead
+          // of saturated green/red surfaces.
+          classNames: {
+            toast:
+              'border border-[var(--ov-line)] bg-[var(--ov-paper-raised)] text-[var(--ov-ink)] shadow-[var(--ov-shadow-2)]',
+            description: 'text-[var(--ov-ink-mid)]',
+            actionButton: 'bg-[var(--ov-ink)] text-[var(--ov-paper)]',
+            cancelButton: 'bg-[var(--ov-paper-sunken)] text-[var(--ov-ink-mid)]',
+            success: 'border-[oklch(0.85_0.06_145)]',
+            error: 'border-[oklch(0.85_0.08_25)] text-[var(--ov-danger)]',
+            warning: 'border-[oklch(0.85_0.10_75)] text-[var(--ov-warning-ink)]',
+            info: 'border-[oklch(0.85_0.05_230)]',
+          },
+        }}
+      />
     </QueryClientProvider>
   );
 }

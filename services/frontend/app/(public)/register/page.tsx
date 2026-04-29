@@ -47,7 +47,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center bg-background">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-center text-2xl">Создать аккаунт</CardTitle>
@@ -57,31 +57,42 @@ export default function RegisterPage() {
             <div className="space-y-1">
               <Label htmlFor="name">Имя</Label>
               <Input id="name" {...register('name')} />
-              {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
+              {errors.name && (
+                <p className="text-sm text-[var(--ov-danger)]">{errors.name.message}</p>
+              )}
             </div>
             <div className="space-y-1">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" {...register('email')} />
-              {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
+              {errors.email && (
+                <p className="text-sm text-[var(--ov-danger)]">{errors.email.message}</p>
+              )}
             </div>
             <div className="space-y-1">
               <Label htmlFor="password">Пароль</Label>
               <Input id="password" type="password" {...register('password')} />
-              {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
+              {errors.password && (
+                <p className="text-sm text-[var(--ov-danger)]">{errors.password.message}</p>
+              )}
             </div>
             <div className="space-y-1">
               <Label htmlFor="confirmPassword">Повторите пароль</Label>
               <Input id="confirmPassword" type="password" {...register('confirmPassword')} />
               {errors.confirmPassword && (
-                <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>
+                <p className="text-sm text-[var(--ov-danger)]">
+                  {errors.confirmPassword.message}
+                </p>
               )}
             </div>
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? 'Регистрация...' : 'Зарегистрироваться'}
             </Button>
-            <p className="text-center text-sm text-gray-500">
+            <p className="text-center text-sm text-muted-foreground">
               Уже есть аккаунт?{' '}
-              <Link href="/login" className="text-blue-600 hover:underline">
+              <Link
+                href="/login"
+                className="text-[var(--ov-accent)] hover:text-[var(--ov-accent-deep)] hover:underline"
+              >
                 Войти
               </Link>
             </p>
