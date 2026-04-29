@@ -26,7 +26,6 @@ import { Fragment, useCallback, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { ListChecks } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useTasksStream } from '@/hooks/useTasksStream';
@@ -37,6 +36,7 @@ import { ChannelMark } from '@/components/ui/channel-mark';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyTasks } from '@/components/states';
 import { cn } from '@/lib/utils';
 
 // ─── Status / platform vocabulary ───────────────────────────────────
@@ -553,14 +553,9 @@ function extractChannelId(task: AgentTask): string | null {
 // ─── Empty / loading states ─────────────────────────────────────────
 
 function EmptyState() {
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-md border border-line bg-paper-raised py-16 text-center shadow-ov-1">
-      <ListChecks className="h-10 w-10 text-ink-faint" aria-hidden />
-      <p className="text-sm text-ink-mid">
-        Пока ничего. Задачи появятся здесь, как только OneVoice начнёт работу.
-      </p>
-    </div>
-  );
+  // Linen empty-state per mock-states.jsx "Все задачи закрыты": single
+  // factual sentence, no celebration. EmptyTasks owns the copy + frame.
+  return <EmptyTasks />;
 }
 
 function TaskListSkeleton() {

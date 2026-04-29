@@ -9,6 +9,7 @@ import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
+import { EmptyChannels, SkeletonChannels } from '@/components/states';
 import { PlatformCard } from '@/components/integrations/PlatformCard';
 import { TelegramConnectModal } from '@/components/integrations/TelegramConnectModal';
 import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
@@ -94,7 +95,7 @@ export default function IntegrationsPage() {
     }
   }, [searchParams, qc]);
 
-  const { data: integrations = [] } = useQuery<Integration[]>({
+  const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
     queryKey: ['integrations'],
     queryFn: () =>
       api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
@@ -192,7 +193,26 @@ export default function IntegrationsPage() {
         )}
 
         <SectionLabel>Подключённые</SectionLabel>
-        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+        {integrationsLoading ? (
+          // Static paper-sunken skeletons per Linen loading rule (no shimmer).
+          <SkeletonChannels count={3} />
+        ) : integrations.length === 0 ? (
+          // First-run state per mock-states.jsx "Каналы не подключены" — single
+          // ochre-emphasis CTA scrolls to the platform list below so the user
+          // can pick where to start.
+          <EmptyChannels
+            onConnect={() => {
+              const target = document.getElementById('integrations-platform-grid');
+              if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+          />
+        ) : null}
+        <div
+          id="integrations-platform-grid"
+          className="grid grid-cols-1 items-start gap-4 md:grid-cols-2"
+        >
           {PLATFORMS.map((p) => {
             const platformIntegrations = getIntegrationsForPlatform(p.id);
             return (

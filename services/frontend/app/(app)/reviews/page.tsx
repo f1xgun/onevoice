@@ -16,6 +16,7 @@ import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -402,29 +403,7 @@ function ReviewCard({
 function ReviewsEmptyState({ replyStatus }: { replyStatus: string }) {
   // Tailor the copy to the active filter so the page doesn't claim
   // there are zero reviews when really we're just filtered to "pending".
-  const isFilteredToPending = replyStatus === 'pending';
-  const isFilteredToReplied = replyStatus === 'replied';
-
-  let title = 'Здесь пока тихо';
-  let body = 'Новые отзывы появятся, когда клиенты их оставят.';
-  if (isFilteredToPending) {
-    title = 'Открытых отзывов нет';
-    body = 'Все обращения обработаны. OneVoice сообщит, как только придёт новый.';
-  } else if (isFilteredToReplied) {
-    title = 'Пока нечего показать';
-    body = 'Отвеченных отзывов в выборке нет. Снимите фильтр, чтобы увидеть остальные.';
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-line bg-paper-raised px-8 py-14 text-center">
-      <span
-        aria-hidden
-        className="size-12 rounded-full border border-line bg-paper-sunken"
-      />
-      <div className="max-w-[380px]">
-        <h3 className="text-[19px] font-medium tracking-[-0.005em] text-ink">{title}</h3>
-        <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{body}</p>
-      </div>
-    </div>
-  );
+  const mode: ReviewsEmptyMode =
+    replyStatus === 'pending' ? 'pending' : replyStatus === 'replied' ? 'replied' : 'all';
+  return <EmptyReviews mode={mode} />;
 }

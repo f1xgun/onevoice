@@ -12,6 +12,7 @@ import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SkeletonChat } from '@/components/states';
 import { useChat } from '@/hooks/useChat';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
@@ -124,9 +125,10 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       {/* Messages — paper-well backdrop matches mock-ai-chat.jsx (line 146). */}
       <div className="flex-1 overflow-y-auto bg-paper-well px-6 py-6">
         {isLoading ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-ochre" />
-          </div>
+          // Static AI conversation skeleton per mock-states.jsx loading
+          // section — no spinner, paper-sunken bubble shapes that mirror
+          // the real message layout.
+          <SkeletonChat className="bg-transparent p-0" />
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">
             <ProjectPickerChip

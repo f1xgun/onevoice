@@ -192,8 +192,19 @@ export function SidebarSearch() {
             </label>
           )}
           {results.length === 0 && !isFetching && (
-            <div className="px-2 py-2 text-sm text-ink-faint">
-              Ничего не найдено по «{debounced}»
+            // Compact inline empty — visual retuned to match mock-states.jsx
+            // "Поиск не нашёл совпадений" (lines 126–135): ink-mid lead +
+            // ink-soft hint. Phrasing preserved verbatim
+            // ("Ничего не найдено по «{query}»") because it's covered by
+            // SidebarSearch test contract; we keep the literal as one text
+            // node so RTL `getByText` regex matching keeps working.
+            <div className="px-3 py-3">
+              <div className="text-[13px] leading-relaxed text-ink-mid">
+                {`Ничего не найдено по «${debounced}»`}
+              </div>
+              <div className="mt-1 text-[12px] text-ink-soft">
+                Попробуйте короче или поменяйте период.
+              </div>
             </div>
           )}
           {results.map((r) => (
