@@ -1,53 +1,38 @@
 'use client';
 
+// Linen rebuild — Phase 4.8.
+// Splits the previous single block into two API-aware sections:
+//   <HoursForm />          — weekly hours (Часы работы)
+//   <SpecialDatesForm />   — date overrides (Особые даты)
+// Both share the same PUT /business/schedule mutation: backend stores the
+// `{schedule, specialDates}` payload under business.settings.schedule, so
+// each section sends its slice alongside the other section's current value
+// to avoid clobbering. Parent owns the source of truth.
+
 import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { CalendarIcon, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Separator } from '@/components/ui/separator';
-import { toast } from 'sonner';
-import { api } from '@/lib/api';
+import { MonoLabel } from '@/components/ui/mono-label';
+import { Badge } from '@/components/ui/badge';
 import type { ScheduleDay, SpecialDate } from '@/types/business';
 
-const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
-const MINUTES = ['00', '15', '30', '45'];
-
-function TimeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [hh, mm] = value.split(':');
-  return (
-    <div className="flex items-center rounded-md border border-input bg-background text-sm">
-      <select
-        value={hh}
-        onChange={(e) => onChange(`${e.target.value}:${mm}`)}
-        className="cursor-pointer appearance-none bg-transparent px-2 py-1.5 outline-none"
-      >
-        {HOURS.map((h) => (
-          <option key={h} value={h}>
-            {h}
-          </option>
-        ))}
-      </select>
-      <span className="select-none text-muted-foreground">:</span>
-      <select
-        value={mm}
-        onChange={(e) => onChange(`${hh}:${e.target.value}`)}
-        className="cursor-pointer appearance-none bg-transparent px-2 py-1.5 outline-none"
-      >
-        {MINUTES.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
+const DEFAULT_SCHEDULE: ScheduleDay[] = [
+  { day: 'mon', open: '09:00', close: '21:00', closed: false },
+  { day: 'tue', open: '09:00', close: '21:00', closed: false },
+  { day: 'wed', open: '09:00', close: '21:00', closed: false },
+  { day: 'thu', open: '09:00', close: '21:00', closed: false },
+  { day: 'fri', open: '09:00', close: '21:00', closed: false },
+  { day: 'sat', open: '10:00', close: '21:00', closed: false },
+  { day: 'sun', open: '10:00', close: '20:00', closed: true },
+];
 
 const DAY_LABELS: Record<ScheduleDay['day'], string> = {
   mon: 'Понедельник',
@@ -59,53 +44,162 @@ const DAY_LABELS: Record<ScheduleDay['day'], string> = {
   sun: 'Воскресенье',
 };
 
-const DEFAULT_SCHEDULE: ScheduleDay[] = [
-  { day: 'mon', open: '09:00', close: '21:00', closed: false },
-  { day: 'tue', open: '09:00', close: '21:00', closed: false },
-  { day: 'wed', open: '09:00', close: '21:00', closed: false },
-  { day: 'thu', open: '09:00', close: '21:00', closed: false },
-  { day: 'fri', open: '09:00', close: '21:00', closed: false },
-  { day: 'sat', open: '09:00', close: '21:00', closed: false },
-  { day: 'sun', open: '09:00', close: '21:00', closed: true },
-];
+interface SchedulePayload {
+  schedule: ScheduleDay[];
+  specialDates: SpecialDate[];
+}
 
-interface ScheduleFormProps {
+function useSchedule(initialSchedule?: ScheduleDay[], initialSpecialDates?: SpecialDate[]) {
+  const [schedule, setSchedule] = useState<ScheduleDay[]>(initialSchedule ?? DEFAULT_SCHEDULE);
+  const [specialDates, setSpecialDates] = useState<SpecialDate[]>(initialSpecialDates ?? []);
+  const initialized = useRef(false);
+  useEffect(() => {
+    if (initialized.current) return;
+    if (initialSchedule && initialSchedule.length > 0) setSchedule(initialSchedule);
+    if (initialSpecialDates) setSpecialDates(initialSpecialDates);
+    if (initialSchedule || initialSpecialDates) initialized.current = true;
+  }, [initialSchedule, initialSpecialDates]);
+  return { schedule, setSchedule, specialDates, setSpecialDates };
+}
+
+function useScheduleMutation(label: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: SchedulePayload) => api.put('/business/schedule', data),
+    onSuccess: () => {
+      toast.success(`${label} сохранены`);
+      queryClient.invalidateQueries({ queryKey: ['business'] });
+    },
+    onError: () => toast.error('Не получилось сохранить'),
+  });
+}
+
+// ─── Hours ────────────────────────────────────────────────────────────────
+
+interface HoursFormProps {
   initialSchedule?: ScheduleDay[];
   initialSpecialDates?: SpecialDate[];
 }
 
-export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleFormProps) {
-  const [schedule, setSchedule] = useState<ScheduleDay[]>(DEFAULT_SCHEDULE);
-  const [specialDates, setSpecialDates] = useState<SpecialDate[]>([]);
-  const [calendarOpen, setCalendarOpen] = useState(false);
-  const initialized = useRef(false);
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    if (initialSchedule && initialSchedule.length > 0 && !initialized.current) {
-      setSchedule(initialSchedule);
-      initialized.current = true;
-    }
-    if (initialSpecialDates && !initialized.current) {
-      setSpecialDates(initialSpecialDates);
-    }
-  }, [initialSchedule, initialSpecialDates]);
-
-  const mutation = useMutation({
-    mutationFn: (data: { schedule: ScheduleDay[]; specialDates: SpecialDate[] }) =>
-      api.put('/business/schedule', data),
-    onSuccess: () => {
-      toast.success('Расписание сохранено');
-      queryClient.invalidateQueries({ queryKey: ['business'] });
-    },
-    onError: () => {
-      toast.error('Ошибка сохранения');
-    },
-  });
+export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormProps) {
+  const { schedule, setSchedule, specialDates } = useSchedule(initialSchedule, initialSpecialDates);
+  const mutation = useScheduleMutation('Часы работы');
 
   function updateDay(index: number, updates: Partial<ScheduleDay>) {
     setSchedule((prev) => prev.map((d, i) => (i === index ? { ...d, ...updates } : d)));
   }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
+        {schedule.map((day, index) => (
+          <DayRow
+            key={day.day}
+            label={DAY_LABELS[day.day]}
+            day={day}
+            onChange={(updates) => updateDay(index, updates)}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-end pt-1">
+        <Button
+          type="button"
+          variant="primary"
+          size="md"
+          onClick={() => mutation.mutate({ schedule, specialDates })}
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? 'Сохраняем…' : 'Сохранить часы'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DayRow({
+  label,
+  day,
+  onChange,
+}: {
+  label: string;
+  day: ScheduleDay;
+  onChange: (updates: Partial<ScheduleDay>) => void;
+}) {
+  const open = !day.closed;
+  return (
+    <div className="grid grid-cols-[120px_1fr] items-center gap-4 rounded-md border border-line-soft bg-paper px-4 py-2.5 sm:grid-cols-[120px_140px_1fr]">
+      <span className="text-sm font-medium text-ink">{label}</span>
+      <div className="flex items-center gap-2">
+        <Switch
+          checked={open}
+          onCheckedChange={(checked) => onChange({ closed: !checked })}
+          aria-label={`${label} — открыто`}
+        />
+        <span className="text-xs text-ink-mid">{open ? 'открыто' : 'закрыто'}</span>
+      </div>
+      <div
+        className={`flex items-center gap-2 transition-opacity ${open ? 'opacity-100' : 'opacity-40'}`}
+        aria-hidden={!open}
+      >
+        <TimeBox
+          value={day.open}
+          onChange={(v) => onChange({ open: v })}
+          disabled={!open}
+          ariaLabel={`${label} — открытие`}
+        />
+        <span className="text-ink-soft">—</span>
+        <TimeBox
+          value={day.close}
+          onChange={(v) => onChange({ close: v })}
+          disabled={!open}
+          ariaLabel={`${label} — закрытие`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TimeBox({
+  value,
+  onChange,
+  disabled,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  ariaLabel?: string;
+}) {
+  return (
+    <input
+      type="time"
+      aria-label={ariaLabel}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2 focus:ring-ochre/20 disabled:cursor-not-allowed disabled:opacity-60"
+      style={{ minWidth: 78 }}
+    />
+  );
+}
+
+// ─── Special dates ────────────────────────────────────────────────────────
+
+interface SpecialDatesFormProps {
+  initialSchedule?: ScheduleDay[];
+  initialSpecialDates?: SpecialDate[];
+}
+
+export function SpecialDatesForm({
+  initialSchedule,
+  initialSpecialDates,
+}: SpecialDatesFormProps) {
+  const { schedule, specialDates, setSpecialDates } = useSchedule(
+    initialSchedule,
+    initialSpecialDates
+  );
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const mutation = useScheduleMutation('Особые даты');
 
   function addSpecialDate(date: Date) {
     const iso = format(date, 'yyyy-MM-dd');
@@ -122,126 +216,147 @@ export function ScheduleForm({ initialSchedule, initialSpecialDates }: ScheduleF
     setSpecialDates((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function handleSave() {
-    mutation.mutate({ schedule, specialDates });
-  }
-
   return (
-    <div className="space-y-6">
-      {/* Weekly schedule */}
-      <div className="space-y-3">
-        {schedule.map((day, index) => (
-          <div
-            key={day.day}
-            className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border p-3"
-          >
-            <span className="w-28 text-sm font-medium">{DAY_LABELS[day.day]}</span>
+    <div className="flex flex-col gap-4">
+      {specialDates.length === 0 && (
+        <p className="text-sm text-ink-soft">
+          Пока ничего не отмечено. Добавьте даты, которые ИИ должен учесть — праздники, ремонты,
+          корпоративы.
+        </p>
+      )}
 
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={!day.closed}
-                onCheckedChange={(checked) => updateDay(index, { closed: !checked })}
-              />
-              <Label className="text-sm text-muted-foreground">
-                {day.closed ? 'Выходной' : 'Открыто'}
-              </Label>
-            </div>
-
-            {!day.closed && (
-              <div className="ml-auto flex w-full items-center gap-2 sm:ml-0 sm:w-auto">
-                <TimeSelect value={day.open} onChange={(v) => updateDay(index, { open: v })} />
-                <span className="text-muted-foreground">&mdash;</span>
-                <TimeSelect value={day.close} onChange={(v) => updateDay(index, { close: v })} />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <Separator />
-
-      {/* Special dates */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium">Особые даты</h3>
-            <p className="text-xs text-muted-foreground">Праздники и особый режим работы</p>
-          </div>
-          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm">
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                Добавить дату
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="single"
-                onSelect={(date) => date && addSpecialDate(date)}
-                locale={ru}
-              />
-            </PopoverContent>
-          </Popover>
+      {specialDates.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {specialDates.map((sd, index) => (
+            <SpecialDateRow
+              key={sd.date}
+              date={sd}
+              onChange={(updates) => updateSpecialDate(index, updates)}
+              onRemove={() => removeSpecialDate(index)}
+            />
+          ))}
         </div>
+      )}
 
-        {specialDates.length === 0 && (
-          <p className="text-sm text-muted-foreground">Нет особых дат</p>
-        )}
-
-        {specialDates.map((sd, index) => (
-          <div
-            key={sd.date}
-            className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border p-3"
-          >
-            <span className="w-28 text-sm font-medium">
-              {format(parseISO(sd.date), 'd MMMM', { locale: ru })}
-            </span>
-
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={!sd.closed}
-                onCheckedChange={(checked) =>
-                  updateSpecialDate(index, {
-                    closed: !checked,
-                    open: checked ? '10:00' : undefined,
-                    close: checked ? '18:00' : undefined,
-                  })
-                }
-              />
-              <Label className="text-sm text-muted-foreground">
-                {sd.closed ? 'Выходной' : 'Особый режим'}
-              </Label>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ml-auto h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={() => removeSpecialDate(index)}
-            >
-              <X className="h-4 w-4" />
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="secondary" size="sm">
+              <CalendarIcon className="mr-1.5 h-4 w-4" aria-hidden />
+              Добавить дату
             </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              onSelect={(date) => date && addSpecialDate(date)}
+              locale={ru}
+            />
+          </PopoverContent>
+        </Popover>
 
-            {!sd.closed && (
-              <div className="flex w-full items-center gap-2 sm:w-auto">
-                <TimeSelect
-                  value={sd.open || '00:00'}
-                  onChange={(v) => updateSpecialDate(index, { open: v })}
-                />
-                <span className="text-muted-foreground">&mdash;</span>
-                <TimeSelect
-                  value={sd.close || '00:00'}
-                  onChange={(v) => updateSpecialDate(index, { close: v })}
-                />
-              </div>
-            )}
-          </div>
-        ))}
+        <Button
+          type="button"
+          variant="primary"
+          size="md"
+          onClick={() => mutation.mutate({ schedule, specialDates })}
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? 'Сохраняем…' : 'Сохранить даты'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SpecialDateRow({
+  date,
+  onChange,
+  onRemove,
+}: {
+  date: SpecialDate;
+  onChange: (updates: Partial<SpecialDate>) => void;
+  onRemove: () => void;
+}) {
+  const closed = date.closed;
+  const formatted = format(parseISO(date.date), 'd MMMM · yyyy', { locale: ru });
+  return (
+    <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-line-soft bg-paper px-4 py-3 sm:grid-cols-[180px_1fr_auto_auto]">
+      <MonoLabel tone="ink" className="text-[13px] normal-case tracking-normal">
+        {formatted}
+      </MonoLabel>
+
+      <div className="flex items-center gap-3">
+        {closed ? (
+          <Badge tone="warning" dot>
+            Закрыто
+          </Badge>
+        ) : (
+          <Badge tone="info" dot>
+            Особый режим
+          </Badge>
+        )}
+        <Switch
+          checked={!closed}
+          onCheckedChange={(checked) =>
+            onChange({
+              closed: !checked,
+              open: checked ? (date.open ?? '10:00') : undefined,
+              close: checked ? (date.close ?? '18:00') : undefined,
+            })
+          }
+          aria-label={`${formatted} — открыто`}
+        />
       </div>
 
-      <Button onClick={handleSave} disabled={mutation.isPending}>
-        {mutation.isPending ? 'Сохранение...' : 'Сохранить расписание'}
+      {!closed ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="time"
+            aria-label={`${formatted} — открытие`}
+            value={date.open ?? '10:00'}
+            onChange={(e) => onChange({ open: e.target.value })}
+            className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2 focus:ring-ochre/20"
+            style={{ minWidth: 78 }}
+          />
+          <span className="text-ink-soft">—</span>
+          <input
+            type="time"
+            aria-label={`${formatted} — закрытие`}
+            value={date.close ?? '18:00'}
+            onChange={(e) => onChange({ close: e.target.value })}
+            className="h-8 rounded-sm border border-line bg-paper-raised px-2 text-center font-mono text-[13px] text-ink focus:border-ochre focus:outline-none focus:ring-2 focus:ring-ochre/20"
+            style={{ minWidth: 78 }}
+          />
+        </div>
+      ) : (
+        <span className="font-mono text-[13px] text-ink-soft">—</span>
+      )}
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={onRemove}
+        aria-label={`Удалить ${formatted}`}
+      >
+        <X className="h-4 w-4" aria-hidden />
       </Button>
+    </div>
+  );
+}
+
+// Backwards-compat shim: the old `<ScheduleForm />` rendered both blocks.
+// Kept as a thin wrapper so any straggler import still resolves; the new
+// page composes `<HoursForm />` and `<SpecialDatesForm />` directly.
+export function ScheduleForm({ initialSchedule, initialSpecialDates }: HoursFormProps) {
+  return (
+    <div className="flex flex-col gap-8">
+      <HoursForm initialSchedule={initialSchedule} initialSpecialDates={initialSpecialDates} />
+      <SpecialDatesForm
+        initialSchedule={initialSchedule}
+        initialSpecialDates={initialSpecialDates}
+      />
     </div>
   );
 }
