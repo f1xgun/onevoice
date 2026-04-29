@@ -96,10 +96,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <>
       {/* Mobile: keep the existing Sheet-based drawer (Sidebar) which
-          renders top bar + drawer with the full nav + project tree. */}
-      <div className="md:hidden">
+          renders top bar + drawer with the full nav + project tree.
+          The flex-column + h-screen pair gives <main> a real height so
+          h-full layouts inside (chat composer at the bottom, etc.)
+          actually work — without it h-full collapses to 0 and the
+          composer drifts to wherever content ends. */}
+      <div className="flex h-screen flex-col md:hidden">
         <Sidebar />
-        <main className="overflow-y-auto bg-background">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto bg-background">{children}</main>
       </div>
 
       {/* Desktop: NavRail (always) + PanelGroup hosting conditional

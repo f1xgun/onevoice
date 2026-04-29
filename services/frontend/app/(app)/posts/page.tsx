@@ -120,7 +120,7 @@ export default function PostsPage() {
         }
       />
 
-      <div className="px-12 pb-16">
+      <div className="px-4 pb-16 sm:px-12">
         {/* Stat strip — Linen static skeleton while the first /posts payload
             lands; the same 4-card geometry as the loaded state so the page
             doesn't reflow. */}
@@ -159,10 +159,10 @@ export default function PostsPage() {
           </section>
         )}
 
-        {/* Filter bar */}
-        <div className="mt-6 flex flex-wrap items-center gap-3 rounded-md border border-line bg-paper-raised p-3">
+        {/* Filter bar — stacks on narrow viewports so tabs don't overflow. */}
+        <div className="mt-6 flex flex-col gap-3 rounded-md border border-line bg-paper-raised p-3 sm:flex-row sm:flex-wrap sm:items-center">
           <Select value={platform} onValueChange={(v) => setPlatform(v as PlatformKey)}>
-            <SelectTrigger className="h-8 w-[180px] text-sm">
+            <SelectTrigger className="h-8 w-full text-sm sm:w-[180px]">
               <SelectValue placeholder="Все платформы" />
             </SelectTrigger>
             <SelectContent>
@@ -173,7 +173,11 @@ export default function PostsPage() {
             </SelectContent>
           </Select>
 
-          <Tabs value={status} onValueChange={(v) => setStatus(v as StatusKey)}>
+          <Tabs
+            value={status}
+            onValueChange={(v) => setStatus(v as StatusKey)}
+            className="-mx-1 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0"
+          >
             <TabsList className="h-8 bg-paper-sunken">
               <TabsTrigger value="all" className="h-7 text-[13px]">
                 Все · {counts.total}
@@ -190,14 +194,17 @@ export default function PostsPage() {
             </TabsList>
           </Tabs>
 
-          <span className="flex-1" />
+          <span className="hidden flex-1 sm:inline" />
 
           <SearchField value={search} onChange={setSearch} />
         </div>
 
-        {/* Table */}
-        <div className="mt-4 overflow-hidden rounded-md border border-line bg-paper-raised">
-          <div className="grid grid-cols-[24px_1fr_140px_200px_160px_56px] gap-4 border-b border-line bg-paper-sunken px-5 py-3">
+        {/* Table — full schema needs ~620 px; on narrow viewports we let
+            the row scroll horizontally rather than collapsing columns,
+            since each (status / platforms / date) carries information the
+            operator scans at a glance. */}
+        <div className="mt-4 overflow-x-auto rounded-md border border-line bg-paper-raised">
+          <div className="grid min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] gap-4 border-b border-line bg-paper-sunken px-5 py-3">
             <span aria-hidden />
             <MonoLabel>Контент</MonoLabel>
             <MonoLabel>Статус</MonoLabel>
@@ -304,7 +311,7 @@ function PostsSkeleton() {
       {Array.from({ length: 5 }, (_, i) => (
         <div
           key={i}
-          className="grid grid-cols-[24px_1fr_140px_200px_160px_56px] items-center gap-4 px-5 py-4"
+          className="grid min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] items-center gap-4 px-5 py-4"
         >
           <span aria-hidden />
           <Skeleton className="h-4 w-3/4" />
@@ -368,7 +375,7 @@ function PostRow({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="grid w-full grid-cols-[24px_1fr_140px_200px_160px_56px] items-center gap-4 px-5 py-3.5 text-left transition-colors hover:bg-paper-sunken/60"
+        className="grid w-full min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] items-center gap-4 px-5 py-3.5 text-left transition-colors hover:bg-paper-sunken/60"
       >
         <span aria-hidden className="text-ink-soft">
           {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}

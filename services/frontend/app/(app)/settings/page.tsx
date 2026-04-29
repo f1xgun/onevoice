@@ -60,7 +60,7 @@ export default function SettingsPage() {
         sub="Аккаунт, безопасность и поведение OneVoice."
       />
 
-      <div className="grid grid-cols-1 gap-8 px-12 pb-16 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-6">
           {/* Account */}
           <section className="rounded-lg border border-line bg-paper-raised">

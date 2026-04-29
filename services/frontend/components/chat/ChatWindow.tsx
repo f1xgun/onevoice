@@ -123,7 +123,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       )}
 
       {/* Messages — paper-well backdrop matches mock-ai-chat.jsx (line 146). */}
-      <div className="flex-1 overflow-y-auto bg-paper-well px-6 py-6">
+      <div className="flex-1 overflow-y-auto bg-paper-well px-4 py-4 sm:px-6 sm:py-6">
         {isLoading ? (
           // Static AI conversation skeleton per mock-states.jsx loading
           // section — no spinner, paper-sunken bubble shapes that mirror
@@ -161,7 +161,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
       {/* Inline approval card — renders only when a pending batch exists. */}
       {pendingApproval?.status === 'pending' && (
-        <div className="border-t border-line bg-paper px-4 py-4">
+        <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
           <ToolApprovalCard batch={pendingApproval} onSubmit={resolveApproval} />
         </div>
       )}
@@ -173,7 +173,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
           for the single moment of emphasis in this surface (the inline
           ApprovalCard). The keep-disabled-while-streaming-or-pending
           contract is unchanged. */}
-      <div className="border-t border-line bg-paper px-4 py-4">
+      <div className="border-t border-line bg-paper px-3 py-3 sm:px-4 sm:py-4">
         <div className="flex gap-2 rounded-md border border-line bg-paper-sunken p-2 transition-colors focus-within:border-ochre">
           <Input
             value={input}

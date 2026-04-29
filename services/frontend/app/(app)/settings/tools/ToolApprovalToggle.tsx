@@ -35,7 +35,7 @@ export function ToolApprovalToggle({
   const userDesc = toolUserDescription(tool);
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-md border border-line-soft bg-paper px-4 py-3">
+    <div className="flex flex-col items-stretch gap-3 rounded-md border border-line-soft bg-paper px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-ink">{label}</p>
         {userDesc && <p className="mt-1 text-xs leading-relaxed text-ink-mid">{userDesc}</p>}

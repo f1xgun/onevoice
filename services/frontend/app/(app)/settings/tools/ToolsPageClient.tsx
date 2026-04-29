@@ -129,7 +129,7 @@ export function ToolsPageClient() {
         }
       />
 
-      <div className="mx-auto flex w-full max-w-[860px] flex-col gap-6 px-12 pb-16">
+      <div className="mx-auto flex w-full max-w-[860px] flex-col gap-6 px-4 pb-10 sm:px-12 sm:pb-16">
         {dirty && (
           <div className="rounded-md border border-line bg-paper-raised px-4 py-3 text-xs text-ink-mid">
             Есть несохранённые изменения. Нажмите «Сохранить», чтобы применить.
