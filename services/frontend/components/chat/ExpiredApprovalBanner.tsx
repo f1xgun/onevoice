@@ -36,7 +36,7 @@ export function ExpiredApprovalBanner({ onDismiss }: ExpiredApprovalBannerProps)
       aria-live="polite"
       className={cn(
         'flex items-start gap-3 border-b px-4 py-3 text-sm',
-        'bg-amber-50',
+        'bg-warning-soft',
         'border-amber-200',
         'text-amber-900'
       )}
@@ -50,7 +50,7 @@ export function ExpiredApprovalBanner({ onDismiss }: ExpiredApprovalBannerProps)
           setVisible(false);
           onDismiss?.();
         }}
-        className="shrink-0 rounded p-1 hover:bg-amber-100"
+        className="shrink-0 rounded p-1 hover:bg-warning-soft"
       >
         <X size={14} aria-hidden="true" />
       </button>

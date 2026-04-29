@@ -64,8 +64,8 @@ export function ConversationItem({
     conv.title === '' || conv.titleStatus === 'auto_pending' ? 'Новый диалог' : conv.title;
 
   return (
-    <div className="group flex items-center gap-3 rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">
-      <MessageCircle size={20} className="shrink-0 text-gray-400" />
+    <div className="group flex items-center gap-3 rounded-lg border border-line p-4 transition-colors hover:bg-paper-sunken">
+      <MessageCircle size={20} className="shrink-0 text-ink-soft" />
 
       <div className="min-w-0 flex-1">
         {editing ? (
@@ -87,7 +87,7 @@ export function ConversationItem({
         ) : (
           <button type="button" className="block w-full text-left" onClick={onOpen}>
             <p className="truncate font-medium">{displayTitle}</p>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-ink-soft">
               {formatDistanceToNow(new Date(conv.createdAt), {
                 addSuffix: true,
                 locale: ru,
@@ -138,7 +138,7 @@ export function ConversationItem({
             <MoveChatMenuItem conversationId={conv.id} currentProjectId={conv.projectId ?? null} />
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              className="text-red-600 focus:text-red-600"
+              className="text-[var(--ov-danger)] focus:text-[var(--ov-danger)]"
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete();

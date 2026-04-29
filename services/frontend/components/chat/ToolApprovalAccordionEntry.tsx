@@ -102,17 +102,17 @@ export function ToolApprovalAccordionEntry({
         <div className="flex flex-wrap items-center gap-2 px-3 py-2">
           <CollapsibleTrigger
             aria-label={`${call.toolName} — ${open ? RU.triggerCollapse : RU.triggerExpand}`}
-            className="inline-flex items-center text-gray-600 hover:text-gray-900"
+            className="inline-flex items-center text-ink-mid hover:text-ink"
           >
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </CollapsibleTrigger>
           <span
-            className="rounded px-1.5 py-0.5 text-xs font-bold text-white"
+            className="rounded px-1.5 py-0.5 text-xs font-bold text-paper"
             style={{ backgroundColor: color }}
           >
             {label}
           </span>
-          <span className="font-mono text-xs text-gray-600">{call.toolName}</span>
+          <span className="font-mono text-xs text-ink-mid">{call.toolName}</span>
         </div>
 
         <div className="px-3 pb-3">

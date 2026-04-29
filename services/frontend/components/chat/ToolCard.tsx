@@ -30,7 +30,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
     'font-mono text-xs',
     tool.status === 'rejected' || tool.status === 'expired'
       ? 'line-through text-muted-foreground'
-      : 'text-gray-600'
+      : 'text-ink-mid'
   );
 
   return (
@@ -41,7 +41,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span
-            className="rounded px-1.5 py-0.5 text-xs font-bold text-white"
+            className="rounded px-1.5 py-0.5 text-xs font-bold text-paper"
             style={{ backgroundColor: color }}
           >
             {label}
@@ -49,9 +49,9 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
           <span className={toolNameClasses}>{tool.name}</span>
         </div>
         {tool.status === 'pending' && (
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-blue-500" />
         )}
-        {tool.status === 'done' && <span className="text-green-500">✅</span>}
+        {tool.status === 'done' && <span className="text-[var(--ov-success)]">✅</span>}
         {tool.status === 'done' && tool.wasEdited && (
           <TooltipProvider>
             <Tooltip>
@@ -68,9 +68,9 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
             </Tooltip>
           </TooltipProvider>
         )}
-        {tool.status === 'error' && <span className="text-red-500">❌</span>}
+        {tool.status === 'error' && <span className="text-[var(--ov-danger)]">❌</span>}
         {tool.status === 'aborted' && (
-          <span className="text-gray-500" title="Выполнение прервано — результат не получен">
+          <span className="text-ink-soft" title="Выполнение прервано — результат не получен">
             ⏸
           </span>
         )}
@@ -80,15 +80,15 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
           </span>
         )}
         {tool.status === 'expired' && (
-          <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+          <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-warning-soft px-2 py-0.5 text-xs font-semibold text-amber-900">
             {RU.expiredBadge}
           </span>
         )}
       </div>
       {tool.result && (
-        <p className="truncate text-xs text-gray-500">{JSON.stringify(tool.result).slice(0, 80)}</p>
+        <p className="truncate text-xs text-ink-soft">{JSON.stringify(tool.result).slice(0, 80)}</p>
       )}
-      {tool.error && <p className="text-xs text-red-500">{tool.error}</p>}
+      {tool.error && <p className="text-xs text-[var(--ov-danger)]">{tool.error}</p>}
       {tool.status === 'rejected' && tool.rejectReason && (
         <p className="text-xs italic text-muted-foreground">
           {RU.rejectedReasonPrefix}
@@ -96,7 +96,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
         </p>
       )}
       {tool.status === 'aborted' && (
-        <p className="text-xs italic text-gray-500">Выполнение прервано — результат не получен</p>
+        <p className="text-xs italic text-ink-soft">Выполнение прервано — результат не получен</p>
       )}
     </div>
   );
