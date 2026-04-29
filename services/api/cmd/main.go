@@ -536,7 +536,28 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// Review syncer — uses the shared NATS connection established above.
 	if natsConn != nil {
 		syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
-		syncer := service.NewReviewSyncer(natsConn, integrationRepo, reviewRepo, syncInterval)
+
+		// AI-draft pass is gated by REVIEW_DRAFT_ENABLED so an upgrade doesn't
+		// silently start spending on LLM calls. The orchestrator is reachable
+		// via cfg.OrchestratorURL — same URL chat_proxy uses.
+		var drafter service.DraftPassRunner
+		if cfg.ReviewDraftEnabled {
+			drafter = service.NewReviewDrafter(
+				reviewRepo,
+				businessRepo,
+				&http.Client{Timeout: 60 * time.Second},
+				cfg.OrchestratorURL,
+				cfg.ReviewDraftMaxExamples,
+				cfg.ReviewDraftBatchLimit,
+			)
+			log.Info("review AI-drafter enabled",
+				"orchestrator_url", cfg.OrchestratorURL,
+				"max_examples", cfg.ReviewDraftMaxExamples,
+				"batch_limit", cfg.ReviewDraftBatchLimit,
+			)
+		}
+
+		syncer := service.NewReviewSyncer(natsConn, integrationRepo, reviewRepo, drafter, syncInterval)
 		syncCtx, syncCancel := context.WithCancel(ctx)
 		defer syncCancel()
 		go syncer.Start(syncCtx)

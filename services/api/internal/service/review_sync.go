@@ -36,27 +36,37 @@ var reviewSupportedPlatforms = func() []string {
 	return out
 }()
 
+// DraftPassRunner is the post-upsert hook surface ReviewSyncer calls into.
+// *ReviewDrafter satisfies it; tests can pass a fake or nil to disable.
+type DraftPassRunner interface {
+	GenerateForBusiness(ctx context.Context, businessID uuid.UUID, platform string) error
+}
+
 // ReviewSyncer periodically fetches reviews from all active integrations
 // that support reviews and upserts them into MongoDB.
 type ReviewSyncer struct {
 	nc           *natslib.Conn
 	integRepo    domain.IntegrationRepository
 	reviewRepo   domain.ReviewRepository
+	drafter      DraftPassRunner // nil = AI drafts disabled
 	syncInterval time.Duration
 }
 
 // NewReviewSyncer creates a ReviewSyncer. syncInterval 0 disables the ticker
-// but SyncAll can still be called manually.
+// but SyncAll can still be called manually. Pass drafter=nil to disable the
+// AI-draft post-hook (matches REVIEW_DRAFT_ENABLED=false in config).
 func NewReviewSyncer(
 	nc *natslib.Conn,
 	integRepo domain.IntegrationRepository,
 	reviewRepo domain.ReviewRepository,
+	drafter DraftPassRunner,
 	syncInterval time.Duration,
 ) *ReviewSyncer {
 	return &ReviewSyncer{
 		nc:           nc,
 		integRepo:    integRepo,
 		reviewRepo:   reviewRepo,
+		drafter:      drafter,
 		syncInterval: syncInterval,
 	}
 }
@@ -185,6 +195,22 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 				"business_id", businessID,
 				"platform", platform,
 				"external_id", review.ExternalID,
+				"error", err,
+			)
+		}
+	}
+
+	// AI-draft hook: pick up any newly-pending reviews (and previously-failed
+	// ones) and ask the orchestrator to generate replies. Run with a fresh
+	// context so a slow LLM doesn't block on the upsertCtx 10s budget.
+	if s.drafter != nil {
+		draftCtx, draftCancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer draftCancel()
+		if err := s.drafter.GenerateForBusiness(draftCtx, businessID, platform); err != nil {
+			// Non-fatal — sync delivered the data, draft is value-add.
+			slog.Warn("review sync: draft pass failed",
+				"business_id", businessID,
+				"platform", platform,
 				"error", err,
 			)
 		}
