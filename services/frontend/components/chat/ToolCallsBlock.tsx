@@ -27,17 +27,17 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
   const platforms = Array.from(new Set(toolCalls.map((t) => t.name.split('__')[0])));
 
   return (
-    <div className="mt-2 overflow-hidden rounded-md border border-line">
+    <div className="mt-2 overflow-hidden rounded-md border border-line bg-paper-raised">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center gap-2 bg-paper-sunken px-3 py-2 text-left text-sm hover:bg-paper-sunken"
+        className="flex w-full items-center gap-2 bg-paper-sunken px-3 py-2 text-left text-sm text-ink-mid transition-colors hover:bg-paper-well"
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span className="text-ink-mid">
+        <span>
           {expanded ? 'Скрыть' : 'Показать'} действия ({toolCalls.length})
         </span>
-        <span className="ml-1 text-xs text-[var(--ov-success)]">
+        <span className="ml-1 font-mono text-[11px] text-[var(--ov-success)]">
           ✓ {doneCount}/{toolCalls.length}
         </span>
         <div className="ml-auto flex gap-1">
@@ -48,7 +48,7 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
       </button>
 
       {expanded && (
-        <div className="space-y-2 bg-paper-raised p-2">
+        <div className="space-y-2 p-2">
           {toolCalls.map((tool) => (
             <ToolCard key={tool.id} tool={tool} />
           ))}

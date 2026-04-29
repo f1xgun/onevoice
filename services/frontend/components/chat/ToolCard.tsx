@@ -1,8 +1,22 @@
+// components/chat/ToolCard.tsx — OneVoice (Linen) tool-call card
+//
+// One tool call = one card with the platform tag, the tool name in
+// JetBrains Mono, and a status pill on the right. The card carries a
+// 3 px platform-tinted left border (hsl(var(--destructive)) when the
+// user rejected the call). Linen background + 1 px line border on the
+// rest of the card.
+//
+// Phase 17 visual contracts preserved verbatim (rejected/expired badges,
+// line-through name, Pencil tooltip, "Причина:" copy). Test fixtures in
+// components/chat/__tests__/ToolCard.{rejected,expired,edited}.test.tsx
+// pin these classes/strings — this rebuild keeps them.
+
 import { Pencil } from 'lucide-react';
 
 import type { ToolCall } from '@/types/chat';
 import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Exact Russian literals from 17-UI-SPEC §Copywriting Contract (Post-submit
@@ -35,11 +49,11 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
 
   return (
     <div
-      className="space-y-1 rounded-md border p-3 text-sm"
+      className="space-y-1 rounded-md border border-line bg-paper-raised p-3 text-sm"
       style={{ borderLeftColor, borderLeftWidth: 3 }}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <span
             className="rounded px-1.5 py-0.5 text-xs font-bold text-paper"
             style={{ backgroundColor: color }}
@@ -49,9 +63,17 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
           <span className={toolNameClasses}>{tool.name}</span>
         </div>
         {tool.status === 'pending' && (
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-blue-500" />
+          <Badge tone="info" dot aria-label="Выполняется">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-line border-t-blue-500" />
+            Выполняется
+          </Badge>
         )}
-        {tool.status === 'done' && <span className="text-[var(--ov-success)]">✅</span>}
+        {tool.status === 'done' && (
+          <Badge tone="success" aria-label="Готово">
+            <span className="text-[var(--ov-success)]">✅</span>
+            Готово
+          </Badge>
+        )}
         {tool.status === 'done' && tool.wasEdited && (
           <TooltipProvider>
             <Tooltip>
@@ -68,22 +90,28 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
             </Tooltip>
           </TooltipProvider>
         )}
-        {tool.status === 'error' && <span className="text-[var(--ov-danger)]">❌</span>}
+        {tool.status === 'error' && (
+          <Badge tone="danger" aria-label="Ошибка">
+            <span className="text-[var(--ov-danger)]">❌</span>
+            Ошибка
+          </Badge>
+        )}
         {tool.status === 'aborted' && (
-          <span className="text-ink-soft" title="Выполнение прервано — результат не получен">
-            ⏸
-          </span>
+          <Badge
+            tone="neutral"
+            aria-label="Прервано"
+            title="Выполнение прервано — результат не получен"
+          >
+            <span className="text-ink-soft">⏸</span>
+            Прервано
+          </Badge>
         )}
         {tool.status === 'rejected' && (
-          <span className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
+          <Badge tone="danger" className="text-destructive">
             {RU.rejectedBadge}
-          </span>
+          </Badge>
         )}
-        {tool.status === 'expired' && (
-          <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-warning-soft px-2 py-0.5 text-xs font-semibold text-amber-900">
-            {RU.expiredBadge}
-          </span>
-        )}
+        {tool.status === 'expired' && <Badge tone="warning">{RU.expiredBadge}</Badge>}
       </div>
       {tool.result && (
         <p className="truncate text-xs text-ink-soft">{JSON.stringify(tool.result).slice(0, 80)}</p>
