@@ -22,6 +22,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
       {children}
       <Toaster
         position="top-right"
+        // Linen motion: auto-dismiss after 5s unless the toast carries an
+        // action (Sonner already keeps action toasts open until dismissed).
+        // Slide-in timing is owned by Sonner internally — it ships a CSS
+        // animation in the ~250ms range with prefers-reduced-motion handled
+        // by the library; not configurable per-toast.
+        duration={5000}
         toastOptions={{
           // Linen-toned toasts. richColors is too loud for the design;
           // we lean on tokens so the toast sits on top of paper instead

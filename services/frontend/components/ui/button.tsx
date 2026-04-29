@@ -14,7 +14,8 @@ const buttonVariants = cva(
   [
     'inline-flex items-center justify-center gap-2 whitespace-nowrap',
     'rounded-md font-medium tracking-[-0.005em]',
-    'ring-offset-background transition-[background,border-color,color] duration-150',
+    // Linen motion: 120ms ease-out hover; 80ms ease-out active for crisper press feedback.
+    'ring-offset-background transition-[background,border-color,color] duration-[120ms] ease-out active:duration-[80ms]',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
     'disabled:pointer-events-none disabled:opacity-50',
     "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",

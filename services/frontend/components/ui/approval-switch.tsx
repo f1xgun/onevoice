@@ -103,8 +103,9 @@ export function ApprovalSwitch({
             onClick={() => onValueChange(mode)}
             onKeyDown={(e) => onKeyDown(idx, e)}
             className={cn(
-              'relative rounded-sm px-3 py-1.5 text-xs font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+              // Linen motion + focus: 120ms ease-out, focus-visible ochre ring (2px + 2px offset).
+              'relative rounded-sm px-3 py-1.5 text-xs font-medium transition-colors duration-[120ms] ease-out',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
               selected
                 ? 'border border-line bg-paper text-ink shadow-ov-1'
                 : 'border border-transparent text-ink-mid hover:text-ink',
