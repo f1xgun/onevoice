@@ -323,6 +323,21 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	log.Info("connected to object storage", "endpoint", cfg.S3Endpoint, "bucket", cfg.S3Bucket)
 
+	// NATS connection — shared by platform syncer (yandex_business RPA dispatch)
+	// and review syncer below. Optional: when NATS_URL is empty or unreachable,
+	// both fall back to degraded modes (review sync disabled; yandex hours sync
+	// records an error AgentTask).
+	var natsConn *natslib.Conn
+	if cfg.NATSUrl != "" {
+		nc, natsErr := natslib.Connect(cfg.NATSUrl)
+		if natsErr != nil {
+			log.Warn("NATS unavailable — yandex sync and review sync disabled", "url", cfg.NATSUrl, "error", natsErr)
+		} else {
+			natsConn = nc
+			defer nc.Close()
+		}
+	}
+
 	// Platform syncer: pushes business info updates to connected platforms
 	platformSyncer := platform.NewSyncer(
 		&integrationSyncAdapter{svc: integrationService},
@@ -331,6 +346,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	)
 	platformSyncer.SetTaskRecorder(agentTaskRepo)
 	platformSyncer.SetTaskHub(taskHub)
+	if natsConn != nil {
+		platformSyncer.SetTaskPublisher(platform.NewNATSTaskPublisher(natsConn))
+	}
 
 	// Initialize handlers
 	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
@@ -515,20 +533,14 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		}
 	}()
 
-	// Review syncer — optional, requires NATS_URL
-	if cfg.NATSUrl != "" {
-		nc, natsErr := natslib.Connect(cfg.NATSUrl)
-		if natsErr != nil {
-			log.Warn("NATS unavailable — review sync disabled", "url", cfg.NATSUrl, "error", natsErr)
-		} else {
-			defer nc.Close()
-			syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
-			syncer := service.NewReviewSyncer(nc, integrationRepo, reviewRepo, syncInterval)
-			syncCtx, syncCancel := context.WithCancel(ctx)
-			defer syncCancel()
-			go syncer.Start(syncCtx)
-			log.Info("review syncer started", "interval_minutes", cfg.ReviewSyncInterval)
-		}
+	// Review syncer — uses the shared NATS connection established above.
+	if natsConn != nil {
+		syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
+		syncer := service.NewReviewSyncer(natsConn, integrationRepo, reviewRepo, syncInterval)
+		syncCtx, syncCancel := context.WithCancel(ctx)
+		defer syncCancel()
+		go syncer.Start(syncCtx)
+		log.Info("review syncer started", "interval_minutes", cfg.ReviewSyncInterval)
 	}
 
 	// Graceful shutdown

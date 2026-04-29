@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -33,14 +34,22 @@ type taskRecorder interface {
 	Create(ctx context.Context, task *domain.AgentTask) error
 }
 
+// TaskPublisher dispatches an A2A ToolRequest to a platform agent over NATS
+// (or any equivalent transport in tests) and waits for the reply. Reply
+// timeout is the responsibility of the implementation.
+type TaskPublisher interface {
+	RequestTool(ctx context.Context, subject string, req a2a.ToolRequest, timeout time.Duration) (*a2a.ToolResponse, error)
+}
+
 // Syncer pushes business data updates to connected platform channels.
 type Syncer struct {
-	integrations integrationProvider
-	tasks        taskRecorder // optional; may be nil
-	hub          *taskhub.Hub // optional; may be nil
-	httpClient   *http.Client
-	telegramBase string
-	publicURL    string
+	integrations  integrationProvider
+	tasks         taskRecorder  // optional; may be nil
+	hub           *taskhub.Hub  // optional; may be nil
+	taskPublisher TaskPublisher // optional; required for RPA agent dispatch (e.g. yandex_business)
+	httpClient    *http.Client
+	telegramBase  string
+	publicURL     string
 }
 
 // NewSyncer creates a Syncer. httpClient defaults to a 10-second client if nil.
@@ -66,6 +75,12 @@ func (s *Syncer) SetTaskRecorder(tasks taskRecorder) {
 // to SSE subscribers on the Tasks page.
 func (s *Syncer) SetTaskHub(hub *taskhub.Hub) {
 	s.hub = hub
+}
+
+// SetTaskPublisher sets the optional TaskPublisher used to dispatch RPA work to
+// platform agents over NATS (currently used by the Yandex.Business sync path).
+func (s *Syncer) SetTaskPublisher(p TaskPublisher) {
+	s.taskPublisher = p
 }
 
 // recordTask creates an AgentTask record (if a recorder is configured) for a
@@ -146,6 +161,8 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 			}
 		case "vk":
 			s.syncVKInfo(ctx, business, integ.ExternalID)
+		case "yandex_business":
+			s.syncYandexHours(ctx, business, integ.ExternalID)
 		}
 	}
 }
@@ -499,4 +516,125 @@ func (s *Syncer) callVKAPI(ctx context.Context, method string, params url.Values
 	}
 	slog.Info("platform sync: vk "+method+" success", "group_id", groupID)
 	return ""
+}
+
+// dayKeyToEnglish maps the frontend's 3-letter day key to the full English
+// name expected by the Yandex.Business agent's formatHoursForYandex parser
+// (see services/agent-yandex-business/internal/yandex/pool.go:919).
+var dayKeyToEnglish = map[string]string{
+	"mon": "monday", "tue": "tuesday", "wed": "wednesday", "thu": "thursday",
+	"fri": "friday", "sat": "saturday", "sun": "sunday",
+}
+
+// scheduleToYandexJSON converts business.Settings["schedule"] into the JSON
+// shape expected by the Yandex.Business RPA agent's formatHoursForYandex.
+// Open days become {"open":"HH:MM","close":"HH:MM"}; closed days become "closed".
+// Returns the marshaled JSON string, or "" if the schedule is missing/empty.
+func scheduleToYandexJSON(settings map[string]interface{}) string {
+	if settings == nil {
+		return ""
+	}
+	raw, ok := settings["schedule"]
+	if !ok || raw == nil {
+		return ""
+	}
+
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return ""
+	}
+
+	var days []struct {
+		Day    string `json:"day"`
+		Open   string `json:"open"`
+		Close  string `json:"close"`
+		Closed bool   `json:"closed"`
+	}
+	if err := json.Unmarshal(data, &days); err != nil {
+		return ""
+	}
+
+	out := make(map[string]interface{}, len(days))
+	for _, d := range days {
+		enKey, ok := dayKeyToEnglish[d.Day]
+		if !ok {
+			continue
+		}
+		if d.Closed {
+			out[enKey] = "closed"
+			continue
+		}
+		if d.Open == "" || d.Close == "" {
+			continue
+		}
+		out[enKey] = map[string]string{"open": d.Open, "close": d.Close}
+	}
+
+	if len(out) == 0 {
+		return ""
+	}
+
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+// yandexRequestTimeout is generous: the RPA agent spins up a Chromium page,
+// waits for the edit form to render, types into the hours input, and clicks
+// save. Under normal load this completes in 20–40s; we allow up to 90s for
+// retries inside the agent's withRetry wrapper.
+const yandexRequestTimeout = 90 * time.Second
+
+// syncYandexHours dispatches a yandex_business__update_hours RPA task to the
+// agent over NATS. Bypasses HITL — this is a user-initiated profile edit, the
+// "Save schedule" click is the consent.
+func (s *Syncer) syncYandexHours(ctx context.Context, business *domain.Business, externalID string) {
+	started := time.Now()
+
+	hoursJSON := scheduleToYandexJSON(business.Settings)
+	if hoursJSON == "" {
+		// No schedule to push — silent skip. Avoids creating a noisy AgentTask
+		// row on a profile edit that didn't actually touch the schedule.
+		return
+	}
+
+	input := map[string]string{
+		"permalink": externalID,
+		"hours":     hoursJSON,
+	}
+
+	if s.taskPublisher == nil {
+		slog.WarnContext(ctx, "platform sync: yandex_business: task publisher not configured")
+		s.recordTask(ctx, business.ID, "yandex_business", "sync_hours", "Синхронизация часов работы",
+			"error", input, "NATS task publisher not configured", started)
+		return
+	}
+
+	req := a2a.ToolRequest{
+		TaskID:     uuid.New().String(),
+		Tool:       "yandex_business__update_hours",
+		Args:       map[string]interface{}{"hours": hoursJSON},
+		BusinessID: business.ID.String(),
+	}
+
+	resp, err := s.taskPublisher.RequestTool(ctx, a2a.Subject(a2a.AgentYandexBusiness), req, yandexRequestTimeout)
+	if err != nil {
+		slog.ErrorContext(ctx, "platform sync: yandex_business: request failed",
+			"business_id", business.ID, "error", err)
+		s.recordTask(ctx, business.ID, "yandex_business", "sync_hours", "Синхронизация часов работы",
+			"error", input, err.Error(), started)
+		return
+	}
+	if resp != nil && resp.Error != "" {
+		slog.WarnContext(ctx, "platform sync: yandex_business: agent returned error",
+			"business_id", business.ID, "error", resp.Error)
+		s.recordTask(ctx, business.ID, "yandex_business", "sync_hours", "Синхронизация часов работы",
+			"error", input, resp.Error, started)
+		return
+	}
+
+	s.recordTask(ctx, business.ID, "yandex_business", "sync_hours", "Синхронизация часов работы",
+		"done", input, "", started)
 }
