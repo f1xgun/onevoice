@@ -6,6 +6,12 @@ import type { Conversation } from '@/lib/conversations';
 
 export const conversationsQueryKey = ['conversations'] as const;
 
+// Poll cadence while any chat sits in `auto_pending` — see refetchInterval
+// callback below for context. 2 s lines up with the auto-titler's typical
+// 3–8 s server-side latency: too aggressive doubles backend load, too lax
+// makes the new title feel laggy after the user sends their first message.
+const TITLE_POLL_INTERVAL_MS = 2000;
+
 export function useConversationsQuery() {
   return useQuery<Conversation[]>({
     queryKey: conversationsQueryKey,
@@ -20,7 +26,7 @@ export function useConversationsQuery() {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (data && data.some((c) => c.titleStatus === 'auto_pending')) {
-        return 2000;
+        return TITLE_POLL_INTERVAL_MS;
       }
       return false;
     },
