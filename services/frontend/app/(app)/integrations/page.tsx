@@ -95,7 +95,9 @@ export default function IntegrationsPage() {
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
     queryKey: QUERY_KEYS.INTEGRATIONS,
     queryFn: () =>
-      api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
+      api
+        .get(API_PATHS.INTEGRATIONS.ROOT)
+        .then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
   });
 
   const { data: business } = useQuery<Business>({

@@ -35,7 +35,8 @@ export default function ChatListPage() {
   });
 
   const { mutate: createConversation, isPending } = useMutation({
-    mutationFn: () => api.post(API_PATHS.CONVERSATIONS.ROOT, { title: 'Новый диалог' }).then((r) => r.data),
+    mutationFn: () =>
+      api.post(API_PATHS.CONVERSATIONS.ROOT, { title: 'Новый диалог' }).then((r) => r.data),
     onSuccess: (conv: Conversation) => {
       trackClick('create_conversation');
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });

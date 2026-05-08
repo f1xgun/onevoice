@@ -445,7 +445,8 @@ function PlatformResultCard({
   result: NonNullable<Post['platformResults']>[string];
 }) {
   const ok = !result.error && (result.status === 'published' || result.status === 'ok');
-  const display = CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
+  const display =
+    CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
   return (
     <div className="flex items-center gap-2.5 rounded-sm border border-line-soft bg-paper px-3 py-2">
       <ChannelMark name={display} size={20} />
@@ -468,7 +469,8 @@ function PlatformResultCard({
 }
 
 function ChannelChip({ platform }: { platform: string }) {
-  const display = CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
+  const display =
+    CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
   const short = platformShort[platform] ?? display;
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-line-soft bg-paper px-2 py-0.5 text-[11px] text-ink-mid">

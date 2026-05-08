@@ -21,6 +21,5 @@ export const QUERY_KEYS = {
   REVIEWS_FILTERED: (platform: string, replyStatus: string) =>
     ['reviews', platform, replyStatus] as const,
   POSTS: (status: string, platform: string) => ['posts', status, platform] as const,
-  PROJECT_CONVERSATION_COUNT: (id: string) =>
-    ['projects', id, 'conversation-count'] as const,
+  PROJECT_CONVERSATION_COUNT: (id: string) => ['projects', id, 'conversation-count'] as const,
 } as const;

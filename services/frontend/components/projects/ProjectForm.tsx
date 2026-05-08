@@ -100,7 +100,8 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
 
   const { data: integrations = [] } = useQuery<Integration[]>({
     queryKey: QUERY_KEYS.INTEGRATIONS,
-    queryFn: () => api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    queryFn: () =>
+      api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : [])),
   });
   const activePlatforms = integrations.filter((i) => i.status === 'active').map((i) => i.platform);
 
