@@ -103,6 +103,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			// VK community token route
 			r.Post("/integrations/vk/connect", handlers.OAuth.ConnectVK)
+			// Lazy backfill of missing community names on existing integrations.
+			r.Post("/integrations/vk/{id}/refresh-name", handlers.OAuth.RefreshVKCommunityName)
 
 			// Telegram routes
 			r.Post("/integrations/telegram/verify", handlers.OAuth.VerifyTelegramLogin)
