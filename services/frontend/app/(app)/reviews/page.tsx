@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { api } from '@/lib/api';
+import { REVIEW_STATUS_BADGES, type ReviewStatus } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -70,18 +71,9 @@ function platformHasRating(id: string): boolean {
   return platformsWithRating.has(id);
 }
 
-// Reply status → tone-mapped badge config. Per brand voice the labels
-// are matter-of-fact, not celebratory.
-type StatusKey = 'pending' | 'replied' | 'error' | 'read';
-const statusBadge: Record<
-  StatusKey,
-  { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }
-> = {
-  pending: { label: 'Ждёт ответа', tone: 'warning' },
-  replied: { label: 'Ответ отправлен', tone: 'success' },
-  error: { label: 'Ошибка отправки', tone: 'danger' },
-  read: { label: 'Прочитано', tone: 'neutral' },
-};
+// Reply status → tone-mapped badge config — see lib/constants/statuses.
+type StatusKey = ReviewStatus;
+const statusBadge = REVIEW_STATUS_BADGES;
 
 function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
   return (

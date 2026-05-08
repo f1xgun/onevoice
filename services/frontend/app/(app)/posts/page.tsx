@@ -25,6 +25,7 @@ import { ru } from 'date-fns/locale';
 import { ChevronDown, ChevronRight, FileText, Plus, Search } from 'lucide-react';
 
 import { api } from '@/lib/api';
+import { POST_STATUS_LABELS } from '@/lib/constants/statuses';
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -48,13 +49,6 @@ import type { Post } from '@/types/post';
 
 type StatusKey = 'all' | 'published' | 'scheduled' | 'error';
 type PlatformKey = 'all' | 'telegram' | 'vk' | 'yandex_business';
-
-const statusLabel: Record<string, string> = {
-  draft: 'Черновик',
-  scheduled: 'Запланирован',
-  published: 'Опубликован',
-  error: 'Ошибка',
-};
 
 // Backend platform id → user-facing short label. CHANNEL_NAMES from
 // lib/platforms covers Latin technical names for ChannelMark; the short
@@ -483,7 +477,7 @@ function ChannelChip({ platform }: { platform: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const label = statusLabel[status] ?? status;
+  const label = POST_STATUS_LABELS[status as keyof typeof POST_STATUS_LABELS] ?? status;
   switch (status) {
     case 'published':
       return (
