@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { PLATFORM_COLORS, PLATFORM_FULL_LABELS } from '@/lib/platforms';
-import { useTools, groupByPlatform, type PlatformKey } from '@/lib/hooks/useTools';
+import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import { toolLabel, toolUserDescription, type Tool } from '@/lib/schemas';
 
 interface ToolCheckboxGridProps {
@@ -127,15 +127,6 @@ function PlatformSection({
   );
 }
 
-// Platform ordering displayed to the user — matches the legacy Phase 15
-// catalogue's key order so UAT-approved screenshots remain pixel-stable.
-const PLATFORM_DISPLAY_ORDER: PlatformKey[] = [
-  'telegram',
-  'vk',
-  'yandex_business',
-  'google_business',
-];
-
 export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCheckboxGridProps) {
   const { data: tools, isLoading } = useTools();
 
@@ -156,7 +147,7 @@ export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCh
   }
 
   const buckets = groupByPlatform(tools);
-  const platforms = PLATFORM_DISPLAY_ORDER.filter((p) => buckets[p].length > 0);
+  const platforms = TOOL_PLATFORM_ORDER.filter((p) => buckets[p].length > 0);
 
   return (
     <div className="space-y-3">
