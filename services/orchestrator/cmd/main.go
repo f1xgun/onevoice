@@ -25,13 +25,13 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm/providers"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/metrics"
-	pkgtools "github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/repository"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 const (
@@ -66,7 +66,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	router := llm.NewRouter(registry, routerOpts...)
 
 	// Tool registry — wire NATS executors if NATS is available
-	toolRegistry := tools.NewRegistry()
+	toolRegistry := toolregistry.NewRegistry()
 	nc, natsErr := natslib.Connect(cfg.NATSUrl)
 	if natsErr != nil {
 		log.Warn("NATS unavailable — tools will return stubs", "url", cfg.NATSUrl, "error", natsErr)
@@ -258,7 +258,7 @@ type toolSpec struct {
 // Every tool registration is explicit — Register takes floor + editableFields
 // as required arguments so a newly-added tool can never silently inherit
 // ToolFloorAuto. See toolSpec above for the policy rubric used below.
-func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
+func registerPlatformTools(reg *toolregistry.Registry, nc *natslib.Conn) {
 	agents := []struct {
 		id    a2a.AgentID
 		tools []toolSpec
@@ -272,7 +272,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Отправить пост",
 					userDescription: "Публикует текстовое сообщение в Telegram-канале.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.TelegramSendChannelPost,
+						Name:        tools.TelegramSendChannelPost,
 						Description: "Публикует текстовое сообщение в Telegram-канал (без фото). Если нужно опубликовать пост с фото — используй telegram__send_channel_photo вместо этого.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -293,7 +293,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Отправить фото",
 					userDescription: "Публикует фото с подписью в Telegram-канале.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.TelegramSendChannelPhoto,
+						Name:        tools.TelegramSendChannelPhoto,
 						Description: "Публикует пост с фото и текстовой подписью в Telegram-канал. Используй эту функцию вместо send_channel_post когда нужно опубликовать пост с изображением.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -314,7 +314,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Уведомление владельцу",
 					userDescription: "Отправляет личное уведомление владельцу бизнеса в Telegram.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.TelegramSendNotification,
+						Name:        tools.TelegramSendNotification,
 						Description: "Отправляет личное уведомление владельцу бизнеса в Telegram",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -332,7 +332,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Загрузить отзывы",
 					userDescription: "Загружает комментарии и реакции из Telegram-канала.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.TelegramGetReviews,
+						Name:        tools.TelegramGetReviews,
 						Description: "Получает последние сообщения/отзывы, отправленные боту или в канал через Telegram. Каждое сообщение содержит поля message_id и chat_id — используй их для ответа через telegram__reply_to_comment.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -351,7 +351,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Ответить на комментарий",
 					userDescription: "Отвечает на комментарий к посту в Telegram-канале.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.TelegramReplyToComment,
+						Name:        tools.TelegramReplyToComment,
 						Description: "Отвечает на конкретный комментарий или сообщение в Telegram. Используй эту функцию когда нужно ответить на комментарий — НЕ используй telegram__send_channel_post для ответов на комментарии.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -377,7 +377,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Опубликовать пост",
 					userDescription: "Публикует пост на стене сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.VKPublishPost,
+						Name:        tools.VKPublishPost,
 						Description: "Публикует текстовый пост (без фото) на стену сообщества ВКонтакте. Если нужно опубликовать пост с фото — используй vk__post_photo вместо этого.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -396,7 +396,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Опубликовать фото",
 					userDescription: "Публикует пост с фото на стене сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.VKPostPhoto,
+						Name:        tools.VKPostPhoto,
 						Description: "Публикует пост с фото и текстовой подписью на стену сообщества ВКонтакте. Используй эту функцию вместо publish_post когда нужно опубликовать пост с изображением.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -418,7 +418,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Запланировать пост",
 					userDescription: "Планирует отложенную публикацию на стене ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.VKSchedulePost,
+						Name:        tools.VKSchedulePost,
 						Description: "Планирует отложенный пост на стене сообщества ВКонтакте. Пост будет автоматически опубликован ВКонтакте в указанное время.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -440,7 +440,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Обновить данные сообщества",
 					userDescription: "Изменяет название, описание и контакты сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.VKUpdateGroupInfo,
+						Name:        tools.VKUpdateGroupInfo,
 						Description: "Обновляет информацию о сообществе ВКонтакте (описание, ссылки, контакты). Если group_id не указан, используется сообщество из активной VK-интеграции.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -459,7 +459,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Загрузить комментарии",
 					userDescription: "Загружает комментарии к посту ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.VKGetComments,
+						Name:        tools.VKGetComments,
 						Description: "Получает комментарии к конкретному посту на стене сообщества ВКонтакте. Если post_id не указан, возвращает комментарии к последнему посту.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -479,7 +479,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Ответить на комментарий",
 					userDescription: "Отвечает на комментарий ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.VKReplyComment,
+						Name:        tools.VKReplyComment,
 						Description: "Отвечает на комментарий к посту на стене сообщества ВКонтакте. Создает ответ в ветке обсуждения.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -505,7 +505,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Удалить комментарий",
 					userDescription: "Удаляет комментарий под постом ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.VKDeleteComment,
+						Name:        tools.VKDeleteComment,
 						Description: "Удаляет комментарий к посту на стене сообщества ВКонтакте. Требуются права администратора или модератора сообщества.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -524,7 +524,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Загрузить данные сообщества",
 					userDescription: "Загружает карточку сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.VKGetCommunityInfo,
+						Name:        tools.VKGetCommunityInfo,
 						Description: "Получает информацию о сообществе ВКонтакте: название, описание, количество подписчиков, статус, ссылки. Используй для ответа на вопросы о сообществе.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -542,7 +542,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Загрузить посты",
 					userDescription: "Загружает посты со стены сообщества ВКонтакте.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.VKGetWallPosts,
+						Name:        tools.VKGetWallPosts,
 						Description: "Получает последние посты со стены сообщества ВКонтакте с данными о лайках, комментариях, репостах и просмотрах.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -566,7 +566,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Загрузить карточку организации",
 					userDescription: "Загружает карточку организации из Яндекс.Бизнеса.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.YandexBusinessGetInfo,
+						Name:        tools.YandexBusinessGetInfo,
 						Description: "Получает текущую информацию об организации в Яндекс Бизнес: название, телефон, email, часы работы, адрес, статус.",
 						Parameters: map[string]interface{}{
 							"type":       "object",
@@ -581,7 +581,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Обновить часы работы",
 					userDescription: "Обновляет часы работы организации в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.YandexBusinessUpdateHours,
+						Name:        tools.YandexBusinessUpdateHours,
 						Description: "Обновляет часы работы в Яндекс Бизнес. Принимает описание расписания в свободном формате.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -602,7 +602,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Обновить данные организации",
 					userDescription: "Изменяет описание, телефон и сайт организации в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.YandexBusinessUpdateInfo,
+						Name:        tools.YandexBusinessUpdateInfo,
 						Description: "Обновляет контактную информацию в Яндекс Бизнес (телефон, сайт, описание)",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -621,7 +621,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Загрузить отзывы Яндекса",
 					userDescription: "Загружает отзывы клиентов с Яндекс.Бизнеса.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.YandexBusinessGetReviews,
+						Name:        tools.YandexBusinessGetReviews,
 						Description: "Получает отзывы об организации из Яндекс Бизнес",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -638,7 +638,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Ответить на отзыв Яндекса",
 					userDescription: "Отвечает на отзыв клиента в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.YandexBusinessReplyReview,
+						Name:        tools.YandexBusinessReplyReview,
 						Description: "Публикует ответ на отзыв в Яндекс Бизнес",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -659,7 +659,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Загрузить фото",
 					userDescription: "Добавляет фото в галерею карточки организации в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.YandexBusinessUploadPhoto,
+						Name:        tools.YandexBusinessUploadPhoto,
 						Description: "Загружает фото в Яндекс Бизнес. Категория: general (общее), logo (логотип), services, interior, exterior, enter (вход), goods (товары).",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -678,7 +678,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Опубликовать пост в Яндекс Бизнес",
 					userDescription: "Публикует пост в Яндекс.Бизнесе.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.YandexBusinessCreatePost,
+						Name:        tools.YandexBusinessCreatePost,
 						Description: "Создаёт публикацию (пост) в Яндекс Бизнес. Публикация появится в Поиске Яндекса и Яндекс Картах.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -701,7 +701,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Загрузить отзывы Google",
 					userDescription: "Загружает отзывы клиентов из Google Business Profile.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.GoogleBusinessGetReviews,
+						Name:        tools.GoogleBusinessGetReviews,
 						Description: "Получает отзывы о локации из Google Business Profile. Возвращает список отзывов с рейтингами, комментариями и ответами владельца.",
 						Parameters: map[string]interface{}{
 							"type": "object",
@@ -718,7 +718,7 @@ func registerPlatformTools(reg *tools.Registry, nc *natslib.Conn) {
 					displayName:     "Ответить на отзыв Google",
 					userDescription: "Отвечает на отзыв клиента в Google Business Profile.",
 					def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
-						Name:        pkgtools.GoogleBusinessReplyReview,
+						Name:        tools.GoogleBusinessReplyReview,
 						Description: "Отвечает на отзыв в Google Business Profile от имени владельца бизнеса.",
 						Parameters: map[string]interface{}{
 							"type": "object",

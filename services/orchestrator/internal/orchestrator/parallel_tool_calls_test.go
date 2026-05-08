@@ -17,7 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // safeStubLLM is the goroutine-safe variant of stubLLM. The orchestrator calls
@@ -65,8 +65,8 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 		{Content: "Собрал отзывы со всех трёх платформ.", FinishReason: "stop"},
 	}}
 
-	reg := tools.NewRegistry()
-	slow := tools.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+	reg := toolregistry.NewRegistry()
+	slow := toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 		select {
 		case <-time.After(toolDelay):
 			return map[string]interface{}{"reviews": []interface{}{}}, nil
@@ -153,9 +153,9 @@ func TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish(t *testing.T) {
 		{Content: "ok", FinishReason: "stop"},
 	}}
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "slow_tool"}}, "",
-		tools.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+		toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 			select {
 			case <-time.After(slowDelay):
 				return map[string]interface{}{"ok": true}, nil
@@ -164,7 +164,7 @@ func TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish(t *testing.T) {
 			}
 		}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "fast_tool"}}, "",
-		tools.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+		toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 			select {
 			case <-time.After(fastDelay):
 				return map[string]interface{}{"ok": true}, nil
@@ -223,8 +223,8 @@ func TestRun_ParallelToolCalls_OneFailsOthersSucceed(t *testing.T) {
 		{Content: "ok", FinishReason: "stop"},
 	}}
 
-	reg := tools.NewRegistry()
-	okExec := tools.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+	reg := toolregistry.NewRegistry()
+	okExec := toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 		select {
 		case <-time.After(100 * time.Millisecond):
 			return map[string]interface{}{"ok": true}, nil
@@ -232,7 +232,7 @@ func TestRun_ParallelToolCalls_OneFailsOthersSucceed(t *testing.T) {
 			return nil, ctx.Err()
 		}
 	})
-	failExec := tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	failExec := toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, errors.New("boom")
 	})
 	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_ok_a"}}, "", okExec, domain.ToolFloorAuto, nil)
@@ -280,12 +280,12 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 	}}
 
 	var counter atomic.Int32
-	exec := tools.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	exec := toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		n := counter.Add(1)
 		return map[string]interface{}{"message_id": n, "text": args["text"]}, nil
 	})
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "telegram__send_channel_post"}}, "", exec, domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
@@ -344,14 +344,14 @@ func TestRun_PerToolTimeout_BoundsSingleTool(t *testing.T) {
 		{Content: "done", FinishReason: "stop"},
 	}}
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "hang"}}, "",
-		tools.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+		toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 			<-ctx.Done()
 			return nil, ctx.Err()
 		}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "fast"}}, "",
-		tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+		toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 			return map[string]interface{}{"ok": true}, nil
 		}), domain.ToolFloorAuto, nil)
 
