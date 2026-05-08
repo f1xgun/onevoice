@@ -18,30 +18,54 @@ export type PlatformId =
   | 'avito'
   | 'whatsapp';
 
+// PlatformDefaultStatus mirrors the registry's at-rest state in
+// pkg/domain/platform.go. The wire status returned by /api/v1/platforms is
+// authoritative once it loads — but until the request resolves (and on
+// network failure) the hook needs to fall back to something that won't
+// advertise broken connect flows for non-MVP platforms. Keeping the
+// pre-network status here, beside the rest of the metadata, is checked for
+// drift by lib/__tests__/platforms.test.ts.
+export type PlatformDefaultStatus = 'active' | 'coming_soon';
+
 export interface PlatformMeta {
   color: string;
   shortLabel: string;
   fullLabel: string;
   displayOrder: number;
+  defaultStatus: PlatformDefaultStatus;
   // Optional Linen-design "soon" subtitle (e.g. "Q3 2026", "оценивается").
   // Pure presentation; the backend registry only knows status, not timing.
   comingSoonWhen?: string;
 }
 
 export const PLATFORM_META: Record<PlatformId, PlatformMeta> = {
-  telegram: { color: '#2AABEE', shortLabel: 'TG', fullLabel: 'Telegram', displayOrder: 0 },
-  vk: { color: '#4680C2', shortLabel: 'VK', fullLabel: 'ВКонтакте', displayOrder: 1 },
+  telegram: {
+    color: '#2AABEE',
+    shortLabel: 'TG',
+    fullLabel: 'Telegram',
+    displayOrder: 0,
+    defaultStatus: 'active',
+  },
+  vk: {
+    color: '#4680C2',
+    shortLabel: 'VK',
+    fullLabel: 'ВКонтакте',
+    displayOrder: 1,
+    defaultStatus: 'active',
+  },
   yandex_business: {
     color: '#FC3F1D',
     shortLabel: 'YB',
     fullLabel: 'Яндекс.Бизнес',
     displayOrder: 2,
+    defaultStatus: 'active',
   },
   google_business: {
     color: '#1A73E8',
     shortLabel: 'GB',
     fullLabel: 'Google Business',
     displayOrder: 3,
+    defaultStatus: 'coming_soon',
     comingSoonWhen: 'оценивается',
   },
   '2gis': {
@@ -49,6 +73,7 @@ export const PLATFORM_META: Record<PlatformId, PlatformMeta> = {
     shortLabel: '2G',
     fullLabel: '2ГИС',
     displayOrder: 4,
+    defaultStatus: 'coming_soon',
     comingSoonWhen: 'оценивается',
   },
   avito: {
@@ -56,6 +81,7 @@ export const PLATFORM_META: Record<PlatformId, PlatformMeta> = {
     shortLabel: 'AV',
     fullLabel: 'Авито',
     displayOrder: 5,
+    defaultStatus: 'coming_soon',
     comingSoonWhen: 'оценивается',
   },
   whatsapp: {
@@ -63,6 +89,7 @@ export const PLATFORM_META: Record<PlatformId, PlatformMeta> = {
     shortLabel: 'WA',
     fullLabel: 'WhatsApp',
     displayOrder: 6,
+    defaultStatus: 'coming_soon',
     comingSoonWhen: 'оценивается',
   },
 };

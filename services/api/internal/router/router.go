@@ -72,9 +72,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		// Platform registry — single source of truth for the integration list.
 		// Public so the marketing landing page can render it without auth.
 		// Returns only non-sensitive metadata (name, description, status).
-		if handlers.Platforms != nil {
-			r.Get("/platforms", handlers.Platforms.List)
-		}
+		r.Get("/platforms", handlers.Platforms.List)
 
 		// Protected routes (require auth)
 		r.Group(func(r chi.Router) {

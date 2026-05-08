@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+
 import { Badge } from '@/components/ui/badge';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import { MonoLabel } from '@/components/ui/mono-label';
@@ -52,7 +54,10 @@ function statusForLanding(
 
 export function SupportedPlatforms() {
   const { platforms } = usePlatforms();
-  const byId = new Map<string, PlatformStatus>(platforms.map((p) => [p.id, p.status]));
+  const byId = useMemo(
+    () => new Map<string, PlatformStatus>(platforms.map((p) => [p.id, p.status])),
+    [platforms]
+  );
 
   return (
     <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
