@@ -144,7 +144,7 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 	limitF, _ := req.Args["limit"].(float64)
 	limit := int(limitF)
 	if limit == 0 {
-		limit = 20
+		limit = gbp.DefaultReviewLimit
 	}
 
 	client, locationName, err := h.getClient(ctx, req)
