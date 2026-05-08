@@ -229,10 +229,7 @@ function ChannelList({
             // the background (~25–45s). Poll the integrations list a few
             // times so the resolved name appears without a manual reload.
             [10_000, 30_000, 60_000].forEach((delay) => {
-              setTimeout(
-                () => qc.invalidateQueries({ queryKey: ['integrations'] }),
-                delay
-              );
+              setTimeout(() => qc.invalidateQueries({ queryKey: ['integrations'] }), delay);
             });
           } else {
             qc.invalidateQueries({ queryKey: ['integrations'] });
