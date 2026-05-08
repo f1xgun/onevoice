@@ -3,12 +3,12 @@ package agent
 // VK API error codes worth special-casing in classifyVKError. See
 // https://dev.vk.com/reference/errors for the full list.
 const (
-	vkErrInvalidToken  = 5
-	vkErrAccessDenied  = 15
-	vkErrInvalidParam  = 100
-	vkErrInvalidUser   = 113
-	vkErrTooManyReqs   = 6
-	vkErrFloodControl  = 9
+	vkErrInvalidToken = 5
+	vkErrAccessDenied = 15
+	vkErrInvalidParam = 100
+	vkErrInvalidUser  = 113
+	vkErrTooManyReqs  = 6
+	vkErrFloodControl = 9
 )
 
 // Default and max counts for read-only handler endpoints. The maximum
