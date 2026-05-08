@@ -82,8 +82,8 @@ export function VKCommunityModal({ open, onClose }: Props) {
                 <span className="font-medium text-ink">«Создать ключ»</span>.
               </li>
               <li>
-                <span className="font-medium text-ink">Не выбирайте приложение</span> — иначе
-                ключ унаследует ограничения VK Mini App и не сможет отвечать на комментарии.
+                <span className="font-medium text-ink">Не выбирайте приложение</span> — иначе ключ
+                унаследует ограничения VK Mini App и не сможет отвечать на комментарии.
               </li>
               <li>
                 Включите права: <span className="font-mono text-xs">«Стена»</span>,{' '}
@@ -110,8 +110,8 @@ export function VKCommunityModal({ open, onClose }: Props) {
               disabled={submitting}
             />
             <p className="text-xs text-ink-soft">
-              OneVoice проверит ключ, найдёт привязанное сообщество и сохранит интеграцию.
-              Ничего никуда не уходит, кроме самого VK API.
+              OneVoice проверит ключ, найдёт привязанное сообщество и сохранит интеграцию. Ничего
+              никуда не уходит, кроме самого VK API.
             </p>
           </div>
 

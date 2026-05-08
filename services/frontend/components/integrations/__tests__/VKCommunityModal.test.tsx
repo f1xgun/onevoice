@@ -106,6 +106,8 @@ describe('VKCommunityModal — paste flow', () => {
     await user.type(screen.getByLabelText('Ключ доступа сообщества'), 'vk1.a.X');
     await user.click(screen.getByRole('button', { name: /^Подключить$/ }));
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Не удалось подключить сообщество'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Не удалось подключить сообщество')
+    );
   });
 });
