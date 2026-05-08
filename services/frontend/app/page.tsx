@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import { MonoLabel } from '@/components/ui/mono-label';
+import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
 
 // ─── Local helpers ────────────────────────────────────────────────────
 // The wordmark is the only place we use a serif on the landing — inline
@@ -25,25 +26,6 @@ const NAV_LINKS = [
   { href: '#features', label: 'Возможности' },
   { href: '#channels', label: 'Каналы' },
   // { href: '#pricing', label: 'Цены' }, // временно: продукт бесплатный
-];
-
-const PLATFORMS: Array<{
-  name: string;
-  display: string;
-  meta: string;
-  status: 'есть' | 'скоро';
-}> = [
-  { name: 'Telegram', display: 'Telegram', meta: 'Каналы и боты', status: 'есть' },
-  { name: 'VK', display: 'ВКонтакте', meta: 'Сообщества', status: 'есть' },
-  { name: 'Yandex', display: 'Яндекс.Бизнес', meta: 'Карта и отзывы', status: 'есть' },
-  { name: 'Google', display: 'Google Business', meta: 'Карта и отзывы', status: 'скоро' },
-  { name: '2GIS', display: '2ГИС', meta: 'Карта и отзывы', status: 'скоро' },
-  { name: 'Avito', display: 'Авито', meta: 'Объявления', status: 'скоро' },
-  { name: 'WhatsApp', display: 'WhatsApp', meta: 'Оценивается', status: 'скоро' },
-  { name: 'Instagram', display: 'Instagram', meta: 'Оценивается', status: 'скоро' },
-  { name: 'OK', display: 'Одноклассники', meta: 'Оценивается', status: 'скоро' },
-  // { name: 'OneVoice', display: 'Свой канал', meta: 'Через API', status: 'API' },
-  // — мы не предоставляем публичный API для самостоятельного подключения каналов.
 ];
 
 const STEPS = [
@@ -506,26 +488,7 @@ function Platforms() {
         <p className="mt-3 max-w-[640px] text-[16px] leading-relaxed text-ink-mid">
           В России — без компромиссов. Подключаем настоящие каналы, а не их западные аналоги.
         </p>
-        <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          {PLATFORMS.map((p) => {
-            const tone = p.status === 'есть' ? 'success' : 'neutral';
-            return (
-              <div
-                key={p.display}
-                className="flex min-h-[120px] flex-col gap-3 rounded-lg border border-line bg-paper-raised p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <ChannelMark name={p.name} size={28} />
-                  <Badge tone={tone}>{p.status}</Badge>
-                </div>
-                <div className="mt-auto">
-                  <div className="text-[14px] font-medium">{p.display}</div>
-                  <MonoLabel>{p.meta}</MonoLabel>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <SupportedPlatforms />
       </div>
     </section>
   );
