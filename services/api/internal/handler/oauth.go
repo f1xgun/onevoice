@@ -817,7 +817,16 @@ func (h *OAuthHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	name, lookupErr := h.fetchVKCommunityName(r.Context(), target.ExternalID, "")
+	// Use the integration's own community admin token rather than the
+	// Mini-App service key — the latter is often unset in self-hosted
+	// installs and fails closed groups, while the stored token is always
+	// present for a connected VK community.
+	accessToken := ""
+	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), business.ID, "vk", target.ExternalID); tokErr == nil && tok != nil {
+		accessToken = tok.AccessToken
+	}
+
+	name, lookupErr := h.fetchVKCommunityName(r.Context(), target.ExternalID, accessToken)
 	if lookupErr != nil {
 		slog.Info("VK community name lookup failed; leaving metadata untouched",
 			"integration_id", integrationID, "error", lookupErr)
