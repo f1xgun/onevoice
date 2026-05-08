@@ -511,6 +511,16 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("create search handler: %w", err)
 	}
 
+	// Platform registry — drives the public GET /api/v1/platforms endpoint.
+	// Availability is derived from cfg so platforms missing required
+	// credentials are surfaced as oauth_not_configured to the frontend.
+	platformsHandler := handler.NewPlatformsHandler(handler.PlatformAvailability{
+		Telegram:       cfg.TelegramBotToken != "",
+		VK:             cfg.VKClientID != "" && cfg.VKClientSecret != "",
+		YandexBusiness: cfg.YandexClientID != "" && cfg.YandexClientSecret != "",
+		GoogleBusiness: cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "",
+	})
+
 	handlers := &router.Handlers{
 		Auth:          authHandler,
 		Business:      businessHandler,
@@ -526,6 +536,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		HITL:          hitlHandler,
 		Titler:        titlerHandler,
 		Search:        searchHandler,
+		Platforms:     platformsHandler,
 	}
 
 	// Health checker
