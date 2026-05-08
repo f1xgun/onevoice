@@ -1,4 +1,5 @@
 import { api } from './api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 
 // Phase 18 / TITLE-01 / TITLE-09: titleStatus drives placeholder fallback
 // (D-09) and Regenerate-menu visibility (D-12). The shape is a union literal
@@ -29,7 +30,7 @@ export interface Conversation {
 // frozen. Request the server-side max (100) so the sidebar reflects reality
 // for typical users. Heavy users (>100 chats) will need real pagination.
 export async function listConversations(): Promise<Conversation[]> {
-  const { data } = await api.get<Conversation[]>('/conversations', {
+  const { data } = await api.get<Conversation[]>(API_PATHS.CONVERSATIONS.ROOT, {
     params: { limit: 100 },
   });
   return Array.isArray(data) ? data : [];
@@ -39,7 +40,7 @@ export async function createConversation(input: {
   title: string;
   projectId?: string | null;
 }): Promise<Conversation> {
-  const { data } = await api.post<Conversation>('/conversations', input);
+  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.ROOT, input);
   return data;
 }
 
@@ -47,7 +48,7 @@ export async function moveConversation(
   id: string,
   projectId: string | null
 ): Promise<Conversation> {
-  const { data } = await api.post<Conversation>(`/conversations/${id}/move`, { projectId });
+  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.MOVE(id), { projectId });
   return data;
 }
 
@@ -56,25 +57,25 @@ export async function moveConversation(
 // threat T-19-02-01; cross-tenant attempts return 404 (uniform — see threat
 // T-19-02-02). Frontend just propagates the axios error.
 export async function pinConversation(id: string): Promise<Conversation> {
-  const { data } = await api.post<Conversation>(`/conversations/${id}/pin`);
+  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.PIN(id));
   return data;
 }
 
 export async function unpinConversation(id: string): Promise<Conversation> {
-  const { data } = await api.post<Conversation>(`/conversations/${id}/unpin`);
+  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.UNPIN(id));
   return data;
 }
 
 export async function renameConversation(id: string, title: string): Promise<Conversation> {
-  const { data } = await api.put<Conversation>(`/conversations/${id}`, { title });
+  const { data } = await api.put<Conversation>(API_PATHS.CONVERSATIONS.BY_ID(id), { title });
   return data;
 }
 
 export async function regenerateConversationTitle(id: string): Promise<Conversation> {
-  const { data } = await api.post<Conversation>(`/conversations/${id}/regenerate-title`);
+  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.REGENERATE_TITLE(id));
   return data;
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  await api.delete(`/conversations/${id}`);
+  await api.delete(API_PATHS.CONVERSATIONS.BY_ID(id));
 }

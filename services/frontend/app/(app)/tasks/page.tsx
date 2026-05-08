@@ -21,6 +21,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import {
   TASK_STATUS_DOT_CLASSES,
   TASK_STATUS_LABELS,
@@ -29,11 +30,6 @@ import {
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import { useTasksStream } from '@/hooks/useTasksStream';
 
-// Background poll cadence for the tasks list. SSE drives realtime updates;
-// the poll is a belt-and-braces refresh in case the stream missed an event
-// (e.g. browser put us to sleep). 30 s is fast enough that a missed task
-// surfaces within one poll cycle without flooding the backend.
-const POLL_INTERVAL_MS = 30_000;
 import type { AgentTask, TaskStreamEvent } from '@/types/task';
 import { Button } from '@/components/ui/button';
 import { ChannelMark } from '@/components/ui/channel-mark';
@@ -42,6 +38,12 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyTasks } from '@/components/states';
 import { cn } from '@/lib/utils';
+
+// Background poll cadence for the tasks list. SSE drives realtime updates;
+// the poll is a belt-and-braces refresh in case the stream missed an event
+// (e.g. browser put us to sleep). 30 s is fast enough that a missed task
+// surfaces within one poll cycle without flooding the backend.
+const POLL_INTERVAL_MS = 30_000;
 
 // ─── Plain-Russian error explainer ──────────────────────────────────
 //
@@ -68,7 +70,7 @@ function explainError(task: AgentTask): HumanError {
             : 'Доступ к платформе истёк. Переподключите канал, чтобы мы могли продолжить.',
       cta: {
         label: platform === 'vk' ? 'Переподключить ВКонтакте' : 'Переподключить',
-        href: '/integrations',
+        href: API_PATHS.INTEGRATIONS.ROOT,
       },
     };
   }
@@ -92,7 +94,7 @@ function explainError(task: AgentTask): HumanError {
   if (/not.?found|404|канал.*не/.test(raw)) {
     return {
       summary: 'Канал не найден. Проверьте, что он всё ещё подключён и доступен.',
-      cta: { label: 'Открыть каналы', href: '/integrations' },
+      cta: { label: 'Открыть каналы', href: API_PATHS.INTEGRATIONS.ROOT },
     };
   }
 
@@ -117,7 +119,7 @@ export default function TasksPage() {
   const { data: tasks = [], isLoading } = useQuery<AgentTask[]>({
     queryKey: ['tasks'],
     queryFn: () =>
-      api.get('/tasks').then((r) => {
+      api.get(API_PATHS.TASKS).then((r) => {
         const data = r.data as unknown;
         if (Array.isArray(data)) return data as AgentTask[];
         const list = (data as { tasks?: AgentTask[] } | null)?.tasks;

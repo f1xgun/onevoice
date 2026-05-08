@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { REVIEW_STATUS_BADGES, type ReviewStatus } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
 
@@ -140,7 +141,7 @@ export default function ReviewsPage() {
       const params = new URLSearchParams();
       if (platform !== 'all') params.set('platform', platform);
       if (replyStatus !== 'all') params.set('reply_status', replyStatus);
-      return api.get(`/reviews?${params}`).then((r) => {
+      return api.get(`${API_PATHS.REVIEWS.ROOT}?${params}`).then((r) => {
         // API shape: { reviews: Review[], total: number }. Older
         // callers expected a bare array — accept both for safety.
         const data = r.data as unknown;
@@ -153,7 +154,7 @@ export default function ReviewsPage() {
 
   const replyMutation = useMutation({
     mutationFn: ({ id, text }: { id: string; text: string }) =>
-      api.put(`/reviews/${id}/reply`, { replyText: text }),
+      api.put(API_PATHS.REVIEWS.REPLY(id), { replyText: text }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reviews'] });
       toast.success('Ответ отправлен');
@@ -169,7 +170,7 @@ export default function ReviewsPage() {
   // take up to ~60s; the backend caps total work at 90s per call.
   const refreshMutation = useMutation({
     mutationFn: () =>
-      api.post('/reviews/refresh', undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
+      api.post(API_PATHS.REVIEWS.REFRESH, undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reviews'] });
       toast.success('Отзывы обновлены');

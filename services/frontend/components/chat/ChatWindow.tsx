@@ -18,10 +18,11 @@ import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
 import { DEFAULT_QUICK_ACTIONS } from '@/lib/quick-actions';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import type { Conversation } from '@/lib/conversations';
 
 async function fetchConversation(id: string): Promise<Conversation> {
-  const { data } = await api.get<Conversation>(`/conversations/${id}`);
+  const { data } = await api.get<Conversation>(API_PATHS.CONVERSATIONS.BY_ID(id));
   return data;
 }
 

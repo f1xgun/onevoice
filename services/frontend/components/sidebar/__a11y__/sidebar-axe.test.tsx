@@ -10,6 +10,7 @@ import { SidebarSearch } from '@/components/sidebar/SidebarSearch';
 import { ProjectSection } from '@/components/sidebar/ProjectSection';
 import type { Project } from '@/types/project';
 import type { Conversation } from '@/lib/conversations';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 
 // Phase 19 / Plan 19-05 — axe-core a11y audit (RESEARCH §3 + threat T-19-05-01).
 //
@@ -66,10 +67,10 @@ vi.mock('@/lib/api', () => ({
 // useConversations / useProjects rely on api.get; default to safe values.
 function setupDefaultApi() {
   apiGet.mockImplementation((url: string) => {
-    if (url === '/business') {
+    if (url === API_PATHS.BUSINESS.ROOT) {
       return Promise.resolve({ data: { id: 'biz-1', name: 'Business' } });
     }
-    if (url === '/conversations') {
+    if (url === API_PATHS.CONVERSATIONS.ROOT) {
       return Promise.resolve({ data: [] });
     }
     if (url === '/projects') {

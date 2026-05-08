@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -144,7 +145,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
   async function connectWith(company: CompanyEntry) {
     setStep('connecting');
     try {
-      await api.post('/integrations/yandex_business/connect', {
+      await api.post(API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_CONNECT, {
         cookies: value.trim(),
         permalink: company.permalink,
         business_name: company.name,

@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { cn } from '@/lib/utils';
 import { TONE_OPTIONS, type ToneId, toneLabel } from '@/lib/tones';
 
@@ -44,7 +45,7 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
 
   const mutation = useMutation({
     mutationFn: (ids: ToneId[]) =>
-      api.put('/business/voice-tone', { tones: ids }).then((r) => r.data),
+      api.put(API_PATHS.BUSINESS.VOICE_TONE, { tones: ids }).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['business'] });
       setDirty(false);

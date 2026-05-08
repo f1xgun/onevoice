@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
@@ -60,18 +61,18 @@ export default function IntegrationsPage() {
     if (connected === 'vk') {
       toast.success('VK сообщество подключено');
       qc.invalidateQueries({ queryKey: ['integrations'] });
-      window.history.replaceState({}, '', '/integrations');
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
     if (connected === 'google_business') {
       toast.success('Google Business Profile подключён');
       qc.invalidateQueries({ queryKey: ['integrations'] });
-      window.history.replaceState({}, '', '/integrations');
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
     const googleStep = searchParams.get('google_step');
     if (googleStep === 'select_location') {
       setGoogleLocationOpen(true);
-      window.history.replaceState({}, '', '/integrations');
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
     if (error) {
@@ -86,19 +87,19 @@ export default function IntegrationsPage() {
         no_locations: 'В этом аккаунте Google нет бизнес-локаций.',
       };
       toast.error(messages[error] || `Не получилось: ${error}`);
-      window.history.replaceState({}, '', '/integrations');
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
   }, [searchParams, qc]);
 
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
     queryKey: ['integrations'],
     queryFn: () =>
-      api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
+      api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
   });
 
   const { data: business } = useQuery<Business>({
     queryKey: ['business'],
-    queryFn: () => api.get('/business').then((r) => r.data as Business),
+    queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
   });
 
   // Detect newly-registered integrations to show the post-connect banner
@@ -149,7 +150,7 @@ export default function IntegrationsPage() {
     }
     if (platformId === 'google_business') {
       try {
-        const { data } = await api.get('/integrations/google_business/auth-url');
+        const { data } = await api.get(API_PATHS.INTEGRATIONS.GOOGLE_AUTH_URL);
         window.location.href = data.url;
       } catch {
         toast.error('Не получилось открыть авторизацию Google');
