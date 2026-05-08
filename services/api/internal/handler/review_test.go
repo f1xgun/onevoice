@@ -23,6 +23,7 @@ type mockReviewService struct {
 	listFn    func(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	getByIDFn func(ctx context.Context, userID uuid.UUID, id string) (*domain.Review, error)
 	replyFn   func(ctx context.Context, userID uuid.UUID, id, replyText string) error
+	refreshFn func(ctx context.Context, userID uuid.UUID) error
 }
 
 func (m *mockReviewService) List(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error) {
@@ -35,6 +36,13 @@ func (m *mockReviewService) GetByID(ctx context.Context, userID uuid.UUID, id st
 
 func (m *mockReviewService) Reply(ctx context.Context, userID uuid.UUID, id, replyText string) error {
 	return m.replyFn(ctx, userID, id, replyText)
+}
+
+func (m *mockReviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
+	if m.refreshFn == nil {
+		return nil
+	}
+	return m.refreshFn(ctx, userID)
 }
 
 func TestNewReviewHandler_NilService(t *testing.T) {

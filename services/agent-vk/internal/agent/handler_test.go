@@ -251,6 +251,42 @@ func TestHandler_GetComments_UsesServiceKeyWithoutUserToken(t *testing.T) {
 	assert.Equal(t, 1, resp.Result["count"])
 }
 
+func TestHandler_GetComments_NoPostID_WalksPostsWithComments(t *testing.T) {
+	// When post_id is omitted (sync path), the handler must scan recent
+	// posts and gather comments from any with comments.count > 0. The
+	// previous behavior — picking only the latest post — silently dropped
+	// reviews as soon as a newer post (with no comments) appeared.
+	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
+	calls := []int{}
+	vkClient := &mockVKClient{
+		getWallPostsFn: func(groupID string, count int) ([]map[string]interface{}, int, error) {
+			assert.Equal(t, 20, count)
+			return []map[string]interface{}{
+				{"id": 14, "comments": 0}, // newest, no comments — must skip
+				{"id": 11, "comments": 2}, // older, has comments — must walk
+				{"id": 9, "comments": 0},
+			}, 3, nil
+		},
+		getCommentsFn: func(groupID string, postID, count int) ([]map[string]interface{}, error) {
+			calls = append(calls, postID)
+			return []map[string]interface{}{{"id": postID*100 + 1, "text": "x", "post_id": postID}}, nil
+		},
+	}
+	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
+
+	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
+		TaskID:     "t-walk",
+		Tool:       "vk__get_comments",
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"group_id": "-123456"},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, []int{11}, calls, "should fetch comments only for posts with comments.count > 0")
+	assert.Equal(t, 1, resp.Result["count"])
+}
+
 func TestHandler_GetComments_DefaultCount(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok", userToken: "user-tok"}
 	vkClient := &mockVKClient{
