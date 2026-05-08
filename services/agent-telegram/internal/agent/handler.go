@@ -10,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // TokenInfo holds the resolved access token and the integration's external ID.
@@ -62,15 +63,15 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		err  error
 	)
 	switch req.Tool {
-	case "telegram__send_channel_post":
+	case tools.TelegramSendChannelPost:
 		resp, err = h.sendChannelPost(ctx, req)
-	case "telegram__send_channel_photo":
+	case tools.TelegramSendChannelPhoto:
 		resp, err = h.sendChannelPhoto(ctx, req)
-	case "telegram__send_notification":
+	case tools.TelegramSendNotification:
 		resp, err = h.sendNotification(ctx, req)
-	case "telegram__get_reviews":
+	case tools.TelegramGetReviews:
 		resp, err = h.getReviews(ctx, req)
-	case "telegram__reply_to_comment":
+	case tools.TelegramReplyToComment:
 		resp, err = h.replyToComment(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)

@@ -18,6 +18,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -614,7 +615,7 @@ func (s *Syncer) syncYandexHours(ctx context.Context, business *domain.Business,
 
 	req := a2a.ToolRequest{
 		TaskID:     uuid.New().String(),
-		Tool:       "yandex_business__update_hours",
+		Tool:       tools.YandexBusinessUpdateHours,
 		Args:       map[string]interface{}{"hours": hoursJSON},
 		BusinessID: business.ID.String(),
 	}
