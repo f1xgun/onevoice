@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // InternalToolsHandler serves the cluster-internal registry snapshot consumed
@@ -24,13 +24,13 @@ import (
 // Path convention: `/internal/*` is reserved for cluster-internal endpoints.
 // External reverse proxies must drop requests matching this prefix.
 type InternalToolsHandler struct {
-	Registry *tools.Registry
+	Registry *toolregistry.Registry
 }
 
 // NewInternalToolsHandler constructs the handler. Caller must supply a
 // non-nil Registry; the handler does not defend against nil because the
 // orchestrator would already be non-functional in that state.
-func NewInternalToolsHandler(reg *tools.Registry) *InternalToolsHandler {
+func NewInternalToolsHandler(reg *toolregistry.Registry) *InternalToolsHandler {
 	return &InternalToolsHandler{Registry: reg}
 }
 
@@ -59,11 +59,11 @@ func (h *InternalToolsHandler) Names(w http.ResponseWriter, r *http.Request) {
 // exposed publicly; the API service caches responses in-memory with a 5-min
 // TTL, so this endpoint sees minimal traffic even during heavy frontend load.
 type InternalToolsAllHandler struct {
-	Registry *tools.Registry
+	Registry *toolregistry.Registry
 }
 
 // NewInternalToolsAllHandler constructs the handler. Registry must be non-nil.
-func NewInternalToolsAllHandler(reg *tools.Registry) *InternalToolsAllHandler {
+func NewInternalToolsAllHandler(reg *toolregistry.Registry) *InternalToolsAllHandler {
 	return &InternalToolsAllHandler{Registry: reg}
 }
 
