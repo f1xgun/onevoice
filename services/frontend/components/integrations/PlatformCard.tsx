@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
+import { getIntegrationDisplay } from '@/lib/integrations';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -145,6 +146,7 @@ export function PlatformCard({
                 <ChannelList
                   integrations={integrations}
                   platform={platform}
+                  platformLabel={label}
                   onDisconnect={onDisconnect}
                   refreshingID={refreshingID}
                   onRefreshTelegram={refreshTelegramLinkedGroup}
@@ -154,6 +156,7 @@ export function PlatformCard({
               <ChannelList
                 integrations={integrations}
                 platform={platform}
+                platformLabel={label}
                 onDisconnect={onDisconnect}
                 refreshingID={refreshingID}
                 onRefreshTelegram={refreshTelegramLinkedGroup}
@@ -180,22 +183,70 @@ export function PlatformCard({
 function ChannelList({
   integrations,
   platform,
+  platformLabel,
   onDisconnect,
   refreshingID,
   onRefreshTelegram,
 }: {
   integrations: Integration[];
   platform: string;
+  platformLabel: string;
   onDisconnect: (integrationId: string) => void;
   refreshingID: string | null;
   onRefreshTelegram: (i: Integration) => void;
 }) {
+  const qc = useQueryClient();
+  const refreshedRef = useRef<Set<string>>(new Set());
+
+  // Lazy backfill of missing friendly names. The first time we see an
+  // integration without its platform-specific name field, we POST to the
+  // platform's refresh-name endpoint and invalidate the integrations
+  // query so the row re-renders with the resolved name. Tracked per-id
+  // so we don't loop if the lookup permanently yields nothing.
+  //
+  //   - VK:               metadata.community_name (groups.getById, ~200ms)
+  //   - yandex_business:  metadata.business_name  (agent get_info RPA, ~30s)
+  useEffect(() => {
+    integrations.forEach((i) => {
+      if (refreshedRef.current.has(i.id)) return;
+      const md = (i.metadata as Record<string, unknown>) ?? {};
+
+      let endpoint: string | null = null;
+      if (i.platform === 'vk' && typeof md.community_name !== 'string') {
+        endpoint = `/integrations/vk/${i.id}/refresh-name`;
+      } else if (i.platform === 'yandex_business' && typeof md.business_name !== 'string') {
+        endpoint = `/integrations/yandex_business/${i.id}/refresh-name`;
+      }
+      if (!endpoint) return;
+
+      refreshedRef.current.add(i.id);
+      const isYandex = i.platform === 'yandex_business';
+      void api
+        .post(endpoint)
+        .then(() => {
+          if (isYandex) {
+            // Yandex returns 202 immediately and finishes the agent RPA in
+            // the background (~25–45s). Poll the integrations list a few
+            // times so the resolved name appears without a manual reload.
+            [10_000, 30_000, 60_000].forEach((delay) => {
+              setTimeout(() => qc.invalidateQueries({ queryKey: ['integrations'] }), delay);
+            });
+          } else {
+            qc.invalidateQueries({ queryKey: ['integrations'] });
+          }
+        })
+        .catch(() => {
+          // Best-effort; swallow.
+        });
+    });
+  }, [integrations, qc]);
+
   return (
     <div className="flex flex-col gap-2">
       {integrations.map((i) => {
         const tone = statusTones[i.status] ?? 'neutral';
-        const label = statusLabels[i.status] ?? i.status;
-        const channelTitle = (i.metadata as Record<string, string>)?.channel_title ?? i.externalId;
+        const statusLabel = statusLabels[i.status] ?? i.status;
+        const display = getIntegrationDisplay(i, platformLabel);
         const showLinkedGroupWarn =
           platform === 'telegram' &&
           (i.metadata as Record<string, unknown>)?.linked_group_status === 'bot_not_member';
@@ -216,9 +267,14 @@ function ChannelList({
                 i.status === 'token_expired' && 'bg-danger'
               )}
             />
-            <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink">
-              {channelTitle}
-            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13px] text-ink">{display.name}</div>
+              {display.identifier && (
+                <div className="truncate font-mono text-[11px] text-ink-faint">
+                  {display.identifier}
+                </div>
+              )}
+            </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
               {showLinkedGroupWarn && (
@@ -259,7 +315,7 @@ function ChannelList({
                 </AlertDialog>
               )}
 
-              <Badge tone={tone}>{label}</Badge>
+              <Badge tone={tone}>{statusLabel}</Badge>
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -269,10 +325,10 @@ function ChannelList({
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>{`Отключить ${label}?`}</AlertDialogTitle>
+                    <AlertDialogTitle>{`Отключить ${display.name}?`}</AlertDialogTitle>
                     <AlertDialogDescription>
                       История сообщений останется в архиве. Чтобы снова получать сообщения из{' '}
-                      {label}, канал нужно будет подключить заново.
+                      {display.name}, канал нужно будет подключить заново.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

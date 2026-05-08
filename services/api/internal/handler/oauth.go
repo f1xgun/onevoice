@@ -17,9 +17,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	goredis "github.com/redis/go-redis/v9"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -36,6 +38,8 @@ type OAuthIntegrationService interface {
 	Connect(ctx context.Context, params service.ConnectParams) (*domain.Integration, error)
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
 	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
+	UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error
+	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error)
 }
 
 // OAuthConfig holds platform OAuth credentials and optional test overrides.
@@ -58,6 +62,7 @@ type OAuthConfig struct {
 	// Overridable base URLs for testing
 	vkTokenBaseURL        string
 	yandexTokenBaseURL    string
+	yandexProbeBaseURL    string // test override for the cookie-validity probe
 	telegramAPIBaseURL    string
 	googleTokenBaseURL    string // test override
 	googleAccountsBaseURL string // test override for account management API
@@ -70,6 +75,13 @@ func (c OAuthConfig) VKCommunityRedirectURI() string {
 	return strings.Replace(c.VKRedirectURI, "/oauth/vk/callback", "/oauth/vk/community-callback", 1)
 }
 
+// AgentTaskPublisher abstracts the NATS A2A request used by the Yandex
+// refresh-name endpoint to dispatch yandex_business__list_companies to
+// the RPA agent. Satisfied by *platform.NATSTaskPublisher.
+type AgentTaskPublisher interface {
+	RequestTool(ctx context.Context, subject string, req a2a.ToolRequest, timeout time.Duration) (*a2a.ToolResponse, error)
+}
+
 // OAuthHandler handles all OAuth-related endpoints.
 type OAuthHandler struct {
 	oauthService       OAuthStateService
@@ -78,6 +90,7 @@ type OAuthHandler struct {
 	cfg                OAuthConfig
 	httpClient         *http.Client
 	redis              *goredis.Client
+	taskPublisher      AgentTaskPublisher // optional; nil disables refresh-name
 }
 
 // NewOAuthHandler creates a new OAuthHandler.
@@ -100,6 +113,15 @@ func NewOAuthHandler(
 		httpClient:         httpClient,
 		redis:              redisClient,
 	}
+}
+
+// WithAgentTaskPublisher injects the NATS task publisher used to dispatch
+// agent tools (specifically yandex_business__list_companies for the
+// refresh-name flow). Not constructor-injected to keep call sites and
+// tests untouched; nil is the safe default — refresh-name returns 503.
+func (h *OAuthHandler) WithAgentTaskPublisher(p AgentTaskPublisher) *OAuthHandler {
+	h.taskPublisher = p
+	return h
 }
 
 // vkTokenBaseURL returns the classic VK OAuth base URL.
@@ -434,16 +456,24 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	redisKey := fmt.Sprintf("vk_temp_token:%s", stateData.BusinessID.String())
 	userToken, _ := h.redis.Get(r.Context(), redisKey).Result()
 
+	// Best-effort fetch of the community display name. Stored in metadata so
+	// the UI can render "OneVoice" instead of the bare 236912172 group id.
+	communityName, _ := h.fetchVKCommunityName(r.Context(), groupIDStr, group.AccessToken)
+
 	// Store community token + user token (user token enables read operations on private data)
+	metadata := map[string]any{
+		"group_id": group.GroupID,
+	}
+	if communityName != "" {
+		metadata["community_name"] = communityName
+	}
 	_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  stateData.BusinessID,
 		Platform:    "vk",
 		ExternalID:  groupIDStr,
 		AccessToken: group.AccessToken,
 		UserToken:   userToken,
-		Metadata: map[string]interface{}{
-			"group_id": group.GroupID,
-		},
+		Metadata:    metadata,
 	})
 	if err != nil {
 		slog.Error("failed to connect VK community integration", "error", err)
@@ -692,6 +722,135 @@ func (h *OAuthHandler) resolveVKGroupID(ctx context.Context, input string) (stri
 		return "", fmt.Errorf("community not found: %s", input)
 	}
 	return strconv.FormatInt(vkResp.Response.Groups[0].ID, 10), nil
+}
+
+// fetchVKCommunityName resolves a numeric VK group id into its display name
+// via groups.getById. Prefers a caller-supplied community/user token; falls
+// back to the Mini-App service key if the caller passes an empty token.
+// Returns "" with no error when the lookup is best-effort and the token is
+// unavailable — callers gate on len(name) > 0 before persisting.
+func (h *OAuthHandler) fetchVKCommunityName(ctx context.Context, groupID, token string) (string, error) {
+	if token == "" {
+		token = h.cfg.VKServiceKey
+	}
+	if token == "" {
+		return "", nil
+	}
+	apiURL := fmt.Sprintf("https://api.vk.com/method/groups.getById?group_id=%s&fields=name&access_token=%s&v=5.199",
+		url.QueryEscape(groupID), url.QueryEscape(token))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return "", err
+	}
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	var vkResp struct {
+		Response struct {
+			Groups []struct {
+				ID   int64  `json:"id"`
+				Name string `json:"name"`
+			} `json:"groups"`
+		} `json:"response"`
+		Error *struct {
+			ErrorCode int    `json:"error_code"`
+			ErrorMsg  string `json:"error_msg"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &vkResp); err != nil {
+		return "", err
+	}
+	if vkResp.Error != nil {
+		return "", fmt.Errorf("vk: %s", vkResp.Error.ErrorMsg)
+	}
+	if len(vkResp.Response.Groups) == 0 {
+		return "", nil
+	}
+	return vkResp.Response.Groups[0].Name, nil
+}
+
+// RefreshVKCommunityName backfills missing display names on existing VK
+// integrations. Fire-and-forget pattern: the frontend triggers this on
+// /integrations load whenever a VK row is missing community_name. Returns
+// 200 + the updated integration, or 200 + the original integration if the
+// VK API call yielded nothing (don't surface transient lookup failures
+// as user-visible errors).
+func (h *OAuthHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	integrationID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid integration id")
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// Find the integration scoped to this business — defends against
+	// cross-tenant id guessing.
+	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, "vk")
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	var target *domain.Integration
+	for i := range integrations {
+		if integrations[i].ID == integrationID {
+			target = &integrations[i]
+			break
+		}
+	}
+	if target == nil {
+		writeJSONError(w, http.StatusNotFound, "integration not found")
+		return
+	}
+
+	// Use the integration's own community admin token rather than the
+	// Mini-App service key — the latter is often unset in self-hosted
+	// installs and fails closed groups, while the stored token is always
+	// present for a connected VK community.
+	accessToken := ""
+	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), business.ID, "vk", target.ExternalID); tokErr == nil && tok != nil {
+		accessToken = tok.AccessToken
+	}
+
+	name, lookupErr := h.fetchVKCommunityName(r.Context(), target.ExternalID, accessToken)
+	if lookupErr != nil {
+		slog.Info("VK community name lookup failed; leaving metadata untouched",
+			"integration_id", integrationID, "error", lookupErr)
+		writeJSON(w, http.StatusOK, target)
+		return
+	}
+	if name == "" {
+		writeJSON(w, http.StatusOK, target)
+		return
+	}
+
+	metadata := map[string]any{}
+	for k, v := range target.Metadata {
+		metadata[k] = v
+	}
+	metadata["community_name"] = name
+
+	if updateErr := h.integrationService.UpdateMetadata(r.Context(), integrationID, metadata); updateErr != nil {
+		slog.Error("failed to update VK metadata", "error", updateErr)
+		writeJSON(w, http.StatusOK, target)
+		return
+	}
+	target.Metadata = metadata
+	writeJSON(w, http.StatusOK, target)
 }
 
 // telegramGetChat calls the Telegram Bot API to validate bot access and

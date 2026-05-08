@@ -48,7 +48,7 @@ func humanDelay() {
 }
 
 // withRetry retries fn up to maxAttempts times with exponential backoff (2^i seconds).
-func withRetry(ctx context.Context, maxAttempts int, fn func() error) error { //nolint:unparam // keeping maxAttempts as parameter for flexibility
+func withRetry(ctx context.Context, maxAttempts int, fn func() error) error {
 	var lastErr error
 	for i := range maxAttempts {
 		if err := ctx.Err(); err != nil {

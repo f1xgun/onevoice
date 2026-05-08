@@ -56,6 +56,7 @@ type IntegrationService interface {
 	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*TokenResponse, error)
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
 	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
+	UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error
 }
 
 type integrationService struct {
@@ -155,6 +156,35 @@ func (s *integrationService) UpdateMetadata(ctx context.Context, integrationID u
 		metadata = map[string]interface{}{}
 	}
 	integration.Metadata = metadata
+
+	if err := s.repo.Update(ctx, integration); err != nil {
+		return fmt.Errorf("update integration: %w", err)
+	}
+	return nil
+}
+
+// UpdateExternalID heals an integration's external_id field. Used when the
+// canonical id (e.g. Yandex Sprav permalink) wasn't known at connect time
+// and gets resolved later out-of-band.
+func (s *integrationService) UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if integrationID == uuid.Nil {
+		return fmt.Errorf("integration id is required")
+	}
+	if externalID == "" {
+		return fmt.Errorf("external id is required")
+	}
+
+	integration, err := s.repo.GetByID(ctx, integrationID)
+	if err != nil {
+		if errors.Is(err, domain.ErrIntegrationNotFound) {
+			return err
+		}
+		return fmt.Errorf("get integration: %w", err)
+	}
+	integration.ExternalID = externalID
 
 	if err := s.repo.Update(ctx, integration); err != nil {
 		return fmt.Errorf("update integration: %w", err)
