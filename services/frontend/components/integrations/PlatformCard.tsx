@@ -220,24 +220,9 @@ function ChannelList({
       if (!endpoint) return;
 
       refreshedRef.current.add(i.id);
-      const isYandex = i.platform === 'yandex_business';
       void api
         .post(endpoint)
-        .then(() => {
-          if (isYandex) {
-            // Yandex returns 202 immediately and finishes the agent RPA in
-            // the background (~30–45s). Poll the integrations list a few
-            // times so the resolved name appears without a manual reload.
-            [10_000, 25_000, 60_000].forEach((delay) => {
-              setTimeout(
-                () => qc.invalidateQueries({ queryKey: ['integrations'] }),
-                delay
-              );
-            });
-          } else {
-            qc.invalidateQueries({ queryKey: ['integrations'] });
-          }
-        })
+        .then(() => qc.invalidateQueries({ queryKey: ['integrations'] }))
         .catch(() => {
           // Best-effort; swallow.
         });
