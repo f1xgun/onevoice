@@ -32,6 +32,7 @@ type Handlers struct {
 	HITL          *handler.HITLHandler   // Phase 16: resolve + resume + GET /tools
 	Titler        *handler.TitlerHandler // Phase 18: POST /conversations/{id}/regenerate-title
 	Search        *handler.SearchHandler // Phase 19 / Plan 19-03: GET /api/v1/search
+	Platforms     *handler.PlatformsHandler
 }
 
 // Setup creates and configures the Chi router with all routes and middleware
@@ -67,6 +68,13 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		r.Get("/oauth/vk/community-callback", handlers.OAuth.VKCommunityCallback)
 		r.Get("/oauth/yandex_business/callback", handlers.OAuth.YandexCallback)
 		r.Get("/oauth/google_business/callback", handlers.OAuth.GoogleCallback)
+
+		// Platform registry — single source of truth for the integration list.
+		// Public so the marketing landing page can render it without auth.
+		// Returns only non-sensitive metadata (name, description, status).
+		if handlers.Platforms != nil {
+			r.Get("/platforms", handlers.Platforms.List)
+		}
 
 		// Protected routes (require auth)
 		r.Group(func(r chi.Router) {
