@@ -4,19 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -127,35 +124,21 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Resolve the user's Sprav org info inline. One quick HTTP scrape of
-	// yandex.ru/sprav/companies gives us both the numeric permalink (used
-	// as external_id so agent edit URLs are correct) and the human
-	// business name (stored in metadata.business_name for display).
-	// Best-effort: a lookup failure still lets the integration be created
-	// with externalID="default", and refresh-name retries later.
-	infoCtx, infoCancel := context.WithTimeout(r.Context(), 5*time.Second)
-	info, lookupErr := h.fetchYandexBusinessInfo(infoCtx, parsed.Cookies)
-	infoCancel()
-	externalID := "default"
-	if lookupErr == nil && info.Permalink != "" {
-		externalID = info.Permalink
-	} else if lookupErr != nil {
-		slog.Info("yandex connect: business info lookup failed; using placeholder",
-			"error", lookupErr)
-	}
-
+	// Connect stores the integration with external_id="default" as a
+	// placeholder. The Sprav permalink and human business name are
+	// resolved out-of-band via POST .../refresh-name, which dispatches the
+	// agent's yandex_business__list_companies RPA tool. We can't resolve
+	// inline because /sprav/companies is a SPA — server-rendered HTML is
+	// empty, only Playwright sees the hydrated org list.
 	metadata := map[string]any{
 		"input_format": parsed.Format,
 		"connected_at": time.Now().UTC().Format(time.RFC3339),
-	}
-	if info.Name != "" {
-		metadata["business_name"] = info.Name
 	}
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
 		Platform:    "yandex_business",
-		ExternalID:  externalID,
+		ExternalID:  "default",
 		AccessToken: parsed.JSON(),
 		Metadata:    metadata,
 	})
@@ -168,18 +151,28 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusCreated, integration)
 }
 
+// yandexListCompaniesTimeout caps the agent's list_companies RPA. The
+// page is a Yandex SPA — Playwright must wait for client-side hydration
+// to render the org list. 30s cap with one retry inside withRetry.
+const yandexListCompaniesTimeout = 60 * time.Second
+
 // RefreshYandexBusinessName backfills metadata.business_name and (when
-// missing) the Sprav permalink on an existing Yandex integration. Drives
-// the same one-shot HTTP scrape of yandex.ru/sprav/companies the connect
-// path uses — sub-second, no NATS, no Playwright dependency.
+// missing) the Sprav permalink on an existing Yandex integration. The
+// /sprav/companies page is a SPA — server-rendered HTML is empty — so
+// we dispatch the agent's yandex_business__list_companies tool which
+// drives a real Playwright browser. Async fire-and-forget: returns 202
+// immediately, the frontend polls /integrations to pick up the new
+// business_name once persisted.
 //
-// Returns 200 + the (possibly-updated) integration. Lookup failures are
-// non-fatal: we return the original row and log so the frontend's lazy
-// backfill loop never surfaces transient anti-bot blips as errors.
+// Lookup failures are non-fatal: logged, integration left untouched.
 func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if h.taskPublisher == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "agent task publisher not configured")
 		return
 	}
 
@@ -213,62 +206,89 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Decrypt the stored cookies and run the same one-shot HTTP scrape the
-	// connect path uses. Resolves both the Sprav permalink (heals legacy
-	// external_id="default" rows) and the human business name, in well
-	// under a second. Synchronous: no NATS dispatch, no goroutine.
-	tokResp, tokErr := h.integrationService.GetDecryptedToken(r.Context(), business.ID, "yandex_business", target.ExternalID)
-	if tokErr != nil {
-		slog.Info("yandex name refresh: cannot decrypt cookies", "integration_id", integrationID, "error", tokErr)
-		writeJSON(w, http.StatusOK, target)
+	// Detach the agent dispatch from the request context — Playwright RPA
+	// takes 20–40s, easily longer than axios's idle timeout, and the work
+	// must complete even if the user navigates away mid-flight.
+	bgCtx, bgCancel := context.WithTimeout(context.Background(), yandexListCompaniesTimeout+15*time.Second)
+	go h.runYandexListCompaniesRefresh(bgCtx, bgCancel, integrationID, *target, business.ID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write([]byte(`{"status":"refresh_started"}`))
+}
+
+// runYandexListCompaniesRefresh performs the actual list_companies RPA
+// dispatch + metadata writes in a detached goroutine. Heals legacy
+// external_id="default" rows along the way: the Sprav permalink we
+// extract from the agent response replaces the placeholder and lets
+// every subsequent agent call (reviews, info, posts) build correct
+// /sprav/<permalink>/p/edit URLs.
+func (h *OAuthHandler) runYandexListCompaniesRefresh(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	integrationID uuid.UUID,
+	target domain.Integration,
+	businessID uuid.UUID,
+) {
+	defer cancel()
+
+	req := a2a.ToolRequest{
+		TaskID:     uuid.NewString(),
+		Tool:       "yandex_business__list_companies",
+		Args:       map[string]any{},
+		BusinessID: businessID.String(),
+	}
+	resp, callErr := h.taskPublisher.RequestTool(ctx, a2a.Subject(a2a.AgentYandexBusiness), req, yandexListCompaniesTimeout)
+	if callErr != nil {
+		slog.Info("yandex name refresh: agent call failed", "integration_id", integrationID, "error", callErr)
 		return
 	}
-	cookies, parseErr := yandexcookies.Parse(tokResp.AccessToken)
-	if parseErr != nil {
-		slog.Info("yandex name refresh: stored cookies failed to parse", "integration_id", integrationID, "error", parseErr)
-		writeJSON(w, http.StatusOK, target)
-		return
-	}
-	infoCtx, infoCancel := context.WithTimeout(r.Context(), 5*time.Second)
-	info, infoErr := h.fetchYandexBusinessInfo(infoCtx, cookies.Cookies)
-	infoCancel()
-	if infoErr != nil {
-		slog.Info("yandex name refresh: business info lookup failed",
-			"integration_id", integrationID, "error", infoErr)
-		writeJSON(w, http.StatusOK, target)
+	if resp == nil || resp.Error != "" {
+		errMsg := ""
+		if resp != nil {
+			errMsg = resp.Error
+		}
+		slog.Info("yandex name refresh: agent returned error", "integration_id", integrationID, "error", errMsg)
 		return
 	}
 
-	// Heal the external_id if it was still the legacy "default" placeholder.
-	if target.ExternalID == "default" && info.Permalink != "" {
-		if updateErr := h.integrationService.UpdateExternalID(r.Context(), integrationID, info.Permalink); updateErr != nil {
+	// Result shape: {"companies": [{"permalink": "...", "name": "..."}, ...]}
+	companiesRaw, _ := resp.Result["companies"].([]any)
+	if len(companiesRaw) == 0 {
+		slog.Info("yandex name refresh: agent returned no companies", "integration_id", integrationID)
+		return
+	}
+	first, _ := companiesRaw[0].(map[string]any)
+	permalink, _ := first["permalink"].(string)
+	name, _ := first["name"].(string)
+	permalink = strings.TrimSpace(permalink)
+	name = strings.TrimSpace(name)
+
+	if target.ExternalID == "default" && permalink != "" {
+		if updateErr := h.integrationService.UpdateExternalID(ctx, integrationID, permalink); updateErr != nil {
 			slog.Error("yandex name refresh: failed to persist healed external_id",
 				"integration_id", integrationID, "error", updateErr)
 		} else {
-			target.ExternalID = info.Permalink
+			target.ExternalID = permalink
 			slog.Info("yandex name refresh: healed external_id",
-				"integration_id", integrationID, "permalink", info.Permalink)
+				"integration_id", integrationID, "permalink", permalink)
 		}
 	}
 
-	// Persist the resolved business name into metadata.
-	if info.Name != "" {
+	if name != "" {
 		metadata := map[string]any{}
 		for k, v := range target.Metadata {
 			metadata[k] = v
 		}
-		metadata["business_name"] = info.Name
-		if updateErr := h.integrationService.UpdateMetadata(r.Context(), integrationID, metadata); updateErr != nil {
+		metadata["business_name"] = name
+		if updateErr := h.integrationService.UpdateMetadata(ctx, integrationID, metadata); updateErr != nil {
 			slog.Error("yandex name refresh: failed to persist business_name",
 				"integration_id", integrationID, "error", updateErr)
-		} else {
-			target.Metadata = metadata
-			slog.Info("yandex name refresh: persisted",
-				"integration_id", integrationID, "name", info.Name, "external_id", target.ExternalID)
+			return
 		}
+		slog.Info("yandex name refresh: persisted",
+			"integration_id", integrationID, "name", name, "external_id", target.ExternalID)
 	}
-
-	writeJSON(w, http.StatusOK, target)
 }
 
 // cookieWarnings flags missing-but-recommended cookies. Session_id alone
@@ -361,90 +381,6 @@ func buildCookieHeader(cookies []yandexcookies.Cookie) string {
 		parts = append(parts, c.Name+"="+c.Value)
 	}
 	return strings.Join(parts, "; ")
-}
-
-// spravPermalinkRegex pulls a numeric Sprav permalink out of an org-edit
-// link on the companies list page. Pattern: `/sprav/<digits>/p/edit...`.
-// Anchored on `/p/edit` to avoid catching unrelated /sprav/api/... paths.
-var spravPermalinkRegex = regexp.MustCompile(`/sprav/(\d+)/p/edit`)
-
-// spravNameRegex pulls the org display name from the first
-// CompanyInfoCard-CompanyName <h4>. Yandex's React markup is stable
-// enough on this page that a tag-content regex is safe.
-var spravNameRegex = regexp.MustCompile(`<h4[^>]*CompanyInfoCard-CompanyName[^>]*>([^<]+)</h4>`)
-
-// htmlEntityReplacer expands the few HTML entities Yandex emits in this
-// stretch of markup. We avoid pulling in a full HTML parser since the
-// rest of the file uses lightweight regex-based extraction.
-var htmlEntityReplacer = strings.NewReplacer(
-	"&amp;", "&",
-	"&lt;", "<",
-	"&gt;", ">",
-	"&quot;", `"`,
-	"&#39;", "'",
-	"&nbsp;", " ",
-)
-
-// yandexBusinessInfo is the resolved {Sprav permalink, display name} pair
-// returned by fetchYandexBusinessInfo.
-type yandexBusinessInfo struct {
-	Permalink string
-	Name      string
-}
-
-// fetchYandexBusinessInfo resolves the user's first Sprav organization
-// (numeric permalink + display name) using their pasted session cookies.
-// Single HTTP GET against yandex.ru/sprav/companies/?no_redirect=1, which
-// returns server-rendered HTML listing the user's orgs. We extract:
-//
-//   - permalink: from the first  /sprav/<digits>/p/edit  href
-//   - name:      from the first  <h4 ...CompanyInfoCard-CompanyName...>
-//
-// Both are stable React class names on this page and survive minor
-// styling churn. No CSRF dance required.
-//
-// Returns ({"",""}, nil) when the user has no Sprav orgs registered.
-// Returns an error for transport / auth failures so the caller can fall
-// back to a placeholder externalID and retry later.
-func (h *OAuthHandler) fetchYandexBusinessInfo(ctx context.Context, cookies []yandexcookies.Cookie) (yandexBusinessInfo, error) {
-	const companiesURL = "https://yandex.ru/sprav/companies/?no_redirect=1"
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, companiesURL, http.NoBody)
-	if err != nil {
-		return yandexBusinessInfo{}, err
-	}
-	req.Header.Set("Cookie", buildCookieHeader(cookies))
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,*/*")
-	req.Header.Set("Accept-Language", "ru,en;q=0.5")
-
-	resp, err := h.httpClient.Do(req)
-	if err != nil {
-		return yandexBusinessInfo{}, fmt.Errorf("companies fetch: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return yandexBusinessInfo{}, fmt.Errorf("companies HTTP %d", resp.StatusCode)
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20)) // 4MB
-
-	permMatch := spravPermalinkRegex.FindSubmatch(body)
-	if len(permMatch) < 2 {
-		// User likely has no orgs — page renders empty state instead of
-		// the company-card list.
-		return yandexBusinessInfo{}, nil
-	}
-	permalink := string(permMatch[1])
-	if _, perr := strconv.ParseUint(permalink, 10, 64); perr != nil {
-		return yandexBusinessInfo{}, fmt.Errorf("permalink not numeric: %q", permalink)
-	}
-
-	name := ""
-	if nameMatch := spravNameRegex.FindSubmatch(body); len(nameMatch) >= 2 {
-		name = strings.TrimSpace(htmlEntityReplacer.Replace(string(nameMatch[1])))
-	}
-
-	return yandexBusinessInfo{Permalink: permalink, Name: name}, nil
 }
 
 // yandexProbeURL returns the live-probe endpoint, honoring an optional
