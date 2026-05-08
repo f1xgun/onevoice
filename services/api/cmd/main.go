@@ -346,10 +346,8 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	)
 	platformSyncer.SetTaskRecorder(agentTaskRepo)
 	platformSyncer.SetTaskHub(taskHub)
-	var agentTaskPublisher *platform.NATSTaskPublisher
 	if natsConn != nil {
-		agentTaskPublisher = platform.NewNATSTaskPublisher(natsConn)
-		platformSyncer.SetTaskPublisher(agentTaskPublisher)
+		platformSyncer.SetTaskPublisher(platform.NewNATSTaskPublisher(natsConn))
 	}
 
 	// Initialize handlers
@@ -366,9 +364,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		GoogleClientSecret: cfg.GoogleClientSecret,
 		GoogleRedirectURI:  cfg.GoogleRedirectURI,
 	}, nil, redisClient)
-	if agentTaskPublisher != nil {
-		oauthHandler.WithAgentTaskPublisher(agentTaskPublisher)
-	}
 	internalTokenHandler := handler.NewInternalTokenHandler(integrationService)
 	// chatProxyHandler is constructed after the Phase 15 project service is
 	// wired below (the proxy enriches each request with the conversation's
