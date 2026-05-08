@@ -17,6 +17,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
@@ -49,9 +50,9 @@ type postingToolInfo struct {
 
 // postingTools maps tool names that publish content to their extraction info.
 var postingTools = map[string]postingToolInfo{
-	"telegram__send_channel_post":  {platform: "telegram", contentField: "text"},
-	"telegram__send_channel_photo": {platform: "telegram", contentField: "caption", mediaField: "photo_url"},
-	"vk__publish_post":             {platform: "vk", contentField: "text"},
+	tools.TelegramSendChannelPost:  {platform: "telegram", contentField: "text"},
+	tools.TelegramSendChannelPhoto: {platform: "telegram", contentField: "caption", mediaField: "photo_url"},
+	tools.VKPublishPost:            {platform: "vk", contentField: "text"},
 }
 
 // ResumeBatchHeader is the HTTP header chat_proxy inspects to detect an

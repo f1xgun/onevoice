@@ -14,6 +14,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // ReviewService defines the interface for review operations
@@ -238,7 +239,7 @@ func buildPlatformReply(review *domain.Review, replyText string) (toolName strin
 		if err != nil {
 			return "", nil, fmt.Errorf("vk comment_id %q: %w", parts[1], err)
 		}
-		return "vk__reply_comment", map[string]interface{}{
+		return tools.VKReplyComment, map[string]interface{}{
 			"post_id":    float64(postID),
 			"comment_id": float64(commentID),
 			"text":       replyText,
@@ -256,7 +257,7 @@ func buildPlatformReply(review *domain.Review, replyText string) (toolName strin
 		if !ok {
 			return "", nil, fmt.Errorf("telegram review %q: missing message_id in platform_meta", review.ID)
 		}
-		return "telegram__reply_to_comment", map[string]interface{}{
+		return tools.TelegramReplyToComment, map[string]interface{}{
 			"chat_id":    chatID,
 			"message_id": float64(messageID),
 			"text":       replyText,
@@ -267,7 +268,7 @@ func buildPlatformReply(review *domain.Review, replyText string) (toolName strin
 		if review.ExternalID == "" {
 			return "", nil, fmt.Errorf("yandex review %q: empty external_id", review.ID)
 		}
-		return "yandex_business__reply_review", map[string]interface{}{
+		return tools.YandexBusinessReplyReview, map[string]interface{}{
 			"review_id": review.ExternalID,
 			"text":      replyText,
 		}, nil
@@ -276,7 +277,7 @@ func buildPlatformReply(review *domain.Review, replyText string) (toolName strin
 		if review.ExternalID == "" {
 			return "", nil, fmt.Errorf("google review %q: empty external_id", review.ID)
 		}
-		return "google_business__reply_review", map[string]interface{}{
+		return tools.GoogleBusinessReplyReview, map[string]interface{}{
 			"review_name": review.ExternalID,
 			"text":        replyText,
 		}, nil

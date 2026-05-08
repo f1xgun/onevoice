@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/yandexcookies"
@@ -216,7 +217,7 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 
 	toolReq := a2a.ToolRequest{
 		TaskID:     uuid.NewString(),
-		Tool:       "yandex_business__list_companies",
+		Tool:       tools.YandexBusinessListCompanies,
 		Args:       map[string]any{"cookies": parsed.JSON()},
 		BusinessID: business.ID.String(),
 	}
@@ -329,7 +330,7 @@ func (h *OAuthHandler) runYandexListCompaniesRefresh(
 
 	req := a2a.ToolRequest{
 		TaskID:     uuid.NewString(),
-		Tool:       "yandex_business__list_companies",
+		Tool:       tools.YandexBusinessListCompanies,
 		Args:       map[string]any{},
 		BusinessID: businessID.String(),
 	}

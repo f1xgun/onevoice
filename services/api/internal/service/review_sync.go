@@ -14,6 +14,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // reviewToolByPlatform maps a platform ID to the tool name that returns
@@ -22,9 +23,9 @@ import (
 // API method name and the tool was originally registered for on-demand LLM
 // access.
 var reviewToolByPlatform = map[string]string{
-	a2a.AgentTelegram:       "telegram__get_reviews",
-	a2a.AgentYandexBusiness: "yandex_business__get_reviews",
-	a2a.AgentVK:             "vk__get_comments",
+	a2a.AgentTelegram:       tools.TelegramGetReviews,
+	a2a.AgentYandexBusiness: tools.YandexBusinessGetReviews,
+	a2a.AgentVK:             tools.VKGetComments,
 }
 
 // reviewSupportedPlatforms lists the platforms the syncer should poll.
