@@ -2,48 +2,67 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-// VKCommunityModal collects the VK community URL or screen_name and
-// redirects the admin to oauth.vk.com to issue a community-scoped token.
-// The API resolves screen_name → numeric group_id via the Mini-App
-// service key, so the user can paste "vk.com/mycompany", "mycompany",
-// or a numeric id interchangeably.
+// VKCommunityModal collects a community access token pasted from the
+// community admin panel. We deliberately do NOT route through OAuth here:
+// VK ID for Business apps issue community tokens with a method whitelist
+// that excludes wall.createComment and wall.delete, regardless of scope.
+// The admin-panel-generated token is the only kind that actually supports
+// the review-reply flow.
+//
+// Where the user gets it (instructions inline below):
+//   1. VK community → Управление → Работа с API → Ключи доступа
+//   2. «Создать ключ», БЕЗ привязки к приложению
+//   3. Отметить «Стена», «Сообщения сообщества», «Управление сообществом»
+//   4. Скопировать выданный ключ и вставить ниже.
 export function VKCommunityModal({ open, onClose }: Props) {
-  const [value, setValue] = useState('');
+  const qc = useQueryClient();
+  const [token, setToken] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  function handleClose() {
+    setToken('');
+    setSubmitting(false);
+    onClose();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = value.trim();
+    const trimmed = token.trim();
     if (!trimmed) return;
     setSubmitting(true);
     try {
-      const { data } = await api.get<{ url: string }>(
-        `/integrations/vk/community-auth-url?group_id=${encodeURIComponent(trimmed)}`
+      const { data } = await api.post<{ id: string; externalId: string }>(
+        '/integrations/vk/connect',
+        { access_token: trimmed }
       );
-      window.location.href = data.url;
+      toast.success('Сообщество VK подключено');
+      qc.invalidateQueries({ queryKey: ['integrations'] });
+      // Reset local state then call parent close to keep the modal logic clean.
+      setToken('');
+      setSubmitting(false);
+      onClose();
+      // Note: returning data avoids an unused-var lint hint when adding
+      // post-connect UX later (e.g., showing the resolved community name).
+      return data;
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Не удалось подготовить ссылку авторизации';
+        'Не удалось подключить сообщество';
       toast.error(msg);
       setSubmitting(false);
     }
-  }
-
-  function handleClose() {
-    setValue('');
-    setSubmitting(false);
-    onClose();
   }
 
   return (
@@ -54,23 +73,45 @@ export function VKCommunityModal({ open, onClose }: Props) {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2 rounded-md border border-line-soft bg-paper-sunken px-4 py-3 text-sm text-ink-mid">
+            <p className="font-medium text-ink">Где взять ключ</p>
+            <ol className="ml-4 list-decimal space-y-1">
+              <li>Откройте сообщество VK → «Управление» → «Работа с API».</li>
+              <li>
+                На вкладке «Ключи доступа» нажмите{' '}
+                <span className="font-medium text-ink">«Создать ключ»</span>.
+              </li>
+              <li>
+                <span className="font-medium text-ink">Не выбирайте приложение</span> — иначе
+                ключ унаследует ограничения VK Mini App и не сможет отвечать на комментарии.
+              </li>
+              <li>
+                Включите права: <span className="font-mono text-xs">«Стена»</span>,{' '}
+                <span className="font-mono text-xs">«Сообщения сообщества»</span>,{' '}
+                <span className="font-mono text-xs">«Управление сообществом»</span>.
+              </li>
+              <li>Скопируйте выданный ключ и вставьте сюда.</li>
+            </ol>
+          </div>
+
           <div className="space-y-2">
-            <p className="text-sm text-gray-600">
-              Вставьте ссылку на сообщество, его короткое имя или числовой ID. Примеры:{' '}
-              <span className="font-mono text-xs">vk.com/mycompany</span>,{' '}
-              <span className="font-mono text-xs">mycompany</span>,{' '}
-              <span className="font-mono text-xs">123456</span>.
-            </p>
-            <Input
+            <label className="text-sm text-ink-mid" htmlFor="vk-community-token">
+              Ключ доступа сообщества
+            </label>
+            <Textarea
+              id="vk-community-token"
               autoFocus
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="vk.com/mycompany"
+              spellCheck={false}
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="vk1.a.…"
+              rows={3}
+              className="font-mono text-xs"
               disabled={submitting}
             />
-            <p className="text-xs text-gray-500">
-              Вы должны быть администратором сообщества. На следующем шаге VK попросит вас
-              подтвердить выдачу прав от имени сообщества.
+            <p className="text-xs text-ink-soft">
+              OneVoice проверит ключ, найдёт привязанное сообщество и сохранит интеграцию.
+              Ничего никуда не уходит, кроме самого VK API.
             </p>
           </div>
 
@@ -84,8 +125,9 @@ export function VKCommunityModal({ open, onClose }: Props) {
             >
               Отмена
             </Button>
-            <Button type="submit" disabled={submitting || !value.trim()} className="flex-1">
-              {submitting ? 'Переход в VK...' : 'Подключить'}
+            <Button type="submit" disabled={submitting || !token.trim()} className="flex-1">
+              {submitting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              {submitting ? 'Подключаем…' : 'Подключить'}
             </Button>
           </div>
         </form>
