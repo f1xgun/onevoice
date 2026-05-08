@@ -25,9 +25,10 @@ import { ru } from 'date-fns/locale';
 import { ChevronDown, ChevronRight, FileText, Plus, Search } from 'lucide-react';
 
 import { api } from '@/lib/api';
+import { CHANNEL_NAMES } from '@/lib/platforms';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChannelMark, type ChannelName } from '@/components/ui/channel-mark';
+import { ChannelMark } from '@/components/ui/channel-mark';
 import { Input } from '@/components/ui/input';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
@@ -55,13 +56,10 @@ const statusLabel: Record<string, string> = {
   error: 'Ошибка',
 };
 
-// Backend platform id → display name used by ChannelMark / labels.
-const platformDisplay: Record<string, ChannelName> = {
-  telegram: 'Telegram',
-  vk: 'VK',
-  yandex_business: 'Yandex.Business',
-};
-
+// Backend platform id → user-facing short label. CHANNEL_NAMES from
+// lib/platforms covers Latin technical names for ChannelMark; the short
+// label for the in-line chip uses a localized abbreviation when the full
+// name would crowd the UI (e.g. yandex_business → "Яндекс").
 const platformShort: Record<string, string> = {
   telegram: 'Telegram',
   vk: 'VK',
@@ -451,7 +449,7 @@ function PlatformResultCard({
   result: NonNullable<Post['platformResults']>[string];
 }) {
   const ok = !result.error && (result.status === 'published' || result.status === 'ok');
-  const display = platformDisplay[platform] ?? platformShort[platform] ?? platform;
+  const display = CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
   return (
     <div className="flex items-center gap-2.5 rounded-sm border border-line-soft bg-paper px-3 py-2">
       <ChannelMark name={display} size={20} />
@@ -474,7 +472,7 @@ function PlatformResultCard({
 }
 
 function ChannelChip({ platform }: { platform: string }) {
-  const display = platformDisplay[platform] ?? platformShort[platform] ?? platform;
+  const display = CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
   const short = platformShort[platform] ?? display;
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-line-soft bg-paper px-2 py-0.5 text-[11px] text-ink-mid">
