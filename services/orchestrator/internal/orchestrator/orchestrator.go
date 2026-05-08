@@ -14,7 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // EventType identifies the kind of event emitted by the agent loop.
@@ -141,7 +141,7 @@ type Options struct {
 // Orchestrator runs the LLM agent loop.
 type Orchestrator struct {
 	llm         LLMClient
-	tools       *tools.Registry
+	tools       *toolregistry.Registry
 	options     Options
 	pendingRepo domain.PendingToolCallRepository
 }
@@ -151,14 +151,14 @@ type Orchestrator struct {
 // NewWithHITL; a nil pendingRepo causes stepRun to emit EventError
 // "HITL not configured" when a manual-floor tool is classified (fail-loud
 // at-use pattern — callers that don't use HITL never see the error).
-func New(llmClient LLMClient, toolRegistry *tools.Registry) *Orchestrator {
+func New(llmClient LLMClient, toolRegistry *toolregistry.Registry) *Orchestrator {
 	return NewWithOptions(llmClient, toolRegistry, Options{MaxIterations: 10})
 }
 
 // NewWithOptions creates an Orchestrator with custom options. pendingRepo is
 // nil by default; use NewWithHITL to inject one. Backward-compatible with
 // every pre-Phase-16 caller that used NewWithOptions(llm, reg, opts).
-func NewWithOptions(llmClient LLMClient, toolRegistry *tools.Registry, opts Options) *Orchestrator {
+func NewWithOptions(llmClient LLMClient, toolRegistry *toolregistry.Registry, opts Options) *Orchestrator {
 	if opts.MaxIterations <= 0 {
 		opts.MaxIterations = 10
 	}
@@ -171,7 +171,7 @@ func NewWithOptions(llmClient LLMClient, toolRegistry *tools.Registry, opts Opti
 // cmd/main.go once Plan 16-02's repository is threaded through.
 func NewWithHITL(
 	llmClient LLMClient,
-	toolRegistry *tools.Registry,
+	toolRegistry *toolregistry.Registry,
 	pendingRepo domain.PendingToolCallRepository,
 	opts Options,
 ) *Orchestrator {

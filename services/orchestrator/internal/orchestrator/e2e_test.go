@@ -18,7 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // startEmbeddedNATS starts an in-process NATS server on a random port.
@@ -75,7 +75,7 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 	orchNC := connectNATS(t, natsURL)
 	conn := natsexec.NewNATSConn(orchNC)
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type: "function",
 		Function: llm.FunctionDefinition{
@@ -186,7 +186,7 @@ func TestE2E_AgentError(t *testing.T) {
 	orchNC := connectNATS(t, natsURL)
 	conn := natsexec.NewNATSConn(orchNC)
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type: "function",
 		Function: llm.FunctionDefinition{
@@ -268,7 +268,7 @@ func TestE2E_MultipleAgents(t *testing.T) {
 	orchNC := connectNATS(t, natsURL)
 	conn := natsexec.NewNATSConn(orchNC)
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "telegram__send_channel_post", Description: "Send TG post", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
@@ -351,7 +351,7 @@ func TestE2E_BusinessIDPropagation(t *testing.T) {
 
 	orchNC := connectNATS(t, natsURL)
 	conn := natsexec.NewNATSConn(orchNC)
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "vk__publish_post", Description: "d", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},

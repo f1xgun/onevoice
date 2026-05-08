@@ -9,7 +9,7 @@
 // safe default), log a warning tagged `tool_approval_whitelist_unknown`, do
 // NOT auto-prune the setting.
 //
-// The runtime enforcement is in services/orchestrator/internal/tools.Registry:
+// The runtime enforcement is in services/orchestrator/internal/toolregistry.Registry:
 // Floor(unknownTool) returns ToolFloorForbidden. This package's
 // ValidateApprovalSettings only produces observability (log lines) — it
 // never mutates configuration, so a misconfigured map cannot brick startup.

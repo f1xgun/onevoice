@@ -19,7 +19,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 type stubLLM struct{ content string }
@@ -45,7 +45,7 @@ func (c *captureRunner) Run(_ context.Context, req orchestrator.RunRequest) (<-c
 
 func TestChatHandler_SSEResponse(t *testing.T) {
 	stub := &stubLLM{content: "Привет из оркестратора!"}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	orch := orchestrator.New(stub, reg)
 
 	h := handler.NewChatHandler(orch, "openai/gpt-4o-mini")
@@ -87,7 +87,7 @@ func TestChatHandler_SSEResponse(t *testing.T) {
 }
 
 func TestChatHandler_MissingMessage_Returns400(t *testing.T) {
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	orch := orchestrator.New(&stubLLM{}, reg)
 	h := handler.NewChatHandler(orch, "openai/gpt-4o-mini")
 

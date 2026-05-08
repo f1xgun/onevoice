@@ -1,4 +1,4 @@
-package tools
+package toolregistry
 
 import (
 	"context"

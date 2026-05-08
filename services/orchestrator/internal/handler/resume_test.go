@@ -12,7 +12,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // stubResumer is a minimal Resumer implementation that lets tests drive the
@@ -160,7 +160,7 @@ func TestResumeHandler_EmptyBody_UsesZeroValues(t *testing.T) {
 // TestInternalToolsAll_ReturnsFullProjection exercises GET /internal/tools —
 // the endpoint the API's GET /api/v1/tools passthrough consumes.
 func TestInternalToolsAll_ReturnsFullProjection(t *testing.T) {
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
 	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorManual, []string{"text"})
 	reg.Register(makeDef("get_reviews"), "", nil, domain.ToolFloorAuto, nil)

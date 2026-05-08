@@ -9,7 +9,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 func makeDef(name string) llm.ToolDefinition {
@@ -24,7 +24,7 @@ func makeDef(name string) llm.ToolDefinition {
 // appear in the JSON `names` array. Order-independent — the registry's Go
 // map iteration is non-deterministic.
 func TestInternalToolsNames_ReturnsRegistrySnapshot(t *testing.T) {
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
 	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorManual, []string{"text"})
 	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
@@ -68,7 +68,7 @@ func TestInternalToolsNames_ReturnsRegistrySnapshot(t *testing.T) {
 // still return a valid JSON shape so the API service's retry path does not
 // error out — the sweep simply logs zero warnings.
 func TestInternalToolsNames_EmptyRegistry(t *testing.T) {
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	h := handler.NewInternalToolsHandler(reg)
 
 	req := httptest.NewRequest(http.MethodGet, "/internal/tools/names", http.NoBody)

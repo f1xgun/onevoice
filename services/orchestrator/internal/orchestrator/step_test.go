@@ -16,7 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // --- Mocks ---
@@ -120,8 +120,8 @@ var _ domain.PendingToolCallRepository = (*mockPendingRepo)(nil)
 
 // --- Registry helpers ---
 
-func newRegistryWithFloor(name string, floor domain.ToolFloor, exec tools.Executor) *tools.Registry {
-	reg := tools.NewRegistry()
+func newRegistryWithFloor(name string, floor domain.ToolFloor, exec toolregistry.Executor) *toolregistry.Registry {
+	reg := toolregistry.NewRegistry()
 	def := llm.ToolDefinition{
 		Type: "function",
 		Function: llm.FunctionDefinition{
@@ -131,7 +131,7 @@ func newRegistryWithFloor(name string, floor domain.ToolFloor, exec tools.Execut
 		},
 	}
 	if exec == nil {
-		exec = tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+		exec = toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 			return map[string]interface{}{"ok": true}, nil
 		})
 	}
@@ -165,7 +165,7 @@ func TestStepRun_NoToolCalls_ReturnsDoneWithText(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{
 		{Content: "Привет!", FinishReason: "stop"},
 	}}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	orch := orchestrator.New(stub, reg)
 
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -197,7 +197,7 @@ func TestStepRun_AutoFloorTool_DispatchesInline(t *testing.T) {
 	}}
 
 	var executed int32
-	reg := newRegistryWithFloor("auto_tool", domain.ToolFloorAuto, tools.ExecutorFunc(
+	reg := newRegistryWithFloor("auto_tool", domain.ToolFloorAuto, toolregistry.ExecutorFunc(
 		func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 			executed = 1
 			return map[string]interface{}{"ok": true}, nil
@@ -361,17 +361,17 @@ func TestStepRun_ForbiddenTool_SynthesizesRejection_AndContinues(t *testing.T) {
 		{Content: "Ok done.", FinishReason: "stop"},
 	}}
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "forbidden_tool", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, errors.New("must not be called")
 	}), domain.ToolFloorForbidden, nil)
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "auto_tool", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorAuto, nil)
 
@@ -411,17 +411,17 @@ func TestStepRun_MixedAutoAndManual_PausesAfterAutoComplete(t *testing.T) {
 		},
 	}}
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "auto_t", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "manual_t", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorManual, []string{"text"})
 
@@ -504,17 +504,17 @@ func TestBuildPendingBatch_PopulatesFloorAtPauseManual(t *testing.T) {
 		},
 	}}
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "telegram_post", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorManual, []string{"text"})
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "vk_post", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorManual, []string{"text"})
 

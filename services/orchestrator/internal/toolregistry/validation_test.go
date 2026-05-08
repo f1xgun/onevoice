@@ -1,11 +1,11 @@
-package tools_test
+package toolregistry_test
 
 import (
 	"errors"
 	"testing"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // TestValidateEditArgs exercises every branch of the HITL-07 edit contract:
@@ -19,7 +19,7 @@ import (
 // The table is intentionally exhaustive so downstream handlers (Plan 16-07)
 // can map each error shape to a 400 body without needing further branching.
 func TestValidateEditArgs(t *testing.T) {
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(
 		makeDef("telegram__send_channel_post"),
 		"",
@@ -39,7 +39,7 @@ func TestValidateEditArgs(t *testing.T) {
 		name       string
 		tool       string
 		args       map[string]interface{}
-		wantErrAs  interface{} // pointer to a struct type (e.g., new(*tools.ErrFieldNotEditable))
+		wantErrAs  interface{} // pointer to a struct type (e.g., new(*toolregistry.ErrFieldNotEditable))
 		wantOK     bool
 		wantField  string // expected Field in the error if applicable
 		wantTool   string // expected Tool in the error if applicable
@@ -56,7 +56,7 @@ func TestValidateEditArgs(t *testing.T) {
 			name:      "unknown field 'channel_id' → ErrFieldNotEditable",
 			tool:      "telegram__send_channel_post",
 			args:      map[string]interface{}{"channel_id": "-1001234567890"},
-			wantErrAs: new(*tools.ErrFieldNotEditable),
+			wantErrAs: new(*toolregistry.ErrFieldNotEditable),
 			wantField: "channel_id",
 			wantTool:  "telegram__send_channel_post",
 		},
@@ -64,7 +64,7 @@ func TestValidateEditArgs(t *testing.T) {
 			name:      "case mismatch: 'Text' when allowlist has 'text' → ErrFieldNotEditable",
 			tool:      "telegram__send_channel_post",
 			args:      map[string]interface{}{"Text": "hi"},
-			wantErrAs: new(*tools.ErrFieldNotEditable),
+			wantErrAs: new(*toolregistry.ErrFieldNotEditable),
 			wantField: "Text",
 			wantTool:  "telegram__send_channel_post",
 		},
@@ -72,7 +72,7 @@ func TestValidateEditArgs(t *testing.T) {
 			name:      "nested object value → ErrNonScalarValue (D-13 no nested editing)",
 			tool:      "telegram__send_channel_post",
 			args:      map[string]interface{}{"text": map[string]interface{}{"x": 1}},
-			wantErrAs: new(*tools.ErrNonScalarValue),
+			wantErrAs: new(*toolregistry.ErrNonScalarValue),
 			wantField: "text",
 			wantTool:  "telegram__send_channel_post",
 		},
@@ -80,7 +80,7 @@ func TestValidateEditArgs(t *testing.T) {
 			name:      "array value → ErrNonScalarValue",
 			tool:      "telegram__send_channel_post",
 			args:      map[string]interface{}{"text": []interface{}{"a", "b"}},
-			wantErrAs: new(*tools.ErrNonScalarValue),
+			wantErrAs: new(*toolregistry.ErrNonScalarValue),
 			wantField: "text",
 			wantTool:  "telegram__send_channel_post",
 		},
@@ -88,7 +88,7 @@ func TestValidateEditArgs(t *testing.T) {
 			name:      "nil value → ErrNonScalarValue (nil is not a scalar)",
 			tool:      "telegram__send_channel_post",
 			args:      map[string]interface{}{"text": nil},
-			wantErrAs: new(*tools.ErrNonScalarValue),
+			wantErrAs: new(*toolregistry.ErrNonScalarValue),
 			wantField: "text",
 			wantTool:  "telegram__send_channel_post",
 		},
@@ -96,7 +96,7 @@ func TestValidateEditArgs(t *testing.T) {
 			name:       "unknown tool returns ErrFieldNotEditable with nil Editable",
 			tool:       "ghost__missing",
 			args:       map[string]interface{}{"a": "b"},
-			wantErrAs:  new(*tools.ErrFieldNotEditable),
+			wantErrAs:  new(*toolregistry.ErrFieldNotEditable),
 			wantField:  "a",
 			wantTool:   "ghost__missing",
 			nilEditLst: true,
@@ -137,8 +137,8 @@ func TestValidateEditArgs(t *testing.T) {
 				t.Fatalf("ValidateEditArgs(%q, %v) = nil, want error", tc.tool, tc.args)
 			}
 			switch want := tc.wantErrAs.(type) {
-			case **tools.ErrFieldNotEditable:
-				var got *tools.ErrFieldNotEditable
+			case **toolregistry.ErrFieldNotEditable:
+				var got *toolregistry.ErrFieldNotEditable
 				if !errors.As(err, &got) {
 					t.Fatalf("expected *ErrFieldNotEditable, got %T (%v)", err, err)
 				}
@@ -154,8 +154,8 @@ func TestValidateEditArgs(t *testing.T) {
 				if !tc.nilEditLst && got.Editable == nil {
 					t.Fatalf("Editable = nil, want non-nil allowlist for known tool %q", tc.tool)
 				}
-			case **tools.ErrNonScalarValue:
-				var got *tools.ErrNonScalarValue
+			case **toolregistry.ErrNonScalarValue:
+				var got *toolregistry.ErrNonScalarValue
 				if !errors.As(err, &got) {
 					t.Fatalf("expected *ErrNonScalarValue, got %T (%v)", err, err)
 				}
@@ -177,7 +177,7 @@ func TestValidateEditArgs(t *testing.T) {
 // If these strings change, the handler's integration tests will break in a
 // confusing way; locking them here gives early warning.
 func TestValidateEditArgs_ErrorMessagesIncludeContext(t *testing.T) {
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(
 		makeDef("telegram__send_channel_post"),
 		"",
