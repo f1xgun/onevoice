@@ -198,23 +198,30 @@ function ChannelList({
   const qc = useQueryClient();
   const refreshedRef = useRef<Set<string>>(new Set());
 
-  // Lazy backfill of missing VK community names. The first time we see a
-  // VK row without metadata.community_name we POST to refresh-name and
-  // invalidate the integrations query so the row re-renders with the
-  // resolved name. We track which ids we've already triggered to avoid
-  // looping if the lookup permanently yields nothing.
+  // Lazy backfill of missing friendly names. The first time we see an
+  // integration without its platform-specific name field, we POST to the
+  // platform's refresh-name endpoint and invalidate the integrations
+  // query so the row re-renders with the resolved name. Tracked per-id
+  // so we don't loop if the lookup permanently yields nothing.
+  //
+  //   - VK:               metadata.community_name (groups.getById, ~200ms)
+  //   - yandex_business:  metadata.business_name  (agent get_info RPA, ~30s)
   useEffect(() => {
     integrations.forEach((i) => {
-      if (
-        i.platform !== 'vk' ||
-        typeof (i.metadata as Record<string, unknown>)?.community_name === 'string' ||
-        refreshedRef.current.has(i.id)
-      ) {
-        return;
+      if (refreshedRef.current.has(i.id)) return;
+      const md = (i.metadata as Record<string, unknown>) ?? {};
+
+      let endpoint: string | null = null;
+      if (i.platform === 'vk' && typeof md.community_name !== 'string') {
+        endpoint = `/integrations/vk/${i.id}/refresh-name`;
+      } else if (i.platform === 'yandex_business' && typeof md.business_name !== 'string') {
+        endpoint = `/integrations/yandex_business/${i.id}/refresh-name`;
       }
+      if (!endpoint) return;
+
       refreshedRef.current.add(i.id);
       void api
-        .post(`/integrations/vk/${i.id}/refresh-name`)
+        .post(endpoint)
         .then(() => qc.invalidateQueries({ queryKey: ['integrations'] }))
         .catch(() => {
           // Best-effort; swallow.
