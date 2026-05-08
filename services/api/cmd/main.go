@@ -305,7 +305,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	integrationService := service.NewIntegrationService(integrationRepo, enc, refresher)
 	oauthService := service.NewOAuthService(redisClient)
-	reviewService := service.NewReviewService(reviewRepo, businessService)
 	postService := service.NewPostService(postRepo, businessService)
 	agentTaskService := service.NewAgentTaskService(agentTaskRepo, businessService)
 
@@ -337,6 +336,11 @@ func run(log *slog.Logger, cfg *config.Config) error {
 			defer nc.Close()
 		}
 	}
+
+	// Review service: needs natsConn to dispatch manual replies (PUT
+	// /reviews/{id}/reply) to platform agents — vk__reply_comment etc. With
+	// natsConn=nil the service still works in Mongo-only mode (legacy).
+	reviewService := service.NewReviewService(reviewRepo, businessService, natsConn)
 
 	// Platform syncer: pushes business info updates to connected platforms
 	platformSyncer := platform.NewSyncer(
@@ -541,7 +545,28 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// Review syncer — uses the shared NATS connection established above.
 	if natsConn != nil {
 		syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
-		syncer := service.NewReviewSyncer(natsConn, integrationRepo, reviewRepo, syncInterval)
+
+		// AI-draft pass is gated by REVIEW_DRAFT_ENABLED so an upgrade doesn't
+		// silently start spending on LLM calls. The orchestrator is reachable
+		// via cfg.OrchestratorURL — same URL chat_proxy uses.
+		var drafter service.DraftPassRunner
+		if cfg.ReviewDraftEnabled {
+			drafter = service.NewReviewDrafter(
+				reviewRepo,
+				businessRepo,
+				&http.Client{Timeout: 60 * time.Second},
+				cfg.OrchestratorURL,
+				cfg.ReviewDraftMaxExamples,
+				cfg.ReviewDraftBatchLimit,
+			)
+			log.Info("review AI-drafter enabled",
+				"orchestrator_url", cfg.OrchestratorURL,
+				"max_examples", cfg.ReviewDraftMaxExamples,
+				"batch_limit", cfg.ReviewDraftBatchLimit,
+			)
+		}
+
+		syncer := service.NewReviewSyncer(natsConn, integrationRepo, reviewRepo, drafter, syncInterval)
 		syncCtx, syncCancel := context.WithCancel(ctx)
 		defer syncCancel()
 		go syncer.Start(syncCtx)
