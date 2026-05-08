@@ -303,6 +303,28 @@ func TestClient_ReplyComment_Success(t *testing.T) {
 	assert.Equal(t, 777, commentID)
 }
 
+// from_group=1 is load-bearing for community-token writes. Without it,
+// VK ID for Business community tokens get "Method is not available for
+// this profile type" because wall.createComment without from_group tries
+// to act as a user, and community tokens have no user identity.
+func TestClient_ReplyComment_SendsFromGroup(t *testing.T) {
+	mux := http.NewServeMux()
+	var capturedFromGroup string
+	mux.HandleFunc("/method/wall.createComment", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		capturedFromGroup = r.FormValue("from_group")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{"comment_id": 1, "parents_stack": []int{}}))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := newClient(srv)
+	_, err := c.ReplyComment("-123456", 1, 5, "x")
+	require.NoError(t, err)
+	assert.Equal(t, "1", capturedFromGroup, "from_group must be 1 for community-token writes")
+}
+
 func TestClient_DeleteComment_Success(t *testing.T) {
 	srv := newMockVKServer()
 	defer srv.Close()
