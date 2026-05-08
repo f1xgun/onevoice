@@ -264,14 +264,19 @@ func (h *OAuthHandler) runYandexListCompaniesRefresh(
 	permalink = strings.TrimSpace(permalink)
 	name = strings.TrimSpace(name)
 
-	if target.ExternalID == "default" && permalink != "" {
+	// Trust the agent over whatever's currently stored. The previous
+	// resolver (campaign-list/api) wrote ad-campaign permalinks instead
+	// of Sprav permalinks; legacy rows have "default"; either way the
+	// list_companies-derived permalink IS the canonical Sprav id, so we
+	// overwrite whenever it differs.
+	if permalink != "" && permalink != target.ExternalID {
 		if updateErr := h.integrationService.UpdateExternalID(ctx, integrationID, permalink); updateErr != nil {
 			slog.Error("yandex name refresh: failed to persist healed external_id",
-				"integration_id", integrationID, "error", updateErr)
+				"integration_id", integrationID, "from", target.ExternalID, "to", permalink, "error", updateErr)
 		} else {
-			target.ExternalID = permalink
 			slog.Info("yandex name refresh: healed external_id",
-				"integration_id", integrationID, "permalink", permalink)
+				"integration_id", integrationID, "from", target.ExternalID, "to", permalink)
+			target.ExternalID = permalink
 		}
 	}
 
