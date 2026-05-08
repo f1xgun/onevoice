@@ -3,8 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as conversationsApi from '@/lib/conversations';
 import type { Conversation } from '@/lib/conversations';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 
-export const conversationsQueryKey = ['conversations'] as const;
+export const conversationsQueryKey = QUERY_KEYS.CONVERSATIONS;
 
 // Poll cadence while any chat sits in `auto_pending` — see refetchInterval
 // callback below for context. 2 s lines up with the auto-titler's typical
@@ -40,7 +41,7 @@ export function useCreateConversation() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: conversationsQueryKey });
       // New chat bumps the per-project count rendered next to the project
-      // row in the sidebar (['projects', id, 'conversation-count']).
+      // row in the sidebar (QUERY_KEYS.PROJECT_CONVERSATION_COUNT(id)).
       void qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });
@@ -57,7 +58,7 @@ export function useMoveConversation() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: conversationsQueryKey });
       // Sidebar project rows show a per-project chat count from
-      // ['projects', id, 'conversation-count'] (and the project list
+      // QUERY_KEYS.PROJECT_CONVERSATION_COUNT(id) (and the project list
       // header re-renders if the project changes). Move shifts the count
       // on BOTH the source and destination — invalidate the whole
       // ['projects'] prefix so every dependent count refetches.
@@ -67,7 +68,7 @@ export function useMoveConversation() {
 }
 
 // Phase 19 / Plan 19-02 — pin / unpin a conversation. Both mutations
-// invalidate the ['conversations'] cache on success, extending the
+// invalidate the QUERY_KEYS.CONVERSATIONS cache on success, extending the
 // established Phase 18 D-10 invalidation pattern (the sidebar list + the
 // ChatHeader narrow-memo selector both refresh from a single source).
 export function usePinConversation() {
@@ -119,7 +120,7 @@ export function useDeleteConversation() {
     mutationFn: (id) => conversationsApi.deleteConversation(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: conversationsQueryKey });
-      // Per-project chat count lives at ['projects', id, 'conversation-count'].
+      // Per-project chat count lives at QUERY_KEYS.PROJECT_CONVERSATION_COUNT(id).
       // Invalidate the whole ['projects'] prefix so the deleted chat's
       // project row re-fetches its count.
       void qc.invalidateQueries({ queryKey: ['projects'] });

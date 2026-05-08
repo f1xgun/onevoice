@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { cn } from '@/lib/utils';
 import { TONE_OPTIONS, type ToneId, toneLabel } from '@/lib/tones';
 
@@ -47,7 +48,7 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
     mutationFn: (ids: ToneId[]) =>
       api.put(API_PATHS.BUSINESS.VOICE_TONE, { tones: ids }).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['business'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
       setDirty(false);
       toast.success('Голос сохранён');
     },

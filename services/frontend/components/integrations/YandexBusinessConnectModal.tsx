@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -151,7 +152,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
         business_name: company.name,
       });
       toast.success(`Подключено: ${company.name || company.permalink}`);
-      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       handleClose();
     } catch (err: unknown) {
       const msg =

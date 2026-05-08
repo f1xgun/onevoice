@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bookmark, MoreHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { cn } from '@/lib/utils';
 import { usePinConversation, useUnpinConversation } from '@/hooks/useConversations';
 import { ChatRowMenu } from '@/components/chat/ChatRowMenu';
@@ -49,7 +50,7 @@ interface ChatHeaderProps {
  */
 function useConversationTitle(conversationId: string): string {
   const { data } = useQuery<Conversation[], Error, string>({
-    queryKey: ['conversations'],
+    queryKey: QUERY_KEYS.CONVERSATIONS,
     queryFn: () => api.get(API_PATHS.CONVERSATIONS.ROOT).then((r) => r.data),
     select: (list) => {
       const conv = list.find((c) => c.id === conversationId);
@@ -72,7 +73,7 @@ function useConversationTitle(conversationId: string): string {
  */
 function useConversationPinned(conversationId: string): boolean {
   const { data } = useQuery<Conversation[], Error, boolean>({
-    queryKey: ['conversations'],
+    queryKey: QUERY_KEYS.CONVERSATIONS,
     queryFn: () => api.get(API_PATHS.CONVERSATIONS.ROOT).then((r) => r.data),
     select: (list) => list.find((c) => c.id === conversationId)?.pinnedAt != null,
     enabled: !!conversationId,

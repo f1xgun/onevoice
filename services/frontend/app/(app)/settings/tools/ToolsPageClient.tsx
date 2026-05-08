@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import {
@@ -46,7 +47,7 @@ function sameDraft(
 
 export function ToolsPageClient() {
   const { data: business, isLoading: businessLoading } = useQuery<Business>({
-    queryKey: ['business'],
+    queryKey: QUERY_KEYS.BUSINESS,
     queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
   });
 

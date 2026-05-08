@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 
 interface GoogleLocation {
   name: string;
@@ -51,7 +52,7 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
       api.post(API_PATHS.INTEGRATIONS.GOOGLE_SELECT_LOCATION, params),
     onSuccess: () => {
       toast.success('Google Business Profile подключен!');
-      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       onClose();
     },
     onError: () => {

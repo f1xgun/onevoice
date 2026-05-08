@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
@@ -60,12 +61,12 @@ export default function IntegrationsPage() {
 
     if (connected === 'vk') {
       toast.success('VK сообщество подключено');
-      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
     if (connected === 'google_business') {
       toast.success('Google Business Profile подключён');
-      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
@@ -92,13 +93,13 @@ export default function IntegrationsPage() {
   }, [searchParams, qc]);
 
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
-    queryKey: ['integrations'],
+    queryKey: QUERY_KEYS.INTEGRATIONS,
     queryFn: () =>
       api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
   });
 
   const { data: business } = useQuery<Business>({
-    queryKey: ['business'],
+    queryKey: QUERY_KEYS.BUSINESS,
     queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
   });
 
@@ -129,7 +130,7 @@ export default function IntegrationsPage() {
     mutationFn: (integrationId: string) => api.delete(`/integrations/${integrationId}`),
     onSuccess: () => {
       trackClick('disconnect_integration');
-      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       toast.success('Канал отключён');
     },
     onError: () => toast.error('Не получилось отключить'),
@@ -254,7 +255,7 @@ export default function IntegrationsPage() {
         open={telegramOpen}
         onClose={() => {
           setTelegramOpen(false);
-          qc.invalidateQueries({ queryKey: ['integrations'] });
+          qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
         }}
       />
 
@@ -262,7 +263,7 @@ export default function IntegrationsPage() {
         open={vkCommunityOpen}
         onClose={() => {
           setVkCommunityOpen(false);
-          qc.invalidateQueries({ queryKey: ['integrations'] });
+          qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
         }}
       />
 
@@ -270,7 +271,7 @@ export default function IntegrationsPage() {
         open={googleLocationOpen}
         onClose={() => {
           setGoogleLocationOpen(false);
-          qc.invalidateQueries({ queryKey: ['integrations'] });
+          qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
         }}
       />
 

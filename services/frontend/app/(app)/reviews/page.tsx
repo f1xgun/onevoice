@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { REVIEW_STATUS_BADGES, type ReviewStatus } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
 
@@ -136,7 +137,7 @@ export default function ReviewsPage() {
   const [replyText, setReplyText] = useState('');
 
   const { data: reviews = [], isLoading } = useQuery<Review[]>({
-    queryKey: ['reviews', platform, replyStatus],
+    queryKey: QUERY_KEYS.REVIEWS_FILTERED(platform, replyStatus),
     queryFn: () => {
       const params = new URLSearchParams();
       if (platform !== 'all') params.set('platform', platform);
@@ -156,7 +157,7 @@ export default function ReviewsPage() {
     mutationFn: ({ id, text }: { id: string; text: string }) =>
       api.put(API_PATHS.REVIEWS.REPLY(id), { replyText: text }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reviews'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.REVIEWS });
       toast.success('Ответ отправлен');
       setReplyDialog(null);
       setReplyText('');
@@ -172,7 +173,7 @@ export default function ReviewsPage() {
     mutationFn: () =>
       api.post(API_PATHS.REVIEWS.REFRESH, undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reviews'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.REVIEWS });
       toast.success('Отзывы обновлены');
     },
     onError: () => toast.error('Не удалось обновить отзывы'),

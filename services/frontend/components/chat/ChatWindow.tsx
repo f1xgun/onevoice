@@ -19,6 +19,7 @@ import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversat
 import { DEFAULT_QUICK_ACTIONS } from '@/lib/quick-actions';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import type { Conversation } from '@/lib/conversations';
 
 async function fetchConversation(id: string): Promise<Conversation> {
@@ -48,7 +49,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   const composerDisabled = isStreaming || pendingApproval !== null;
 
   const { data: conversation } = useQuery<Conversation>({
-    queryKey: ['conversations', conversationId],
+    queryKey: QUERY_KEYS.CONVERSATION_BY_ID(conversationId),
     queryFn: () => fetchConversation(conversationId),
     enabled: !!conversationId,
   });
@@ -90,7 +91,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       },
       {
         onSuccess: () => {
-          void qc.invalidateQueries({ queryKey: ['conversations', conversationId] });
+          void qc.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATION_BY_ID(conversationId) });
           void qc.invalidateQueries({ queryKey: conversationsQueryKey });
         },
         onError: () => {

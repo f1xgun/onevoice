@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/auth';
 import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { trackEvent } from '@/lib/telemetry';
 import { resolveErrorToRussian, RESUME_STREAM_ERROR } from '@/lib/resolveErrorMap';
 import type {
@@ -160,7 +161,7 @@ export function useChat(conversationId: string) {
   const isStreamingRef = useRef(false);
   const accessToken = useAuthStore((s) => s.accessToken);
   const abortRef = useRef<AbortController | null>(null);
-  // Phase 18 / TITLE-06 / D-10: handleSSEEvent invalidates ['conversations']
+  // Phase 18 / TITLE-06 / D-10: handleSSEEvent invalidates QUERY_KEYS.CONVERSATIONS
   // when SSE 'done' arrives so an auto-titled chat picks up its new title
   // out-of-band. PITFALLS §13: NEVER mux titles into chat SSE.
   const queryClient = useQueryClient();
@@ -246,10 +247,10 @@ export function useChat(conversationId: string) {
     (event: Record<string, unknown>) => {
       // Phase 18 / TITLE-06 / D-10: out-of-band auto-title propagation. The
       // titler goroutine on the API side races chat 'done'; invalidating
-      // ['conversations'] picks up whatever title has landed. PITFALLS §13
+      // QUERY_KEYS.CONVERSATIONS picks up whatever title has landed. PITFALLS §13
       // hard rule — NEVER mux titles into chat SSE.
       if (event.type === 'done') {
-        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
       }
 
       if (event.type === 'tool_approval_required') {

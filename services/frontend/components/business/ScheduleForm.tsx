@@ -17,6 +17,7 @@ import { CalendarIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
@@ -69,7 +70,7 @@ function useScheduleMutation(label: string) {
     mutationFn: (data: SchedulePayload) => api.put(API_PATHS.BUSINESS.SCHEDULE, data),
     onSuccess: () => {
       toast.success(`${label} сохранены`);
-      queryClient.invalidateQueries({ queryKey: ['business'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
     },
     onError: () => toast.error('Не получилось сохранить'),
   });
