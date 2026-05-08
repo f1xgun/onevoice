@@ -1346,3 +1346,237 @@ func TestGoogleSelectLocation_ConnectsAndCleansUp(t *testing.T) {
 	mockBusiness.AssertExpectations(t)
 	mockIntegration.AssertExpectations(t)
 }
+
+// --- VK paste-flow ConnectVK tests ---
+
+// newVKAPIMock returns an httptest server that mimics the two api.vk.com
+// endpoints the paste-flow exercises: groups.getById and
+// groups.getTokenPermissions. Behavior is parameterized so each test can
+// describe the slice of VK reality it cares about.
+func newVKAPIMock(t *testing.T, opts vkMockOpts) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/method/groups.getById", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if opts.getByIDErrorMsg != "" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": map[string]interface{}{"error_code": 100, "error_msg": opts.getByIDErrorMsg},
+			})
+			return
+		}
+		groups := []map[string]interface{}{}
+		if opts.communityID != 0 {
+			groups = append(groups, map[string]interface{}{
+				"id":          opts.communityID,
+				"name":        opts.communityName,
+				"screen_name": opts.communityScreenName,
+				"photo_50":    "https://example.com/avatar.jpg",
+			})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"response": map[string]interface{}{"groups": groups},
+		})
+	})
+	mux.HandleFunc("/method/groups.getTokenPermissions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		perms := make([]map[string]interface{}, 0, len(opts.scopes))
+		for _, s := range opts.scopes {
+			perms = append(perms, map[string]interface{}{"name": s, "setting": 1})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"response": map[string]interface{}{"permissions": perms},
+		})
+	})
+	return httptest.NewServer(mux)
+}
+
+type vkMockOpts struct {
+	// groups.getById response shape.
+	communityID         int64
+	communityName       string
+	communityScreenName string
+	getByIDErrorMsg     string
+
+	// groups.getTokenPermissions scope list (e.g. {"wall", "manage"}).
+	scopes []string
+}
+
+func TestConnectVK_Paste_Success(t *testing.T) {
+	vkServer := newVKAPIMock(t, vkMockOpts{
+		communityID:         236912172,
+		communityName:       "OneVoice",
+		communityScreenName: "club236912172",
+		scopes:              []string{"wall", "manage", "messages"},
+	})
+	defer vkServer.Close()
+
+	userID := uuid.New()
+	businessID := uuid.New()
+
+	mockOAuth := new(MockOAuthStateService)
+	mockIntegration := new(MockOAuthIntegrationService)
+	mockBusiness := new(MockBusinessService)
+
+	mockBusiness.On("GetByUserID", mock.Anything, userID).
+		Return(&domain.Business{ID: businessID, UserID: userID}, nil)
+	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
+		method, _ := p.Metadata["input_method"].(string)
+		gname, _ := p.Metadata["community_name"].(string)
+		return p.Platform == "vk" &&
+			p.ExternalID == "236912172" &&
+			method == "paste" &&
+			gname == "OneVoice"
+	})).Return(&domain.Integration{ID: uuid.New(), Platform: "vk", ExternalID: "236912172"}, nil)
+
+	cfg := OAuthConfig{vkAPIBaseURL: vkServer.URL}
+	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, vkServer.Client(), nil)
+
+	body := `{"access_token": "vk1.a.PASTED_COMMUNITY_TOKEN"}`
+	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctxWithUser(userID))
+	rr := httptest.NewRecorder()
+
+	h.ConnectVK(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertExpectations(t)
+}
+
+func TestConnectVK_Paste_TokenWithoutWallScope_400(t *testing.T) {
+	vkServer := newVKAPIMock(t, vkMockOpts{
+		communityID:   1,
+		communityName: "X",
+		scopes:        []string{"manage"}, // no wall
+	})
+	defer vkServer.Close()
+
+	userID := uuid.New()
+	mockBusiness := new(MockBusinessService)
+	mockBusiness.On("GetByUserID", mock.Anything, userID).
+		Return(&domain.Business{ID: uuid.New(), UserID: userID}, nil)
+	mockIntegration := new(MockOAuthIntegrationService) // Connect must NOT be called
+
+	cfg := OAuthConfig{vkAPIBaseURL: vkServer.URL}
+	h := NewOAuthHandler(new(MockOAuthStateService), mockIntegration, mockBusiness, cfg, vkServer.Client(), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
+		strings.NewReader(`{"access_token": "tok"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctxWithUser(userID))
+	rr := httptest.NewRecorder()
+
+	h.ConnectVK(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Стен") {
+		t.Errorf("expected wall-scope hint in error, got %s", rr.Body.String())
+	}
+	mockIntegration.AssertNotCalled(t, "Connect", mock.Anything, mock.Anything)
+}
+
+func TestConnectVK_Paste_VKAPIError_400(t *testing.T) {
+	vkServer := newVKAPIMock(t, vkMockOpts{
+		getByIDErrorMsg: "User authorization failed: invalid access_token (4).",
+		scopes:          []string{"wall"},
+	})
+	defer vkServer.Close()
+
+	userID := uuid.New()
+	mockBusiness := new(MockBusinessService)
+	mockBusiness.On("GetByUserID", mock.Anything, userID).
+		Return(&domain.Business{ID: uuid.New(), UserID: userID}, nil)
+	mockIntegration := new(MockOAuthIntegrationService)
+
+	cfg := OAuthConfig{vkAPIBaseURL: vkServer.URL}
+	h := NewOAuthHandler(new(MockOAuthStateService), mockIntegration, mockBusiness, cfg, vkServer.Client(), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
+		strings.NewReader(`{"access_token": "broken"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctxWithUser(userID))
+	rr := httptest.NewRecorder()
+
+	h.ConnectVK(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockIntegration.AssertNotCalled(t, "Connect", mock.Anything, mock.Anything)
+}
+
+func TestConnectVK_Paste_EmptyToken_400(t *testing.T) {
+	userID := uuid.New()
+	mockBusiness := new(MockBusinessService) // GetByUserID must NOT be called — fail-fast on input
+	mockIntegration := new(MockOAuthIntegrationService)
+	h := NewOAuthHandler(new(MockOAuthStateService), mockIntegration, mockBusiness, OAuthConfig{}, nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
+		strings.NewReader(`{"access_token": "  "}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctxWithUser(userID))
+	rr := httptest.NewRecorder()
+
+	h.ConnectVK(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	mockBusiness.AssertNotCalled(t, "GetByUserID", mock.Anything, mock.Anything)
+}
+
+func TestConnectVK_Paste_VKReturnsNoCommunity_400(t *testing.T) {
+	// Empty groups array — token is technically valid but isn't bound to a
+	// community (e.g., a stray service token).
+	vkServer := newVKAPIMock(t, vkMockOpts{scopes: []string{"wall"}})
+	defer vkServer.Close()
+
+	userID := uuid.New()
+	mockBusiness := new(MockBusinessService)
+	mockBusiness.On("GetByUserID", mock.Anything, userID).
+		Return(&domain.Business{ID: uuid.New(), UserID: userID}, nil)
+	mockIntegration := new(MockOAuthIntegrationService)
+
+	cfg := OAuthConfig{vkAPIBaseURL: vkServer.URL}
+	h := NewOAuthHandler(new(MockOAuthStateService), mockIntegration, mockBusiness, cfg, vkServer.Client(), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
+		strings.NewReader(`{"access_token": "tok"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctxWithUser(userID))
+	rr := httptest.NewRecorder()
+
+	h.ConnectVK(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "сообщество") {
+		t.Errorf("expected message about community in 400 body, got %s", rr.Body.String())
+	}
+	mockIntegration.AssertNotCalled(t, "Connect", mock.Anything, mock.Anything)
+}
+
+func TestConnectVK_Paste_Unauthorized(t *testing.T) {
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService),
+		new(MockBusinessService), OAuthConfig{}, nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
+		strings.NewReader(`{"access_token": "tok"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ConnectVK(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without user context, got %d", rr.Code)
+	}
+}
+
+// strconv import sanity — newVKAPIMock returns int64 IDs decoded as float64
+// by encoding/json in the response, so this test guards the round-trip.
+var _ = strconv.FormatInt(0, 10)

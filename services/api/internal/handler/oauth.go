@@ -61,6 +61,7 @@ type OAuthConfig struct {
 
 	// Overridable base URLs for testing
 	vkTokenBaseURL        string
+	vkAPIBaseURL          string // test override for api.vk.com (groups.getById, groups.getTokenPermissions)
 	yandexTokenBaseURL    string
 	yandexProbeBaseURL    string // test override for the cookie-validity probe
 	telegramAPIBaseURL    string
@@ -122,6 +123,16 @@ func NewOAuthHandler(
 func (h *OAuthHandler) WithAgentTaskPublisher(p AgentTaskPublisher) *OAuthHandler {
 	h.taskPublisher = p
 	return h
+}
+
+// vkAPIBase returns the api.vk.com base URL, honoring the test override.
+// Used by the paste-flow connect path so unit tests can stub VK's responses
+// without binding outbound DNS.
+func (h *OAuthHandler) vkAPIBase() string {
+	if h.cfg.vkAPIBaseURL != "" {
+		return h.cfg.vkAPIBaseURL
+	}
+	return "https://api.vk.com"
 }
 
 // vkTokenBaseURL returns the classic VK OAuth base URL.
@@ -492,13 +503,37 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	http.Redirect(w, r, "/integrations?connected=vk", http.StatusFound)
 }
 
-// connectVKRequest is the request body for ConnectVK.
+// connectVKRequest is the request body for ConnectVK. GroupID is optional —
+// when omitted the handler asks VK for the community the token is bound to
+// (community access tokens know their own scope). Pasting from the VK admin
+// panel is the canonical flow: open Управление → Работа с API → Создать ключ
+// (no app association, scopes wall + manage minimum), then paste the value.
 type connectVKRequest struct {
-	GroupID     string `json:"group_id"`
+	GroupID     string `json:"group_id,omitempty"`
 	AccessToken string `json:"access_token"`
 }
 
-// ConnectVK validates a community API token and stores the VK integration (JWT required).
+// vkGroup is the subset of VK's groups.getById response we care about.
+type vkGroup struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	ScreenName string `json:"screen_name"`
+	Photo50    string `json:"photo_50"`
+}
+
+// ConnectVK validates a pasted community access token and stores it as a VK
+// integration (JWT required). Two calling shapes are supported:
+//
+//  1. Token only — handler resolves the bound community via
+//     groups.getById?access_token=… (community tokens carry their group
+//     identity). Recommended path for the UI paste-flow.
+//  2. Token + group_id/URL/screen_name — handler resolves the input through
+//     resolveVKGroupID and validates the token against that specific group.
+//     Kept for legacy OAuth-callback callers and explicit picker flows.
+//
+// Token scope is required to include `wall` for review-reply dispatch to work
+// — handler refuses up-front so users don't connect a token that will fail
+// silently when they try to send an answer.
 func (h *OAuthHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -511,8 +546,9 @@ func (h *OAuthHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.GroupID == "" || req.AccessToken == "" {
-		writeJSONError(w, http.StatusBadRequest, "group_id and access_token are required")
+	req.AccessToken = strings.TrimSpace(req.AccessToken)
+	if req.AccessToken == "" {
+		writeJSONError(w, http.StatusBadRequest, "access_token is required")
 		return
 	}
 
@@ -526,56 +562,45 @@ func (h *OAuthHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the token by calling groups.getById
-	vkURL := fmt.Sprintf("https://api.vk.com/method/groups.getById?group_id=%s&access_token=%s&v=5.199",
-		url.QueryEscape(req.GroupID),
-		url.QueryEscape(req.AccessToken),
-	)
-	resp, err := h.httpClient.Get(vkURL)
-	if err != nil {
-		slog.Error("VK token validation failed", "error", err)
+	// Probe groups.getById with the user-supplied token. If group_id is
+	// supplied (legacy / explicit picker), pass it; otherwise rely on the
+	// community-token-knows-its-group behavior. Either way the response
+	// gives us the canonical numeric id, name, screen_name, and avatar.
+	group, vkErr, transportErr := h.probeVKCommunityToken(r.Context(), req.AccessToken, req.GroupID)
+	if transportErr != nil {
+		slog.Error("VK token validation failed", "error", transportErr)
 		writeJSONError(w, http.StatusBadGateway, "failed to validate VK token")
 		return
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	var vkResp struct {
-		Response struct {
-			Groups []struct {
-				ID   int64  `json:"id"`
-				Name string `json:"name"`
-			} `json:"groups"`
-		} `json:"response"`
-		Error *struct {
-			ErrorCode int    `json:"error_code"`
-			ErrorMsg  string `json:"error_msg"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(respBody, &vkResp); err != nil {
-		writeJSONError(w, http.StatusBadGateway, "invalid VK response")
+	if vkErr != "" {
+		writeJSONError(w, http.StatusBadRequest, "Невалидный токен: "+vkErr)
 		return
 	}
-	if vkResp.Error != nil {
-		slog.Warn("VK token validation error", "code", vkResp.Error.ErrorCode, "msg", vkResp.Error.ErrorMsg)
-		writeJSONError(w, http.StatusBadRequest, "Невалидный токен: "+vkResp.Error.ErrorMsg)
+	if group == nil {
+		writeJSONError(w, http.StatusBadRequest,
+			"VK не вернул сообщество для этого токена — проверьте, что вы создали ключ в админке сообщества")
 		return
 	}
 
-	// Get community name for metadata
-	communityName := ""
-	if len(vkResp.Response.Groups) > 0 {
-		communityName = vkResp.Response.Groups[0].Name
+	// Verify the token has `wall` scope. Without it, vk__reply_comment
+	// will fail at runtime — surface the issue at connect time instead.
+	if scopeErr := h.checkVKWallScope(r.Context(), req.AccessToken); scopeErr != nil {
+		writeJSONError(w, http.StatusBadRequest, scopeErr.Error())
+		return
 	}
 
+	groupIDStr := strconv.FormatInt(group.ID, 10)
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
 		Platform:    "vk",
-		ExternalID:  req.GroupID,
+		ExternalID:  groupIDStr,
 		AccessToken: req.AccessToken,
 		Metadata: map[string]interface{}{
-			"group_id":       req.GroupID,
-			"community_name": communityName,
+			"group_id":       groupIDStr,
+			"community_name": group.Name,
+			"screen_name":    group.ScreenName,
+			"photo_url":      group.Photo50,
+			"input_method":   "paste",
 		},
 	})
 	if err != nil {
@@ -584,8 +609,112 @@ func (h *OAuthHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("VK community connected", "business_id", business.ID, "group_id", req.GroupID, "name", communityName)
+	slog.Info("VK community connected via paste",
+		"business_id", business.ID, "group_id", groupIDStr, "name", group.Name)
 	writeJSON(w, http.StatusCreated, integration)
+}
+
+// probeVKCommunityToken hits groups.getById with the supplied token. Returns
+// (group, vkErrMsg, transportErr): exactly one of the three is non-zero. The
+// rawGroupInput is normalised through resolveVKGroupID when non-empty (lets
+// callers pass a URL/screen_name); empty rawGroupInput means "let VK decide
+// from the token's scope" (community tokens self-identify).
+func (h *OAuthHandler) probeVKCommunityToken(
+	ctx context.Context,
+	accessToken, rawGroupInput string,
+) (*vkGroup, string, error) {
+	groupParam := ""
+	if strings.TrimSpace(rawGroupInput) != "" {
+		resolved, err := h.resolveVKGroupID(ctx, rawGroupInput)
+		if err != nil {
+			return nil, "не удалось распознать сообщество: " + err.Error(), nil
+		}
+		groupParam = resolved
+	}
+
+	apiURL := fmt.Sprintf(
+		"%s/method/groups.getById?fields=name,screen_name,photo_50&access_token=%s&v=5.199",
+		h.vkAPIBase(), url.QueryEscape(accessToken),
+	)
+	if groupParam != "" {
+		apiURL += "&group_id=" + url.QueryEscape(groupParam)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := h.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, "", fmt.Errorf("vk request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	var vkResp struct {
+		Response struct {
+			Groups []vkGroup `json:"groups"`
+		} `json:"response"`
+		Error *struct {
+			ErrorCode int    `json:"error_code"`
+			ErrorMsg  string `json:"error_msg"`
+		} `json:"error"`
+	}
+	if jsonErr := json.Unmarshal(body, &vkResp); jsonErr != nil {
+		return nil, "", fmt.Errorf("decode vk response: %w", jsonErr)
+	}
+	if vkResp.Error != nil {
+		slog.Warn("VK token validation error",
+			"code", vkResp.Error.ErrorCode, "msg", vkResp.Error.ErrorMsg)
+		return nil, vkResp.Error.ErrorMsg, nil
+	}
+	if len(vkResp.Response.Groups) == 0 {
+		return nil, "", nil
+	}
+	g := vkResp.Response.Groups[0]
+	return &g, "", nil
+}
+
+// checkVKWallScope verifies the supplied token grants `wall` permission. The
+// review-reply dispatch path needs it; surfacing the gap at connect time
+// avoids a confusing "ok!" → "can't reply" UX a few clicks later. Returns
+// nil when the scope is present, an error with a Russian-language message
+// when it isn't, and nil (treating as best-effort) on transport failures
+// — VK occasionally rate-limits this method and we'd rather connect than
+// block on a flaky check.
+func (h *OAuthHandler) checkVKWallScope(ctx context.Context, accessToken string) error {
+	apiURL := fmt.Sprintf(
+		"%s/method/groups.getTokenPermissions?access_token=%s&v=5.199",
+		h.vkAPIBase(), url.QueryEscape(accessToken),
+	)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
+	if err != nil {
+		return nil
+	}
+	resp, err := h.httpClient.Do(httpReq)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	var permResp struct {
+		Response struct {
+			Permissions []struct {
+				Name string `json:"name"`
+			} `json:"permissions"`
+		} `json:"response"`
+	}
+	if jsonErr := json.Unmarshal(body, &permResp); jsonErr != nil {
+		return nil
+	}
+	for _, p := range permResp.Response.Permissions {
+		if p.Name == "wall" {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"токену не хватает прав на «Стену» — пересоздайте ключ в админке сообщества с галочкой «Стена»",
+	)
 }
 
 // VerifyTelegramLogin verifies a Telegram Login Widget callback (JWT required).
