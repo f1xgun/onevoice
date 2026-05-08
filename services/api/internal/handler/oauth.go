@@ -38,6 +38,8 @@ type OAuthIntegrationService interface {
 	Connect(ctx context.Context, params service.ConnectParams) (*domain.Integration, error)
 	ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error)
 	UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error
+	UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error
+	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error)
 }
 
 // OAuthConfig holds platform OAuth credentials and optional test overrides.
