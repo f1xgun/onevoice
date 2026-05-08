@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	goredis "github.com/redis/go-redis/v9"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -74,6 +75,13 @@ func (c OAuthConfig) VKCommunityRedirectURI() string {
 	return strings.Replace(c.VKRedirectURI, "/oauth/vk/callback", "/oauth/vk/community-callback", 1)
 }
 
+// AgentTaskPublisher abstracts the NATS A2A request used by the Yandex
+// refresh-name endpoint to dispatch yandex_business__list_companies to
+// the RPA agent. Satisfied by *platform.NATSTaskPublisher.
+type AgentTaskPublisher interface {
+	RequestTool(ctx context.Context, subject string, req a2a.ToolRequest, timeout time.Duration) (*a2a.ToolResponse, error)
+}
+
 // OAuthHandler handles all OAuth-related endpoints.
 type OAuthHandler struct {
 	oauthService       OAuthStateService
@@ -82,6 +90,7 @@ type OAuthHandler struct {
 	cfg                OAuthConfig
 	httpClient         *http.Client
 	redis              *goredis.Client
+	taskPublisher      AgentTaskPublisher // optional; nil disables refresh-name
 }
 
 // NewOAuthHandler creates a new OAuthHandler.
@@ -104,6 +113,15 @@ func NewOAuthHandler(
 		httpClient:         httpClient,
 		redis:              redisClient,
 	}
+}
+
+// WithAgentTaskPublisher injects the NATS task publisher used to dispatch
+// agent tools (specifically yandex_business__list_companies for the
+// refresh-name flow). Not constructor-injected to keep call sites and
+// tests untouched; nil is the safe default — refresh-name returns 503.
+func (h *OAuthHandler) WithAgentTaskPublisher(p AgentTaskPublisher) *OAuthHandler {
+	h.taskPublisher = p
+	return h
 }
 
 // vkTokenBaseURL returns the classic VK OAuth base URL.

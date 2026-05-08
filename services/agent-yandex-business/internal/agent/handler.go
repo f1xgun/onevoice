@@ -33,6 +33,12 @@ type YandexBrowser interface {
 	ReplyReview(ctx context.Context, reviewID, text string) error
 	CreatePost(ctx context.Context, text string) error
 	UploadPhoto(ctx context.Context, photoURL, category string) error
+	// ListCompanies hits yandex.ru/sprav/companies and returns the user's
+	// organizations (numeric Sprav permalink + display name). Used by the
+	// API service to resolve external_id + business_name on connect /
+	// refresh-name. Permalink-independent — does not require the
+	// BusinessBrowser to have a known permalink.
+	ListCompanies(ctx context.Context) ([]map[string]interface{}, error)
 }
 
 // BrowserPool abstracts the shared Playwright browser pool.
@@ -83,6 +89,8 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		resp, err = h.createPost(ctx, req)
 	case "yandex_business__upload_photo":
 		resp, err = h.uploadPhoto(ctx, req)
+	case "yandex_business__list_companies":
+		resp, err = h.listCompanies(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
@@ -184,6 +192,23 @@ func (h *Handler) getInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRe
 		TaskID:  req.TaskID,
 		Success: true,
 		Result:  info,
+	}, nil
+}
+
+func (h *Handler) listCompanies(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	browser, err := h.getBrowser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	companies, err := browser.ListCompanies(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("yandex: list companies: %w", classifyYandexError(err))
+	}
+	return &a2a.ToolResponse{
+		TaskID:  req.TaskID,
+		Success: true,
+		Result:  map[string]interface{}{"companies": companies},
 	}, nil
 }
 
