@@ -305,7 +305,6 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	integrationService := service.NewIntegrationService(integrationRepo, enc, refresher)
 	oauthService := service.NewOAuthService(redisClient)
-	reviewService := service.NewReviewService(reviewRepo, businessService)
 	postService := service.NewPostService(postRepo, businessService)
 	agentTaskService := service.NewAgentTaskService(agentTaskRepo, businessService)
 
@@ -337,6 +336,11 @@ func run(log *slog.Logger, cfg *config.Config) error {
 			defer nc.Close()
 		}
 	}
+
+	// Review service: needs natsConn to dispatch manual replies (PUT
+	// /reviews/{id}/reply) to platform agents — vk__reply_comment etc. With
+	// natsConn=nil the service still works in Mongo-only mode (legacy).
+	reviewService := service.NewReviewService(reviewRepo, businessService, natsConn)
 
 	// Platform syncer: pushes business info updates to connected platforms
 	platformSyncer := platform.NewSyncer(
