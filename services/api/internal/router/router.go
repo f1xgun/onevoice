@@ -94,8 +94,21 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Get("/integrations/vk/community-auth-url", handlers.OAuth.VKCommunityAuthURL)
 			r.Get("/integrations/yandex_business/auth-url", handlers.OAuth.GetYandexAuthURL)
 
+			// Yandex.Business cookie-paste flow (replaces the broken OAuth-only path:
+			// Yandex doesn't expose a Sprav API for the actions we automate, so the
+			// Playwright agent needs real browser session cookies. See AGENTS.md +
+			// memory/project_yandex_business_no_oauth_api.md for the full rationale.)
+			r.Post("/integrations/yandex_business/probe", handlers.OAuth.ProbeYandexBusiness)
+			// Synchronous Sprav company picker — RPA-driven, ~25–45s.
+			r.Post("/integrations/yandex_business/companies", handlers.OAuth.ListYandexCompanies)
+			r.Post("/integrations/yandex_business/connect", handlers.OAuth.ConnectYandexBusiness)
+			// Lazy backfill of the Sprav permalink + business name via agent.
+			r.Post("/integrations/yandex_business/{id}/refresh-name", handlers.OAuth.RefreshYandexBusinessName)
+
 			// VK community token route
 			r.Post("/integrations/vk/connect", handlers.OAuth.ConnectVK)
+			// Lazy backfill of missing community names on existing integrations.
+			r.Post("/integrations/vk/{id}/refresh-name", handlers.OAuth.RefreshVKCommunityName)
 
 			// Telegram routes
 			r.Post("/integrations/telegram/verify", handlers.OAuth.VerifyTelegramLogin)
