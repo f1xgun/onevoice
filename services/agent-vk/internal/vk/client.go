@@ -178,6 +178,14 @@ func (c *Client) GetComments(groupID string, postID, count int) ([]map[string]in
 
 // ReplyComment creates a threaded reply to a wall comment.
 // groupID should be the owner_id (negative for communities, e.g. "-123456").
+//
+// `from_group=1` tells VK to publish the comment as the community itself.
+// Without it, a community access token (the only kind VK ID for Business
+// issues) makes wall.createComment try to comment as a "user", which fails
+// with "Method is not available for this profile type" because community
+// tokens have no user identity attached. This is the correct call shape
+// when the integration's AccessToken is a community token, which is what
+// the agent uses for all write operations (see handler.go:getClient).
 func (c *Client) ReplyComment(groupID string, postID, commentID int, text string) (int, error) {
 	if err := c.wait(); err != nil {
 		return 0, err
@@ -187,6 +195,7 @@ func (c *Client) ReplyComment(groupID string, postID, commentID int, text string
 		"post_id":          postID,
 		"message":          text,
 		"reply_to_comment": commentID,
+		"from_group":       1,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("vk wall.createComment: %w", err)
