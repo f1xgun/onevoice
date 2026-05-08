@@ -10,8 +10,10 @@ const (
 	// PlatformStatusActive — agent is implemented and OAuth credentials (or
 	// equivalent: bot token, service key) are present in the API config.
 	PlatformStatusActive PlatformStatus = "active"
-	// PlatformStatusComingSoon — declared in the registry but not yet
-	// implemented (no agent, no OAuth flow). 2gis and avito sit here.
+	// PlatformStatusComingSoon — declared in the registry but held back from
+	// MVP. May lack an agent (2gis, avito, whatsapp), or be implemented but
+	// intentionally hidden until the product launch is approved
+	// (google_business — agent exists, marketing/support not ready).
 	PlatformStatusComingSoon PlatformStatus = "coming_soon"
 	// PlatformStatusOAuthNotConfigured — agent exists but the deployment is
 	// missing required credentials. The frontend hides connect buttons for
@@ -20,9 +22,10 @@ const (
 )
 
 // Platform is the canonical descriptor for a third-party integration the
-// product exposes. IDs match the a2a.AgentID constants for active platforms;
-// "coming_soon" entries (2gis, avito) use the same kebab-style id convention
-// so the frontend can treat them uniformly.
+// product exposes. IDs match the a2a.AgentID constants for platforms that
+// have an agent (snake_case, e.g. yandex_business, google_business);
+// coming-soon-only entries follow the same casing so the frontend can join
+// by id without normalisation.
 type Platform struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`

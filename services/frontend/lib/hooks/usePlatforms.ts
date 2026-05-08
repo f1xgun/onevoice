@@ -21,20 +21,21 @@ export const PLATFORMS_QUERY_KEY = ['platforms'] as const;
 // or a new platform is added in code. There is no per-tenant variation.
 export const PLATFORMS_STALE_TIME_MS = 5 * 60 * 1000;
 
-// Fallback used while the request is in-flight or if it fails outright. We
-// surface every known platform optimistically as "active" (or "coming_soon"
-// for 2gis/avito) so the UI never flashes empty. The real status arrives on
-// next render once /api/v1/platforms resolves.
+// Fallback used while the request is in-flight or if it fails outright.
+// Status comes from PLATFORM_META.defaultStatus, which mirrors the at-rest
+// state of the Go registry. This avoids advertising connect cards for
+// non-MVP platforms during the brief window before /api/v1/platforms
+// resolves (or forever, if the deployment is misconfigured and the request
+// 500s every time). The real per-deployment status — including
+// oauth_not_configured downgrades — arrives on the next render.
 function buildFallback(): EnrichedPlatform[] {
-  const comingSoon = new Set<PlatformId>(['2gis', 'avito']);
   return PLATFORM_DISPLAY_ORDER.map((id) => {
     const meta = PLATFORM_META[id];
-    const status: PlatformStatus = comingSoon.has(id) ? 'coming_soon' : 'active';
     return {
       id,
       name: meta.fullLabel,
       description: '',
-      status,
+      status: meta.defaultStatus as PlatformStatus,
       ...meta,
     };
   });
