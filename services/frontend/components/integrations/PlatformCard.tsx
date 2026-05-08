@@ -145,6 +145,7 @@ export function PlatformCard({
                 <ChannelList
                   integrations={integrations}
                   platform={platform}
+                  platformLabel={label}
                   onDisconnect={onDisconnect}
                   refreshingID={refreshingID}
                   onRefreshTelegram={refreshTelegramLinkedGroup}
@@ -154,6 +155,7 @@ export function PlatformCard({
               <ChannelList
                 integrations={integrations}
                 platform={platform}
+                platformLabel={label}
                 onDisconnect={onDisconnect}
                 refreshingID={refreshingID}
                 onRefreshTelegram={refreshTelegramLinkedGroup}
@@ -180,12 +182,14 @@ export function PlatformCard({
 function ChannelList({
   integrations,
   platform,
+  platformLabel,
   onDisconnect,
   refreshingID,
   onRefreshTelegram,
 }: {
   integrations: Integration[];
   platform: string;
+  platformLabel: string;
   onDisconnect: (integrationId: string) => void;
   refreshingID: string | null;
   onRefreshTelegram: (i: Integration) => void;
@@ -194,8 +198,13 @@ function ChannelList({
     <div className="flex flex-col gap-2">
       {integrations.map((i) => {
         const tone = statusTones[i.status] ?? 'neutral';
-        const label = statusLabels[i.status] ?? i.status;
-        const channelTitle = (i.metadata as Record<string, string>)?.channel_title ?? i.externalId;
+        const statusLabel = statusLabels[i.status] ?? i.status;
+        const rawTitle = (i.metadata as Record<string, string>)?.channel_title ?? i.externalId;
+        // For platforms where externalId is a placeholder (yandex_business
+        // uses "default" as the canonical single-integration id), fall back
+        // to the human-readable platform name so the disconnect dialog
+        // doesn't say "Отключить default?".
+        const channelTitle = rawTitle === 'default' ? platformLabel : rawTitle;
         const showLinkedGroupWarn =
           platform === 'telegram' &&
           (i.metadata as Record<string, unknown>)?.linked_group_status === 'bot_not_member';
@@ -259,7 +268,7 @@ function ChannelList({
                 </AlertDialog>
               )}
 
-              <Badge tone={tone}>{label}</Badge>
+              <Badge tone={tone}>{statusLabel}</Badge>
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -269,10 +278,10 @@ function ChannelList({
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>{`Отключить ${label}?`}</AlertDialogTitle>
+                    <AlertDialogTitle>{`Отключить ${channelTitle}?`}</AlertDialogTitle>
                     <AlertDialogDescription>
                       История сообщений останется в архиве. Чтобы снова получать сообщения из{' '}
-                      {label}, канал нужно будет подключить заново.
+                      {channelTitle}, канал нужно будет подключить заново.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
