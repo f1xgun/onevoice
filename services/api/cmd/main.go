@@ -38,6 +38,24 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
+// Operational timeouts — collected here so changes to startup / HTTP /
+// reconciliation budgets are localized. The "30s startup" budget covers
+// every blocking pre-listen step (Mongo backfill, search-index creation,
+// orphan-reconciliation sweep) because they all run sequentially against
+// the same Mongo connection.
+const (
+	startupTimeout            = 30 * time.Second
+	startupSearchIndexTimeout = 60 * time.Second
+	httpReadTimeout           = 15 * time.Second
+	httpReadHeaderTimeout     = 10 * time.Second
+	httpIdleTimeout           = 60 * time.Second
+	orphanReconcileWindow     = 5 * time.Minute
+	toolsCacheTTL             = 5 * time.Minute
+	integrationFetchTimeout   = 60 * time.Second
+	orchestratorFetchTimeout  = 10 * time.Second
+	pendingSweepLoopInterval  = 5 * time.Second
+)
+
 func main() {
 	// Initialize logger
 	log := logger.New("api")
@@ -85,7 +103,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// before we serve traffic so every pre-existing conversation has the
 	// fields the sidebar and move-chat rely on. Bounded to 30s so a
 	// broken Mongo does not hang startup forever.
-	backfillCtx, backfillCancel := context.WithTimeout(ctx, 30*time.Second)
+	backfillCtx, backfillCancel := context.WithTimeout(ctx, startupTimeout)
 	if err := repository.BackfillConversationsV15(backfillCtx, mongoDB); err != nil {
 		backfillCancel()
 		slog.ErrorContext(backfillCtx, "phase 15 backfill failed", "error", err)
@@ -102,7 +120,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// above). Bounded to 30s. BLOCKING: 19-02 must wire this before serving
 	// traffic so the new ConversationRepository.Pin/Unpin atomic methods
 	// operate against a uniform schema across pre- and post-Phase-19 data.
-	backfillCtx2, backfillCancel2 := context.WithTimeout(ctx, 30*time.Second)
+	backfillCtx2, backfillCancel2 := context.WithTimeout(ctx, startupTimeout)
 	if err := repository.BackfillConversationsV19(backfillCtx2, mongoDB); err != nil {
 		backfillCancel2()
 		slog.ErrorContext(backfillCtx2, "phase 19 backfill failed", "error", err)
@@ -125,7 +143,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	//      "expired" (Pattern 3 crash recovery: orchestrator inserted a
 	//      preparing row then crashed before PromoteToPending). Runs async
 	//      so the HTTP server can bind immediately.
-	indexesCtx, indexesCancel := context.WithTimeout(ctx, 30*time.Second)
+	indexesCtx, indexesCancel := context.WithTimeout(ctx, startupTimeout)
 	if err := repository.EnsurePendingToolCallsIndexes(indexesCtx, mongoDB); err != nil {
 		indexesCancel()
 		slog.ErrorContext(indexesCtx, "failed to ensure pending_tool_calls indexes", "error", err)
@@ -138,7 +156,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// `conversations_user_biz_title_status` (auto-titler hot path) AND the
 	// Phase-19 `conversations_user_biz_proj_pinned_recency` (sidebar list
 	// ordering) indexes. Idempotent — safe on every boot.
-	indexesCtx2, indexesCancel2 := context.WithTimeout(ctx, 30*time.Second)
+	indexesCtx2, indexesCancel2 := context.WithTimeout(ctx, startupTimeout)
 	if err := repository.EnsureConversationIndexes(indexesCtx2, mongoDB); err != nil {
 		indexesCancel2()
 		slog.ErrorContext(indexesCtx2, "failed to ensure conversation indexes", "error", err)
@@ -160,7 +178,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// readiness flip fires there. The atomic.Bool.Store provides a
 	// happens-before edge against every subsequent Load by handler
 	// goroutines.
-	indexesCtx3, indexesCancel3 := context.WithTimeout(ctx, 60*time.Second)
+	indexesCtx3, indexesCancel3 := context.WithTimeout(ctx, startupSearchIndexTimeout)
 	if err := repository.EnsureSearchIndexes(indexesCtx3, mongoDB); err != nil {
 		indexesCancel3()
 		slog.ErrorContext(indexesCtx3, "failed to ensure search text indexes", "error", err)
@@ -170,9 +188,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	pendingToolCallRepo := repository.NewPendingToolCallRepository(mongoDB)
 	_ = pendingToolCallRepo // consumed by chat_proxy (16-06) and HITL handlers (16-07)
 	go func() {
-		sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		sweepCtx, sweepCancel := context.WithTimeout(context.Background(), startupTimeout)
 		defer sweepCancel()
-		n, reconcileErr := pendingToolCallRepo.ReconcileOrphanPreparing(sweepCtx, 5*time.Minute)
+		n, reconcileErr := pendingToolCallRepo.ReconcileOrphanPreparing(sweepCtx, orphanReconcileWindow)
 		if reconcileErr != nil {
 			slog.ErrorContext(sweepCtx, "pending_tool_calls orphan reconcile failed", "error", reconcileErr)
 			return
@@ -300,7 +318,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		refresher = &googleTokenRefresher{
 			clientID:     cfg.GoogleClientID,
 			clientSecret: cfg.GoogleClientSecret,
-			httpClient:   &http.Client{Timeout: 10 * time.Second},
+			httpClient:   &http.Client{Timeout: orchestratorFetchTimeout},
 		}
 	}
 	integrationService := service.NewIntegrationService(integrationRepo, enc, refresher)
@@ -349,7 +367,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 			drafter = service.NewReviewDrafter(
 				reviewRepo,
 				businessRepo,
-				&http.Client{Timeout: 60 * time.Second},
+				&http.Client{Timeout: integrationFetchTimeout},
 				cfg.OrchestratorURL,
 				cfg.ReviewDraftMaxExamples,
 				cfg.ReviewDraftBatchLimit,
@@ -479,7 +497,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// ToolsRegistryCache talks to the orchestrator's /internal/tools endpoint
 	// with a 5-min TTL so settings/project pages + edit-validation share one
 	// source of truth.
-	toolsCache := service.NewToolsRegistryCache(cfg.OrchestratorURL, nil, 5*time.Minute)
+	toolsCache := service.NewToolsRegistryCache(cfg.OrchestratorURL, nil, toolsCacheTTL)
 	hitlService := service.NewHITLService(
 		pendingToolCallRepo,
 		businessRepo,
@@ -541,13 +559,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	srv := &http.Server{
 		Addr:        addr,
 		Handler:     r,
-		ReadTimeout: 15 * time.Second,
+		ReadTimeout: httpReadTimeout,
 		// WriteTimeout=0: SSE requires long-lived connections (/api/v1/chat/{id}
 		// proxies the orchestrator stream, which may run for minutes while
 		// RPA tool calls complete). Per-request deadlines are enforced by
 		// context.WithTimeout in handlers that need them.
 		WriteTimeout: 0,
-		IdleTimeout:  60 * time.Second,
+		IdleTimeout:  httpIdleTimeout,
 	}
 
 	// Start server in goroutine
@@ -565,7 +583,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	internalSrv := &http.Server{
 		Addr:              internalAddr,
 		Handler:           internalRouter,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
 	}
 	go func() {
 		log.Info("internal server listening", "addr", internalAddr)
@@ -595,7 +613,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return fmt.Errorf("server error: %w", err)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), startupTimeout)
 	defer cancel()
 
 	if err := internalSrv.Shutdown(shutdownCtx); err != nil {
@@ -684,7 +702,7 @@ func (a *integrationSyncAdapter) GetDecryptedToken(ctx context.Context, business
 // boot. The sweep is advisory — production alerts should watch for
 // `tool_approval_whitelist_unknown` events in Loki/Grafana.
 func runToolApprovalStartupValidation(_ context.Context, pgPool *pgxpool.Pool, orchestratorURL string) {
-	sweepCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	sweepCtx, cancel := context.WithTimeout(context.Background(), startupTimeout)
 	defer cancel()
 
 	registered, err := fetchOrchestratorToolNames(sweepCtx, orchestratorURL)
@@ -693,7 +711,7 @@ func runToolApprovalStartupValidation(_ context.Context, pgPool *pgxpool.Pool, o
 			"orchestrator", orchestratorURL, "error", err,
 		)
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(pendingSweepLoopInterval):
 		case <-sweepCtx.Done():
 			return
 		}
@@ -730,7 +748,7 @@ func runToolApprovalStartupValidation(_ context.Context, pgPool *pgxpool.Pool, o
 // hitlvalidation.ValidateApprovalSettings. A 10s timeout protects against
 // a hung orchestrator; the caller handles retry.
 func fetchOrchestratorToolNames(ctx context.Context, orchestratorURL string) (map[string]struct{}, error) {
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, orchestratorFetchTimeout)
 	defer cancel()
 
 	u := strings.TrimRight(orchestratorURL, "/") + "/internal/tools/names"
