@@ -407,6 +407,91 @@ func TestClient_GetWallPosts_Error(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestClient_GetComments_SurfacesOwnerReplyFromThread(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/method/wall.getComments", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{
+			"count": 2,
+			"items": []map[string]interface{}{
+				{
+					"id":      10,
+					"text":    "Top-level question",
+					"date":    1700000000,
+					"from_id": 999,
+					"thread": map[string]interface{}{
+						"count": 2,
+						"items": []map[string]interface{}{
+							{"id": 11, "text": "Older user reply", "date": 1700000050, "from_id": 888},
+							{"id": 12, "text": "Owner answer", "date": 1700000100, "from_id": -123456},
+						},
+					},
+				},
+				// Flat-mode reply row — should be skipped to avoid double counting.
+				{"id": 13, "text": "ignored", "date": 1700000200, "from_id": -123456, "reply_to_comment": 10},
+			},
+		}))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := vk.NewWithBaseURL("test-token", srv.URL+"/method/")
+	comments, err := c.GetComments("-123456", 42, 10)
+
+	require.NoError(t, err)
+	require.Len(t, comments, 2, "top-level + the user thread reply (owner replies are excluded)")
+	// Row 0: top-level question — owner answer comes after it.
+	assert.Equal(t, "Top-level question", comments[0]["text"])
+	assert.Equal(t, "Owner answer", comments[0]["reply"])
+	// Row 1: the older user thread reply — owner answer is also after it.
+	assert.Equal(t, "Older user reply", comments[1]["text"])
+	assert.Equal(t, "Owner answer", comments[1]["reply"])
+}
+
+func TestClient_GetComments_NestedUserReplyAfterOwnerHasNoReply(t *testing.T) {
+	// Mirrors the real production thread from the screenshot:
+	//   Даниил  "123123123"            (top-level, t=100)
+	//     OneVoice "test reply"        (owner reply,  t=200)
+	//     Даниил  "OneVoice, asdasd"   (nested user reply, t=300)
+	// "asdasd" arrived after the owner's only reply, so it must surface
+	// as a separate row with no `reply` field — that's the new comment
+	// the operator still needs to answer.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/method/wall.getComments", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{
+			"count": 1,
+			"items": []map[string]interface{}{
+				{
+					"id": 1, "text": "123123123", "date": 100, "from_id": 240508926,
+					"thread": map[string]interface{}{
+						"count": 2,
+						"items": []map[string]interface{}{
+							{"id": 2, "text": "test reply", "date": 200, "from_id": -123456},
+							{"id": 3, "text": "[club123456|OneVoice], asdasd", "date": 300, "from_id": 240508926},
+						},
+					},
+				},
+			},
+		}))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := vk.NewWithBaseURL("test-token", srv.URL+"/method/")
+	comments, err := c.GetComments("-123456", 7, 10)
+
+	require.NoError(t, err)
+	require.Len(t, comments, 2)
+	// Top-level "123123123" → answered by "test reply".
+	assert.Equal(t, "123123123", comments[0]["text"])
+	assert.Equal(t, "test reply", comments[0]["reply"])
+	// Nested "OneVoice, asdasd" → newer than the only owner reply, pending.
+	assert.Equal(t, "OneVoice, asdasd", comments[1]["text"])
+	_, hasReply := comments[1]["reply"]
+	assert.False(t, hasReply, "nested user reply that arrived after the operator's last message has no reply yet")
+}
+
 func TestClient_GetComments_Error(t *testing.T) {
 	srv := newErrorServer(6, "Too many requests per second")
 	defer srv.Close()

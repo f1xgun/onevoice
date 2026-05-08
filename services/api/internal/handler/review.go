@@ -27,6 +27,7 @@ type ReviewService interface {
 	List(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	GetByID(ctx context.Context, userID uuid.UUID, id string) (*domain.Review, error)
 	Reply(ctx context.Context, userID uuid.UUID, id string, replyText string) error
+	Refresh(ctx context.Context, userID uuid.UUID) error
 }
 
 // ReviewHandler handles review-related HTTP requests
@@ -162,6 +163,33 @@ func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to reply to review", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// RefreshReviews handles POST /api/v1/reviews/refresh — triggers an
+// on-demand pull from every connected platform for the caller's business.
+// Synchronous: the response returns once the dispatch completes (or fails)
+// so the frontend can immediately invalidate its query and show the new
+// rows. The endpoint is rate-naturally-bounded by the Cloudflare-style
+// 60s gateway timeout combined with the syncer's own per-platform 60s
+// per-NATS-request budget.
+func (h *ReviewHandler) RefreshReviews(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.reviewService.Refresh(r.Context(), userID); err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.Error("failed to refresh reviews", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

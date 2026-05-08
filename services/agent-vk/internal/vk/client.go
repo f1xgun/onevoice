@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,24 @@ import (
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
 	"golang.org/x/time/rate"
 )
+
+// vkMentionRe matches the VK auto-prepended reply mention markup:
+//
+//	[club<id>|<name>]   community mention
+//	[id<id>|<name>]     user mention
+//	[public<id>|<name>] public-page mention
+//
+// VK's web UI inserts this prefix when the operator hits "Reply" on a
+// comment. We strip it down to plain `<name>` so the operator (and the
+// AI drafter) sees a normal sentence rather than wiki-style markup.
+var vkMentionRe = regexp.MustCompile(`\[(?:club|id|public)\d+\|([^\]]+)\]`)
+
+func cleanVKText(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.TrimSpace(vkMentionRe.ReplaceAllString(s, "$1"))
+}
 
 // Client wraps the VK API for the OneVoice VK agent.
 type Client struct {
@@ -154,26 +173,83 @@ func (c *Client) GetComments(groupID string, postID, count int) ([]map[string]in
 	}
 
 	resp, err := c.vk.WallGetComments(vkapi.Params{
-		"owner_id": groupID,
-		"post_id":  postID,
-		"count":    count,
-		"extended": 0,
+		"owner_id":           groupID,
+		"post_id":            postID,
+		"count":              count,
+		"extended":           0,
+		"thread_items_count": 10,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("vk wall.getComments: %w", err)
 	}
 
+	// Owner replies sent via wall.createComment land inside the parent
+	// comment's `thread.items` (since VK switched to threaded comments).
+	// We surface the latest owner reply on the parent so the API-side
+	// review sync can mark the review as `replied`. ownerID is the
+	// integer form of groupID, e.g. "-123456" -> -123456.
+	ownerID, _ := strconv.Atoi(groupID)
 	comments := make([]map[string]interface{}, 0, len(resp.Items))
 	for _, item := range resp.Items {
-		comments = append(comments, map[string]interface{}{
-			"id":      item.ID,
-			"text":    item.Text,
-			"date":    item.Date,
-			"from_id": item.FromID,
-			"post_id": postID,
-		})
+		if item.ReplyToComment > 0 {
+			// Defensive: skip flat-mode reply rows (when VK degrades the
+			// threaded layout). They are surfaced via the parent's thread.
+			continue
+		}
+		// Build the rows for the top-level comment plus every non-owner
+		// thread reply. Each user-authored entry becomes its own review
+		// row — when a user replies to the operator's reply, it is a new
+		// touchpoint that needs an answer, not a side note on the parent.
+		buildRow := func(entry rowSource) map[string]interface{} {
+			r := map[string]interface{}{
+				"id":      entry.id,
+				"text":    cleanVKText(entry.text),
+				"date":    entry.date,
+				"from_id": entry.fromID,
+				"post_id": postID,
+			}
+			// Latest owner reply *after* this entry counts as its reply.
+			// Earlier owner messages are answers to other entries, not this one.
+			var latestReply, latestReplyAt int
+			var latestReplyText string
+			for _, t := range item.Thread.Items {
+				if t.FromID != ownerID || t.Date <= entry.date {
+					continue
+				}
+				if t.Date >= latestReplyAt {
+					latestReply = t.ID
+					latestReplyAt = t.Date
+					latestReplyText = t.Text
+				}
+			}
+			if latestReply > 0 {
+				r["reply"] = cleanVKText(latestReplyText)
+				r["reply_id"] = latestReply
+				r["reply_date"] = latestReplyAt
+			}
+			return r
+		}
+
+		comments = append(comments, buildRow(rowSource{
+			id: item.ID, text: item.Text, date: item.Date, fromID: item.FromID,
+		}))
+		for _, t := range item.Thread.Items {
+			if t.FromID == ownerID {
+				continue // operator's own messages aren't standalone reviews
+			}
+			comments = append(comments, buildRow(rowSource{
+				id: t.ID, text: t.Text, date: t.Date, fromID: t.FromID,
+			}))
+		}
 	}
 	return comments, nil
+}
+
+// rowSource is the minimal projection of a wall comment that we use to
+// build a sync row — kept private and tiny since it only feeds buildRow.
+type rowSource struct {
+	id, date, fromID int
+	text             string
 }
 
 // ReplyComment creates a threaded reply to a wall comment.

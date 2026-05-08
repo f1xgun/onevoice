@@ -109,6 +109,17 @@ func (r *reviewRepository) Upsert(ctx context.Context, review *domain.Review) er
 			"external_id": review.ExternalID,
 		},
 	}
+	// When the syncer detects an existing reply on the platform (e.g. a VK
+	// thread reply from the community), drop any stale AI draft so the UI
+	// stops offering a draft alongside an already-replied review.
+	if review.ReplyStatus == domain.ReviewReplyStatusReplied {
+		update["$unset"] = bson.M{
+			"draft_reply":        "",
+			"draft_status":       "",
+			"draft_generated_at": "",
+			"draft_error":        "",
+		}
+	}
 
 	_, err := r.collection.UpdateOne(ctx, filter, update, options.UpdateOne().SetUpsert(true))
 	if err != nil {

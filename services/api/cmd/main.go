@@ -337,10 +337,42 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		}
 	}
 
+	// Review syncer: built early so it can be injected into reviewService
+	// for the manual-refresh endpoint. The background ticker is started
+	// later (see "Review syncer ticker" block) — Start() is a no-op until
+	// invoked. With natsConn=nil the syncer is nil and Refresh returns an
+	// error on the handler path, which is acceptable for legacy/test envs.
+	var reviewSyncer *service.ReviewSyncer
+	if natsConn != nil {
+		var drafter service.DraftPassRunner
+		if cfg.ReviewDraftEnabled {
+			drafter = service.NewReviewDrafter(
+				reviewRepo,
+				businessRepo,
+				&http.Client{Timeout: 60 * time.Second},
+				cfg.OrchestratorURL,
+				cfg.ReviewDraftMaxExamples,
+				cfg.ReviewDraftBatchLimit,
+			)
+			log.Info("review AI-drafter enabled",
+				"orchestrator_url", cfg.OrchestratorURL,
+				"max_examples", cfg.ReviewDraftMaxExamples,
+				"batch_limit", cfg.ReviewDraftBatchLimit,
+			)
+		}
+		syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
+		reviewSyncer = service.NewReviewSyncer(natsConn, integrationRepo, reviewRepo, drafter, syncInterval)
+	}
+
 	// Review service: needs natsConn to dispatch manual replies (PUT
 	// /reviews/{id}/reply) to platform agents — vk__reply_comment etc. With
 	// natsConn=nil the service still works in Mongo-only mode (legacy).
-	reviewService := service.NewReviewService(reviewRepo, businessService, natsConn)
+	// reviewSyncer powers POST /reviews/refresh; nil disables it.
+	var reviewRefresher service.ReviewRefresher
+	if reviewSyncer != nil {
+		reviewRefresher = reviewSyncer
+	}
+	reviewService := service.NewReviewService(reviewRepo, businessService, natsConn, reviewRefresher)
 
 	// Platform syncer: pushes business info updates to connected platforms
 	platformSyncer := platform.NewSyncer(
@@ -542,34 +574,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		}
 	}()
 
-	// Review syncer — uses the shared NATS connection established above.
-	if natsConn != nil {
-		syncInterval := time.Duration(cfg.ReviewSyncInterval) * time.Minute
-
-		// AI-draft pass is gated by REVIEW_DRAFT_ENABLED so an upgrade doesn't
-		// silently start spending on LLM calls. The orchestrator is reachable
-		// via cfg.OrchestratorURL — same URL chat_proxy uses.
-		var drafter service.DraftPassRunner
-		if cfg.ReviewDraftEnabled {
-			drafter = service.NewReviewDrafter(
-				reviewRepo,
-				businessRepo,
-				&http.Client{Timeout: 60 * time.Second},
-				cfg.OrchestratorURL,
-				cfg.ReviewDraftMaxExamples,
-				cfg.ReviewDraftBatchLimit,
-			)
-			log.Info("review AI-drafter enabled",
-				"orchestrator_url", cfg.OrchestratorURL,
-				"max_examples", cfg.ReviewDraftMaxExamples,
-				"batch_limit", cfg.ReviewDraftBatchLimit,
-			)
-		}
-
-		syncer := service.NewReviewSyncer(natsConn, integrationRepo, reviewRepo, drafter, syncInterval)
+	// Review syncer ticker — start the background pull loop using the
+	// reviewSyncer instance built earlier (so reviewService can share it
+	// for the manual-refresh endpoint).
+	if reviewSyncer != nil {
 		syncCtx, syncCancel := context.WithCancel(ctx)
 		defer syncCancel()
-		go syncer.Start(syncCtx)
+		go reviewSyncer.Start(syncCtx)
 		log.Info("review syncer started", "interval_minutes", cfg.ReviewSyncInterval)
 	}
 
