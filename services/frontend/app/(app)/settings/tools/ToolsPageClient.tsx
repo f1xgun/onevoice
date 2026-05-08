@@ -9,7 +9,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { api } from '@/lib/api';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
-import { useTools, groupByPlatform, type PlatformKey } from '@/lib/hooks/useTools';
+import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import {
   useBusinessToolApprovals,
   useUpdateBusinessToolApprovals,
@@ -17,13 +17,6 @@ import {
 import type { Business } from '@/types/business';
 import type { Tool, ToolApprovalValue, ToolApprovals } from '@/lib/schemas';
 import { ToolApprovalToggle } from './ToolApprovalToggle';
-
-const PLATFORM_DISPLAY_ORDER: PlatformKey[] = [
-  'telegram',
-  'vk',
-  'yandex_business',
-  'google_business',
-];
 
 function buildDraftFromManualTools(
   manualTools: Tool[],
@@ -84,7 +77,7 @@ export function ToolsPageClient() {
   }, [initialDraft]);
 
   const buckets = useMemo(() => groupByPlatform(tools ?? []), [tools]);
-  const platforms = PLATFORM_DISPLAY_ORDER.filter((p) =>
+  const platforms = TOOL_PLATFORM_ORDER.filter((p) =>
     buckets[p].some((t) => t.floor === 'manual' || t.floor === 'forbidden')
   );
 

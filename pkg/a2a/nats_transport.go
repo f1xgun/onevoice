@@ -14,12 +14,20 @@ func NewNATSTransport(nc *natslib.Conn) *NATSTransport {
 	return &NATSTransport{nc: nc}
 }
 
-// Subscribe registers a message handler on the given NATS subject.
+// Subscribe registers a message handler on the given NATS subject. It blocks
+// until the server has acknowledged the subscription (via Flush), so callers
+// that publish to the same subject immediately after Subscribe returns do
+// not race the server-side SUB registration. Subscribe is invoked once per
+// agent at startup — the extra round-trip is negligible in production and
+// eliminates a class of "no responders available" CI flakes.
 func (t *NATSTransport) Subscribe(subject string, handler func(subject, reply string, data []byte)) error {
 	_, err := t.nc.Subscribe(subject, func(msg *natslib.Msg) {
 		handler(msg.Subject, msg.Reply, msg.Data)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return t.nc.Flush()
 }
 
 // Publish sends data to a NATS subject (used for replying to requests).

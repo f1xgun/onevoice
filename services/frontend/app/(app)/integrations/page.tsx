@@ -16,6 +16,7 @@ import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
 import { GoogleLocationModal } from '@/components/integrations/GoogleLocationModal';
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
+import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import type { Business } from '@/types/business';
 
 interface Integration {
@@ -26,22 +27,6 @@ interface Integration {
   metadata?: Record<string, unknown>;
   createdAt: string;
 }
-
-// MVP-supported platforms — backend can connect, OneVoice can post/read.
-// Per design_handoff README v2 §5: Google Business + 2GIS render only in
-// the "Скоро" section, never as live integrations.
-const PLATFORMS = [
-  { id: 'telegram', label: 'Telegram', description: 'Бот для канала и уведомлений' },
-  { id: 'vk', label: 'ВКонтакте', description: 'Публикации и комментарии' },
-  { id: 'yandex_business', label: 'Яндекс.Бизнес', description: 'Отзывы и информация' },
-];
-
-const SOON_PLATFORMS = [
-  { id: 'google_business', label: 'Google Business', when: 'оценивается' },
-  { id: '2gis', label: '2ГИС', when: 'Q3 2026' },
-  { id: 'avito', label: 'Авито', when: 'Q4 2026' },
-  { id: 'whatsapp', label: 'WhatsApp', when: 'оценивается' },
-];
 
 interface LastRegistered {
   integrationId: string;
@@ -58,6 +43,14 @@ export default function IntegrationsPage() {
   const [yandexOpen, setYandexOpen] = useState(false);
   const [lastRegistered, setLastRegistered] = useState<LastRegistered | null>(null);
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
+
+  // Platforms come from GET /api/v1/platforms (backed by pkg/domain/platform.go)
+  // — single source of truth for what we expose. status="oauth_not_configured"
+  // entries are hidden so we never advertise a flow that would dead-end at
+  // missing-creds. coming_soon entries render as the marketing teaser cards.
+  const { platforms } = usePlatforms();
+  const activePlatforms = platforms.filter((p) => p.status === 'active');
+  const comingSoonPlatforms = platforms.filter((p) => p.status === 'coming_soon');
 
   // Handle OAuth callback results
   useEffect(() => {
@@ -214,13 +207,13 @@ export default function IntegrationsPage() {
           id="integrations-platform-grid"
           className="grid grid-cols-1 items-start gap-4 md:grid-cols-2"
         >
-          {PLATFORMS.map((p) => {
+          {activePlatforms.map((p) => {
             const platformIntegrations = getIntegrationsForPlatform(p.id);
             return (
               <PlatformCard
                 key={p.id}
                 platform={p.id}
-                label={p.label}
+                label={p.fullLabel}
                 description={p.description}
                 integrations={platformIntegrations}
                 onConnect={() => handleConnect(p.id)}
@@ -230,12 +223,16 @@ export default function IntegrationsPage() {
           })}
         </div>
 
-        <SectionLabel className="mt-12">Скоро</SectionLabel>
-        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {SOON_PLATFORMS.map((p) => (
-            <SoonCard key={p.id} label={p.label} when={p.when} />
-          ))}
-        </div>
+        {comingSoonPlatforms.length > 0 && (
+          <>
+            <SectionLabel className="mt-12">Скоро</SectionLabel>
+            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {comingSoonPlatforms.map((p) => (
+                <SoonCard key={p.id} label={p.fullLabel} when={p.comingSoonWhen ?? 'скоро'} />
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="mt-14 flex flex-col items-stretch gap-4 rounded-lg border border-line bg-paper-sunken p-6 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">
