@@ -196,6 +196,22 @@ func (h *Handler) getInfo(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRe
 }
 
 func (h *Handler) listCompanies(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	// list_companies is the only tool that can be invoked BEFORE an
+	// integration row exists (during the connect-flow company picker).
+	// In that case the API service passes cookies inline via req.Args
+	// instead of relying on tokenclient → DB → decrypt.
+	if cookiesJSON, ok := req.Args["cookies"].(string); ok && cookiesJSON != "" {
+		browser := h.pool.ForBusiness(req.BusinessID, cookiesJSON, "")
+		companies, listErr := browser.ListCompanies(ctx)
+		if listErr != nil {
+			return nil, fmt.Errorf("yandex: list companies: %w", classifyYandexError(listErr))
+		}
+		return &a2a.ToolResponse{
+			TaskID:  req.TaskID,
+			Success: true,
+			Result:  map[string]interface{}{"companies": companies},
+		}, nil
+	}
 	browser, err := h.getBrowser(ctx, req)
 	if err != nil {
 		return nil, err

@@ -92,6 +92,16 @@ func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// connectYandexRequest is the JSON body for /connect. Permalink + name
+// are optional — the modal's company-picker fills them in when present
+// so the integration is created with the correct Sprav id from the
+// start. Without them, refresh-name resolves both later.
+type connectYandexRequest struct {
+	Cookies      string `json:"cookies"`
+	Permalink    string `json:"permalink,omitempty"`
+	BusinessName string `json:"business_name,omitempty"`
+}
+
 // ConnectYandexBusiness persists pasted Yandex cookies as a new active
 // integration. Mirrors ConnectTelegram / VK community connect.
 func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +111,7 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var req yandexProbeRequest
+	var req connectYandexRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -124,21 +134,26 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Connect stores the integration with external_id="default" as a
-	// placeholder. The Sprav permalink and human business name are
-	// resolved out-of-band via POST .../refresh-name, which dispatches the
-	// agent's yandex_business__list_companies RPA tool. We can't resolve
-	// inline because /sprav/companies is a SPA — server-rendered HTML is
-	// empty, only Playwright sees the hydrated org list.
+	// When the modal's picker supplies an explicit permalink, store it
+	// directly so the agent's edit URLs work from the very first call.
+	// Without it (legacy /connect callers, or any path that skipped the
+	// picker), use a placeholder; refresh-name heals lazily.
+	externalID := "default"
+	if p := strings.TrimSpace(req.Permalink); p != "" {
+		externalID = p
+	}
 	metadata := map[string]any{
 		"input_format": parsed.Format,
 		"connected_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	if name := strings.TrimSpace(req.BusinessName); name != "" {
+		metadata["business_name"] = name
 	}
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
 		Platform:    "yandex_business",
-		ExternalID:  "default",
+		ExternalID:  externalID,
 		AccessToken: parsed.JSON(),
 		Metadata:    metadata,
 	})
@@ -155,6 +170,86 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 // page is a Yandex SPA — Playwright must wait for client-side hydration
 // to render the org list. 30s cap with one retry inside withRetry.
 const yandexListCompaniesTimeout = 60 * time.Second
+
+// yandexCompanyEntry is one row in the company-picker list.
+type yandexCompanyEntry struct {
+	Permalink string `json:"permalink"`
+	Name      string `json:"name"`
+}
+
+// ListYandexCompanies dispatches the agent's list_companies RPA with the
+// caller's pasted cookies (no integration row required) and returns the
+// list of orgs the user can pick from. Synchronous: blocks the request
+// for the duration of the Playwright run (~25–45s). Drives the connect
+// modal's company picker.
+func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if h.taskPublisher == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "agent task publisher not configured")
+		return
+	}
+
+	var req yandexProbeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	parsed, err := yandexcookies.Parse(req.Cookies)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	toolReq := a2a.ToolRequest{
+		TaskID:     uuid.NewString(),
+		Tool:       "yandex_business__list_companies",
+		Args:       map[string]any{"cookies": parsed.JSON()},
+		BusinessID: business.ID.String(),
+	}
+	resp, callErr := h.taskPublisher.RequestTool(r.Context(), a2a.Subject(a2a.AgentYandexBusiness), toolReq, yandexListCompaniesTimeout)
+	if callErr != nil {
+		slog.Info("yandex list companies: agent call failed", "business_id", business.ID, "error", callErr)
+		writeJSONError(w, http.StatusBadGateway, "не удалось получить список организаций — попробуйте ещё раз")
+		return
+	}
+	if resp == nil || resp.Error != "" {
+		errMsg := "agent error"
+		if resp != nil && resp.Error != "" {
+			errMsg = resp.Error
+		}
+		writeJSONError(w, http.StatusBadGateway, errMsg)
+		return
+	}
+
+	companiesRaw, _ := resp.Result["companies"].([]any)
+	companies := make([]yandexCompanyEntry, 0, len(companiesRaw))
+	for _, c := range companiesRaw {
+		row, _ := c.(map[string]any)
+		permalink, _ := row["permalink"].(string)
+		name, _ := row["name"].(string)
+		permalink = strings.TrimSpace(permalink)
+		name = strings.TrimSpace(name)
+		if permalink == "" {
+			continue
+		}
+		companies = append(companies, yandexCompanyEntry{Permalink: permalink, Name: name})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"companies": companies})
+}
 
 // RefreshYandexBusinessName backfills metadata.business_name and (when
 // missing) the Sprav permalink on an existing Yandex integration. The
