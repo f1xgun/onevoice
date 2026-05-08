@@ -207,53 +207,65 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Dispatch get_info to the agent. The agent reads cookies via
-	// tokenclient → API.GetToken so we don't pass them in the request.
-	req := a2a.ToolRequest{
-		TaskID:     uuid.NewString(),
-		Tool:       "yandex_business__get_info",
-		Args:       map[string]any{},
-		BusinessID: business.ID.String(),
-	}
-	resp, callErr := h.taskPublisher.RequestTool(r.Context(), a2a.Subject(a2a.AgentYandexBusiness), req, yandexRefreshTimeout)
-	if callErr != nil {
-		slog.Info("yandex name refresh: agent call failed", "integration_id", integrationID, "error", callErr)
-		writeJSON(w, http.StatusOK, target)
-		return
-	}
-	if resp == nil || resp.Error != "" {
-		errMsg := ""
-		if resp != nil {
-			errMsg = resp.Error
+	// Detach the agent call + metadata write from the request context.
+	// The Playwright RPA takes 30–60s; if the user navigates away or
+	// React StrictMode remounts the calling component, axios aborts the
+	// HTTP request and r.Context() gets canceled, killing the in-flight
+	// NATS request. With the detached context the work completes anyway
+	// and the next /integrations load picks up the resolved name.
+	bgCtx, bgCancel := context.WithTimeout(context.Background(), yandexRefreshTimeout+10*time.Second)
+	go func() {
+		defer bgCancel()
+		req := a2a.ToolRequest{
+			TaskID:     uuid.NewString(),
+			Tool:       "yandex_business__get_info",
+			Args:       map[string]any{},
+			BusinessID: business.ID.String(),
 		}
-		slog.Info("yandex name refresh: agent returned error", "integration_id", integrationID, "error", errMsg)
-		writeJSON(w, http.StatusOK, target)
-		return
-	}
+		resp, callErr := h.taskPublisher.RequestTool(bgCtx, a2a.Subject(a2a.AgentYandexBusiness), req, yandexRefreshTimeout)
+		if callErr != nil {
+			slog.Info("yandex name refresh: agent call failed", "integration_id", integrationID, "error", callErr)
+			return
+		}
+		if resp == nil || resp.Error != "" {
+			errMsg := ""
+			if resp != nil {
+				errMsg = resp.Error
+			}
+			slog.Info("yandex name refresh: agent returned error", "integration_id", integrationID, "error", errMsg)
+			return
+		}
+		name, _ := resp.Result["name"].(string)
+		name = strings.TrimSpace(name)
+		resultKeys := make([]string, 0, len(resp.Result))
+		for k := range resp.Result {
+			resultKeys = append(resultKeys, k)
+		}
+		slog.Info("yandex name refresh: agent result",
+			"integration_id", integrationID,
+			"name", name,
+			"result_keys", resultKeys,
+			"external_id", target.ExternalID)
+		if name == "" {
+			return
+		}
+		metadata := map[string]any{}
+		for k, v := range target.Metadata {
+			metadata[k] = v
+		}
+		metadata["business_name"] = name
+		if updateErr := h.integrationService.UpdateMetadata(bgCtx, integrationID, metadata); updateErr != nil {
+			slog.Error("yandex name refresh: failed to persist metadata", "error", updateErr)
+			return
+		}
+		slog.Info("yandex name refresh: persisted", "integration_id", integrationID, "name", name)
+	}()
 
-	// a2a.ToolResponse.Result is map[string]any; GetInfo populates "name"
-	// with the Sprav profile name (services/agent-yandex-business pool.go
-	// L714).
-	name, _ := resp.Result["name"].(string)
-	name = strings.TrimSpace(name)
-	if name == "" {
-		writeJSON(w, http.StatusOK, target)
-		return
-	}
-
-	metadata := map[string]any{}
-	for k, v := range target.Metadata {
-		metadata[k] = v
-	}
-	metadata["business_name"] = name
-
-	if updateErr := h.integrationService.UpdateMetadata(r.Context(), integrationID, metadata); updateErr != nil {
-		slog.Error("yandex name refresh: failed to persist metadata", "error", updateErr)
-		writeJSON(w, http.StatusOK, target)
-		return
-	}
-	target.Metadata = metadata
-	writeJSON(w, http.StatusOK, target)
+	// Tell the caller "in progress" — they should refetch /integrations
+	// after a short delay to pick up the resolved name.
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write([]byte(`{"status":"refresh_started"}`))
 }
 
 // cookieWarnings flags missing-but-recommended cookies. Session_id alone
