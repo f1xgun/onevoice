@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 
 interface Integration {
@@ -57,7 +58,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   const logout = useAuthStore((s) => s.logout);
 
   const { data: integrations } = useQuery<Integration[]>({
-    queryKey: ['integrations'],
+    queryKey: QUERY_KEYS.INTEGRATIONS,
     queryFn: () =>
       api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
     retry: false,

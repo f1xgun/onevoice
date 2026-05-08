@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +30,7 @@ export default function ChatListPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
-    queryKey: ['conversations'],
+    queryKey: QUERY_KEYS.CONVERSATIONS,
     queryFn: () => api.get(API_PATHS.CONVERSATIONS.ROOT).then((r) => r.data),
   });
 
@@ -37,7 +38,7 @@ export default function ChatListPage() {
     mutationFn: () => api.post(API_PATHS.CONVERSATIONS.ROOT, { title: 'Новый диалог' }).then((r) => r.data),
     onSuccess: (conv: Conversation) => {
       trackClick('create_conversation');
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
       router.push(`/chat/${conv.id}`);
     },
   });
@@ -45,7 +46,7 @@ export default function ChatListPage() {
   const { mutate: renameConversation } = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) =>
       api.put(API_PATHS.CONVERSATIONS.BY_ID(id), { title }).then((r) => r.data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS }),
   });
 
   // Phase 18 / TITLE-09 / D-12: kicks off the auto-title goroutine on the API
@@ -55,7 +56,7 @@ export default function ChatListPage() {
   const { mutate: regenerateTitle } = useMutation({
     mutationFn: (id: string) =>
       api.post(API_PATHS.CONVERSATIONS.REGENERATE_TITLE(id)).then((r) => r.data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS }),
     onError: (err: unknown) => {
       const axErr = err as AxiosError<{ message?: string }> | undefined;
       const msg = axErr?.response?.data?.message ?? 'Ошибка соединения';
@@ -68,7 +69,7 @@ export default function ChatListPage() {
     onSuccess: () => {
       trackClick('delete_conversation');
       setDeleteTarget(null);
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
     },
   });
 

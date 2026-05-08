@@ -26,6 +26,7 @@ import { ChevronDown, ChevronRight, FileText, Plus, Search } from 'lucide-react'
 
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { POST_STATUS_LABELS } from '@/lib/constants/statuses';
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import { Badge } from '@/components/ui/badge';
@@ -70,7 +71,7 @@ export default function PostsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: posts = [], isLoading } = useQuery<Post[]>({
-    queryKey: ['posts', status, platform],
+    queryKey: QUERY_KEYS.POSTS(status, platform),
     queryFn: () => {
       const params = new URLSearchParams();
       if (status !== 'all') params.set('status', status);

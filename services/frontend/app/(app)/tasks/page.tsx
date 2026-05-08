@@ -22,6 +22,7 @@ import { ru } from 'date-fns/locale';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import {
   TASK_STATUS_DOT_CLASSES,
   TASK_STATUS_LABELS,
@@ -117,7 +118,7 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
 
   const { data: tasks = [], isLoading } = useQuery<AgentTask[]>({
-    queryKey: ['tasks'],
+    queryKey: QUERY_KEYS.TASKS,
     queryFn: () =>
       api.get(API_PATHS.TASKS).then((r) => {
         const data = r.data as unknown;
@@ -130,7 +131,7 @@ export default function TasksPage() {
 
   const onStreamEvent = useCallback(
     (_: TaskStreamEvent) => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TASKS });
     },
     [queryClient]
   );

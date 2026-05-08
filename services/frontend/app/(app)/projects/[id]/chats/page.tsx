@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { EmptyFrame } from '@/components/states';
 import { api } from '@/lib/api';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useProjectConversationCount, useProjectQuery } from '@/hooks/useProjects';
 
 interface Conversation {
@@ -32,8 +33,8 @@ export default function ProjectChatsPage() {
         .post('/conversations', { title: 'Новый диалог', projectId: id })
         .then((r) => r.data as Conversation),
     onSuccess: (conv) => {
-      void queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      void queryClient.invalidateQueries({ queryKey: ['projects', id, 'conversation-count'] });
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROJECT_CONVERSATION_COUNT(id) });
       router.push(`/chat/${conv.id}`);
     },
   });
