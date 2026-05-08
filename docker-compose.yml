@@ -150,6 +150,13 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8090
       NATS_URL: nats://nats:4222
       REVIEW_SYNC_INTERVAL_MINUTES: ${REVIEW_SYNC_INTERVAL_MINUTES:-30}
+      # AI review-draft generation (post-sync hook). Disabled by default — set
+      # REVIEW_DRAFT_ENABLED=true to start spending on LLM calls. Requires at
+      # least one OPENROUTER_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY set
+      # so the orchestrator's router can pick a provider.
+      REVIEW_DRAFT_ENABLED: ${REVIEW_DRAFT_ENABLED:-false}
+      REVIEW_DRAFT_MAX_EXAMPLES: ${REVIEW_DRAFT_MAX_EXAMPLES:-5}
+      REVIEW_DRAFT_BATCH_LIMIT: ${REVIEW_DRAFT_BATCH_LIMIT:-10}
       VK_CLIENT_ID: ${VK_CLIENT_ID:-}
       VK_CLIENT_SECRET: ${VK_CLIENT_SECRET:-}
       VK_REDIRECT_URI: ${VK_REDIRECT_URI:-http://localhost/api/v1/oauth/vk/callback}
