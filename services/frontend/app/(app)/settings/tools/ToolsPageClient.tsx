@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import {
@@ -46,7 +47,7 @@ function sameDraft(
 export function ToolsPageClient() {
   const { data: business, isLoading: businessLoading } = useQuery<Business>({
     queryKey: ['business'],
-    queryFn: () => api.get('/business').then((r) => r.data as Business),
+    queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
   });
 
   const { data: tools, isLoading: toolsLoading, error: toolsError } = useTools();

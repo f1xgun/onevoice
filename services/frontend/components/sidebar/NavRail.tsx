@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 
 interface Integration {
@@ -33,11 +34,11 @@ interface Integration {
 // бизнеса → Отзывы → Посты → Задачи → Настройки.
 const navItems = [
   { href: '/chat', label: 'Чат', icon: MessageCircle },
-  { href: '/integrations', label: 'Интеграции', icon: Plug },
-  { href: '/business', label: 'Профиль бизнеса', icon: Building2 },
+  { href: API_PATHS.INTEGRATIONS.ROOT, label: 'Интеграции', icon: Plug },
+  { href: API_PATHS.BUSINESS.ROOT, label: 'Профиль бизнеса', icon: Building2 },
   { href: '/reviews', label: 'Отзывы', icon: Star },
   { href: '/posts', label: 'Посты', icon: FileText },
-  { href: '/tasks', label: 'Задачи', icon: ListTodo },
+  { href: API_PATHS.TASKS, label: 'Задачи', icon: ListTodo },
   { href: '/settings', label: 'Настройки', icon: Settings },
 ];
 
@@ -58,7 +59,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   const { data: integrations } = useQuery<Integration[]>({
     queryKey: ['integrations'],
     queryFn: () =>
-      api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
+      api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
     retry: false,
     placeholderData: [],
   });

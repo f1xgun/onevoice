@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/lib/auth';
+import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import type { TaskStreamEvent } from '@/types/task';
 
 const reconnectDelayMs = 2_000;
@@ -28,7 +29,7 @@ export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
       if (cancelled) return;
       controller = new AbortController();
       try {
-        const response = await fetch('/api/v1/tasks/stream', {
+        const response = await fetch(API_STREAM_PATHS.TASKS_STREAM, {
           headers: { Authorization: `Bearer ${accessToken}` },
           signal: controller.signal,
         });

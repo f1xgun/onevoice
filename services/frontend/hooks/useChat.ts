@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/auth';
+import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { trackEvent } from '@/lib/telemetry';
 import { resolveErrorToRussian, RESUME_STREAM_ERROR } from '@/lib/resolveErrorMap';
 import type {
@@ -170,7 +171,7 @@ export function useChat(conversationId: string) {
   // reloaded tab immediately shows the approval card (D-11).
   useEffect(() => {
     setIsLoading(true);
-    fetch(`/api/v1/conversations/${conversationId}/messages`, {
+    fetch(API_STREAM_PATHS.CONVERSATION_MESSAGES(conversationId), {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then((r) => {
@@ -316,7 +317,7 @@ export function useChat(conversationId: string) {
       abortRef.current = controller;
 
       try {
-        const response = await fetch(`/api/v1/chat/${conversationId}`, {
+        const response = await fetch(API_STREAM_PATHS.CHAT(conversationId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -370,7 +371,7 @@ export function useChat(conversationId: string) {
       let resolveRes: Response;
       try {
         resolveRes = await fetch(
-          `/api/v1/conversations/${conversationId}/pending-tool-calls/${pendingApproval.batchId}/resolve`,
+          API_STREAM_PATHS.PENDING_TOOL_CALLS_RESOLVE(conversationId, pendingApproval.batchId),
           {
             method: 'POST',
             headers: {
@@ -405,7 +406,7 @@ export function useChat(conversationId: string) {
 
       try {
         const resumeRes = await fetch(
-          `/api/v1/chat/${conversationId}/resume?batch_id=${pendingApproval.batchId}`,
+          API_STREAM_PATHS.CHAT_RESUME(conversationId, pendingApproval.batchId),
           {
             method: 'POST',
             headers: { Authorization: `Bearer ${accessToken}` },

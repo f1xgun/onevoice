@@ -7,6 +7,7 @@ import { MessageCircle, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,11 +30,11 @@ export default function ChatListPage() {
 
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
     queryKey: ['conversations'],
-    queryFn: () => api.get('/conversations').then((r) => r.data),
+    queryFn: () => api.get(API_PATHS.CONVERSATIONS.ROOT).then((r) => r.data),
   });
 
   const { mutate: createConversation, isPending } = useMutation({
-    mutationFn: () => api.post('/conversations', { title: 'Новый диалог' }).then((r) => r.data),
+    mutationFn: () => api.post(API_PATHS.CONVERSATIONS.ROOT, { title: 'Новый диалог' }).then((r) => r.data),
     onSuccess: (conv: Conversation) => {
       trackClick('create_conversation');
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
@@ -43,7 +44,7 @@ export default function ChatListPage() {
 
   const { mutate: renameConversation } = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) =>
-      api.put(`/conversations/${id}`, { title }).then((r) => r.data),
+      api.put(API_PATHS.CONVERSATIONS.BY_ID(id), { title }).then((r) => r.data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
   });
 
@@ -53,7 +54,7 @@ export default function ChatListPage() {
   // sonner toast. Network failure → 'Ошибка соединения' fallback.
   const { mutate: regenerateTitle } = useMutation({
     mutationFn: (id: string) =>
-      api.post(`/conversations/${id}/regenerate-title`).then((r) => r.data),
+      api.post(API_PATHS.CONVERSATIONS.REGENERATE_TITLE(id)).then((r) => r.data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
     onError: (err: unknown) => {
       const axErr = err as AxiosError<{ message?: string }> | undefined;
@@ -63,7 +64,7 @@ export default function ChatListPage() {
   });
 
   const { mutate: deleteConversation } = useMutation({
-    mutationFn: (id: string) => api.delete(`/conversations/${id}`),
+    mutationFn: (id: string) => api.delete(API_PATHS.CONVERSATIONS.BY_ID(id)),
     onSuccess: () => {
       trackClick('delete_conversation');
       setDeleteTarget(null);

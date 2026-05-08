@@ -25,6 +25,7 @@ import { ru } from 'date-fns/locale';
 import { ChevronDown, ChevronRight, FileText, Plus, Search } from 'lucide-react';
 
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { POST_STATUS_LABELS } from '@/lib/constants/statuses';
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import { Badge } from '@/components/ui/badge';
@@ -74,7 +75,7 @@ export default function PostsPage() {
       const params = new URLSearchParams();
       if (status !== 'all') params.set('status', status);
       if (platform !== 'all') params.set('platform', platform);
-      return api.get(`/posts?${params}`).then((r) => (r.data.posts ?? []) as Post[]);
+      return api.get(`${API_PATHS.POSTS}?${params}`).then((r) => (r.data.posts ?? []) as Post[]);
     },
   });
 

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { trackEvent } from '@/lib/telemetry';
 import { Sidebar } from '@/components/sidebar';
 import { NavRail } from '@/components/sidebar/NavRail';
@@ -43,7 +44,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       .then((res) => {
         if (!isMounted.current) return;
         useAuthStore.getState().setAccessToken(res.data.accessToken);
-        return api.get('/auth/me', { signal: controller.signal });
+        return api.get(API_PATHS.AUTH.ME, { signal: controller.signal });
       })
       .then((res) => {
         if (!isMounted.current || !res) return;

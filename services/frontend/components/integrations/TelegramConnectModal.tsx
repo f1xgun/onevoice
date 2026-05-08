@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -21,7 +22,7 @@ export function TelegramConnectModal({ open, onClose }: Props) {
     if (!channelId.trim()) return;
     setLoading(true);
     try {
-      await api.post('/integrations/telegram/connect', {
+      await api.post(API_PATHS.INTEGRATIONS.TELEGRAM_CONNECT, {
         channel_id: channelId.trim(),
       });
       toast.success('Telegram канал подключён!');
