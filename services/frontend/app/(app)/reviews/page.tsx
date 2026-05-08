@@ -11,7 +11,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Star } from 'lucide-react';
+import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -54,6 +54,20 @@ const platformMeta: Record<string, { label: string; channel: string }> = {
 
 function platformInfo(id: string): { label: string; channel: string } {
   return platformMeta[id] ?? { label: id, channel: id };
+}
+
+// Telegram channels and VK comments don't carry a 0–5 rating — the
+// platform simply has no concept of one. Showing zero stars is misleading
+// and pollutes the average. Only review-style platforms get a rating.
+const platformsWithRating = new Set([
+  'yandex_business',
+  'yandex',
+  'google',
+  'google_business',
+  '2gis',
+]);
+function platformHasRating(id: string): boolean {
+  return platformsWithRating.has(id);
 }
 
 // Reply status → tone-mapped badge config. Per brand voice the labels
@@ -152,13 +166,31 @@ export default function ReviewsPage() {
     onError: () => toast.error('Не получилось отправить ответ'),
   });
 
+  // Manual refresh — POSTs to /reviews/refresh which synchronously fans
+  // out a sync request to every connected platform agent in parallel.
+  // The 120s timeout accommodates Yandex.Business RPA scraping, which can
+  // take up to ~60s; the backend caps total work at 90s per call.
+  const refreshMutation = useMutation({
+    mutationFn: () => api.post('/reviews/refresh', undefined, { timeout: 120_000 }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reviews'] });
+      toast.success('Отзывы обновлены');
+    },
+    onError: () => toast.error('Не удалось обновить отзывы'),
+  });
+
   // Stats are computed from the loaded slice — they reflect what the
   // operator currently sees, not a global count. That keeps the strip
   // honest under platform/status filters.
   const stats = useMemo(() => {
     const total = reviews.length;
     const pending = reviews.filter((r) => r.replyStatus === 'pending').length;
-    const ratings = reviews.map((r) => r.rating).filter((n) => Number.isFinite(n));
+    // Only include reviews from platforms that actually carry a rating —
+    // VK comments and Telegram messages have rating=0 by default which
+    // would otherwise drag the average toward zero.
+    const ratings = reviews
+      .filter((r) => platformHasRating(r.platform) && r.rating > 0)
+      .map((r) => r.rating);
     const avg = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
     return { total, pending, avg };
   }, [reviews]);
@@ -223,6 +255,23 @@ export default function ReviewsPage() {
               <TabsTrigger value="replied">С ответом</TabsTrigger>
             </TabsList>
           </Tabs>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="ml-auto gap-1.5"
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+            title="Запросить свежие отзывы у подключённых платформ"
+          >
+            {refreshMutation.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            {refreshMutation.isPending ? 'Обновляем…' : 'Обновить'}
+          </Button>
         </div>
 
         {isLoading && (
@@ -262,7 +311,9 @@ export default function ReviewsPage() {
                 <div className="mb-1.5 flex items-center gap-2">
                   <ChannelMark name={platformInfo(replyDialog.platform).channel} size={20} />
                   <span className="text-sm font-medium text-ink">{replyDialog.authorName}</span>
-                  <StarRating rating={replyDialog.rating} size={14} />
+                  {platformHasRating(replyDialog.platform) && (
+                    <StarRating rating={replyDialog.rating} size={14} />
+                  )}
                 </div>
                 <p className="text-sm leading-relaxed text-ink-mid">{replyDialog.text}</p>
               </div>
@@ -359,7 +410,7 @@ function ReviewCard({
         <span className="text-sm font-medium text-ink">{review.authorName}</span>
         <span aria-hidden className="size-1 rounded-full bg-ink-faint" />
         <span className="text-xs text-ink-soft">{meta.label}</span>
-        <StarRating rating={review.rating} />
+        {platformHasRating(review.platform) && <StarRating rating={review.rating} />}
         <span className="ml-auto flex items-center gap-3">
           <MonoLabel>{formatReviewDate(review.createdAt)}</MonoLabel>
           <Badge tone={badge.tone} dot>

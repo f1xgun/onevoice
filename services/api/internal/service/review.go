@@ -21,6 +21,18 @@ type ReviewService interface {
 	List(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	GetByID(ctx context.Context, userID uuid.UUID, id string) (*domain.Review, error)
 	Reply(ctx context.Context, userID uuid.UUID, id string, replyText string) error
+	// Refresh triggers a synchronous pull from every supported platform
+	// for the user's business. The endpoint exists so the operator can
+	// shortcut the 30-min review-syncer ticker after replying directly
+	// on a platform or connecting a new integration.
+	Refresh(ctx context.Context, userID uuid.UUID) error
+}
+
+// ReviewRefresher is the slice of ReviewSyncer that ReviewService needs
+// for the manual-refresh endpoint. Kept as an interface so tests can pass
+// a stub without standing up a real syncer.
+type ReviewRefresher interface {
+	SyncForBusiness(ctx context.Context, businessID uuid.UUID) error
 }
 
 // natsRequester is the slice of *natslib.Conn that ReviewService needs.
@@ -35,6 +47,7 @@ type reviewService struct {
 	businessService BusinessService
 	nc              natsRequester // nil = no platform dispatch (Mongo-only mode)
 	dispatchTimeout time.Duration
+	refresher       ReviewRefresher // nil = manual refresh disabled
 }
 
 // Compile-time check that reviewService implements ReviewService
@@ -43,7 +56,9 @@ var _ ReviewService = (*reviewService)(nil)
 // NewReviewService creates a new review service instance. nc may be nil — in
 // that mode Reply only updates Mongo and never reaches out to platform agents
 // (preserves the historical behavior for environments without NATS).
-func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn) ReviewService {
+// refresher may be nil — in that mode Refresh returns an error so the
+// frontend can degrade gracefully.
+func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn, refresher ReviewRefresher) ReviewService {
 	var requester natsRequester
 	if nc != nil {
 		requester = nc
@@ -53,6 +68,7 @@ func NewReviewService(repo domain.ReviewRepository, businessService BusinessServ
 		businessService: businessService,
 		nc:              requester,
 		dispatchTimeout: 90 * time.Second,
+		refresher:       refresher,
 	}
 }
 
@@ -86,6 +102,19 @@ func (s *reviewService) GetByID(ctx context.Context, userID uuid.UUID, id string
 	}
 
 	return review, nil
+}
+
+// Refresh resolves the user's business and triggers a synchronous sync
+// across every active integration platform that supports reviews.
+func (s *reviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
+	if s.refresher == nil {
+		return fmt.Errorf("review refresh is not configured")
+	}
+	business, err := s.businessService.GetByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get business: %w", err)
+	}
+	return s.refresher.SyncForBusiness(ctx, business.ID)
 }
 
 func (s *reviewService) Reply(ctx context.Context, userID uuid.UUID, id, replyText string) error {

@@ -332,20 +332,36 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 	}
 
 	if postID == 0 {
-		posts, _, postsErr := client.GetWallPosts(groupID, 1)
+		// Sync mode: walk recent posts and gather comments from any that
+		// have at least one. Capping at 20 keeps the call bounded; the
+		// review UI only paginates back so far anyway. We previously took
+		// just the latest post, which silently dropped reviews as soon as
+		// a newer post (with no comments) appeared on the wall.
+		posts, _, postsErr := client.GetWallPosts(groupID, 20)
 		if postsErr != nil {
-			return nil, fmt.Errorf("vk: get latest post: %w", classifyVKError(postsErr))
+			return nil, fmt.Errorf("vk: get latest posts: %w", classifyVKError(postsErr))
 		}
-		if len(posts) == 0 {
-			return &a2a.ToolResponse{
-				TaskID:  req.TaskID,
-				Success: true,
-				Result:  map[string]interface{}{"comments": []interface{}{}, "count": 0},
-			}, nil
+		merged := make([]map[string]interface{}, 0)
+		for _, p := range posts {
+			cmtCount, _ := p["comments"].(int)
+			if cmtCount == 0 {
+				continue
+			}
+			id, ok := p["id"].(int)
+			if !ok {
+				continue
+			}
+			cs, cErr := client.GetComments(groupID, id, count)
+			if cErr != nil {
+				return nil, fmt.Errorf("vk: get comments for post %d: %w", id, classifyVKError(cErr))
+			}
+			merged = append(merged, cs...)
 		}
-		if id, ok := posts[0]["id"].(int); ok {
-			postID = id
-		}
+		return &a2a.ToolResponse{
+			TaskID:  req.TaskID,
+			Success: true,
+			Result:  map[string]interface{}{"comments": merged, "count": len(merged)},
+		}, nil
 	}
 
 	comments, err := client.GetComments(groupID, postID, count)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	natslib "github.com/nats-io/nats.go"
@@ -123,6 +124,53 @@ func (s *ReviewSyncer) SyncAll(ctx context.Context) error {
 			// Continue with remaining integrations
 		}
 	}
+	return nil
+}
+
+// SyncForBusiness fetches reviews for every supported platform that this
+// business has at least one active integration for, in parallel. Used by
+// the manual-refresh endpoint so the operator can pull fresh data without
+// waiting for the next ticker tick.
+func (s *ReviewSyncer) SyncForBusiness(ctx context.Context, businessID uuid.UUID) error {
+	integrations, err := s.integRepo.ListByBusinessID(ctx, businessID)
+	if err != nil {
+		return fmt.Errorf("list integrations: %w", err)
+	}
+	platforms := make(map[string]bool, len(integrations))
+	for _, integ := range integrations {
+		// Only active integrations on platforms the syncer knows how to
+		// fetch reviews for. Mirrors ListAllActiveByPlatforms semantics.
+		if integ.Status != "active" {
+			continue
+		}
+		if _, ok := reviewToolByPlatform[integ.Platform]; ok {
+			platforms[integ.Platform] = true
+		}
+	}
+	// Detach the per-platform sync from the request context so a client
+	// disconnect (e.g. browser-side fetch timeout while Yandex.Business RPA
+	// is still scraping) does not cancel sibling syncs that have already
+	// started. We still cap each platform with the existing 60s budget
+	// inside syncOne. Total wall time = the slowest platform, not the sum.
+	syncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 90*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for platform := range platforms {
+		wg.Add(1)
+		go func(p string) {
+			defer wg.Done()
+			if err := s.syncOne(syncCtx, businessID, p); err != nil {
+				slog.Error("review refresh: platform sync failed",
+					"business_id", businessID, "platform", p, "error", err,
+				)
+				// Per-platform failure is non-fatal — partial refresh
+				// is better than dropping the whole request on one
+				// slow/broken platform.
+			}
+		}(platform)
+	}
+	wg.Wait()
 	return nil
 }
 
