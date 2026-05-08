@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -124,11 +128,27 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Resolve the user's Sprav permalink (numeric org id) so the agent can
+	// build correct edit URLs like yandex.ru/sprav/<permalink>/p/edit.
+	// Without this every RPA tool lands on the marketing landing of
+	// business.yandex.ru and silently scrapes nothing. Best-effort: if the
+	// lookup fails we still create the integration with externalID="default"
+	// so the user can connect even when Yandex ratelimits us.
+	permalinkCtx, permalinkCancel := context.WithTimeout(r.Context(), 5*time.Second)
+	permalink, lookupErr := h.fetchYandexPermalink(permalinkCtx, parsed.Cookies)
+	permalinkCancel()
+	externalID := "default"
+	if lookupErr == nil && permalink != "" {
+		externalID = permalink
+	} else if lookupErr != nil {
+		slog.Info("yandex connect: permalink lookup failed; falling back to placeholder",
+			"error", lookupErr)
+	}
+
 	// The integration's friendly name (the actual business name from the
-	// Sprav profile, not the Yandex account login) is resolved lazily via
-	// POST /integrations/yandex_business/{id}/refresh-name, which dispatches
-	// the agent's RPA get_info tool. Doing it inline here would block
-	// connect for 30–60s of Playwright work.
+	// Sprav profile) is resolved lazily via POST .../refresh-name which
+	// dispatches the agent's RPA get_info tool. Doing it inline here would
+	// block connect for 30–60s of Playwright work.
 	metadata := map[string]any{
 		"input_format": parsed.Format,
 		"connected_at": time.Now().UTC().Format(time.RFC3339),
@@ -137,7 +157,7 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
 		Platform:    "yandex_business",
-		ExternalID:  "default",
+		ExternalID:  externalID,
 		AccessToken: parsed.JSON(),
 		Metadata:    metadata,
 	})
@@ -213,9 +233,45 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 	// HTTP request and r.Context() gets canceled, killing the in-flight
 	// NATS request. With the detached context the work completes anyway
 	// and the next /integrations load picks up the resolved name.
-	bgCtx, bgCancel := context.WithTimeout(context.Background(), yandexRefreshTimeout+10*time.Second)
+	bgCtx, bgCancel := context.WithTimeout(context.Background(), yandexRefreshTimeout+15*time.Second)
 	go func() {
 		defer bgCancel()
+
+		// Heal external_id if it's still the legacy "default" placeholder.
+		// Without a real Sprav permalink the agent lands on the marketing
+		// landing page instead of the org's edit form, so every selector
+		// fails silently and the result map stays empty. Resolve the
+		// permalink directly from Yandex's campaign-list API and write it
+		// back to the integration before dispatching the agent.
+		if target.ExternalID == "default" {
+			tokResp, tokErr := h.integrationService.GetDecryptedToken(bgCtx, business.ID, "yandex_business", target.ExternalID)
+			if tokErr != nil {
+				slog.Info("yandex name refresh: cannot decrypt cookies for permalink heal",
+					"integration_id", integrationID, "error", tokErr)
+				return
+			}
+			cookies, parseErr := yandexcookies.Parse(tokResp.AccessToken)
+			if parseErr != nil {
+				slog.Info("yandex name refresh: stored cookies failed to parse",
+					"integration_id", integrationID, "error", parseErr)
+				return
+			}
+			permalink, plErr := h.fetchYandexPermalink(bgCtx, cookies.Cookies)
+			if plErr != nil || permalink == "" {
+				slog.Info("yandex name refresh: permalink lookup failed during heal",
+					"integration_id", integrationID, "error", plErr, "permalink", permalink)
+				return
+			}
+			if updateErr := h.integrationService.UpdateExternalID(bgCtx, integrationID, permalink); updateErr != nil {
+				slog.Error("yandex name refresh: failed to persist healed external_id",
+					"integration_id", integrationID, "error", updateErr)
+				return
+			}
+			target.ExternalID = permalink
+			slog.Info("yandex name refresh: healed external_id",
+				"integration_id", integrationID, "permalink", permalink)
+		}
+
 		req := a2a.ToolRequest{
 			TaskID:     uuid.NewString(),
 			Tool:       "yandex_business__get_info",
@@ -358,6 +414,121 @@ func buildCookieHeader(cookies []yandexcookies.Cookie) string {
 		parts = append(parts, c.Name+"="+c.Value)
 	}
 	return strings.Join(parts, "; ")
+}
+
+// csrfTokenRegex pulls Yandex's anti-CSRF token out of the dashboard HTML.
+// The token shows up either as a JSON property in the inline initial-state
+// blob (`"csrfToken":"<hex>:<unix_ts>"`) or in a meta tag
+// (`<meta name="csrf-token" content="...">`). We try the JSON form first
+// because it's stable across the priority/business pages we hit.
+var csrfTokenRegex = regexp.MustCompile(`"csrfToken"\s*:\s*"([^"]+)"`)
+
+// fetchYandexPermalink resolves the user's first Yandex.Business org
+// permalink (the numeric Sprav id, e.g. 166299713814) using their pasted
+// session cookies. Two-step:
+//
+//  1. GET https://yandex.ru/business/ to seed an authenticated session and
+//     scrape a fresh csrfToken from the dashboard HTML.
+//  2. GET https://yandex.ru/business/priority/api/campaign-list/get with
+//     that csrfToken — returns JSON with data.result[].companyDescription.permalink.
+//
+// Returns "" with no error when the user has no orgs registered. Returns
+// an error for transport / auth / CSRF failures so the caller can decide
+// whether to fall back to a placeholder externalID.
+func (h *OAuthHandler) fetchYandexPermalink(ctx context.Context, cookies []yandexcookies.Cookie) (string, error) {
+	const (
+		dashboardURL    = "https://yandex.ru/business/"
+		campaignListURL = "https://yandex.ru/business/priority/api/campaign-list/get"
+	)
+
+	cookieHeader := buildCookieHeader(cookies)
+	ua := "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
+	// Step 1 — fetch dashboard HTML for csrf token.
+	dashReq, err := http.NewRequestWithContext(ctx, http.MethodGet, dashboardURL, http.NoBody)
+	if err != nil {
+		return "", err
+	}
+	dashReq.Header.Set("Cookie", cookieHeader)
+	dashReq.Header.Set("User-Agent", ua)
+	dashReq.Header.Set("Accept", "text/html,application/xhtml+xml,*/*")
+	dashReq.Header.Set("Accept-Language", "ru,en;q=0.5")
+
+	dashResp, err := h.httpClient.Do(dashReq)
+	if err != nil {
+		return "", fmt.Errorf("dashboard fetch: %w", err)
+	}
+	defer func() { _ = dashResp.Body.Close() }()
+	if dashResp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("dashboard HTTP %d", dashResp.StatusCode)
+	}
+	dashBody, _ := io.ReadAll(io.LimitReader(dashResp.Body, 1<<20)) // 1MB
+	csrfMatch := csrfTokenRegex.FindSubmatch(dashBody)
+	if len(csrfMatch) < 2 {
+		return "", errors.New("csrfToken not found in dashboard HTML")
+	}
+	csrfToken := string(csrfMatch[1])
+
+	// Step 2 — campaign list. sessionId is a client-side nonce; Yandex
+	// validates only the csrfToken cryptographically. Use a timestamp-based
+	// value matching Yandex's `<unix_ms>_<6-digit>` pattern to be safe.
+	sessionID := fmt.Sprintf("%d_%d", time.Now().UnixMilli(), time.Now().UnixNano()%1_000_000)
+	q := url.Values{}
+	q.Set("csrfToken", csrfToken)
+	q.Set("sessionId", sessionID)
+	q.Set("limit", "20")
+	q.Set("offset", "0")
+
+	listReq, err := http.NewRequestWithContext(ctx, http.MethodGet, campaignListURL+"?"+q.Encode(), http.NoBody)
+	if err != nil {
+		return "", err
+	}
+	listReq.Header.Set("Cookie", cookieHeader)
+	listReq.Header.Set("User-Agent", ua)
+	listReq.Header.Set("Accept", "application/json")
+	listReq.Header.Set("Accept-Language", "ru,en;q=0.5")
+	listReq.Header.Set("Referer", dashboardURL)
+
+	listResp, err := h.httpClient.Do(listReq)
+	if err != nil {
+		return "", fmt.Errorf("campaign-list fetch: %w", err)
+	}
+	defer func() { _ = listResp.Body.Close() }()
+	if listResp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("campaign-list HTTP %d", listResp.StatusCode)
+	}
+	listBody, _ := io.ReadAll(io.LimitReader(listResp.Body, 1<<20))
+
+	var parsed struct {
+		Data struct {
+			Result []struct {
+				CompanyDescription struct {
+					// Yandex returns this as a JSON number, not a string.
+					// Decode into json.Number to preserve precision then
+					// stringify — int64 is fine for current ids but
+					// future-proofs against larger values.
+					Permalink json.Number `json:"permalink"`
+				} `json:"companyDescription"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	dec := json.NewDecoder(strings.NewReader(string(listBody)))
+	dec.UseNumber()
+	if err := dec.Decode(&parsed); err != nil {
+		return "", fmt.Errorf("parse campaign-list: %w", err)
+	}
+	if len(parsed.Data.Result) == 0 {
+		return "", nil // legitimately no orgs registered
+	}
+	permalinkStr := strings.TrimSpace(parsed.Data.Result[0].CompanyDescription.Permalink.String())
+	if permalinkStr == "" {
+		return "", errors.New("permalink missing in campaign-list response")
+	}
+	// Sanity check: must be a positive integer.
+	if _, perr := strconv.ParseUint(permalinkStr, 10, 64); perr != nil {
+		return "", fmt.Errorf("permalink not numeric: %q", permalinkStr)
+	}
+	return permalinkStr, nil
 }
 
 // yandexProbeURL returns the live-probe endpoint, honoring an optional

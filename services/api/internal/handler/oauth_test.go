@@ -69,6 +69,19 @@ func (m *MockOAuthIntegrationService) UpdateMetadata(ctx context.Context, integr
 	return args.Error(0)
 }
 
+func (m *MockOAuthIntegrationService) UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error {
+	args := m.Called(ctx, integrationID, externalID)
+	return args.Error(0)
+}
+
+func (m *MockOAuthIntegrationService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error) {
+	args := m.Called(ctx, businessID, platform, externalID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*service.TokenResponse), args.Error(1)
+}
+
 // ctxWithUser creates a context with the given user ID.
 func ctxWithUser(userID uuid.UUID) context.Context {
 	return context.WithValue(context.Background(), middleware.UserIDKey, userID)
