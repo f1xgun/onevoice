@@ -14,6 +14,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // TokenInfo holds the resolved tokens for an integration.
@@ -72,23 +73,23 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		err  error
 	)
 	switch req.Tool {
-	case "vk__publish_post":
+	case tools.VKPublishPost:
 		resp, err = h.publishPost(ctx, req)
-	case "vk__post_photo":
+	case tools.VKPostPhoto:
 		resp, err = h.postPhoto(ctx, req)
-	case "vk__update_group_info":
+	case tools.VKUpdateGroupInfo:
 		resp, err = h.updateGroupInfo(ctx, req)
-	case "vk__schedule_post":
+	case tools.VKSchedulePost:
 		resp, err = h.schedulePost(ctx, req)
-	case "vk__get_comments":
+	case tools.VKGetComments:
 		resp, err = h.getComments(ctx, req)
-	case "vk__reply_comment":
+	case tools.VKReplyComment:
 		resp, err = h.replyComment(ctx, req)
-	case "vk__delete_comment":
+	case tools.VKDeleteComment:
 		resp, err = h.deleteComment(ctx, req)
-	case "vk__get_community_info":
+	case tools.VKGetCommunityInfo:
 		resp, err = h.getCommunityInfo(ctx, req)
-	case "vk__get_wall_posts":
+	case tools.VKGetWallPosts:
 		resp, err = h.getWallPosts(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
@@ -149,9 +150,9 @@ func classifyVKError(err error) error {
 		return err // network or non-VK error — transient, retryable
 	}
 	switch int(vkErr.Code) {
-	case 5, 15, 100, 113: // permanent
+	case vkErrInvalidToken, vkErrAccessDenied, vkErrInvalidParam, vkErrInvalidUser: // permanent
 		return a2a.NewNonRetryableError(err)
-	case 6, 9: // rate-limited — don't retry, surface to user
+	case vkErrTooManyReqs, vkErrFloodControl: // rate-limited — don't retry, surface to user
 		return a2a.NewNonRetryableError(fmt.Errorf("vk rate limit (code %d): %w", int(vkErr.Code), err))
 	default:
 		return err // transient
@@ -172,7 +173,7 @@ func ensureNegativeGroupID(groupID string) string {
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentVK, groupID)
 	if err != nil {
 		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
@@ -188,7 +189,7 @@ func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient,
 // Community wall must be open/limited for service key reads to work.
 func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentVK, groupID)
 	if err != nil {
 		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
@@ -328,7 +329,7 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 	countF, _ := req.Args["count"].(float64)
 	count := int(countF)
 	if count == 0 {
-		count = 20
+		count = defaultCommentCount
 	}
 
 	if postID == 0 {
@@ -460,10 +461,10 @@ func (h *Handler) getWallPosts(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 	countF, _ := req.Args["count"].(float64)
 	count := int(countF)
 	if count <= 0 {
-		count = 10
+		count = defaultWallPostCount
 	}
 	if count > 100 {
-		count = 100
+		count = maxWallPostCount
 	}
 
 	posts, total, err := client.GetWallPosts(groupID, count)

@@ -42,7 +42,7 @@ type Client struct {
 func New(accessToken string) *Client {
 	return &Client{
 		vk:      vkapi.NewVK(accessToken),
-		limiter: rate.NewLimiter(3, 1),
+		limiter: rate.NewLimiter(defaultRateLimitPerSec, defaultRateLimitBurst),
 	}
 }
 
@@ -53,7 +53,7 @@ func NewWithBaseURL(accessToken, baseURL string) *Client {
 	vk.MethodURL = baseURL
 	return &Client{
 		vk:      vk,
-		limiter: rate.NewLimiter(rate.Inf, 1), // no rate limit in tests
+		limiter: rate.NewLimiter(rate.Inf, defaultRateLimitBurst), // no rate limit in tests
 	}
 }
 
