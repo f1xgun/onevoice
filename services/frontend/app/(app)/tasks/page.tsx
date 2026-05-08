@@ -21,6 +21,11 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import {
+  TASK_STATUS_DOT_CLASSES,
+  TASK_STATUS_LABELS,
+  type TaskStatus,
+} from '@/lib/constants/statuses';
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import { useTasksStream } from '@/hooks/useTasksStream';
 import type { AgentTask, TaskStreamEvent } from '@/types/task';
@@ -31,24 +36,6 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyTasks } from '@/components/states';
 import { cn } from '@/lib/utils';
-
-// ─── Status / platform vocabulary ───────────────────────────────────
-
-type TaskStatus = 'pending' | 'running' | 'done' | 'error';
-
-const statusLabel: Record<TaskStatus, string> = {
-  pending: 'Запланировано',
-  running: 'В работе',
-  done: 'Готово',
-  error: 'Нужна помощь',
-};
-
-const statusDotClass: Record<TaskStatus, string> = {
-  pending: 'bg-ink-faint',
-  running: 'bg-ochre',
-  done: 'bg-success',
-  error: 'bg-danger',
-};
 
 // ─── Plain-Russian error explainer ──────────────────────────────────
 //
@@ -224,7 +211,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
           aria-hidden
           className={cn(
             'mt-1.5 size-2 shrink-0 rounded-full sm:mt-0 sm:justify-self-center',
-            statusDotClass[status]
+            TASK_STATUS_DOT_CLASSES[status]
           )}
         />
 
@@ -246,7 +233,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
             <span aria-hidden>·</span>
             <span>{format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}</span>
             <span aria-hidden>·</span>
-            <span>{statusLabel[status]}</span>
+            <span>{TASK_STATUS_LABELS[status]}</span>
           </div>
         </div>
 
@@ -261,7 +248,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
           <span className="text-[13px] text-ink-mid">
             {format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}
           </span>
-          <span className="text-xs text-ink-soft">{statusLabel[status]}</span>
+          <span className="text-xs text-ink-soft">{TASK_STATUS_LABELS[status]}</span>
         </div>
       </div>
 
