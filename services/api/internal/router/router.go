@@ -178,6 +178,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			// Review routes
 			r.Get("/reviews", handlers.Review.ListReviews)
+			r.Post("/reviews/refresh", handlers.Review.RefreshReviews)
 			r.Get("/reviews/{id}", handlers.Review.GetReview)
 			r.Put("/reviews/{id}/reply", handlers.Review.ReplyToReview)
 

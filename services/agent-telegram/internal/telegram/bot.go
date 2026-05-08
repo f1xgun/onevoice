@@ -155,10 +155,17 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 		var batch []tgbotapi.Update
 		err := retryTransient(3, 500*time.Millisecond, func() error {
 			var e error
+			// Channel posts ("channel_post"/"edited_channel_post") are
+			// admin-authored content, not customer feedback — including
+			// them surfaced the operator's own announcements as pending
+			// reviews. Customer comments on a channel post arrive as
+			// regular "message" updates in the linked discussion group,
+			// which we still pick up below (filtering out the auto-
+			// forwarded copy of the original post).
 			batch, e = b.api.GetUpdates(tgbotapi.UpdateConfig{
 				Offset:         offset,
 				Limit:          batchSize,
-				AllowedUpdates: []string{"message", "channel_post", "edited_message", "edited_channel_post"},
+				AllowedUpdates: []string{"message", "edited_message"},
 			})
 			return e
 		})
@@ -189,6 +196,22 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 			msg = u.ChannelPost
 		}
 		if msg == nil {
+			continue
+		}
+
+		// Skip the auto-forwarded copy of the channel post that Telegram
+		// drops into the linked discussion group. It carries the original
+		// post's text but isn't customer feedback — the actual replies
+		// to that post come as separate messages with reply_to_message.
+		if msg.IsAutomaticForward {
+			continue
+		}
+		// Skip messages where the sender IS a chat (admin posting as the
+		// channel/group itself, not as an individual). Customer comments
+		// always come from a real user — `From` is the user, `SenderChat`
+		// is nil. When SenderChat matches the chat the message was sent
+		// in, that's an admin acting as the channel — skip it.
+		if msg.SenderChat != nil && msg.Chat != nil && msg.SenderChat.ID == msg.Chat.ID {
 			continue
 		}
 
