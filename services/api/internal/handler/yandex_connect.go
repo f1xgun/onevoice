@@ -122,15 +122,26 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Best-effort capture of the Yandex login name from the same probe path
+	// the modal uses live. Failure here is non-fatal — the integration
+	// still gets created; the UI just won't have a friendly name to show
+	// in the channels list (will fall back to externalId / platform name).
+	metadata := map[string]any{
+		"input_format": parsed.Format,
+		"connected_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	probeCtx, probeCancel := context.WithTimeout(r.Context(), 3*time.Second)
+	if _, username, probeErr := h.probeYandexSession(probeCtx, parsed.Cookies); probeErr == nil && username != "" {
+		metadata["yandex_user"] = username
+	}
+	probeCancel()
+
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
 		Platform:    "yandex_business",
 		ExternalID:  "default",
 		AccessToken: parsed.JSON(),
-		Metadata: map[string]interface{}{
-			"input_format": parsed.Format,
-			"connected_at": time.Now().UTC().Format(time.RFC3339),
-		},
+		Metadata:    metadata,
 	})
 	if err != nil {
 		slog.Error("failed to connect Yandex.Business integration", "error", err)

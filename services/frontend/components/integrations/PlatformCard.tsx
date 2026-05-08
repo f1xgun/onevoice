@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
+import { getIntegrationDisplay } from '@/lib/integrations';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -194,17 +195,39 @@ function ChannelList({
   refreshingID: string | null;
   onRefreshTelegram: (i: Integration) => void;
 }) {
+  const qc = useQueryClient();
+  const refreshedRef = useRef<Set<string>>(new Set());
+
+  // Lazy backfill of missing VK community names. The first time we see a
+  // VK row without metadata.community_name we POST to refresh-name and
+  // invalidate the integrations query so the row re-renders with the
+  // resolved name. We track which ids we've already triggered to avoid
+  // looping if the lookup permanently yields nothing.
+  useEffect(() => {
+    integrations.forEach((i) => {
+      if (
+        i.platform !== 'vk' ||
+        typeof (i.metadata as Record<string, unknown>)?.community_name === 'string' ||
+        refreshedRef.current.has(i.id)
+      ) {
+        return;
+      }
+      refreshedRef.current.add(i.id);
+      void api
+        .post(`/integrations/vk/${i.id}/refresh-name`)
+        .then(() => qc.invalidateQueries({ queryKey: ['integrations'] }))
+        .catch(() => {
+          // Best-effort; swallow.
+        });
+    });
+  }, [integrations, qc]);
+
   return (
     <div className="flex flex-col gap-2">
       {integrations.map((i) => {
         const tone = statusTones[i.status] ?? 'neutral';
         const statusLabel = statusLabels[i.status] ?? i.status;
-        const rawTitle = (i.metadata as Record<string, string>)?.channel_title ?? i.externalId;
-        // For platforms where externalId is a placeholder (yandex_business
-        // uses "default" as the canonical single-integration id), fall back
-        // to the human-readable platform name so the disconnect dialog
-        // doesn't say "Отключить default?".
-        const channelTitle = rawTitle === 'default' ? platformLabel : rawTitle;
+        const display = getIntegrationDisplay(i, platformLabel);
         const showLinkedGroupWarn =
           platform === 'telegram' &&
           (i.metadata as Record<string, unknown>)?.linked_group_status === 'bot_not_member';
@@ -225,9 +248,14 @@ function ChannelList({
                 i.status === 'token_expired' && 'bg-danger'
               )}
             />
-            <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink">
-              {channelTitle}
-            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13px] text-ink">{display.name}</div>
+              {display.identifier && (
+                <div className="truncate font-mono text-[11px] text-ink-faint">
+                  {display.identifier}
+                </div>
+              )}
+            </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
               {showLinkedGroupWarn && (
@@ -278,10 +306,10 @@ function ChannelList({
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>{`Отключить ${channelTitle}?`}</AlertDialogTitle>
+                    <AlertDialogTitle>{`Отключить ${display.name}?`}</AlertDialogTitle>
                     <AlertDialogDescription>
                       История сообщений останется в архиве. Чтобы снова получать сообщения из{' '}
-                      {channelTitle}, канал нужно будет подключить заново.
+                      {display.name}, канал нужно будет подключить заново.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
