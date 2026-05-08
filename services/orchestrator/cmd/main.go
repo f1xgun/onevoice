@@ -34,6 +34,12 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
 )
 
+const (
+	mongoConnectTimeout  = 10 * time.Second
+	mongoShutdownTimeout = 5 * time.Second
+	httpReadTimeout      = 15 * time.Second
+)
+
 func main() {
 	log := logger.New("orchestrator")
 	slog.SetDefault(log)
@@ -77,7 +83,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// variable is constructed here and threaded into orchestrator.New in
 	// Plan 16-05 — for 16-02 it is sufficient that the dial succeeds and
 	// the repo type exists.
-	mongoCtx, mongoCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	mongoCtx, mongoCancel := context.WithTimeout(context.Background(), mongoConnectTimeout)
 	mongoClient, err := mongo.Connect(mongoopts.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
 		mongoCancel()
@@ -91,7 +97,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	mongoCancel()
 	defer func() {
-		shutdownMongoCtx, shutdownMongoCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownMongoCtx, shutdownMongoCancel := context.WithTimeout(context.Background(), mongoShutdownTimeout)
 		defer shutdownMongoCancel()
 		_ = mongoClient.Disconnect(shutdownMongoCtx)
 	}()
@@ -178,7 +184,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      r,
-		ReadTimeout:  15 * time.Second,
+		ReadTimeout:  httpReadTimeout,
 		WriteTimeout: 0, // SSE requires long-lived connections
 	}
 
