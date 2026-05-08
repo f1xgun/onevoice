@@ -37,14 +37,14 @@ func debugScreenshot(page playwright.Page, label string) {
 // spravBaseURL builds the Yandex.Business management URL for a given permalink.
 func spravBaseURL(permalink string) string {
 	if permalink == "" || permalink == "default" {
-		return "https://business.yandex.ru"
+		return yandexBusinessBaseURL
 	}
-	return "https://yandex.ru/sprav/" + permalink + "/p/edit"
+	return fmt.Sprintf(yandexSpravEditPathFmt, permalink)
 }
 
 // humanDelay waits 1-4 seconds to mimic human browsing behavior.
 func humanDelay() {
-	time.Sleep(time.Duration(rand.Intn(3000)+1000) * time.Millisecond) //nolint:gosec // weak random is intentional for human-like delay simulation
+	time.Sleep(time.Duration(rand.Intn(humanDelayRangeMs)+humanDelayMinMs) * time.Millisecond) //nolint:gosec // weak random is intentional for human-like delay simulation
 }
 
 // withRetry retries fn up to maxAttempts times with exponential backoff (2^i seconds).
