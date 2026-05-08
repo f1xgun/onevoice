@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/tools"
@@ -50,9 +51,9 @@ type postingToolInfo struct {
 
 // postingTools maps tool names that publish content to their extraction info.
 var postingTools = map[string]postingToolInfo{
-	tools.TelegramSendChannelPost:  {platform: "telegram", contentField: "text"},
-	tools.TelegramSendChannelPhoto: {platform: "telegram", contentField: "caption", mediaField: "photo_url"},
-	tools.VKPublishPost:            {platform: "vk", contentField: "text"},
+	tools.TelegramSendChannelPost:  {platform: a2a.AgentTelegram, contentField: "text"},
+	tools.TelegramSendChannelPhoto: {platform: a2a.AgentTelegram, contentField: "caption", mediaField: "photo_url"},
+	tools.VKPublishPost:            {platform: a2a.AgentVK, contentField: "text"},
 }
 
 // ResumeBatchHeader is the HTTP header chat_proxy inspects to detect an

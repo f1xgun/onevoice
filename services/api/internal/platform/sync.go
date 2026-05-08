@@ -131,38 +131,38 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 			continue
 		}
 		switch integ.Platform {
-		case "telegram":
+		case a2a.AgentTelegram:
 			titleStart := time.Now()
 			if err := s.syncTelegramTitle(ctx, business.ID, integ.ExternalID, business.Name); err != nil {
-				s.recordTask(ctx, business.ID, "telegram", "sync_title", "Синхронизация названия", "error",
+				s.recordTask(ctx, business.ID, a2a.AgentTelegram, "sync_title", "Синхронизация названия", "error",
 					map[string]string{"channel_id": integ.ExternalID}, err.Error(), titleStart)
 			} else {
-				s.recordTask(ctx, business.ID, "telegram", "sync_title", "Синхронизация названия", "done",
+				s.recordTask(ctx, business.ID, a2a.AgentTelegram, "sync_title", "Синхронизация названия", "done",
 					map[string]string{"channel_id": integ.ExternalID, "name": business.Name}, "", titleStart)
 			}
 
 			descStart := time.Now()
 			if err := s.syncTelegramDescription(ctx, business.ID, integ.ExternalID, formatTelegramDescription(business)); err != nil {
-				s.recordTask(ctx, business.ID, "telegram", "sync_description", "Синхронизация описания", "error",
+				s.recordTask(ctx, business.ID, a2a.AgentTelegram, "sync_description", "Синхронизация описания", "error",
 					map[string]string{"channel_id": integ.ExternalID}, err.Error(), descStart)
 			} else {
-				s.recordTask(ctx, business.ID, "telegram", "sync_description", "Синхронизация описания", "done",
+				s.recordTask(ctx, business.ID, a2a.AgentTelegram, "sync_description", "Синхронизация описания", "done",
 					map[string]string{"channel_id": integ.ExternalID}, "", descStart)
 			}
 
 			if business.LogoURL != "" {
 				photoStart := time.Now()
 				if err := s.syncTelegramPhoto(ctx, business.ID, integ.ExternalID, business.LogoURL); err != nil {
-					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "Синхронизация фото", "error",
+					s.recordTask(ctx, business.ID, a2a.AgentTelegram, "sync_photo", "Синхронизация фото", "error",
 						map[string]string{"channel_id": integ.ExternalID}, err.Error(), photoStart)
 				} else {
-					s.recordTask(ctx, business.ID, "telegram", "sync_photo", "Синхронизация фото", "done",
+					s.recordTask(ctx, business.ID, a2a.AgentTelegram, "sync_photo", "Синхронизация фото", "done",
 						map[string]string{"channel_id": integ.ExternalID}, "", photoStart)
 				}
 			}
-		case "vk":
+		case a2a.AgentVK:
 			s.syncVKInfo(ctx, business, integ.ExternalID)
-		case "yandex_business":
+		case a2a.AgentYandexBusiness:
 			s.syncYandexHours(ctx, business, integ.ExternalID)
 		}
 	}
@@ -284,7 +284,7 @@ func formatSchedule(settings map[string]interface{}) string {
 }
 
 func (s *Syncer) syncTelegramTitle(ctx context.Context, businessID uuid.UUID, channelID, title string) error {
-	botToken, err := s.integrations.GetDecryptedToken(ctx, businessID, "telegram", channelID)
+	botToken, err := s.integrations.GetDecryptedToken(ctx, businessID, a2a.AgentTelegram, channelID)
 	if err != nil {
 		slog.ErrorContext(ctx, "platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
 		return fmt.Errorf("get token: %w", err)
@@ -325,7 +325,7 @@ func (s *Syncer) syncTelegramTitle(ctx context.Context, businessID uuid.UUID, ch
 }
 
 func (s *Syncer) syncTelegramDescription(ctx context.Context, businessID uuid.UUID, channelID, description string) error {
-	botToken, err := s.integrations.GetDecryptedToken(ctx, businessID, "telegram", channelID)
+	botToken, err := s.integrations.GetDecryptedToken(ctx, businessID, a2a.AgentTelegram, channelID)
 	if err != nil {
 		slog.ErrorContext(ctx, "platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
 		return fmt.Errorf("get token: %w", err)
@@ -366,7 +366,7 @@ func (s *Syncer) syncTelegramDescription(ctx context.Context, businessID uuid.UU
 }
 
 func (s *Syncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, channelID, logoURL string) error {
-	botToken, err := s.integrations.GetDecryptedToken(ctx, businessID, "telegram", channelID)
+	botToken, err := s.integrations.GetDecryptedToken(ctx, businessID, a2a.AgentTelegram, channelID)
 	if err != nil {
 		slog.ErrorContext(ctx, "platform sync: telegram: get token failed", "channel_id", channelID, "error", err)
 		return fmt.Errorf("get token: %w", err)
@@ -445,10 +445,10 @@ func (s *Syncer) syncTelegramPhoto(ctx context.Context, businessID uuid.UUID, ch
 // syncVKInfo pushes business data to VK community using dedicated API fields.
 func (s *Syncer) syncVKInfo(ctx context.Context, business *domain.Business, groupID string) {
 	started := time.Now()
-	token, err := s.integrations.GetDecryptedToken(ctx, business.ID, "vk", groupID)
+	token, err := s.integrations.GetDecryptedToken(ctx, business.ID, a2a.AgentVK, groupID)
 	if err != nil {
 		slog.Error("platform sync: vk: get token failed", "group_id", groupID, "error", err)
-		s.recordTask(ctx, business.ID, "vk", "sync_info", "Синхронизация данных", "error", map[string]string{"group_id": groupID}, "token fetch failed: "+err.Error(), started)
+		s.recordTask(ctx, business.ID, a2a.AgentVK, "sync_info", "Синхронизация данных", "error", map[string]string{"group_id": groupID}, "token fetch failed: "+err.Error(), started)
 		return
 	}
 
@@ -477,9 +477,9 @@ func (s *Syncer) syncVKInfo(ctx context.Context, business *domain.Business, grou
 
 	apiErr := s.callVKAPI(ctx, "groups.edit", params, groupID)
 	if apiErr != "" {
-		s.recordTask(ctx, business.ID, "vk", "sync_info", "Синхронизация данных", "error", input, apiErr, started)
+		s.recordTask(ctx, business.ID, a2a.AgentVK, "sync_info", "Синхронизация данных", "error", input, apiErr, started)
 	} else {
-		s.recordTask(ctx, business.ID, "vk", "sync_info", "Синхронизация данных", "done", input, "", started)
+		s.recordTask(ctx, business.ID, a2a.AgentVK, "sync_info", "Синхронизация данных", "done", input, "", started)
 	}
 }
 
@@ -608,7 +608,7 @@ func (s *Syncer) syncYandexHours(ctx context.Context, business *domain.Business,
 
 	if s.taskPublisher == nil {
 		slog.WarnContext(ctx, "platform sync: yandex_business: task publisher not configured")
-		s.recordTask(ctx, business.ID, "yandex_business", "sync_hours", "Синхронизация часов работы",
+		s.recordTask(ctx, business.ID, a2a.AgentYandexBusiness, "sync_hours", "Синхронизация часов работы",
 			"error", input, "NATS task publisher not configured", started)
 		return
 	}
@@ -624,18 +624,18 @@ func (s *Syncer) syncYandexHours(ctx context.Context, business *domain.Business,
 	if err != nil {
 		slog.ErrorContext(ctx, "platform sync: yandex_business: request failed",
 			"business_id", business.ID, "error", err)
-		s.recordTask(ctx, business.ID, "yandex_business", "sync_hours", "Синхронизация часов работы",
+		s.recordTask(ctx, business.ID, a2a.AgentYandexBusiness, "sync_hours", "Синхронизация часов работы",
 			"error", input, err.Error(), started)
 		return
 	}
 	if resp != nil && resp.Error != "" {
 		slog.WarnContext(ctx, "platform sync: yandex_business: agent returned error",
 			"business_id", business.ID, "error", resp.Error)
-		s.recordTask(ctx, business.ID, "yandex_business", "sync_hours", "Синхронизация часов работы",
+		s.recordTask(ctx, business.ID, a2a.AgentYandexBusiness, "sync_hours", "Синхронизация часов работы",
 			"error", input, resp.Error, started)
 		return
 	}
 
-	s.recordTask(ctx, business.ID, "yandex_business", "sync_hours", "Синхронизация часов работы",
+	s.recordTask(ctx, business.ID, a2a.AgentYandexBusiness, "sync_hours", "Синхронизация часов работы",
 		"done", input, "", started)
 }

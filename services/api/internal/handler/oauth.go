@@ -180,7 +180,7 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: business.ID,
-		Platform:   "vk",
+		Platform:   a2a.AgentVK,
 	})
 	if err != nil {
 		slog.Error("failed to generate OAuth state for VK", "error", err)
@@ -380,7 +380,7 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: business.ID,
-		Platform:   "vk",
+		Platform:   a2a.AgentVK,
 	})
 	if err != nil {
 		slog.Error("failed to generate state for VK community OAuth", "error", err)
@@ -480,7 +480,7 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	}
 	_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  stateData.BusinessID,
-		Platform:    "vk",
+		Platform:    a2a.AgentVK,
 		ExternalID:  groupIDStr,
 		AccessToken: group.AccessToken,
 		UserToken:   userToken,
@@ -592,7 +592,7 @@ func (h *OAuthHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 	groupIDStr := strconv.FormatInt(group.ID, 10)
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
-		Platform:    "vk",
+		Platform:    a2a.AgentVK,
 		ExternalID:  groupIDStr,
 		AccessToken: req.AccessToken,
 		Metadata: map[string]interface{}{
@@ -929,7 +929,7 @@ func (h *OAuthHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.Req
 
 	// Find the integration scoped to this business — defends against
 	// cross-tenant id guessing.
-	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, "vk")
+	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, a2a.AgentVK)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
@@ -951,7 +951,7 @@ func (h *OAuthHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.Req
 	// installs and fails closed groups, while the stored token is always
 	// present for a connected VK community.
 	accessToken := ""
-	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), business.ID, "vk", target.ExternalID); tokErr == nil && tok != nil {
+	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), business.ID, a2a.AgentVK, target.ExternalID); tokErr == nil && tok != nil {
 		accessToken = tok.AccessToken
 	}
 
@@ -1087,7 +1087,7 @@ func (h *OAuthHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
-		Platform:    "telegram",
+		Platform:    a2a.AgentTelegram,
 		ExternalID:  req.ChannelID,
 		AccessToken: h.cfg.TelegramBotToken,
 		Metadata:    metadata,
@@ -1140,7 +1140,7 @@ func (h *OAuthHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *http
 	}
 
 	// Find the specific integration by external_id.
-	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, "telegram")
+	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, a2a.AgentTelegram)
 	if err != nil {
 		slog.Error("failed to list telegram integrations for refresh", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -1216,7 +1216,7 @@ func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) 
 	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: business.ID,
-		Platform:   "yandex_business",
+		Platform:   a2a.AgentYandexBusiness,
 	})
 	if err != nil {
 		slog.Error("failed to generate OAuth state for Yandex", "error", err)
@@ -1282,7 +1282,7 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 
 	_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:   stateData.BusinessID,
-		Platform:     "yandex_business",
+		Platform:     a2a.AgentYandexBusiness,
 		ExternalID:   "default",
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
@@ -1361,7 +1361,7 @@ func (h *OAuthHandler) GetGoogleAuthURL(w http.ResponseWriter, r *http.Request) 
 	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: business.ID,
-		Platform:   "google_business",
+		Platform:   a2a.AgentGoogleBusiness,
 	})
 	if err != nil {
 		slog.ErrorContext(r.Context(), "failed to generate OAuth state for Google", "error", err)
@@ -1475,7 +1475,7 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 		_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
 			BusinessID:   stateData.BusinessID,
-			Platform:     "google_business",
+			Platform:     a2a.AgentGoogleBusiness,
 			ExternalID:   loc.LocationName,
 			AccessToken:  tokenResp.AccessToken,
 			RefreshToken: tokenResp.RefreshToken,
@@ -1679,7 +1679,7 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 	expiresAt := time.Now().Add(time.Duration(tempData.ExpiresIn) * time.Second)
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:   business.ID,
-		Platform:     "google_business",
+		Platform:     a2a.AgentGoogleBusiness,
 		ExternalID:   req.LocationID,
 		AccessToken:  tempData.AccessToken,
 		RefreshToken: tempData.RefreshToken,
