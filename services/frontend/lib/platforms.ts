@@ -114,6 +114,21 @@ export const PLATFORM_FULL_LABELS: Record<string, string> = Object.fromEntries(
   (Object.keys(PLATFORM_META) as PlatformId[]).map((id) => [id, PLATFORM_META[id].fullLabel])
 );
 
+// Backend platform id → ChannelMark `name` prop. Latin technical names
+// (Telegram/VK/Yandex.Business/Google/2GIS) — these key into the
+// channelColor map inside <ChannelMark>. Distinct from PLATFORM_FULL_LABELS
+// (cyrillic display labels): ChannelMark expects English brand names so
+// the same primitive can render across locales.
+export const CHANNEL_NAMES: Record<PlatformId, string> = {
+  telegram: 'Telegram',
+  vk: 'VK',
+  yandex_business: 'Yandex.Business',
+  google_business: 'Google',
+  '2gis': '2GIS',
+  avito: 'Avito',
+  whatsapp: 'WhatsApp',
+};
+
 export function getPlatform(toolName: string): string {
   return toolName.split('__')[0] ?? toolName;
 }

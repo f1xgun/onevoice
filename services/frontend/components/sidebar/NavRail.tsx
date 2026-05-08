@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 
 interface Integration {
   platform: string;
@@ -39,12 +40,6 @@ const navItems = [
   { href: '/tasks', label: 'Задачи', icon: ListTodo },
   { href: '/settings', label: 'Настройки', icon: Settings },
 ];
-
-const platformLabels: Record<string, string> = {
-  telegram: 'Telegram',
-  vk: 'ВКонтакте',
-  yandex_business: 'Яндекс.Бизнес',
-};
 
 export interface NavRailProps {
   /**
@@ -161,7 +156,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
                         connected ? 'bg-success' : 'bg-ink-faint'
                       )}
                     />
-                    {platformLabels[platform]}
+                    {PLATFORM_FULL_LABELS[platform]}
                   </li>
                 );
               })}

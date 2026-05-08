@@ -21,6 +21,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { CHANNEL_NAMES } from '@/lib/platforms';
 import { useTasksStream } from '@/hooks/useTasksStream';
 import type { AgentTask, TaskStreamEvent } from '@/types/task';
 import { Button } from '@/components/ui/button';
@@ -47,12 +48,6 @@ const statusDotClass: Record<TaskStatus, string> = {
   running: 'bg-ochre',
   done: 'bg-success',
   error: 'bg-danger',
-};
-
-const platformLabel: Record<string, string> = {
-  telegram: 'Telegram',
-  vk: 'VK',
-  yandex_business: 'Yandex.Business',
 };
 
 // ─── Plain-Russian error explainer ──────────────────────────────────
@@ -214,7 +209,7 @@ export default function TasksPage() {
 
 function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
   const status = (task.status as TaskStatus) ?? 'pending';
-  const platformName = platformLabel[task.platform] ?? task.platform;
+  const platformName = CHANNEL_NAMES[task.platform as keyof typeof CHANNEL_NAMES] ?? task.platform;
   const titleClass =
     status === 'error'
       ? 'text-sm font-medium text-[var(--ov-danger-ink)] tracking-[-0.005em]'
