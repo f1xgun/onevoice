@@ -173,7 +173,7 @@ func ensureNegativeGroupID(groupID string) string {
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentVK, groupID)
 	if err != nil {
 		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
@@ -189,7 +189,7 @@ func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient,
 // Community wall must be open/limited for service key reads to work.
 func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, "vk", groupID)
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentVK, groupID)
 	if err != nil {
 		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}

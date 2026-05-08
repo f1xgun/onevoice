@@ -153,7 +153,7 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  business.ID,
-		Platform:    "yandex_business",
+		Platform:    a2a.AgentYandexBusiness,
 		ExternalID:  externalID,
 		AccessToken: parsed.JSON(),
 		Metadata:    metadata,
@@ -285,7 +285,7 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 		return
 	}
 
-	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, "yandex_business")
+	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, a2a.AgentYandexBusiness)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return

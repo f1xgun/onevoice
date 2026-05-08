@@ -132,7 +132,7 @@ func classifyGBPError(err error) error {
 }
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (GBPClient, string, error) {
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, "google_business", "")
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentGoogleBusiness, "")
 	if err != nil {
 		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
