@@ -62,6 +62,15 @@ type Config struct {
 	// Review sync
 	ReviewSyncInterval int // minutes, 0 = disabled
 
+	// AI review-draft generation. When ReviewDraftEnabled is true, every
+	// successful sync pass triggers an LLM-backed pass over pending reviews
+	// without a draft. Disabled by default to avoid silent LLM spend on
+	// upgrade. ReviewDraftMaxExamples caps the few-shot context window;
+	// ReviewDraftBatchLimit caps how many drafts one sync pass produces.
+	ReviewDraftEnabled     bool
+	ReviewDraftMaxExamples int
+	ReviewDraftBatchLimit  int
+
 	// Object storage (MinIO / S3) for user uploads
 	S3Endpoint        string
 	S3AccessKey       string
@@ -133,6 +142,10 @@ func Load() (*Config, error) {
 		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", "http://localhost:8090"),
 		NATSUrl:            os.Getenv("NATS_URL"),
 		ReviewSyncInterval: getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30),
+
+		ReviewDraftEnabled:     getEnv("REVIEW_DRAFT_ENABLED", "false") == "true",
+		ReviewDraftMaxExamples: getEnvInt("REVIEW_DRAFT_MAX_EXAMPLES", 5),
+		ReviewDraftBatchLimit:  getEnvInt("REVIEW_DRAFT_BATCH_LIMIT", 10),
 
 		S3Endpoint:        getEnv("S3_ENDPOINT", "minio:9000"),
 		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),

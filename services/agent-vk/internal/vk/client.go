@@ -178,15 +178,27 @@ func (c *Client) GetComments(groupID string, postID, count int) ([]map[string]in
 
 // ReplyComment creates a threaded reply to a wall comment.
 // groupID should be the owner_id (negative for communities, e.g. "-123456").
+//
+// `from_group` carries the *positive* community ID — per VK docs since v5.67
+// it is the identifier of the community on whose behalf the comment is
+// published, NOT a boolean flag. Passing the positive form of owner_id
+// makes wall.createComment publish the reply as the community itself,
+// which is what the integration's community access token is authorized to do.
+// Without it (or with a stray `1`, which would be club1 of vk.com itself),
+// VK rejects with "Method is not available for this profile type".
 func (c *Client) ReplyComment(groupID string, postID, commentID int, text string) (int, error) {
 	if err := c.wait(); err != nil {
 		return 0, err
 	}
+	// owner_id is "-<groupID>"; from_group needs the same id without the
+	// minus. strings.TrimPrefix is safe even when no minus is present.
+	fromGroup := strings.TrimPrefix(groupID, "-")
 	resp, err := c.vk.WallCreateComment(vkapi.Params{
 		"owner_id":         groupID,
 		"post_id":          postID,
 		"message":          text,
 		"reply_to_comment": commentID,
+		"from_group":       fromGroup,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("vk wall.createComment: %w", err)

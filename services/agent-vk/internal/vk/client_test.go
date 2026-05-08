@@ -303,6 +303,32 @@ func TestClient_ReplyComment_Success(t *testing.T) {
 	assert.Equal(t, 777, commentID)
 }
 
+// from_group must carry the *positive* community id — per VK docs (v5.67+)
+// it is the identifier of the community on whose behalf the comment is
+// published, NOT a boolean flag. Passing 1 historically meant club1
+// (VK's own API community), which obviously fails for any other community
+// with "Method is not available for this profile type".
+func TestClient_ReplyComment_SendsFromGroup(t *testing.T) {
+	mux := http.NewServeMux()
+	var capturedFromGroup string
+	var capturedOwnerID string
+	mux.HandleFunc("/method/wall.createComment", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		capturedFromGroup = r.FormValue("from_group")
+		capturedOwnerID = r.FormValue("owner_id")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, vkResponse(map[string]interface{}{"comment_id": 1, "parents_stack": []int{}}))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := newClient(srv)
+	_, err := c.ReplyComment("-123456", 1, 5, "x")
+	require.NoError(t, err)
+	assert.Equal(t, "-123456", capturedOwnerID, "owner_id should keep the leading minus")
+	assert.Equal(t, "123456", capturedFromGroup, "from_group must be the positive community id, not a flag")
+}
+
 func TestClient_DeleteComment_Success(t *testing.T) {
 	srv := newMockVKServer()
 	defer srv.Close()

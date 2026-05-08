@@ -2,10 +2,17 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	natslib "github.com/nats-io/nats.go"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
@@ -16,19 +23,36 @@ type ReviewService interface {
 	Reply(ctx context.Context, userID uuid.UUID, id string, replyText string) error
 }
 
+// natsRequester is the slice of *natslib.Conn that ReviewService needs.
+// Stays as an interface so future tests can stub the dispatch path
+// without standing up an in-process NATS server.
+type natsRequester interface {
+	RequestMsgWithContext(ctx context.Context, msg *natslib.Msg) (*natslib.Msg, error)
+}
+
 type reviewService struct {
 	repo            domain.ReviewRepository
 	businessService BusinessService
+	nc              natsRequester // nil = no platform dispatch (Mongo-only mode)
+	dispatchTimeout time.Duration
 }
 
 // Compile-time check that reviewService implements ReviewService
 var _ ReviewService = (*reviewService)(nil)
 
-// NewReviewService creates a new review service instance
-func NewReviewService(repo domain.ReviewRepository, businessService BusinessService) ReviewService {
+// NewReviewService creates a new review service instance. nc may be nil — in
+// that mode Reply only updates Mongo and never reaches out to platform agents
+// (preserves the historical behavior for environments without NATS).
+func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn) ReviewService {
+	var requester natsRequester
+	if nc != nil {
+		requester = nc
+	}
 	return &reviewService{
 		repo:            repo,
 		businessService: businessService,
+		nc:              requester,
+		dispatchTimeout: 90 * time.Second,
 	}
 }
 
@@ -83,9 +107,197 @@ func (s *reviewService) Reply(ctx context.Context, userID uuid.UUID, id, replyTe
 		return domain.ErrReviewNotFound
 	}
 
-	if err := s.repo.UpdateReply(ctx, id, replyText, "replied"); err != nil {
+	// Try to publish to the platform first. If dispatch fails we persist
+	// reply_status=error so the UI shows "Ошибка отправки" — never a
+	// false-positive "ответ отправлен".
+	dispatchErr := s.dispatchToPlatform(ctx, review, replyText)
+	finalStatus := domain.ReviewReplyStatusReplied
+	if dispatchErr != nil {
+		finalStatus = domain.ReviewReplyStatusError
+	}
+
+	if err := s.repo.UpdateReply(ctx, id, replyText, finalStatus); err != nil {
+		// If we successfully posted to the platform but failed to persist
+		// the status update, the user sees "ждёт ответа" but the comment is
+		// already on VK — log loudly so support can reconcile by hand.
+		slog.Error("review reply: dispatch ok but persist failed",
+			"review_id", id, "platform", review.Platform, "error", err,
+		)
 		return fmt.Errorf("update reply: %w", err)
 	}
 
+	if dispatchErr != nil {
+		return fmt.Errorf("publish to %s: %w", review.Platform, dispatchErr)
+	}
 	return nil
+}
+
+// dispatchToPlatform sends the manual reply to the platform agent over NATS.
+// Returns nil when the agent confirms success, an error otherwise. A nil
+// NATS connection (Mongo-only mode) returns nil — same legacy behavior.
+// Unsupported platforms also return nil so business operators can still
+// "mark as replied" for surfaces that don't have an agent yet.
+func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.Review, replyText string) error {
+	if s.nc == nil {
+		return nil
+	}
+
+	toolName, args, err := buildPlatformReply(review, replyText)
+	if err != nil {
+		return err
+	}
+	if toolName == "" {
+		// Platform not handled by any agent — historical "Mongo-only" mark.
+		return nil
+	}
+
+	req := a2a.ToolRequest{
+		TaskID:     uuid.NewString(),
+		Tool:       toolName,
+		Args:       args,
+		BusinessID: review.BusinessID,
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	dispatchCtx, cancel := context.WithTimeout(ctx, s.dispatchTimeout)
+	defer cancel()
+
+	msg, err := s.nc.RequestMsgWithContext(dispatchCtx, &natslib.Msg{
+		Subject: a2a.Subject(review.Platform),
+		Data:    data,
+	})
+	if err != nil {
+		return fmt.Errorf("nats request: %w", err)
+	}
+
+	var resp a2a.ToolResponse
+	if err := json.Unmarshal(msg.Data, &resp); err != nil {
+		return fmt.Errorf("decode agent response: %w", err)
+	}
+	if !resp.Success {
+		return fmt.Errorf("agent error: %s", resp.Error)
+	}
+	return nil
+}
+
+// buildPlatformReply maps a Review + reply text to the platform-agent tool
+// name and its argument map. Argument shapes mirror the registrations in
+// services/orchestrator/cmd/main.go so the same agent handlers work whether
+// the LLM dispatches them or the manual /reviews/{id}/reply path does.
+//
+// Returns ("", nil, nil) for platforms with no reply tool (currently none)
+// and ("", nil, err) when required identifiers are missing on the review
+// (manual replies for malformed rows are refused rather than silently lost).
+func buildPlatformReply(review *domain.Review, replyText string) (toolName string, args map[string]interface{}, err error) {
+	switch review.Platform {
+	case a2a.AgentVK:
+		// VK external_id is composed as "<post_id>_<comment_id>" by
+		// review_sync.externalIDFromMap. Split it back out — both fields are
+		// required by vk__reply_comment.
+		parts := strings.SplitN(review.ExternalID, "_", 2)
+		if len(parts) != 2 {
+			return "", nil, fmt.Errorf("vk external_id %q is not <post>_<comment>", review.ExternalID)
+		}
+		postID, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return "", nil, fmt.Errorf("vk post_id %q: %w", parts[0], err)
+		}
+		commentID, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return "", nil, fmt.Errorf("vk comment_id %q: %w", parts[1], err)
+		}
+		return "vk__reply_comment", map[string]interface{}{
+			"post_id":    float64(postID),
+			"comment_id": float64(commentID),
+			"text":       replyText,
+		}, nil
+
+	case a2a.AgentTelegram:
+		// Telegram review docs carry chat_id + message_id in platform_meta
+		// (review_sync stamps it from the agent's get_reviews payload). Both
+		// are required by telegram__reply_to_comment.
+		chatID, ok := metaString(review.PlatformMeta, "chat_id")
+		if !ok {
+			return "", nil, fmt.Errorf("telegram review %q: missing chat_id in platform_meta", review.ID)
+		}
+		messageID, ok := metaInt(review.PlatformMeta, "message_id")
+		if !ok {
+			return "", nil, fmt.Errorf("telegram review %q: missing message_id in platform_meta", review.ID)
+		}
+		return "telegram__reply_to_comment", map[string]interface{}{
+			"chat_id":    chatID,
+			"message_id": float64(messageID),
+			"text":       replyText,
+		}, nil
+
+	case a2a.AgentYandexBusiness:
+		// Yandex review external_id is the platform's review id verbatim.
+		if review.ExternalID == "" {
+			return "", nil, fmt.Errorf("yandex review %q: empty external_id", review.ID)
+		}
+		return "yandex_business__reply_review", map[string]interface{}{
+			"review_id": review.ExternalID,
+			"text":      replyText,
+		}, nil
+
+	case a2a.AgentGoogleBusiness:
+		if review.ExternalID == "" {
+			return "", nil, fmt.Errorf("google review %q: empty external_id", review.ID)
+		}
+		return "google_business__reply_review", map[string]interface{}{
+			"review_name": review.ExternalID,
+			"text":        replyText,
+		}, nil
+	}
+
+	// Unknown platform — historical Mongo-only behavior.
+	return "", nil, nil
+}
+
+// metaString reads a string-coerced value from platform_meta, accepting both
+// native string and numeric-as-string representations (the agents serialize
+// JSON, so int → float64 round-trips through Mongo).
+func metaString(m map[string]interface{}, key string) (string, bool) {
+	if m == nil {
+		return "", false
+	}
+	switch v := m[key].(type) {
+	case string:
+		if v == "" {
+			return "", false
+		}
+		return v, true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	case int:
+		return strconv.Itoa(v), true
+	case int64:
+		return strconv.FormatInt(v, 10), true
+	}
+	return "", false
+}
+
+// metaInt reads an int-coerced value from platform_meta. Tolerates the
+// JSON-roundtripped float64 representation that's the default after
+// agent → NATS → BSON.
+func metaInt(m map[string]interface{}, key string) (int64, bool) {
+	if m == nil {
+		return 0, false
+	}
+	switch v := m[key].(type) {
+	case float64:
+		return int64(v), true
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	case string:
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
 }

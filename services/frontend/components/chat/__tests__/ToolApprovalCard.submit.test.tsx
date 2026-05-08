@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ToolApprovalCard } from '../ToolApprovalCard';
@@ -95,25 +95,33 @@ describe('ToolApprovalCard — premature Submit and atomic payload shape', () =>
     let callCount = 0;
     const onSubmit = vi.fn().mockImplementation(async () => {
       callCount += 1;
-      // First call blocks long enough for extra user.clicks to be dispatched.
+      // First call blocks long enough for extra clicks to be dispatched.
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={onSubmit} />);
 
-    // Decide all three.
+    // Decide all three rows so Submit is "armed" (no premature-submit branch).
     const approves = screen.getAllByRole('button', { name: /^Одобрить /u });
     for (const btn of approves) {
       await user.click(btn);
     }
 
     const submit = screen.getByRole('button', { name: /^Подтвердить$/ });
-    await user.click(submit);
-    // Second click: the button is now HTML-disabled because `submitting` is true.
-    await user.click(submit);
-    await user.click(submit);
 
-    // Wait for the first onSubmit to finish.
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    // Use fireEvent (synchronous) instead of userEvent for the rapid-click
+    // sequence: userEvent yields to the event loop between events, which
+    // lets React flush submittingRef changes and makes the timing test
+    // flaky under heavy CI load. fireEvent dispatches synchronously, so
+    // all three click handlers run before any microtask resolves — that
+    // is exactly the race condition the synchronous `submittingRef` guard
+    // in handleSubmit is designed to defeat.
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    // Wait for the first onSubmit's 50 ms timer + a generous slack so the
+    // guarded-out clicks have unambiguously had their chance to slip past.
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(callCount).toBe(1);
   });
