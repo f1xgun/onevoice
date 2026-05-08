@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { fetchTools } from '@/lib/api/tools';
+import { PLATFORM_DISPLAY_ORDER } from '@/lib/platforms';
 import type { Tool } from '@/lib/schemas';
 
 // Phase 16 — live feed of the orchestrator registry (GET /api/v1/tools).
@@ -25,6 +26,25 @@ export function useTools() {
 // (settings/tools, ProjectApprovalOverrides, ToolCheckboxGrid,
 // WhitelistWarningBanner) all depend on these exact keys.
 export type PlatformKey = 'telegram' | 'vk' | 'yandex_business' | 'google_business' | 'other';
+
+// Display order for tool-bearing platforms — derived from the canonical
+// PLATFORM_DISPLAY_ORDER in lib/platforms.ts so adding a new platform with
+// tools only requires extending the registry, not every consumer. Excludes
+// 2gis/avito (no tools) and "other" (rendered separately when non-empty).
+const toolBearingKeys: ReadonlySet<PlatformKey> = new Set<PlatformKey>([
+  'telegram',
+  'vk',
+  'yandex_business',
+  'google_business',
+]);
+
+// flatMap rather than filter so the narrowing from PlatformId → PlatformKey
+// is explicit. PlatformId is the registry-wide type (includes 2gis/avito);
+// PlatformKey is the tool-bearing subset. TS cannot infer the narrowing from
+// a Set membership check alone.
+export const TOOL_PLATFORM_ORDER: PlatformKey[] = PLATFORM_DISPLAY_ORDER.flatMap((id) =>
+  toolBearingKeys.has(id as PlatformKey) ? [id as PlatformKey] : []
+);
 
 // toPlatformKey maps raw backend platform strings (as returned by
 // GET /api/v1/tools) to stable UI keys. Legacy `yandex_business` /
