@@ -19,6 +19,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/pkg/vkapi"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -456,7 +457,7 @@ func (s *Syncer) syncVKInfo(ctx context.Context, business *domain.Business, grou
 	params := url.Values{
 		"group_id":     {groupID},
 		"access_token": {token},
-		"v":            {"5.199"},
+		"v":            {vkapi.APIVersion},
 	}
 	params.Set("description", business.Description)
 	if business.Phone != "" {
@@ -485,7 +486,7 @@ func (s *Syncer) syncVKInfo(ctx context.Context, business *domain.Business, grou
 
 // callVKAPI makes a VK API request and logs the result. Returns error message or empty string on success.
 func (s *Syncer) callVKAPI(ctx context.Context, method string, params url.Values, groupID string) string {
-	apiURL := "https://api.vk.com/method/" + method + "?" + params.Encode()
+	apiURL := vkapi.DefaultAPIBaseURL + "/method/" + method + "?" + params.Encode()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {

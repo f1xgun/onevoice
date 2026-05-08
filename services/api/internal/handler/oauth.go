@@ -23,8 +23,23 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/vkapi"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+)
+
+// External OAuth/API endpoints used by this handler. VK lives in pkg/vkapi
+// (shared with platform/sync). Yandex / Google / Telegram-bot endpoints stay
+// here because no other package calls them directly today. Names use
+// "default" prefix to avoid colliding with the *OAuthHandler methods that
+// honor cfg overrides on top of these defaults.
+const (
+	defaultYandexAuthURL          = "https://oauth.yandex.ru/authorize"
+	defaultYandexTokenURL         = "https://oauth.yandex.ru/token"
+	defaultGoogleTokenURL         = "https://oauth2.googleapis.com/token"
+	defaultGoogleAccountsURL      = "https://mybusinessaccountmanagement.googleapis.com"
+	defaultGoogleBusinessInfoURL  = "https://mybusinessbusinessinformation.googleapis.com"
+	defaultTelegramBotAPIBase     = "https://api.telegram.org"
 )
 
 // OAuthStateService abstracts OAuth state management.
@@ -132,7 +147,7 @@ func (h *OAuthHandler) vkAPIBase() string {
 	if h.cfg.vkAPIBaseURL != "" {
 		return h.cfg.vkAPIBaseURL
 	}
-	return "https://api.vk.com"
+	return vkapi.DefaultAPIBaseURL
 }
 
 // vkTokenBaseURL returns the classic VK OAuth base URL.
@@ -144,7 +159,7 @@ func (h *OAuthHandler) vkTokenBaseURL() string {
 	if h.cfg.vkTokenBaseURL != "" {
 		return h.cfg.vkTokenBaseURL
 	}
-	return "https://oauth.vk.com"
+	return vkapi.DefaultOAuthBaseURL
 }
 
 // yandexTokenURL returns the Yandex token exchange URL (supports test override via cfg.yandexTokenBaseURL).
@@ -152,7 +167,7 @@ func (h *OAuthHandler) yandexTokenURL() string {
 	if h.cfg.yandexTokenBaseURL != "" {
 		return h.cfg.yandexTokenBaseURL + "/token"
 	}
-	return "https://oauth.yandex.ru/token"
+	return defaultYandexTokenURL
 }
 
 // GetVKAuthURL generates a classic VK OAuth authorization URL (JWT required).
@@ -193,7 +208,7 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 	// on this app's oauth.vk.com flow (not enabled in app settings).
 	// Without `offline`, user tokens expire in ~24h; the ReviewSyncer
 	// warns once per expired token (tracked separately).
-	authURL := fmt.Sprintf("%s/authorize?client_id=%s&redirect_uri=%s&scope=wall,groups,manage&response_type=code&state=%s&v=5.199",
+	authURL := fmt.Sprintf("%s/authorize?client_id=%s&redirect_uri=%s&scope=wall,groups,manage&response_type=code&state=%s&v=" + vkapi.APIVersion,
 		h.vkTokenBaseURL(),
 		url.QueryEscape(h.cfg.VKClientID),
 		url.QueryEscape(h.cfg.VKRedirectURI),
@@ -304,7 +319,7 @@ func (h *OAuthHandler) VKCommunities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call VK API: groups.get with filter=admin
-	vkURL := fmt.Sprintf("https://api.vk.com/method/groups.get?filter=admin&extended=1&fields=name,photo_50,screen_name,members_count&access_token=%s&v=5.199",
+	vkURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL + "/method/groups.get?filter=admin&extended=1&fields=name,photo_50,screen_name,members_count&access_token=%s&v=" + vkapi.APIVersion,
 		url.QueryEscape(token),
 	)
 	resp, err := h.httpClient.Get(vkURL)
@@ -389,7 +404,7 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 	}
 
 	// Old VK OAuth with group_ids — returns community-scoped token
-	authURL := fmt.Sprintf("https://oauth.vk.com/authorize?client_id=%s&redirect_uri=%s&group_ids=%s&scope=wall,manage&response_type=code&state=%s&v=5.199",
+	authURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL + "/authorize?client_id=%s&redirect_uri=%s&group_ids=%s&scope=wall,manage&response_type=code&state=%s&v=" + vkapi.APIVersion,
 		url.QueryEscape(h.cfg.VKClientID),
 		url.QueryEscape(h.cfg.VKCommunityRedirectURI()),
 		url.QueryEscape(groupID),
@@ -417,7 +432,7 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Exchange code for community token via old VK OAuth
-	tokenURL := fmt.Sprintf("https://oauth.vk.com/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
+	tokenURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL + "/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
 		h.cfg.VKClientID,
 		h.cfg.VKClientSecret,
 		url.QueryEscape(h.cfg.VKCommunityRedirectURI()),
@@ -633,7 +648,7 @@ func (h *OAuthHandler) probeVKCommunityToken(
 	}
 
 	apiURL := fmt.Sprintf(
-		"%s/method/groups.getById?fields=name,screen_name,photo_50&access_token=%s&v=5.199",
+		"%s/method/groups.getById?fields=name,screen_name,photo_50&access_token=%s&v=" + vkapi.APIVersion,
 		h.vkAPIBase(), url.QueryEscape(accessToken),
 	)
 	if groupParam != "" {
@@ -684,7 +699,7 @@ func (h *OAuthHandler) probeVKCommunityToken(
 // block on a flaky check.
 func (h *OAuthHandler) checkVKWallScope(ctx context.Context, accessToken string) error {
 	apiURL := fmt.Sprintf(
-		"%s/method/groups.getTokenPermissions?access_token=%s&v=5.199",
+		"%s/method/groups.getTokenPermissions?access_token=%s&v=" + vkapi.APIVersion,
 		h.vkAPIBase(), url.QueryEscape(accessToken),
 	)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
@@ -821,7 +836,7 @@ func (h *OAuthHandler) resolveVKGroupID(ctx context.Context, input string) (stri
 	if h.cfg.VKServiceKey == "" {
 		return "", fmt.Errorf("VK service key not configured; pass a numeric group id")
 	}
-	apiURL := fmt.Sprintf("https://api.vk.com/method/groups.getById?group_id=%s&access_token=%s&v=5.199",
+	apiURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL + "/method/groups.getById?group_id=%s&access_token=%s&v=" + vkapi.APIVersion,
 		url.QueryEscape(input), url.QueryEscape(h.cfg.VKServiceKey))
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	resp, err := h.httpClient.Do(req)
@@ -865,7 +880,7 @@ func (h *OAuthHandler) fetchVKCommunityName(ctx context.Context, groupID, token 
 	if token == "" {
 		return "", nil
 	}
-	apiURL := fmt.Sprintf("https://api.vk.com/method/groups.getById?group_id=%s&fields=name&access_token=%s&v=5.199",
+	apiURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL + "/method/groups.getById?group_id=%s&fields=name&access_token=%s&v=" + vkapi.APIVersion,
 		url.QueryEscape(groupID), url.QueryEscape(token))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
@@ -985,7 +1000,7 @@ func (h *OAuthHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.Req
 // telegramGetChat calls the Telegram Bot API to validate bot access and
 // fetch channel title + linked discussion chat id.
 func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (telegramChatInfo, error) {
-	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getChat?chat_id=%s",
+	apiURL := fmt.Sprintf(defaultTelegramBotAPIBase + "/bot%s/getChat?chat_id=%s",
 		botToken, url.QueryEscape(chatID))
 	if h.cfg.telegramAPIBaseURL != "" {
 		apiURL = fmt.Sprintf("%s/bot%s/getChat?chat_id=%s",
@@ -1224,7 +1239,7 @@ func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	authURL := fmt.Sprintf("https://oauth.yandex.ru/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s",
+	authURL := fmt.Sprintf(defaultYandexAuthURL + "?response_type=code&client_id=%s&redirect_uri=%s&state=%s",
 		url.QueryEscape(h.cfg.YandexClientID),
 		url.QueryEscape(h.cfg.YandexRedirectURI),
 		url.QueryEscape(state),
@@ -1304,7 +1319,7 @@ func (h *OAuthHandler) googleTokenURL() string {
 	if h.cfg.googleTokenBaseURL != "" {
 		return h.cfg.googleTokenBaseURL + "/token"
 	}
-	return "https://oauth2.googleapis.com/token"
+	return defaultGoogleTokenURL
 }
 
 // googleAccountsURL returns the Google Business Account Management API base URL.
@@ -1312,7 +1327,7 @@ func (h *OAuthHandler) googleAccountsURL() string {
 	if h.cfg.googleAccountsBaseURL != "" {
 		return h.cfg.googleAccountsBaseURL
 	}
-	return "https://mybusinessaccountmanagement.googleapis.com"
+	return defaultGoogleAccountsURL
 }
 
 // googleBusinessInfoURL returns the Google Business Information API base URL.
@@ -1320,7 +1335,7 @@ func (h *OAuthHandler) googleBusinessInfoURL() string {
 	if h.cfg.googleBusinessInfoURL != "" {
 		return h.cfg.googleBusinessInfoURL
 	}
-	return "https://mybusinessbusinessinformation.googleapis.com"
+	return defaultGoogleBusinessInfoURL
 }
 
 // googleTempData holds temporary token data stored in Redis during multi-location selection.
