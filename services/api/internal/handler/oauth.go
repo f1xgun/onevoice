@@ -34,12 +34,12 @@ import (
 // "default" prefix to avoid colliding with the *OAuthHandler methods that
 // honor cfg overrides on top of these defaults.
 const (
-	defaultYandexAuthURL          = "https://oauth.yandex.ru/authorize"
-	defaultYandexTokenURL         = "https://oauth.yandex.ru/token"
-	defaultGoogleTokenURL         = "https://oauth2.googleapis.com/token"
-	defaultGoogleAccountsURL      = "https://mybusinessaccountmanagement.googleapis.com"
-	defaultGoogleBusinessInfoURL  = "https://mybusinessbusinessinformation.googleapis.com"
-	defaultTelegramBotAPIBase     = "https://api.telegram.org"
+	defaultYandexAuthURL         = "https://oauth.yandex.ru/authorize"
+	defaultYandexTokenURL        = "https://oauth.yandex.ru/token"       //nolint:gosec // G101: OAuth token-exchange endpoint URL, not a credential
+	defaultGoogleTokenURL        = "https://oauth2.googleapis.com/token" //nolint:gosec // G101: OAuth token-exchange endpoint URL, not a credential
+	defaultGoogleAccountsURL     = "https://mybusinessaccountmanagement.googleapis.com"
+	defaultGoogleBusinessInfoURL = "https://mybusinessbusinessinformation.googleapis.com"
+	defaultTelegramBotAPIBase    = "https://api.telegram.org"
 )
 
 // OAuthStateService abstracts OAuth state management.
@@ -208,7 +208,7 @@ func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
 	// on this app's oauth.vk.com flow (not enabled in app settings).
 	// Without `offline`, user tokens expire in ~24h; the ReviewSyncer
 	// warns once per expired token (tracked separately).
-	authURL := fmt.Sprintf("%s/authorize?client_id=%s&redirect_uri=%s&scope=wall,groups,manage&response_type=code&state=%s&v=" + vkapi.APIVersion,
+	authURL := fmt.Sprintf("%s/authorize?client_id=%s&redirect_uri=%s&scope=wall,groups,manage&response_type=code&state=%s&v="+vkapi.APIVersion,
 		h.vkTokenBaseURL(),
 		url.QueryEscape(h.cfg.VKClientID),
 		url.QueryEscape(h.cfg.VKRedirectURI),
@@ -319,7 +319,7 @@ func (h *OAuthHandler) VKCommunities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call VK API: groups.get with filter=admin
-	vkURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL + "/method/groups.get?filter=admin&extended=1&fields=name,photo_50,screen_name,members_count&access_token=%s&v=" + vkapi.APIVersion,
+	vkURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL+"/method/groups.get?filter=admin&extended=1&fields=name,photo_50,screen_name,members_count&access_token=%s&v="+vkapi.APIVersion,
 		url.QueryEscape(token),
 	)
 	resp, err := h.httpClient.Get(vkURL)
@@ -404,7 +404,7 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 	}
 
 	// Old VK OAuth with group_ids — returns community-scoped token
-	authURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL + "/authorize?client_id=%s&redirect_uri=%s&group_ids=%s&scope=wall,manage&response_type=code&state=%s&v=" + vkapi.APIVersion,
+	authURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL+"/authorize?client_id=%s&redirect_uri=%s&group_ids=%s&scope=wall,manage&response_type=code&state=%s&v="+vkapi.APIVersion,
 		url.QueryEscape(h.cfg.VKClientID),
 		url.QueryEscape(h.cfg.VKCommunityRedirectURI()),
 		url.QueryEscape(groupID),
@@ -432,7 +432,7 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Exchange code for community token via old VK OAuth
-	tokenURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL + "/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
+	tokenURL := fmt.Sprintf(vkapi.DefaultOAuthBaseURL+"/access_token?client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
 		h.cfg.VKClientID,
 		h.cfg.VKClientSecret,
 		url.QueryEscape(h.cfg.VKCommunityRedirectURI()),
@@ -648,7 +648,7 @@ func (h *OAuthHandler) probeVKCommunityToken(
 	}
 
 	apiURL := fmt.Sprintf(
-		"%s/method/groups.getById?fields=name,screen_name,photo_50&access_token=%s&v=" + vkapi.APIVersion,
+		"%s/method/groups.getById?fields=name,screen_name,photo_50&access_token=%s&v="+vkapi.APIVersion,
 		h.vkAPIBase(), url.QueryEscape(accessToken),
 	)
 	if groupParam != "" {
@@ -699,7 +699,7 @@ func (h *OAuthHandler) probeVKCommunityToken(
 // block on a flaky check.
 func (h *OAuthHandler) checkVKWallScope(ctx context.Context, accessToken string) error {
 	apiURL := fmt.Sprintf(
-		"%s/method/groups.getTokenPermissions?access_token=%s&v=" + vkapi.APIVersion,
+		"%s/method/groups.getTokenPermissions?access_token=%s&v="+vkapi.APIVersion,
 		h.vkAPIBase(), url.QueryEscape(accessToken),
 	)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
@@ -836,7 +836,7 @@ func (h *OAuthHandler) resolveVKGroupID(ctx context.Context, input string) (stri
 	if h.cfg.VKServiceKey == "" {
 		return "", fmt.Errorf("VK service key not configured; pass a numeric group id")
 	}
-	apiURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL + "/method/groups.getById?group_id=%s&access_token=%s&v=" + vkapi.APIVersion,
+	apiURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL+"/method/groups.getById?group_id=%s&access_token=%s&v="+vkapi.APIVersion,
 		url.QueryEscape(input), url.QueryEscape(h.cfg.VKServiceKey))
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	resp, err := h.httpClient.Do(req)
@@ -880,7 +880,7 @@ func (h *OAuthHandler) fetchVKCommunityName(ctx context.Context, groupID, token 
 	if token == "" {
 		return "", nil
 	}
-	apiURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL + "/method/groups.getById?group_id=%s&fields=name&access_token=%s&v=" + vkapi.APIVersion,
+	apiURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL+"/method/groups.getById?group_id=%s&fields=name&access_token=%s&v="+vkapi.APIVersion,
 		url.QueryEscape(groupID), url.QueryEscape(token))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
@@ -1000,7 +1000,7 @@ func (h *OAuthHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.Req
 // telegramGetChat calls the Telegram Bot API to validate bot access and
 // fetch channel title + linked discussion chat id.
 func (h *OAuthHandler) telegramGetChat(botToken, chatID string) (telegramChatInfo, error) {
-	apiURL := fmt.Sprintf(defaultTelegramBotAPIBase + "/bot%s/getChat?chat_id=%s",
+	apiURL := fmt.Sprintf(defaultTelegramBotAPIBase+"/bot%s/getChat?chat_id=%s",
 		botToken, url.QueryEscape(chatID))
 	if h.cfg.telegramAPIBaseURL != "" {
 		apiURL = fmt.Sprintf("%s/bot%s/getChat?chat_id=%s",
@@ -1239,7 +1239,7 @@ func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	authURL := fmt.Sprintf(defaultYandexAuthURL + "?response_type=code&client_id=%s&redirect_uri=%s&state=%s",
+	authURL := fmt.Sprintf(defaultYandexAuthURL+"?response_type=code&client_id=%s&redirect_uri=%s&state=%s",
 		url.QueryEscape(h.cfg.YandexClientID),
 		url.QueryEscape(h.cfg.YandexRedirectURI),
 		url.QueryEscape(state),
