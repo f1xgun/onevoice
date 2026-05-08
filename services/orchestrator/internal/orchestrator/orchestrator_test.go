@@ -13,7 +13,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // stubLLM returns canned responses in order.
@@ -35,7 +35,7 @@ func TestRun_TextResponse_EmitsTextEvent(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{
 		{Content: "Привет! Чем могу помочь?", FinishReason: "stop"},
 	}}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	biz := prompt.BusinessContext{Name: "Кофейня"}
 	orch := orchestrator.New(stub, reg)
 
@@ -74,11 +74,11 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 		{Content: "Вот информация о бизнесе", FinishReason: "stop"},
 	}}
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "get info", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"name": "Кофейня Уют"}, nil
 	}), domain.ToolFloorAuto, nil)
 
@@ -133,11 +133,11 @@ func TestRun_MaxIterations_Stops(t *testing.T) {
 		})
 	}
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "d", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorAuto, nil)
 

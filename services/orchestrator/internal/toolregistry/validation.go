@@ -1,4 +1,4 @@
-package tools
+package toolregistry
 
 import "github.com/f1xgun/onevoice/pkg/toolvalidation"
 

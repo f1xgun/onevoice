@@ -4,7 +4,7 @@
 // MUST reject edits on non-editable fields with 400 — D-12 "never silently
 // ignore").
 //
-// Rationale for the relocation from services/orchestrator/internal/tools:
+// Rationale for the relocation from services/orchestrator/internal/toolregistry:
 // HITL-07 + D-12 require that the resolve handler in services/api map edit
 // validation failures to a 400 with the editable list in the response body.
 // The orchestrator's internal package is not importable from services/api
