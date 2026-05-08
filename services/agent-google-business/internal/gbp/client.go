@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 )
 
 // Client is the GBP HTTP client. Each instance is bound to a single access token.
@@ -24,10 +23,10 @@ type Client struct {
 func New(token string) *Client {
 	return &Client{
 		token:               token,
-		httpClient:          &http.Client{Timeout: 15 * time.Second},
-		AccountsBaseURL:     "https://mybusinessaccountmanagement.googleapis.com",
-		BusinessInfoBaseURL: "https://mybusinessbusinessinformation.googleapis.com",
-		ReviewsBaseURL:      "https://mybusiness.googleapis.com",
+		httpClient:          &http.Client{Timeout: defaultHTTPTimeout},
+		AccountsBaseURL:     defaultAccountsBaseURL,
+		BusinessInfoBaseURL: defaultBusinessInfoBaseURL,
+		ReviewsBaseURL:      defaultReviewsBaseURL,
 	}
 }
 
@@ -94,8 +93,8 @@ func (c *Client) ListLocations(ctx context.Context, accountName string) ([]Locat
 
 // GetReviews fetches reviews for a location (accountName format: "accounts/X/locations/Y").
 func (c *Client) GetReviews(ctx context.Context, locationName string, limit int) (*ListReviewsResponse, error) {
-	if limit <= 0 || limit > 50 {
-		limit = 50
+	if limit <= 0 || limit > maxReviewLimit {
+		limit = maxReviewLimit
 	}
 	url := fmt.Sprintf("%s/v4/%s/reviews?pageSize=%d", c.ReviewsBaseURL, locationName, limit)
 	body, err := c.doRequest(ctx, "GET", url, nil)

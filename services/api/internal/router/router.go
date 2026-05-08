@@ -15,6 +15,19 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
+// Per-endpoint per-window rate limits (window is always time.Minute today).
+// Register is tighter than login because automated signup abuse is the
+// primary cost of getting these wrong; login/refresh are looser to absorb
+// retry storms after backend hiccups. Chat / HITL share a budget because
+// the chat-proxy fans out into HITL resolve calls under the same auth.
+const (
+	registerRateLimit = 5
+	loginRateLimit    = 10
+	chatRateLimit     = 10
+	hitlRateLimit     = 10
+	corsMaxAge        = 300
+)
+
 // Handlers encapsulates all HTTP handlers
 type Handlers struct {
 	Auth          *handler.AuthHandler
@@ -50,7 +63,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Link", "X-Correlation-ID"},
 		AllowCredentials: true,
-		MaxAge:           300,
+		MaxAge:           corsMaxAge,
 	}))
 	r.Use(middleware.SecurityHeaders())
 	r.Use(metrics.HTTPMiddleware)
@@ -58,9 +71,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth)
-		r.With(middleware.RateLimit(redisClient, 5, time.Minute)).Post("/auth/register", handlers.Auth.Register)
-		r.With(middleware.RateLimit(redisClient, 10, time.Minute)).Post("/auth/login", handlers.Auth.Login)
-		r.With(middleware.RateLimit(redisClient, 10, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
+		r.With(middleware.RateLimit(redisClient, registerRateLimit, time.Minute)).Post("/auth/register", handlers.Auth.Register)
+		r.With(middleware.RateLimit(redisClient, loginRateLimit, time.Minute)).Post("/auth/login", handlers.Auth.Login)
+		r.With(middleware.RateLimit(redisClient, loginRateLimit, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
 
 		// OAuth callback routes (public — state parameter validates session)
 		r.Get("/oauth/vk/callback", handlers.OAuth.VKCallback)
@@ -121,7 +134,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Post("/integrations/google_business/select-location", handlers.OAuth.GoogleSelectLocation)
 
 			// Chat proxy (replaces direct orchestrator access)
-			r.With(middleware.RateLimitByUser(redisClient, 10, time.Minute)).Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
+			r.With(middleware.RateLimitByUser(redisClient, chatRateLimit, time.Minute)).Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
 
 			// Conversation routes
 			r.Get("/conversations", handlers.Conversation.ListConversations)
@@ -163,7 +176,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// Phase 16 HITL routes (Plan 16-07)
 			if handlers.HITL != nil {
 				r.Post("/conversations/{id}/pending-tool-calls/{batch_id}/resolve", handlers.HITL.ResolvePendingToolCalls)
-				r.With(middleware.RateLimitByUser(redisClient, 10, time.Minute)).
+				r.With(middleware.RateLimitByUser(redisClient, hitlRateLimit, time.Minute)).
 					Post("/chat/{id}/resume", handlers.HITL.Resume)
 				r.Get("/tools", handlers.HITL.GetTools)
 			}

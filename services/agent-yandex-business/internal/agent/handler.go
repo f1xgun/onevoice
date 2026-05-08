@@ -10,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
 )
 
@@ -75,21 +76,21 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		err  error
 	)
 	switch req.Tool {
-	case "yandex_business__get_info":
+	case tools.YandexBusinessGetInfo:
 		resp, err = h.getInfo(ctx, req)
-	case "yandex_business__update_hours":
+	case tools.YandexBusinessUpdateHours:
 		resp, err = h.updateHours(ctx, req)
-	case "yandex_business__update_info":
+	case tools.YandexBusinessUpdateInfo:
 		resp, err = h.updateInfo(ctx, req)
-	case "yandex_business__get_reviews":
+	case tools.YandexBusinessGetReviews:
 		resp, err = h.getReviews(ctx, req)
-	case "yandex_business__reply_review":
+	case tools.YandexBusinessReplyReview:
 		resp, err = h.replyReview(ctx, req)
-	case "yandex_business__create_post":
+	case tools.YandexBusinessCreatePost:
 		resp, err = h.createPost(ctx, req)
-	case "yandex_business__upload_photo":
+	case tools.YandexBusinessUploadPhoto:
 		resp, err = h.uploadPhoto(ctx, req)
-	case "yandex_business__list_companies":
+	case tools.YandexBusinessListCompanies:
 		resp, err = h.listCompanies(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
@@ -171,7 +172,7 @@ func classifyYandexError(err error) error {
 }
 
 func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBrowser, error) {
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, "yandex_business", "")
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentYandexBusiness, "")
 	if err != nil {
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}

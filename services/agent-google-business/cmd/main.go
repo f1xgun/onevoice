@@ -22,6 +22,12 @@ import (
 	"github.com/f1xgun/onevoice/services/agent-google-business/internal/gbp"
 )
 
+const (
+	healthReadHeaderTimeout = 5 * time.Second
+	shutdownTimeout         = 5 * time.Second
+	natsPingTimeout         = 2 * time.Second
+)
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("fatal error", "error", err)
@@ -58,7 +64,7 @@ func run() error {
 	mux.HandleFunc("/health/live", hc.LiveHandler())
 	mux.HandleFunc("/health/ready", hc.ReadyHandler())
 	mux.HandleFunc("/health", hc.LiveHandler())
-	healthSrv := &http.Server{Addr: ":" + cfg.HealthPort, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	healthSrv := &http.Server{Addr: ":" + cfg.HealthPort, Handler: mux, ReadHeaderTimeout: healthReadHeaderTimeout}
 	go func() {
 		slog.Info("health server listening", "addr", ":"+cfg.HealthPort)
 		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -76,7 +82,7 @@ func run() error {
 	slog.Info("Google Business agent started", "subject", a2a.Subject(a2a.AgentGoogleBusiness))
 	<-ctx.Done()
 	slog.Info("Google Business agent shutting down - draining in-flight requests")
-	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutCtx, shutCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutCancel()
 	_ = healthSrv.Shutdown(shutCtx)
 	transport.Close()
@@ -115,7 +121,7 @@ func newDedupeClient(redisURL string) *hitldedupe.DedupeClient {
 		return nil
 	}
 	rdb := redis.NewClient(opts)
-	pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	pingCtx, cancel := context.WithTimeout(context.Background(), natsPingTimeout)
 	defer cancel()
 	if err := rdb.Ping(pingCtx).Err(); err != nil {
 		slog.Warn("Redis ping failed; HITL dedupe disabled", "error", err)
