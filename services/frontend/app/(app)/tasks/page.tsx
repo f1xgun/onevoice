@@ -28,6 +28,12 @@ import {
 } from '@/lib/constants/statuses';
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import { useTasksStream } from '@/hooks/useTasksStream';
+
+// Background poll cadence for the tasks list. SSE drives realtime updates;
+// the poll is a belt-and-braces refresh in case the stream missed an event
+// (e.g. browser put us to sleep). 30 s is fast enough that a missed task
+// surfaces within one poll cycle without flooding the backend.
+const POLL_INTERVAL_MS = 30_000;
 import type { AgentTask, TaskStreamEvent } from '@/types/task';
 import { Button } from '@/components/ui/button';
 import { ChannelMark } from '@/components/ui/channel-mark';
@@ -117,7 +123,7 @@ export default function TasksPage() {
         const list = (data as { tasks?: AgentTask[] } | null)?.tasks;
         return Array.isArray(list) ? list : [];
       }),
-    refetchInterval: 30_000,
+    refetchInterval: POLL_INTERVAL_MS,
   });
 
   const onStreamEvent = useCallback(

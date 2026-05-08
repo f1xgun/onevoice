@@ -15,6 +15,11 @@ import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { api } from '@/lib/api';
 import { REVIEW_STATUS_BADGES, type ReviewStatus } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
+
+// Manual refresh fan-out budget. The backend caps total work at 90s; the
+// extra headroom absorbs network slack so the request doesn't surface as
+// a fake timeout in the UI before the agent actually finishes.
+const REVIEWS_REFRESH_TIMEOUT_MS = 120_000;
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
@@ -163,7 +168,8 @@ export default function ReviewsPage() {
   // The 120s timeout accommodates Yandex.Business RPA scraping, which can
   // take up to ~60s; the backend caps total work at 90s per call.
   const refreshMutation = useMutation({
-    mutationFn: () => api.post('/reviews/refresh', undefined, { timeout: 120_000 }),
+    mutationFn: () =>
+      api.post('/reviews/refresh', undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reviews'] });
       toast.success('Отзывы обновлены');
