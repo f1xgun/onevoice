@@ -100,7 +100,7 @@ func TestDraftReplyHandler_RejectsEmptyReview(t *testing.T) {
 
 func TestDraftReplyHandler_RejectsNonPOST(t *testing.T) {
 	h := NewDraftReplyHandler(&fakeChatter{}, "m")
-	req := httptest.NewRequest(http.MethodGet, "/internal/draft-reply", nil)
+	req := httptest.NewRequest(http.MethodGet, "/internal/draft-reply", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusMethodNotAllowed {

@@ -21,15 +21,15 @@ import (
 // Only methods the drafter actually calls are real; the rest panic so a
 // drafter that grew an unintended dependency would surface immediately.
 type fakeReviewRepo struct {
-	mu                  sync.Mutex
-	pending             []domain.Review
-	examples            []domain.Review
-	pendingErr          error
-	examplesErr         error
-	updateDraftErr      error
-	updateDraftCalls    []updateDraftCall
-	listPendingCalls    int
-	listExamplesCalls   int
+	mu                sync.Mutex
+	pending           []domain.Review
+	examples          []domain.Review
+	pendingErr        error
+	examplesErr       error
+	updateDraftErr    error
+	updateDraftCalls  []updateDraftCall
+	listPendingCalls  int
+	listExamplesCalls int
 }
 
 type updateDraftCall struct {

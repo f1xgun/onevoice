@@ -128,10 +128,10 @@ func (r *reviewRepository) UpdateReply(ctx context.Context, id, replyText, reply
 			"reply_status": replyStatus,
 		},
 		"$unset": bson.M{
-			"draft_reply":         "",
-			"draft_status":        "",
-			"draft_generated_at":  "",
-			"draft_error":         "",
+			"draft_reply":        "",
+			"draft_status":       "",
+			"draft_generated_at": "",
+			"draft_error":        "",
 		},
 	}
 

@@ -42,7 +42,7 @@ var _ ReviewService = (*reviewService)(nil)
 
 // NewReviewService creates a new review service instance. nc may be nil — in
 // that mode Reply only updates Mongo and never reaches out to platform agents
-// (preserves the historical behaviour for environments without NATS).
+// (preserves the historical behavior for environments without NATS).
 func NewReviewService(repo domain.ReviewRepository, businessService BusinessService, nc *natslib.Conn) ReviewService {
 	var requester natsRequester
 	if nc != nil {
@@ -134,7 +134,7 @@ func (s *reviewService) Reply(ctx context.Context, userID uuid.UUID, id, replyTe
 
 // dispatchToPlatform sends the manual reply to the platform agent over NATS.
 // Returns nil when the agent confirms success, an error otherwise. A nil
-// NATS connection (Mongo-only mode) returns nil — same legacy behaviour.
+// NATS connection (Mongo-only mode) returns nil — same legacy behavior.
 // Unsupported platforms also return nil so business operators can still
 // "mark as replied" for surfaces that don't have an agent yet.
 func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.Review, replyText string) error {
@@ -191,7 +191,7 @@ func (s *reviewService) dispatchToPlatform(ctx context.Context, review *domain.R
 // Returns ("", nil, nil) for platforms with no reply tool (currently none)
 // and ("", nil, err) when required identifiers are missing on the review
 // (manual replies for malformed rows are refused rather than silently lost).
-func buildPlatformReply(review *domain.Review, replyText string) (string, map[string]interface{}, error) {
+func buildPlatformReply(review *domain.Review, replyText string) (toolName string, args map[string]interface{}, err error) {
 	switch review.Platform {
 	case a2a.AgentVK:
 		// VK external_id is composed as "<post_id>_<comment_id>" by
@@ -253,7 +253,7 @@ func buildPlatformReply(review *domain.Review, replyText string) (string, map[st
 		}, nil
 	}
 
-	// Unknown platform — historical Mongo-only behaviour.
+	// Unknown platform — historical Mongo-only behavior.
 	return "", nil, nil
 }
 
