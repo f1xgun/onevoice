@@ -150,9 +150,9 @@ func classifyVKError(err error) error {
 		return err // network or non-VK error — transient, retryable
 	}
 	switch int(vkErr.Code) {
-	case 5, 15, 100, 113: // permanent
+	case vkErrInvalidToken, vkErrAccessDenied, vkErrInvalidParam, vkErrInvalidUser: // permanent
 		return a2a.NewNonRetryableError(err)
-	case 6, 9: // rate-limited — don't retry, surface to user
+	case vkErrTooManyReqs, vkErrFloodControl: // rate-limited — don't retry, surface to user
 		return a2a.NewNonRetryableError(fmt.Errorf("vk rate limit (code %d): %w", int(vkErr.Code), err))
 	default:
 		return err // transient
@@ -329,7 +329,7 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 	countF, _ := req.Args["count"].(float64)
 	count := int(countF)
 	if count == 0 {
-		count = 20
+		count = defaultCommentCount
 	}
 
 	if postID == 0 {
@@ -461,10 +461,10 @@ func (h *Handler) getWallPosts(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 	countF, _ := req.Args["count"].(float64)
 	count := int(countF)
 	if count <= 0 {
-		count = 10
+		count = defaultWallPostCount
 	}
 	if count > 100 {
-		count = 100
+		count = maxWallPostCount
 	}
 
 	posts, total, err := client.GetWallPosts(groupID, count)
