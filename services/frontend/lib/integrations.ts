@@ -42,7 +42,10 @@ export function getIntegrationDisplay(
       case 'vk':
         return typeof md.community_name === 'string' ? md.community_name : '';
       case 'yandex_business':
-        return typeof md.yandex_user === 'string' ? md.yandex_user : '';
+        // business_name is the Sprav profile name (e.g. "Кафе Ромашка"),
+        // resolved lazily via the agent's get_info RPA tool — see
+        // POST /integrations/yandex_business/{id}/refresh-name.
+        return typeof md.business_name === 'string' ? md.business_name : '';
       default:
         return '';
     }

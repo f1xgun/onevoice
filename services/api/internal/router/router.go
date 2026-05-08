@@ -100,6 +100,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// memory/project_yandex_business_no_oauth_api.md for the full rationale.)
 			r.Post("/integrations/yandex_business/probe", handlers.OAuth.ProbeYandexBusiness)
 			r.Post("/integrations/yandex_business/connect", handlers.OAuth.ConnectYandexBusiness)
+			// Lazy backfill of the Sprav business name via agent get_info RPA.
+			r.Post("/integrations/yandex_business/{id}/refresh-name", handlers.OAuth.RefreshYandexBusinessName)
 
 			// VK community token route
 			r.Post("/integrations/vk/connect", handlers.OAuth.ConnectVK)

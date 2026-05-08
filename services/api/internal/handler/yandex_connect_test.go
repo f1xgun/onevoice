@@ -69,7 +69,12 @@ func TestProbeYandexBusiness_InvalidCookies(t *testing.T) {
 }
 
 func TestProbeYandexBusiness_ValidSessionLive(t *testing.T) {
-	probe := newProbeMock(t, `{"display_name":"Test User","login":"testuser"}`, false)
+	// Probe is now session-validity-only. The friendly business name is
+	// resolved separately via RefreshYandexBusinessName → agent get_info,
+	// because Yandex's business.yandex.ru SPA doesn't embed user JSON
+	// inline and the yandex_login cookie is the personal account login,
+	// not the Sprav profile name.
+	probe := newProbeMock(t, "", false)
 	defer probe.Close()
 
 	userID := uuid.New()
@@ -93,8 +98,8 @@ func TestProbeYandexBusiness_ValidSessionLive(t *testing.T) {
 	if resp.SessionValid == nil || !*resp.SessionValid {
 		t.Errorf("expected SessionValid=true, got %v", resp.SessionValid)
 	}
-	if resp.Username != "Test User" {
-		t.Errorf("Username = %q, want Test User", resp.Username)
+	if resp.Username != "" {
+		t.Errorf("Username should be empty (probe doesn't fetch names anymore), got %q", resp.Username)
 	}
 }
 
