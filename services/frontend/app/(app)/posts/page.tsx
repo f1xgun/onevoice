@@ -122,9 +122,9 @@ export default function PostsPage() {
             lands; the same 4-card geometry as the loaded state so the page
             doesn't reflow. */}
         {isLoading ? (
-          <SkeletonMetricStrip count={4} />
+          <SkeletonMetricStrip count={3} />
         ) : (
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <StatCard label="Опубликовано" value={String(counts.published)} hint="за всё время" />
             <StatCard
               label="Запланировано"
@@ -140,14 +140,6 @@ export default function PostsPage() {
               value={String(counts.error)}
               hint={counts.error > 0 ? 'требуют внимания' : 'всё чисто'}
               tone={counts.error > 0 ? 'danger' : 'neutral'}
-            />
-            <StatCard
-              label="Охват за 30 дней"
-              value="—"
-              hint="скоро"
-              tone="muted"
-              // TODO(api): backend doesn't return reach metrics yet. Render a
-              // placeholder so the strip stays visually balanced.
             />
           </section>
         )}
