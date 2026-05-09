@@ -41,6 +41,12 @@ type BrowserPool struct {
 	maxIdle   time.Duration
 	closed    atomic.Bool
 	stopEvict chan struct{}
+
+	// withPageFn, when non-nil, replaces the real WithPage execution path.
+	// Test-only seam: lets tests drive BusinessBrowser methods against a
+	// mocked playwright.Page without launching real Chromium. Production
+	// callers MUST NOT set this — the field is intentionally unexported.
+	withPageFn func(ctx context.Context, businessID, cookiesJSON string, fn func(page playwright.Page) error) error
 }
 
 // NewBrowserPool creates a pool. Chromium is not launched until the first WithPage call.
@@ -135,6 +141,12 @@ func (p *BrowserPool) getOrCreateContext(businessID, cookiesJSON string) (*poole
 func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON string, fn func(page playwright.Page) error) error {
 	if p.closed.Load() {
 		return fmt.Errorf("browser pool is closed")
+	}
+	// Test-only seam: when set (only in *_test.go via the unexported field),
+	// bypass the real Chromium path and execute fn against the test-injected
+	// page directly. Production code never sets withPageFn.
+	if p.withPageFn != nil {
+		return p.withPageFn(ctx, businessID, cookiesJSON, fn)
 	}
 	if err := p.ensureBrowser(); err != nil {
 		return err
