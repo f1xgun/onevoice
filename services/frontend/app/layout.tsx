@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Manrope, JetBrains_Mono } from 'next/font/google';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale, getMessages } from 'next-intl/server';
 import './globals.css';
 import { Providers } from '@/components/providers';
 
@@ -24,11 +26,20 @@ export const metadata: Metadata = {
   description: 'Мультиагентная система для автоматизации SMB',
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // next-intl resolves both the locale and message bundle from
+  // lib/i18n/request.ts. RootLayout has to be async so the bundle is
+  // available before any client component (Providers below) tries to
+  // call useTranslations.
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="ru" className={`${sans.variable} ${mono.variable}`}>
+    <html lang={locale} className={`${sans.variable} ${mono.variable}`}>
       <body className="font-sans antialiased">
-        <Providers>{children}</Providers>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <Providers>{children}</Providers>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

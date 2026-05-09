@@ -1,0 +1,55 @@
+{
+  "common": {
+    "delete": "Удалить",
+    "connectionError": "Ошибка соединения",
+    "allPlatforms": "Все платформы"
+  },
+  "chat": {
+    "newConversation": "Новый диалог",
+    "noConversations": "Нет диалогов",
+    "deleteConversationTitle": "Удалить диалог?"
+  },
+  "posts": {
+    "emptyState": "Постов пока нет",
+    "platformShort": {
+      "yandexBusiness": "Яндекс"
+    }
+  },
+  "tasks": {
+    "stats": {
+      "done": "Сделано",
+      "inProgress": "Сейчас в работе",
+      "awaitingUser": "Ждут вашего шага"
+    }
+  },
+  "reviews": {
+    "status": {
+      "pending": "Ждёт ответа",
+      "replied": "Ответ отправлен",
+      "error": "Ошибка отправки",
+      "read": "Прочитано"
+    },
+    "replyToast": "Ответ отправлен"
+  },
+  "business": {
+    "title": "Профиль бизнеса",
+    "subtitle": "Здесь живёт стиль вашего бренда. Голос, тон, расписание — всё, что агенты учитывают, когда отвечают за вас."
+  },
+  "integrations": {
+    "vkConnected": "VK сообщество подключено",
+    "googleConnected": "Google Business Profile подключён",
+    "telegramConnected": "Telegram канал подключён!",
+    "telegramConnectModalTitle": "Подключение Telegram"
+  },
+  "nav": {
+    "chat": "Чат",
+    "integrations": "Интеграции",
+    "business": "Профиль бизнеса",
+    "reviews": "Отзывы",
+    "posts": "Посты",
+    "tasks": "Задачи",
+    "settings": "Настройки",
+    "logout": "Выйти",
+    "platformsGroup": "Платформы"
+  }
+}
