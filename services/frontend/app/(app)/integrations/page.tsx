@@ -179,15 +179,7 @@ export default function IntegrationsPage() {
 
   return (
     <>
-      <PageHeader
-        title={tIntegrations('title')}
-        sub={tIntegrations('subtitle')}
-        actions={
-          <Button variant="ghost" size="md" disabled>
-            Журнал событий
-          </Button>
-        }
-      />
+      <PageHeader title={tIntegrations('title')} sub={tIntegrations('subtitle')} />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">
         {lastRegistered && (
