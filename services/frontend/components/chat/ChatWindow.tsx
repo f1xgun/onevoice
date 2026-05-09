@@ -183,7 +183,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void handleSend()}
-            placeholder="Напишите сообщение..."
+            placeholder={tChat('messagePlaceholder')}
             disabled={composerDisabled}
             // Inner Input loses its own border/focus ring — the outer
             // shell now owns the focused state. Background goes to paper
@@ -198,7 +198,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             size="md"
             onClick={handleSend}
             disabled={composerDisabled || !input.trim()}
-            aria-label="Отправить"
+            aria-label={tChat('sendAria')}
           >
             <Send size={16} />
           </Button>

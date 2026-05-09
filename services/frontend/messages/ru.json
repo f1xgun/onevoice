@@ -24,6 +24,16 @@
       "alreadyHandled": "Ошибка: операция уже была обработана",
       "outOfScope": "Отказано: операция вне вашей бизнес-области",
       "policyRevoked": "Отказано: инструмент запрещён текущей политикой"
+    },
+    "approvalSwitch": {
+      "recommendedTitle": "рекомендуемый режим",
+      "defaultAriaLabel": "Режим разрешения",
+      "modes": {
+        "off": "Никогда",
+        "manual": "С вашего согласия",
+        "auto-with-review": "Сам, но покажет",
+        "auto": "Полностью сам"
+      }
     }
   },
   "validation": {
@@ -57,7 +67,20 @@
     },
     "window": {
       "helpPrompt": "Чем могу помочь?",
-      "moveError": "Не удалось переместить чат"
+      "moveError": "Не удалось переместить чат",
+      "messagePlaceholder": "Напишите сообщение...",
+      "sendAria": "Отправить",
+      "typingAria": "OneVoice печатает"
+    },
+    "header": {
+      "menuAria": "Меню чата",
+      "menuTitle": "Действия",
+      "pinAria": "Закрепить чат",
+      "unpinAria": "Открепить чат"
+    },
+    "projectChip": {
+      "unlinkedAria": "Чат не привязан к проекту",
+      "openProjectAria": "Открыть проект «{name}»"
     },
     "moveMenu": {
       "trigger": "Переместить в…",
@@ -121,7 +144,8 @@
     "more": "⋯",
     "noStats": "Пока без статистики",
     "duplicate": "Дублировать",
-    "openLink": "Открыть"
+    "openLink": "Открыть",
+    "searchPlaceholder": "Поиск по содержимому…"
   },
   "tasks": {
     "title": "Что сделано",
@@ -180,6 +204,11 @@
       "yourReply": "Ваш ответ"
     },
     "sentReply": "Отправленный ответ",
+    "platformPlaceholder": "Платформа",
+    "replyPlaceholder": "Напишите ответ клиенту…",
+    "refreshTitle": "Запросить свежие отзывы у подключённых платформ",
+    "refresh": "Обновить",
+    "refreshing": "Обновляем…",
     "aiSample": {
       "label": "Образец ответа AI",
       "hint": "Можно отправить или отредактировать",
@@ -212,7 +241,23 @@
       "saved": "Данные сохранены",
       "saveError": "Не получилось сохранить",
       "logoUpdated": "Логотип обновлён",
-      "logoUploadError": "Не получилось загрузить логотип"
+      "logoUploadError": "Не получилось загрузить логотип",
+      "logoUploadAria": "Загрузить логотип",
+      "logoAlt": "Логотип",
+      "namePlaceholder": "Кофейня «Мята»",
+      "categoryPlaceholder": "Выберите категорию",
+      "addressPlaceholder": "г. Москва, ул. Примерная, 1",
+      "descriptionPlaceholder": "Маленькая кофейня у метро. Спешелти, выпекаем круассаны утром.",
+      "fields": {
+        "name": "Название",
+        "category": "Категория",
+        "address": "Город / адрес",
+        "phone": "Телефон",
+        "website": "Сайт",
+        "description": "Описание"
+      },
+      "descriptionHint": "Что вы делаете и для кого. OneVoice использует это, когда отвечает клиентам и пишет посты.",
+      "saving": "Сохраняем…"
     },
     "scheduleForm": {
       "noSpecialDates": "Пока ничего не отмечено. Добавьте даты, которые ИИ должен учесть — праздники, ремонты, корпоративы.",
@@ -321,7 +366,9 @@
       "addBotToGroupBody": "У этого канала есть связанная группа для комментариев, но бот в неё не добавлен — поэтому комментарии к постам не собираются. Откройте группу обсуждений → участники → пригласите бота.",
       "close": "Закрыть",
       "disconnect": "Отключить",
-      "disconnectBody": "История сообщений останется в архиве. Чтобы снова получать сообщения из {name}, канал нужно будет подключить заново."
+      "disconnectBody": "История сообщений останется в архиве. Чтобы снова получать сообщения из {name}, канал нужно будет подключить заново.",
+      "botMissingAria": "Бот не в группе обсуждений",
+      "botMissingTooltip": "Бот не в группе обсуждений — комментарии не собираются"
     },
     "vkCommunity": {
       "title": "Подключить сообщество VK",
@@ -398,7 +445,8 @@
     "whitelistWarning": {
       "title": "Новая интеграция не попадёт в whitelist проектов",
       "body": "Эти проекты используют явный whitelist и не включают инструменты {platform}: {names}. Откройте проект, чтобы добавить инструменты.",
-      "dismissAria": "Понятно"
+      "dismissAria": "Понятно",
+      "closeAria": "Закрыть предупреждение"
     },
     "oauthErrors": {
       "missingParams": "Не получилось войти: не хватает параметров",
@@ -521,9 +569,12 @@
       "tabTools": "Инструменты",
       "tabQuickActions": "Быстрые действия",
       "name": "Название",
+      "namePlaceholder": "Например: Отзывы",
       "description": "Описание",
+      "descriptionPlaceholder": "Короткое описание — для кого этот проект.",
       "optional": "(необязательно)",
       "systemPrompt": "Системный промпт",
+      "systemPromptPlaceholder": "Ты — помощник по отзывам. Отвечай вежливо, по существу…",
       "systemPromptDescription": "Описывает роль и ограничения ИИ. Добавляется к контексту бизнеса при каждом сообщении.",
       "promptCounter": "{current} / {max} символов",
       "tools": "Доступные инструменты",
@@ -551,7 +602,10 @@
     },
     "quickActions": {
       "hint": "До 6 коротких фраз — появятся кнопками в пустом чате.",
-      "add": "Добавить"
+      "add": "Добавить",
+      "placeholder": "Например: Проверить отзывы",
+      "itemAria": "Быстрое действие {index}",
+      "deleteAria": "Удалить быстрое действие {index}"
     },
     "toolCheckboxes": {
       "noIntegrations": "Активных интеграций нет — доступных инструментов тоже нет.",
@@ -576,6 +630,7 @@
     },
     "register": {
       "nameLabel": "Как к вам обращаться",
+      "namePlaceholder": "Алина",
       "emailLabel": "Почта",
       "passwordLabel": "Пароль",
       "confirmPasswordLabel": "Ещё раз",
@@ -625,7 +680,18 @@
     "scopeAllBusiness": "По всему бизнесу",
     "noResults": "Попробуйте короче или поменяйте период.",
     "unassigned": "Без проекта",
-    "unassignedChats": "Чаты без проекта"
+    "unassignedChats": "Чаты без проекта",
+    "toggleAria": "Открыть боковое меню",
+    "resizeAria": "Изменить ширину боковой панели",
+    "unassignedNewChatAria": "Новый чат без проекта",
+    "unassignedNewChatTitle": "Новый чат без проекта",
+    "unassignedSectionAria": "Чаты без проекта",
+    "pinnedSectionAria": "Закреплённые чаты",
+    "expandUnassigned": "Развернуть «Без проекта»",
+    "collapseUnassigned": "Свернуть «Без проекта»",
+    "expandPinned": "Развернуть «Закреплённые»",
+    "collapsePinned": "Свернуть «Закреплённые»",
+    "chatRowMenuAria": "Меню чата «{title}»"
   },
   "states": {
     "channelConnectProgress": "в процессе",
@@ -655,6 +721,15 @@
       "noResultsPrefix": "Ничего не нашлось по запросу ",
       "queryFormat": "«{query}»",
       "resetFilters": "Сбросить фильтры"
+    },
+    "skeleton": {
+      "channels": "Загружаем подключённые каналы",
+      "inbox": "Загружаем список",
+      "chat": "Загружаем диалог",
+      "metricStrip": "Загружаем метрики"
+    },
+    "stickyAlert": {
+      "dismissAria": "Скрыть уведомление"
     }
   }
 }

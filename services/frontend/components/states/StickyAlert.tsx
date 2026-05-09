@@ -15,6 +15,7 @@
 
 import * as React from 'react';
 import { X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -73,6 +74,7 @@ export function StickyAlert({
   className,
 }: StickyAlertProps) {
   const t = toneClasses[tone];
+  const tAlert = useTranslations('states.stickyAlert');
   return (
     <div
       role="status"
@@ -104,7 +106,7 @@ export function StickyAlert({
       {onDismiss && (
         <button
           type="button"
-          aria-label="Скрыть уведомление"
+          aria-label={tAlert('dismissAria')}
           onClick={onDismiss}
           className={cn(
             'shrink-0 rounded-md p-1 transition-colors',

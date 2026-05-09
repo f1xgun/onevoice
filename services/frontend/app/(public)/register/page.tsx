@@ -63,7 +63,12 @@ export default function RegisterPage() {
           <Label htmlFor="name" className="text-xs font-medium text-ink-mid">
             {tReg('nameLabel')}
           </Label>
-          <Input id="name" placeholder="Алина" autoComplete="given-name" {...register('name')} />
+          <Input
+            id="name"
+            placeholder={tReg('namePlaceholder')}
+            autoComplete="given-name"
+            {...register('name')}
+          />
           {errors.name && <p className="text-sm text-[var(--ov-danger)]">{errors.name.message}</p>}
         </div>
 

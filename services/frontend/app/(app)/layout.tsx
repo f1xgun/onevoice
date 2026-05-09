@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -21,6 +22,7 @@ const SIDEBAR_FOCUS_EVENT = 'onevoice:sidebar-search-focus';
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const tSidebar = useTranslations('sidebar');
   const { setAuth } = useAuthStore();
   // Start as true so we always show a loading state until the effect has run
   // This prevents the brief flash of protected content
@@ -136,7 +138,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </Panel>
               <PanelResizeHandle
                 id="project-pane-handle"
-                aria-label="Изменить ширину боковой панели"
+                aria-label={tSidebar('resizeAria')}
                 className="w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
               />
             </>
