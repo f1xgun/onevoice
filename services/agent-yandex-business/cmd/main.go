@@ -11,12 +11,10 @@ import (
 	"time"
 
 	natslib "github.com/nats-io/nats.go"
-	"github.com/redis/go-redis/v9"
-
-	"github.com/f1xgun/onevoice/pkg/health"
-	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/agentbase"
+	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	agentpkg "github.com/f1xgun/onevoice/services/agent-yandex-business/internal/agent"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
@@ -25,7 +23,6 @@ import (
 const (
 	healthReadHeaderTimeout = 5 * time.Second
 	shutdownTimeout         = 5 * time.Second
-	natsPingTimeout         = 2 * time.Second
 )
 
 func main() {
@@ -36,9 +33,9 @@ func main() {
 }
 
 func run() error {
-	apiURL := getEnv("API_INTERNAL_URL", "http://localhost:8443")
+	apiURL := agentbase.GetEnv("API_INTERNAL_URL", "http://localhost:8443")
 
-	natsURL := getEnv("NATS_URL", natslib.DefaultURL)
+	natsURL := agentbase.GetEnv("NATS_URL", natslib.DefaultURL)
 	nc, err := natslib.Connect(natsURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to NATS (url=%s): %w", natsURL, err)
@@ -47,7 +44,7 @@ func run() error {
 	tokens := &tokenAdapter{client: tc}
 	pool := yandex.NewBrowserPool()
 	defer pool.Close()
-	dedupe := newDedupeClient(getEnv("REDIS_URL", "redis://redis:6379"))
+	dedupe := agentbase.NewDedupeClient(agentbase.GetEnv("REDIS_URL", "redis://redis:6379"))
 	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool}, dedupe)
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentYandexBusiness, transport, handler)
@@ -64,7 +61,7 @@ func run() error {
 	mux.HandleFunc("/health/live", hc.LiveHandler())
 	mux.HandleFunc("/health/ready", hc.ReadyHandler())
 	mux.HandleFunc("/health", hc.LiveHandler())
-	healthPort := getEnv("HEALTH_PORT", "8083")
+	healthPort := agentbase.GetEnv("HEALTH_PORT", "8083")
 	healthSrv := &http.Server{Addr: ":" + healthPort, Handler: mux, ReadHeaderTimeout: healthReadHeaderTimeout}
 	go func() {
 		slog.Info("health server listening", "addr", ":"+healthPort)
@@ -114,36 +111,4 @@ type poolAdapter struct {
 
 func (pa *poolAdapter) ForBusiness(businessID, cookiesJSON, permalink string) agentpkg.YandexBrowser {
 	return pa.pool.ForBusiness(businessID, cookiesJSON, permalink)
-}
-
-func getEnv(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultValue
-}
-
-// newDedupeClient parses REDIS_URL, dials Redis, and returns a *hitldedupe.DedupeClient.
-// Any failure (parse, connect, ping) is logged and returns nil — the agent falls back
-// to legacy behavior without HITL dedupe rather than refusing to boot.
-func newDedupeClient(redisURL string) *hitldedupe.DedupeClient {
-	if redisURL == "" {
-		slog.Warn("REDIS_URL empty; HITL dedupe disabled")
-		return nil
-	}
-	opts, err := redis.ParseURL(redisURL)
-	if err != nil {
-		slog.Warn("REDIS_URL parse failed; HITL dedupe disabled", "error", err)
-		return nil
-	}
-	rdb := redis.NewClient(opts)
-	pingCtx, cancel := context.WithTimeout(context.Background(), natsPingTimeout)
-	defer cancel()
-	if err := rdb.Ping(pingCtx).Err(); err != nil {
-		slog.Warn("Redis ping failed; HITL dedupe disabled", "error", err)
-		_ = rdb.Close()
-		return nil
-	}
-	slog.Info("HITL dedupe enabled", "redis_url", redisURL)
-	return hitldedupe.New(rdb)
 }
