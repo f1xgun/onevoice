@@ -43,3 +43,6 @@ func (f FuncClassifier) Classify(err error) error {
 	}
 	return f(err)
 }
+
+// Compile-time check: FuncClassifier satisfies ErrorClassifier.
+var _ ErrorClassifier = FuncClassifier(nil)
