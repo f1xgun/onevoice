@@ -24,7 +24,7 @@ export function CreateProjectFields({ form }: CreateProjectFieldsProps) {
           <FormItem>
             <FormLabel>{tForm('name')}</FormLabel>
             <FormControl>
-              <Input placeholder="Например: Отзывы" autoFocus {...field} />
+              <Input placeholder={tForm('namePlaceholder')} autoFocus {...field} />
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -41,11 +41,7 @@ export function CreateProjectFields({ form }: CreateProjectFieldsProps) {
               <span className="text-muted-foreground">{tForm('optional')}</span>
             </FormLabel>
             <FormControl>
-              <Textarea
-                rows={3}
-                placeholder="Короткое описание — для кого этот проект."
-                {...field}
-              />
+              <Textarea rows={3} placeholder={tForm('descriptionPlaceholder')} {...field} />
             </FormControl>
             <FormMessage />
           </FormItem>
