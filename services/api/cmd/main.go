@@ -565,8 +565,15 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// Setup router. CORS allowed origins are sourced from the
 	// CORS_ALLOWED_ORIGINS env var (comma-separated); the dev default is a
 	// single localhost:3000 entry — production deploys MUST set the public
-	// frontend origin explicitly.
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, hc, cfg.CORSAllowedOrigins)
+	// frontend origin explicitly. Per-endpoint rate limits are tunable via
+	// RATE_LIMIT_REGISTER/LOGIN/CHAT/HITL env vars.
+	rateLimits := router.RateLimits{
+		Register: cfg.RateLimitRegister,
+		Login:    cfg.RateLimitLogin,
+		Chat:     cfg.RateLimitChat,
+		HITL:     cfg.RateLimitHITL,
+	}
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, hc, cfg.CORSAllowedOrigins, rateLimits)
 
 	// Start HTTP server
 	addr := ":" + cfg.Port
