@@ -49,16 +49,17 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
     enabled: open,
   });
 
+  const tIntegrations = useTranslations('integrations');
   const connectMutation = useMutation({
     mutationFn: (params: { account_id: string; location_id: string }) =>
       api.post(API_PATHS.INTEGRATIONS.GOOGLE_SELECT_LOCATION, params),
     onSuccess: () => {
-      toast.success('Google Business Profile подключен!');
+      toast.success(tIntegrations('googleConnected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       onClose();
     },
     onError: () => {
-      toast.error('Ошибка подключения локации');
+      toast.error(tGoogle('connectFailed'));
     },
   });
 

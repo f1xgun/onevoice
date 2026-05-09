@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
@@ -31,6 +32,7 @@ export interface VoiceToneSectionProps {
 }
 
 export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
+  const tVoice = useTranslations('business.voiceTone');
   const [selected, setSelected] = useState<Set<ToneId>>(new Set(initial ?? []));
   const [dirty, setDirty] = useState(false);
   const qc = useQueryClient();
@@ -50,9 +52,9 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
       setDirty(false);
-      toast.success('Голос сохранён');
+      toast.success(tVoice('saved'));
     },
-    onError: () => toast.error('Не получилось сохранить'),
+    onError: () => toast.error(tVoice('saveError')),
   });
 
   function toggle(id: ToneId) {
