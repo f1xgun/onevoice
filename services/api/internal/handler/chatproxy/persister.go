@@ -8,7 +8,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-// MessagePersister centralises the chat_proxy persistence sequence:
+// MessagePersister centralizes the chat_proxy persistence sequence:
 //   - PersistUserMessage at request open
 //   - PersistAssistantPause when SSE emits tool_approval_required
 //   - PersistAssistantComplete on done / error
@@ -16,7 +16,7 @@ import (
 //
 // The auto-title hooks re-read the conversation AFTER persist (Landmine 4 /
 // Pitfall 7) and only fire when title_status is still "auto_pending"; manual
-// or auto are terminal. Spawn ctx is detached 30s — r.Context() is cancelled
+// or auto are terminal. Spawn ctx is detached 30s — r.Context() is canceled
 // at SSE close and the cheap-LLM call takes 3-8s.
 type MessagePersister struct {
 	msgs   domain.MessageRepository
