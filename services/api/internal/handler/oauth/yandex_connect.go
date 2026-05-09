@@ -492,5 +492,5 @@ func (h *OAuthHandler) yandexProbeURL() string {
 	if h.cfg.yandexProbeBaseURL != "" {
 		return h.cfg.yandexProbeBaseURL
 	}
-	return "https://business.yandex.ru/"
+	return defaultYandexProbeURL
 }

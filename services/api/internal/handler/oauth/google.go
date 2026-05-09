@@ -50,10 +50,10 @@ func (h *OAuthHandler) GetGoogleAuthURL(w http.ResponseWriter, r *http.Request) 
 	}
 
 	authURL := fmt.Sprintf(
-		"https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&access_type=offline&prompt=consent&state=%s",
+		defaultGoogleAuthURL,
 		url.QueryEscape(h.cfg.GoogleClientID),
 		url.QueryEscape(h.cfg.GoogleRedirectURI),
-		url.QueryEscape("https://www.googleapis.com/auth/business.manage"),
+		url.QueryEscape(googleBusinessManageScope),
 		url.QueryEscape(state),
 	)
 
