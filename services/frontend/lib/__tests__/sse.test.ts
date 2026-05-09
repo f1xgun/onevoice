@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSSELine, applySSEEvent } from '../useChat';
+import { parseSSELine, applySSEEvent } from '../sse';
 import type { Message } from '@/types/chat';
 
 describe('parseSSELine', () => {

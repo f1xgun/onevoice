@@ -67,7 +67,7 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client: queryClient }, children);
 
-    const { result } = renderHook(() => useChat('cid-d10'), { wrapper });
+    const { result } = renderHook(() => useChat({ conversationId: 'cid-d10' }), { wrapper });
 
     // Wait for the hydration fetch to finish.
     await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -107,7 +107,7 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client: queryClient }, children);
 
-    const { result } = renderHook(() => useChat('cid-no-done'), { wrapper });
+    const { result } = renderHook(() => useChat({ conversationId: 'cid-no-done' }), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
