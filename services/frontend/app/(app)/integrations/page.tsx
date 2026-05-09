@@ -172,11 +172,6 @@ export default function IntegrationsPage() {
       <PageHeader
         title="Интеграции"
         sub="Подключите каналы, по которым с вами общаются клиенты. OneVoice будет принимать в них сообщения и публиковать посты."
-        actions={
-          <Button variant="ghost" size="md" disabled>
-            Журнал событий
-          </Button>
-        }
       />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">
