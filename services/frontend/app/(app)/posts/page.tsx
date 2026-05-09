@@ -113,7 +113,7 @@ export default function PostsPage() {
         actions={
           <Button variant="primary" size="md">
             <Plus aria-hidden />
-            Создать пост
+            {tPosts('createPost')}
           </Button>
         }
       />
@@ -153,9 +153,9 @@ export default function PostsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{tCommon('allPlatforms')}</SelectItem>
-              <SelectItem value="telegram">Telegram</SelectItem>
+              <SelectItem value="telegram">{tPosts('platforms.telegram')}</SelectItem>
               <SelectItem value="vk">VK</SelectItem>
-              <SelectItem value="yandex_business">Яндекс.Бизнес</SelectItem>
+              <SelectItem value="yandex_business">{tPosts('platforms.yandexBusiness')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -166,16 +166,16 @@ export default function PostsPage() {
           >
             <TabsList className="h-8 bg-paper-sunken">
               <TabsTrigger value="all" className="h-7 text-[13px]">
-                Все · {counts.total}
+                {tPosts('tabs.all', { count: counts.total })}
               </TabsTrigger>
               <TabsTrigger value="published" className="h-7 text-[13px]">
-                Опубликованы · {counts.published}
+                {tPosts('tabs.published', { count: counts.published })}
               </TabsTrigger>
               <TabsTrigger value="scheduled" className="h-7 text-[13px]">
-                Запланированы · {counts.scheduled}
+                {tPosts('tabs.scheduled', { count: counts.scheduled })}
               </TabsTrigger>
               <TabsTrigger value="error" className="h-7 text-[13px]">
-                Ошибки · {counts.error}
+                {tPosts('tabs.error', { count: counts.error })}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -192,10 +192,10 @@ export default function PostsPage() {
         <div className="mt-4 overflow-x-auto rounded-md border border-line bg-paper-raised">
           <div className="grid min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] gap-4 border-b border-line bg-paper-sunken px-5 py-3">
             <span aria-hidden />
-            <MonoLabel>Контент</MonoLabel>
-            <MonoLabel>Статус</MonoLabel>
-            <MonoLabel>Платформы</MonoLabel>
-            <MonoLabel>Дата</MonoLabel>
+            <MonoLabel>{tPosts('table.content')}</MonoLabel>
+            <MonoLabel>{tPosts('table.status')}</MonoLabel>
+            <MonoLabel>{tPosts('table.platforms')}</MonoLabel>
+            <MonoLabel>{tPosts('table.date')}</MonoLabel>
             <span aria-hidden />
           </div>
 
@@ -257,6 +257,7 @@ function StatCard({
 }
 
 function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const tPosts = useTranslations('posts');
   return (
     <label className="relative inline-flex h-8 w-[260px] items-center">
       <Search aria-hidden className="pointer-events-none absolute left-3 size-3.5 text-ink-soft" />
@@ -271,7 +272,7 @@ function SearchField({ value, onChange }: { value: string; onChange: (v: string)
         aria-hidden
         className="pointer-events-none absolute right-2 rounded border border-line-soft bg-paper px-1.5 py-0.5 font-mono text-[10px] text-ink-soft"
       >
-        ⌘K
+        {tPosts('shortcut')}
       </span>
     </label>
   );
@@ -314,9 +315,7 @@ function PostsEmpty({ search, onResetSearch }: { search: string; onResetSearch: 
     <div className="flex flex-col items-center px-6 py-16 text-center">
       <FileText aria-hidden className="mb-3 size-9 text-ink-faint" />
       <p className="text-sm text-ink-mid">{tPosts('emptyState')}</p>
-      <p className="mt-1 max-w-xs text-xs text-ink-soft">
-        Создайте первый пост — OneVoice опубликует его на всех подключённых каналах.
-      </p>
+      <p className="mt-1 max-w-xs text-xs text-ink-soft">{tPosts('emptyHint')}</p>
     </div>
   );
 }
@@ -332,6 +331,7 @@ function PostRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const tPosts = useTranslations('posts');
   const platforms = collectPlatforms(post);
   const dateIso = post.scheduledAt ?? post.publishedAt ?? post.createdAt;
   const dateLabel = format(new Date(dateIso), 'd MMM yyyy · HH:mm', { locale: ru });
@@ -362,7 +362,7 @@ function PostRow({
           {dateLabel}
         </MonoLabel>
         <span aria-hidden className="text-right text-ink-soft">
-          ⋯
+          {tPosts('more')}
         </span>
       </button>
 
@@ -421,10 +421,10 @@ function ExpandedPanel({ post }: { post: Post }) {
       </div>
 
       <div className="flex flex-col gap-2.5">
-        <MonoLabel>Результаты</MonoLabel>
+        <MonoLabel>{tPosts('table.results')}</MonoLabel>
         {results.length === 0 ? (
           <div className="rounded-sm border border-line-soft bg-paper px-3 py-2 text-xs text-ink-soft">
-            Пока без статистики
+            {tPosts('noStats')}
           </div>
         ) : (
           results.map(([platform, result]) => (
@@ -433,12 +433,12 @@ function ExpandedPanel({ post }: { post: Post }) {
         )}
         <div className="mt-1 flex flex-wrap gap-2">
           <Button variant="secondary" size="sm">
-            Дублировать
+            {tPosts('duplicate')}
           </Button>
           {firstLink(post) && (
             <Button variant="ghost" size="sm" asChild>
               <a href={firstLink(post) ?? undefined} target="_blank" rel="noopener noreferrer">
-                Открыть
+                {tPosts('openLink')}
               </a>
             </Button>
           )}

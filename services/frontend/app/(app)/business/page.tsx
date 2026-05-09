@@ -81,7 +81,7 @@ export default function BusinessPage() {
         <PageHeader title={tBusiness('title')} />
         <div className="px-4 pb-10 sm:px-12 sm:pb-16">
           <div className="border-[var(--ov-danger)]/40 rounded-lg border bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
-            Не получилось загрузить данные. Попробуйте обновить страницу.
+            {tBusiness('errorLoad')}
           </div>
         </div>
       </>

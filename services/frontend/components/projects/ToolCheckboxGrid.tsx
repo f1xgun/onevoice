@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
@@ -128,6 +129,7 @@ function PlatformSection({
 }
 
 export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCheckboxGridProps) {
+  const tToolGrid = useTranslations('projects.toolCheckboxes');
   const { data: tools, isLoading } = useTools();
 
   // Show all registered platforms (not just the user's active integrations)
@@ -135,15 +137,11 @@ export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCh
   // matches Phase 15 behaviour. If the user has zero integrations, still show
   // the platforms but render a helpful message instead of the grid below.
   if (activeIntegrations.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Активных интеграций нет — доступных инструментов тоже нет.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">{tToolGrid('noIntegrations')}</p>;
   }
 
   if (isLoading || !tools) {
-    return <p className="text-sm text-muted-foreground">Загрузка списка инструментов…</p>;
+    return <p className="text-sm text-muted-foreground">{tToolGrid('loading')}</p>;
   }
 
   const buckets = groupByPlatform(tools);

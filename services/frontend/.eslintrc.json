@@ -1,5 +1,6 @@
 {
   "extends": ["next/core-web-vitals", "next/typescript", "prettier"],
+  "plugins": ["i18next"],
   "rules": {
     "@typescript-eslint/no-unused-vars": [
       "error",
@@ -27,6 +28,25 @@
         "enforceConst": true,
         "detectObjects": false
       }
+    ],
+    "i18next/no-literal-string": [
+      "error",
+      {
+        "markupOnly": true,
+        "ignoreAttribute": [
+          "data-testid",
+          "data-test",
+          "aria-controls",
+          "id",
+          "key",
+          "className",
+          "type",
+          "role",
+          "name",
+          "href"
+        ],
+        "ignoreCallee": ["t", "useTranslations", "getTranslations"]
+      }
     ]
   },
   "overrides": [
@@ -40,13 +60,20 @@
         "vitest.config.*.ts"
       ],
       "rules": {
-        "@typescript-eslint/no-magic-numbers": "off"
+        "@typescript-eslint/no-magic-numbers": "off",
+        "i18next/no-literal-string": "off"
       }
     },
     {
       "files": ["next.config.js", "tailwind.config.{ts,js}", "postcss.config.js"],
       "rules": {
         "@typescript-eslint/no-magic-numbers": "off"
+      }
+    },
+    {
+      "files": ["components/ui/**/*.tsx"],
+      "rules": {
+        "i18next/no-literal-string": "off"
       }
     }
   ]

@@ -192,7 +192,7 @@ export default function IntegrationsPage() {
           </div>
         )}
 
-        <SectionLabel>Подключённые</SectionLabel>
+        <SectionLabel>{tIntegrations('page.connected')}</SectionLabel>
         {integrationsLoading ? (
           // Static paper-sunken skeletons per Linen loading rule (no shimmer).
           <SkeletonChannels count={3} />
@@ -231,7 +231,7 @@ export default function IntegrationsPage() {
 
         {comingSoonPlatforms.length > 0 && (
           <>
-            <SectionLabel className="mt-12">Скоро</SectionLabel>
+            <SectionLabel className="mt-12">{tIntegrations('page.comingSoon')}</SectionLabel>
             <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
               {comingSoonPlatforms.map((p) => (
                 <SoonCard key={p.id} label={p.fullLabel} when={p.comingSoonWhen ?? 'скоро'} />
@@ -242,14 +242,18 @@ export default function IntegrationsPage() {
 
         <div className="mt-14 flex flex-col items-stretch gap-4 rounded-lg border border-line bg-paper-sunken p-6 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">
-            <div className="text-base font-medium text-ink">Не нашли свой канал?</div>
+            <div className="text-base font-medium text-ink">
+              {tIntegrations('page.missingPlatform')}
+            </div>
             <div className="mt-1 text-sm text-ink-mid">
-              Напишите нам — добавим в ближайших обновлениях.
+              {tIntegrations('page.missingPlatformBody')}
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
             <Button variant="secondary" size="md" asChild>
-              <a href="mailto:hello@onevoice.app?subject=Запрос%20канала">Запросить канал</a>
+              <a href="mailto:hello@onevoice.app?subject=Запрос%20канала">
+                {tIntegrations('page.requestChannel')}
+              </a>
             </Button>
           </div>
         </div>
@@ -294,6 +298,7 @@ function SectionLabel({ children, className }: { children: React.ReactNode; clas
 }
 
 function SoonCard({ label, when }: { label: string; when: string }) {
+  const tIntegrations = useTranslations('integrations');
   return (
     <div className="flex items-center gap-4 rounded-lg border border-dashed border-line bg-paper-raised p-5">
       <span
@@ -305,7 +310,7 @@ function SoonCard({ label, when }: { label: string; when: string }) {
         <MonoLabel className="mt-0.5">{when}</MonoLabel>
       </div>
       <Button variant="ghost" size="sm" disabled>
-        Подписаться
+        {tIntegrations('page.subscribe')}
       </Button>
     </div>
   );

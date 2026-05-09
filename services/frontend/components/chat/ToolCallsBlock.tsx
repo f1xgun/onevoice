@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { ToolCard } from './ToolCard';
 import type { ToolCall } from '@/types/chat';
 import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
@@ -20,6 +21,7 @@ function PlatformBadge({ name }: { name: string }) {
 }
 
 export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
+  const tCalls = useTranslations('chat.toolCalls');
   const [expanded, setExpanded] = useState(false);
   if (toolCalls.length === 0) return null;
 
@@ -35,10 +37,12 @@ export function ToolCallsBlock({ toolCalls }: { toolCalls: ToolCall[] }) {
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>
-          {expanded ? 'Скрыть' : 'Показать'} действия ({toolCalls.length})
+          {expanded
+            ? tCalls('hideActions', { count: toolCalls.length })
+            : tCalls('showActions', { count: toolCalls.length })}
         </span>
         <span className="ml-1 font-mono text-[11px] text-[var(--ov-success)]">
-          ✓ {doneCount}/{toolCalls.length}
+          {tCalls('doneCount', { done: doneCount, total: toolCalls.length })}
         </span>
         <div className="ml-auto flex gap-1">
           {platforms.map((p) => (

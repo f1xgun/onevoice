@@ -58,7 +58,7 @@ export function TelegramConnectModal({ open, onClose }: Props) {
               <li>{tIntegrations('telegramStep1Item2')}</li>
               <li>
                 {tIntegrations('telegramStep1Item3Prefix')}{' '}
-                <code className="rounded bg-gray-100 px-1">@OneVoiceBot</code>
+                <code className="rounded bg-gray-100 px-1">{tIntegrations('telegramBot')}</code>
               </li>
               <li>{tIntegrations('telegramStep1Item4')}</li>
             </ol>
@@ -72,7 +72,9 @@ export function TelegramConnectModal({ open, onClose }: Props) {
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
               {tIntegrations('telegramStep2IntroBefore')}{' '}
-              <code className="rounded bg-gray-100 px-1">@mychannel</code>{' '}
+              <code className="rounded bg-gray-100 px-1">
+                {tIntegrations('telegramExampleChannel')}
+              </code>{' '}
               {tIntegrations('telegramStep2IntroOr')}{' '}
               <code className="rounded bg-gray-100 px-1">-1001234567890</code>
               {tIntegrations('telegramStep2IntroAfter')}

@@ -19,6 +19,7 @@ import { MonoLabel } from '@/components/ui/mono-label';
 export default function LoginPage() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
+  const tLogin = useTranslations('auth.login');
 
   const {
     register,
@@ -50,7 +51,7 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email" className="text-xs font-medium text-ink-mid">
-            Почта
+            {tLogin('emailLabel')}
           </Label>
           <Input
             id="email"
@@ -66,7 +67,7 @@ export default function LoginPage() {
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="password" className="text-xs font-medium text-ink-mid">
-            Пароль
+            {tLogin('passwordLabel')}
           </Label>
           <Input
             id="password"
@@ -85,9 +86,9 @@ export default function LoginPage() {
         </Button>
 
         <p className="mt-6 text-sm text-ink-soft">
-          Ещё нет аккаунта?{' '}
+          {tLogin('noAccount')}{' '}
           <Link href="/register" className="font-medium text-ink hover:underline">
-            Зарегистрироваться
+            {tLogin('register')}
           </Link>
         </p>
       </form>

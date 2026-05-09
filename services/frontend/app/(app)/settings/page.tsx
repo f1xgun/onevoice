@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -32,6 +33,7 @@ const passwordSchema = z
 type PasswordInput = z.infer<typeof passwordSchema>;
 
 export default function SettingsPage() {
+  const tSettings = useTranslations('settings.page');
   const user = useAuthStore((s) => s.user);
 
   const {
@@ -65,8 +67,10 @@ export default function SettingsPage() {
           {/* Account */}
           <section className="rounded-lg border border-line bg-paper-raised">
             <header className="border-b border-line-soft px-6 py-4">
-              <MonoLabel>Аккаунт</MonoLabel>
-              <h2 className="mt-1 text-lg font-medium tracking-tight text-ink">Кто вы</h2>
+              <MonoLabel>{tSettings('accountKicker')}</MonoLabel>
+              <h2 className="mt-1 text-lg font-medium tracking-tight text-ink">
+                {tSettings('accountTitle')}
+              </h2>
             </header>
             <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">
               <ReadOnlyField label="Имя" value={user?.name} />
@@ -78,8 +82,10 @@ export default function SettingsPage() {
           {/* Password */}
           <section className="rounded-lg border border-line bg-paper-raised">
             <header className="border-b border-line-soft px-6 py-4">
-              <MonoLabel>Безопасность</MonoLabel>
-              <h2 className="mt-1 text-lg font-medium tracking-tight text-ink">Сменить пароль</h2>
+              <MonoLabel>{tSettings('securityKicker')}</MonoLabel>
+              <h2 className="mt-1 text-lg font-medium tracking-tight text-ink">
+                {tSettings('securityTitle')}
+              </h2>
             </header>
             <form
               onSubmit={handleSubmit((d) => mutation.mutate(d))}
@@ -87,7 +93,7 @@ export default function SettingsPage() {
             >
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="currentPassword" className="text-xs font-medium text-ink-mid">
-                  Текущий пароль
+                  {tSettings('currentPassword')}
                 </Label>
                 <Input
                   id="currentPassword"
@@ -105,7 +111,7 @@ export default function SettingsPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="newPassword" className="text-xs font-medium text-ink-mid">
-                    Новый пароль
+                    {tSettings('newPassword')}
                   </Label>
                   <Input
                     id="newPassword"
@@ -119,7 +125,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="confirmPassword" className="text-xs font-medium text-ink-mid">
-                    Ещё раз
+                    {tSettings('confirmPassword')}
                   </Label>
                   <Input
                     id="confirmPassword"
@@ -146,7 +152,7 @@ export default function SettingsPage() {
 
         {/* Right rail */}
         <aside className="flex flex-col gap-3 lg:sticky lg:top-8 lg:self-start">
-          <MonoLabel className="px-1">Разделы</MonoLabel>
+          <MonoLabel className="px-1">{tSettings('sectionsLabel')}</MonoLabel>
           <RailTile
             href="/settings/tools"
             icon={<ShieldCheck size={18} aria-hidden />}

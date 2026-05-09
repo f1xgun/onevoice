@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,6 +13,7 @@ export default function EditProjectPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params?.id ?? '';
+  const tProjects = useTranslations('projects');
   const { data: project, isLoading, error } = useProjectQuery(id);
 
   if (isLoading) {
@@ -33,7 +35,7 @@ export default function EditProjectPage() {
         <PageHeader title="Редактировать проект" />
         <div className="mx-auto w-full max-w-2xl px-4 pb-10 sm:px-12 sm:pb-16">
           <div className="border-[var(--ov-danger)]/40 rounded-lg border bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
-            Не удалось загрузить проект. Обновите страницу или попробуйте позже.
+            {tProjects('errorLoad')}
           </div>
         </div>
       </>

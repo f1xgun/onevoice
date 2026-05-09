@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import type { ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import { ProjectChip } from '@/components/chat/ProjectChip';
 import type { SearchResult } from '@/types/search';
 
@@ -76,6 +77,7 @@ interface Props {
 }
 
 export function SearchResultRow({ result, onSelect }: Props) {
+  const tSide = useTranslations('sidebar');
   const href = result.topMessageId
     ? `/chat/${result.conversationId}?highlight=${encodeURIComponent(result.topMessageId)}`
     : `/chat/${result.conversationId}`;
@@ -114,7 +116,7 @@ export function SearchResultRow({ result, onSelect }: Props) {
       )}
       {result.matchCount > 1 && (
         <span className="mb-1 ml-2 mt-0.5 inline-block text-[10px] text-ink-faint">
-          +{result.matchCount - 1} совпадений
+          {tSide('matchCount', { count: result.matchCount - 1 })}
         </span>
       )}
       {!result.snippet && <div className="pb-1.5" />}

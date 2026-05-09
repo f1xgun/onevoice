@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,8 @@ interface ProjectFormProps {
 
 export function ProjectForm({ project, onSaved }: ProjectFormProps) {
   const router = useRouter();
+  const tForm = useTranslations('projects.form');
+  const tCommon = useTranslations('common');
   const isEdit = !!project;
 
   const form = useForm<FormValues>({
@@ -160,10 +163,10 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                 действия» otherwise clips off-screen on phones. */}
             <div className="-mx-1 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0">
               <TabsList className="justify-start sm:w-full">
-                <TabsTrigger value="basics">Основное</TabsTrigger>
-                <TabsTrigger value="prompt">Промпт</TabsTrigger>
-                <TabsTrigger value="tools">Инструменты</TabsTrigger>
-                <TabsTrigger value="quick-actions">Быстрые действия</TabsTrigger>
+                <TabsTrigger value="basics">{tForm('tabBasics')}</TabsTrigger>
+                <TabsTrigger value="prompt">{tForm('tabPrompt')}</TabsTrigger>
+                <TabsTrigger value="tools">{tForm('tabTools')}</TabsTrigger>
+                <TabsTrigger value="quick-actions">{tForm('tabQuickActions')}</TabsTrigger>
               </TabsList>
             </div>
 
@@ -173,7 +176,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Название</FormLabel>
+                    <FormLabel>{tForm('name')}</FormLabel>
                     <FormControl>
                       <Input placeholder="Например: Отзывы" {...field} />
                     </FormControl>
@@ -188,7 +191,8 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Описание <span className="text-muted-foreground">(необязательно)</span>
+                      {tForm('description')}{' '}
+                      <span className="text-muted-foreground">{tForm('optional')}</span>
                     </FormLabel>
                     <FormControl>
                       <Textarea
@@ -209,11 +213,8 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                 name="systemPrompt"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Системный промпт</FormLabel>
-                    <FormDescription>
-                      Описывает роль и ограничения ИИ. Добавляется к контексту бизнеса при каждом
-                      сообщении.
-                    </FormDescription>
+                    <FormLabel>{tForm('systemPrompt')}</FormLabel>
+                    <FormDescription>{tForm('systemPromptDescription')}</FormDescription>
                     <FormControl>
                       <Textarea
                         rows={10}
@@ -229,7 +230,10 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                         )}
                         aria-live="polite"
                       >
-                        {systemPromptLen} / 4000 символов
+                        {tForm('promptCounter', {
+                          current: systemPromptLen,
+                          max: MAX_SYSTEM_PROMPT_CHARS,
+                        })}
                       </span>
                     </div>
                     <FormMessage />
@@ -244,10 +248,8 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                 name="whitelistMode"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Доступные инструменты</FormLabel>
-                    <FormDescription>
-                      Какие действия вообще разрешены в этом проекте.
-                    </FormDescription>
+                    <FormLabel>{tForm('tools')}</FormLabel>
+                    <FormDescription>{tForm('toolsDescription')}</FormDescription>
                     <FormControl>
                       <WhitelistRadio
                         value={field.value}
@@ -266,7 +268,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                   name="allowedTools"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="sr-only">Список инструментов</FormLabel>
+                      <FormLabel className="sr-only">{tForm('toolsList')}</FormLabel>
                       <FormControl>
                         <ToolCheckboxGrid
                           activeIntegrations={activePlatforms}
@@ -285,12 +287,8 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                 name="approvalOverrides"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Одобрение инструментов</FormLabel>
-                    <FormDescription>
-                      Какие действия ИИ выполняет сам, а какие должны ждать вашего подтверждения.
-                      «Как у бизнеса» — использовать общую настройку из «Настройки → Одобрение
-                      инструментов».
-                    </FormDescription>
+                    <FormLabel>{tForm('approval')}</FormLabel>
+                    <FormDescription>{tForm('approvalDescription')}</FormDescription>
                     <FormControl>
                       {tools ? (
                         <ProjectApprovalOverrides
@@ -300,9 +298,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                           onChange={field.onChange}
                         />
                       ) : (
-                        <p className="text-sm text-muted-foreground">
-                          Загрузка списка инструментов…
-                        </p>
+                        <p className="text-sm text-muted-foreground">{tForm('loadingTools')}</p>
                       )}
                     </FormControl>
                     <FormMessage />
@@ -317,10 +313,8 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                 name="quickActions"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Быстрые действия</FormLabel>
-                    <FormDescription>
-                      Кнопки-подсказки, которые появляются над полем ввода в новом чате.
-                    </FormDescription>
+                    <FormLabel>{tForm('quickActions')}</FormLabel>
+                    <FormDescription>{tForm('quickActionsDescription')}</FormDescription>
                     <FormControl>
                       <QuickActionsEditor value={field.value} onChange={field.onChange} />
                     </FormControl>
@@ -338,7 +332,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Название</FormLabel>
+                  <FormLabel>{tForm('name')}</FormLabel>
                   <FormControl>
                     <Input placeholder="Например: Отзывы" autoFocus {...field} />
                   </FormControl>
@@ -353,7 +347,8 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Описание <span className="text-muted-foreground">(необязательно)</span>
+                    {tForm('description')}{' '}
+                    <span className="text-muted-foreground">{tForm('optional')}</span>
                   </FormLabel>
                   <FormControl>
                     <Textarea
@@ -368,8 +363,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
             />
 
             <p className="bg-muted/30 rounded-md border px-4 py-3 text-xs text-muted-foreground">
-              Системный промпт, доступные инструменты и быстрые действия можно настроить после
-              создания проекта.
+              {tForm('creationFooter')}
             </p>
           </>
         )}
@@ -384,7 +378,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
             onClick={() => router.back()}
             disabled={submitting}
           >
-            Отмена
+            {tCommon('cancel')}
           </Button>
           {isEdit && project && (
             <Button
@@ -394,7 +388,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
               onClick={() => setDeleteOpen(true)}
               disabled={submitting || deleteMutation.isPending}
             >
-              Удалить проект
+              {tForm('deleteProject')}
             </Button>
           )}
         </div>

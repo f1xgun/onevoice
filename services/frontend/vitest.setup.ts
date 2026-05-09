@@ -26,9 +26,21 @@ function lookupTranslation(namespace: string | undefined, key: string): string {
   return typeof cursor === 'string' ? cursor : namespace ? `${namespace}.${key}` : key;
 }
 
+// Minimal ICU-style placeholder substitution: replaces every `{name}`
+// occurrence in the looked-up string with `params[name]`. Real next-intl
+// also handles plurals/select/numbers; tests only rely on `{var}` swaps.
+function interpolate(template: string, params?: Record<string, unknown>): string {
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (_, name) => {
+    const v = params[name];
+    return v === undefined || v === null ? `{${name}}` : String(v);
+  });
+}
+
 vi.mock('next-intl', () => {
   const tFactory = (namespace?: string) => {
-    const t = (key: string) => lookupTranslation(namespace, key);
+    const t = (key: string, params?: Record<string, unknown>) =>
+      interpolate(lookupTranslation(namespace, key), params);
     (t as unknown as { has: (k: string) => boolean }).has = () => true;
     (t as unknown as { raw: (k: string) => string }).raw = (k: string) =>
       lookupTranslation(namespace, k);

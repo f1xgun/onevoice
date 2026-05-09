@@ -26,29 +26,9 @@ const SERIF = '"Iowan Old Style", "Georgia", "Times New Roman", serif';
 // 5-star scale used by the inline review-preview block in the hero.
 const MAX_REVIEW_STARS = 5;
 
-const NAV_LINKS = [
-  { href: '#features', label: 'Возможности' },
-  { href: '#channels', label: 'Каналы' },
-  // { href: '#pricing', label: 'Цены' }, // временно: продукт бесплатный
-];
-
-const STEPS = [
-  {
-    n: '01',
-    t: 'Подключите',
-    d: 'Telegram, ВКонтакте, Яндекс.Бизнес — по одной ссылке за раз. Без ключей API и тонких настроек.',
-  },
-  {
-    n: '02',
-    t: 'Поговорите',
-    d: 'Расскажите про меню, часы работы и тон. OneVoice запомнит и будет писать вашими словами.',
-  },
-  {
-    n: '03',
-    t: 'Получайте',
-    d: 'Ответы клиентам, посты на все каналы, отчёт по отзывам. Вы — последнее слово, всегда.',
-  },
-];
+// Static href anchors for nav. Labels are resolved via useTranslations
+// inside each component.
+const NAV_HREFS = ['#features', '#channels'] as const;
 
 // ─── Page ─────────────────────────────────────────────────────────────
 
@@ -71,28 +51,33 @@ export default function LandingPage() {
 // ─── Nav ──────────────────────────────────────────────────────────────
 
 function SiteNav() {
+  const tNav = useTranslations('landing.nav');
+  const navLabels: Record<(typeof NAV_HREFS)[number], string> = {
+    '#features': tNav('features'),
+    '#channels': tNav('channels'),
+  };
   return (
     <header className="bg-paper/85 sticky top-0 z-10 border-b border-line-soft backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-[1180px] items-center gap-8 px-6 sm:px-12">
         <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
           <span className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-md bg-ink text-[11px] font-semibold text-paper">
-            OV
+            {tNav('logoMark')}
           </span>
-          OneVoice
+          {tNav('wordmark')}
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-ink-mid md:flex">
-          {NAV_LINKS.map((l) => (
-            <a key={l.href} href={l.href} className="transition-colors hover:text-ink">
-              {l.label}
+          {NAV_HREFS.map((href) => (
+            <a key={href} href={href} className="transition-colors hover:text-ink">
+              {navLabels[href]}
             </a>
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-3">
           <Link href="/login" className="text-sm text-ink-mid transition-colors hover:text-ink">
-            Войти
+            {tNav('login')}
           </Link>
           <Button asChild size="sm" variant="primary">
-            <Link href="/register">Попробовать</Link>
+            <Link href="/register">{tNav('tryIt')}</Link>
           </Button>
         </div>
       </div>
@@ -103,33 +88,33 @@ function SiteNav() {
 // ─── Hero ─────────────────────────────────────────────────────────────
 
 function Hero() {
+  const tHero = useTranslations('landing.hero');
   return (
     <section className="border-b border-line-soft">
       <div className="mx-auto grid w-full max-w-[1180px] items-center gap-16 px-6 py-20 sm:px-12 md:py-28 lg:grid-cols-[1.1fr_0.9fr]">
         <div>
-          <MonoLabel>One Voice · v 0.9 · открытая бета</MonoLabel>
+          <MonoLabel>{tHero('kicker')}</MonoLabel>
           <h1 className="mt-5 text-pretty text-[44px] font-medium leading-[1.04] tracking-[-0.025em] sm:text-[56px] lg:text-[64px]">
-            Один разговор
+            {tHero('headlineLine1')}
             <br />
-            для всех каналов{' '}
+            {tHero('headlineLine2Prefix')}
             <span className="font-normal italic text-ochre-deep" style={{ fontFamily: SERIF }}>
-              OneVoice
+              {tHero('wordmark')}
             </span>
-            .
+            {tHero('headlinePunctuation')}
           </h1>
           <p className="mt-6 max-w-[520px] text-[17px] leading-relaxed text-ink-mid sm:text-lg">
-            Telegram, ВКонтакте, Яндекс.Бизнес — в одном ящике. OneVoice пишет черновики ответов,
-            готовит посты для всех каналов и держит отзывы на виду, пока вы заняты делом.
+            {tHero('body')}
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg" variant="primary">
               <Link href="/register">
-                Попробовать
+                {tHero('cta')}
                 <ArrowRight aria-hidden />
               </Link>
             </Button>
             <Button asChild size="lg" variant="secondary">
-              <a href="#features">Посмотреть, как работает</a>
+              <a href="#features">{tHero('secondary')}</a>
             </Button>
           </div>
         </div>
@@ -140,6 +125,7 @@ function Hero() {
 }
 
 function HeroPreview() {
+  const tPreview = useTranslations('landing.preview');
   return (
     <div aria-hidden className="rounded-xl border border-line bg-paper-raised p-4 shadow-ov-3">
       {/* Window chrome */}
@@ -147,15 +133,15 @@ function HeroPreview() {
         <span className="size-[10px] rounded-full border border-line bg-paper-sunken" />
         <span className="size-[10px] rounded-full border border-line bg-paper-sunken" />
         <span className="size-[10px] rounded-full border border-line bg-paper-sunken" />
-        <MonoLabel className="ml-auto">onevoice.app/inbox</MonoLabel>
+        <MonoLabel className="ml-auto">{tPreview('url')}</MonoLabel>
       </div>
 
       {/* Inbox card */}
       <div className="overflow-hidden rounded-md border border-line-soft bg-paper">
         <div className="flex items-center gap-2.5 border-b border-line-soft px-4 py-3">
           <span className="size-2 rounded-full bg-ochre" />
-          <span className="text-[13px] font-semibold">Сегодня</span>
-          <MonoLabel className="ml-auto">3 ждут ответа</MonoLabel>
+          <span className="text-[13px] font-semibold">{tPreview('today')}</span>
+          <MonoLabel className="ml-auto">{tPreview('waiting')}</MonoLabel>
         </div>
 
         {INBOX_ROWS.map((r, i) => (
@@ -180,8 +166,8 @@ function HeroPreview() {
         {/* Tool-call composing line */}
         <div className="flex items-center gap-2.5 bg-paper-sunken px-4 py-3">
           <span className="size-2 rounded-full bg-ochre" />
-          <span className="text-[13px] text-ink">OneVoice готовит черновик для Алёны</span>
-          <MonoLabel className="ml-auto">~4 сек</MonoLabel>
+          <span className="text-[13px] text-ink">{tPreview('composing')}</span>
+          <MonoLabel className="ml-auto">{tPreview('eta')}</MonoLabel>
         </div>
       </div>
     </div>
@@ -225,19 +211,19 @@ const INBOX_ROWS: Array<{
 // ─── Belief ───────────────────────────────────────────────────────────
 
 function Belief() {
+  const tBelief = useTranslations('landing.belief');
   return (
     <section className="border-b border-line-soft">
       <div className="mx-auto w-full max-w-[1180px] px-6 py-20 sm:px-12">
-        <MonoLabel>Как мы это видим</MonoLabel>
+        <MonoLabel>{tBelief('kicker')}</MonoLabel>
         <h2 className="mt-3 max-w-[880px] text-pretty text-[28px] font-medium leading-[1.18] tracking-[-0.015em] sm:text-[34px]">
-          Малый бизнес проигрывает не потому, что плохо работает. А потому, что{' '}
+          {tBelief('headlinePrefix')}
           <span className="font-normal italic text-ochre-deep" style={{ fontFamily: SERIF }}>
-            не успевает отвечать.
+            {tBelief('headlineHighlight')}
           </span>
         </h2>
         <p className="mt-5 max-w-[720px] text-[17px] leading-relaxed text-ink-mid">
-          Кофейня, салон, мастерская — десять каналов и одна пара рук. OneVoice не заменяет вас. Он
-          отвечает первым, чтобы у вас осталось время ответить лучше.
+          {tBelief('body')}
         </p>
       </div>
     </section>
@@ -247,6 +233,7 @@ function Belief() {
 // ─── Features ─────────────────────────────────────────────────────────
 
 function Features() {
+  const tF = useTranslations('landing.features');
   const items: Array<{
     kicker: string;
     title: string;
@@ -282,9 +269,9 @@ function Features() {
   return (
     <section id="features" className="border-b border-line-soft">
       <div className="mx-auto w-full max-w-[1180px] px-6 py-24 sm:px-12">
-        <MonoLabel>Возможности</MonoLabel>
+        <MonoLabel>{tF('kicker')}</MonoLabel>
         <h2 className="mt-3 max-w-[720px] text-[32px] font-medium leading-tight tracking-[-0.015em] sm:text-[40px]">
-          Четыре вещи, на которые у вас обычно нет времени.
+          {tF('headline')}
         </h2>
 
         <div className="mt-12 grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-x-16 lg:gap-y-14">
@@ -338,28 +325,27 @@ function SampleInbox() {
 }
 
 function SampleDraft() {
+  const tS = useTranslations('landing.sample');
   return (
     <div className={sampleBox} aria-hidden>
       <div className="flex flex-col gap-3 p-4">
         <div className="flex items-center gap-2.5">
           <ChannelMark name="Telegram" size={20} />
-          <span className="text-[13px] text-ink-mid">от: Алёна К.</span>
-          <MonoLabel className="ml-auto">4 мин назад</MonoLabel>
+          <span className="text-[13px] text-ink-mid">{tS('from')}</span>
+          <MonoLabel className="ml-auto">{tS('ago')}</MonoLabel>
         </div>
-        <div className="rounded-md bg-paper-sunken px-3.5 py-2.5 text-[13px]">
-          Вы открыты в воскресенье?
-        </div>
+        <div className="rounded-md bg-paper-sunken px-3.5 py-2.5 text-[13px]">{tS('question')}</div>
         <div className="bg-ochre-soft/60 rounded-md border border-ochre-soft px-3.5 py-3 text-[13px] text-ink">
-          Да, по воскресеньям мы работаем с 10:00 до 20:00 — будем рады вас видеть.
+          {tS('answer')}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" variant="primary">
-              Отправить
+              {tS('send')}
             </Button>
             <Button size="sm" variant="secondary">
-              Поправить
+              {tS('fix')}
             </Button>
             <Button size="sm" variant="ghost">
-              Ещё вариант
+              {tS('tryAgain')}
             </Button>
           </div>
         </div>
@@ -369,14 +355,15 @@ function SampleDraft() {
 }
 
 function SamplePosts() {
+  const tS = useTranslations('landing.sample');
   return (
     <div className={sampleBox} aria-hidden>
       <div className="flex flex-col gap-3 p-4">
         <div className="rounded-md bg-paper-sunken px-3.5 py-2.5 text-[13px]">
-          Завтра до 11 утра — все капучино за 200 ₽. Заходите.
+          {tS('postContent')}
         </div>
         <div className="flex items-center gap-2">
-          <MonoLabel>опубликовать в:</MonoLabel>
+          <MonoLabel>{tS('publishTo')}</MonoLabel>
           <ChannelMark name="Telegram" size={20} />
           <ChannelMark name="VK" size={20} />
           <ChannelMark name="Yandex" size={20} />
@@ -384,11 +371,11 @@ function SamplePosts() {
         <div className="flex items-center gap-3 border-t border-line-soft pt-3">
           <span className="inline-flex items-center gap-1.5 text-[13px] text-ink-mid">
             <Calendar className="size-3.5" aria-hidden />
-            завтра, 09:00
+            {tS('scheduledTime')}
           </span>
           <span className="ml-auto">
             <Button size="sm" variant="primary">
-              Запланировать
+              {tS('schedule')}
             </Button>
           </span>
         </div>
@@ -398,6 +385,7 @@ function SamplePosts() {
 }
 
 function SampleReviews() {
+  const tS = useTranslations('landing.sample');
   const items: Array<{
     stars: number;
     name: string;
@@ -437,9 +425,9 @@ function SampleReviews() {
           <div className="text-[13px] text-ink-mid">{r.text}</div>
           <div className="mt-2">
             {r.replied ? (
-              <Badge tone="success">отвечено OneVoice</Badge>
+              <Badge tone="success">{tS('repliedByOneVoice')}</Badge>
             ) : (
-              <Badge tone="warning">черновик готов · нужно ваше «да»</Badge>
+              <Badge tone="warning">{tS('draftReady')}</Badge>
             )}
           </div>
         </div>
@@ -451,12 +439,33 @@ function SampleReviews() {
 // ─── How it works ────────────────────────────────────────────────────
 
 function HowItWorks() {
+  const tHow = useTranslations('landing.howItWorks');
+  // Step copy is intentionally kept inline here — they're brand-voice
+  // marketing strings that should stay close to the layout. The kicker /
+  // headline use the i18n catalogue; per-step bullets remain untranslated.
+  const STEPS = [
+    {
+      n: '01',
+      t: 'Подключите',
+      d: 'Telegram, ВКонтакте, Яндекс.Бизнес — по одной ссылке за раз. Без ключей API и тонких настроек.',
+    },
+    {
+      n: '02',
+      t: 'Поговорите',
+      d: 'Расскажите про меню, часы работы и тон. OneVoice запомнит и будет писать вашими словами.',
+    },
+    {
+      n: '03',
+      t: 'Получайте',
+      d: 'Ответы клиентам, посты на все каналы, отчёт по отзывам. Вы — последнее слово, всегда.',
+    },
+  ];
   return (
     <section className="border-b border-line-soft bg-paper-sunken">
       <div className="mx-auto w-full max-w-[1180px] px-6 py-24 sm:px-12">
-        <MonoLabel>Как это работает</MonoLabel>
+        <MonoLabel>{tHow('kicker')}</MonoLabel>
         <h2 className="mt-3 max-w-[720px] text-[28px] font-medium leading-tight tracking-[-0.015em] sm:text-[36px]">
-          Три шага. Полчаса вашего времени.
+          {tHow('headline')}
         </h2>
         <div className="mt-14 grid grid-cols-1 gap-10 sm:grid-cols-3">
           {STEPS.map((s) => (
@@ -480,16 +489,15 @@ function HowItWorks() {
 // ─── Channels ─────────────────────────────────────────────────────────
 
 function Platforms() {
+  const tCh = useTranslations('landing.channels');
   return (
     <section id="channels" className="border-b border-line-soft">
       <div className="mx-auto w-full max-w-[1180px] px-6 py-24 sm:px-12">
-        <MonoLabel>Каналы</MonoLabel>
+        <MonoLabel>{tCh('kicker')}</MonoLabel>
         <h2 className="mt-3 max-w-[720px] text-[28px] font-medium leading-tight tracking-[-0.015em] sm:text-[36px]">
-          Поддерживаем то, чем пользуются ваши клиенты.
+          {tCh('headline')}
         </h2>
-        <p className="mt-3 max-w-[640px] text-[16px] leading-relaxed text-ink-mid">
-          В России — без компромиссов. Подключаем настоящие каналы, а не их западные аналоги.
-        </p>
+        <p className="mt-3 max-w-[640px] text-[16px] leading-relaxed text-ink-mid">{tCh('body')}</p>
         <SupportedPlatforms />
       </div>
     </section>
@@ -580,19 +588,20 @@ function Pricing() {
 // ─── Footer ──────────────────────────────────────────────────────────
 
 function SiteFooter() {
+  const tFooter = useTranslations('landing.footer');
   return (
     <footer className="border-t border-line">
       <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center gap-6 px-6 py-10 text-[13px] text-ink-soft sm:px-12">
         <span className="flex items-center gap-2 font-semibold text-ink">
           <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-md bg-ink text-[10px] text-paper">
-            OV
+            {tFooter('logoMark')}
           </span>
-          OneVoice
+          {tFooter('wordmark')}
         </span>
-        <MonoLabel>© {new Date().getFullYear()} · Все права защищены</MonoLabel>
+        <MonoLabel>{tFooter('rights', { year: new Date().getFullYear() })}</MonoLabel>
         <div className="ml-auto flex flex-wrap items-center gap-5">
           <a href="mailto:hello@onevoice.app" className="transition-colors hover:text-ink">
-            Контакты
+            {tFooter('contacts')}
           </a>
         </div>
       </div>
