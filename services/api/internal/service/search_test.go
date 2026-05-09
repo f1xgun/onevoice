@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -239,6 +240,60 @@ func TestSearcher_PropagatesRepoError(t *testing.T) {
 
 	_, err := s.Search(context.Background(), "biz-1", "user-1", "x", nil, 20)
 	assert.ErrorIs(t, err, wantErr)
+}
+
+// TestSearcher_StableTieBreak_RecencyThenID — v20.1 ranking: when two
+// rows have equal Score (very common now that title hits all carry
+// Score=1.0), the secondary sort key is LastMessageAt desc, then
+// ConversationID asc as a final deterministic tiebreaker. Without this,
+// equal-scoring rows would ride on Go's non-deterministic map iteration
+// order through sort.Slice — same query, different orders, flaky UX.
+//
+// We construct three title-only hits with equal raw Score (1.0) and
+// verify both:
+//  1. Recency wins: the newest LastMessageAt comes first.
+//  2. Same recency: ConversationID asc breaks the tie.
+//  3. Calling Search 50× back-to-back returns the SAME order every time.
+func TestSearcher_StableTieBreak_RecencyThenID(t *testing.T) {
+	tNew := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
+	tOld := tNew.Add(-2 * time.Hour)
+
+	titles := []domain.ConversationTitleHit{
+		// Same recency as conv-z; ConversationID is the tiebreaker. "conv-a"
+		// must come before "conv-z" in alphabetic order even though they
+		// were inserted z-then-a.
+		{ID: "conv-z", Title: "z-title", Score: 1.0, LastMessageAt: &tOld},
+		{ID: "conv-a", Title: "a-title", Score: 1.0, LastMessageAt: &tOld},
+		// Newest — must come first.
+		{ID: "conv-m", Title: "m-title", Score: 1.0, LastMessageAt: &tNew},
+	}
+	cr := &fakeConvRepoSearch{
+		titlesReturn: titles,
+		titlesIDs:    []string{"conv-z", "conv-a", "conv-m"},
+		scopedReturn: []string{},
+	}
+	mr := &fakeMsgRepoSearch{}
+	s := NewSearcher(cr, mr)
+	s.MarkIndexesReady()
+
+	first, err := s.Search(context.Background(), "biz", "user", "anything", nil, 20)
+	require.NoError(t, err)
+	require.Len(t, first, 3)
+
+	wantOrder := []string{"conv-m", "conv-a", "conv-z"}
+	gotOrder := []string{first[0].ConversationID, first[1].ConversationID, first[2].ConversationID}
+	assert.Equal(t, wantOrder, gotOrder,
+		"expected order: newest LastMessageAt first, then ConversationID asc")
+
+	// Determinism: 50 repeated calls must produce identical orderings.
+	for i := 0; i < 50; i++ {
+		got, err := s.Search(context.Background(), "biz", "user", "anything", nil, 20)
+		require.NoError(t, err)
+		require.Len(t, got, 3)
+		repeat := []string{got[0].ConversationID, got[1].ConversationID, got[2].ConversationID}
+		require.Equal(t, wantOrder, repeat,
+			"order changed between calls (iteration %d) — tie-break is not stable", i)
+	}
 }
 
 // TestSearcher_LogShape_NoQueryText — SEARCH-07 / T-19-LOG-LEAK

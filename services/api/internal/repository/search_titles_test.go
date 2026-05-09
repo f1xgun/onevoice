@@ -49,8 +49,11 @@ func TestSearchTitles_RejectsEmptyScope(t *testing.T) {
 }
 
 // TestSearchTitles_FindsRussianTitle — seeds a conversation titled with a
-// Russian phrase containing the term «инвойс» and verifies SearchTitles
-// returns it (Mongo's $text Russian stemmer matches inflected forms).
+// Russian phrase containing «инвойс» as a token and verifies SearchTitles
+// returns it. v20.1 uses word-prefix regex matching, so a query "инвойс"
+// matches a title containing "инвойс" exactly (or any longer form like
+// "инвойсу" / "инвойсами"). Prefix-as-stem covers Russian inflections
+// without the Snowball asymmetry.
 func TestSearchTitles_FindsRussianTitle(t *testing.T) {
 	db := setupMongoTestDB(t)
 	ctx := context.Background()
