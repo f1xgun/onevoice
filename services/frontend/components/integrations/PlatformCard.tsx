@@ -300,8 +300,8 @@ function ChannelList({
                   <AlertDialogTrigger asChild>
                     <button
                       type="button"
-                      aria-label="Бот не в группе обсуждений"
-                      title="Бот не в группе обсуждений — комментарии не собираются"
+                      aria-label={tCard('botMissingAria')}
+                      title={tCard('botMissingTooltip')}
                       className="flex h-6 w-6 items-center justify-center rounded-full bg-warning-soft text-[var(--ov-warning-ink)] hover:bg-warning"
                     >
                       <AlertTriangle size={12} />

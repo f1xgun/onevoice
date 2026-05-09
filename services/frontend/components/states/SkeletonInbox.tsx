@@ -7,6 +7,7 @@
 // timestamp.
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -30,10 +31,11 @@ export interface SkeletonInboxProps {
 }
 
 export function SkeletonInbox({ rows = 4, className }: SkeletonInboxProps) {
+  const tSkeleton = useTranslations('states.skeleton');
   return (
     <div
       role="status"
-      aria-label="Загружаем список"
+      aria-label={tSkeleton('inbox')}
       aria-live="polite"
       aria-busy="true"
       className={cn('overflow-hidden rounded-lg border border-line bg-paper-raised', className)}

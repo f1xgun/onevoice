@@ -236,7 +236,7 @@ export default function ReviewsPage() {
         <div className="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-line bg-paper-raised px-4 py-3">
           <Select value={platform} onValueChange={setPlatform}>
             <SelectTrigger className="h-9 w-[200px]">
-              <SelectValue placeholder="Платформа" />
+              <SelectValue placeholder={tReviews('platformPlaceholder')} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{tReviews('platformOptions.all')}</SelectItem>
@@ -265,14 +265,14 @@ export default function ReviewsPage() {
             className="ml-auto gap-1.5"
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
-            title="Запросить свежие отзывы у подключённых платформ"
+            title={tReviews('refreshTitle')}
           >
             {refreshMutation.isPending ? (
               <Loader2 className="size-3.5 animate-spin" />
             ) : (
               <RefreshCw className="size-3.5" />
             )}
-            {refreshMutation.isPending ? 'Обновляем…' : 'Обновить'}
+            {refreshMutation.isPending ? tReviews('refreshing') : tReviews('refresh')}
           </Button>
         </div>
 
@@ -324,7 +324,7 @@ export default function ReviewsPage() {
                 <Textarea
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Напишите ответ клиенту…"
+                  placeholder={tReviews('replyPlaceholder')}
                   rows={5}
                   className="resize-none"
                 />
