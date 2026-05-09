@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -81,6 +82,13 @@ type Config struct {
 
 	PublicURL string
 
+	// CORS — comma-separated list of allowed origins, parsed from
+	// CORS_ALLOWED_ORIGINS. Defaults to a single localhost:3000 entry for
+	// dev parity. In production this MUST be set to the public frontend
+	// origin (e.g. https://app.example.com); a missing env var leaves the
+	// API reachable only from localhost.
+	CORSAllowedOrigins []string
+
 	// Shutdown
 	ShutdownTimeout time.Duration
 
@@ -154,8 +162,9 @@ func Load() (*Config, error) {
 		S3UseSSL:          getEnv("S3_USE_SSL", "false") == "true",
 		S3PublicURLPrefix: getEnv("S3_PUBLIC_URL_PREFIX", "/media"),
 
-		PublicURL:       getEnv("PUBLIC_URL", "http://localhost:8080"),
-		ShutdownTimeout: shutdownTimeout,
+		PublicURL:          getEnv("PUBLIC_URL", "http://localhost:8080"),
+		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
+		ShutdownTimeout:    shutdownTimeout,
 	}
 
 	// Phase 18 — Auto-titler env loading. Mirrors
@@ -208,6 +217,27 @@ func getEnvInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// getEnvSlice parses a comma-separated env var into a trimmed []string.
+// Empty entries (e.g. "a,,b") are dropped; a fully blank value falls back
+// to the supplied default (typically a dev-friendly localhost entry).
+func getEnvSlice(key string, defaultValue []string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return defaultValue
+	}
+	return out
 }
 
 // parseIndexedEndpoints scans SELF_HOSTED_N_URL / _MODEL / _API_KEY env vars

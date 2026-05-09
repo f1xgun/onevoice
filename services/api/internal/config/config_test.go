@@ -149,6 +149,51 @@ func TestLoad_SelfHostedEndpoints_MissingModel_Skipped(t *testing.T) {
 	assert.Empty(t, cfg.SelfHostedEndpoints)
 }
 
+func TestLoad_CORSAllowedOrigins(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string // "" means unset
+		want  []string
+	}{
+		{
+			name:  "unset → dev default localhost:3000",
+			value: "",
+			want:  []string{"http://localhost:3000"},
+		},
+		{
+			name:  "single origin",
+			value: "https://app.example.com",
+			want:  []string{"https://app.example.com"},
+		},
+		{
+			name:  "comma-separated list with spaces trimmed",
+			value: "https://app.example.com, https://staging.example.com",
+			want:  []string{"https://app.example.com", "https://staging.example.com"},
+		},
+		{
+			name:  "empty entries dropped",
+			value: "https://app.example.com,,",
+			want:  []string{"https://app.example.com"},
+		},
+		{
+			name:  "blank-only value falls back to default",
+			value: "  ,  ,",
+			want:  []string{"http://localhost:3000"},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			minTestEnv(t)
+			t.Setenv("CORS_ALLOWED_ORIGINS", c.value)
+
+			cfg, err := config.Load()
+			require.NoError(t, err)
+			assert.Equal(t, c.want, cfg.CORSAllowedOrigins)
+		})
+	}
+}
+
 func TestLoad_SelfHostedEndpoints_StopsAtGap(t *testing.T) {
 	minTestEnv(t)
 	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")
