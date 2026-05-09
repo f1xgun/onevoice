@@ -15,6 +15,17 @@ interface BubbleProps {
   lines?: number;
 }
 
+// Per-line bubble geometry — paper-sunken proportions per the Linen
+// loading rule. Each successive line in a bubble is narrower
+// (BUBBLE_LINE_WIDTH_STEP_PCT %) and lighter (BUBBLE_LINE_OPACITY_STEP)
+// than the previous one, with a floor at BUBBLE_LINE_OPACITY_MIN so the
+// trailing line never disappears entirely.
+const BUBBLE_LINE_WIDTH_STEP_PCT = 18;
+const BUBBLE_LINE_OPACITY_BASE = 0.7;
+const BUBBLE_LINE_OPACITY_STEP = 0.1;
+const BUBBLE_LINE_OPACITY_MIN = 0.3;
+const FULL_WIDTH_PCT = 100;
+
 function Bubble({ side, width, lines = 2 }: BubbleProps) {
   return (
     <div className={cn('flex', side === 'right' ? 'justify-end' : 'justify-start')}>
@@ -30,8 +41,11 @@ function Bubble({ side, width, lines = 2 }: BubbleProps) {
             key={i}
             className="h-[9px]"
             style={{
-              width: `${100 - i * 18}%`,
-              opacity: Math.max(0.3, 0.7 - i * 0.1),
+              width: `${FULL_WIDTH_PCT - i * BUBBLE_LINE_WIDTH_STEP_PCT}%`,
+              opacity: Math.max(
+                BUBBLE_LINE_OPACITY_MIN,
+                BUBBLE_LINE_OPACITY_BASE - i * BUBBLE_LINE_OPACITY_STEP
+              ),
             }}
           />
         ))}

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL, API_PATHS, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
+import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { useAuthStore } from './auth';
 import type { User } from './auth';
 
@@ -65,7 +66,7 @@ api.interceptors.response.use(
       url.includes(API_PATHS.AUTH.REGISTER) ||
       url.includes('/auth/refresh');
 
-    if (error.response?.status !== 401 || original._retry || isAuthEndpoint) {
+    if (error.response?.status !== HTTP_STATUS.UNAUTHORIZED || original._retry || isAuthEndpoint) {
       return Promise.reject(error);
     }
 

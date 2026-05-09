@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { fetchTools } from '@/lib/api/tools';
+import { STALE_TIME_5_MIN } from '@/lib/constants/cacheTTL';
 import { PLATFORM_DISPLAY_ORDER } from '@/lib/platforms';
 import type { Tool } from '@/lib/schemas';
 
@@ -12,7 +13,7 @@ import type { Tool } from '@/lib/schemas';
 // staleTime 5 minutes — the registry does not change mid-session and the
 // settings/project-edit pages need not refetch on every mount.
 export const TOOLS_QUERY_KEY = ['tools'] as const;
-export const TOOLS_STALE_TIME_MS = 5 * 60 * 1000;
+export const TOOLS_STALE_TIME_MS = STALE_TIME_5_MIN;
 
 export function useTools() {
   return useQuery<Tool[]>({
