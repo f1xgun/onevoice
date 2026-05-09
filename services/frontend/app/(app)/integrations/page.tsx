@@ -92,7 +92,7 @@ export default function IntegrationsPage() {
       toast.error(messages[error] || `Не получилось: ${error}`);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
-  }, [searchParams, qc]);
+  }, [searchParams, qc, tIntegrations]);
 
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
     queryKey: QUERY_KEYS.INTEGRATIONS,
