@@ -1,4 +1,38 @@
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
+
+// Global next-intl stub. Real translation plumbing lives at
+// lib/i18n/request.ts and only matters in production / e2e — tests
+// shouldn't have to mount NextIntlClientProvider just to render any
+// component that calls useTranslations.
+//
+// The stub returns the (namespaced) key as the rendered string. Tests
+// that assert specific user-visible Russian copy continue to work
+// against the actual rendered messages they don't go through this mock
+// (toasts surfacing server-supplied strings, locked Russian copy from
+// API responses, etc.). For tests that *do* need the literal Russian
+// from messages/ru.json, swap this stub for an explicit
+// NextIntlClientProvider wrapper at the call site.
+vi.mock('next-intl', () => {
+  const tFactory = (namespace?: string) => {
+    const t = (key: string) => (namespace ? `${namespace}.${key}` : key);
+    // next-intl exposes raw / has on the t-function; provide cheap stubs
+    // so tests that do {t.has('foo')} don't blow up.
+    (t as unknown as { has: (k: string) => boolean }).has = () => true;
+    (t as unknown as { raw: (k: string) => string }).raw = (k: string) =>
+      namespace ? `${namespace}.${k}` : k;
+    return t;
+  };
+  return {
+    useTranslations: tFactory,
+    useLocale: () => 'ru',
+    useFormatter: () => ({
+      dateTime: (d: Date) => d.toISOString(),
+      number: (n: number) => String(n),
+    }),
+    NextIntlClientProvider: ({ children }: { children: React.ReactNode }) => children,
+  };
+});
 
 // localStorage polyfill for jsdom in Vitest vm context
 // jsdom's localStorage proxy does not expose prototype methods across vm realms
