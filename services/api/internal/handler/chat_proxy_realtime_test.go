@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -131,7 +132,7 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 		},
 		&MockMessageRepository{},
 		&MockPendingToolCallRepository{},
-		nil, nil, spy, hub, orchServer.URL, nil, nil,
+		nil, nil, spy, hub, orchestratorclient.New(orchServer.URL, nil), nil,
 	)
 
 	body := `{"message":"post please","model":"gpt-4"}`

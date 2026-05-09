@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitlvalidation"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 )
 
 // pendingSweepLoopInterval — delay between the first failed orchestrator
@@ -22,16 +21,17 @@ const pendingSweepLoopInterval = 5 * time.Second
 
 // RunToolApprovalStartupValidation implements POLICY-07 — compares every
 // tool-approval entry stored in Postgres against the live orchestrator
-// registry (fetched over HTTP) and logs tool_approval_whitelist_unknown for
-// entries whose tool no longer exists. Unknown entries are NOT auto-pruned;
-// they are treated as denied by the runtime policy resolver (Registry.Floor
-// returns ToolFloorForbidden for unknown tools — enforced in Plan 16-03 Task 1).
+// registry (fetched over HTTP via pkg/orchestratorclient) and logs
+// tool_approval_whitelist_unknown for entries whose tool no longer exists.
+// Unknown entries are NOT auto-pruned; they are treated as denied by the
+// runtime policy resolver (Registry.Floor returns ToolFloorForbidden for
+// unknown tools — enforced in Plan 16-03 Task 1).
 //
 // Non-blocking, best-effort: runs in a goroutine; one retry after 5s; skips
 // silently on sustained failure so a slow/dead orchestrator cannot block API
 // boot. The sweep is advisory — production alerts should watch for
 // `tool_approval_whitelist_unknown` events in Loki/Grafana.
-func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Pool, orchestratorURL string, fetchTimeout time.Duration) {
+func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Pool, orch *orchestratorclient.Client, fetchTimeout time.Duration) {
 	// Thread the parent (signal-derived) context so SIGTERM cancels the
 	// sweep early instead of waiting up to startupTimeout for a slow or
 	// dead orchestrator on the second retry. (LOW-02 fix.)
@@ -41,20 +41,24 @@ func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Po
 	sweepCtx, cancel := context.WithTimeout(parent, startupTimeout)
 	defer cancel()
 
-	registered, err := fetchOrchestratorToolNames(sweepCtx, orchestratorURL, fetchTimeout)
+	orchURL := ""
+	if orch != nil {
+		orchURL = orch.BaseURL()
+	}
+	registered, err := fetchOrchestratorToolNames(sweepCtx, orch, fetchTimeout)
 	if err != nil {
 		slog.WarnContext(sweepCtx, "tool_approval_whitelist_sweep: fetch registry failed, retrying",
-			"orchestrator", orchestratorURL, "error", err,
+			"orchestrator", orchURL, "error", err,
 		)
 		select {
 		case <-time.After(pendingSweepLoopInterval):
 		case <-sweepCtx.Done():
 			return
 		}
-		registered, err = fetchOrchestratorToolNames(sweepCtx, orchestratorURL, fetchTimeout)
+		registered, err = fetchOrchestratorToolNames(sweepCtx, orch, fetchTimeout)
 		if err != nil {
 			slog.WarnContext(sweepCtx, "tool_approval_whitelist_sweep: skipped (orchestrator unreachable)",
-				"orchestrator", orchestratorURL, "error", err,
+				"orchestrator", orchURL, "error", err,
 			)
 			return
 		}
@@ -80,38 +84,17 @@ func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Po
 }
 
 // fetchOrchestratorToolNames calls GET {orchestratorURL}/internal/tools/names
-// and decodes the `{names: [...]}` response into a map usable by
-// hitlvalidation.ValidateApprovalSettings. fetchTimeout is the env-tunable
-// per-call budget; the caller handles retry.
-func fetchOrchestratorToolNames(ctx context.Context, orchestratorURL string, fetchTimeout time.Duration) (map[string]struct{}, error) {
+// via pkg/orchestratorclient and returns the resulting set. fetchTimeout
+// bounds each individual call; the caller handles retry. nil orch is
+// rejected up-front (the API config always supplies a non-empty
+// orchestrator URL — a nil here is a wiring bug).
+func fetchOrchestratorToolNames(ctx context.Context, orch *orchestratorclient.Client, fetchTimeout time.Duration) (map[string]struct{}, error) {
+	if orch == nil {
+		return nil, fmt.Errorf("orchestrator client is nil")
+	}
 	reqCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
-
-	u := strings.TrimRight(orchestratorURL, "/") + "/internal/tools/names"
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http get: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %s", resp.Status)
-	}
-
-	var body struct {
-		Names []string `json:"names"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, fmt.Errorf("decode: %w", err)
-	}
-	out := make(map[string]struct{}, len(body.Names))
-	for _, n := range body.Names {
-		out[n] = struct{}{}
-	}
-	return out, nil
+	return orch.ListToolNames(reqCtx)
 }
 
 // loadBusinessApprovalSources reads every business's tool_approvals JSONB

@@ -1,9 +1,6 @@
 package service
 
 import (
-	"encoding/json"
-	"io"
-
 	"github.com/google/uuid"
 )
 
@@ -23,10 +20,4 @@ func parseUUIDSafe(s string) uuid.UUID {
 // decision layer.
 func parseUUIDStrict(s string) (uuid.UUID, error) {
 	return uuid.Parse(s)
-}
-
-// decodeJSON is a thin wrapper so tests can override if needed. Keeps
-// hitl.go from importing encoding/json directly in the hot path.
-func decodeJSON(r io.Reader, v interface{}) error {
-	return json.NewDecoder(r).Decode(v)
 }
