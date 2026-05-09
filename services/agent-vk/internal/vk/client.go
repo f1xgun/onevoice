@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
 	"golang.org/x/time/rate"
@@ -84,7 +83,7 @@ func (c *Client) PostPhoto(groupID, photoURL, caption string) (int64, error) {
 	if err := c.wait(); err != nil {
 		return 0, err
 	}
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := &http.Client{Timeout: vkHTTPTimeout}
 	resp, err := httpClient.Get(photoURL)
 	if err != nil {
 		return 0, fmt.Errorf("vk: download image: %w", err)

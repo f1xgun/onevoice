@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+// defaultShutdownTimeout is the fallback graceful-shutdown budget when no
+// SHUTDOWN_TIMEOUT env override is provided. 30s gives in-flight LLM and
+// tool-dispatch requests time to drain before SIGKILL.
+const defaultShutdownTimeout = 30 * time.Second
+
 // Config holds orchestrator configuration loaded from environment.
 type Config struct {
 	Port            string
@@ -57,7 +62,7 @@ func Load() (*Config, error) {
 		}
 	}
 
-	shutdownTimeout := 30 * time.Second
+	shutdownTimeout := defaultShutdownTimeout
 	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			shutdownTimeout = d

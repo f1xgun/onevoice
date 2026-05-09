@@ -34,6 +34,12 @@ import (
 	"github.com/f1xgun/onevoice/pkg/toolvalidation"
 )
 
+// defaultToolsRegistryCacheTTL is the fallback TTL applied when the caller
+// passes a non-positive value to NewToolsRegistryCache. 5 minutes balances
+// freshness of orchestrator tool advertisements against per-request fan-out
+// chatter into /internal/tools.
+const defaultToolsRegistryCacheTTL = 5 * time.Minute
+
 // Typed errors exposed by the HITL service layer. Each maps to a specific HTTP
 // status code in the handler layer (see handler/hitl.go).
 var (
@@ -408,7 +414,7 @@ func NewToolsRegistryCache(orchestratorURL string, httpClient *http.Client, ttl 
 		httpClient = http.DefaultClient
 	}
 	if ttl <= 0 {
-		ttl = 5 * time.Minute
+		ttl = defaultToolsRegistryCacheTTL
 	}
 	return &ToolsRegistryCache{
 		orchestratorURL: orchestratorURL,

@@ -338,7 +338,7 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 		// review UI only paginates back so far anyway. We previously took
 		// just the latest post, which silently dropped reviews as soon as
 		// a newer post (with no comments) appeared on the wall.
-		posts, _, postsErr := client.GetWallPosts(groupID, 20)
+		posts, _, postsErr := client.GetWallPosts(groupID, recentPostsBatchSize)
 		if postsErr != nil {
 			return nil, fmt.Errorf("vk: get latest posts: %w", classifyVKError(postsErr))
 		}

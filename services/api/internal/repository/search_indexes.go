@@ -10,6 +10,20 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+// Search-index weights and Mongo error codes.
+const (
+	// titleSearchWeight biases conversation-title hits 2x over message-content
+	// hits when both indexes match the same query (RESEARCH §4 / SEARCH-01).
+	titleSearchWeight = 20
+
+	// mongoIndexOptionsConflictErr (85) and mongoIndexKeySpecsConflictErr (86)
+	// are the CommandError codes Mongo returns when CreateOne hits an existing
+	// index with a divergent spec — treated as "already exists" since both
+	// signal the index is in place.
+	mongoIndexOptionsConflictErr  = 85
+	mongoIndexKeySpecsConflictErr = 86
+)
+
 // EnsureSearchIndexes — Phase 19 / Plan 19-03 / SEARCH-01.
 //
 // Creates the v1.3 text-search indexes idempotently at API startup. Two
@@ -50,7 +64,7 @@ func EnsureSearchIndexes(ctx context.Context, db *mongo.Database) error {
 		Options: options.Index().
 			SetName("conversations_title_text_v19").
 			SetDefaultLanguage("russian").
-			SetWeights(bson.D{{Key: "title", Value: 20}}),
+			SetWeights(bson.D{{Key: "title", Value: titleSearchWeight}}),
 	}
 	if _, err := convs.Indexes().CreateOne(ctx, titleIdx); err != nil {
 		if !isIndexAlreadyExistsErr(err) {
@@ -89,7 +103,7 @@ func isIndexAlreadyExistsErr(err error) bool {
 	if errors.As(err, &cmdErr) {
 		// 85 IndexOptionsConflict, 86 IndexKeySpecsConflict, 96 OperationFailed (rare).
 		switch cmdErr.Code {
-		case 85, 86:
+		case mongoIndexOptionsConflictErr, mongoIndexKeySpecsConflictErr:
 			return true
 		}
 	}

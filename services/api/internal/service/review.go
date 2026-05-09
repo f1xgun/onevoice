@@ -17,6 +17,11 @@ import (
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
+// reviewDispatchTimeout caps the per-platform NATS request budget for
+// review-reply dispatch. 90s leaves room for an RPA agent (Yandex.Business
+// is the slow path) to chase a CAPTCHA / 2FA challenge before we give up.
+const reviewDispatchTimeout = 90 * time.Second
+
 // ReviewService defines the interface for review operations
 type ReviewService interface {
 	List(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
@@ -68,7 +73,7 @@ func NewReviewService(repo domain.ReviewRepository, businessService BusinessServ
 		repo:            repo,
 		businessService: businessService,
 		nc:              requester,
-		dispatchTimeout: 90 * time.Second,
+		dispatchTimeout: reviewDispatchTimeout,
 		refresher:       refresher,
 	}
 }

@@ -40,6 +40,15 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
+// Search ranking weights. Title hits outrank content hits of equal raw score
+// at a 2:1 ratio — see mergeAndRank for the score formula. The numeric ratio
+// must stay in step with the index-side SetWeights() in
+// repository/search_indexes.go (D-07 alignment).
+const (
+	titleHitWeight   = 20.0
+	messageHitWeight = 10.0
+)
+
 // SearchResult is the per-conversation row returned by Searcher.Search.
 // JSON tags drive the GET /api/v1/search response shape consumed by the
 // frontend (Plan 19-04 SidebarSearch component).
@@ -148,7 +157,7 @@ func (s *Searcher) Search(
 	}
 
 	stems := QueryStems(query)
-	merged := mergeAndRank(titleHits, msgHits, 20.0, 10.0, limit, stems)
+	merged := mergeAndRank(titleHits, msgHits, titleHitWeight, messageHitWeight, limit, stems)
 	return merged, nil
 }
 

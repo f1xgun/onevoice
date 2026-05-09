@@ -5,6 +5,21 @@ import (
 	"time"
 )
 
+// Provider health states emitted via ModelProviderEntry.HealthStatus.
+const (
+	HealthStatusHealthy  = "healthy"
+	HealthStatusDegraded = "degraded"
+	HealthStatusDown     = "down"
+)
+
+// Provider health metrics tuning.
+const (
+	latencyWindow            = 100 // rolling latency samples retained per provider
+	healthDegradedRate       = 0.2 // failure rate above which provider is "degraded"
+	healthDownRate           = 0.5 // failure rate above which provider is "down"
+	healthRecoverySuccessMin = 3   // consecutive successes to recover from down/degraded
+)
+
 // ModelProviderEntry represents a model-provider pair with metadata
 type ModelProviderEntry struct {
 	Model              string
@@ -12,7 +27,7 @@ type ModelProviderEntry struct {
 	InputCostPer1MTok  float64
 	OutputCostPer1MTok float64
 	AvgLatencyMs       int
-	HealthStatus       string // "healthy", "degraded", "down"
+	HealthStatus       string // one of HealthStatus* constants
 	Enabled            bool
 	Priority           int
 	LastCheckedAt      time.Time
@@ -66,8 +81,8 @@ func (r *Registry) RegisterModelProvider(entry *ModelProviderEntry) {
 	key := entry.Provider + ":" + entry.Model
 	if _, exists := r.metrics[key]; !exists {
 		r.metrics[key] = &ProviderMetrics{
-			HealthStatus:  "healthy",
-			LastLatencies: make([]int64, 0, 100),
+			HealthStatus:  HealthStatusHealthy,
+			LastLatencies: make([]int64, 0, latencyWindow),
 		}
 	}
 }
@@ -109,7 +124,7 @@ func (r *Registry) RecordSuccess(provider, model string, latency time.Duration) 
 	// Update latency rolling window
 	latencyMs := latency.Milliseconds()
 	metrics.LastLatencies = append(metrics.LastLatencies, latencyMs)
-	if len(metrics.LastLatencies) > 100 {
+	if len(metrics.LastLatencies) > latencyWindow {
 		metrics.LastLatencies = metrics.LastLatencies[1:]
 	}
 
@@ -121,9 +136,9 @@ func (r *Registry) RecordSuccess(provider, model string, latency time.Duration) 
 	metrics.AvgLatencyMs = int(sum / int64(len(metrics.LastLatencies)))
 
 	// Update health status
-	if metrics.HealthStatus == "down" || metrics.HealthStatus == "degraded" {
-		if metrics.SuccessCount >= 3 {
-			metrics.HealthStatus = "healthy"
+	if metrics.HealthStatus == HealthStatusDown || metrics.HealthStatus == HealthStatusDegraded {
+		if metrics.SuccessCount >= healthRecoverySuccessMin {
+			metrics.HealthStatus = HealthStatusHealthy
 		}
 	}
 
@@ -158,12 +173,12 @@ func (r *Registry) RecordFailure(provider, model string) {
 	// Update health status based on failure rate
 	var newStatus string
 	switch {
-	case failureRate > 0.5:
-		newStatus = "down"
-	case failureRate > 0.2:
-		newStatus = "degraded"
+	case failureRate > healthDownRate:
+		newStatus = HealthStatusDown
+	case failureRate > healthDegradedRate:
+		newStatus = HealthStatusDegraded
 	default:
-		newStatus = "healthy"
+		newStatus = HealthStatusHealthy
 	}
 
 	metrics.HealthStatus = newStatus

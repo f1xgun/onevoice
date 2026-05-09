@@ -12,6 +12,12 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
+// pendingToolCallTTL is how long an approval batch stays pending before lazy
+// expiration. 24h matches the orchestrator-side mirror in
+// services/orchestrator/internal/repository/pending_tool_call.go and gives
+// users a full business-day window to act on an approval card.
+const pendingToolCallTTL = 24 * time.Hour
+
 // pendingToolCallRepo is the API-side implementation of
 // domain.PendingToolCallRepository. It owns:
 //   - reads (GetByBatchID with lazy expiration, ListPendingByConversation),
@@ -125,7 +131,7 @@ func (r *pendingToolCallRepo) PromoteToPending(ctx context.Context, batchID stri
 		bson.M{"_id": batchID, "status": "preparing"},
 		bson.M{"$set": bson.M{
 			"status":     "pending",
-			"expires_at": now.Add(24 * time.Hour),
+			"expires_at": now.Add(pendingToolCallTTL),
 			"updated_at": now,
 		}},
 	)
