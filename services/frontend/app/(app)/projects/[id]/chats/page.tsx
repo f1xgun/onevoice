@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Bookmark, Plus } from 'lucide-react';
+import { Bookmark, Plus, Settings } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -68,6 +68,18 @@ export default function ProjectChatsPage() {
     </Button>
   );
 
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <Button asChild variant="ghost" size="md">
+        <Link href={`/projects/${id}`} aria-label={tProjects('settings')}>
+          <Settings size={16} aria-hidden />
+          {tProjects('settings')}
+        </Link>
+      </Button>
+      {newChatButton}
+    </div>
+  );
+
   if (projectLoading || conversationsLoading) {
     return (
       <>
@@ -96,7 +108,7 @@ export default function ProjectChatsPage() {
 
   return (
     <>
-      <PageHeader title={project.name} sub={project.description} actions={newChatButton} />
+      <PageHeader title={project.name} sub={project.description} actions={headerActions} />
 
       <div className="mx-auto w-full max-w-2xl px-4 pb-10 sm:px-12 sm:pb-16">
         {chats.length === 0 ? (
