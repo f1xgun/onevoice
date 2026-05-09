@@ -147,8 +147,8 @@ func (h *ConnectHandler) resolveVKGroupID(ctx context.Context, input string) (st
 	if h.cfg.VKServiceKey == "" {
 		return "", fmt.Errorf("VK service key not configured; pass a numeric group id")
 	}
-	apiURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL+"/method/groups.getById?group_id=%s&access_token=%s&v="+vkapi.APIVersion,
-		url.QueryEscape(input), url.QueryEscape(h.cfg.VKServiceKey))
+	apiURL := fmt.Sprintf("%s/method/groups.getById?group_id=%s&access_token=%s&v="+vkapi.APIVersion,
+		h.vkAPIBase(), url.QueryEscape(input), url.QueryEscape(h.cfg.VKServiceKey))
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
@@ -191,8 +191,8 @@ func (h *ConnectHandler) fetchVKCommunityName(ctx context.Context, groupID, toke
 	if token == "" {
 		return "", nil
 	}
-	apiURL := fmt.Sprintf(vkapi.DefaultAPIBaseURL+"/method/groups.getById?group_id=%s&fields=name&access_token=%s&v="+vkapi.APIVersion,
-		url.QueryEscape(groupID), url.QueryEscape(token))
+	apiURL := fmt.Sprintf("%s/method/groups.getById?group_id=%s&fields=name&access_token=%s&v="+vkapi.APIVersion,
+		h.vkAPIBase(), url.QueryEscape(groupID), url.QueryEscape(token))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, http.NoBody)
 	if err != nil {
 		return "", err
