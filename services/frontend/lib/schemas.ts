@@ -5,10 +5,14 @@ import { z } from 'zod';
 // `no-magic-numbers` lint rule.
 const EMAIL_MAX_LEN = 254; // RFC 5321 SMTP local+domain limit
 const PASSWORD_MIN_LEN = 6;
+// User name (register form). Distinct from BUSINESS_NAME_MAX_LEN below
+// because user names tend to be shorter than business / brand names.
 const NAME_MIN_LEN = 2;
 const NAME_MAX_LEN = 100;
-const TITLE_MAX_LEN = 200;
-const DESCRIPTION_MAX_LEN = 500;
+// Business profile fields.
+const BUSINESS_NAME_MAX_LEN = 200;
+const BUSINESS_DESCRIPTION_MAX_LEN = 500;
+const BUSINESS_ADDRESS_MAX_LEN = 500;
 
 export const loginSchema = z.object({
   email: z.string().email('Некорректный email').max(EMAIL_MAX_LEN),
@@ -37,7 +41,7 @@ export const businessSchema = z.object({
   name: z
     .string()
     .min(NAME_MIN_LEN, 'Минимум 2 символа')
-    .max(TITLE_MAX_LEN, 'Максимум 200 символов'),
+    .max(BUSINESS_NAME_MAX_LEN, 'Максимум 200 символов'),
   category: z.string().min(1, 'Выберите категорию'),
   phone: z
     .string()
@@ -45,8 +49,8 @@ export const businessSchema = z.object({
     .optional()
     .or(z.literal('')),
   website: z.string().url('Некорректный URL').optional().or(z.literal('')),
-  description: z.string().max(DESCRIPTION_MAX_LEN).optional(),
-  address: z.string().max(DESCRIPTION_MAX_LEN).optional(),
+  description: z.string().max(BUSINESS_DESCRIPTION_MAX_LEN).optional(),
+  address: z.string().max(BUSINESS_ADDRESS_MAX_LEN).optional(),
 });
 
 export type BusinessInput = z.infer<typeof businessSchema>;

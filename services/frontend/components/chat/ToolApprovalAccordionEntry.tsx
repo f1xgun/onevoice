@@ -12,6 +12,7 @@ import type { ApprovalAction, PendingApprovalCall } from '@/types/chat';
 
 import { ToolApprovalJsonEditor } from './ToolApprovalJsonEditor';
 import { ToolApprovalToggleGroup } from './ToolApprovalToggleGroup';
+import { REJECT_REASON_MAX_LEN } from './toolApprovalConstants';
 
 // Exact Russian copy — 17-UI-SPEC §Copywriting Contract. Inlined per
 // 17-RESEARCH §Don't Hand-Roll (no shared i18n layer in v1.3).
@@ -39,11 +40,6 @@ const jsonViewTheme = {
 } as React.CSSProperties;
 
 type Decision = ApprovalAction | 'undecided';
-
-// Maximum length of the optional rejection reason. Mirrors the slice in
-// the parent ToolApprovalCard reducer so the inline length counter stops
-// flagging "over" exactly when the reducer would truncate.
-const REJECT_REASON_MAX_LEN = 500;
 
 /**
  * Minimal per-call draft shape consumed by the accordion entry. The root
