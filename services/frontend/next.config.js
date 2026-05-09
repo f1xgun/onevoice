@@ -1,3 +1,12 @@
+const createNextIntlPlugin = require('next-intl/plugin');
+
+// next-intl request config lives at lib/i18n/request.ts. The plugin wires
+// it into the App Router so server components + middleware can pull
+// messages without per-route plumbing. Single-locale (ru) for now —
+// adding english later only requires extending lib/i18n/request.ts and
+// dropping a messages/en.json next to ru.json.
+const withNextIntl = createNextIntlPlugin('./lib/i18n/request.ts');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -15,4 +24,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+module.exports = withNextIntl(nextConfig);
