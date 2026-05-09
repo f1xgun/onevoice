@@ -24,16 +24,13 @@ export interface UseDataTableFiltersResult<F extends Record<string, string>> {
 }
 
 export function useDataTableFilters<F extends Record<string, string>>(
-  opts: UseDataTableFiltersOptions<F>,
+  opts: UseDataTableFiltersOptions<F>
 ): UseDataTableFiltersResult<F> {
   const [filters, setFilters] = useState<F>(opts.defaultValue);
 
-  const setFilter = useCallback(
-    <K extends keyof F>(key: K, value: F[K]) => {
-      setFilters((prev) => ({ ...prev, [key]: value }));
-    },
-    [],
-  );
+  const setFilter = useCallback(<K extends keyof F>(key: K, value: F[K]) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const queryString = useCallback(() => {
     const params = new URLSearchParams();

@@ -27,7 +27,7 @@ export interface UseDataTableSearchResult<T> {
 }
 
 export function useDataTableSearch<T>(
-  opts: UseDataTableSearchOptions<T>,
+  opts: UseDataTableSearchOptions<T>
 ): UseDataTableSearchResult<T> {
   const [query, setQuery] = useState('');
   // Skip the useDebouncedValue indirection when debounceMs is unset / 0:
@@ -42,9 +42,7 @@ export function useDataTableSearch<T>(
   const visibleRows = useMemo(() => {
     if (!effectiveQuery.trim()) return rows;
     const q = effectiveQuery.trim().toLowerCase();
-    return rows.filter((r) =>
-      searchableFields(r).some((s) => s.toLowerCase().includes(q)),
-    );
+    return rows.filter((r) => searchableFields(r).some((s) => s.toLowerCase().includes(q)));
   }, [rows, effectiveQuery, searchableFields]);
 
   return { query, setQuery, visibleRows };

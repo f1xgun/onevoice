@@ -44,11 +44,7 @@ export function ToolsTab({
             <FormLabel>{tForm('tools')}</FormLabel>
             <FormDescription>{tForm('toolsDescription')}</FormDescription>
             <FormControl>
-              <WhitelistRadio
-                value={field.value}
-                onChange={field.onChange}
-                name={field.name}
-              />
+              <WhitelistRadio value={field.value} onChange={field.onChange} name={field.name} />
             </FormControl>
             <FormMessage />
           </FormItem>

@@ -57,8 +57,7 @@ export function usePendingApprovalFlow({
   // handler so the SSE consumer below can dispatch via a stable function
   // identity without re-creating the resolveApproval closure when the
   // parent's appendSSEEvent identity changes between renders.
-  const onResumeEventRef =
-    useRef<(event: Record<string, unknown>) => void>(onResumeEvent);
+  const onResumeEventRef = useRef<(event: Record<string, unknown>) => void>(onResumeEvent);
   useEffect(() => {
     onResumeEventRef.current = onResumeEvent;
   });
