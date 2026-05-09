@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -48,13 +49,20 @@ const MAX_SYSTEM_PROMPT_CHARS = 4000;
 const PROJECT_NAME_MAX_LEN = 200;
 const PROJECT_DESCRIPTION_MAX_LEN = 2000;
 
+// Schema-time messages — module-level translator (no React context at
+// declaration time). Same pattern as `lib/schemas.ts`.
+const tValidation = getTranslator('validation');
+
 const schema = z
   .object({
-    name: z.string().trim().min(1, 'Укажите название проекта.').max(PROJECT_NAME_MAX_LEN),
+    name: z.string().trim().min(1, tValidation('projectNameRequired')).max(PROJECT_NAME_MAX_LEN),
     description: z.string().max(PROJECT_DESCRIPTION_MAX_LEN),
     systemPrompt: z
       .string()
-      .max(MAX_SYSTEM_PROMPT_CHARS, 'Системный промпт слишком длинный (максимум 4000 символов).'),
+      .max(
+        MAX_SYSTEM_PROMPT_CHARS,
+        tValidation('projectSystemPromptMax', { max: MAX_SYSTEM_PROMPT_CHARS })
+      ),
     whitelistMode: z.enum(['inherit', 'all', 'explicit', 'none']),
     allowedTools: z.array(z.string()),
     // Phase 16 — POLICY-06 approvalOverrides. Zod-typed as a map of
@@ -66,7 +74,7 @@ const schema = z
   })
   .refine((d) => d.whitelistMode !== 'explicit' || d.allowedTools.length > 0, {
     path: ['allowedTools'],
-    message: 'Выберите хотя бы один инструмент или переключите режим на «Никаких».',
+    message: tValidation('projectAllowedToolsRequired'),
   });
 
 type FormValues = z.infer<typeof schema>;
@@ -138,8 +146,8 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
         err instanceof Error && 'response' in err
           ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? '')
           : '';
-      toast.error('Не удалось сохранить проект', {
-        description: `Попробуйте ещё раз. ${msg}`.trim(),
+      toast.error(tForm('saveError'), {
+        description: tForm('saveErrorRetry', { detail: msg }).trim(),
       });
     }
   };
@@ -147,7 +155,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
   const handleDelete = async () => {
     if (!project) return;
     await deleteMutation.mutateAsync(project.id);
-    toast.success('Проект удалён');
+    toast.success(tForm('deletedSuccess'));
     router.push('/chat');
   };
 

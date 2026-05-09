@@ -50,7 +50,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
         '/integrations/vk/connect',
         { access_token: trimmed }
       );
-      toast.success('Сообщество VK подключено');
+      toast.success(tVk('connected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       // Reset local state then call parent close to keep the modal logic clean.
       setToken('');
@@ -62,7 +62,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Не удалось подключить сообщество';
+        tVk('connectFailed');
       toast.error(msg);
       setSubmitting(false);
     }

@@ -26,15 +26,101 @@ function lookupTranslation(namespace: string | undefined, key: string): string {
   return typeof cursor === 'string' ? cursor : namespace ? `${namespace}.${key}` : key;
 }
 
-// Minimal ICU-style placeholder substitution: replaces every `{name}`
-// occurrence in the looked-up string with `params[name]`. Real next-intl
-// also handles plurals/select/numbers; tests only rely on `{var}` swaps.
+// Russian plural category for an integer per CLDR rules. Used by the
+// ICU-plural branch of `interpolate` below so a key like
+// `Минимум {count, plural, one {# символ} few {# символа} many {# символов} other {# символов}}`
+// renders the right form ('Минимум 2 символа', 'Минимум 6 символов'). The
+// real next-intl runtime does this through Intl.PluralRules; the mock
+// hand-rolls the rule because jsdom's Intl is sufficient but pulling in
+// the runtime here would mean importing all of next-intl just for tests.
+function ruPluralCategory(n: number): 'one' | 'few' | 'many' | 'other' {
+  if (!Number.isInteger(n)) return 'other';
+  const mod10 = Math.abs(n) % 10;
+  const mod100 = Math.abs(n) % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'one';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'few';
+  return 'many';
+}
+
+// Extract the body of `{<name>, plural, …}` starting at the `, plural,`
+// keyword. Returns `[innerBody, endIndex]` where `innerBody` is the
+// concatenation of every option block (e.g. `one {# x} few {# y} other {# z}`)
+// and `endIndex` is the offset of the matching closing `}`. Tracks brace
+// depth so nested option bodies don't terminate the outer block early.
+function extractPluralBody(src: string, start: number): { body: string; end: number } | null {
+  let depth = 1;
+  let i = start;
+  while (i < src.length && depth > 0) {
+    const ch = src[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') depth--;
+    if (depth === 0) return { body: src.slice(start, i), end: i };
+    i++;
+  }
+  return null;
+}
+
+// Parse the option list inside an ICU plural body — `one {…} few {…} =0 {…}`.
+// Returns a map keyed by category / `=N` literal. Handles nested braces
+// inside option bodies.
+function parsePluralOptions(body: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  let i = 0;
+  while (i < body.length) {
+    while (i < body.length && /\s/.test(body[i])) i++;
+    const tagStart = i;
+    while (i < body.length && body[i] !== '{') i++;
+    const tag = body.slice(tagStart, i).trim();
+    if (!tag || body[i] !== '{') break;
+    const inner = extractPluralBody(body, i + 1);
+    if (!inner) break;
+    out[tag] = inner.body;
+    i = inner.end + 1;
+  }
+  return out;
+}
+
+// ICU-aware placeholder substitution for tests. Supports two shapes:
+//   - simple `{name}` → params[name]
+//   - `{count, plural, =N {…} one {…} few {…} many {…} other {…}}` (ru rules)
+// Other ICU features (select, number formatters) are NOT covered — none of
+// our keys use them yet. Add support here if/when they appear.
 function interpolate(template: string, params?: Record<string, unknown>): string {
   if (!params) return template;
-  return template.replace(/\{(\w+)\}/g, (_, name) => {
-    const v = params[name];
-    return v === undefined || v === null ? `{${name}}` : String(v);
-  });
+  let out = '';
+  let i = 0;
+  while (i < template.length) {
+    if (template[i] !== '{') {
+      out += template[i++];
+      continue;
+    }
+    // Find matching closing brace, tracking depth so nested option bodies
+    // (`one {# X}`) don't terminate the outer placeholder early.
+    const inner = extractPluralBody(template, i + 1);
+    if (!inner) {
+      out += template[i++];
+      continue;
+    }
+    const expr = inner.body;
+    const pluralIdx = expr.indexOf(', plural,');
+    if (pluralIdx === -1) {
+      // Simple `{name}` placeholder.
+      const name = expr.trim();
+      const v = params[name];
+      out += v === undefined || v === null ? `{${name}}` : String(v);
+    } else {
+      const name = expr.slice(0, pluralIdx).trim();
+      const value = params[name];
+      const num = typeof value === 'number' ? value : Number(value);
+      const opts = parsePluralOptions(expr.slice(pluralIdx + ', plural,'.length));
+      const exact = opts[`=${num}`];
+      const cat = ruPluralCategory(num);
+      const chosen = exact ?? opts[cat] ?? opts.other ?? '';
+      out += chosen.replace(/#/g, String(num));
+    }
+    i = inner.end + 1;
+  }
+  return out;
 }
 
 vi.mock('next-intl', () => {
