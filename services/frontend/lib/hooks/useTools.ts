@@ -6,8 +6,8 @@ import { STALE_TIME_5_MIN } from '@/lib/constants/cacheTTL';
 import { PLATFORM_DISPLAY_ORDER } from '@/lib/platforms';
 import type { Tool } from '@/lib/schemas';
 
-// Phase 16 — live feed of the orchestrator registry (GET /api/v1/tools).
-// Replaces the Phase 15 hardcoded tool list. Unscoped: the registry is
+// Live feed of the orchestrator registry (GET /api/v1/tools).
+// Replaces the previously hardcoded tool list. Unscoped: the registry is
 // global (not per-business), so the React Query key is plain ['tools'].
 //
 // staleTime 5 minutes — the registry does not change mid-session and the
@@ -50,7 +50,7 @@ export const TOOL_PLATFORM_ORDER: PlatformKey[] = PLATFORM_DISPLAY_ORDER.flatMap
 // toPlatformKey maps raw backend platform strings (as returned by
 // GET /api/v1/tools) to stable UI keys. Legacy `yandex_business` /
 // `google_business` strings (with underscores) pass through unchanged so
-// the buckets match the previous Phase 15 bucket layout.
+// the buckets match the previous bucket layout.
 export function toPlatformKey(platform: string): PlatformKey {
   switch (platform) {
     case 'telegram':

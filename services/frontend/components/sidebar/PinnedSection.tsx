@@ -11,14 +11,14 @@ import { ProjectChip } from '@/components/chat/ProjectChip';
 import { ChatRowMenu } from '@/components/chat/ChatRowMenu';
 import type { Conversation } from '@/lib/conversations';
 
-// PinnedSection — Phase 19 / Plan 19-02 / D-04 + D-05.
+// PinnedSection.
 //
-//   D-04: Empty pinned section is HIDDEN entirely (no header, no placeholder).
-//   D-05: Pinned chats render in BOTH PinnedSection AND under their own
-//         project; the global pinned row carries a mini <ProjectChip
-//         size="xs"> for project affiliation. Chats in «Без проекта»
-//         (projectId == null) get NO chip in the pinned row — the chip
-//         is meaningful only when there is a real destination project.
+//   Empty pinned section is HIDDEN entirely (no header, no placeholder).
+//   Pinned chats render in BOTH PinnedSection AND under their own project;
+//   the global pinned row carries a mini <ProjectChip size="xs"> for
+//   project affiliation. Chats in «Без проекта» (projectId == null) get
+//   NO chip in the pinned row — the chip is meaningful only when there
+//   is a real destination project.
 //
 // The row is a flex container with TWO siblings: a <Link> wrapping the
 // chat title and a sibling <ProjectChip size="xs"> (which itself renders
@@ -27,9 +27,9 @@ import type { Conversation } from '@/lib/conversations';
 // hydration warning and gives users two distinct navigation targets per
 // row (chat title → /chat/{id}, project chip → /projects/{id}).
 //
-// Caller pre-sorts `conversations` by pinnedAt desc (D-03 — most-recently-
-// pinned first). Re-pinning stamps a fresh now-UTC timestamp at the API,
-// so sort stability is enforced server-side.
+// Caller pre-sorts `conversations` by pinnedAt desc (most-recently-pinned
+// first). Re-pinning stamps a fresh now-UTC timestamp at the API, so sort
+// stability is enforced server-side.
 interface Props {
   conversations: Conversation[]; // expected pre-sorted by pinnedAt desc
   projectsById: Record<string, { id: string; name: string }>;
@@ -51,16 +51,16 @@ export function PinnedSection({
   const count = conversations.length;
   const visible = conversations.slice(0, MAX_VISIBLE);
 
-  // Phase 19 / Plan 19-05 / D-17 — roving-tabindex on the chat-list portion.
-  // Tab enters the pinned list once, ↑/↓/Home/End navigate. The
-  // «Закреплённые» header chevron sits OUTSIDE the container — it remains a
-  // separate Tab stop, which D-17 explicitly requires.
+  // Roving-tabindex on the chat-list portion. Tab enters the pinned list
+  // once, ↑/↓/Home/End navigate. The «Закреплённые» header chevron sits
+  // OUTSIDE the container — it remains a separate Tab stop.
   //
-  // The hook MUST be called before the D-04 early return so that the rules
-  // of hooks are respected (hook count must be stable across renders).
+  // The hook MUST be called before the empty-state early return so that
+  // the rules of hooks are respected (hook count must be stable across
+  // renders).
   const { containerRef, onKeyDown } = useRovingTabIndex(visible.length);
 
-  // D-04 — empty section is hidden entirely.
+  // Empty section is hidden entirely.
   if (conversations.length === 0) return null;
 
   return (
@@ -110,7 +110,7 @@ export function PinnedSection({
                 >
                   <span className="flex-1 truncate">{conv.title || 'Новый диалог'}</span>
                 </Link>
-                {/* D-05 — only chats with a real project get the mini chip.
+                {/* Only chats with a real project get the mini chip.
                     Sibling of the row Link (not nested) to avoid <a in a>. */}
                 {project && (
                   <ProjectChip projectId={project.id} projectName={project.name} size="xs" />

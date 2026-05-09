@@ -13,13 +13,13 @@ import (
 )
 
 // TokenInfo aliases agentbase.TokenInfo so test files that construct
-// agent.TokenInfo{...} continue to compile after plan 19-07 migration.
+// agent.TokenInfo{...} continue to compile after the agentbase migration.
 // New callers should use agentbase.TokenInfo directly.
 type TokenInfo = agentbase.TokenInfo
 
 // TokenFetcher aliases agentbase.TokenResolver — same interface contract,
 // kept as a type alias so test mocks declared against agent.TokenFetcher
-// remain byte-identical (D-16: import-path-only test changes).
+// remain byte-identical (import-path-only test changes).
 type TokenFetcher = agentbase.TokenResolver
 
 // Sender abstracts Telegram message sending for testability.
@@ -52,7 +52,7 @@ func NewHandler(tokens TokenFetcher, factory SenderFactory, dispatcher agentbase
 // Handle routes the ToolRequest to the appropriate Telegram operation via the
 // agentbase.Dispatcher (which runs the HITL dedupe gate, then routeTool, then
 // classifies errors, then caches successful responses). When dispatcher is nil
-// (legacy unit tests pre-19-07) we route directly through routeTool.
+// (legacy unit tests) we route directly through routeTool.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	if h.dispatcher == nil {
 		resp, err := h.routeTool(ctx, req)
@@ -90,7 +90,7 @@ func ClassifyTelegramError(err error) error {
 }
 
 // classifyTelegramError is the internal implementation used by per-tool
-// handlers (sendChannelPost wraps with %w). Body unchanged from pre-19-07.
+// handlers (sendChannelPost wraps with %w).
 func classifyTelegramError(err error) error {
 	if err == nil {
 		return nil

@@ -1,6 +1,6 @@
 'use client';
 
-// Linen rebuild — Phase 4.8.
+// Linen rebuild.
 // The right-rail companion: an AI-rendered understanding of the business
 // based on what the owner has filled in, plus quiet tips. Read-only —
 // the owner verifies, then keeps editing the form.

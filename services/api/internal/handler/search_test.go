@@ -21,8 +21,7 @@ import (
 
 // captureSearchLogs swaps slog.Default for a TextHandler-backed buffer
 // for the duration of the test. Mirrors the captureLogs pattern from
-// service/titler_test.go (Phase 18 Pitfall 8 / SEARCH-07 log-shape
-// regression test).
+// service/titler_test.go (Pitfall 8 / log-shape regression test).
 func captureSearchLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	buf := &bytes.Buffer{}
@@ -135,7 +134,7 @@ func TestSearchHandler_401OnMissingBearer(t *testing.T) {
 }
 
 // TestSearchHandler_503BeforeReady — readiness flag false → 503 +
-// Retry-After: 5 header. T-19-INDEX-503 mitigation.
+// Retry-After: 5 header.
 func TestSearchHandler_503BeforeReady(t *testing.T) {
 	h, _ := newSearchHandlerForTest(t, false /* not ready */)
 	userID := uuid.New()
@@ -145,7 +144,7 @@ func TestSearchHandler_503BeforeReady(t *testing.T) {
 	h.Search(rec, req)
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	assert.Equal(t, "5", rec.Header().Get("Retry-After"),
-		"503 must carry Retry-After: 5 (SEARCH-06)")
+		"503 must carry Retry-After: 5")
 }
 
 // TestSearchHandler_HappyPath — ready + q ≥ 2 chars + valid bearer →
@@ -177,7 +176,7 @@ func TestSearchHandler_ProjectIDQuery(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
-// TestSearchHandler_LogShape — SEARCH-07 / T-19-LOG-LEAK regression.
+// TestSearchHandler_LogShape — log-leak regression.
 // Captured logs MUST contain `query_length` and MUST NOT contain the
 // literal query bytes. Asserted on the stricter forms used by slog's
 // TextHandler so a future log shape that smuggles q via `error=...`
@@ -199,7 +198,7 @@ func TestSearchHandler_LogShape(t *testing.T) {
 	// only assert the negative (no leak) here; the service unit test
 	// covers the positive presence.
 	assert.NotContains(t, logs, literalQuery,
-		"query text leaked into logs (T-19-LOG-LEAK)")
+		"query text leaked into logs")
 }
 
 // TestSearchHandler_BusinessNotFound_401 — domain.ErrBusinessNotFound

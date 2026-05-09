@@ -16,11 +16,10 @@ interface ProjectPaneProps {
   onNavigate?: () => void;
 }
 
-// ProjectPane (D-14): route-conditional column. Rendered only when the
-// surrounding layout decides — i.e., on /chat/* and /projects/*. The pane
-// hosts the search slot (filled by 19-04), the PinnedSection (Phase 19 /
-// Plan 19-02 / D-04+D-05 — hidden when empty), the «Без проекта» bucket,
-// the project tree, and the «+ Новый проект» link.
+// ProjectPane: route-conditional column. Rendered only when the surrounding
+// layout decides — i.e., on /chat/* and /projects/*. The pane hosts the
+// search slot, the PinnedSection (hidden when empty), the «Без проекта»
+// bucket, the project tree, and the «+ Новый проект» link.
 export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
   const tSide = useTranslations('sidebar');
   const pathname = usePathname();
@@ -49,9 +48,9 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
     return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [projects]);
 
-  // Phase 19 / Plan 19-02 / D-03 — pinned chats sort by pinnedAt desc
-  // (most-recently-pinned first). Re-pinning at the API stamps a fresh
-  // now-UTC timestamp, so the sort is server-stable.
+  // Pinned chats sort by pinnedAt desc (most-recently-pinned first).
+  // Re-pinning at the API stamps a fresh now-UTC timestamp, so the sort
+  // is server-stable.
   const pinned = useMemo(() => {
     const convs: Conversation[] = conversations ?? [];
     return convs
@@ -59,7 +58,7 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
       .sort((a, b) => (b.pinnedAt ?? '').localeCompare(a.pinnedAt ?? ''));
   }, [conversations]);
 
-  // Lookup table for the mini ProjectChip on each pinned row (D-05).
+  // Lookup table for the mini ProjectChip on each pinned row.
   const projectsById = useMemo(() => {
     const out: Record<string, { id: string; name: string }> = {};
     for (const p of projects ?? []) {
@@ -73,18 +72,18 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
       data-testid="project-pane"
       className="flex h-full flex-col gap-2 overflow-y-auto bg-paper-raised px-2 py-2 text-ink"
     >
-      {/* Phase 19 / Plan 19-04 — SidebarSearch. The data-testid wrapper is
-          preserved so 19-01 wave-1 tests that probed for the slot keep
-          passing; the slot now hosts the live search input + Radix Popover
-          dropdown (Cmd/Ctrl-K consumer, 250 ms debounce, route-aware scope). */}
+      {/* SidebarSearch. The data-testid wrapper is preserved so earlier
+          tests that probed for the slot keep passing; the slot now hosts
+          the live search input + Radix Popover dropdown (Cmd/Ctrl-K
+          consumer, 250 ms debounce, route-aware scope). */}
       <div data-testid="sidebar-search-slot">
         <SidebarSearch />
       </div>
 
-      {/* Phase 19 / Plan 19-02 — PinnedSection. Hidden entirely when empty
-          (D-04). The data-testid is preserved for upstream callers/tests
-          that probed for the slot during Phase 19 wave-1 layout work; the
-          slot is now the live component. */}
+      {/* PinnedSection. Hidden entirely when empty. The data-testid is
+          preserved for upstream callers/tests that probed for the slot
+          during earlier wave-1 layout work; the slot is now the live
+          component. */}
       <div data-testid="pinned-section-slot">
         <PinnedSection
           conversations={pinned}

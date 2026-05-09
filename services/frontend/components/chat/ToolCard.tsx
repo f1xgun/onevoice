@@ -8,7 +8,7 @@
 // user rejected the call). Linen background + 1 px line border on the
 // rest of the card.
 //
-// Phase 17 visual contracts preserved verbatim (rejected/expired badges,
+// Visual contracts preserved verbatim (rejected/expired badges,
 // line-through name, Pencil tooltip, "Причина:" copy). Test fixtures in
 // components/chat/__tests__/ToolCard.{rejected,expired,edited}.test.tsx
 // pin these classes/strings — this rebuild keeps them.
@@ -23,9 +23,9 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-// Exact Russian literals from 17-UI-SPEC §Copywriting Contract (Post-submit
+// Exact Russian literals from UI-SPEC §Copywriting Contract (Post-submit
 // in-history visuals) + §Expired approval banner / Rejected tool visual.
-// Kept inline per 17-RESEARCH §Don't Hand-Roll (no shared i18n layer in v1.3).
+// Kept inline (no shared i18n layer in v1.3).
 const RU = {
   rejectedBadge: 'Отклонено пользователем',
   rejectedReasonPrefix: 'Причина: ',
@@ -39,7 +39,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
   const color = PLATFORM_COLORS[platform] ?? '#6b7280';
   const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
 
-  // Rejection takes visual priority over the platform accent (17-UI-SPEC
+  // Rejection takes visual priority over the platform accent (UI-SPEC
   // §Post-submit Rejected tool). Expired keeps the platform color — the
   // banner above the history carries the primary "expired" signal.
   const borderLeftColor = tool.status === 'rejected' ? 'hsl(var(--destructive))' : color;

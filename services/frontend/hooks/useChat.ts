@@ -85,7 +85,7 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
 // consumeSSEStream is the ONE implementation of "read a fetch Response body
 // as SSE and feed parsed events to onEvent" shared by both sendMessage and
 // resolveApproval (the resume path). Keeping two copies caused divergence in
-// error handling and abort semantics — 17-RESEARCH §Pattern 1.
+// error handling and abort semantics.
 async function consumeSSEStream(
   response: Response,
   signal: AbortSignal,
@@ -132,10 +132,10 @@ interface ApiMessage {
   toolResults?: ApiToolResult[];
 }
 
-// Phase 16 GET /messages returns pendingApprovals already in camelCase, so
+// GET /messages returns pendingApprovals already in camelCase, so
 // this normalizer is effectively a typed cast + defensive defaults. It
 // preserves status === 'expired' so the UI layer owns the render decision
-// (Plan 17-05 `ExpiredApprovalBanner`, CONTEXT.md D-11).
+// (`ExpiredApprovalBanner`).
 function normalizePendingApproval(raw: unknown): PendingApproval | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -169,15 +169,15 @@ export function useChat(conversationId: string) {
   const isStreamingRef = useRef(false);
   const accessToken = useAuthStore((s) => s.accessToken);
   const abortRef = useRef<AbortController | null>(null);
-  // Phase 18 / TITLE-06 / D-10: handleSSEEvent invalidates QUERY_KEYS.CONVERSATIONS
-  // when SSE 'done' arrives so an auto-titled chat picks up its new title
-  // out-of-band. PITFALLS §13: NEVER mux titles into chat SSE.
+  // handleSSEEvent invalidates QUERY_KEYS.CONVERSATIONS when SSE 'done'
+  // arrives so an auto-titled chat picks up its new title out-of-band.
+  // NEVER mux titles into chat SSE.
   const queryClient = useQueryClient();
 
   // Load existing messages on mount — accepts both legacy `ApiMessage[]` and
-  // the Phase-16 `{messages, pendingApprovals}` envelope. When the envelope
+  // the `{messages, pendingApprovals}` envelope. When the envelope
   // carries a non-empty pendingApprovals array, hydrate the first batch so a
-  // reloaded tab immediately shows the approval card (D-11).
+  // reloaded tab immediately shows the approval card.
   useEffect(() => {
     setIsLoading(true);
     fetch(API_STREAM_PATHS.CONVERSATION_MESSAGES(conversationId), {
@@ -233,7 +233,7 @@ export function useChat(conversationId: string) {
             })
           );
         }
-        // Phase 17 hydration (D-11): surface the first persisted batch.
+        // Hydration: surface the first persisted batch.
         if (payload && !Array.isArray(payload)) {
           const pendings = (payload as { pendingApprovals?: unknown[] }).pendingApprovals;
           if (Array.isArray(pendings) && pendings.length > 0) {
@@ -253,10 +253,10 @@ export function useChat(conversationId: string) {
 
   const handleSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
-      // Phase 18 / TITLE-06 / D-10: out-of-band auto-title propagation. The
-      // titler goroutine on the API side races chat 'done'; invalidating
-      // QUERY_KEYS.CONVERSATIONS picks up whatever title has landed. PITFALLS §13
-      // hard rule — NEVER mux titles into chat SSE.
+      // Out-of-band auto-title propagation. The titler goroutine on the API
+      // side races chat 'done'; invalidating QUERY_KEYS.CONVERSATIONS picks
+      // up whatever title has landed. Hard rule — NEVER mux titles into
+      // chat SSE.
       if (event.type === 'done') {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
       }
@@ -276,9 +276,9 @@ export function useChat(conversationId: string) {
             floor: c.floor as string,
           })),
         });
-        // 17-RESEARCH §Pitfall 2: do NOT abort the controller here. The
-        // orchestrator closes the response naturally after emitting the event;
-        // aborting races with natural close and masks errors.
+        // Do NOT abort the controller here. The orchestrator closes the
+        // response naturally after emitting the event; aborting races with
+        // natural close and masks errors.
         return;
       }
       setMessages((prev) => {
@@ -360,9 +360,9 @@ export function useChat(conversationId: string) {
       if (!pendingApproval) return;
       if (isStreamingRef.current) return; // composer disabled should prevent this
 
-      // Defensive sanitization at the trust boundary. Phase 16 D-09 pins the
-      // toolName server-side; echoing the `tool_name` key signals misuse. We
-      // strip it from edited_args and clamp reject_reason to 500 chars (D-08).
+      // Defensive sanitization at the trust boundary. The toolName is pinned
+      // server-side; echoing the `tool_name` key signals misuse. We strip it
+      // from edited_args and clamp reject_reason to 500 chars.
       const sanitizedDecisions: ApprovalDecision[] = decisions.map((d) => {
         const copy: ApprovalDecision = { id: d.id, action: d.action };
         if (d.action === 'edit' && d.edited_args) {
@@ -379,7 +379,7 @@ export function useChat(conversationId: string) {
         return copy;
       });
 
-      // 1) POST resolve — plain JSON per Phase 16 D-05.
+      // 1) POST resolve — plain JSON.
       let resolveRes: Response;
       try {
         resolveRes = await fetch(
@@ -406,11 +406,11 @@ export function useChat(conversationId: string) {
           // ignore parse failure — resolveErrorToRussian handles null body
         }
         toast.error(resolveErrorToRussian(resolveRes.status, errBody));
-        return; // card stays open; Plan 17-04's ToolApprovalCard re-enables Submit.
+        return; // card stays open; ToolApprovalCard re-enables Submit.
       }
 
       // 2) Open the resume SSE — extends the existing assistant message
-      //    (same message id; 17-RESEARCH §Pitfall 1).
+      //    (same message id).
       setIsStreaming(true);
       isStreamingRef.current = true;
       const controller = new AbortController();
@@ -430,9 +430,9 @@ export function useChat(conversationId: string) {
         if ((err as Error).name === 'AbortError') return;
         toast.error(RESUME_STREAM_ERROR);
       } finally {
-        // Phase 16 D-13: clear pendingApproval whether resume completed or
-        // errored. The persisted batch on the server is the source of truth;
-        // a reload re-hydrates from GET /messages.
+        // Clear pendingApproval whether resume completed or errored. The
+        // persisted batch on the server is the source of truth; a reload
+        // re-hydrates from GET /messages.
         setPendingApproval(null);
         setIsStreaming(false);
         isStreamingRef.current = false;

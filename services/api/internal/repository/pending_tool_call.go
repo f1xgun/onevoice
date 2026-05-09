@@ -30,13 +30,13 @@ const pendingToolCallTTL = 24 * time.Hour
 // owns the write-side primitives (InsertPreparing, PromoteToPending) and
 // shares the read / MarkDispatched / ReconcileOrphanPreparing logic.
 //
-// MongoDB constraints honored (Phase 16 anti-footgun #1):
+// MongoDB constraints honored (anti-footgun #1):
 //   - MongoDB is deployed STANDALONE (docker-compose.yml uses `mongo:7`
 //     without --replSet). No multi-document transactions.
 //   - Atomicity is achieved via findOneAndUpdate filter constraints, NOT
 //     via session-scoped transaction APIs. DO NOT introduce session-scoped
 //     code into this file — it will panic at runtime on standalone
-//     deployments and the Phase 16 grep-enforcement will fail the plan.
+//     deployments and the grep-enforcement will fail the plan.
 type pendingToolCallRepo struct {
 	coll *mongo.Collection
 }
@@ -55,7 +55,7 @@ func NewPendingToolCallRepository(db *mongo.Database) domain.PendingToolCallRepo
 // silently succeeds when specs match existing indexes. Returns nil on the
 // benign case and only non-nil for genuine driver / server errors.
 //
-// Index semantics (HITL-10, Research §Pattern 9):
+// Index semantics:
 //   - `pending_tool_calls_ttl` — expireAfterSeconds=0 means documents expire
 //     at their own expires_at timestamp (up to 60s lag). Preparing rows do
 //     NOT set expires_at; TTL skips them so stillborn preparing rows are
@@ -64,7 +64,7 @@ func NewPendingToolCallRepository(db *mongo.Database) domain.PendingToolCallRepo
 //     ListPendingByConversation's typical {conversation_id, status}
 //     predicate.
 //   - `pending_tool_calls_business` — supports future business-scoped
-//     dashboards / metrics queries (Plan 16-07 and beyond).
+//     dashboards / metrics queries.
 func EnsurePendingToolCallsIndexes(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("pending_tool_calls")
 
@@ -122,7 +122,7 @@ func (r *pendingToolCallRepo) InsertPreparing(ctx context.Context, b *domain.Pen
 }
 
 // PromoteToPending flips a preparing row into status="pending" and sets
-// expires_at = now+24h (HITL-10). Returns ErrBatchNotFound if the batch
+// expires_at = now+24h. Returns ErrBatchNotFound if the batch
 // does not exist OR is not in status="preparing" — callers that need to
 // distinguish the two cases should do a second GetByBatchID lookup.
 func (r *pendingToolCallRepo) PromoteToPending(ctx context.Context, batchID string) error {
@@ -144,7 +144,7 @@ func (r *pendingToolCallRepo) PromoteToPending(ctx context.Context, batchID stri
 	return nil
 }
 
-// GetByBatchID implements the lazy-expiration pattern (Research §Pitfall 6):
+// GetByBatchID implements the lazy-expiration pattern:
 // if a document is still in the collection because the TTL sweep has not
 // yet fired (up to 60s delay) but its expires_at has already passed, return
 // it with Status virtualized to "expired". Callers never see a stale
@@ -171,7 +171,7 @@ func (r *pendingToolCallRepo) GetByBatchID(ctx context.Context, batchID string) 
 // status is pending OR resolving, sorted oldest-first. Resolved / expired /
 // preparing batches are filtered out — callers that need those use
 // GetByBatchID directly. This matches the shape consumed by
-// GET /conversations/{id}/messages (HITL-11) for the pendingApprovals array.
+// GET /conversations/{id}/messages for the pendingApprovals array.
 func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, conversationID string) ([]*domain.PendingToolCallBatch, error) {
 	filter := bson.M{
 		"conversation_id": conversationID,
@@ -199,7 +199,7 @@ func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, con
 	return out, nil
 }
 
-// AtomicTransitionToResolving is the one atomicity primitive in Phase 16:
+// AtomicTransitionToResolving is the one atomicity primitive:
 // findOneAndUpdate with filter {_id, status: "pending"} guarantees at most
 // one winner across arbitrarily many racing resolve calls. Mongo serializes
 // the update at the document level, so only the first matching update

@@ -1,6 +1,6 @@
 'use client';
 
-// Linen rebuild — Phase 4.8.
+// Linen rebuild.
 // Business profile page. Layout: PageHeader + two columns on lg+ (forms
 // left, sticky AI-understanding rail right). Each form section is a
 // paper-raised card with a MonoLabel caption + section title. Mutations

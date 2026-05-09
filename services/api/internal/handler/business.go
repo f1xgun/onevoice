@@ -34,7 +34,7 @@ type BusinessService interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
-	// Phase 16 POLICY-05 additions:
+	// Tool-approval methods:
 	GetToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
 	UpdateToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
@@ -64,7 +64,7 @@ type ToolsCache interface {
 	Has(toolName string) bool
 }
 
-// SetToolsCache wires a tools-registry cache for POLICY-05 validation.
+// SetToolsCache wires a tools-registry cache for tool-name validation.
 // Called after construction so existing NewBusinessHandler call sites don't
 // churn. Safe to call with nil to disable the endpoints.
 func (h *BusinessHandler) SetToolsCache(c ToolsCache) {
@@ -305,7 +305,7 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 
 // GetBusinessToolApprovals handles GET /api/v1/business/{id}/tool-approvals.
 // Response shape: `{"toolApprovals": {"tool_name": "auto"|"manual", ...}}`.
-// Absence from the map means the registry floor applies (POLICY-01).
+// Absence from the map means the registry floor applies.
 func (h *BusinessHandler) GetBusinessToolApprovals(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -332,7 +332,7 @@ func (h *BusinessHandler) GetBusinessToolApprovals(w http.ResponseWriter, r *htt
 	}
 
 	// Serialize as `{"toolApprovals": {...}}` — stable field name so the
-	// Phase 17 frontend can bind directly.
+	// frontend can bind directly.
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"toolApprovals": approvals,
 	})
@@ -385,7 +385,7 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 			return
 		}
 		floor := domain.ToolFloor(floorStr)
-		// POLICY-05: only Auto and Manual are user-settable. Forbidden is a
+		// Only Auto and Manual are user-settable. Forbidden is a
 		// registration-time property — allowing it here would let a user
 		// escalate a tool's floor, which matches the registry's floor
 		// invariant but would surprise operators and invite confusion.

@@ -1,6 +1,6 @@
 // Package hitl contains pure policy-resolution helpers used by both the
 // orchestrator (at pause time) and the API (at resolve time, for the TOCTOU
-// re-check per HITL-06).
+// re-check).
 //
 // The package is DELIBERATELY dep-free: no persistence, no cache, no message
 // bus. It imports only pkg/domain. The identical logic lives in exactly one
@@ -16,9 +16,9 @@ import "github.com/f1xgun/onevoice/pkg/domain"
 
 // Resolve returns the strictest ToolFloor for toolName given:
 //
-//	floor            — the registry's minimum (set at registration, POLICY-01)
-//	businessPolicy   — businesses.settings.tool_approvals map (POLICY-02)
-//	projectOverride  — projects.approval_overrides map (POLICY-03)
+//	floor            — the registry's minimum (set at registration)
+//	businessPolicy   — businesses.settings.tool_approvals map
+//	projectOverride  — projects.approval_overrides map
 //	toolName         — the full tool name including the {platform}__ prefix
 //
 // Strictness order: Forbidden > Manual > Auto. No map entry can lower

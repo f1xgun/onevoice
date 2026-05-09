@@ -157,10 +157,9 @@ func TestBuildSystemPrompt_ProjectPromptWithTrailingNewline(t *testing.T) {
 	assert.NotContains(t, content, "body\n\n\n", "trailing newline should not compound")
 }
 
-// GAP-02 tests — appendProjectBlock must communicate whitelist restrictions to
-// the LLM so it explains "channel unavailable" instead of silently
-// substituting the closest allowed tool. See
-// .planning/phases/15-projects-foundation/15-VERIFICATION.md §GAP-02.
+// Whitelist hint tests — appendProjectBlock must communicate whitelist
+// restrictions to the LLM so it explains "channel unavailable" instead of
+// silently substituting the closest allowed tool.
 //
 // All tests below go through prompt.Build (not appendProjectBlock directly —
 // it's unexported) so they cover the real end-to-end system-prompt shape.
@@ -235,8 +234,9 @@ func TestAppendProjectBlock_EmptyMode_NoHint(t *testing.T) {
 }
 
 func TestAppendProjectBlock_ExplicitModeEmptyAllowedTools_FallsBackToNoneWording(t *testing.T) {
-	// Defensive: service layer rejects this via ErrProjectWhitelistEmpty, but
-	// if bad data sneaks through we emit the same wording as WhitelistModeNone.
+	// Defensive: service layer rejects this via ErrProjectWhitelistEmpty,
+	// but if bad data sneaks through we emit the same wording as
+	// WhitelistModeNone.
 	proj := &prompt.ProjectContext{
 		Name:          "Пусто",
 		WhitelistMode: domain.WhitelistModeExplicit,
@@ -250,9 +250,9 @@ func TestAppendProjectBlock_ExplicitModeEmptyAllowedTools_FallsBackToNoneWording
 }
 
 func TestAppendProjectBlock_ExplicitMode_InstructsAgainstSubstitution(t *testing.T) {
-	// Regression guard against the GAP-02 reproduction: the anti-substitution
-	// instruction MUST be present verbatim. If a refactor removes this
-	// substring, GAP-02 comes back.
+	// Regression guard: the anti-substitution instruction MUST be present
+	// verbatim. If a refactor removes this substring, the substitution bug
+	// comes back.
 	proj := &prompt.ProjectContext{
 		Name:          "Регрессия",
 		WhitelistMode: domain.WhitelistModeExplicit,

@@ -39,7 +39,7 @@ func TestValidateEditArgs_UnknownField_ReturnsErrFieldNotEditable(t *testing.T) 
 }
 
 func TestValidateEditArgs_CaseMismatch_ReturnsErrFieldNotEditable(t *testing.T) {
-	// Pitfall 8: case-sensitive matching. "Text" != "text".
+	// case-sensitive matching. "Text" != "text".
 	err := toolvalidation.ValidateEditArgs(tools.TelegramSendChannelPost,
 		map[string]interface{}{"Text": "hello"},
 		[]string{"text"},
@@ -51,7 +51,7 @@ func TestValidateEditArgs_CaseMismatch_ReturnsErrFieldNotEditable(t *testing.T) 
 }
 
 func TestValidateEditArgs_NestedObject_ReturnsErrNonScalarValue(t *testing.T) {
-	// D-13: nested objects rejected.
+	// nested objects rejected.
 	err := toolvalidation.ValidateEditArgs("tool",
 		map[string]interface{}{"text": map[string]interface{}{"nested": 1}},
 		[]string{"text"},
@@ -131,7 +131,7 @@ func TestValidateEditArgs_EmptyArgs_NoError(t *testing.T) {
 	}
 }
 
-// TestValidateEditArgs_ToolNameFieldAttempt_Rejected is the HITL-07 pinning
+// TestValidateEditArgs_ToolNameFieldAttempt_Rejected is the pinning
 // assertion: if a client tries to rewrite tool_name via edited_args (an
 // attempted tool swap), it must be rejected because "tool_name" never appears
 // in any tool's EditableFields allowlist.

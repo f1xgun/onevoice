@@ -15,7 +15,7 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-describe('ProjectChip — Phase 19 / D-05 size variants', () => {
+describe('ProjectChip — size variants', () => {
   it('default size (no prop) renders the `sm` Tailwind classes', () => {
     render(<ProjectChip projectId="p-1" projectName="Отзывы" />);
     const link = screen.getByRole('link');

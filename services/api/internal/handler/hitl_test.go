@@ -190,12 +190,12 @@ func (c *hitlConvRepo) UpdateProjectAssignment(_ context.Context, _ string, _ *s
 func (c *hitlConvRepo) UpdateTitleIfPending(_ context.Context, _, _ string) error { return nil }
 func (c *hitlConvRepo) TransitionToAutoPending(_ context.Context, _ string) error { return nil }
 
-// Pin / Unpin — Phase 19 / D-02 atomic conditional updates (Plan 19-02 Task 1).
+// Pin / Unpin atomic conditional updates.
 // HITL tests don't exercise pin lifecycle; stubs return nil.
 func (c *hitlConvRepo) Pin(_ context.Context, _, _, _ string) error   { return nil }
 func (c *hitlConvRepo) Unpin(_ context.Context, _, _, _ string) error { return nil }
 
-// SearchTitles / ScopedConversationIDs — Phase 19 / Plan 19-03 stubs.
+// SearchTitles / ScopedConversationIDs stubs.
 // HITL tests don't exercise the search path.
 func (c *hitlConvRepo) SearchTitles(_ context.Context, _, _, _ string, _ *string, _ int) ([]domain.ConversationTitleHit, []string, error) {
 	return nil, nil, nil
@@ -520,7 +520,7 @@ func TestResolve_ConcurrentResolve_ExactlyOneWins_OtherGets409(t *testing.T) {
 	}
 }
 
-// TestResolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject — HITL-06 invariant.
+// TestResolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject covers the TOCTOU invariant.
 func TestResolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject(t *testing.T) {
 	bizUUID := uuid.New()
 	biz := &domain.Business{
@@ -564,7 +564,7 @@ func TestResolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject(t *testing.T) {
 	}
 }
 
-// TestResolve_ClientTamperedToolName_IgnoredAndPinned — HITL-07 pinning.
+// TestResolve_ClientTamperedToolName_IgnoredAndPinned covers tool-name pinning.
 func TestResolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
@@ -593,13 +593,13 @@ func TestResolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.T) {
 
 // -- resume tests ------------------------------------------------------------
 
-// TestResume_BatchResolving_Allowed — Plan 17-11 / GAP-04 regression.
+// TestResume_BatchResolving_Allowed regression.
 // `status=resolving` is the legitimate post-resolve state (Resolve atomically
 // transitions pending→resolving and the orchestrator's resume goroutine is the
 // only writer that transitions resolving→resolved). The api Resume handler
 // MUST proxy the request to the orchestrator instead of rejecting with 409.
 // Pre-fix: this returned 409 unconditionally and bricked every approval flow
-// once GAP-03's 403 short-circuit was lifted.
+// once the 403 short-circuit was lifted.
 func TestResume_BatchResolving_Allowed(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()

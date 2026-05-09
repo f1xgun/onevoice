@@ -6,15 +6,15 @@
 //
 // The package is interface-first: TokenResolver, Dispatcher, and ErrorClassifier
 // expose minimal surfaces with default implementations behind New*() constructors.
-// Per phase 19 SPEC risk #5, the interfaces extract only what the existing 4×
+// The interfaces extract only what the existing 4×
 // duplications already do — no speculative methods.
 package agentbase
 
 // ErrorClassifier wraps platform-permanent errors so the agent loop in pkg/a2a
 // (and the orchestrator's NATSExecutor) does not retry them. Each agent supplies
 // its own implementation; the platform-specific keyword logic lives in the agent
-// package, not here. Phase 19-RESEARCH §5c documents why a "default" classifier
-// with a hardcoded keyword list is an anti-pattern: the four platforms' permanent
+// package, not here. A "default" classifier with a hardcoded keyword list is an
+// anti-pattern: the four platforms' permanent
 // error markers (HTTP status strings, VK error codes, ErrSessionExpired sentinel,
 // Google API status strings) are too different to share.
 type ErrorClassifier interface {

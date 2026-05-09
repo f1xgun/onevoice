@@ -16,10 +16,10 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
-// Capability-segregated platform sync interfaces (D-10). Each platform
-// implements only the capabilities it supports; SyncBusiness performs a
-// type-assertion dispatch per capability so absence of an interface means
-// "platform doesn't support this", with no no-op methods required.
+// Capability-segregated platform sync interfaces. Each platform implements
+// only the capabilities it supports; SyncBusiness performs a type-assertion
+// dispatch per capability so absence of an interface means "platform doesn't
+// support this", with no no-op methods required.
 type (
 	// TitleSyncer pushes the business name to the platform's title field.
 	TitleSyncer interface {
@@ -42,8 +42,8 @@ type (
 	}
 
 	// InfoSyncer is for batched-update platforms (e.g. VK groups.edit) where
-	// description + phone + website ship in a single API call. Per RESEARCH
-	// §8 R5: do NOT split a batched mutation into per-capability calls.
+	// description + phone + website ship in a single API call. Do NOT split
+	// a batched mutation into per-capability calls.
 	InfoSyncer interface {
 		SyncInfo(ctx context.Context, b *domain.Business, integ domain.Integration) error
 	}
@@ -144,8 +144,8 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 // names, same task types, same input shapes.
 func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, integ domain.Integration, platImpl any) {
 	if t, ok := platImpl.(TitleSyncer); ok {
-		// Verbatim from sync.go:138-143: error branch records only channel_id,
-		// done branch additionally records name.
+		// Error branch records only channel_id; done branch additionally
+		// records name.
 		s.runWithTask(ctx, b, integ, capabilityDispatch{
 			taskType:    "sync_title",
 			displayName: "Синхронизация названия",

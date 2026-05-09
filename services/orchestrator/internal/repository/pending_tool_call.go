@@ -1,6 +1,6 @@
 // Package repository provides Mongo-backed implementations of the
 // pkg/domain repository interfaces used by the orchestrator service.
-// Phase 16 adds PendingToolCallRepository alongside the existing
+// PendingToolCallRepository sits alongside the existing
 // orchestrator-side storage primitives — the implementation mirrors
 // services/api/internal/repository/pending_tool_call.go byte-for-byte on
 // the read + dispatch + reconcile paths so either service can recover
@@ -26,8 +26,8 @@ const pendingToolCallTTL = 24 * time.Hour
 
 // pendingToolCallRepo is the orchestrator-side implementation of
 // domain.PendingToolCallRepository. Writes are the hot path here
-// (InsertPreparing + PromoteToPending before emitting the pause SSE in
-// Plan 16-05); reads + dispatch-tracking share behavior with the API-side
+// (InsertPreparing + PromoteToPending before emitting the pause SSE);
+// reads + dispatch-tracking share behavior with the API-side
 // repo so the orchestrator can also:
 //
 //   - GetByBatchID to recover state after a resume,
@@ -38,9 +38,7 @@ const pendingToolCallTTL = 24 * time.Hour
 //
 // Anti-footgun #1 (MongoDB standalone → no transactions) applies here
 // identically: atomicity is the findOneAndUpdate filter constraint, never
-// a session-scoped transactional API. The grep enforcement in
-// 16-02-PLAN.md §acceptance_criteria scans this file and will fail the
-// plan if that prohibition is violated.
+// a session-scoped transactional API.
 type pendingToolCallRepo struct {
 	coll *mongo.Collection
 }
@@ -55,33 +53,30 @@ func NewPendingToolCallRepository(db *mongo.Database) domain.PendingToolCallRepo
 }
 
 // InsertPreparing writes a new batch in status="preparing" WITHOUT setting
-// expires_at. Rationale (Research §Pitfall 6 + plan behavior contract):
-// TTL must never reap a stillborn preparing row before reconciliation
-// runs. Preparing → Pending transition is the only place expires_at is
-// set (PromoteToPending); once set, the 24h TTL window begins.
+// expires_at. TTL must never reap a stillborn preparing row before
+// reconciliation runs. Preparing → Pending transition is the only place
+// expires_at is set (PromoteToPending); once set, the 24h TTL window begins.
 //
 // The orchestrator calls this immediately before emitting the pause-time
-// SSE event in Plan 16-05. If the orchestrator crashes between this call
+// SSE event. If the orchestrator crashes between this call
 // and PromoteToPending, the API's ReconcileOrphanPreparing sweep (run on
 // startup + every 5 min cadence in future plans) marks this row as
 // expired after 5 minutes.
 func (r *pendingToolCallRepo) InsertPreparing(ctx context.Context, b *domain.PendingToolCallBatch) error {
-	// Plan 17-07 / GAP-03 regression net. Phase-16 wired identity fields
-	// through but the API proxy + orchestrator HTTP handler omitted them
-	// until 17-07 closed the gap (every batch persisted with empty IDs,
-	// breaking HITL-11 hydration and the resolve-time business-scoped auth
-	// check). Fail loud here so a future regression of either chat.go or
+	// Identity-field regression net. Earlier code paths persisted empty IDs,
+	// breaking pending-batch hydration and the resolve-time business-scoped
+	// auth check. Fail loud here so a future regression of either chat.go or
 	// chat_proxy.go cannot silently write empty IDs again.
 	//
 	// UserID and MessageID are intentionally NOT guarded here: system /
 	// anonymous flows may legitimately have an empty UserID, and the
-	// HITL-11 hydration filter is keyed on conversation_id + status.
+	// pending hydration filter is keyed on conversation_id + status.
 	// ConversationID + BusinessID are the structural floor.
 	if b.ConversationID == "" {
-		return fmt.Errorf("pending_tool_call: conversation_id is required (regression of plan 17-07 gap-03)")
+		return fmt.Errorf("pending_tool_call: conversation_id is required")
 	}
 	if b.BusinessID == "" {
-		return fmt.Errorf("pending_tool_call: business_id is required (regression of plan 17-07 gap-03)")
+		return fmt.Errorf("pending_tool_call: business_id is required")
 	}
 
 	now := time.Now().UTC()
@@ -96,8 +91,8 @@ func (r *pendingToolCallRepo) InsertPreparing(ctx context.Context, b *domain.Pen
 	return err
 }
 
-// PromoteToPending flips preparing → pending and sets expires_at = now+24h
-// (HITL-10). Returns ErrBatchNotFound when the filter rejects the update
+// PromoteToPending flips preparing → pending and sets expires_at = now+24h.
+// Returns ErrBatchNotFound when the filter rejects the update
 // (batch missing OR already past preparing) so callers know the promote
 // is a no-op; the sentinel is shared with the API repo so handlers using
 // errors.Is match across service boundaries.
@@ -121,7 +116,7 @@ func (r *pendingToolCallRepo) PromoteToPending(ctx context.Context, batchID stri
 }
 
 // GetByBatchID mirrors the API-side implementation including the lazy-
-// expiration virtualization (Research §Pitfall 6). Having identical
+// expiration virtualization. Having identical
 // read-path behavior in both services means a resume that lands on the
 // orchestrator can use the same logic as the API's resolve endpoint for
 // determining whether a batch is still actionable.
@@ -144,8 +139,8 @@ func (r *pendingToolCallRepo) GetByBatchID(ctx context.Context, batchID string) 
 // pendingApprovals array in GET /messages) but is implemented identically
 // on both sides so the orchestrator can use it during resume to look up
 // any other pending batches on the same conversation if a future
-// multi-batch UX emerges (Phase 16 ships single-batch per turn; extensible
-// to N without interface changes).
+// multi-batch UX emerges (current implementation is single-batch per turn;
+// extensible to N without interface changes).
 func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, conversationID string) ([]*domain.PendingToolCallBatch, error) {
 	filter := bson.M{
 		"conversation_id": conversationID,
@@ -176,8 +171,8 @@ func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, con
 // AtomicTransitionToResolving is implemented identically to the API repo
 // — both services must be able to perform the atomic transition so that
 // whichever one receives the resolve / resume flow first can claim the
-// transition. The filter {_id, status:"pending"} is the Phase-16 atomicity
-// primitive; see the API-repo docstring and Research §Pattern 2.
+// transition. The filter {_id, status:"pending"} is the atomicity
+// primitive; see the API-repo docstring.
 func (r *pendingToolCallRepo) AtomicTransitionToResolving(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
 	filter := bson.M{"_id": batchID, "status": "pending"}
 	update := bson.M{"$set": bson.M{"status": "resolving", "updated_at": time.Now().UTC()}}
@@ -223,9 +218,9 @@ func (r *pendingToolCallRepo) RecordDecisions(ctx context.Context, batchID strin
 }
 
 // MarkDispatched flips calls.$.dispatched=true for a specific call_id.
-// Critical for Plan 16-05's resume path: after each NATS reply lands, the
+// Critical for the resume path: after each NATS reply lands, the
 // orchestrator marks the call dispatched so a crashed+restarted resume
-// does not re-dispatch (Overview invariant #3 — double-execution guard,
+// does not re-dispatch (double-execution guard,
 // belt with the agent's Redis SetNX suspenders).
 func (r *pendingToolCallRepo) MarkDispatched(ctx context.Context, batchID, callID string) error {
 	now := time.Now().UTC()

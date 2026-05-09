@@ -17,7 +17,7 @@ export function useConversationsQuery() {
   return useQuery<Conversation[]>({
     queryKey: conversationsQueryKey,
     queryFn: conversationsApi.listConversations,
-    // The auto-titler is fire-and-forget on the server (Phase 18 / TITLE-09):
+    // The auto-titler is fire-and-forget on the server:
     // POST /conversations/:id/regenerate-title returns 200 immediately and
     // a goroutine writes the title 3-8 s later. Same for the implicit
     // auto-title that fires after the first user message. Poll while ANY
@@ -67,9 +67,9 @@ export function useMoveConversation() {
   });
 }
 
-// Phase 19 / Plan 19-02 — pin / unpin a conversation. Both mutations
+// pin / unpin a conversation. Both mutations
 // invalidate the QUERY_KEYS.CONVERSATIONS cache on success, extending the
-// established Phase 18 D-10 invalidation pattern (the sidebar list + the
+// established invalidation pattern (the sidebar list + the
 // ChatHeader narrow-memo selector both refresh from a single source).
 export function usePinConversation() {
   const qc = useQueryClient();
@@ -101,8 +101,8 @@ export function useRenameConversation() {
   });
 }
 
-// Phase 18 / TITLE-09 / D-12 — POST /conversations/:id/regenerate-title.
-// 409 surfaces a server-supplied locked Russian copy (D-02 / D-03);
+// POST /conversations/:id/regenerate-title.
+// 409 surfaces a server-supplied locked Russian copy;
 // callers translate err.response.data.message through their own toast.
 export function useRegenerateConversationTitle() {
   const qc = useQueryClient();

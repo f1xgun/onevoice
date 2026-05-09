@@ -22,7 +22,7 @@ interface ToolApprovalToggleProps {
 //
 //   - manual-floor → segmented (Вручную / Автоматически)
 //   - forbidden-floor → read-only «Запрещено» badge with info tooltip.
-//     Forbidden is a registration-time property (POLICY-01) and must
+//     Forbidden is a registration-time property and must
 //     never be user-settable.
 //   - auto-floor tools are filtered OUT by the parent page.
 export function ToolApprovalToggle({

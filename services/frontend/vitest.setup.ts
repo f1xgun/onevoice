@@ -222,8 +222,8 @@ if (typeof (globalThis as unknown as { Element?: typeof Element }).Element !== '
   }
 }
 
-// Phase 19 / Plan 19-05 — axe a11y matchers (toHaveNoViolations etc.).
-// `@chialab/vitest-axe` is the React-18-compatible fork (RESEARCH §3) —
+// axe a11y matchers (toHaveNoViolations etc.).
+// `@chialab/vitest-axe` is the React-18-compatible fork —
 // `@axe-core/react` is incompatible with React 18 and CANNOT be used here.
 // Matcher API: `expect(await axe(container)).toHaveNoViolations()`.
 //

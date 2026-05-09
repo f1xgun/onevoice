@@ -35,10 +35,10 @@ const (
 	sseBufferBytes = 1 << 20 // 1 MiB — matches chatproxy.OrchestrationProxy
 )
 
-// ChatProxyHandler is the thin facade over chatproxy/ collaborators
-// (Phase 19 / D-03 / D-06). The unexported repo fields stay on the struct
+// ChatProxyHandler is the thin facade over chatproxy/ collaborators.
+// The unexported repo fields stay on the struct
 // so chat_proxy_test.go's direct literal `&ChatProxyHandler{messageRepo:
-// msgRepo}` continues to compile (D-16).
+// msgRepo}` continues to compile.
 type ChatProxyHandler struct {
 	businessService    BusinessService
 	integrationService IntegrationService
@@ -60,7 +60,7 @@ type ChatProxyHandler struct {
 	hitl      *chatproxy.HITLCoordinator
 }
 
-// NewChatProxyHandler constructs the facade. Phase 19 / 19-MD-02: takes the
+// NewChatProxyHandler constructs the facade. Takes the
 // shared *orchestratorclient.Client built once in wire.BuildServices instead
 // of re-wrapping (orchestratorURL, httpClient) into a fresh client. A nil
 // orchClient is auto-built from orchestratorURL+httpClient so existing tests
@@ -142,7 +142,7 @@ type streamState struct {
 }
 
 // Chat routes the request through the 4-step facade: HITL gate → enrich +
-// persist → SSE stream → post-stream persist. Phase 16 HITL flow preserved
+// persist → SSE stream → post-stream persist. HITL flow preserved
 // verbatim — see chatproxy/hitl_coordinator.go GateAction* doc.
 func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
@@ -161,7 +161,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return ctx, cancel
 	}
 
-	// Step 1: D-04 stream-open gate.
+	// Step 1: stream-open gate.
 	headerBatch := r.Header.Get(ResumeBatchHeader)
 	if headerBatch == "" {
 		headerBatch = r.URL.Query().Get("batch_id")
@@ -248,7 +248,7 @@ func (h *ChatProxyHandler) dispatchSSEEvent(taskOpsCtx context.Context, business
 	case "text":
 		state.assistantText.WriteString(ev.Content)
 	case "tool_call":
-		// HITL-13 / anti-footgun #4: propagate the LLM's real tool_call.id.
+		// anti-footgun #4: propagate the LLM's real tool_call.id.
 		state.toolCalls = append(state.toolCalls, domain.ToolCall{
 			ID:        ev.ToolCallID,
 			Name:      ev.ToolName,
@@ -269,7 +269,7 @@ func (h *ChatProxyHandler) dispatchSSEEvent(taskOpsCtx context.Context, business
 		})
 		h.postal.OnToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, ev.ToolError, idMap)
 	case "tool_approval_required":
-		// HITL-01 / HITL-02: copy so the post-loop branch can read BatchID.
+		// copy so the post-loop branch can read BatchID.
 		evCopy := ev
 		state.pauseEvent = &evCopy
 	case "error":
@@ -281,7 +281,7 @@ func (h *ChatProxyHandler) dispatchSSEEvent(taskOpsCtx context.Context, business
 }
 
 // persistAfterStream writes the assistant Message after the SSE loop drains
-// (pause-time HITL-01 branch OR done/error). Auto-title fires on done.
+// (pause branch OR done/error). Auto-title fires on done.
 func (h *ChatProxyHandler) persistAfterStream(
 	persistCtx func() (context.Context, context.CancelFunc),
 	conversationID, streamStartMessageID string,
@@ -289,7 +289,7 @@ func (h *ChatProxyHandler) persistAfterStream(
 	req chatproxy.ChatProxyRequest,
 	state *streamState,
 ) {
-	// Pause-time persistence (Phase 16 HITL-01).
+	// Pause-time persistence.
 	if state.pauseEvent != nil {
 		saveCtx, cancel := persistCtx()
 		defer cancel()
@@ -340,7 +340,7 @@ func (h *ChatProxyHandler) persistAfterStream(
 	if err := h.persister.PersistAssistantComplete(saveCtx, assistantMsg); err != nil {
 		slog.ErrorContext(saveCtx, "failed to save assistant message", "error", err)
 	}
-	// Phase 18 / TITLE-02 / D-01: skip auto-title on errors.
+	// skip auto-title on errors.
 	if state.streamErrContent == "" {
 		h.persister.FireAutoTitleIfPending(persistCtx, conversationID, enriched.Business.ID.String(), req.Message, state.assistantText.String())
 	}
@@ -377,7 +377,7 @@ func (h *ChatProxyHandler) buildOrchRequest(userID uuid.UUID, enriched *chatprox
 	}
 }
 
-// === D-16 facade wrappers — keep existing chat_proxy_test.go invocations working ===
+// === facade wrappers — keep existing chat_proxy_test.go invocations working ===
 
 // loadHistory keeps the same projection chat_proxy_test.go:261 asserts.
 // Implementation is duplicated (not delegated to enricher) so the test at

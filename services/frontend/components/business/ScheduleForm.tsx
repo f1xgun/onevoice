@@ -1,6 +1,6 @@
 'use client';
 
-// Linen rebuild — Phase 4.8.
+// Linen rebuild.
 // Splits the previous single block into two API-aware sections:
 //   <HoursForm />          — weekly hours (Часы работы)
 //   <SpecialDatesForm />   — date overrides (Особые даты)

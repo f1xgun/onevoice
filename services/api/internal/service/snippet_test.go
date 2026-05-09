@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBuildSnippet — Plan 19-03 / Task 3 / SEARCH-03. Table-driven cases
-// from RESEARCH §10. The snowball stem of «запланировать» / «запланируем»
+// TestBuildSnippet — table-driven cases.
+// The snowball stem of «запланировать» / «запланируем»
 // / «Запланировать» is «запланирова» (3rd-conjugation root) — used as
 // the queryStems fixture.
 func TestBuildSnippet(t *testing.T) {
@@ -66,8 +66,8 @@ func TestBuildSnippet_AddsLeadingEllipsisWhenWindowStartsAfterContentStart(t *te
 	assert.True(t, strings.HasPrefix(got, "…"), "expected leading ellipsis, got %q", got)
 }
 
-// TestHighlightRanges_FindsAllMatchingTokens — Plan 19-03 / Task 3 / D-09.
-// For input «запланировать пост в Telegram» with stems
+// TestHighlightRanges_FindsAllMatchingTokens verifies that for input
+// «запланировать пост в Telegram» with stems
 // {«запланирова», «пост»}, two byte ranges must come back covering each
 // matching token. The byte offsets must be valid slices of the input.
 func TestHighlightRanges_FindsAllMatchingTokens(t *testing.T) {

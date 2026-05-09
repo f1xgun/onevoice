@@ -1,6 +1,6 @@
 import { ToolsPageClient } from './ToolsPageClient';
 
-// Phase 16 — /settings/tools (POLICY-05 frontend).
+// /settings/tools page.
 //
 // Lives at app/(app)/settings/tools/page.tsx alongside the existing
 // /settings account page. Server component that renders the client

@@ -136,9 +136,9 @@ func (e *RequestEnricher) Enrich(ctx context.Context, userID uuid.UUID, conversa
 				project.SystemPrompt = proj.SystemPrompt
 				project.WhitelistMode = string(proj.WhitelistMode)
 				project.AllowedTools = proj.AllowedTools
-				// Plan 17-07 GAP-03: capture per-project ToolFloor overrides
-				// (POLICY-03) so hitl.Resolve at pause time has the project
-				// inputs alongside business_approvals (POLICY-02).
+				// capture per-project ToolFloor overrides
+				// so hitl.Resolve at pause time has the project
+				// inputs alongside business_approvals.
 				projectOverrides = proj.ApprovalOverrides
 			case errors.Is(projErr, domain.ErrProjectNotFound):
 				slog.WarnContext(ctx, "chat proxy: stale project_id, falling back to no-project",
@@ -150,12 +150,12 @@ func (e *RequestEnricher) Enrich(ctx context.Context, userID uuid.UUID, conversa
 		}
 	}
 	// Normalize nil slices so the outbound JSON serializes as `[]` not `null`
-	// (matches the orchestrator's expectation from Plan 15-02 handler tests).
+	// (matches the orchestrator's expectation from handler tests).
 	if project.AllowedTools == nil {
 		project.AllowedTools = []string{}
 	}
 
-	// Plan 17-07 GAP-03: HITL policy inputs. The defensive accessor
+	// HITL policy inputs. The defensive accessor
 	// Business.ToolApprovals() always returns non-nil; project.ApprovalOverrides
 	// may be nil (no project or stale ID), so we materialize an empty map to
 	// keep the JSON shape `{}` not `null`.

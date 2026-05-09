@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import { Sidebar } from '../sidebar';
 import type { Project } from '@/types/project';
 
-// Mock next/navigation — usePathname drives the projects-subtree visibility gate (GAP-03).
+// Mock next/navigation — usePathname drives the projects-subtree visibility gate.
 const pathnameRef: { current: string } = { current: '/chat' };
 vi.mock('next/navigation', () => ({
   usePathname: () => pathnameRef.current,
@@ -67,16 +67,15 @@ async function renderAndOpenDrawer(pathname: string) {
       <Sidebar />
     </Providers>
   );
-  // Phase 19 D-14: Sidebar is now mobile-only. The desktop layout is
-  // owned by app/(app)/layout.tsx (NavRail + ProjectPane). To assert
-  // projects-subtree visibility (GAP-03 contract preserved) we open the
-  // mobile drawer first.
+  // Sidebar is mobile-only. The desktop layout is owned by
+  // app/(app)/layout.tsx (NavRail + ProjectPane). To assert
+  // projects-subtree visibility we open the mobile drawer first.
   const trigger = screen.getByRole('button', { name: 'Открыть боковое меню' });
   await userEvent.setup().click(trigger);
   return result;
 }
 
-describe('Sidebar — projects subtree visibility (GAP-03 — preserved on mobile drawer)', () => {
+describe('Sidebar — projects subtree visibility (preserved on mobile drawer)', () => {
   beforeEach(() => {
     pathnameRef.current = '/chat';
   });

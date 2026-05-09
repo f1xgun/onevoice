@@ -179,7 +179,7 @@ func newSvc(t *testing.T, pending *stubPendingRepo, biz *stubBusinessRepo, proj 
 // seedBatch creates a pending batch with the given calls under the given
 // business and conversation IDs.
 //
-// Plan 17-11: every PendingCall now carries FloorAtPause (persisted at
+// Every PendingCall now carries FloorAtPause (persisted at
 // orchestrator pause time so the resolve-time TOCTOU re-check consults the
 // same registry that classified the call). For test ergonomics we default
 // FloorAtPause to ToolFloorManual when callers leave it empty — production
@@ -438,12 +438,12 @@ func TestHITLService_Resolve_ConcurrentResolve_ExactlyOneWins_OtherGets409(t *te
 	}
 }
 
-// TestHITLService_Resolve_PreservesApproveWhenFloorAtPauseManual — Plan
-// 17-11 / GAP-04 closure. When the persisted FloorAtPause is Manual and
+// TestHITLService_Resolve_PreservesApproveWhenFloorAtPauseManual verifies
+// that when the persisted FloorAtPause is Manual and
 // business + project policy still permits the tool, an operator-initiated
 // approve must be preserved verbatim (no policy_revoked rewrite). Pre-fix
 // this test would fail because the api-side toolsCache was empty in
-// production and Floor() returned Forbidden, tripping the HITL-06 rewrite
+// production and Floor() returned Forbidden, tripping the rewrite
 // branch even when policy permitted the call.
 func TestHITLService_Resolve_PreservesApproveWhenFloorAtPauseManual(t *testing.T) {
 	bizID := uuid.New().String()
@@ -488,8 +488,8 @@ func TestHITLService_Resolve_PreservesApproveWhenFloorAtPauseManual(t *testing.T
 	}
 }
 
-// TestHITLService_Resolve_FloorAtPauseManual_BusinessFlipsToForbidden_RewritesToReject —
-// The HITL-06 invariant is preserved through the new FloorAtPause path:
+// TestHITLService_Resolve_FloorAtPauseManual_BusinessFlipsToForbidden_RewritesToReject
+// verifies the TOCTOU invariant is preserved through the FloorAtPause path:
 // when business policy genuinely flips a tool to "forbidden" between pause
 // and resolve, the resolve rewrites approve to reject with
 // reason="policy_revoked" because pkghitl.Resolve(Manual,
@@ -537,7 +537,7 @@ func TestHITLService_Resolve_FloorAtPauseManual_BusinessFlipsToForbidden_Rewrite
 	}
 }
 
-// TestHITLService_Resolve_ClientTamperedToolName_IgnoredAndPinned — HITL-07
+// TestHITLService_Resolve_ClientTamperedToolName_IgnoredAndPinned —
 // pinning: a client that puts `"tool_name"` inside edited_args must be
 // rejected (it's not in any EditableFields allowlist) and the persisted
 // tool_name MUST remain the original.

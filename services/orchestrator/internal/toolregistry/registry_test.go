@@ -134,7 +134,7 @@ func TestRegistry_AvailableForWhitelist_ModeAll_SameAsAvailable(t *testing.T) {
 }
 
 func TestRegistry_AvailableForWhitelist_ModeInherit_SameAsAll(t *testing.T) {
-	// D-18: for v1.3, inherit == all. Phase 16 replaces with business defaults.
+	// for v1.3, inherit == all. Replaced later with business defaults.
 	reg := fixtureRegistry()
 	base := reg.Available([]string{"telegram", "vk"})
 	got := reg.AvailableForWhitelist(context.Background(), []string{"telegram", "vk"}, domain.WhitelistModeInherit, nil)
@@ -302,8 +302,6 @@ func TestRegistry_AvailableForWhitelist_ModeNone_BlocksEverythingIncludingAuto(t
 	assert.Empty(t, got)
 }
 
-// --- Phase 16 Plan 16-03 additions: Floor, EditableFields, Has, AllEntries ---
-
 func TestRegistry_Floor_RegisteredReturnsFloor(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
@@ -313,7 +311,7 @@ func TestRegistry_Floor_RegisteredReturnsFloor(t *testing.T) {
 	assert.Equal(t, domain.ToolFloorAuto, reg.Floor(tools.TelegramGetReviews))
 }
 
-// TestRegistry_Floor_UnknownReturnsForbidden locks POLICY-07's safe-default:
+// TestRegistry_Floor_UnknownReturnsForbidden locks the safe-default:
 // the runtime policy resolver treats unknown tools as if they were registered
 // with Floor=Forbidden. Changing this to Auto or Manual would silently permit
 // approval of tools that no longer exist.

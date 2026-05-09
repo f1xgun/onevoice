@@ -21,7 +21,7 @@ func makeDef(name string) llm.ToolDefinition {
 }
 
 // TestInternalToolsNames_ReturnsRegistrySnapshot is the minimum contract the
-// API service's POLICY-07 sweep relies on: every registered tool's name must
+// API service's policy sweep relies on: every registered tool's name must
 // appear in the JSON `names` array. Order-independent — the registry's Go
 // map iteration is non-deterministic.
 func TestInternalToolsNames_ReturnsRegistrySnapshot(t *testing.T) {

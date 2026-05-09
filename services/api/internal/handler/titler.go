@@ -16,15 +16,15 @@ import (
 
 // TitlerHandler handles the auto-titler regenerate endpoint.
 //
-// The titler field is typed as *service.Titler concretely (B-02 alignment):
-// there is exactly ONE canonical mocking seam in Phase 18 — the package-private
+// The titler field is typed as *service.Titler concretely:
+// there is exactly ONE canonical mocking seam — the package-private
 // chatCaller interface inside services/api/internal/service. Handler tests
 // construct a real *service.Titler with a fake chatCaller via
-// service.FakeChatCaller (Plan 05 Task 2). NO parallel titlerCaller interface
+// service.FakeChatCaller. NO parallel titlerCaller interface
 // is introduced anywhere in this phase.
 //
 // titler is allowed to be nil (graceful disable when TITLER_MODEL/LLM_MODEL is
-// unset OR no LLM provider key is configured — Pitfall 1 / Assumption A6). The
+// unset OR no LLM provider key is configured — Pitfall 1). The
 // RegenerateTitle handler returns 503 in that case.
 type TitlerHandler struct {
 	titler           *service.Titler
@@ -56,13 +56,13 @@ func NewTitlerHandler(
 
 // RegenerateTitle handles POST /api/v1/conversations/{id}/regenerate-title.
 //
-// State machine (TITLE-09 / D-07):
+// State machine:
 //
 //  1. middleware.GetUserID — 401 on miss.
 //  2. h.conversationRepo.GetByID — 404 on ErrConversationNotFound, 500 on other err.
 //  3. ownership: conv.UserID != userID.String() → 403.
-//  4. titler-disabled gate: h.titler == nil → 503 (graceful disable per A6).
-//  5. status check (D-02 / D-03 verbatim Russian copy):
+//  4. titler-disabled gate: h.titler == nil → 503 (graceful disable).
+//  5. status check (verbatim Russian copy):
 //     - status == "manual"       → 409 "Нельзя регенерировать — вы уже переименовали чат вручную"
 //     - status == "auto_pending" → 409 "Заголовок уже генерируется"
 //  6. atomic transition via TransitionToAutoPending; on ErrConversationNotFound
@@ -95,7 +95,7 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Graceful disable: titling not configured (A6 / Pitfall 1).
+	// Graceful disable: titling not configured (Pitfall 1).
 	if h.titler == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error":   "titler_disabled",
@@ -104,7 +104,7 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// D-02: manual is sovereign — verbatim Russian copy locked in CONTEXT.md.
+	// manual is sovereign — verbatim Russian copy locked in CONTEXT.md.
 	if conv.TitleStatus == domain.TitleStatusManual {
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error":   "title_is_manual",
@@ -112,7 +112,7 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		})
 		return
 	}
-	// D-03: in-flight job already running — verbatim Russian copy locked in CONTEXT.md.
+	// in-flight job already running — verbatim Russian copy locked in CONTEXT.md.
 	//
 	// Stuck-pending recovery: a chat may sit in auto_pending forever if the
 	// titler goroutine never ran (e.g., titler was disabled at the time the
@@ -179,5 +179,5 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		spawnCancel()
 	}()
 
-	w.WriteHeader(http.StatusOK) // 200, no body — fire-and-forget per D-07
+	w.WriteHeader(http.StatusOK) // 200, no body — fire-and-forget
 }

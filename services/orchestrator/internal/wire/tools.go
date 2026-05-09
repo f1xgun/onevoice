@@ -13,8 +13,8 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
-// toolSpec binds a tool definition to its ToolFloor baseline (POLICY-01) and
-// per-tool EditableFields allowlist (HITL-L4 promoted into v1.3 per D-10/D-11).
+// toolSpec binds a tool definition to its ToolFloor baseline and
+// per-tool EditableFields allowlist.
 //
 // Policy guidelines for choosing a floor:
 //   - ToolFloorAuto       — read-only / safe queries (no external side effects).
@@ -65,7 +65,7 @@ func Tools(log *slog.Logger, cfg *config.Config) (*toolregistry.Registry, *natsl
 // RegisterPlatformTools wires NATS executors into the tool registry for each
 // MVP agent. MVP platforms: Telegram (API), VK (API), Yandex.Business (RPA),
 // Google Business (API). Each platform's tool list lives in a sibling
-// tools_{platform}.go file to keep individual files under SC-01's 500-LOC
+// tools_{platform}.go file to keep individual files under the 500-LOC
 // budget; this dispatcher is the single registration entry point.
 //
 // Every tool registration is explicit — Register takes floor + editableFields

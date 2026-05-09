@@ -4,10 +4,10 @@ import Link from 'next/link';
 import { FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Phase 19 / Plan 19-02 / D-05 — size variants. The `xs` size is used by
-// PinnedSection rows as a mini project-affiliation indicator (chats inside
-// «Без проекта» get NO chip; only chats that belong to a real project are
-// chipped on their pinned row to disambiguate the duplicated entry).
+// Size variants. The `xs` size is used by PinnedSection rows as a mini
+// project-affiliation indicator (chats inside «Без проекта» get NO chip;
+// only chats that belong to a real project are chipped on their pinned
+// row to disambiguate the duplicated entry).
 type Size = 'xs' | 'sm' | 'md';
 
 const sizeClasses: Record<Size, string> = {

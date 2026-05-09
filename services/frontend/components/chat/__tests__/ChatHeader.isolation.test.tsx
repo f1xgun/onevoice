@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { ChatHeader } from '../ChatHeader';
 import type { Conversation } from '@/lib/conversations';
 
-// Phase 18 / D-11 USER OVERRIDE structural mitigation (Landmine 1):
+// USER OVERRIDE structural mitigation:
 //
 //   ChatHeader is an isolated, memoized React subtree subscribed via
 //   React Query `select` projection that returns a primitive `string` (the
@@ -22,11 +22,6 @@ import type { Conversation } from '@/lib/conversations';
 //   Plus a positive-control test (DOES re-render when title changes) that
 //   confirms the harness is sensitive enough to detect re-renders, so the
 //   "1 commit" assertion is genuine isolation rather than a broken test.
-//
-//   B-06 enforcement: ONE concrete strategy, executed. NO pseudocode, NO
-//   speculative escape-hatch comments, NO fallback prose. The plan's
-//   forbidden-token guards check this file's source for the verbatim
-//   markers; we keep the source clean of them so the greps stay quiet.
 
 vi.mock('@/lib/api', () => ({
   api: {
@@ -48,7 +43,7 @@ function setup(initialConvs: TestConv[]) {
   return { qc, wrapper };
 }
 
-describe('ChatHeader — D-11 isolation (B-06 vi.fn() + Profiler.onRender)', () => {
+describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
   it('renders the title for the matching conversation', () => {
     const { wrapper } = setup([{ id: 'c1', title: 'Запланировать пост', titleStatus: 'auto' }]);
     render(<ChatHeader conversationId="c1" />, { wrapper });
@@ -69,7 +64,7 @@ describe('ChatHeader — D-11 isolation (B-06 vi.fn() + Profiler.onRender)', () 
     expect(screen.getByText('Новый диалог')).toBeInTheDocument();
   });
 
-  it('does NOT re-render when an unrelated field of the same conversation changes (D-11 isolation)', () => {
+  it('does NOT re-render when an unrelated field of the same conversation changes (isolation)', () => {
     const { qc, wrapper } = setup([
       {
         id: 'c1',
@@ -108,7 +103,7 @@ describe('ChatHeader — D-11 isolation (B-06 vi.fn() + Profiler.onRender)', () 
     });
 
     // After the unrelated mutation: STILL exactly 1 commit.
-    // This is the trust-critical D-11 assertion (B-06).
+    // This is the trust-critical isolation assertion.
     expect(onRender).toHaveBeenCalledTimes(1);
   });
 

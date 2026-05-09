@@ -20,7 +20,7 @@ import (
 // projectRepository persists projects in Postgres and cascades deletes into
 // Mongo (conversations + messages). The public constructor returns the
 // domain.ProjectRepository interface so callers never depend on the concrete
-// type — the wiring invariant for Plan 15-03.
+// type — the wiring invariant.
 type projectRepository struct {
 	pool     pgxPool
 	sb       squirrel.StatementBuilderType
@@ -105,7 +105,7 @@ func unmarshalApprovalOverrides(raw []byte) map[string]domain.ToolFloor {
 // caller's responsibility (service layer enforces cross-business isolation via
 // the returned BusinessID field).
 //
-// Phase 16: COALESCE(approval_overrides, '{}'::jsonb) shields callers from a
+// COALESCE(approval_overrides, '{}'::jsonb) shields callers from a
 // non-migrated DB (e.g., a dev env that hasn't run the 000004/000005
 // migration yet) — missing column would error at Scan, so we explicitly
 // default to '{}' at the query layer.
@@ -184,7 +184,7 @@ func (r *projectRepository) ListByBusinessID(ctx context.Context, businessID uui
 // whitelist_mode, allowed_tools, approval_overrides, quick_actions) and
 // bumps updated_at.
 //
-// Phase 16 (POLICY-06): approval_overrides is a JSONB map. Key-absence in the
+// approval_overrides is a JSONB map. Key-absence in the
 // persisted value encodes "inherit" (never a literal "inherit" string) — the
 // service layer is responsible for translating inherit from the request body
 // into key-absence before calling Update.
@@ -248,7 +248,7 @@ func (r *projectRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 // CountConversationsByID returns the number of Mongo conversations currently
 // assigned to the given project_id. Feeds the frontend delete-confirmation
-// dialog (D-06) so users see "will also delete N chats" before confirming.
+// dialog so users see "will also delete N chats" before confirming.
 func (r *projectRepository) CountConversationsByID(ctx context.Context, id uuid.UUID) (int, error) {
 	count, err := r.convColl.CountDocuments(ctx, bson.M{"project_id": id.String()})
 	if err != nil {
@@ -264,8 +264,7 @@ func (r *projectRepository) CountConversationsByID(ctx context.Context, id uuid.
 // Order matters: Mongo first, Postgres last. If the Postgres delete fails
 // after Mongo succeeds, a retry re-runs cleanly (messages/conversations are
 // already gone on the second attempt, so the counts reset to 0, but the
-// Postgres row still vanishes). This is the "best-effort atomic" guarantee
-// documented in 15-CONTEXT D-05.
+// Postgres row still vanishes). This is the "best-effort atomic" guarantee.
 func (r *projectRepository) HardDeleteCascade(ctx context.Context, id uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	projectIDStr := id.String()
 

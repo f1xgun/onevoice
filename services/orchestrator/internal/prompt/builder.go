@@ -24,12 +24,10 @@ type BusinessContext struct {
 
 // ProjectContext carries the optional project prompt layer that is appended
 // after the business rules block when a chat lives inside a project. When nil,
-// the builder emits the legacy business-only system message (pre-Phase-15
-// behavior).
+// the builder emits the legacy business-only system message.
 //
-// Scope: see .planning/phases/15-projects-foundation/15-CONTEXT.md (D-09 —
-// prompt layering order is business context → project system prompt →
-// conversation history). The project block is appended AFTER the business
+// Layering order: business context → project system prompt → conversation
+// history. The project block is appended AFTER the business
 // rules because LLM attention gives the last-emitted block precedence, which
 // matches the UX intent: project-level instructions override general business
 // rules for chats inside a project.
@@ -37,8 +35,8 @@ type ProjectContext struct {
 	ID            string
 	Name          string
 	SystemPrompt  string
-	WhitelistMode domain.WhitelistMode // drives the Ограничения инструментов hint in appendProjectBlock (GAP-02)
-	AllowedTools  []string             // listed verbatim when WhitelistMode == WhitelistModeExplicit (GAP-02)
+	WhitelistMode domain.WhitelistMode // drives the Ограничения инструментов hint in appendProjectBlock
+	AllowedTools  []string             // listed verbatim when WhitelistMode == WhitelistModeExplicit
 }
 
 // Build returns a []llm.Message starting with a system message built from
@@ -59,13 +57,12 @@ func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []l
 // appendProjectBlock glues the project prompt layer onto the business-only
 // system text. The header is always emitted (even when SystemPrompt is empty)
 // so the LLM knows which project is in scope; this makes the transition
-// visible during move-chat in Plan 04 (see PITFALLS.md §11, Option A).
+// visible during move-chat.
 //
 // When WhitelistMode is explicit or none, a follow-up
 // "### Ограничения инструментов" section is emitted so the LLM knows to
 // refuse/explain unavailable-platform requests instead of silently
-// substituting the closest allowed tool (see GAP-02 in
-// .planning/phases/15-projects-foundation/15-VERIFICATION.md).
+// substituting the closest allowed tool.
 func appendProjectBlock(base string, proj *ProjectContext) string {
 	var sb strings.Builder
 	sb.WriteString(base)
@@ -82,7 +79,7 @@ func appendProjectBlock(base string, proj *ProjectContext) string {
 		}
 	}
 
-	// Whitelist explanation (GAP-02). Only emitted for restrictive modes.
+	// Whitelist explanation. Only emitted for restrictive modes.
 	switch proj.WhitelistMode {
 	case domain.WhitelistModeExplicit:
 		if len(proj.AllowedTools) == 0 {
@@ -107,7 +104,7 @@ func appendProjectBlock(base string, proj *ProjectContext) string {
 		sb.WriteString("Если пользователь просит действие, объясни ограничение и предложи перенести чат в другой проект. ")
 		sb.WriteString("НЕ подменяй канал молча.\n")
 	case domain.WhitelistModeAll, domain.WhitelistModeInherit, "":
-		// No hint — same behavior as before GAP-02.
+		// No hint — permissive whitelist modes don't constrain the LLM.
 	}
 
 	return sb.String()

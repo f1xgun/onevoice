@@ -1,6 +1,6 @@
 'use client';
 
-// Linen rebuild — Phase 4.8.
+// Linen rebuild.
 // Renders the "Основное" section body (no card chrome, no heading — the page
 // wraps each form in a paper-raised section). Save button is rendered by the
 // form so the section stays self-contained; the page-level header save lives

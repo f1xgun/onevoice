@@ -74,9 +74,9 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
   });
 
   // CRITICAL: inherit must be encoded as KEY ABSENCE in the outgoing PUT
-  // body, never as the string "inherit". Phase 16-07 strips "inherit" on
-  // the backend but the frontend contract (Overview invariant #8) is
-  // stricter: the frontend must never produce an inherit key at all.
+  // body, never as the string "inherit". The backend strips "inherit" but
+  // the frontend contract (Overview invariant #8) is stricter: the frontend
+  // must never produce an inherit key at all.
   it('clicking Inherit DELETES the tool key — inherit selection results in a PUT body where the tool key is ABSENT from approvalOverrides', async () => {
     const onChange = vi.fn<(next: Record<string, ToolApprovalValue>) => void>();
     render(

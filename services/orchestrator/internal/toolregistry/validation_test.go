@@ -9,15 +9,15 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
-// TestValidateEditArgs exercises every branch of the HITL-07 edit contract:
+// TestValidateEditArgs exercises every branch of the HITL edit contract:
 //   - happy path (allowlisted field + scalar value)
 //   - unknown field → ErrFieldNotEditable
-//   - case mismatch → ErrFieldNotEditable (strict lowercase per Pitfall 8)
-//   - nested object/array/nil → ErrNonScalarValue (D-13: scalars only)
+//   - case mismatch → ErrFieldNotEditable (strict lowercase)
+//   - nested object/array/nil → ErrNonScalarValue (scalars only)
 //   - unknown tool → ErrFieldNotEditable with Editable == nil
 //   - multiple valid scalars in the same call
 //
-// The table is intentionally exhaustive so downstream handlers (Plan 16-07)
+// The table is intentionally exhaustive so downstream handlers
 // can map each error shape to a 400 body without needing further branching.
 func TestValidateEditArgs(t *testing.T) {
 	reg := toolregistry.NewRegistry()
@@ -70,7 +70,7 @@ func TestValidateEditArgs(t *testing.T) {
 			wantTool:  tools.TelegramSendChannelPost,
 		},
 		{
-			name:      "nested object value → ErrNonScalarValue (D-13 no nested editing)",
+			name:      "nested object value → ErrNonScalarValue (no nested editing)",
 			tool:      tools.TelegramSendChannelPost,
 			args:      map[string]interface{}{"text": map[string]interface{}{"x": 1}},
 			wantErrAs: new(*toolregistry.ErrNonScalarValue),
@@ -174,7 +174,7 @@ func TestValidateEditArgs(t *testing.T) {
 }
 
 // TestValidateEditArgs_ErrorMessagesIncludeContext guards the exact substrings
-// that the resolve handler (Plan 16-07) depends on when composing the 400 body.
+// that the resolve handler depends on when composing the 400 body.
 // If these strings change, the handler's integration tests will break in a
 // confusing way; locking them here gives early warning.
 func TestValidateEditArgs_ErrorMessagesIncludeContext(t *testing.T) {

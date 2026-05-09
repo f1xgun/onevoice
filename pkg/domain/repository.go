@@ -23,7 +23,7 @@ type BusinessRepository interface {
 	Update(ctx context.Context, business *Business) error
 	// UpdateToolApprovals replaces only settings.tool_approvals on the target
 	// business, preserving other keys inside the generic settings JSONB.
-	// Phase 16 (POLICY-05): feeds PUT /api/v1/business/{id}/tool-approvals.
+	// Feeds PUT /api/v1/business/{id}/tool-approvals.
 	UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]ToolFloor) error
 }
 
@@ -57,40 +57,39 @@ type ConversationRepository interface {
 	Update(ctx context.Context, conv *Conversation) error
 	Delete(ctx context.Context, id string) error
 	// UpdateProjectAssignment atomically updates only project_id (+ updated_at).
-	// Passing nil clears the assignment ("Без проекта" bucket) — move-chat in
-	// Plan 15-04 relies on the `bson:"project_id"` tag (no omitempty) so the
+	// Passing nil clears the assignment ("Без проекта" bucket) — move-chat
+	// relies on the `bson:"project_id"` tag (no omitempty) so the
 	// Mongo field becomes explicit null rather than missing.
 	UpdateProjectAssignment(ctx context.Context, id string, projectID *string) error
 	// UpdateTitleIfPending atomically writes title + title_status="auto" only
 	// when current status is "auto_pending" or null. Returns ErrConversationNotFound
 	// when the filter matches zero docs (manual rename won the race, or doc deleted).
-	// TITLE-04 / D-08: trust-critical path — manual renames MUST NOT be clobbered.
+	// Trust-critical path — manual renames MUST NOT be clobbered.
 	UpdateTitleIfPending(ctx context.Context, id, title string) error
 	// TransitionToAutoPending atomically flips title_status from "auto" or null
-	// → "auto_pending". Used by POST /regenerate-title (Plan 05). Returns
+	// → "auto_pending". Used by POST /regenerate-title. Returns
 	// ErrConversationNotFound when filter matches zero docs (status was "manual"
 	// OR "auto_pending" — caller maps each disposition to its 409 body).
 	TransitionToAutoPending(ctx context.Context, id string) error
-	// Pin — Phase 19 / D-02. Atomically sets pinned_at = now (UTC) on the
+	// Pin atomically sets pinned_at = now (UTC) on the
 	// conversation, scoped by (id, business_id, user_id) for defense-in-depth
-	// (Pitfalls §19 — defends against cross-tenant pin manipulation even if
+	// (defends against cross-tenant pin manipulation even if
 	// callers misroute IDs). Returns ErrConversationNotFound on mismatch
 	// (uniform 404 at the handler layer, never 403, to avoid leaking
 	// existence-vs-ownership).
 	Pin(ctx context.Context, id, businessID, userID string) error
-	// Unpin — Phase 19 / D-02. Atomically sets pinned_at = nil on the
+	// Unpin atomically sets pinned_at = nil on the
 	// conversation, scoped by (id, business_id, user_id). Returns
 	// ErrConversationNotFound on mismatch.
 	Unpin(ctx context.Context, id, businessID, userID string) error
-	// SearchTitles — Phase 19 / Plan 19-03 / D-12 phase 1. Runs the $text
+	// SearchTitles runs the $text
 	// query against conversations.title scoped by (user_id, business_id,
 	// project_id?). Returns title hits AND the slice of matching conversation
 	// IDs. Empty businessID or userID returns ErrInvalidScope (cross-tenant
 	// defense-in-depth). Result types live in
 	// services/api/internal/repository.ConversationTitleHit.
 	SearchTitles(ctx context.Context, businessID, userID, query string, projectID *string, limit int) ([]ConversationTitleHit, []string, error)
-	// ScopedConversationIDs — Phase 19 / Plan 19-03 / D-12 phase 1
-	// allowlist. Returns the conversation IDs visible to (user_id,
+	// ScopedConversationIDs returns the conversation IDs visible to (user_id,
 	// business_id, project_id?) ordered by last_message_at desc, capped at
 	// MaxScopedConversations (overflow logged + truncated). Empty
 	// businessID or userID returns ErrInvalidScope.
@@ -118,21 +117,21 @@ type MessageRepository interface {
 	Create(ctx context.Context, msg *Message) error
 	ListByConversationID(ctx context.Context, conversationID string, limit, offset int) ([]Message, error)
 	CountByConversationID(ctx context.Context, conversationID string) (int64, error)
-	// Update overwrites an existing message by ID. Used by the Phase 16 HITL
-	// resume path (Plan 16-06) to append ToolResults to the SAME assistant
-	// Message that carried the pause-time ToolCalls (invariant D-17: one
+	// Update overwrites an existing message by ID. Used by the HITL
+	// resume path to append ToolResults to the SAME assistant
+	// Message that carried the pause-time ToolCalls (one
 	// assistant Message per LLM turn, even across a pause). If the message
 	// does not exist, returns ErrMessageNotFound.
 	Update(ctx context.Context, msg *Message) error
 	// FindByConversationActive returns the most recent assistant Message in
 	// the conversation whose Status is in {pending_approval, in_progress},
 	// or (nil, ErrMessageNotFound) if none exists. Used by chat_proxy.go's
-	// D-04 stream-open gate (Plan 16-06) to detect in-flight turns before
+	// stream-open gate to detect in-flight turns before
 	// creating a new assistant Message.
 	FindByConversationActive(ctx context.Context, conversationID string) (*Message, error)
-	// SearchByConversationIDs — Phase 19 / Plan 19-03 / D-12 phase 2.
-	// Aggregation pipeline that runs $text on messages.content scoped by
-	// the conversation_id allowlist (computed in phase 1 from
+	// SearchByConversationIDs runs an aggregation pipeline that runs $text
+	// on messages.content scoped by
+	// the conversation_id allowlist (computed from
 	// ConversationRepository.ScopedConversationIDs). Returns one row per
 	// conversation: (top_message_id, top_content, top_score, match_count).
 	// Empty allowlist returns (nil, nil) without invoking Mongo.
@@ -220,7 +219,7 @@ type AgentTaskRepository interface {
 	ListByBusinessID(ctx context.Context, businessID string, filter TaskFilter) ([]AgentTask, int, error)
 }
 
-// --- Phase 16 HITL — pending tool-call batches ---
+// --- HITL — pending tool-call batches ---
 
 // PendingToolCallBatch is the persisted snapshot of a paused multi-tool
 // approval batch: one document per assistant turn that hit ≥1 manual-floor
@@ -228,15 +227,12 @@ type AgentTaskRepository interface {
 // promoted to "pending" just before the SSE tool_approval_required event is
 // flushed, transitioned to "resolving" atomically by the resolve endpoint,
 // then "resolved" after all decisions are recorded. Expired batches are
-// swept by the Mongo TTL index on ExpiresAt (HITL-10).
+// swept by the Mongo TTL index on ExpiresAt.
 //
 // ProjectID is nullable (bson:",omitempty") because conversations may not be
-// scoped to any project (the virtual "Без проекта" bucket from Phase 15).
-// When present, it is the key that Plan 16-05 and 16-07 use to look up the
-// project's approval_overrides for the TOCTOU re-check (POLICY-03 + HITL-06).
-//
-// See .planning/phases/16-hitl-backend/16-02-PLAN.md for the Mongo
-// collection/index spec and the implementation.
+// scoped to any project (the virtual "Без проекта" bucket).
+// When present, it is the key used to look up the
+// project's approval_overrides for the TOCTOU re-check.
 type PendingToolCallBatch struct {
 	ID             string        `bson:"_id"`
 	ConversationID string        `bson:"conversation_id"`
@@ -254,10 +250,10 @@ type PendingToolCallBatch struct {
 }
 
 // PendingCall is a single proposed tool invocation within a batch. CallID is
-// the LLM's real tool_call.id (no synthetic "tc-N" placeholder — HITL-13).
+// the LLM's real tool_call.id (no synthetic "tc-N" placeholder).
 // Verdict/EditedArgs/RejectReason are populated by the resolve endpoint.
-// Dispatched is the orchestrator-side double-execution guard (Overview
-// invariant #3): on resume, any entry with Dispatched=true is skipped.
+// Dispatched is the orchestrator-side double-execution guard:
+// on resume, any entry with Dispatched=true is skipped.
 type PendingCall struct {
 	CallID    string                 `bson:"call_id"`
 	ToolName  string                 `bson:"tool_name"`
@@ -268,13 +264,12 @@ type PendingCall struct {
 	// re-check can consult the same registry that classified the call at
 	// pause time, eliminating divergence between the orchestrator's
 	// in-process tools.Registry (always warm) and the api's
-	// service.ToolsRegistryCache (HTTP-backed, lazily warmed). See
-	// 17-VERIFICATION.md §GAP-04 for the divergence root cause.
+	// service.ToolsRegistryCache (HTTP-backed, lazily warmed).
 	//
 	// For pause-time-persisted calls this is always ToolFloorManual (only
 	// manual-floor calls reach the orchestrator's pause path; auto and
 	// forbidden are bucketed elsewhere). bson:",omitempty" so legacy
-	// batches written before plan 17-11 decode with FloorAtPause == ""
+	// batches decode with FloorAtPause == ""
 	// (ToolFloorRank returns -1 for invalid values, so an empty floor
 	// cannot dominate a valid business/project override — strictest-wins
 	// still detects a post-pause forbidden flip; the orchestrator-side
@@ -288,13 +283,13 @@ type PendingCall struct {
 	DispatchedAt *time.Time             `bson:"dispatched_at,omitempty"`
 }
 
-// PendingToolCallRepository is implemented by services/api in Plan 16-02. The
+// PendingToolCallRepository is implemented by services/api. The
 // interface declares every primitive that the orchestrator (at pause time),
 // the resolve handler (at decision time), and the chat_proxy (at SSE emission
 // time) need — no type assertions, no out-of-band helpers.
 //
 // Atomicity discipline: because MongoDB in this deployment is STANDALONE (no
-// multi-document transactions — see Overview invariant #1), all cross-document
+// multi-document transactions), all cross-document
 // consistency is encoded as a strict write-order:
 //
 //	InsertPreparing → PromoteToPending → emit SSE
@@ -303,8 +298,7 @@ type PendingCall struct {
 //
 // AtomicTransitionToResolving uses findOneAndUpdate with filter
 // `{_id, status: "pending"}` and update `{$set: {status: "resolving"}}` to
-// guarantee exactly-one-wins on concurrent resolve attempts (Overview
-// anti-footgun #5).
+// guarantee exactly-one-wins on concurrent resolve attempts.
 type PendingToolCallRepository interface {
 	InsertPreparing(ctx context.Context, b *PendingToolCallBatch) error
 	PromoteToPending(ctx context.Context, batchID string) error

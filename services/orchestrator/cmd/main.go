@@ -1,7 +1,7 @@
 // Package main is the orchestrator entry point. Wiring lives in
 // internal/wire/; this file only owns process lifecycle: signal handling,
 // chi-router middleware chain, http.Server start, graceful drain. The
-// SC-05 budget caps this file at 200 LOC — anything longer than the
+// budget caps this file at 200 LOC — anything longer than the
 // run/runServers pair below belongs in wire/.
 package main
 
@@ -91,7 +91,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		})
 	}
 
-	// Plan 16-05: pendingRepo wires HITL pause-time persistence so manual-floor
+	// pendingRepo wires HITL pause-time persistence so manual-floor
 	// tool calls can be saved as PendingToolCallBatch documents. Without it,
 	// stepRun emits EventError "HITL not configured".
 	orch := orchestrator.NewWithHITL(router, registry, pendingRepo, orchestrator.Options{
@@ -107,7 +107,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 // signal-driven shutdown. Mirrors the historical lifecycle block at
 // services/orchestrator/cmd/main.go:157-225 — same middleware order, same
 // route paths, same drain timeout. Process-lifecycle code lives here, not
-// in wire/, per the 19-01 / 19-02 split rule.
+// in wire/.
 func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wire.HandlerSet, hc *health.Checker) error {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)

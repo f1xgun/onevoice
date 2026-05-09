@@ -7,23 +7,22 @@ import type { ReactNode } from 'react';
 
 import { ConversationItem } from '@/components/chat/ConversationItem';
 
-// Phase 18 / TITLE-09 / D-12 — "Обновить заголовок" menu item:
+// "Обновить заголовок" menu item:
 //
-//   - Visible when titleStatus !== 'manual' (D-02 hard rule).
+//   - Visible when titleStatus !== 'manual'.
 //   - Click invokes the regenerate-title mutation.
 //   - 409 server response surfaces the verbatim Russian copy via toast.error.
 //
-// W-04 / B-04 enforcement: the toast actually rendered in the DOM is asserted
-// to contain the locked Russian copy, byte-exact:
-//   D-02: "Нельзя регенерировать — вы уже переименовали чат вручную"
-//   D-03: "Заголовок уже генерируется"
+// The toast actually rendered in the DOM is asserted to contain the locked
+// Russian copy, byte-exact:
+//   "Нельзя регенерировать — вы уже переименовали чат вручную"
+//   "Заголовок уже генерируется"
 //
 // Approach: real <Toaster /> mounted; `vi.spyOn(api, 'post')` returns a
 // rejected axios-shaped error matching the API's 409 body. The mutation's
 // onError surfaces err.response.data.message via toast.error → DOM. We then
 // findByText the verbatim Russian string. (msw is not in package.json — the
-// vi.spyOn fallback is documented in the plan as fully equivalent for the
-// locked-copy contract.)
+// vi.spyOn fallback is fully equivalent for the locked-copy contract.)
 
 import { api } from '@/lib/api';
 
@@ -99,7 +98,7 @@ function renderItem(conv: TestConv, onRegenerateTitle: () => void = vi.fn()) {
   );
 }
 
-describe('"Обновить заголовок" menu item visibility (D-02 / D-12)', () => {
+describe('"Обновить заголовок" menu item visibility', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -123,7 +122,7 @@ describe('"Обновить заголовок" menu item visibility (D-02 / D-1
     expect(await screen.findByText('Обновить заголовок')).toBeInTheDocument();
   });
 
-  it("is HIDDEN when titleStatus === 'manual' (D-02 hard rule)", async () => {
+  it("is HIDDEN when titleStatus === 'manual'", async () => {
     const user = userEvent.setup();
     renderItem({ ...baseAuto, titleStatus: 'manual', title: 'My manual title' });
     await user.click(screen.getByRole('button', { name: '' }));
@@ -146,11 +145,11 @@ describe('"Обновить заголовок" menu item visibility (D-02 / D-1
 });
 
 // ----------------------------------------------------------------------
-// B-04: verbatim Russian 409 copy is asserted via toast.findByText after a
+// Verbatim Russian 409 copy is asserted via toast.findByText after a
 // stubbed axios error matching the API's 409 body shape. The user-visible
 // Russian copy reaching the user is the test's load-bearing assertion.
 // ----------------------------------------------------------------------
-describe('regenerateTitle 409 → verbatim Russian toast (B-04)', () => {
+describe('regenerateTitle 409 → verbatim Russian toast', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -158,8 +157,8 @@ describe('regenerateTitle 409 → verbatim Russian toast (B-04)', () => {
     vi.restoreAllMocks();
   });
 
-  it('toasts the verbatim D-02 Russian body when server returns 409 title_is_manual', async () => {
-    // Stub api.post → rejects with the locked Russian D-02 body.
+  it('toasts the verbatim Russian body when server returns 409 title_is_manual', async () => {
+    // Stub api.post → rejects with the locked Russian body.
     vi.spyOn(api, 'post').mockRejectedValueOnce({
       isAxiosError: true,
       response: {
@@ -208,7 +207,7 @@ describe('regenerateTitle 409 → verbatim Russian toast (B-04)', () => {
     const item = await screen.findByText('Обновить заголовок');
     await user.click(item);
 
-    // The toast renders the verbatim D-02 Russian copy in the DOM.
+    // The toast renders the verbatim Russian copy in the DOM.
     await waitFor(
       async () => {
         expect(
@@ -219,7 +218,7 @@ describe('regenerateTitle 409 → verbatim Russian toast (B-04)', () => {
     );
   });
 
-  it('toasts the verbatim D-03 Russian body when server returns 409 title_in_flight', async () => {
+  it('toasts the verbatim Russian body when server returns 409 title_in_flight', async () => {
     vi.spyOn(api, 'post').mockRejectedValueOnce({
       isAxiosError: true,
       response: {

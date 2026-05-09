@@ -12,8 +12,8 @@ import (
 // the package-private chatCaller interface (Go's structural typing matches
 // by method set; no explicit "implements" needed).
 //
-// B-02 alignment: this is the ONE canonical mocking seam for the LLM call
-// in Phase 18. Handler tests do NOT introduce a parallel titlerCaller —
+// This is the ONE canonical mocking seam for the LLM call.
+// Handler tests do NOT introduce a parallel titlerCaller —
 // they construct a real *Titler with FakeChatCaller and assert side
 // effects on the conversation repo / inspect LastReq.
 //

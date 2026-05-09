@@ -59,9 +59,9 @@ export function ConversationItem({
     setEditing(false);
   };
 
-  // Phase 18 / TITLE-01 / D-09 (verbatim): placeholder when title is empty
+  // Placeholder when title is empty
   // OR an auto-title job is in flight. NO shimmer / skeleton / animation —
-  // CONTEXT.md "Sidebar Pending UX" pins the literal Russian copy.
+  // pins the literal Russian copy for Sidebar Pending UX.
   const displayTitle =
     conv.title === '' || conv.titleStatus === 'auto_pending' ? 'Новый диалог' : conv.title;
 
@@ -122,9 +122,9 @@ export function ConversationItem({
               <Pencil size={14} className="mr-2" />
               {tRow('rename')}
             </DropdownMenuItem>
-            {/* Phase 18 / TITLE-09 / D-12: between Переименовать and Удалить.
+            {/* Between Переименовать and Удалить.
                 Hidden when titleStatus === 'manual' so manual renames stay
-                sovereign (D-02 hard rule). */}
+                sovereign (hard rule). */}
             {conv.titleStatus !== 'manual' && (
               <DropdownMenuItem
                 onClick={(e) => {
