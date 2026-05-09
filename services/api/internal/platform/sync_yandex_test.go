@@ -70,6 +70,15 @@ func (f *fakeTaskPublisher) RequestTool(_ context.Context, subject string, req a
 	return f.resp, nil
 }
 
+// newYandexOnlySyncer wires a Syncer with a single yandex_business platform
+// impl — most fixtures only exercise the schedule path.
+func newYandexOnlySyncer(integ integrationProvider, tasks taskRecorder, pub TaskPublisher) *Syncer {
+	perPlatform := map[string]any{
+		a2a.AgentYandexBusiness: NewYandexSyncer(pub),
+	}
+	return NewSyncer(integ, tasks, nil, perPlatform)
+}
+
 func TestScheduleToYandexJSON(t *testing.T) {
 	t.Run("converts open and closed days into yandex shape", func(t *testing.T) {
 		settings := map[string]interface{}{
@@ -127,9 +136,7 @@ func TestSyncBusiness_PublishesYandexHours(t *testing.T) {
 	rec := &fakeTaskRecorder{}
 	pub := &fakeTaskPublisher{resp: &a2a.ToolResponse{Success: true}}
 
-	s := NewSyncer(integ, nil, "")
-	s.SetTaskRecorder(rec)
-	s.SetTaskPublisher(pub)
+	s := newYandexOnlySyncer(integ, rec, pub)
 
 	s.SyncBusiness(business)
 
@@ -152,8 +159,8 @@ func TestSyncBusiness_PublishesYandexHours(t *testing.T) {
 
 func TestSyncBusiness_NoYandexIntegration_NoPublish(t *testing.T) {
 	pub := &fakeTaskPublisher{resp: &a2a.ToolResponse{Success: true}}
-	s := NewSyncer(&fakeIntegrations{list: nil}, nil, "")
-	s.SetTaskPublisher(pub)
+	rec := &fakeTaskRecorder{}
+	s := newYandexOnlySyncer(&fakeIntegrations{list: nil}, rec, pub)
 
 	s.SyncBusiness(&domain.Business{ID: uuid.New()})
 	assert.Empty(t, pub.calls)
@@ -176,9 +183,8 @@ func TestSyncBusiness_TaskPublisherNil_RecordsErrorTask(t *testing.T) {
 	}
 	rec := &fakeTaskRecorder{}
 
-	s := NewSyncer(integ, nil, "")
-	s.SetTaskRecorder(rec)
-	// no SetTaskPublisher → nil
+	// nil publisher exercises the "publisher not configured" branch.
+	s := newYandexOnlySyncer(integ, rec, nil)
 
 	s.SyncBusiness(business)
 
@@ -206,9 +212,7 @@ func TestSyncBusiness_AgentReturnsError_RecordsErrorTask(t *testing.T) {
 	rec := &fakeTaskRecorder{}
 	pub := &fakeTaskPublisher{err: errors.New("nats timeout")}
 
-	s := NewSyncer(integ, nil, "")
-	s.SetTaskRecorder(rec)
-	s.SetTaskPublisher(pub)
+	s := newYandexOnlySyncer(integ, rec, pub)
 
 	s.SyncBusiness(business)
 
