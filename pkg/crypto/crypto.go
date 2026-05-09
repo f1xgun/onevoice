@@ -9,8 +9,10 @@ import (
 	"io"
 )
 
-// aes256KeyLen is the required key length in bytes for AES-256 (32 bytes = 256 bits).
-const aes256KeyLen = 32
+// AES256KeyLen is the required key length in bytes for AES-256 (32 bytes = 256 bits).
+// Exported so callers (e.g. config validators) can reference the canonical
+// length without redefining "32".
+const AES256KeyLen = 32
 
 var ErrInvalidCiphertext = errors.New("invalid ciphertext")
 
@@ -19,8 +21,8 @@ type Encryptor struct {
 }
 
 func NewEncryptor(key []byte) (*Encryptor, error) {
-	if len(key) != aes256KeyLen {
-		return nil, fmt.Errorf("encryption key must be %d bytes, got %d", aes256KeyLen, len(key))
+	if len(key) != AES256KeyLen {
+		return nil, fmt.Errorf("encryption key must be %d bytes, got %d", AES256KeyLen, len(key))
 	}
 
 	block, err := aes.NewCipher(key)

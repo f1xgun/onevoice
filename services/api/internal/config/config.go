@@ -6,16 +6,22 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/f1xgun/onevoice/pkg/crypto"
+
+	"github.com/f1xgun/onevoice/services/api/internal/auth"
 )
 
 // Configuration constants. These back default values for environment-driven
 // knobs and validation thresholds. Named here (rather than inlined) so the
 // linter doesn't flag them as magic numbers and so callers see semantic intent.
+//
+// Cryptographic key lengths are sourced from their owning packages:
+//   - JWT secret minimum: services/api/internal/auth.JWTSecretMinLen
+//   - Encryption key length: pkg/crypto.AES256KeyLen
+//
+// keeping a single source of truth across the API service.
 const (
-	// Validation thresholds.
-	jwtSecretMinLen  = 32 // bytes — JWT HS256 minimum recommended secret length
-	encryptionKeyLen = 32 // bytes — AES-256 key length
-
 	// HTTP server timeout defaults.
 	defaultHTTPReadTimeout       = 15 * time.Second
 	defaultHTTPReadHeaderTimeout = 10 * time.Second
@@ -244,14 +250,14 @@ func Load() (*Config, error) {
 	if cfg.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required")
 	}
-	if len(cfg.JWTSecret) < jwtSecretMinLen {
-		return nil, fmt.Errorf("JWT_SECRET must be at least %d characters", jwtSecretMinLen)
+	if len(cfg.JWTSecret) < auth.JWTSecretMinLen {
+		return nil, fmt.Errorf("JWT_SECRET must be at least %d characters", auth.JWTSecretMinLen)
 	}
 	if cfg.EncryptionKey == "" {
 		return nil, fmt.Errorf("ENCRYPTION_KEY is required")
 	}
-	if len(cfg.EncryptionKey) != encryptionKeyLen {
-		return nil, fmt.Errorf("ENCRYPTION_KEY must be exactly %d bytes", encryptionKeyLen)
+	if len(cfg.EncryptionKey) != crypto.AES256KeyLen {
+		return nil, fmt.Errorf("ENCRYPTION_KEY must be exactly %d bytes", crypto.AES256KeyLen)
 	}
 
 	return cfg, nil

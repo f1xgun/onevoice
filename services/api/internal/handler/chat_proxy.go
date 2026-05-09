@@ -47,6 +47,12 @@ const (
 // literal — kept as a separate const so goconst doesn't conflate them.
 const errStatus = "error"
 
+// toolResultErrorKey is the wire-format map key the orchestrator uses to
+// expose the error message inside ToolResult.Content. It is *not* the same
+// concept as errStatus (status enum) or sseEventError (SSE event type) —
+// renaming any of those should not silently break this lookup.
+const toolResultErrorKey = "error"
+
 // Message role tags. These are the OpenAI-format role identifiers we persist
 // on domain.Message.Role and match against in the chat proxy / titler paths.
 const (
@@ -705,7 +711,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			if tr.IsError {
 				status = errStatus
 				platformResult.Status = errStatus
-				if errMsg, ok := tr.Content[errStatus].(string); ok {
+				if errMsg, ok := tr.Content[toolResultErrorKey].(string); ok {
 					platformResult.Error = errMsg
 				}
 			} else {
