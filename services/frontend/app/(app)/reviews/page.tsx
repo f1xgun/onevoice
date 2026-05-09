@@ -220,15 +220,25 @@ export default function ReviewsPage() {
         {/* Stat strip — three quiet metrics. No celebratory tone. */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatCell
-            label="Ждут ответа"
+            label={tReviews('stats.pendingLabel')}
             value={stats.pending}
-            hint={stats.pending === 0 ? 'нет открытых' : 'требуют решения'}
+            hint={
+              stats.pending === 0
+                ? tReviews('stats.pendingHintNone')
+                : tReviews('stats.pendingHintSome')
+            }
           />
-          <StatCell label="Всего в выборке" value={stats.total} hint="по выбранным фильтрам" />
           <StatCell
-            label="Средняя оценка"
-            value={stats.avg == null ? '—' : stats.avg.toFixed(1)}
-            hint={stats.avg == null ? 'нет данных' : 'из 5'}
+            label={tReviews('stats.totalLabel')}
+            value={stats.total}
+            hint={tReviews('stats.totalHint')}
+          />
+          <StatCell
+            label={tReviews('stats.avgLabel')}
+            value={stats.avg == null ? tReviews('stats.avgEmpty') : stats.avg.toFixed(1)}
+            hint={
+              stats.avg == null ? tReviews('stats.avgHintEmpty') : tReviews('stats.avgHintOutOf')
+            }
           />
         </div>
 
@@ -342,7 +352,7 @@ export default function ReviewsPage() {
               }
               disabled={!replyText.trim() || replyMutation.isPending}
             >
-              {replyMutation.isPending ? 'Отправляем…' : 'Отправить'}
+              {replyMutation.isPending ? tReviews('sending') : tReviews('send')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -445,7 +455,7 @@ function ReviewCard({
           <p className="mt-2 text-sm leading-relaxed text-ink">{review.draftReply}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button variant="primary" size="sm" onClick={onSendDraft} disabled={isSending}>
-              {isSending ? 'Отправляем…' : 'Отправить'}
+              {isSending ? tReviews('sending') : tReviews('send')}
             </Button>
             <Button variant="ghost" size="sm" onClick={onEdit} disabled={isSending}>
               {tReviews('aiSample.edit')}
@@ -470,8 +480,8 @@ function ReviewCard({
         <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
           <span className="text-sm text-ink-mid">
             {review.draftStatus === 'failed'
-              ? 'Не получилось подготовить образец. Можно ответить вручную.'
-              : 'Образец ещё не подготовлен. Можно ответить вручную.'}
+              ? tReviews('aiSample.draftFailed')
+              : tReviews('aiSample.draftPending')}
           </span>
           <Button variant="secondary" size="sm" onClick={onWriteOwn}>
             {tReviews('aiSample.writeOwn')}
