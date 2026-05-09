@@ -60,10 +60,11 @@ type ChatProxyHandler struct {
 	hitl      *chatproxy.HITLCoordinator
 }
 
-// NewChatProxyHandler constructs the facade. Signature preserved from
-// Phase 18 so wire/handlers.go and existing tests compile unchanged. The
-// orchestratorURL+httpClient pair is wrapped in *orchestratorclient.Client
-// (D-11) and shared with all collaborators.
+// NewChatProxyHandler constructs the facade. Phase 19 / 19-MD-02: takes the
+// shared *orchestratorclient.Client built once in wire.BuildServices instead
+// of re-wrapping (orchestratorURL, httpClient) into a fresh client. A nil
+// orchClient is auto-built from orchestratorURL+httpClient so existing tests
+// can keep passing (orch.URL, nil, ...) without threading the shared client.
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
@@ -75,8 +76,7 @@ func NewChatProxyHandler(
 	reviewRepo domain.ReviewRepository,
 	agentTaskRepo domain.AgentTaskRepository,
 	taskHub *taskhub.Hub,
-	orchestratorURL string,
-	httpClient *http.Client,
+	orchClient *orchestratorclient.Client,
 	titler *service.Titler,
 ) *ChatProxyHandler {
 	if projectService == nil {
@@ -88,10 +88,12 @@ func NewChatProxyHandler(
 	if pendingRepo == nil {
 		panic("NewChatProxyHandler: pendingRepo cannot be nil")
 	}
-	if httpClient == nil {
-		httpClient = http.DefaultClient
+	if orchClient == nil {
+		// Tests pass nil to skip the orchestrator handshake; build a no-op
+		// client so the field is never nil and the SSE path can return
+		// orchestrator-unavailable cleanly.
+		orchClient = orchestratorclient.New("", http.DefaultClient)
 	}
-	orchClient := orchestratorclient.New(orchestratorURL, httpClient)
 	persister := chatproxy.NewMessagePersister(messageRepo, conversationRepo, titlerAdapter{titler})
 	proxy := chatproxy.NewOrchestrationProxy(orchClient)
 
