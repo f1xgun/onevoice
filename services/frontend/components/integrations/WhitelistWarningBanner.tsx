@@ -70,7 +70,7 @@ export function WhitelistWarningBanner({ integrationId, businessId, platform }: 
           <p className="font-medium">{tWarn('title')}</p>
           <p className="mt-1">{tWarn('body', { platform: platformLabel, names })}</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={onDismiss} aria-label="Закрыть предупреждение">
+        <Button variant="ghost" size="sm" onClick={onDismiss} aria-label={tWarn('closeAria')}>
           <X className="h-4 w-4" />
           <span className="sr-only">{tWarn('dismissAria')}</span>
         </Button>

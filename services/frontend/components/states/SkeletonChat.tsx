@@ -6,6 +6,7 @@
 // indeterminate spinner.
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -59,10 +60,11 @@ export interface SkeletonChatProps {
 }
 
 export function SkeletonChat({ className }: SkeletonChatProps) {
+  const tSkeleton = useTranslations('states.skeleton');
   return (
     <div
       role="status"
-      aria-label="Загружаем диалог"
+      aria-label={tSkeleton('chat')}
       aria-busy="true"
       className={cn('flex flex-col gap-3.5 rounded-lg bg-paper-well p-6', className)}
     >

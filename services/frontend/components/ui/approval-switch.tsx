@@ -16,15 +16,19 @@
 'use client';
 
 import * as React from 'react';
+import { getTranslator } from '@/lib/i18n/translator';
 import { cn } from '@/lib/utils';
 
 export type ApprovalMode = 'off' | 'manual' | 'auto-with-review' | 'auto';
 
+const tSwitch = getTranslator('common.approvalSwitch');
+const tModes = getTranslator('common.approvalSwitch.modes');
+
 export const APPROVAL_MODE_LABEL: Record<ApprovalMode, string> = {
-  off: 'Никогда',
-  manual: 'С вашего согласия',
-  'auto-with-review': 'Сам, но покажет',
-  auto: 'Полностью сам',
+  off: tModes('off'),
+  manual: tModes('manual'),
+  'auto-with-review': tModes('auto-with-review'),
+  auto: tModes('auto'),
 };
 
 const ORDER: ApprovalMode[] = ['off', 'manual', 'auto-with-review', 'auto'];
@@ -46,7 +50,7 @@ export function ApprovalSwitch({
   recommended,
   disabled,
   className,
-  'aria-label': ariaLabel = 'Режим разрешения',
+  'aria-label': ariaLabel = tSwitch('defaultAriaLabel'),
 }: ApprovalSwitchProps) {
   const refs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -116,7 +120,7 @@ export function ApprovalSwitch({
             {isRecommended && (
               <span
                 aria-hidden
-                title="рекомендуемый режим"
+                title={tSwitch('recommendedTitle')}
                 className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-paper-raised bg-ochre"
               />
             )}

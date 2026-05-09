@@ -15,11 +15,13 @@
 // data-message-id query selector for the highlight hook) keeps working.
 
 import Markdown from 'react-markdown';
+import { useTranslations } from 'next-intl';
 import { ToolCallsBlock } from './ToolCallsBlock';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import type { Message } from '@/types/chat';
 
 export function MessageBubble({ message }: { message: Message }) {
+  const tWindow = useTranslations('chat.window');
   const isUser = message.role === 'user';
   const isStreamingEmpty = message.status === 'streaming' && !message.content;
 
@@ -39,7 +41,7 @@ export function MessageBubble({ message }: { message: Message }) {
       <div className="max-w-[78%] flex-1">
         <div className="rounded-md border border-line bg-paper-raised px-4 py-3 text-sm leading-relaxed text-ink shadow-ov-1">
           {isStreamingEmpty ? (
-            <span className="flex gap-1" aria-label="OneVoice печатает">
+            <span className="flex gap-1" aria-label={tWindow('typingAria')}>
               <span className="h-2 w-2 animate-bounce rounded-full bg-ink-faint [animation-delay:0ms]" />
               <span className="h-2 w-2 animate-bounce rounded-full bg-ink-faint [animation-delay:150ms]" />
               <span className="h-2 w-2 animate-bounce rounded-full bg-ink-faint [animation-delay:300ms]" />
