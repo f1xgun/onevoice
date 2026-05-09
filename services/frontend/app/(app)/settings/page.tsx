@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,14 +20,18 @@ import { MonoLabel } from '@/components/ui/mono-label';
 
 const NEW_PASSWORD_MIN_LEN = 8;
 
+// Module-level translator for the schema messages — they're built at
+// import time, before any React context exists. See lib/schemas.ts.
+const tPasswordSchema = getTranslator('settings.page');
+
 const passwordSchema = z
   .object({
-    currentPassword: z.string().min(1, 'Введите текущий пароль'),
-    newPassword: z.string().min(NEW_PASSWORD_MIN_LEN, 'Минимум 8 символов'),
+    currentPassword: z.string().min(1, tPasswordSchema('currentPasswordRequired')),
+    newPassword: z.string().min(NEW_PASSWORD_MIN_LEN, tPasswordSchema('newPasswordMinChars')),
     confirmPassword: z.string(),
   })
   .refine((d) => d.newPassword === d.confirmPassword, {
-    message: 'Пароли не совпадают',
+    message: tPasswordSchema('passwordsMismatch'),
     path: ['confirmPassword'],
   });
 
@@ -52,15 +57,15 @@ export default function SettingsPage() {
         newPassword: data.newPassword,
       }),
     onSuccess: () => {
-      toast.success('Пароль изменён');
+      toast.success(tSettings('passwordChanged'));
       reset();
     },
-    onError: () => toast.error('Не получилось сменить пароль. Проверьте текущий.'),
+    onError: () => toast.error(tSettings('passwordChangeError')),
   });
 
   return (
     <>
-      <PageHeader title="Настройки" sub="Аккаунт, безопасность и поведение OneVoice." />
+      <PageHeader title={tSettings('title')} sub={tSettings('sub')} />
 
       <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-6">
@@ -73,9 +78,9 @@ export default function SettingsPage() {
               </h2>
             </header>
             <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">
-              <ReadOnlyField label="Имя" value={user?.name} />
-              <ReadOnlyField label="Почта" value={user?.email} />
-              <ReadOnlyField label="Роль" value={user?.role} mono />
+              <ReadOnlyField label={tSettings('nameLabel')} value={user?.name} />
+              <ReadOnlyField label={tSettings('emailLabel')} value={user?.email} />
+              <ReadOnlyField label={tSettings('roleLabel')} value={user?.role} mono />
             </div>
           </section>
 
@@ -143,7 +148,9 @@ export default function SettingsPage() {
 
               <div>
                 <Button type="submit" disabled={isSubmitting || mutation.isPending}>
-                  {isSubmitting || mutation.isPending ? 'Сохраняем…' : 'Изменить пароль'}
+                  {isSubmitting || mutation.isPending
+                    ? tSettings('submitting')
+                    : tSettings('submit')}
                 </Button>
               </div>
             </form>
@@ -156,8 +163,8 @@ export default function SettingsPage() {
           <RailTile
             href="/settings/tools"
             icon={<ShieldCheck size={18} aria-hidden />}
-            title="Что разрешено ИИ"
-            description="Какие действия выполняются автоматически, а какие требуют вашего согласия."
+            title={tSettings('rail.toolsTitle')}
+            description={tSettings('rail.toolsDescription')}
           />
         </aside>
       </div>
@@ -166,10 +173,13 @@ export default function SettingsPage() {
 }
 
 function ReadOnlyField({ label, value, mono }: { label: string; value?: string; mono?: boolean }) {
+  const tSettings = useTranslations('settings.page');
   return (
     <div className="flex flex-col gap-1">
       <MonoLabel>{label}</MonoLabel>
-      <div className={mono ? 'font-mono text-sm text-ink' : 'text-sm text-ink'}>{value ?? '—'}</div>
+      <div className={mono ? 'font-mono text-sm text-ink' : 'text-sm text-ink'}>
+        {value ?? tSettings('fallbackEmpty')}
+      </div>
     </div>
   );
 }

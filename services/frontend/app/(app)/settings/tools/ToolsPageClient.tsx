@@ -114,11 +114,11 @@ export function ToolsPageClient() {
   return (
     <>
       <PageHeader
-        title="Что разрешено ИИ"
-        sub="OneVoice выполняет одни действия сам, для других сначала спрашивает вас. Запрещённые инструменты включить отсюда нельзя."
+        title={tTools('title')}
+        sub={tTools('sub')}
         actions={
           <Button type="button" onClick={handleSave} disabled={!dirty || updateMutation.isPending}>
-            {updateMutation.isPending ? 'Сохраняем…' : 'Сохранить'}
+            {updateMutation.isPending ? tTools('saving') : tTools('save')}
           </Button>
         }
       />
