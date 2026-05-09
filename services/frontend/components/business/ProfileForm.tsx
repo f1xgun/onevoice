@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { getTranslator } from '@/lib/i18n/translator';
 import { businessSchema, type BusinessInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,14 +30,12 @@ import {
 } from '@/components/ui/select';
 import type { Business } from '@/types/business';
 
-const CATEGORIES = [
-  { value: 'cafe', label: 'Кафе / Ресторан' },
-  { value: 'retail', label: 'Розничная торговля' },
-  { value: 'service', label: 'Услуги' },
-  { value: 'beauty', label: 'Красота и здоровье' },
-  { value: 'education', label: 'Образование' },
-  { value: 'other', label: 'Другое' },
-];
+// Display order is fixed — labels are sourced from `business.categories.*`
+// in messages/ru.json (see Wave 3.2). The select's `value` is the stable
+// category id; the `label` only drives what the user sees.
+const CATEGORY_IDS = ['cafe', 'retail', 'service', 'beauty', 'education', 'other'] as const;
+const tCategories = getTranslator('business.categories');
+const CATEGORIES = CATEGORY_IDS.map((id) => ({ value: id, label: tCategories(id) }));
 
 export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Business> }) {
   const tProfileForm = useTranslations('business.profileForm');

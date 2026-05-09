@@ -22,24 +22,13 @@ export interface EmptyReviewsProps {
   onLookBack?: () => void;
 }
 
-const COPY: Record<ReviewsEmptyMode, { title: string; body: string }> = {
-  all: {
-    title: 'За эту неделю отзывов не было',
-    body: 'Новые отзывы появятся, когда клиенты их оставят.',
-  },
-  pending: {
-    title: 'Открытых отзывов нет',
-    body: 'Все обращения обработаны. OneVoice сообщит, как только придёт новый.',
-  },
-  replied: {
-    title: 'Пока нечего показать',
-    body: 'Отвеченных отзывов в выборке нет. Снимите фильтр, чтобы увидеть остальные.',
-  },
-};
-
 export function EmptyReviews({ mode = 'all', onLookBack }: EmptyReviewsProps) {
   const tStates = useTranslations('states.emptyReviews');
-  const { title, body } = COPY[mode];
+  // Per-mode title/body live under states.emptyReviews.{mode}.* so a
+  // brand-voice pass can re-tone all three states without touching the
+  // component.
+  const title = tStates(`${mode}.title` as `${ReviewsEmptyMode}.title`);
+  const body = tStates(`${mode}.body` as `${ReviewsEmptyMode}.body`);
   return (
     <EmptyFrame
       compact
