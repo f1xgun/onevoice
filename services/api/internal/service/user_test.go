@@ -192,7 +192,7 @@ func TestUserService_Login(t *testing.T) {
 			ID:           uuid.New(),
 			Email:        "test@example.com",
 			PasswordHash: string(passwordHash),
-			Role:         domain.RoleOwner,
+			Role:         domain.UserRoleOwner,
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
 		}
@@ -278,7 +278,7 @@ func TestUserService_Login(t *testing.T) {
 			ID:           uuid.New(),
 			Email:        "test@example.com",
 			PasswordHash: string(passwordHash),
-			Role:         domain.RoleOwner,
+			Role:         domain.UserRoleOwner,
 		}
 
 		repo := &mockUserRepository{
@@ -325,7 +325,7 @@ func TestUserService_Login(t *testing.T) {
 			ID:           uuid.New(),
 			Email:        "test@example.com",
 			PasswordHash: string(passwordHash),
-			Role:         domain.RoleOwner,
+			Role:         domain.UserRoleOwner,
 		}
 
 		repo := &mockUserRepository{
@@ -355,7 +355,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 		existingUser := &domain.User{
 			ID:    userID,
 			Email: "test@example.com",
-			Role:  domain.RoleOwner,
+			Role:  domain.UserRoleOwner,
 		}
 
 		repo := &mockUserRepository{
@@ -735,7 +735,7 @@ func TestUserService_GetByID(t *testing.T) {
 			ID:           userID,
 			Email:        "test@example.com",
 			PasswordHash: "hashed-password",
-			Role:         domain.RoleOwner,
+			Role:         domain.UserRoleOwner,
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
 		}
@@ -795,7 +795,7 @@ func TestSanitizeUser(t *testing.T) {
 		ID:           uuid.New(),
 		Email:        "test@example.com",
 		PasswordHash: "secret-hash",
-		Role:         domain.RoleOwner,
+		Role:         domain.UserRoleOwner,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -846,7 +846,7 @@ func TestGenerateTokens(t *testing.T) {
 	user := &domain.User{
 		ID:    uuid.New(),
 		Email: "test@example.com",
-		Role:  domain.RoleOwner,
+		Role:  domain.UserRoleOwner,
 	}
 
 	t.Run("generate access token", func(t *testing.T) {

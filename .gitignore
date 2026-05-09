@@ -3,6 +3,7 @@
 
 # Binaries
 bin/
+tools/lint-rbac/lint-rbac
 *.exe
 *.dll
 *.so

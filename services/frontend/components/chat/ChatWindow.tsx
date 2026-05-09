@@ -19,16 +19,11 @@ import { usePendingApprovalFlow } from '@/hooks/usePendingApprovalFlow';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
 import { DEFAULT_QUICK_ACTIONS } from '@/lib/quick-actions';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { useBusinessStore } from '@/lib/stores/business';
 import type { Conversation } from '@/lib/conversations';
 import type { PendingApproval } from '@/types/chat';
-
-async function fetchConversation(id: string): Promise<Conversation> {
-  const { data } = await api.get<Conversation>(API_PATHS.CONVERSATIONS.BY_ID(id));
-  return data;
-}
 
 interface ChatWindowProps {
   conversationId: string;
@@ -64,6 +59,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   // Invariant 9: the composer is disabled whenever a batch is awaiting
   // the user's decision OR while a message is streaming. Both conditions
@@ -72,9 +68,12 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   const composerDisabled = isStreaming || pendingApproval !== null;
 
   const { data: conversation } = useQuery<Conversation>({
-    queryKey: QUERY_KEYS.CONVERSATION_BY_ID(conversationId),
-    queryFn: () => fetchConversation(conversationId),
-    enabled: !!conversationId,
+    queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
+    queryFn: () =>
+      bizApi(activeBusinessId!)
+        .get<Conversation>(BIZ_API_PATHS.CONVERSATIONS.BY_ID(conversationId))
+        .then((r) => r.data),
+    enabled: !!conversationId && !!activeBusinessId,
   });
 
   const { data: projects } = useProjectsQuery();
@@ -114,8 +113,10 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       },
       {
         onSuccess: () => {
-          void qc.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATION_BY_ID(conversationId) });
-          void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+          void qc.invalidateQueries({
+            queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
+          });
+          void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
         },
         onError: () => {
           toast.error(tChat('moveError'));

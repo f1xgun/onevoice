@@ -4,14 +4,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { type ReactNode } from 'react';
 import { usePinConversation, useUnpinConversation } from '../useConversations';
 
-const apiPost = vi.fn();
-vi.mock('@/lib/api', () => ({
-  api: {
+// Mock bizApi so calls are intercepted without a live server.
+// conversations.ts now uses bizApi(activeBusinessId).post(...)
+const bizApiPost = vi.fn();
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: (bizId: string) => ({
     get: vi.fn(),
-    post: (url: string, body?: unknown) => apiPost(url, body),
+    post: (path: string, data?: unknown) => bizApiPost(bizId, path, data),
     put: vi.fn(),
     delete: vi.fn(),
-  },
+  }),
+}));
+
+// Mock useBusinessStore so hooks can read activeBusinessId without localStorage.
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'test-biz-id' }),
 }));
 
 function setup() {
@@ -23,11 +31,11 @@ function setup() {
 
 describe('usePinConversation / useUnpinConversation — Phase 19 / Plan 19-02', () => {
   beforeEach(() => {
-    apiPost.mockReset();
+    bizApiPost.mockReset();
   });
 
-  it('usePinConversation calls POST /conversations/{id}/pin', async () => {
-    apiPost.mockResolvedValue({
+  it('usePinConversation calls POST /conversations/{id}/pin via bizApi', async () => {
+    bizApiPost.mockResolvedValue({
       data: {
         id: 'c-1',
         userId: 'u',
@@ -39,7 +47,7 @@ describe('usePinConversation / useUnpinConversation — Phase 19 / Plan 19-02', 
         updatedAt: '',
       },
     });
-    const { qc, wrapper } = setup();
+    const { qc } = setup();
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
     const { result } = renderHook(() => usePinConversation(), {
       wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
@@ -49,16 +57,16 @@ describe('usePinConversation / useUnpinConversation — Phase 19 / Plan 19-02', 
       await result.current.mutateAsync('c-1');
     });
 
-    expect(apiPost).toHaveBeenCalledWith('/conversations/c-1/pin', undefined);
+    expect(bizApiPost).toHaveBeenCalledWith('test-biz-id', '/conversations/c-1/pin', undefined);
     await waitFor(() =>
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['conversations'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['businesses', 'test-biz-id', 'conversations'],
+      })
     );
-    // wrapper not directly used, but kept available for parity with other tests.
-    void wrapper;
   });
 
-  it('useUnpinConversation calls POST /conversations/{id}/unpin', async () => {
-    apiPost.mockResolvedValue({
+  it('useUnpinConversation calls POST /conversations/{id}/unpin via bizApi', async () => {
+    bizApiPost.mockResolvedValue({
       data: {
         id: 'c-2',
         userId: 'u',
@@ -80,9 +88,11 @@ describe('usePinConversation / useUnpinConversation — Phase 19 / Plan 19-02', 
       await result.current.mutateAsync('c-2');
     });
 
-    expect(apiPost).toHaveBeenCalledWith('/conversations/c-2/unpin', undefined);
+    expect(bizApiPost).toHaveBeenCalledWith('test-biz-id', '/conversations/c-2/unpin', undefined);
     await waitFor(() =>
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['conversations'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['businesses', 'test-biz-id', 'conversations'],
+      })
     );
   });
 });

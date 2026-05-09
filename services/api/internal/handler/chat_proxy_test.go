@@ -18,12 +18,24 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
+
+// chatProxyBizCtx seeds a BusinessContext with PermContentCreate (the
+// permission required by the Chat handler). businessID and userID must match
+// what the test's mock business service expects.
+func chatProxyBizCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: []authz.Permission{authz.PermContentCreate},
+	})
+}
 
 // newChatProxyNoProject returns a ChatProxyHandler wired with a stub
 // projectService that returns ErrProjectNotFound and a stub conversation repo
@@ -94,8 +106,8 @@ func TestChatProxy_EnrichesContext(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-123", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	// Inject user ID via middleware key
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	// Inject BusinessContext via authz helper
+	ctx := chatProxyBizCtx(businessID, userID)
 
 	// Set up chi URL param
 	rctx := chi.NewRouteContext()
@@ -151,7 +163,7 @@ func TestChatProxy_StreamsSSE(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-456", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", "conv-456")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -209,7 +221,7 @@ func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-err", strings.NewReader(`{"message":"hi"}`))
 	req.Header.Set("Content-Type", "application/json")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", "conv-err")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -276,6 +288,7 @@ func TestChatProxy_LoadHistory_SkipsEmptyAssistant(t *testing.T) {
 // has no business profile.
 func TestChatProxy_NoBusiness(t *testing.T) {
 	userID := uuid.New()
+	businessID := uuid.New()
 
 	mockBiz := new(MockBusinessService)
 	mockBiz.On("GetByUserID", mock.Anything, userID).Return(nil, domain.ErrBusinessNotFound)
@@ -288,7 +301,7 @@ func TestChatProxy_NoBusiness(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-789", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", "conv-789")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -330,7 +343,7 @@ func TestChatProxy_OrchestratorDown(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-000", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", "conv-000")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -390,7 +403,7 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 	body := `{"message":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", conversationID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -463,7 +476,7 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 	body := `{"message":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", conversationID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -531,7 +544,7 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-big", strings.NewReader(`{"message":"hi"}`))
 	req.Header.Set("Content-Type", "application/json")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", "conv-big")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -583,7 +596,7 @@ func TestChatProxy_NoSyntheticToolCallID(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-tcn", strings.NewReader(`{"message":"hi"}`))
 	req.Header.Set("Content-Type", "application/json")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", "conv-tcn")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -637,7 +650,7 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-pause", strings.NewReader(`{"message":"post something"}`))
 	req.Header.Set("Content-Type", "application/json")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", "conv-pause")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -739,7 +752,7 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(ResumeBatchHeader, "batch-1")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", convID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -811,7 +824,7 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	req.Header.Set(ResumeBatchHeader, "batch-missing")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", convID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -896,7 +909,7 @@ func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(ResumeBatchHeader, "batch-1")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", convID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -983,7 +996,7 @@ func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(ResumeBatchHeader, "batch-1")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", convID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -1067,7 +1080,7 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{"message":"(empty resume body)"}`))
 	// NO ResumeBatchHeader here — implicit resume.
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", convID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -1136,7 +1149,7 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
 	// No resume header.
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", convID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -1196,7 +1209,7 @@ func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testin
 	h := NewChatProxyHandler(mockBiz, mockInteg, &noopProjectService{}, convRepo, msgRepo, pendingRepo, nil, nil, nil, nil, orchestratorclient.New(orch.URL, nil), nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+convID, strings.NewReader(`{}`))
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", convID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -1244,7 +1257,7 @@ func TestChatProxy_ToolApprovalRequired_NoErrorIfPersistFails(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-fail", strings.NewReader(`{"message":"x"}`))
 	req.Header.Set("Content-Type", "application/json")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", "conv-fail")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -1303,7 +1316,7 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 	body := `{"message":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := chatProxyBizCtx(businessID, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("conversationID", conversationID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -1396,7 +1409,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		body := `{"message":"hi"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+		ctx := chatProxyBizCtx(businessID, userID)
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("conversationID", conversationID)
 		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
@@ -1472,7 +1485,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		body := `{"message":"hi"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/"+conversationID, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+		ctx := chatProxyBizCtx(businessID, userID)
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("conversationID", conversationID)
 		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)

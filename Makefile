@@ -1,6 +1,6 @@
 .PHONY: help build run test test-all test-frontend test-a11y test-coverage test-integration
-.PHONY: lint lint-frontend lint-all fmt fmt-fix docs-check
-.PHONY: migrate-up migrate-down migrate-create db-seed
+.PHONY: lint lint-rbac lint-frontend lint-all fmt fmt-fix docs-check
+.PHONY: migrate-up migrate-down migrate-create db-seed verify-rbac-backfill
 .PHONY: up down logs restart restart-service docker-up docker-down docker-logs docker-clean
 .PHONY: clean certs
 
@@ -96,6 +96,13 @@ lint: ## Run Go linters on all modules
 	done
 	@echo "All Go modules lint clean"
 
+lint-rbac: ## Run RBAC drift checker (custom Go analyzer at tools/lint-rbac)
+	@echo "Building lint-rbac..."
+	@cd tools/lint-rbac && GOWORK=off go build -o lint-rbac .
+	@echo "Running RBAC drift check..."
+	@./tools/lint-rbac/lint-rbac -allowlist .rbac-migration-allowlist services/api/internal/router/router.go
+	@echo "RBAC drift check passed"
+
 lint-urls: ## Reject inline http(s):// URL string literals (custom analyzer)
 	@echo "Building nourl analyzer..."
 	@cd tools/nourl && go build -o /tmp/onevoice-nourl .
@@ -112,7 +119,7 @@ lint-frontend: ## Run frontend linters (ESLint + Prettier)
 	@cd services/frontend && pnpm exec prettier --check .
 	@echo "Frontend lint clean"
 
-lint-all: lint lint-urls lint-frontend docs-check ## Run all linters (Go + URL check + frontend + docs)
+lint-all: lint lint-rbac lint-urls lint-frontend docs-check ## Run all linters (Go + RBAC drift + URL check + frontend + docs)
 
 docs-check: ## Fail if docs reference tool names absent from Go code
 	@./scripts/check-doc-tool-drift.sh
@@ -141,6 +148,11 @@ migrate-up: ## Run database migrations
 migrate-down: ## Rollback migrations
 	@echo "Rolling back migrations..."
 	@migrate -path $(MIGRATION_PATH) -database "postgres://postgres:postgres@localhost:5432/onevoice?sslmode=disable" down 1
+
+verify-rbac-backfill: ## Phase 1 v2.0 RBAC: assert backfill produced no orphans/duplicates/missing-owners (exit non-zero on any violation)
+	@psql "postgres://postgres:postgres@localhost:5432/onevoice?sslmode=disable" \
+	    -v ON_ERROR_STOP=1 \
+	    -f scripts/verify-rbac-backfill.sql
 
 migrate-create: ## Create new migration (usage: make migrate-create name=add_users_table)
 	@echo "Creating migration: $(name)"

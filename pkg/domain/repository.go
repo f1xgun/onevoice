@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // PostgreSQL repositories
@@ -18,8 +19,11 @@ type UserRepository interface {
 
 type BusinessRepository interface {
 	Create(ctx context.Context, business *Business) error
+	// CreateInTx inserts the business inside a caller-supplied transaction.
+	// Used by service.business.Create() to dual-write businesses +
+	// business_members atomically (DATA-06, Phase 1 v2.0 RBAC).
+	CreateInTx(ctx context.Context, tx pgx.Tx, business *Business) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Business, error)
-	GetByUserID(ctx context.Context, userID uuid.UUID) (*Business, error)
 	Update(ctx context.Context, business *Business) error
 	// UpdateToolApprovals replaces only settings.tool_approvals on the target
 	// business, preserving other keys inside the generic settings JSONB.
@@ -47,6 +51,93 @@ type IntegrationRepository interface {
 
 // ProjectRepository is declared in project.go to keep all project-related
 // domain types in one file. See pkg/domain/project.go.
+
+// BusinessMembershipRepository — Phase 1 v2.0 RBAC.
+//
+// The full method surface is declared here so Phases 2/3/5 add
+// implementations, not interface churn. Phase 1 implements ONLY Insert and
+// GetByBusinessUser (CONTEXT decision D-07); the rest return
+// ErrMembershipNotFound or are unimplemented in the Phase-1 repo and will
+// be filled in later phases.
+//
+// Insert takes a pgx.Tx (NOT a pool) because service.business.Create()
+// dual-writes businesses + business_members atomically (DATA-06 / D-14).
+// Other methods take a context only and use the pool internally.
+type BusinessMembershipRepository interface {
+	// Insert is transaction-scoped: callers BEGIN a tx, INSERT into
+	// businesses, INSERT via this method, then COMMIT both or roll both
+	// back. Returns an error wrapping pgx duplicate-key as ErrMembershipExists.
+	Insert(ctx context.Context, tx pgx.Tx, m *BusinessMember) error
+
+	// GetByBusinessUser fetches the single membership row for
+	// (businessID, userID). Returns ErrMembershipNotFound on no rows.
+	GetByBusinessUser(ctx context.Context, businessID, userID uuid.UUID) (*BusinessMember, error)
+
+	// --- Below: declared in Phase 1, IMPLEMENTED in later phases. ---
+
+	// ListByBusiness returns active+suspended members of a business with
+	// their role_id. Used by Phase 2 GET /businesses/{id}/members.
+	ListByBusiness(ctx context.Context, businessID uuid.UUID) ([]BusinessMember, error)
+
+	// ListByUser returns memberships the user has across businesses. Used
+	// by Phase 2 GET /businesses (user-scoped list).
+	ListByUser(ctx context.Context, userID uuid.UUID) ([]BusinessMember, error)
+
+	// CountOwnersByBusiness returns the number of active members holding
+	// SystemRoleOwnerID for a given business. Phase 1 includes this in the
+	// interface because EnsureOwnerExistsAfter (Plan D) calls a wrapped
+	// version inside its transaction. The unimplemented stub returns
+	// ErrMembershipNotFound until Phase 2.
+	CountOwnersByBusiness(ctx context.Context, businessID uuid.UUID) (int, error)
+
+	// UpdateRole changes a membership's role_id and audit columns
+	// (role_changed_at/by). Phase 2 wires this from the demote/role-change
+	// handler.
+	UpdateRole(ctx context.Context, businessID, userID, newRoleID, actorUserID uuid.UUID) error
+
+	// UpdateRoleInTx is the transaction-scoped variant of UpdateRole. Callers
+	// supply an open pgx.Tx so the UPDATE executes inside the same transaction
+	// as the EnsureOwnerExistsAfter SELECT FOR UPDATE, preserving the
+	// RepeatableRead isolation guarantee (CR-01).
+	UpdateRoleInTx(ctx context.Context, tx pgx.Tx, businessID, userID, newRoleID, actorUserID uuid.UUID) error
+
+	// Delete removes a membership row. Phase 2 wires this from the
+	// remove-member handler.
+	Delete(ctx context.Context, businessID, userID uuid.UUID) error
+
+	// DeleteInTx is the transaction-scoped variant of Delete. The DELETE executes
+	// on the supplied pgx.Tx so it participates in the caller's RepeatableRead
+	// transaction alongside EnsureOwnerExistsAfter's SELECT FOR UPDATE, preserving
+	// the isolation guarantee (G-07 fix — same shape as CR-01 for UpdateRoleInTx).
+	// Returns domain.ErrMembershipNotFound when no row matched.
+	DeleteInTx(ctx context.Context, tx pgx.Tx, businessID, userID uuid.UUID) error
+}
+
+// RoleRepository — Phase 1 declares the surface; Phase 2 adds Get/List
+// implementations, Phase 5 adds full CRUD. Phase 1 ships zero
+// implementations (system roles are seeded via migration SQL, not via
+// this interface).
+type RoleRepository interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*Role, error)
+	ListSystem(ctx context.Context) ([]Role, error)
+	ListByBusiness(ctx context.Context, businessID uuid.UUID) ([]Role, error)
+	Create(ctx context.Context, role *Role) error
+	Update(ctx context.Context, role *Role) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	// Reassign moves every membership in business that holds oldRoleID to
+	// newRoleID; used by Phase 5 DELETE /roles/{id}?reassign_to=…
+	Reassign(ctx context.Context, businessID, oldRoleID, newRoleID uuid.UUID) error
+}
+
+// InvitationRepository — Phase 1 declares the surface; Phase 3 implements.
+type InvitationRepository interface {
+	Create(ctx context.Context, inv *Invitation) error
+	GetByTokenHash(ctx context.Context, tokenHash string) (*Invitation, error)
+	ListPendingByBusiness(ctx context.Context, businessID uuid.UUID) ([]Invitation, error)
+	CountPendingByBusiness(ctx context.Context, businessID uuid.UUID) (int, error)
+	Revoke(ctx context.Context, id uuid.UUID) error
+	MarkAccepted(ctx context.Context, id, accepterUserID uuid.UUID) error
+}
 
 // MongoDB repositories
 

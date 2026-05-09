@@ -8,17 +8,26 @@ import {
   findToolsForIntegration,
   toolNamesForPlatform,
   toPlatformKey,
-  TOOLS_QUERY_KEY,
   TOOLS_STALE_TIME_MS,
 } from '@/lib/hooks/useTools';
 import type { Tool } from '@/lib/schemas';
 
-// Mock the axios-based API client. Every test swaps in its own `get` mock.
-const apiGet = vi.fn();
-vi.mock('@/lib/api', () => ({
-  api: {
-    get: (...args: unknown[]) => apiGet(...args),
-  },
+// useTools now reads activeBusinessId from useBusinessStore and calls
+// fetchTools(activeBusinessId) which goes through bizApi.
+const bizApiGet = vi.fn();
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: (bizId: string) => ({
+    get: (path: string, config?: unknown) => bizApiGet(bizId, path, config),
+    post: vi.fn(),
+    put: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  }),
+}));
+
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'test-biz-id' }),
 }));
 
 function makeClient() {
@@ -71,30 +80,29 @@ const VALID_PAYLOAD: Tool[] = [
 
 describe('useTools', () => {
   beforeEach(() => {
-    apiGet.mockReset();
+    bizApiGet.mockReset();
   });
 
-  it('exposes the stable query key and 5-minute staleTime constants', () => {
-    expect(TOOLS_QUERY_KEY).toEqual(['tools']);
+  it('exposes the 5-minute staleTime constant', () => {
     expect(TOOLS_STALE_TIME_MS).toBe(5 * 60 * 1000);
   });
 
   it('fetches and validates the tools payload, exposing data through the hook', async () => {
-    apiGet.mockResolvedValueOnce({ data: VALID_PAYLOAD });
+    bizApiGet.mockResolvedValueOnce({ data: VALID_PAYLOAD });
     const client = makeClient();
 
     const { result } = renderHook(() => useTools(), { wrapper: wrapper(client) });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(apiGet).toHaveBeenCalledWith('/tools');
+    expect(bizApiGet).toHaveBeenCalledWith('test-biz-id', '/tools', undefined);
     expect(result.current.data).toHaveLength(VALID_PAYLOAD.length);
     expect(result.current.data?.[0]?.name).toBe('telegram__send_channel_post');
   });
 
   it('surfaces a Zod parse error when the payload is malformed', async () => {
     // Missing required `floor` field — Zod should reject.
-    apiGet.mockResolvedValueOnce({ data: [{ name: 'bad_tool', platform: 'telegram' }] });
+    bizApiGet.mockResolvedValueOnce({ data: [{ name: 'bad_tool', platform: 'telegram' }] });
     const client = makeClient();
 
     const { result } = renderHook(() => useTools(), { wrapper: wrapper(client) });

@@ -21,8 +21,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MonoLabel } from '@/components/ui/mono-label';
-import { api } from '@/lib/api';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { cn } from '@/lib/utils';
 
 // Yandex.Business RPA refresh poll cadence (ms). After kicking off a
@@ -94,13 +96,15 @@ export function PlatformCard({
 }: Props) {
   const tCard = useTranslations('integrations.platformCard');
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const [refreshingID, setRefreshingID] = useState<string | null>(null);
 
   async function refreshTelegramLinkedGroup(i: Integration) {
+    if (!activeBusinessId) return;
     setRefreshingID(i.id);
     try {
-      const { data } = await api.post<{ linked_group_status: string }>(
-        '/integrations/telegram/refresh',
+      const { data } = await bizApi(activeBusinessId).post<{ linked_group_status: string }>(
+        BIZ_API_PATHS.INTEGRATIONS.TELEGRAM_REFRESH,
         { channel_id: i.externalId }
       );
       if (data.linked_group_status === 'ok') {
@@ -108,7 +112,7 @@ export function PlatformCard({
       } else {
         toast.warning('Бот всё ещё не в группе обсуждений.');
       }
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
@@ -166,6 +170,7 @@ export function PlatformCard({
                   onDisconnect={onDisconnect}
                   refreshingID={refreshingID}
                   onRefreshTelegram={refreshTelegramLinkedGroup}
+                  activeBusinessId={activeBusinessId}
                 />
               </ScrollArea>
             ) : (
@@ -176,6 +181,7 @@ export function PlatformCard({
                 onDisconnect={onDisconnect}
                 refreshingID={refreshingID}
                 onRefreshTelegram={refreshTelegramLinkedGroup}
+                activeBusinessId={activeBusinessId}
               />
             )}
             <Button variant="secondary" size="sm" className="mt-3" onClick={onConnect}>
@@ -203,6 +209,7 @@ function ChannelList({
   onDisconnect,
   refreshingID,
   onRefreshTelegram,
+  activeBusinessId,
 }: {
   integrations: Integration[];
   platform: string;
@@ -210,6 +217,7 @@ function ChannelList({
   onDisconnect: (integrationId: string) => void;
   refreshingID: string | null;
   onRefreshTelegram: (i: Integration) => void;
+  activeBusinessId: string | null;
 }) {
   const tCard = useTranslations('integrations.platformCard');
   const tCommon = useTranslations('common');
@@ -225,21 +233,22 @@ function ChannelList({
   //   - VK:               metadata.community_name (groups.getById, ~200ms)
   //   - yandex_business:  metadata.business_name  (agent get_info RPA, ~30s)
   useEffect(() => {
+    if (!activeBusinessId) return;
     integrations.forEach((i) => {
       if (refreshedRef.current.has(i.id)) return;
       const md = (i.metadata as Record<string, unknown>) ?? {};
 
       let endpoint: string | null = null;
       if (i.platform === 'vk' && typeof md.community_name !== 'string') {
-        endpoint = `/integrations/vk/${i.id}/refresh-name`;
+        endpoint = BIZ_API_PATHS.INTEGRATIONS.VK_REFRESH_NAME(i.id);
       } else if (i.platform === 'yandex_business' && typeof md.business_name !== 'string') {
-        endpoint = `/integrations/yandex_business/${i.id}/refresh-name`;
+        endpoint = BIZ_API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_REFRESH_NAME(i.id);
       }
       if (!endpoint) return;
 
       refreshedRef.current.add(i.id);
       const isYandex = i.platform === 'yandex_business';
-      void api
+      void bizApi(activeBusinessId)
         .post(endpoint)
         .then(() => {
           if (isYandex) {
@@ -247,17 +256,23 @@ function ChannelList({
             // the background (~25–45s). Poll the integrations list a few
             // times so the resolved name appears without a manual reload.
             YANDEX_REFRESH_POLL_MS.forEach((delay) => {
-              setTimeout(() => qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS }), delay);
+              setTimeout(
+                () =>
+                  qc.invalidateQueries({
+                    queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
+                  }),
+                delay
+              );
             });
           } else {
-            qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+            qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
           }
         })
         .catch(() => {
           // Best-effort; swallow.
         });
     });
-  }, [integrations, qc]);
+  }, [integrations, qc, activeBusinessId]);
 
   return (
     <div className="flex flex-col gap-2">

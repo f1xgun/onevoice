@@ -5,8 +5,10 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -33,6 +35,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
   const qc = useQueryClient();
   const [token, setToken] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   function handleClose() {
     setToken('');
@@ -43,15 +46,15 @@ export function VKCommunityModal({ open, onClose }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = token.trim();
-    if (!trimmed) return;
+    if (!trimmed || !activeBusinessId) return;
     setSubmitting(true);
     try {
-      const { data } = await api.post<{ id: string; externalId: string }>(
-        '/integrations/vk/connect',
+      const { data } = await bizApi(activeBusinessId).post<{ id: string; externalId: string }>(
+        BIZ_API_PATHS.INTEGRATIONS.VK_CONNECT,
         { access_token: trimmed }
       );
       toast.success(tVk('connected'));
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       // Reset local state then call parent close to keep the modal logic clean.
       setToken('');
       setSubmitting(false);

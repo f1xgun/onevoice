@@ -14,9 +14,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { cn } from '@/lib/utils';
 import { TONE_OPTIONS, type ToneId, toneLabel } from '@/lib/tones';
 
@@ -36,6 +37,7 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
   const [selected, setSelected] = useState<Set<ToneId>>(new Set(initial ?? []));
   const [dirty, setDirty] = useState(false);
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   // Sync internal state when the parent's `initial` prop changes — the
   // /business query loads async, so `initial` arrives as [] on first render
@@ -47,10 +49,14 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
   }, [initialKey, dirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mutation = useMutation({
-    mutationFn: (ids: ToneId[]) =>
-      api.put(API_PATHS.BUSINESS.VOICE_TONE, { tones: ids }).then((r) => r.data),
+    mutationFn: (ids: ToneId[]) => {
+      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
+      return bizApi(activeBusinessId)
+        .put(BIZ_API_PATHS.BUSINESS.VOICE_TONE, { tones: ids })
+        .then((r) => r.data);
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId) });
       setDirty(false);
       toast.success(tVoice('saved'));
     },

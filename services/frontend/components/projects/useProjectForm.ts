@@ -9,9 +9,10 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { getTranslator } from '@/lib/i18n/translator';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { MAX_QUICK_ACTIONS } from '@/lib/quick-actions';
 import {
   useCreateProject,
@@ -109,10 +110,17 @@ export function useProjectForm(
   const systemPromptLen = form.watch('systemPrompt').length;
   const overCap = systemPromptLen > MAX_SYSTEM_PROMPT_CHARS;
 
+  // RBAC (plan 02-09): integrations are scoped per business. Switching the
+  // active business must surface a fresh list, hence the per-bizId query
+  // key and the `enabled` gate.
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const { data: integrations = [] } = useQuery<Integration[]>({
-    queryKey: QUERY_KEYS.INTEGRATIONS,
+    queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
     queryFn: () =>
-      api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : [])),
+      bizApi(activeBusinessId!)
+        .get<Integration[]>(BIZ_API_PATHS.INTEGRATIONS.ROOT)
+        .then((r) => (Array.isArray(r.data) ? r.data : [])),
+    enabled: !!activeBusinessId,
   });
   const activePlatforms = integrations.filter((i) => i.status === 'active').map((i) => i.platform);
 

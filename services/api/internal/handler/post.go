@@ -11,8 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // Constants for post pagination
@@ -23,8 +23,8 @@ const (
 
 // PostService defines the interface for post operations used by handler
 type PostService interface {
-	List(ctx context.Context, userID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
-	GetByID(ctx context.Context, userID uuid.UUID, id string) (*domain.Post, error)
+	List(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
+	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
 }
 
 // PostHandler handles post-related HTTP requests
@@ -50,9 +50,14 @@ type PostListResponse struct {
 
 // ListPosts handles GET /api/v1/posts
 func (h *PostHandler) ListPosts(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ListPosts: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -79,7 +84,7 @@ func (h *PostHandler) ListPosts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	posts, total, err := h.postService.List(r.Context(), userID, filter)
+	posts, total, err := h.postService.List(r.Context(), bc.BusinessID, filter)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
@@ -98,15 +103,20 @@ func (h *PostHandler) ListPosts(w http.ResponseWriter, r *http.Request) {
 
 // GetPost handles GET /api/v1/posts/{id}
 func (h *PostHandler) GetPost(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GetPost: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	id := chi.URLParam(r, "id")
 
-	post, err := h.postService.GetByID(r.Context(), userID, id)
+	post, err := h.postService.GetByID(r.Context(), bc.BusinessID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrPostNotFound) {
 			writeJSONError(w, http.StatusNotFound, "post not found")

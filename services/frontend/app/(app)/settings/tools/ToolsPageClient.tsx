@@ -1,16 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
@@ -18,7 +15,6 @@ import {
   useBusinessToolApprovals,
   useUpdateBusinessToolApprovals,
 } from '@/lib/hooks/useBusinessToolApprovals';
-import type { Business } from '@/types/business';
 import type { Tool, ToolApprovalValue, ToolApprovals } from '@/lib/schemas';
 import { ToolApprovalToggle } from './ToolApprovalToggle';
 
@@ -49,14 +45,11 @@ function sameDraft(
 
 export function ToolsPageClient() {
   const tTools = useTranslations('settings.tools');
-  const { data: business, isLoading: businessLoading } = useQuery<Business>({
-    queryKey: QUERY_KEYS.BUSINESS,
-    queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
-  });
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const businessId = activeBusinessId ?? '';
 
   const { data: tools, isLoading: toolsLoading, error: toolsError } = useTools();
 
-  const businessId = business?.id ?? '';
   const {
     data: savedApprovals,
     isLoading: approvalsLoading,
@@ -86,7 +79,7 @@ export function ToolsPageClient() {
     buckets[p].some((t) => t.floor === 'manual' || t.floor === 'forbidden')
   );
 
-  const isLoading = businessLoading || toolsLoading || approvalsLoading;
+  const isLoading = toolsLoading || approvalsLoading;
   const loadError = toolsError || approvalsError;
   const dirty = !sameDraft(draft, initialDraft);
 
