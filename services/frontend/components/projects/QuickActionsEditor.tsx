@@ -41,8 +41,8 @@ export function QuickActionsEditor({ value, onChange }: QuickActionsEditorProps)
               <Input
                 value={item}
                 onChange={(e) => updateItem(index, e.target.value)}
-                placeholder="Например: Проверить отзывы"
-                aria-label={`Быстрое действие ${index + 1}`}
+                placeholder={tQA('placeholder')}
+                aria-label={tQA('itemAria', { index: index + 1 })}
                 className="flex-1"
               />
               <Button
@@ -51,7 +51,7 @@ export function QuickActionsEditor({ value, onChange }: QuickActionsEditorProps)
                 size="icon"
                 className="hover:bg-destructive/10 text-destructive hover:text-destructive"
                 onClick={() => removeItem(index)}
-                aria-label={`Удалить быстрое действие ${index + 1}`}
+                aria-label={tQA('deleteAria', { index: index + 1 })}
               >
                 <Trash2 size={16} />
               </Button>

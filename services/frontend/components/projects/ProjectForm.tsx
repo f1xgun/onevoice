@@ -186,7 +186,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                   <FormItem>
                     <FormLabel>{tForm('name')}</FormLabel>
                     <FormControl>
-                      <Input placeholder="Например: Отзывы" {...field} />
+                      <Input placeholder={tForm('namePlaceholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -205,7 +205,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                     <FormControl>
                       <Textarea
                         rows={3}
-                        placeholder="Короткое описание — для кого этот проект."
+                        placeholder={tForm('descriptionPlaceholder')}
                         {...field}
                       />
                     </FormControl>
@@ -226,7 +226,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                     <FormControl>
                       <Textarea
                         rows={10}
-                        placeholder="Ты — помощник по отзывам. Отвечай вежливо, по существу…"
+                        placeholder={tForm('systemPromptPlaceholder')}
                         {...field}
                       />
                     </FormControl>
@@ -342,7 +342,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                 <FormItem>
                   <FormLabel>{tForm('name')}</FormLabel>
                   <FormControl>
-                    <Input placeholder="Например: Отзывы" autoFocus {...field} />
+                    <Input placeholder={tForm('namePlaceholder')} autoFocus {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
