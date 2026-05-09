@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -147,6 +148,43 @@ func TestLoad_SelfHostedEndpoints_MissingModel_Skipped(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 	assert.Empty(t, cfg.SelfHostedEndpoints)
+}
+
+func TestLoad_HTTPTimeouts(t *testing.T) {
+	t.Run("defaults when env unset", func(t *testing.T) {
+		minTestEnv(t)
+
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		assert.Equal(t, 15*time.Second, cfg.HTTPReadTimeout)
+		assert.Equal(t, 10*time.Second, cfg.HTTPReadHeaderTimeout)
+		assert.Equal(t, 60*time.Second, cfg.HTTPIdleTimeout)
+		assert.Equal(t, 10*time.Second, cfg.OrchestratorFetchTimeout)
+	})
+
+	t.Run("env override applied", func(t *testing.T) {
+		minTestEnv(t)
+		t.Setenv("HTTP_READ_TIMEOUT", "45s")
+		t.Setenv("HTTP_READ_HEADER_TIMEOUT", "20s")
+		t.Setenv("HTTP_IDLE_TIMEOUT", "2m")
+		t.Setenv("ORCHESTRATOR_FETCH_TIMEOUT", "30s")
+
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		assert.Equal(t, 45*time.Second, cfg.HTTPReadTimeout)
+		assert.Equal(t, 20*time.Second, cfg.HTTPReadHeaderTimeout)
+		assert.Equal(t, 2*time.Minute, cfg.HTTPIdleTimeout)
+		assert.Equal(t, 30*time.Second, cfg.OrchestratorFetchTimeout)
+	})
+
+	t.Run("invalid value falls back to default", func(t *testing.T) {
+		minTestEnv(t)
+		t.Setenv("HTTP_READ_TIMEOUT", "not-a-duration")
+
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		assert.Equal(t, 15*time.Second, cfg.HTTPReadTimeout)
+	})
 }
 
 func TestLoad_CORSAllowedOrigins(t *testing.T) {

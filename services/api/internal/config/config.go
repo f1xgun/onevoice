@@ -89,6 +89,19 @@ type Config struct {
 	// API reachable only from localhost.
 	CORSAllowedOrigins []string
 
+	// HTTP server / orchestrator timeouts. All optional; defaults preserve
+	// the values that were hardcoded in services/api/cmd/main.go before
+	// Wave 2.4. Knob purpose:
+	//   HTTPReadTimeout       — http.Server.ReadTimeout for the public API.
+	//   HTTPReadHeaderTimeout — http.Server.ReadHeaderTimeout for the internal mTLS server.
+	//   HTTPIdleTimeout       — http.Server.IdleTimeout for keepalive sockets.
+	//   OrchestratorFetchTimeout — per-request budget on /internal/tools/* and
+	//                              token-refresh fan-out toward Google/etc.
+	HTTPReadTimeout          time.Duration
+	HTTPReadHeaderTimeout    time.Duration
+	HTTPIdleTimeout          time.Duration
+	OrchestratorFetchTimeout time.Duration
+
 	// Shutdown
 	ShutdownTimeout time.Duration
 
@@ -164,7 +177,13 @@ func Load() (*Config, error) {
 
 		PublicURL:          getEnv("PUBLIC_URL", "http://localhost:8080"),
 		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
-		ShutdownTimeout:    shutdownTimeout,
+
+		HTTPReadTimeout:          getEnvDuration("HTTP_READ_TIMEOUT", 15*time.Second),
+		HTTPReadHeaderTimeout:    getEnvDuration("HTTP_READ_HEADER_TIMEOUT", 10*time.Second),
+		HTTPIdleTimeout:          getEnvDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
+		OrchestratorFetchTimeout: getEnvDuration("ORCHESTRATOR_FETCH_TIMEOUT", 10*time.Second),
+
+		ShutdownTimeout: shutdownTimeout,
 	}
 
 	// Phase 18 — Auto-titler env loading. Mirrors
@@ -214,6 +233,18 @@ func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if n, err := strconv.Atoi(value); err == nil {
 			return n
+		}
+	}
+	return defaultValue
+}
+
+// getEnvDuration parses a Go-style duration env var (e.g. "30s", "5m").
+// Invalid or missing values fall back to the supplied default so an
+// operator typo can't crash startup of an otherwise-healthy service.
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if d, err := time.ParseDuration(value); err == nil {
+			return d
 		}
 	}
 	return defaultValue
