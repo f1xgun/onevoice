@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/platform"
@@ -217,18 +218,29 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	}
 	s.Review = service.NewReviewService(repos.Review, s.Business, h.NATS, reviewRefresher)
 
-	// Platform syncer: pushes business info updates to connected platforms
-	s.PlatformSync = platform.NewSyncer(
-		IntegrationSyncAdapter(s.Integration),
-		nil,
-		cfg.PublicURL,
-	)
-	s.PlatformSync.SetTaskRecorder(repos.AgentTask)
-	s.PlatformSync.SetTaskHub(s.TaskHub)
+	// Platform syncer: pushes business info updates to connected platforms.
+	// Each capability-implementing platform impl is wired into perPlatform
+	// keyed by integ.Platform; Syncer dispatches to whichever interfaces
+	// the impl satisfies (TitleSyncer, DescriptionSyncer, PhotoSyncer,
+	// InfoSyncer, ScheduleSyncer) — no no-op methods required.
+	adapter := IntegrationSyncAdapter(s.Integration)
+	platformHTTPClient := &http.Client{Timeout: 10 * time.Second}
 	if h.NATS != nil {
 		s.AgentTaskPublisher = platform.NewNATSTaskPublisher(h.NATS)
-		s.PlatformSync.SetTaskPublisher(s.AgentTaskPublisher)
 	}
+	// AgentTaskPublisher is *platform.NATSTaskPublisher (nil-typed when
+	// h.NATS is nil); cast through the platform.TaskPublisher interface
+	// so YandexSyncer's nil-check sees an honestly-nil value.
+	var yandexPublisher platform.TaskPublisher
+	if s.AgentTaskPublisher != nil {
+		yandexPublisher = s.AgentTaskPublisher
+	}
+	perPlatform := map[string]any{
+		a2a.AgentTelegram:       platform.NewTelegramSyncer(adapter, platformHTTPClient, "", cfg.PublicURL),
+		a2a.AgentVK:             platform.NewVKSyncer(adapter, platformHTTPClient, ""),
+		a2a.AgentYandexBusiness: platform.NewYandexSyncer(yandexPublisher),
+	}
+	s.PlatformSync = platform.NewSyncer(adapter, repos.AgentTask, s.TaskHub, perPlatform)
 
 	// Plan 16-07 HITL services. ToolsRegistryCache talks to the
 	// orchestrator's /internal/tools endpoint with a 5-min TTL so

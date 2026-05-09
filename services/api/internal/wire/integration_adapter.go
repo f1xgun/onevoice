@@ -9,25 +9,30 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
-// integrationSyncAdapter bridges service.IntegrationService to
-// platform.integrationProvider. The platform package needs a narrow view
-// (List + GetDecryptedToken) — IntegrationService exposes a richer surface,
-// so we shim down to what the platform syncer expects.
-type integrationSyncAdapter struct {
+// IntegrationSyncAdapterImpl bridges service.IntegrationService to the
+// narrow integrationProvider interface that platform.NewSyncer expects.
+// The platform package needs only List + GetDecryptedToken; IntegrationService
+// exposes a richer surface, so we shim down to what the syncer requires.
+//
+// Suffixed with Impl (rather than naming this IntegrationSyncAdapter) so
+// the constructor below — IntegrationSyncAdapter — can stay verb-less,
+// matching how the original cmd/main.go spelled it.
+type IntegrationSyncAdapterImpl struct {
 	svc service.IntegrationService
 }
 
 // IntegrationSyncAdapter constructs the bridge that platform.NewSyncer
-// expects. The returned value satisfies platform.integrationProvider.
-func IntegrationSyncAdapter(svc service.IntegrationService) *integrationSyncAdapter {
-	return &integrationSyncAdapter{svc: svc}
+// expects. The returned *IntegrationSyncAdapterImpl satisfies
+// platform.integrationProvider via structural typing.
+func IntegrationSyncAdapter(svc service.IntegrationService) *IntegrationSyncAdapterImpl {
+	return &IntegrationSyncAdapterImpl{svc: svc}
 }
 
-func (a *integrationSyncAdapter) ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error) {
+func (a *IntegrationSyncAdapterImpl) ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error) {
 	return a.svc.ListByBusinessID(ctx, businessID)
 }
 
-func (a *integrationSyncAdapter) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, plt, externalID string) (string, error) {
+func (a *IntegrationSyncAdapterImpl) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, plt, externalID string) (string, error) {
 	resp, err := a.svc.GetDecryptedToken(ctx, businessID, plt, externalID)
 	if err != nil {
 		return "", err
