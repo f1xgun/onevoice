@@ -188,16 +188,17 @@ func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, i
 		// Schedule sync silent-skips when the business has no schedule
 		// configured; preserve that "no noisy AgentTask row" behavior here
 		// at the dispatch layer so SyncSchedule stays a thin verbatim move.
-		if hours == "" {
-			return
+		// Skip is local to this branch so subsequently-added capabilities
+		// after Schedule are unaffected.
+		if hours != "" {
+			input := map[string]string{"permalink": integ.ExternalID, "hours": hours}
+			s.runWithTask(ctx, b, integ, capabilityDispatch{
+				taskType:    "sync_hours",
+				displayName: "Синхронизация часов работы",
+				input:       func(error) map[string]string { return input },
+				fn:          sch.SyncSchedule,
+			})
 		}
-		input := map[string]string{"permalink": integ.ExternalID, "hours": hours}
-		s.runWithTask(ctx, b, integ, capabilityDispatch{
-			taskType:    "sync_hours",
-			displayName: "Синхронизация часов работы",
-			input:       func(error) map[string]string { return input },
-			fn:          sch.SyncSchedule,
-		})
 	}
 }
 
