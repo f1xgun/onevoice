@@ -16,13 +16,11 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
-// Per-call HTTP timeouts used by service constructors. integrationFetchTimeout
-// matches the orchestrator-fetch budget; orchestratorFetchTimeout is shorter
-// because the orchestrator's /internal endpoints are local and fast.
-const (
-	integrationFetchTimeout  = 60 * time.Second
-	orchestratorFetchTimeout = 10 * time.Second
-)
+// Per-call HTTP timeout for service-to-API integration calls. The
+// orchestrator-fetch budget is env-tunable per cfg.OrchestratorFetchTimeout
+// (ORCHESTRATOR_FETCH_TIMEOUT). integrationFetchTimeout stays a const because
+// it has not (yet) been promoted to env-driven configuration.
+const integrationFetchTimeout = 60 * time.Second
 
 // Services aggregates every business-logic service the API consumes.
 //
@@ -158,7 +156,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		refresher = NewGoogleTokenRefresher(
 			cfg.GoogleClientID,
 			cfg.GoogleClientSecret,
-			&http.Client{Timeout: orchestratorFetchTimeout},
+			&http.Client{Timeout: cfg.OrchestratorFetchTimeout},
 		)
 	}
 	s.Integration = service.NewIntegrationService(repos.Integration, h.Enc, refresher)
