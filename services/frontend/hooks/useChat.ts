@@ -22,11 +22,14 @@ import type {
 const tCommon = getTranslator('common');
 const tCommonErrors = getTranslator('common.errors');
 
+const SSE_DATA_PREFIX = 'data: ';
+const MAX_REJECT_REASON_LEN = 500;
+
 // Exported for unit testing
 export function parseSSELine(line: string): Record<string, unknown> | null {
-  if (!line.startsWith('data: ')) return null;
+  if (!line.startsWith(SSE_DATA_PREFIX)) return null;
   try {
-    return JSON.parse(line.slice(6));
+    return JSON.parse(line.slice(SSE_DATA_PREFIX.length));
   } catch {
     return null;
   }
@@ -374,7 +377,7 @@ export function useChat(conversationId: string) {
           copy.edited_args = filtered;
         }
         if (d.action === 'reject' && d.reject_reason !== undefined) {
-          copy.reject_reason = d.reject_reason.slice(0, 500);
+          copy.reject_reason = d.reject_reason.slice(0, MAX_REJECT_REASON_LEN);
         }
         return copy;
       });
