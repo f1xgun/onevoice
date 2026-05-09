@@ -89,6 +89,82 @@ func TestSearchByConversationIDs_EmptyAllowlist(t *testing.T) {
 	assert.Empty(t, hits2)
 }
 
+// TestSearchByConversationIDs_MultiTokenAND — a multi-word query is
+// AND-ed across tokens: every token must word-prefix-match SOME word in
+// the document. v20.1 contract.
+func TestSearchByConversationIDs_MultiTokenAND(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, EnsureSearchIndexes(ctx, db))
+	repo := NewMessageRepository(db).(*messageRepository)
+
+	conv := bson.NewObjectID().Hex()
+	now := time.Now().UTC()
+	docs := []bson.M{
+		{"_id": bson.NewObjectID().Hex(), "conversation_id": conv, "role": "user",
+			"content": "проверь отзыв пожалуйста", "created_at": now},
+		{"_id": bson.NewObjectID().Hex(), "conversation_id": conv, "role": "user",
+			"content": "только отзыв", "created_at": now},
+		{"_id": bson.NewObjectID().Hex(), "conversation_id": conv, "role": "user",
+			"content": "только проверка без второго слова", "created_at": now},
+	}
+	for _, d := range docs {
+		_, err := db.Collection("messages").InsertOne(ctx, d)
+		require.NoError(t, err)
+	}
+
+	hits, err := repo.SearchByConversationIDs(ctx, "проверь отзыв", []string{conv}, 20)
+	require.NoError(t, err)
+	require.Len(t, hits, 1, "exactly one conversation matches BOTH tokens")
+	assert.Equal(t, 1, hits[0].MatchCount, "only the doc with both tokens counts")
+}
+
+// TestSearchByConversationIDs_WordPrefixMorphology — query "отзыв"
+// must match inflected forms ("отзыв", "отзывы", "отзыва", "отзывов")
+// in the SAME document via word-prefix matching, AND must NOT match
+// compound words containing the prefix mid-word ("переотзыв").
+//
+// This is the load-bearing regression test for the bug that motivated
+// v20.1: typing the singular nominative should find every form.
+func TestSearchByConversationIDs_WordPrefixMorphology(t *testing.T) {
+	db := setupMongoTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, EnsureSearchIndexes(ctx, db))
+	repo := NewMessageRepository(db).(*messageRepository)
+
+	convInflected := bson.NewObjectID().Hex()
+	convCompound := bson.NewObjectID().Hex()
+
+	now := time.Now().UTC()
+	for _, content := range []string{
+		"отзыв в единственном",
+		"много отзывы пришли",
+		"нет отзыва",
+		"набор отзывов",
+	} {
+		_, err := db.Collection("messages").InsertOne(ctx, bson.M{
+			"_id": bson.NewObjectID().Hex(), "conversation_id": convInflected,
+			"role": "user", "content": content, "created_at": now,
+		})
+		require.NoError(t, err)
+	}
+	// Compound word — must NOT match.
+	_, err := db.Collection("messages").InsertOne(ctx, bson.M{
+		"_id": bson.NewObjectID().Hex(), "conversation_id": convCompound,
+		"role": "user", "content": "переотзыв системы",
+		"created_at": now,
+	})
+	require.NoError(t, err)
+
+	hits, err := repo.SearchByConversationIDs(ctx, "отзыв",
+		[]string{convInflected, convCompound}, 20)
+	require.NoError(t, err)
+	require.Len(t, hits, 1, "compound-word doc must be excluded")
+	assert.Equal(t, convInflected, hits[0].ConversationID)
+	assert.Equal(t, 4, hits[0].MatchCount,
+		"all four inflected forms must match the single prefix 'отзыв'")
+}
+
 // TestSearchByConversationIDs_AllowlistScopesResults — even if a message
 // containing the term exists in conv X, if X is NOT in the allowlist the
 // row MUST NOT appear. Cross-tenant defense T-19-CROSS-TENANT.
