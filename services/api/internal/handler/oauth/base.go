@@ -33,10 +33,13 @@ import (
 // is connect.ConnectHandler (paste-flow), so its base lives in connect/.
 const (
 	defaultYandexAuthURL         = "https://oauth.yandex.ru/authorize"
-	defaultYandexTokenURL        = "https://oauth.yandex.ru/token"       //nolint:gosec // G101: OAuth token-exchange endpoint URL, not a credential
+	defaultYandexTokenURL        = "https://oauth.yandex.ru/token" //nolint:gosec // G101: OAuth token-exchange endpoint URL, not a credential
+	defaultGoogleAuthURL         = "https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&access_type=offline&prompt=consent&state=%s"
 	defaultGoogleTokenURL        = "https://oauth2.googleapis.com/token" //nolint:gosec // G101: OAuth token-exchange endpoint URL, not a credential
 	defaultGoogleAccountsURL     = "https://mybusinessaccountmanagement.googleapis.com"
 	defaultGoogleBusinessInfoURL = "https://mybusinessbusinessinformation.googleapis.com"
+	googleBusinessManageScope    = "https://www.googleapis.com/auth/business.manage"
+	defaultYandexProbeURL        = "https://business.yandex.ru/"
 )
 
 // tempOAuthCredsTTL caps how long a freshly-issued OAuth token sits in
