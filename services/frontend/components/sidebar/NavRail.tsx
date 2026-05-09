@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import {
   MessageCircle,
   Plug,
@@ -32,15 +33,18 @@ interface Integration {
 // rows live in <ProjectPane> — NOT here.
 //
 // Order locked by design handoff README v2 §5: Чат → Интеграции → Профиль
-// бизнеса → Отзывы → Посты → Задачи → Настройки.
-const navItems = [
-  { href: '/chat', label: 'Чат', icon: MessageCircle },
-  { href: API_PATHS.INTEGRATIONS.ROOT, label: 'Интеграции', icon: Plug },
-  { href: API_PATHS.BUSINESS.ROOT, label: 'Профиль бизнеса', icon: Building2 },
-  { href: '/reviews', label: 'Отзывы', icon: Star },
-  { href: '/posts', label: 'Посты', icon: FileText },
-  { href: API_PATHS.TASKS, label: 'Задачи', icon: ListTodo },
-  { href: '/settings', label: 'Настройки', icon: Settings },
+// бизнеса → Отзывы → Посты → Задачи → Настройки. labelKey resolves through
+// nav.* in messages/ru.json so the rendered tooltip + aria-label localize
+// in lockstep.
+type NavItem = { href: string; labelKey: string; icon: typeof MessageCircle };
+const navItems: NavItem[] = [
+  { href: '/chat', labelKey: 'chat', icon: MessageCircle },
+  { href: API_PATHS.INTEGRATIONS.ROOT, labelKey: 'integrations', icon: Plug },
+  { href: API_PATHS.BUSINESS.ROOT, labelKey: 'business', icon: Building2 },
+  { href: '/reviews', labelKey: 'reviews', icon: Star },
+  { href: '/posts', labelKey: 'posts', icon: FileText },
+  { href: API_PATHS.TASKS, labelKey: 'tasks', icon: ListTodo },
+  { href: '/settings', labelKey: 'settings', icon: Settings },
 ];
 
 export interface NavRailProps {
@@ -55,6 +59,7 @@ export interface NavRailProps {
 export function NavRail({ onNavigate }: NavRailProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
+  const tNav = useTranslations('nav');
   const logout = useAuthStore((s) => s.logout);
 
   const { data: integrations } = useQuery<Integration[]>({
@@ -92,8 +97,9 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
             (no background change). Idle: ink-soft → ink on hover with
             paper-sunken wash. */}
         <nav className="flex flex-1 flex-col gap-1">
-          {navItems.map(({ href, label, icon: Icon }) => {
+          {navItems.map(({ href, labelKey, icon: Icon }) => {
             const isActive = pathname.startsWith(href);
+            const label = tNav(labelKey);
             return (
               <Tooltip key={href}>
                 <TooltipTrigger asChild>
@@ -128,7 +134,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
           <TooltipTrigger asChild>
             <div
               role="group"
-              aria-label="Платформы"
+              aria-label={tNav('platformsGroup')}
               className="my-2 flex flex-col gap-1.5"
               data-testid="integration-status"
             >
@@ -174,13 +180,13 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
             <button
               type="button"
               onClick={handleLogout}
-              aria-label="Выйти"
+              aria-label={tNav('logout')}
               className="mb-2 flex h-10 w-10 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink"
             >
               <LogOut size={18} />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="right">Выйти</TooltipContent>
+          <TooltipContent side="right">{tNav('logout')}</TooltipContent>
         </Tooltip>
       </aside>
     </TooltipProvider>

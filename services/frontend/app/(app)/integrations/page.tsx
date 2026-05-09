@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -38,6 +39,7 @@ interface LastRegistered {
 
 export default function IntegrationsPage() {
   const qc = useQueryClient();
+  const tIntegrations = useTranslations('integrations');
   const searchParams = useSearchParams();
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
@@ -60,12 +62,12 @@ export default function IntegrationsPage() {
     const error = searchParams.get('error');
 
     if (connected === 'vk') {
-      toast.success('VK сообщество подключено');
+      toast.success(tIntegrations('vkConnected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
     if (connected === 'google_business') {
-      toast.success('Google Business Profile подключён');
+      toast.success(tIntegrations('googleConnected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
