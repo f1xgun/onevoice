@@ -66,9 +66,9 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
     mutationFn: (data: BusinessInput) => api.put(API_PATHS.BUSINESS.ROOT, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
-      toast.success('Данные сохранены');
+      toast.success(tProfileForm('saved'));
     },
-    onError: () => toast.error('Не получилось сохранить'),
+    onError: () => toast.error(tProfileForm('saveError')),
   });
 
   const logoMutation = useMutation({
@@ -82,9 +82,9 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
     onSuccess: (res) => {
       setLogoUrl(res.data.logoUrl ?? '');
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
-      toast.success('Логотип обновлён');
+      toast.success(tProfileForm('logoUpdated'));
     },
-    onError: () => toast.error('Не получилось загрузить логотип'),
+    onError: () => toast.error(tProfileForm('logoUploadError')),
   });
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {

@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/auth';
 import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { getTranslator } from '@/lib/i18n/translator';
 import { trackEvent } from '@/lib/telemetry';
 import { resolveErrorToRussian, RESUME_STREAM_ERROR } from '@/lib/resolveErrorMap';
 import type {
@@ -13,6 +14,13 @@ import type {
   PendingApprovalCall,
   ToolCall,
 } from '@/types/chat';
+
+// Module-level translator for the SSE-stream and resolve-API failure
+// branches below. The hook re-renders too often to lean on
+// `useTranslations` here — strings are static, so a once-per-module
+// lookup matches what the rest of the lib does.
+const tCommon = getTranslator('common');
+const tCommonErrors = getTranslator('common.errors');
 
 // Exported for unit testing
 export function parseSSELine(line: string): Record<string, unknown> | null {
@@ -334,7 +342,10 @@ export function useChat(conversationId: string) {
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (!last || last.role !== 'assistant') return prev;
-          return [...prev.slice(0, -1), { ...last, content: 'Ошибка соединения', status: 'done' }];
+          return [
+            ...prev.slice(0, -1),
+            { ...last, content: tCommon('connectionError'), status: 'done' },
+          ];
         });
       } finally {
         setIsStreaming(false);
@@ -383,7 +394,7 @@ export function useChat(conversationId: string) {
           }
         );
       } catch {
-        toast.error('Ошибка соединения — попробуйте ещё раз');
+        toast.error(tCommonErrors('connectionRetry'));
         return;
       }
 

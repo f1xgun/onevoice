@@ -65,15 +65,15 @@ function useSchedule(initialSchedule?: ScheduleDay[], initialSpecialDates?: Spec
   return { schedule, setSchedule, specialDates, setSpecialDates };
 }
 
-function useScheduleMutation(label: string) {
+function useScheduleMutation(successMsg: string, errorMsg: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: SchedulePayload) => api.put(API_PATHS.BUSINESS.SCHEDULE, data),
     onSuccess: () => {
-      toast.success(`${label} сохранены`);
+      toast.success(successMsg);
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
     },
-    onError: () => toast.error('Не получилось сохранить'),
+    onError: () => toast.error(errorMsg),
   });
 }
 
@@ -85,8 +85,9 @@ interface HoursFormProps {
 }
 
 export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormProps) {
+  const tSchedule = useTranslations('business.scheduleForm');
   const { schedule, setSchedule, specialDates } = useSchedule(initialSchedule, initialSpecialDates);
-  const mutation = useScheduleMutation('Часы работы');
+  const mutation = useScheduleMutation(tSchedule('hoursSaved'), tSchedule('saveError'));
 
   function updateDay(index: number, updates: Partial<ScheduleDay>) {
     setSchedule((prev) => prev.map((d, i) => (i === index ? { ...d, ...updates } : d)));
@@ -200,7 +201,7 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
     initialSpecialDates
   );
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const mutation = useScheduleMutation('Особые даты');
+  const mutation = useScheduleMutation(tSchedule('datesSaved'), tSchedule('saveError'));
 
   function addSpecialDate(date: Date) {
     const iso = format(date, 'yyyy-MM-dd');

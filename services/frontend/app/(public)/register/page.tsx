@@ -44,9 +44,9 @@ export default function RegisterPage() {
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data
         ?.message;
       if (status === HTTP_STATUS.CONFLICT) {
-        toast.error('Пользователь с таким email уже существует');
+        toast.error(tReg('emailExists'));
       } else {
-        toast.error(message ?? 'Ошибка регистрации. Проверьте данные.');
+        toast.error(message ?? tReg('genericError'));
       }
     }
   };
