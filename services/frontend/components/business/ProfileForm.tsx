@@ -39,6 +39,7 @@ const CATEGORIES = CATEGORY_IDS.map((id) => ({ value: id, label: tCategories(id)
 
 export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Business> }) {
   const tProfileForm = useTranslations('business.profileForm');
+  const tCommon = useTranslations('common');
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState(defaultValues?.logoUrl ?? '');
@@ -101,12 +102,12 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           onClick={() => fileInputRef.current?.click()}
           disabled={logoMutation.isPending}
           className="hover:border-ochre/40 relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-paper-sunken text-ink-soft transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
-          aria-label="Загрузить логотип"
+          aria-label={tProfileForm('logoUploadAria')}
         >
           {logoUrl ? (
             <Image
               src={logoUrl}
-              alt="Логотип"
+              alt={tProfileForm('logoAlt')}
               width={80}
               height={80}
               className="h-full w-full object-cover"
@@ -159,18 +160,22 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Field label="Название" required error={errors.name?.message}>
-          <Input id="name" {...register('name')} placeholder="Кофейня «Мята»" />
+        <Field label={tProfileForm('fields.name')} required error={errors.name?.message}>
+          <Input
+            id="name"
+            {...register('name')}
+            placeholder={tProfileForm('namePlaceholder')}
+          />
         </Field>
 
-        <Field label="Категория" required error={errors.category?.message}>
+        <Field label={tProfileForm('fields.category')} required error={errors.category?.message}>
           <Controller
             control={control}
             name="category"
             render={({ field }) => (
               <Select onValueChange={field.onChange} value={field.value ?? ''}>
                 <SelectTrigger id="category" onBlur={field.onBlur} ref={field.ref}>
-                  <SelectValue placeholder="Выберите категорию" />
+                  <SelectValue placeholder={tProfileForm('categoryPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {CATEGORIES.map((c) => (
@@ -184,29 +189,37 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           />
         </Field>
 
-        <Field label="Город / адрес" error={errors.address?.message} className="md:col-span-2">
-          <Input id="address" {...register('address')} placeholder="г. Москва, ул. Примерная, 1" />
+        <Field
+          label={tProfileForm('fields.address')}
+          error={errors.address?.message}
+          className="md:col-span-2"
+        >
+          <Input
+            id="address"
+            {...register('address')}
+            placeholder={tProfileForm('addressPlaceholder')}
+          />
         </Field>
 
-        <Field label="Телефон" error={errors.phone?.message}>
+        <Field label={tProfileForm('fields.phone')} error={errors.phone?.message}>
           <Input id="phone" {...register('phone')} placeholder="+79001234567" />
         </Field>
 
-        <Field label="Сайт" error={errors.website?.message}>
+        <Field label={tProfileForm('fields.website')} error={errors.website?.message}>
           <Input id="website" {...register('website')} placeholder="https://example.com" />
         </Field>
 
         <Field
-          label="Описание"
+          label={tProfileForm('fields.description')}
           error={errors.description?.message}
-          hint="Что вы делаете и для кого. OneVoice использует это, когда отвечает клиентам и пишет посты."
+          hint={tProfileForm('descriptionHint')}
           className="md:col-span-2"
         >
           <textarea
             id="description"
             {...register('description')}
             rows={4}
-            placeholder="Маленькая кофейня у метро. Спешелти, выпекаем круассаны утром."
+            placeholder={tProfileForm('descriptionPlaceholder')}
             className="focus:ring-ochre/20 flex w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-ink transition-[border-color,box-shadow] duration-150 placeholder:text-ink-soft focus:border-ochre focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </Field>
@@ -219,7 +232,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           size="md"
           disabled={isSubmitting || mutation.isPending || !isDirty}
         >
-          {isSubmitting || mutation.isPending ? 'Сохраняем…' : 'Сохранить'}
+          {isSubmitting || mutation.isPending ? tProfileForm('saving') : tCommon('save')}
         </Button>
       </div>
     </form>
