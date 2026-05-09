@@ -10,8 +10,8 @@ import type { ApprovalAction, ApprovalDecision, PendingApproval } from '@/types/
 import { ToolApprovalAccordionEntry, type AccordionEntryDraft } from './ToolApprovalAccordionEntry';
 import { REJECT_REASON_MAX_LEN } from './toolApprovalConstants';
 
-// Exact Russian copy — 17-UI-SPEC §Copywriting Contract. Inlined per
-// 17-RESEARCH §Don't Hand-Roll (no shared i18n layer in v1.3).
+// Exact Russian copy — UI-SPEC §Copywriting Contract. Inlined
+// (no shared i18n layer in v1.3).
 const RU = {
   titlePrefix: 'Ожидает подтверждения',
   subtitle: 'Проверьте аргументы перед выполнением',
@@ -20,8 +20,8 @@ const RU = {
   submitHelper: 'Выберите действие для каждой задачи',
 } as const;
 
-// Keys that MUST NEVER appear in the resolve body — Phase 16 D-09 pins the
-// toolName server-side, so echoing it signals misuse. Stored in a Set
+// Keys that MUST NEVER appear in the resolve body — toolName is pinned
+// server-side, so echoing it signals misuse. Stored in a Set
 // indexed by a computed key string so the literal never appears in a
 // write position inside this file (supply-chain grep invariant).
 const FORBIDDEN_EDIT_KEYS: Set<string> = new Set(['tool' + '_name']);
@@ -159,7 +159,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
       if (d.decision === 'edit' && Object.keys(d.editedArgs).length > 0) {
         // Explicitly strip the server-pinned toolName key even if the
         // reducer were ever mutated to allow it — defense-in-depth with
-        // the Plan 17-02 boundary filter. The forbidden key literal lives
+        // the boundary filter. The forbidden key literal lives
         // in `FORBIDDEN_EDIT_KEYS` so the source file grep-matches clean
         // (no `tool_name` string appears anywhere in write positions).
         const filtered: Record<string, string | number | boolean> = {};
@@ -253,7 +253,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
                   // honest for the "undecided" state.
                   disabled={submitting}
                   aria-disabled={!allDecided || submitting}
-                  // Plan 17-09: only describe the button while it is gated on
+                  // Only describe the button while it is gated on
                   // an undecided row. Once allDecided flips, the helper span
                   // unmounts (see below) and dropping the attribute keeps SR
                   // output clean — the SR reads only the button label, not a
@@ -271,7 +271,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
           </Tooltip>
         </TooltipProvider>
         {/*
-          Plan 17-09 / VERIFICATION item 4: the visually-hidden helper span
+          The visually-hidden helper span
           is gated on the same `!allDecided` predicate as the TooltipContent
           above. Previously this span rendered unconditionally, so once
           Submit became enabled the visible-to-AT copy contradicted the

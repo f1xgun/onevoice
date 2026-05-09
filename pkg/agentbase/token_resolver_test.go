@@ -17,7 +17,7 @@ import (
 // TestNewTokenResolver_NilClient_Panics asserts the boot-time fail-fast contract.
 // Wiring bugs (passing a nil *tokenclient.Client) must surface at NewTokenResolver
 // time, not at the first GetToken call. This mirrors the chat_proxy.go panic-on-nil
-// pattern documented in 19-PATTERNS.md.
+// pattern.
 func TestNewTokenResolver_NilClient_Panics(t *testing.T) {
 	defer func() {
 		r := recover()
@@ -38,8 +38,8 @@ func TestNewTokenResolver_NilClient_Panics(t *testing.T) {
 //
 // UserToken specifically must propagate — the VK agent depends on it (see
 // services/agent-vk/internal/agent/handler.go:201-202). If this test ever passes
-// without asserting UserToken, the four-agent migration in plan 19-07 will
-// silently break VK private-data reads.
+// without asserting UserToken, the four-agent migration will silently break VK
+// private-data reads.
 func TestTokenResolver_GetToken_DelegatesToClient(t *testing.T) {
 	want := &tokenclient.TokenResponse{
 		IntegrationID: "int-vk-1",

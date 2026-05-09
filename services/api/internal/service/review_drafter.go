@@ -37,8 +37,8 @@ type DraftReplyClient interface {
 // orchestrator as the single source of truth for provider routing, rate
 // limiting, and billing.
 //
-// Phase 19 / 19-MD-01: HTTP plumbing moved into pkg/orchestratorclient so
-// every api→orchestrator call shares a single Client + Transport pool.
+// HTTP plumbing lives in pkg/orchestratorclient so every api→orchestrator
+// call shares a single Client + Transport pool.
 type ReviewDrafter struct {
 	reviewRepo   domain.ReviewRepository
 	businessRepo domain.BusinessRepository
@@ -48,7 +48,7 @@ type ReviewDrafter struct {
 }
 
 // NewReviewDrafter constructs a drafter. The supplied client must already be
-// bound to the orchestrator base URL — typically svcs.OrchClient (D-11
+// bound to the orchestrator base URL — typically svcs.OrchClient (the
 // shared client). maxExamples and perPassLimit are clamped to sensible
 // defaults when ≤0. orch must be non-nil; passing nil panics so a wiring
 // regression surfaces at boot, not on the first sync tick.

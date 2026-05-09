@@ -1,7 +1,7 @@
 // Package oauth holds the true OAuth code-flow integration handlers
 // (VK, Yandex.Business, Google Business Profile). Paste-flow integrations
 // (Telegram bot-token, VK community access token) live in the sibling
-// handler/connect package — see Phase 19 D-04.
+// handler/connect package.
 //
 // Both sub-packages preserve the public REST routes registered in
 // services/api/internal/router/router.go; the split is purely structural
@@ -86,7 +86,7 @@ type OAuthConfig struct {
 	GoogleRedirectURI  string
 	// Note: a FrontendURL field used to live here ("for redirects, defaults
 	// to '/'") but was never read — every redirect uses a relative path
-	// (/integrations?...). Removed in 19-LOW-01 cleanup.
+	// (/integrations?...). Removed in cleanup.
 
 	// Overridable base URLs for testing.
 	// vkAPIBaseURL / telegramAPIBaseURL live on connect.ConnectConfig

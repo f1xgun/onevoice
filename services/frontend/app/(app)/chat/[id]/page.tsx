@@ -5,19 +5,17 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { useHighlightMessage } from '@/hooks/useHighlightMessage';
 
-// Phase 19 / Plan 19-04 / D-08 — when navigated here from the search dropdown
-// with `?highlight={msgId}`, scroll the matched message into view and flash it
-// for ~1.75 s. The hook reads the param via next/navigation and queries the
-// DOM via `[data-message-id]` (rendered by MessageBubble).
+// When navigated here from the search dropdown with `?highlight={msgId}`,
+// scroll the matched message into view and flash it for ~1.75 s. The hook
+// reads the param via next/navigation and queries the DOM via
+// `[data-message-id]` (rendered by MessageBubble).
 //
-// Plan deviation (Rule 3): the plan assumed `useChat` was called in this file
-// so it could pass `!isLoading && messages.length > 0` as the readiness flag.
-// In reality, `useChat` is encapsulated inside `<ChatWindow>` (services/frontend/
+// `useChat` is encapsulated inside `<ChatWindow>` (services/frontend/
 // components/chat/ChatWindow.tsx). To preserve the encapsulation while still
 // firing the hook from the route owner, we poll for the target element and
 // flip a `messagesReady` flag once it appears (or 3 s elapses, whichever
-// comes first). The hook itself silently bails when the target is missing
-// (T-19-04-01 mitigation), so over-firing is safe.
+// comes first). The hook itself silently bails when the target is missing,
+// so over-firing is safe.
 function useMessagesReadyWhenHighlightTargetMounts(targetId: string | null): boolean {
   const [ready, setReady] = useState(false);
 

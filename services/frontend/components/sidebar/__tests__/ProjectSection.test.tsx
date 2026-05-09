@@ -149,7 +149,7 @@ describe('ProjectSection', () => {
     expect(screen.getByText('В проекте пока нет чатов')).toBeInTheDocument();
   });
 
-  // Phase 19 / Plan 19-05 / D-17 — roving-tabindex chat-list contract.
+  // Roving-tabindex chat-list contract.
   it('chat-row links carry data-roving-item, role="option", and roving tabindex', () => {
     const convs = [
       makeConv('c-1', 'First chat'),
@@ -174,7 +174,7 @@ describe('ProjectSection', () => {
     expect(container.querySelector('[role="listbox"]')).not.toBeNull();
   });
 
-  it('project-header expand/collapse button is OUTSIDE the roving container (separate Tab stop, D-17)', () => {
+  it('project-header expand/collapse button is OUTSIDE the roving container (separate Tab stop)', () => {
     const convs = [makeConv('c-1', 'A chat')];
     const { container } = render(
       <Wrapper>
@@ -182,7 +182,7 @@ describe('ProjectSection', () => {
       </Wrapper>
     );
     // The collapse button has aria-label «Свернуть «Отзывы»» — it should
-    // NOT live inside the role="listbox" container (D-17 — separate Tab stop).
+    // NOT live inside the role="listbox" container (separate Tab stop).
     const listbox = container.querySelector('[role="listbox"]');
     const collapseBtn = screen.getByRole('button', { name: /Свернуть «Отзывы»/ });
     expect(listbox).not.toBeNull();

@@ -7,22 +7,21 @@ import { useChat } from '../useChat';
 import { useAuthStore } from '@/lib/auth';
 import { mockSSEResponse, sseLine } from '@/test-utils/sse-mock';
 
-// Phase 18 / TITLE-06 / D-10 — useChat invalidates ['conversations'] EXACTLY
-// ONCE on chat SSE 'done'. PITFALLS §13: title arrival is OUT-OF-BAND from
-// the chat stream — never muxed into the chat SSE event types.
+// useChat invalidates ['conversations'] EXACTLY ONCE on chat SSE 'done'.
+// Title arrival is OUT-OF-BAND from the chat stream — never muxed into
+// the chat SSE event types.
 //
-// W-05 enforcement: the test exercises the hook through the SAME SSE
-// consumption path production uses (fetch with a mocked streaming Response
-// body — the hook does NOT use the global EventSource constructor). NO
-// test-only export from useChat.ts (W-05 forbids the test-only escape
-// hatch named in the plan). The fetch stream mock is the canonical pattern
-// from `test-utils/sse-mock.ts`.
+// The test exercises the hook through the SAME SSE consumption path
+// production uses (fetch with a mocked streaming Response body — the hook
+// does NOT use the global EventSource constructor). NO test-only export
+// from useChat.ts (the test-only escape hatch is forbidden). The fetch
+// stream mock is the canonical pattern from `test-utils/sse-mock.ts`.
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-describe("useChat — D-10 invalidation on SSE 'done' (W-05 fetch-stream mock)", () => {
+describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({

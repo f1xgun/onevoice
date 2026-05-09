@@ -15,7 +15,7 @@ import (
 
 // fakeRouter implements the package-private chatCaller interface so we can
 // drive the titler without spinning up a real *llm.Router. It records the
-// last ChatRequest so tests can assert on the prompt body (D-14 pre-redact
+// last ChatRequest so tests can assert on the prompt body (pre-redact
 // proof) and returns either the canned content or the canned error.
 type fakeRouter struct {
 	mu            sync.Mutex
@@ -36,8 +36,8 @@ func (f *fakeRouter) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResp
 }
 
 // fakeConvRepo embeds domain.ConversationRepository as a NIL interface
-// (W-04 resolution: nil-embedded-interface is the chosen strategy over
-// implementing every method as a stub — fewer LOC, louder failure mode).
+// (nil-embedded-interface is the chosen strategy over implementing every
+// method as a stub — fewer LOC, louder failure mode).
 //
 // Calling any method other than UpdateTitleIfPending nil-panics, which is
 // intentional: the Titler is not permitted to call any other repo method,
@@ -59,8 +59,8 @@ func (r *fakeConvRepo) UpdateTitleIfPending(_ context.Context, id, title string)
 
 // captureLogs swaps slog.Default for a TextHandler-backed *bytes.Buffer
 // during the test, then restores the original logger via t.Cleanup. Returns
-// the buffer so tests can negative-assert on its bytes (Landmine 6 / Pitfall
-// 8 — log-shape regression test).
+// the buffer so tests can negative-assert on its bytes (log-shape
+// regression test).
 func captureLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	buf := &bytes.Buffer{}
@@ -70,7 +70,7 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	return buf
 }
 
-// TestNewTitler_NilGuards (B-03): all three constructor inputs must panic
+// TestNewTitler_NilGuards: all three constructor inputs must panic
 // when nil/empty. Table-driven with recover() so a missing panic fails the
 // case loudly.
 func TestNewTitler_NilGuards(t *testing.T) {
@@ -157,7 +157,7 @@ func TestGenerateAndSave_PIIReject_Terminal(t *testing.T) {
 
 	// Generated title contains an email — post-hoc PII gate must reject it
 	// and the terminal "Untitled chat <day> <month>" fallback must be
-	// written under the SAME atomic guard (D-05 + D-13).
+	// written under the SAME atomic guard.
 	router := &fakeRouter{returnContent: "Связь user@example.com и +7 495 1234567"}
 	repo := &fakeConvRepo{}
 	tt := NewTitler(router, repo, "test-model")
@@ -216,10 +216,9 @@ func TestGenerateAndSave_PersistError(t *testing.T) {
 	}
 }
 
-// TestGenerateAndSave_LogShape (Landmine 6 / Pitfall 8 / TITLE-07):
-// negative regression test — capture log output and assert that NONE of the
-// banned PII substrings AND the original chat content AND the generated
-// title appear in any log line.
+// TestGenerateAndSave_LogShape: negative regression test — capture log
+// output and assert that NONE of the banned PII substrings AND the
+// original chat content AND the generated title appear in any log line.
 func TestGenerateAndSave_LogShape(t *testing.T) {
 	buf := captureLogs(t)
 
@@ -241,11 +240,11 @@ func TestGenerateAndSave_LogShape(t *testing.T) {
 		"+7 (495) 123-45-67",
 		piiUserMsg,
 		piiAssistant,
-		generatedTitle, // generated title must also not appear in logs (TITLE-07)
+		generatedTitle, // generated title must also not appear in logs
 	}
 	for _, s := range bannedSubstrings {
 		if strings.Contains(captured, s) {
-			t.Fatalf("Log shape violation (TITLE-07 / Pitfall 8): captured logs contain banned substring %q. Logs: %s", s, captured)
+			t.Fatalf("Log shape violation: captured logs contain banned substring %q. Logs: %s", s, captured)
 		}
 	}
 	// Positive assertion: structured metadata fields are present.
@@ -256,7 +255,7 @@ func TestGenerateAndSave_LogShape(t *testing.T) {
 	}
 }
 
-// TestGenerateAndSave_PreRedact (D-14): the user message reaching the cheap
+// TestGenerateAndSave_PreRedact: the user message reaching the cheap
 // LLM must be redacted; the raw email substring must not appear, and the
 // "[Скрыто]" placeholder must be present.
 func TestGenerateAndSave_PreRedact(t *testing.T) {

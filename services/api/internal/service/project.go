@@ -9,13 +9,13 @@ import (
 )
 
 // CreateProjectInput is the validated payload for Create / Update. The same
-// shape is used for both operations (per 15-CONTEXT D-02 — same form).
+// shape is used for both operations (same form).
 //
-// Phase 16 (POLICY-06): ApprovalOverrides is the per-project tool-floor
+// ApprovalOverrides is the per-project tool-floor
 // override map. Keys are tool names; values are "auto" or "manual".
 // A key whose value is "inherit" at the request level MUST be stripped
 // before reaching the repo — inherit is encoded as KEY ABSENCE in the
-// persisted JSONB (Overview invariant #8). The handler owns this
+// persisted JSONB. The handler owns this
 // transformation before passing the map down.
 type CreateProjectInput struct {
 	Name              string
@@ -32,8 +32,8 @@ type CreateProjectInput struct {
 type UpdateProjectInput = CreateProjectInput
 
 // ProjectService wraps a single domain.ProjectRepository interface value
-// (HardDeleteCascade is part of the interface per Plan 15-01). No type
-// assertions, no anonymous widened interface — this is the Plan 15-03 wiring
+// (HardDeleteCascade is part of the interface). No type
+// assertions, no anonymous widened interface — this is the wiring
 // invariant.
 type ProjectService struct {
 	repo domain.ProjectRepository
@@ -49,7 +49,7 @@ func NewProjectService(repo domain.ProjectRepository) *ProjectService {
 //   - name required
 //   - system_prompt length cap (4000 chars, enforced in 3 places total)
 //   - whitelist_mode is one of the 4 known enum values
-//   - when mode=explicit, allowed_tools must not be empty (D-17 anti-footgun)
+//   - when mode=explicit, allowed_tools must not be empty (anti-footgun)
 func (s *ProjectService) validate(input CreateProjectInput) error {
 	if input.Name == "" {
 		return domain.ErrProjectNameRequired
@@ -147,8 +147,7 @@ func (s *ProjectService) DeleteCascade(ctx context.Context, businessID, id uuid.
 }
 
 // CountConversations returns how many Mongo conversations are currently
-// assigned to the project. Used by the frontend delete-confirmation dialog
-// (15-CONTEXT D-06).
+// assigned to the project. Used by the frontend delete-confirmation dialog.
 func (s *ProjectService) CountConversations(ctx context.Context, businessID, id uuid.UUID) (int, error) {
 	p, err := s.repo.GetByID(ctx, id)
 	if err != nil {

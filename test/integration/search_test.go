@@ -17,7 +17,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Phase 19 / Plan 19-03 — search backend integration tests.
+// Search backend integration tests.
 //
 // Pattern source: test/integration/authorization_test.go lines 13-194
 // (canonical two-user pattern: setupTestUser + setupTestBusiness +
@@ -29,7 +29,7 @@ import (
 // the local dev environment) — preserves CI behavior on environments
 // without TEST_MONGO_URL.
 //
-// THREAT_MODEL: T-19-CROSS-TENANT (HIGH) is the load-bearing test below.
+// THREAT_MODEL: cross-tenant (HIGH) is the load-bearing test below.
 // User A's GET /search?q=инвойс MUST return ONLY User A's conversation,
 // even when User B's conversation contains the same Russian-stemmed term.
 
@@ -96,7 +96,7 @@ func seedConvWithMessage(t *testing.T, userID, businessID, projectID, title, msg
 	return convID
 }
 
-// ensureSearchIndexes creates the Phase 19 text indexes idempotently
+// ensureSearchIndexes creates the text indexes idempotently
 // after cleanupDatabase drops the conversations + messages collections.
 // Mirrors services/api/internal/repository/search_indexes.go EnsureSearchIndexes
 // (mongo-driver v2 there; mongo-driver v1 here — same IndexModel shape).
@@ -158,7 +158,7 @@ func doSearch(t *testing.T, accessToken, q, projectID string) (int, []map[string
 	return resp.StatusCode, rows, resp.Header
 }
 
-// TestSearchCrossTenant — BLOCKING acceptance for T-19-CROSS-TENANT.
+// TestSearchCrossTenant — BLOCKING acceptance for cross-tenant isolation.
 //
 // Two users each create a conversation containing the literal Russian
 // term «инвойс». User A's GET /search?q=инвойс MUST return ONLY User A's
@@ -215,7 +215,7 @@ func TestSearchCrossTenant(t *testing.T) {
 	})
 }
 
-// TestSearchEmptyQueryReturns400 — q < 2 chars → 400 (D-13).
+// TestSearchEmptyQueryReturns400 — q < 2 chars → 400.
 func TestSearchEmptyQueryReturns400(t *testing.T) {
 	if mongoDB == nil {
 		t.Skip("TEST_MONGO_URL not set")
@@ -291,7 +291,7 @@ func TestSearchAggregatedShape(t *testing.T) {
 }
 
 // TestSearchProjectScope — ?project_id=… filters out conversations in
-// other projects (SEARCH-05).
+// other projects.
 func TestSearchProjectScope(t *testing.T) {
 	if mongoDB == nil {
 		t.Skip("TEST_MONGO_URL not set")

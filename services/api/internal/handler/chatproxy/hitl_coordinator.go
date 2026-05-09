@@ -17,7 +17,7 @@ import (
 
 // GateAction enumerates the four outcomes of HITLCoordinator.GateOnRequest.
 // The tri-case implicit-resume + explicit-resume contract is locked in
-// 16-CONTEXT.md (D-04) — the four constants must NOT collapse to two.
+// CONTEXT.md — the four constants must NOT collapse to two.
 type GateAction int
 
 const (
@@ -28,16 +28,16 @@ const (
 	// rejoin (active msg + resolving batch) → entry handler calls
 	// StreamResume.
 	GateActionRejoinResume
-	// GateActionReemitApproval — D-04 case (c): pending batch but UI lost
+	// GateActionReemitApproval — pending batch but UI lost
 	// the approval card → entry handler calls ReemitApprovalEvent (no
 	// orchestrator roundtrip).
 	GateActionReemitApproval
-	// GateActionInlineError — D-04 case (d): orphan in_progress message
+	// GateActionInlineError — orphan in_progress message
 	// with no active batch → entry handler calls SSEInlineError.
 	GateActionInlineError
 )
 
-// HITLCoordinator owns the D-04 stream-open gate, the resume SSE proxy, and
+// HITLCoordinator owns the stream-open gate, the resume SSE proxy, and
 // the synthetic SSE writers (reemit / inline-error). Mirrors the chat_proxy.go
 // pause/resume seam verbatim — only the receiver type changes.
 type HITLCoordinator struct {
@@ -96,7 +96,7 @@ func (c *HITLCoordinator) GateOnRequest(ctx context.Context, conversationID, hea
 	}
 
 	// Implicit-resume branch: no header, but an active message exists. Look
-	// up the conversation's active batches and apply the D-04 tri-case.
+	// up the conversation's active batches and apply the tri-case.
 	if activeMsg != nil && headerBatchID == "" {
 		batches, berr := c.pending.ListPendingByConversation(ctx, conversationID)
 		if berr != nil {
@@ -119,16 +119,16 @@ func (c *HITLCoordinator) GateOnRequest(ctx context.Context, conversationID, hea
 
 		switch {
 		case resolving != nil:
-			// D-04 case (b): orchestrator is mid-dispatch; rejoin keyed on
+			// orchestrator is mid-dispatch; rejoin keyed on
 			// this batch.ID; reuse activeMsg.ID so tool_result events extend
-			// the same Message (D-17).
+			// the same Message.
 			return GateActionRejoinResume, activeMsg, resolving, resolving.ID, nil
 		case pending != nil:
-			// D-04 case (c): approval card dropped off the client but the
+			// approval card dropped off the client but the
 			// batch is still pending → re-emit and close.
 			return GateActionReemitApproval, activeMsg, pending, "", nil
 		default:
-			// D-04 case (d): orphan in_progress Message with no active batch.
+			// orphan in_progress Message with no active batch.
 			return GateActionInlineError, activeMsg, nil, "", nil
 		}
 	}
@@ -141,7 +141,7 @@ func (c *HITLCoordinator) GateOnRequest(ctx context.Context, conversationID, hea
 }
 
 // ReemitApprovalEvent writes a tool_approval_required SSE event built from
-// the persisted PendingToolCallBatch. Used by the D-04 implicit-resume gate
+// the persisted PendingToolCallBatch. Used by the implicit-resume gate
 // when the client reopens the chat mid-approval (network flap, page reload)
 // and the batch is still in status="pending". No orchestrator roundtrip.
 func (c *HITLCoordinator) ReemitApprovalEvent(w http.ResponseWriter, batch *domain.PendingToolCallBatch) {
@@ -177,7 +177,7 @@ func (c *HITLCoordinator) ReemitApprovalEvent(w http.ResponseWriter, batch *doma
 }
 
 // SSEInlineError writes a single {"type":"error","content":reason} SSE event
-// and closes the stream. Used by the D-04 gate's orphan-in-progress case and
+// and closes the stream. Used by the gate's orphan-in-progress case and
 // by the resume guard when the batch is missing or mis-scoped.
 func (c *HITLCoordinator) SSEInlineError(w http.ResponseWriter, reason string) {
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -197,7 +197,7 @@ func (c *HITLCoordinator) SSEInlineError(w http.ResponseWriter, reason string) {
 }
 
 // StreamResume proxies to the orchestrator's resume endpoint and folds
-// tool_result events into the existing assistant Message (D-17). On done,
+// tool_result events into the existing assistant Message. On done,
 // transitions Message.Status from pending_approval/in_progress to complete.
 func (c *HITLCoordinator) StreamResume(
 	w http.ResponseWriter,
@@ -306,7 +306,7 @@ func (c *HITLCoordinator) StreamResume(
 			// max-iterations cap). The error event is already forwarded
 			// to the client; here we MUST transition the assistant
 			// Message off pending_approval/in_progress, otherwise every
-			// subsequent POST /chat hits the D-04 gate's
+			// subsequent POST /chat hits the gate's
 			// "turn_already_in_progress" branch and the conversation is
 			// permanently stuck.
 			msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()

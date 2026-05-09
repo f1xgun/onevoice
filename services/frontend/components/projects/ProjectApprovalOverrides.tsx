@@ -26,15 +26,15 @@ interface ProjectApprovalOverridesProps {
   onChange: (next: Record<string, ToolApprovalValue>) => void;
 }
 
-// Phase 16 — POLICY-06 frontend. Sits beneath the Phase 15 WhitelistRadio on
+// Sits beneath the WhitelistRadio on
 // /projects/:id. 3-way per-tool radio group:
 //
 //   - «Автоматически»   → value[name] = "auto"
 //   - «Вручную»         → value[name] = "manual"
 //   - «как у бизнеса»   → key DELETED from value (inherit == absence)
 //
-// The literal label «как у бизнеса» is enforced by 16-CONTEXT D-21 and is
-// asserted by the plan's grep acceptance criteria.
+// The literal label «как у бизнеса» is asserted by the plan's grep
+// acceptance criteria.
 
 const SELECTION_INHERIT = 'inherit' as const;
 const SELECTION_AUTO = 'auto' as const;
@@ -69,8 +69,8 @@ function applySelection(
 
 function businessDefaultLabel(value: ToolApprovalValue | undefined): string {
   if (value === 'auto') return 'Автоматически';
-  // Backend default for an unset key is effectively "manual" (POLICY-05
-  // — no explicit entry ⇒ manual-floor tools require approval).
+  // Backend default for an unset key is effectively "manual"
+  // (no explicit entry ⇒ manual-floor tools require approval).
   return 'Вручную';
 }
 
@@ -144,7 +144,7 @@ export function ProjectApprovalOverrides({
 }: ProjectApprovalOverridesProps) {
   const tOverMain = useTranslations('projects.approvalOverrides');
   // Only manual-floor tools get a 3-way toggle. Forbidden tools can never
-  // be enabled (POLICY-01); auto-floor tools bypass HITL — neither is
+  // be enabled; auto-floor tools bypass HITL — neither is
   // meaningful here.
   const manualTools = tools.filter((t) => t.floor === 'manual');
   const buckets = groupByPlatform(manualTools);

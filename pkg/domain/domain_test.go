@@ -240,10 +240,10 @@ func TestMessage_JSON_OmitsEmptyOptionalFields(t *testing.T) {
 
 // --- Post with platform results ---
 
-// --- Phase 16 additions: Message.Status + Business.ToolApprovals() ---
+// --- Message.Status + Business.ToolApprovals() ---
 
 // TestMessage_ZeroStatus_IsComplete documents the zero-value semantics of
-// Message.Status: an empty string MUST mean "complete" so that pre-Phase-16
+// Message.Status: an empty string MUST mean "complete" so that legacy
 // messages (persisted before the field existed) behave exactly as they did
 // before — no backfill write is required. Any future reader of Message.Status
 // must honor this invariant.

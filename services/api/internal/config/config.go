@@ -49,7 +49,7 @@ const (
 // SelfHostedEndpoint holds configuration for one self-hosted LLM inference
 // endpoint. Lifted verbatim from
 // services/orchestrator/internal/config/config.go so the API-side titler
-// reuses the same wiring shape (Phase 18 — Auto-titler).
+// reuses the same wiring shape.
 type SelfHostedEndpoint struct {
 	URL    string
 	Model  string
@@ -128,8 +128,7 @@ type Config struct {
 	CORSAllowedOrigins []string
 
 	// HTTP server / orchestrator timeouts. All optional; defaults preserve
-	// the values that were hardcoded in services/api/cmd/main.go before
-	// Wave 2.4. Knob purpose:
+	// the values that were hardcoded in services/api/cmd/main.go. Knob purpose:
 	//   HTTPReadTimeout       — http.Server.ReadTimeout for the public API.
 	//   HTTPReadHeaderTimeout — http.Server.ReadHeaderTimeout for the internal mTLS server.
 	//   HTTPIdleTimeout       — http.Server.IdleTimeout for keepalive sockets.
@@ -152,18 +151,18 @@ type Config struct {
 	// Shutdown
 	ShutdownTimeout time.Duration
 
-	// Phase 18 — Auto-titler. TitlerModel falls back to LLMModel when unset;
-	// when both are unset the titler is disabled (graceful no-op per
-	// Pitfall 1 / Assumption A6 — API must boot cleanly without any LLM env).
+	// Auto-titler. TitlerModel falls back to LLMModel when unset;
+	// when both are unset the titler is disabled (graceful no-op —
+	// API must boot cleanly without any LLM env).
 	LLMModel    string
 	LLMTier     string
 	TitlerModel string
 
-	// Phase 18 — LLM provider API keys. Lifted verbatim from
-	// services/orchestrator/internal/config/config.go:31-44 so the API-side
+	// LLM provider API keys. Lifted verbatim from
+	// services/orchestrator/internal/config/config.go so the API-side
 	// titler Router constructs over the same provider set as the orchestrator.
 	// At least one must be set when TitlerModel != "" — otherwise the titler
-	// is left disabled (graceful no-op) and Plan 05's trigger gate becomes a
+	// is left disabled (graceful no-op) and the trigger gate becomes a
 	// no-op. The API service itself does NOT fail-fast on missing keys
 	// (different from orchestrator, which requires LLM_MODEL).
 	OpenRouterAPIKey    string
@@ -238,11 +237,10 @@ func Load() (*Config, error) {
 		ShutdownTimeout: shutdownTimeout,
 	}
 
-	// Phase 18 — Auto-titler env loading. Mirrors
+	// Auto-titler env loading. Mirrors
 	// services/orchestrator/internal/config/config.go but does NOT fail-fast
-	// on missing LLMModel — Pitfall 1 / Assumption A6 mandates graceful
-	// disable so the API service boots in dev environments with no LLM env
-	// configured at all.
+	// on missing LLMModel — graceful disable mandated so the API service
+	// boots in dev environments with no LLM env configured at all.
 	cfg.LLMModel = os.Getenv("LLM_MODEL")
 	cfg.LLMTier = os.Getenv("LLM_TIER")
 	if cfg.LLMTier == "" {
@@ -250,7 +248,7 @@ func Load() (*Config, error) {
 	}
 	cfg.TitlerModel = os.Getenv("TITLER_MODEL")
 	if cfg.TitlerModel == "" {
-		cfg.TitlerModel = cfg.LLMModel // graceful fallback per D-discretion
+		cfg.TitlerModel = cfg.LLMModel // graceful fallback
 	}
 	cfg.OpenRouterAPIKey = os.Getenv("OPENROUTER_API_KEY")
 	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
@@ -328,8 +326,8 @@ func getEnvSlice(key string, defaultValue []string) []string {
 // Entries without MODEL are skipped.
 //
 // Lifted verbatim from
-// services/orchestrator/internal/config/config.go:140-159 so byte-identical
-// semantics apply on the API side (Phase 18 — Landmine 3 mitigation).
+// services/orchestrator/internal/config/config.go so byte-identical
+// semantics apply on the API side.
 func parseIndexedEndpoints() []SelfHostedEndpoint {
 	var result []SelfHostedEndpoint
 	for i := 0; ; i++ {

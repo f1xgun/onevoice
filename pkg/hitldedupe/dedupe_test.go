@@ -26,14 +26,14 @@ func newTestClient(t *testing.T) (*hitldedupe.DedupeClient, *miniredis.Miniredis
 }
 
 func TestKeyFor_ExactFormat(t *testing.T) {
-	// Canonical key format per 16-CONTEXT.md D-25. ANY drift here silently
+	// Canonical key format. ANY drift here silently
 	// breaks cross-agent dedupe, so this is a guardrail grep-friendly test.
 	assert.Equal(t, "hitl:approval:biz-1:appr-a", hitldedupe.KeyFor("biz-1", "appr-a"))
 	assert.Equal(t, "hitl:approval:b:a", hitldedupe.KeyFor("b", "a"))
 }
 
 func TestClaim_EmptyApprovalID_ReturnsSkip(t *testing.T) {
-	// Anti-footgun #2 (per 16-OVERVIEW.md): empty approvalID must SKIP SetNX
+	// Anti-footgun #2: empty approvalID must SKIP SetNX
 	// entirely — NOT SetNX with an empty-string key. len(mr.Keys()) MUST
 	// stay 0 across the Claim call.
 	client, mr := newTestClient(t)

@@ -13,8 +13,7 @@ import (
 //
 // The struct mirrors the per-agent TokenInfo definitions in
 // services/agent-{telegram,vk,yandex-business,google-business}/internal/agent/
-// handler.go — phase 19-RESEARCH §5a ("tokenAdapter — duplicated 4×")
-// documents the audit. After plan 19-07 migrates the agents, those per-agent
+// handler.go. After the agent migration, those per-agent
 // structs become aliases (or are deleted in favor of this one).
 type TokenInfo struct {
 	AccessToken string
@@ -61,7 +60,7 @@ func NewTokenResolver(c *tokenclient.Client) TokenResolver {
 // ExternalID. Any other fields on tokenclient.TokenResponse (Metadata,
 // ExpiresAt, UserTokenExpires, IntegrationID) are intentionally NOT exposed
 // because no agent currently consumes them — adding them would violate the
-// "no speculative surface" rule (phase 19 SPEC risk #5).
+// "no speculative surface" rule.
 func (r *tokenResolverImpl) GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error) {
 	resp, err := r.client.GetToken(ctx, businessID, platform, externalID)
 	if err != nil {

@@ -14,8 +14,8 @@ import (
 )
 
 // ResumeRequest carries the fresh state passed to Resume at approval-resolution
-// time. The "fresh" qualifier is load-bearing for HITL-06 (TOCTOU): the caller
-// (Plan 16-07 resolve handler + Plan 16-06 chat_proxy) re-fetches
+// time. The "fresh" qualifier is load-bearing for TOCTOU: the caller
+// (resolve handler + chat_proxy) re-fetches
 // business.settings.tool_approvals and project.approval_overrides from
 // Postgres at the moment of resume — they may have changed since the batch
 // was persisted. dispatchApprovedCalls re-runs hitl.Resolve against THESE
@@ -39,19 +39,16 @@ type ResumeRequest struct {
 //  1. Loads the batch via pendingRepo.GetByBatchID; emits EventError on
 //     missing or expired batches without advancing state.
 //  2. Reconstructs RunState from the snapshot (batch.ModelMessages) — this
-//     is what makes pause survive process restarts (HITL-03).
-//  3. Dispatches each approved call in parallel (D-14 — parallel fan-out
-//     overrides Pitfall 6 since Redis dedupe absorbs retries) with TOCTOU
-//     re-check via hitl.Resolve against the FRESH approval maps in the
-//     ResumeRequest (HITL-06). Forbidden-after-pause → synthetic
+//     is what makes pause survive process restarts.
+//  3. Dispatches each approved call in parallel (Redis dedupe absorbs
+//     retries) with TOCTOU re-check via hitl.Resolve against the FRESH
+//     approval maps in the ResumeRequest. Forbidden-after-pause → synthetic
 //     policy_revoked rejection, no dispatch.
-//  4. Skips calls with Dispatched==true (orchestrator crash-recovery —
-//     Overview invariant #3).
+//  4. Skips calls with Dispatched==true (orchestrator crash-recovery).
 //  5. Reject verdicts → synthetic rejection message + tool_rejected event,
-//     no NATS dispatch (HITL-09).
+//     no NATS dispatch.
 //  6. After all parallel dispatches complete, MarkResolved is called and
-//     stepRun re-enters the agent loop at Iter = batch.IterationIdx + 1
-//     (HITL-12).
+//     stepRun re-enters the agent loop at Iter = batch.IterationIdx + 1.
 func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Event, error) {
 	ch := make(chan Event, 32)
 
@@ -122,7 +119,7 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 
 	// 2. Dispatch approved calls in parallel with TOCTOU re-check. Pass
 	//    the ResumeRequest so that hitl.Resolve inside the fan-out uses
-	//    the FRESH approval maps (HITL-06), not the ones embedded in
+	//    the FRESH approval maps, not the ones embedded in
 	//    the snapshot which may be stale.
 	o.dispatchApprovedCalls(ctx, batch, req, state, out)
 
@@ -160,7 +157,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 	for i := range batch.Calls {
 		call := batch.Calls[i]
 
-		// Reject verdict → synthetic rejection, no dispatch (HITL-09).
+		// Reject verdict → synthetic rejection, no dispatch.
 		if call.Verdict == "reject" {
 			reason := call.RejectReason
 			if reason == "" {
@@ -183,7 +180,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			continue
 		}
 
-		// TOCTOU re-check (HITL-06) — re-run hitl.Resolve against the
+		// TOCTOU re-check — re-run hitl.Resolve against the
 		// FRESH approval maps carried in the ResumeRequest. If the
 		// effective floor flipped to Forbidden after pause, synthesize
 		// a policy_revoked rejection and skip dispatch.
@@ -208,13 +205,13 @@ func (o *Orchestrator) dispatchApprovedCalls(
 		}
 
 		// Crash-recovery: skip calls that were already dispatched in a
-		// prior attempt (Overview invariant #3 — belt-and-suspenders
-		// with the agent's Redis SetNX dedupe).
+		// prior attempt (belt-and-suspenders with the agent's Redis
+		// SetNX dedupe).
 		if call.Dispatched {
 			continue
 		}
 
-		// Parallel dispatch (D-14)
+		// Parallel dispatch
 		wg.Add(1)
 		go func(c domain.PendingCall) {
 			defer wg.Done()
@@ -223,7 +220,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			if c.Verdict == "edit" && c.EditedArgs != nil {
 				// Merge: EditedArgs values override originals. The
 				// EditableFields whitelist was already enforced by
-				// Plan 16-07's resolve handler, so any key present
+				// the resolve handler, so any key present
 				// in EditedArgs is safe to overwrite.
 				merged := make(map[string]interface{}, len(args)+len(c.EditedArgs))
 				for k, v := range args {

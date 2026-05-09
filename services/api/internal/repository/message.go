@@ -68,9 +68,9 @@ func (r *messageRepository) CountByConversationID(ctx context.Context, conversat
 	return count, nil
 }
 
-// Update overwrites the stored message by _id. Used by the Phase 16 HITL
-// resume path (Plan 16-06) so tool results can be appended to the SAME
-// assistant Message that carried the pause-time ToolCalls (invariant D-17:
+// Update overwrites the stored message by _id. Used by the HITL
+// resume path so tool results can be appended to the SAME
+// assistant Message that carried the pause-time ToolCalls (invariant:
 // one assistant Message per LLM turn, even across a pause). MatchedCount == 0
 // means no such _id exists → ErrMessageNotFound so callers can distinguish
 // a stale Message ID from a transient Mongo error.
@@ -91,7 +91,7 @@ func (r *messageRepository) Update(ctx context.Context, msg *domain.Message) err
 // FindByConversationActive returns the most recent assistant Message in the
 // conversation whose Status is in {pending_approval, in_progress}, or
 // (nil, ErrMessageNotFound) if no such Message exists. Used by chat_proxy.go's
-// D-04 stream-open gate (Plan 16-06) to detect in-flight turns before creating
+// stream-open gate to detect in-flight turns before creating
 // a new assistant Message when a client reopens POST /chat/{id}.
 func (r *messageRepository) FindByConversationActive(ctx context.Context, conversationID string) (*domain.Message, error) {
 	filter := bson.M{

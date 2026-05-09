@@ -12,8 +12,8 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-// TestSearchByConversationIDs_GroupsByConversation — Plan 19-03 / Task 2 /
-// SEARCH-03. Seeds 3 messages across 2 conversations all containing the
+// TestSearchByConversationIDs_GroupsByConversation. Seeds 3 messages
+// across 2 conversations all containing the
 // Russian word «инвойс» (invoice), then asserts the aggregation returns
 // exactly 2 rows (one per conversation) with match_count == messages-per-conv.
 func TestSearchByConversationIDs_GroupsByConversation(t *testing.T) {
@@ -167,7 +167,7 @@ func TestSearchByConversationIDs_WordPrefixMorphology(t *testing.T) {
 
 // TestSearchByConversationIDs_AllowlistScopesResults — even if a message
 // containing the term exists in conv X, if X is NOT in the allowlist the
-// row MUST NOT appear. Cross-tenant defense T-19-CROSS-TENANT.
+// row MUST NOT appear. Cross-tenant defense.
 func TestSearchByConversationIDs_AllowlistScopesResults(t *testing.T) {
 	db := setupMongoTestDB(t)
 	ctx := context.Background()

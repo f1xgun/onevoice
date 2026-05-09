@@ -137,7 +137,7 @@ func (r *businessRepository) GetByUserID(ctx context.Context, userID uuid.UUID) 
 // update only affects settings races which the frontend serializes via
 // React Query's mutate() pattern.
 //
-// Phase 16 (POLICY-05): feeds the PUT /api/v1/business/{id}/tool-approvals
+// Feeds the PUT /api/v1/business/{id}/tool-approvals
 // endpoint.
 func (r *businessRepository) UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
 	// Load current business so we keep unrelated settings keys intact.

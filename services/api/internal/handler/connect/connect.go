@@ -1,10 +1,10 @@
 // Package connect holds the paste-flow integration handlers — Telegram
 // (Login Widget verify + bot-token connect) and VK community access-token
 // paste. The sibling handler/oauth package owns true OAuth code-flow
-// integrations (VK user OAuth, Yandex.Business, Google Business). The
-// split mirrors Phase 19 D-04: a paste-flow connect always binds an
-// existing platform-side credential, while a code-flow integration
-// goes through provider-side state, code-exchange, and refresh tokens.
+// integrations (VK user OAuth, Yandex.Business, Google Business). A
+// paste-flow connect always binds an existing platform-side credential,
+// while a code-flow integration goes through provider-side state,
+// code-exchange, and refresh tokens.
 //
 // Both packages keep the public REST routes registered in
 // services/api/internal/router/router.go; only the Go receiver type
@@ -47,13 +47,13 @@ type BusinessService interface {
 }
 
 // ConnectConfig holds the credentials and overrides paste-flow handlers
-// need. Strict subset of OAuthConfig per Phase 19 D-04 / RESEARCH §16 Q3 —
-// keeping the field set narrow makes the dependency surface explicit and
-// stops paste-flow tests from accidentally exercising OAuth-only fields.
+// need. Strict subset of OAuthConfig — keeping the field set narrow
+// makes the dependency surface explicit and stops paste-flow tests from
+// accidentally exercising OAuth-only fields.
 //
 // Note: a FrontendURL field used to live here as a mirror of the legacy
 // OAuthConfig.FrontendURL but was never read — paste-flow handlers do not
-// emit absolute redirects. Dropped in 19-LOW-02 cleanup.
+// emit absolute redirects. Dropped in cleanup.
 type ConnectConfig struct {
 	TelegramBotToken string
 	VKServiceKey     string

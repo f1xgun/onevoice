@@ -255,8 +255,8 @@ func TestMessageRepository_CountByConversationID(t *testing.T) {
 	})
 }
 
-// TestFindByConversationActive_ReturnsLatestMatching documents the Phase 16
-// HITL invariant (Plan 16-06 D-04 stream-open gate): when a conversation has
+// TestFindByConversationActive_ReturnsLatestMatching documents the
+// HITL invariant (stream-open gate): when a conversation has
 // multiple active (pending_approval / in_progress) assistant messages, the
 // repo returns the most recent one (sorted by created_at DESC).
 func TestFindByConversationActive_ReturnsLatestMatching(t *testing.T) {
@@ -305,7 +305,7 @@ func TestFindByConversationActive_ReturnsLatestMatching(t *testing.T) {
 
 // TestFindByConversationActive_NoMatch_ReturnsErrNotFound documents that when
 // no message matches (either the conversation is empty or all messages are
-// already complete), ErrMessageNotFound is returned so chat_proxy's D-04
+// already complete), ErrMessageNotFound is returned so chat_proxy's
 // gate can fall through to the normal new-turn flow.
 func TestFindByConversationActive_NoMatch_ReturnsErrNotFound(t *testing.T) {
 	db := setupMongoTestDB(t)
@@ -341,8 +341,8 @@ func TestFindByConversationActive_NoMatch_ReturnsErrNotFound(t *testing.T) {
 }
 
 // TestMessageRepository_Update verifies that Update replaces the stored
-// Message document by _id (Plan 16-06 resume path appends ToolResults to the
-// SAME Message, D-17). Missing message → ErrMessageNotFound.
+// Message document by _id (resume path appends ToolResults to the
+// SAME Message). Missing message → ErrMessageNotFound.
 func TestMessageRepository_Update(t *testing.T) {
 	db := setupMongoTestDB(t)
 	repo := NewMessageRepository(db)

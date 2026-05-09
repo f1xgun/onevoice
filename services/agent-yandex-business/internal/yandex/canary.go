@@ -14,7 +14,7 @@ import (
 var ErrSessionExpired = errors.New("yandex session expired")
 
 // ContextEvictor evicts a browser context for a given business.
-// Satisfied by BrowserPool (created in plan 04-01).
+// Satisfied by BrowserPool.
 type ContextEvictor interface {
 	EvictContext(businessID string)
 }

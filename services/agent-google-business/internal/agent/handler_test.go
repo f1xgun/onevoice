@@ -232,8 +232,6 @@ func TestClassifyGBPError(t *testing.T) {
 	}
 }
 
-// --- Phase 16 HITL-08: Redis dedupe gate tests ---
-
 // countingGBPClient wraps mockGBPClient with an atomic call counter.
 type countingGBPClient struct {
 	mockGBPClient

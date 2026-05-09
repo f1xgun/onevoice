@@ -12,12 +12,12 @@ import (
 	"github.com/f1xgun/onevoice/services/agent-google-business/internal/gbp"
 )
 
-// TokenInfo aliases agentbase.TokenInfo so existing test mocks compile after
-// plan 19-07 migration. ExternalID is the GBP location resource name
+// TokenInfo aliases agentbase.TokenInfo so existing test mocks compile.
+// ExternalID is the GBP location resource name
 // (e.g. "accounts/X/locations/Y").
 type TokenInfo = agentbase.TokenInfo
 
-// TokenFetcher aliases agentbase.TokenResolver — kept for D-16 test
+// TokenFetcher aliases agentbase.TokenResolver — kept for test
 // compatibility (import-path/wiring-only changes in handler_test.go).
 type TokenFetcher = agentbase.TokenResolver
 

@@ -83,7 +83,7 @@ type RefreshToken struct {
 	CreatedAt time.Time `json:"createdAt" db:"created_at"`
 }
 
-// ToolApprovals extracts the typed tool-approval overrides (POLICY-02) from
+// ToolApprovals extracts the typed tool-approval overrides from
 // the generic Business.Settings map. The storage format inside Settings is:
 //
 //	settings["tool_approvals"] = map[string]interface{}{
@@ -99,7 +99,7 @@ type RefreshToken struct {
 // hitl.Resolve achieves automatically when a key is absent.
 //
 // This accessor is used by the orchestrator at pause time and by the API at
-// resolve time (HITL-06 TOCTOU re-check). Keeping the parsing in exactly one
+// resolve time (TOCTOU re-check). Keeping the parsing in exactly one
 // place prevents divergent interpretation of malformed data.
 func (b Business) ToolApprovals() map[string]ToolFloor {
 	out := make(map[string]ToolFloor)

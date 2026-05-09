@@ -283,8 +283,8 @@ func TestConversationRepository_Delete(t *testing.T) {
 	})
 }
 
-// TestConversationRepository_CreatePersistsPhase15Fields verifies the Phase 15
-// fields plus Phase 19's PinnedAt swap (D-02 — single source of truth) round-trip
+// TestConversationRepository_CreatePersistsPhase15Fields verifies the project
+// fields plus the PinnedAt swap (single source of truth) round-trip
 // through Create → GetByID without loss.
 func TestConversationRepository_CreatePersistsPhase15Fields(t *testing.T) {
 	db := setupMongoTestDB(t)
@@ -301,7 +301,7 @@ func TestConversationRepository_CreatePersistsPhase15Fields(t *testing.T) {
 			ProjectID:     &projID,
 			Title:         "Test",
 			TitleStatus:   domain.TitleStatusAutoPending,
-			PinnedAt:      &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
+			PinnedAt:      &pinnedAt, // replaces legacy `Pinned bool`
 			LastMessageAt: &lastMsg,
 		}
 		err := repo.Create(ctx, conv)
@@ -344,8 +344,8 @@ func TestConversationRepository_CreatePersistsPhase15Fields(t *testing.T) {
 	})
 }
 
-// TestConversationRepository_UpdateProjectAssignment covers Behaviors 3–5 from
-// Plan 15-04 Task 1.
+// TestConversationRepository_UpdateProjectAssignment covers project-assignment
+// behaviors.
 func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 	db := setupMongoTestDB(t)
 	repo := NewConversationRepository(db)
@@ -360,7 +360,7 @@ func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 			ProjectID:   &origProj,
 			Title:       "Immutable Title",
 			TitleStatus: domain.TitleStatusManual,
-			PinnedAt:    &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
+			PinnedAt:    &pinnedAt, // replaces legacy `Pinned bool`
 		}
 		require.NoError(t, repo.Create(ctx, conv))
 		origUpdatedAt := conv.UpdatedAt
@@ -422,7 +422,7 @@ func TestConversationRepository_UpdateProjectAssignment(t *testing.T) {
 // driver so tests can assert behavior across all four representable
 // title_status states, INCLUDING the absent-field case (status == "" sentinel
 // in the table). When status == "" the document is inserted WITHOUT the
-// title_status field at all — this is the "legacy / pre-Phase-18 row" case
+// title_status field at all — this is the "legacy row" case
 // that the $in:[..., nil] filter MUST treat as eligible.
 func insertConvWithStatus(t *testing.T, db *mongo.Database, status string) string {
 	t.Helper()
@@ -445,7 +445,7 @@ func insertConvWithStatus(t *testing.T, db *mongo.Database, status string) strin
 	return id
 }
 
-// TestUpdateTitleIfPending — Phase 18 / TITLE-04 / D-08. Trust-critical:
+// TestUpdateTitleIfPending. Trust-critical:
 // manual renames mid-flight MUST NOT be clobbered by the auto-titler.
 func TestUpdateTitleIfPending(t *testing.T) {
 	db := setupMongoTestDB(t)
@@ -495,7 +495,7 @@ func TestUpdateTitleIfPending(t *testing.T) {
 	})
 }
 
-// TestTransitionToAutoPending — Phase 18 / TITLE-09 / D-07. Used by
+// TestTransitionToAutoPending. Used by
 // /regenerate-title; manual rows MUST refuse the transition.
 func TestTransitionToAutoPending(t *testing.T) {
 	db := setupMongoTestDB(t)
@@ -510,7 +510,7 @@ func TestTransitionToAutoPending(t *testing.T) {
 	}{
 		{"success: status=auto", domain.TitleStatusAuto, true, domain.TitleStatusAutoPending},
 		{"success: status=null/empty (legacy row)", "", true, domain.TitleStatusAutoPending},
-		{"no-op: status=manual (sovereign per D-02)", domain.TitleStatusManual, false, domain.TitleStatusManual},
+		{"no-op: status=manual (sovereign)", domain.TitleStatusManual, false, domain.TitleStatusManual},
 		// auto_pending is now ALSO accepted (idempotent re-pending). The
 		// handler enforces double-click protection via a 30s grace window
 		// on UpdatedAt; the repo accepts the transition deterministically
@@ -545,7 +545,7 @@ func TestTransitionToAutoPending(t *testing.T) {
 	})
 }
 
-// TestUpdate_PersistsTitleStatus — Phase 18 / D-06 / Landmine 7 regression.
+// TestUpdate_PersistsTitleStatus — Landmine 7 regression.
 // Without title_status in the Update $set block, the handler-level flip to
 // "manual" in PUT /conversations/{id} would be silently dropped at the repo
 // layer and an in-flight titler could clobber the user's chosen title. This
@@ -557,7 +557,7 @@ func TestUpdate_PersistsTitleStatus(t *testing.T) {
 
 	id := insertConvWithStatus(t, db, domain.TitleStatusAutoPending)
 
-	// Simulate Plan 05's PUT handler: read, mutate Title + TitleStatus, Update.
+	// Simulate the PUT handler: read, mutate Title + TitleStatus, Update.
 	conv, err := repo.GetByID(ctx, id)
 	require.NoError(t, err)
 	conv.Title = "User-Picked Title"
@@ -571,13 +571,13 @@ func TestUpdate_PersistsTitleStatus(t *testing.T) {
 	assert.Equal(t, "User-Picked Title", got.Title)
 }
 
-// TestEnsureConversationIndexes_Idempotent — Phase 18 / D-08a. Index
+// TestEnsureConversationIndexes_Idempotent. Index
 // creation must be idempotent across boots and the named index must exist
 // after the helper returns.
 //
-// Phase 19 / Plan 19-02 extends the index list with
+// Extends the index list with
 // `conversations_user_biz_proj_pinned_recency` — verified inline below so
-// the same idempotency assertion covers BOTH phases' indexes (the helper
+// the same idempotency assertion covers all indexes (the helper
 // stays a single canonical entry-point).
 func TestEnsureConversationIndexes_Idempotent(t *testing.T) {
 	db := setupMongoTestDB(t)
@@ -594,12 +594,12 @@ func TestEnsureConversationIndexes_Idempotent(t *testing.T) {
 		names[s.Name] = true
 	}
 	assert.True(t, names["conversations_user_biz_title_status"],
-		"Phase 18 named index conversations_user_biz_title_status must exist (untouched)")
+		"named index conversations_user_biz_title_status must exist (untouched)")
 	assert.True(t, names["conversations_user_biz_proj_pinned_recency"],
-		"Phase 19 named index conversations_user_biz_proj_pinned_recency must exist (D-08a is locked — this is a NEW separate index)")
+		"named index conversations_user_biz_proj_pinned_recency must exist (locked — this is a NEW separate index)")
 }
 
-// insertConvForPin inserts a Phase-19-shape conversation document directly
+// insertConvForPin inserts a conversation document directly
 // via the Mongo driver so Pin/Unpin tests can assert atomic conditional
 // updates without going through Create (which would otherwise stamp
 // generated IDs and obscure the (id, business_id, user_id) scope-filter
@@ -621,7 +621,7 @@ func insertConvForPin(t *testing.T, db *mongo.Database, businessID, userID strin
 	return id
 }
 
-// TestPin — Phase 19 / D-02 + Pitfalls §19. Trust-critical: the (id, business_id,
+// TestPin — Pitfalls §19. Trust-critical: the (id, business_id,
 // user_id) scope filter prevents cross-tenant pin manipulation. Mismatched
 // businessID OR userID MUST surface as ErrConversationNotFound (uniform 404
 // at the handler layer — never 403, to avoid leaking existence-vs-ownership).
@@ -673,7 +673,7 @@ func TestPin(t *testing.T) {
 	})
 }
 
-// TestUnpin — Phase 19 / D-02. Symmetric to TestPin; clearing pinned_at
+// TestUnpin. Symmetric to TestPin; clearing pinned_at
 // must (a) set PinnedAt to nil, (b) bump updated_at, (c) be scoped by the
 // same (id, business_id, user_id) filter as Pin.
 func TestUnpin(t *testing.T) {

@@ -17,15 +17,15 @@ type BusinessService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
 	// GetToolApprovals returns the current businesses.settings.tool_approvals
-	// map (POLICY-02). Returns a non-nil empty map when no approvals are
-	// stored — matches Business.ToolApprovals() contract.
+	// map. Returns a non-nil empty map when no approvals are stored —
+	// matches Business.ToolApprovals() contract.
 	GetToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
 	// UpdateToolApprovals replaces the businesses.settings.tool_approvals
 	// map with the given approvals. Validation:
 	//   - Keys must exist in the live orchestrator registry (caller injects
 	//     via ToolsRegistryCache — see handler.UpdateBusinessToolApprovals).
 	//   - Values must be in {Auto, Manual}. Forbidden is NOT a valid user-set
-	//     value (floor is set at registration only — POLICY-01).
+	//     value (floor is set at registration only).
 	// Ownership (actor owns the business) is enforced before the repo write.
 	UpdateToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }

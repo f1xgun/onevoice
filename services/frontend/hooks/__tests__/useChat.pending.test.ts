@@ -11,7 +11,7 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-// Phase 18 / D-10: useChat now consumes useQueryClient() so it can invalidate
+// useChat now consumes useQueryClient() so it can invalidate
 // ['conversations'] on chat SSE 'done'. All renderHook calls now wrap a
 // QueryClientProvider — the React Query cache is unused by these test
 // scenarios (they cover SSE pause / resume / hydration paths) but the hook
@@ -130,7 +130,7 @@ describe('useChat — SSE tool_approval_required arrival', () => {
       await result.current.sendMessage('anything');
     });
 
-    // abort() must not be invoked on the tool_approval_required path (Pitfall 2).
+    // abort() must not be invoked on the tool_approval_required path.
     expect(abortSpy).not.toHaveBeenCalled();
     expect(result.current.pendingApproval).not.toBeNull();
   });

@@ -265,8 +265,8 @@ func TestStepRun_ManualFloorTool_PersistsBatchAndReturnsPaused(t *testing.T) {
 	assert.Equal(t, "manual_tool", pauseEvts[0].Calls[0].ToolName)
 	assert.Equal(t, domain.ToolFloorManual, pauseEvts[0].Calls[0].Floor)
 
-	// Batch was persisted with all identity fields (incl. ProjectID — D-30
-	// threading required by Plan 16-07's TOCTOU re-check).
+	// Batch was persisted with all identity fields (incl. ProjectID
+	// threading required by the TOCTOU re-check).
 	require.Len(t, repo.insertedBatches, 1)
 	b := repo.insertedBatches[0]
 	assert.Equal(t, "conv-1", b.ConversationID)
@@ -446,7 +446,7 @@ func TestStepRun_MixedAutoAndManual_PausesAfterAutoComplete(t *testing.T) {
 
 	// Then manual pause
 	pauses := findEvents(evts, orchestrator.EventToolApprovalRequired)
-	require.Len(t, pauses, 1, "HITL-02: one card per turn for ALL manual calls")
+	require.Len(t, pauses, 1, "one card per turn for ALL manual calls")
 	require.Len(t, pauses[0].Calls, 1)
 	assert.Equal(t, "manual_t", pauses[0].Calls[0].ToolName)
 
@@ -484,8 +484,8 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 		"nil pendingRepo + manual-floor must emit EventError 'HITL not configured'")
 }
 
-// TestBuildPendingBatch_PopulatesFloorAtPauseManual — Plan 17-11 / GAP-04.
-// Every PendingCall persisted at orchestrator pause time must carry
+// TestBuildPendingBatch_PopulatesFloorAtPauseManual verifies that every
+// PendingCall persisted at orchestrator pause time must carry
 // FloorAtPause=ToolFloorManual so the resolve-time TOCTOU re-check can
 // consult the same registry that classified the call at pause (eliminating
 // divergence with the api-side ToolsRegistryCache, which is HTTP-backed and

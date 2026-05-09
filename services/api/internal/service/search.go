@@ -1,6 +1,6 @@
-// Package service — Phase 19 / Plan 19-03 search orchestration.
+// Package service — search orchestration.
 //
-// Searcher is the in-process two-phase query orchestrator (D-12):
+// Searcher is the in-process two-phase query orchestrator:
 //
 //  1. ConversationRepository.SearchTitles — $text on conversations.title
 //     scoped by (user_id, business_id, project_id?). Title hits.
@@ -13,8 +13,7 @@
 //     max(titleScore × 20, contentScore × 10), build snippet + highlight
 //     marks via the snowball-based helpers in snippet.go.
 //
-// Three threats mitigated here (T-19-CROSS-TENANT, T-19-INDEX-503,
-// T-19-LOG-LEAK — see plan threat_model):
+// Three threats mitigated here:
 //
 //   - Cross-tenant: empty businessID/userID → ErrInvalidScope (defense-in-
 //     depth alongside the repository-layer guards). Phase-2's allowlist
@@ -26,7 +25,7 @@
 //     maps the sentinel to HTTP 503 + Retry-After: 5.
 //
 //   - Log-leak: every slog line carries `query_length` only —
-//     never the literal query text (SEARCH-07). Verified by
+//     never the literal query text. Verified by
 //     TestSearcher_LogShape_NoQueryText.
 package service
 
@@ -43,7 +42,7 @@ import (
 // Search ranking weights. Title hits outrank content hits of equal raw score
 // at a 2:1 ratio — see mergeAndRank for the score formula. The numeric ratio
 // must stay in step with the index-side SetWeights() in
-// repository/search_indexes.go (D-07 alignment).
+// repository/search_indexes.go.
 const (
 	titleHitWeight   = 20.0
 	messageHitWeight = 10.0
@@ -51,7 +50,7 @@ const (
 
 // SearchResult is the per-conversation row returned by Searcher.Search.
 // JSON tags drive the GET /api/v1/search response shape consumed by the
-// frontend (Plan 19-04 SidebarSearch component).
+// frontend (SidebarSearch component).
 type SearchResult struct {
 	ConversationID string     `json:"conversationId"`
 	Title          string     `json:"title,omitempty"`
@@ -64,7 +63,7 @@ type SearchResult struct {
 	LastMessageAt  *time.Time `json:"lastMessageAt,omitempty"`
 }
 
-// Searcher orchestrates the two-phase search (D-12). Constructed once
+// Searcher orchestrates the two-phase search. Constructed once
 // at startup; safe for concurrent reads.
 type Searcher struct {
 	convRepo   domain.ConversationRepository
@@ -78,8 +77,8 @@ type Searcher struct {
 //
 // Pattern parallels service.NewTitler in titler.go:80-91. The
 // indexReady flag starts false; cmd/main.go calls MarkIndexesReady
-// AFTER repository.EnsureSearchIndexes returns nil — see RESEARCH §7
-// for the happens-before edge enforced by atomic.Bool.Store.
+// AFTER repository.EnsureSearchIndexes returns nil — happens-before
+// edge enforced by atomic.Bool.Store.
 func NewSearcher(convRepo domain.ConversationRepository, msgRepo domain.MessageRepository) *Searcher {
 	if convRepo == nil {
 		panic("NewSearcher: convRepo cannot be nil")
@@ -113,14 +112,14 @@ func (s *Searcher) IsReady() bool { return s.indexReady.Load() }
 // the readiness gate, and returns up to `limit` ranked SearchResult
 // rows (one per matching conversation).
 //
-// Cross-tenant defense (Pitfalls §19, T-19-CROSS-TENANT mitigation):
+// Cross-tenant defense:
 // empty businessID OR userID → domain.ErrInvalidScope, no repo calls.
 // Repository-layer methods independently enforce the same guard.
 //
-// Readiness gate (T-19-INDEX-503): indexReady.Load() == false →
+// Readiness gate: indexReady.Load() == false →
 // domain.ErrSearchIndexNotReady. Handler maps to 503 + Retry-After: 5.
 //
-// Log shape (SEARCH-07, T-19-LOG-LEAK): the single InfoContext line
+// Log shape: the single InfoContext line
 // carries {user_id, business_id, query_length}. NEVER the literal
 // query text. NO `"query"` slog key anywhere in this file.
 func (s *Searcher) Search(
@@ -129,7 +128,7 @@ func (s *Searcher) Search(
 	projectID *string,
 	limit int,
 ) ([]SearchResult, error) {
-	// Defense-in-depth (Pitfalls §19, T-19-CROSS-TENANT mitigation).
+	// Defense-in-depth.
 	if businessID == "" || userID == "" {
 		return nil, domain.ErrInvalidScope
 	}
@@ -140,7 +139,7 @@ func (s *Searcher) Search(
 		limit = 20
 	}
 
-	// Metadata-only log line — NO query text (SEARCH-07).
+	// Metadata-only log line — NO query text.
 	slog.InfoContext(ctx, "search.query",
 		"user_id", userID,
 		"business_id", businessID,
@@ -166,7 +165,7 @@ func (s *Searcher) Search(
 }
 
 // mergeAndRank combines title + content hits into per-conversation rows.
-// Score formula (D-07): max(titleScore × titleW, contentScore × contentW).
+// Score formula: max(titleScore × titleW, contentScore × contentW).
 // Title matches outrank content matches of equal raw score; strong
 // content matches still surface. Snippet + highlight marks come from
 // the top-scoring content message via BuildSnippet + HighlightRanges.

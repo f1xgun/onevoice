@@ -14,23 +14,22 @@ import type { SearchResult } from '@/types/search';
 import type { Business } from '@/types/business';
 import { SearchResultRow } from './SearchResultRow';
 
-// Phase 19 / Plan 19-04 — sidebar inline search.
+// Sidebar inline search.
 //
 // Contract anchors (locked):
-//   D-11: Cmd/Ctrl-K consumer event name MUST equal 19-01 broadcaster.
+//   Cmd/Ctrl-K consumer event name MUST equal the broadcaster.
 const SIDEBAR_FOCUS_EVENT = 'onevoice:sidebar-search-focus';
-//   SEARCH-04: 250 ms debounce (locked).
+//   250 ms debounce (locked).
 const DEBOUNCE_MS = 250;
-//   D-13: min query length = 2 chars; below that, dropdown does NOT open and
+//   Min query length = 2 chars; below that, dropdown does NOT open and
 //   no fetch fires.
 const MIN_QUERY = 2;
-//   SEARCH-03: result limit per request.
+//   Result limit per request.
 const RESULT_LIMIT = 20;
 
 /**
- * UA-detected placeholder per CONTEXT.md / D-11 — Mac shows ⌘K, others Ctrl-K.
- * SSR fallback is the non-Mac variant (matches the sidebar rail's static label
- * convention).
+ * UA-detected placeholder — Mac shows ⌘K, others Ctrl-K. SSR fallback is the
+ * non-Mac variant (matches the sidebar rail's static label convention).
  */
 function detectPlaceholder(): string {
   if (typeof navigator === 'undefined') return 'Поиск... Ctrl-K';
@@ -63,7 +62,7 @@ export function SidebarSearch() {
   const debounced = useDebouncedValue(query, DEBOUNCE_MS);
   const pathname = usePathname();
 
-  // Route-aware default scope (D-10).
+  // Route-aware default scope.
   // /chat/projects/{id} → default to project; show «По всему бизнесу» checkbox.
   // /chat root          → default to entire business; do NOT render checkbox.
   const projectIdFromRoute = useMemo(() => {
@@ -74,8 +73,8 @@ export function SidebarSearch() {
   const isProjectScoped = projectIdFromRoute != null && !scopeAllBusiness;
   const effectiveProjectId = isProjectScoped ? projectIdFromRoute : null;
 
-  // Reset checkbox on route change (RESEARCH §15 Q3 — D-10 default re-asserts
-  // when navigating between chat root and project pages).
+  // Reset checkbox on route change — default re-asserts when navigating
+  // between chat root and project pages.
   useEffect(() => {
     setScopeAllBusiness(false);
   }, [projectIdFromRoute]);
@@ -104,9 +103,9 @@ export function SidebarSearch() {
         .then((r) => r.data ?? []),
   });
 
-  // Cmd-K consumer (RESEARCH §8). 19-01 dispatches the event from a global
-  // keydown listener at app/(app)/layout.tsx; we attach in this component so
-  // the focus + select happens on the actual <input>.
+  // Cmd-K consumer. The event is dispatched from a global keydown listener
+  // at app/(app)/layout.tsx; we attach in this component so the focus +
+  // select happens on the actual <input>.
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
@@ -121,13 +120,13 @@ export function SidebarSearch() {
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
-      // D-11: Esc clears + closes + blurs in single keystroke.
+      // Esc clears + closes + blurs in single keystroke.
       e.preventDefault();
       setQuery('');
       setIsOpen(false);
       inputRef.current?.blur();
     }
-    // ↑/↓/Enter delegated to the dropdown's roving-tabindex list (Plan 19-05).
+    // ↑/↓/Enter delegated to the dropdown's roving-tabindex list.
   }
 
   const popoverOpen = isOpen && enabled;

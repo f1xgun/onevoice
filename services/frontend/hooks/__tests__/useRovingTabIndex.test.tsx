@@ -3,7 +3,7 @@ import { render, fireEvent } from '@testing-library/react';
 import type { RefObject } from 'react';
 import { useRovingTabIndex } from '../useRovingTabIndex';
 
-// Phase 19 / Plan 19-05 / D-17 — roving-tabindex behavior contract.
+// roving-tabindex behavior contract.
 //
 // Fixture renders N <button data-roving-item> children inside a single
 // container that wires the hook's containerRef + onKeyDown. The hook
@@ -26,7 +26,7 @@ function Fixture({ count }: { count: number }) {
   );
 }
 
-describe('useRovingTabIndex — Phase 19 / Plan 19-05 / D-17', () => {
+describe('useRovingTabIndex', () => {
   it('initial tabindex distribution is [0, -1, -1] for 3 items', () => {
     const { container } = render(<Fixture count={3} />);
     const items = container.querySelectorAll('[data-roving-item]');

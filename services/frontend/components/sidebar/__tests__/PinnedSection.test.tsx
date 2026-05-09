@@ -49,8 +49,8 @@ function makeConv(
   };
 }
 
-describe('PinnedSection — Phase 19 / D-04 + D-05', () => {
-  it('returns null when conversations is empty (D-04 hidden when empty)', () => {
+describe('PinnedSection', () => {
+  it('returns null when conversations is empty (hidden when empty)', () => {
     const { container } = render(
       <Wrapper>
         <PinnedSection conversations={[]} projectsById={{}} />
@@ -73,7 +73,7 @@ describe('PinnedSection — Phase 19 / D-04 + D-05', () => {
     expect(screen.getByText('· 1')).toBeInTheDocument();
   });
 
-  it('renders mini ProjectChip for chats with a real projectId (D-05)', () => {
+  it('renders mini ProjectChip for chats with a real projectId', () => {
     const convs = [makeConv('c-1', 'Chat in project', 'p-1', '2026-04-27T12:00:00Z')];
     const projectsById = { 'p-1': { id: 'p-1', name: 'Отзывы' } };
     render(
@@ -85,7 +85,7 @@ describe('PinnedSection — Phase 19 / D-04 + D-05', () => {
     expect(screen.getByText('Отзывы')).toBeInTheDocument();
   });
 
-  it('renders NO ProjectChip for chats in «Без проекта» (D-05 — projectId == null)', () => {
+  it('renders NO ProjectChip for chats in «Без проекта» (projectId == null)', () => {
     const convs = [makeConv('c-1', 'Unbucketed chat', null, '2026-04-27T12:00:00Z')];
     render(
       <Wrapper>
@@ -98,7 +98,7 @@ describe('PinnedSection — Phase 19 / D-04 + D-05', () => {
     expect(screen.queryByText('Без проекта')).not.toBeInTheDocument();
   });
 
-  it('preserves caller-supplied order (caller pre-sorts by pinnedAt desc per D-03)', () => {
+  it('preserves caller-supplied order (caller pre-sorts by pinnedAt desc)', () => {
     // Caller has already sorted by pinnedAt desc — most-recent first.
     const convs = [
       makeConv('c-newest', 'Newer pinned', null, '2026-04-27T12:00:00Z'),
@@ -109,7 +109,7 @@ describe('PinnedSection — Phase 19 / D-04 + D-05', () => {
         <PinnedSection conversations={convs} projectsById={{}} />
       </Wrapper>
     );
-    // Phase 19 / Plan 19-05 / D-17 — chat-row links carry role="option" (they
+    // chat-row links carry role="option" (they
     // are children of a role="listbox" container, per the ARIA listbox
     // pattern). Query by `option` role to match the live DOM.
     const options = screen.getAllByRole('option');
@@ -117,7 +117,7 @@ describe('PinnedSection — Phase 19 / D-04 + D-05', () => {
     expect(options[1]).toHaveTextContent('Older pinned');
   });
 
-  it('chat-row options have data-roving-item AND role="option" (D-17)', () => {
+  it('chat-row options have data-roving-item AND role="option"', () => {
     const convs = [
       makeConv('c-1', 'First', null, '2026-04-27T12:00:00Z'),
       makeConv('c-2', 'Second', null, '2026-04-26T12:00:00Z'),

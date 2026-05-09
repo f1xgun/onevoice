@@ -40,7 +40,7 @@ const buttonVariants = cva(
         link: 'bg-transparent text-[var(--ov-accent)] underline-offset-4 hover:underline px-0',
         // ─── Backwards-compat aliases (deprecated) ──────────────────
         // `default` → `primary`. `destructive` → `danger`.
-        // Per-page rebuilds in Phase 4 will migrate call-sites.
+        // Per-page rebuilds will migrate call-sites.
         default:
           'bg-[var(--ov-ink)] text-[var(--ov-paper)] border border-[var(--ov-ink)] hover:bg-[oklch(0.28_0.012_60)]',
         destructive:

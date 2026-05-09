@@ -24,7 +24,7 @@ type Config struct {
 	// deadline — the request context still governs overall cancellation.
 	ToolExecTimeout time.Duration
 
-	// MongoDB connection (Phase 16 HITL — Plan 16-02 Task 2). The
+	// MongoDB connection. The
 	// orchestrator writes pending_tool_calls batches at pause time, so it
 	// needs its own Mongo connection (avoids a circular dependency where
 	// orchestrator → API → orchestrator). Defaults match the API service's

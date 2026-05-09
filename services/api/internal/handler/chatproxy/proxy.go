@@ -38,7 +38,7 @@ func NewOrchestrationProxy(orch *orchestratorclient.Client) *OrchestrationProxy 
 const streamBudget = 10 * time.Minute
 
 // sseBufferBytes — bufio.Scanner buffer cap for orchestrator SSE frames.
-// Bumped from the 64KB default in Phase 16 (HITL-13) so large tool results
+// Bumped from the 64KB default so large tool results
 // and ModelMessages snapshots flow through the proxy without truncation.
 const sseBufferBytes = 1 << 20 // 1 MiB
 
@@ -91,7 +91,7 @@ func (p *OrchestrationProxy) StreamChat(parentCtx context.Context, w http.Respon
 		return fmt.Errorf("chatproxy: streaming not supported by ResponseWriter")
 	}
 
-	// 1 MB scanner buffer — bumped from 64KB in Phase 16 (HITL-13) to support
+	// 1 MB scanner buffer — bumped from 64KB to support
 	// large tool results and ModelMessages snapshots that flow through the
 	// proxy without truncation.
 	scanner := bufio.NewScanner(resp.Body)

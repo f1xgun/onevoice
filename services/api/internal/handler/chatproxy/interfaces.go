@@ -4,7 +4,7 @@
 // services/api/internal/handler/chat_proxy.go drives them sequentially —
 // behavior is preserved verbatim, only the shape changes.
 //
-// Phase 19 / D-03 / D-06: this package never starts a fresh LLM turn on its
+// This package never starts a fresh LLM turn on its
 // own; the entry handler owns request lifecycle and HTTP error mapping.
 package chatproxy
 
@@ -33,7 +33,7 @@ type IntegrationService interface {
 
 // ProjectService is the strict subset of *service.ProjectService that
 // RequestEnricher consumes — only the project-by-id lookup. Mirrors the
-// signature already defined in handler/interfaces.go (Phase 15 ProjectService)
+// signature already defined in handler/interfaces.go (ProjectService)
 // but narrowed to a single method so the chatproxy package can stand alone.
 type ProjectService interface {
 	GetByID(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error)
@@ -55,9 +55,9 @@ type ChatProxyRequest struct {
 }
 
 // SSEPayload is the shape of the JSON we decode from orchestrator SSE `data:`
-// frames. Phase 16 extends this with ToolCallID / BatchID / Calls to carry
-// HITL events without synthetic IDs (HITL-13) and with the approval-batch
-// fields (HITL-02) so chat_proxy can persist the paired assistant Message.
+// frames. Extends this with ToolCallID / BatchID / Calls to carry
+// HITL events without synthetic IDs and with the approval-batch
+// fields so chat_proxy can persist the paired assistant Message.
 type SSEPayload struct {
 	Type            string                 `json:"type"`
 	Content         string                 `json:"content"`
@@ -67,7 +67,7 @@ type SSEPayload struct {
 	ToolArgs        map[string]interface{} `json:"tool_args"`
 	ToolResult      interface{}            `json:"result"`
 	ToolError       string                 `json:"error"`
-	// HITL-02: pause-event fields.
+	// pause-event fields.
 	BatchID string                   `json:"batch_id"`
 	Calls   []map[string]interface{} `json:"calls"`
 }
@@ -75,7 +75,7 @@ type SSEPayload struct {
 // ResumeBatchHeader is the HTTP header chat_proxy inspects to detect an
 // explicit HITL resume. When set, chat_proxy rejoins the in-flight turn via
 // the orchestrator's resume endpoint instead of starting a fresh LLM turn.
-// D-04 (implicit resume) covers the no-header case — see ListMessages.
+// Implicit resume covers the no-header case — see ListMessages.
 const ResumeBatchHeader = "X-Onevoice-Resume-Batch-Id"
 
 // PersistContextFn matches the chat_proxy detached-ctx helper. Returns a

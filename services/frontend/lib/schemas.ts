@@ -55,7 +55,7 @@ export const businessSchema = z.object({
 
 export type BusinessInput = z.infer<typeof businessSchema>;
 
-// Phase 16 — HITL tool registry & approvals.
+// HITL tool registry & approvals.
 //
 // GET /api/v1/tools returns [{name, platform, floor, editableFields, description}].
 // GET /api/v1/business/{id}/tool-approvals returns {toolApprovals: {[name]: "auto"|"manual"}}.

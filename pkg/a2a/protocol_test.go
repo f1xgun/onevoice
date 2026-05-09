@@ -73,7 +73,7 @@ func TestSubject(t *testing.T) {
 	assert.Equal(t, "tasks.yandex_business", a2a.Subject(a2a.AgentYandexBusiness))
 }
 
-// --- Phase 16 HITL: ApprovalID field tests ---
+// --- HITL: ApprovalID field tests ---
 
 func TestToolRequest_JSONRoundTrip_WithApprovalID(t *testing.T) {
 	req := a2a.ToolRequest{

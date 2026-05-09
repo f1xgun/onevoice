@@ -6,12 +6,12 @@
 // prefix anchors so legitimate numeric titles like "Заказ 12345" or
 // "Заявка 7654321098" do not match.
 //
-// Phase 18 auto-titler is the primary consumer:
+// The auto-titler is the primary consumer:
 //   - RedactPII pre-scrubs user/assistant messages before they reach the cheap
-//     LLM endpoint (D-14 defense-in-depth).
+//     LLM endpoint (defense-in-depth).
 //   - ContainsPIIClass post-scans the generated title and returns the matched
 //     class name so callers can log a regex_class field WITHOUT exposing the
-//     matched substring (D-16).
+//     matched substring.
 //
-// Phase 19 search-query logging is the planned secondary consumer (D-15).
+// Search-query logging is the planned secondary consumer.
 package security

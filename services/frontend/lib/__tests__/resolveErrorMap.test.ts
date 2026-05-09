@@ -16,15 +16,15 @@ describe('resolveErrorToRussian', () => {
   });
 
   it('maps body.reason === "policy_revoked" on a non-403 status → policy-revoked toast', () => {
-    // Plan 17-09 changes the 403 branch to win over body-shape parsing —
-    // see the dedicated 17-09 block below. policy_revoked still wins on
-    // any other 4xx (e.g. 400) per Phase 16 D-12.
+    // The 403 branch wins over body-shape parsing —
+    // see the dedicated block below. policy_revoked still wins on
+    // any other 4xx (e.g. 400).
     expect(resolveErrorToRussian(400, { reason: 'policy_revoked', detail: 'tool denied' })).toBe(
       'Отказано: инструмент запрещён текущей политикой'
     );
   });
 
-  it('maps 400 with an editable list (D-12) to the generic connection toast', () => {
+  it('maps 400 with an editable list to the generic connection toast', () => {
     expect(
       resolveErrorToRussian(400, {
         error: 'field X not editable for tool Y',
@@ -67,9 +67,9 @@ describe('resolveErrorToRussian', () => {
     expect(RESUME_STREAM_ERROR).toBe('Ошибка продолжения — перезагрузите страницу');
   });
 
-  // ---------- Plan 17-09 / VERIFICATION item 6: dedicated 403 toast ----------
+  // ---------- dedicated 403 toast ----------
   // The resolve handler returns 403 when the requester's business scope does
-  // not match `batch.business_id` (Plan 16-07 auth check). Previously this
+  // not match `batch.business_id` (auth check). Previously this
   // fell through to the generic connection error, misleading operators into
   // retrying a permission failure. The new branch returns scope-accurate
   // copy distinct from 409 (race), policy_revoked (TOCTOU), and the
@@ -92,7 +92,7 @@ describe('resolveErrorToRussian', () => {
   });
 
   it('LL) 403 wins over policy_revoked body precedence (auth/scope > policy)', () => {
-    // Per VERIFICATION.md item 6, a 403 is an auth/scope failure NOT a
+    // A 403 is an auth/scope failure NOT a
     // policy revocation. If the server returns 403 with a body that also
     // says reason=policy_revoked, the 403 branch wins because the user is
     // crossing a trust boundary, not just hitting a policy gate.

@@ -57,7 +57,7 @@ const schema = z
       .max(MAX_SYSTEM_PROMPT_CHARS, 'Системный промпт слишком длинный (максимум 4000 символов).'),
     whitelistMode: z.enum(['inherit', 'all', 'explicit', 'none']),
     allowedTools: z.array(z.string()),
-    // Phase 16 — POLICY-06 approvalOverrides. Zod-typed as a map of
+    // approvalOverrides. Zod-typed as a map of
     // tool-name → "auto"|"manual". Absence = inherit (Overview invariant
     // #8); the UI never produces a key whose value is the string
     // "inherit".
@@ -110,7 +110,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
   });
   const activePlatforms = integrations.filter((i) => i.status === 'active').map((i) => i.platform);
 
-  // Phase 16 — live registry (POLICY-06 overrides section). Business
+  // live registry (overrides section). Business
   // approvals drive the inherit chip; both are loaded in the background
   // and the form renders a loading note in the overrides section until
   // they resolve.

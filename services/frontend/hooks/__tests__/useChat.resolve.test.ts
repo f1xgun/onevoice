@@ -12,7 +12,7 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-// Phase 18 / D-10: useChat now consumes useQueryClient(); wrap renderHook in
+// useChat now consumes useQueryClient(); wrap renderHook in
 // a QueryClientProvider so the existing resolve / resume tests keep passing.
 function makeQCWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -125,7 +125,7 @@ describe('useChat.resolveApproval — happy path', () => {
     // applySSEEvent matches by tool_call_id; fallback by name+pending if not found.
     // In this hydration scenario there's no pre-existing pending toolCall, so the
     // tool_result does not mutate the message — the assertion above (single assistant, streaming=false) covers
-    // the D-10 "same-message" invariant.
+    // the "same-message" invariant.
     expect(toast.error).not.toHaveBeenCalled();
   });
 });
@@ -167,9 +167,9 @@ describe('useChat.resolveApproval — error branches', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('403 with reason=policy_revoked → 403 business-scope toast wins (Plan 17-09 precedence), card stays open', async () => {
-    // Plan 17-09 / VERIFICATION item 6 flips the precedence: a 403 is an
-    // auth/scope rejection (Plan 16-07 batch.BusinessID check), NOT a
+  it('403 with reason=policy_revoked → 403 business-scope toast wins (precedence), card stays open', async () => {
+    // The precedence: a 403 is an
+    // auth/scope rejection (batch.BusinessID check), NOT a
     // policy gate, so the 403 branch now wins even if the body shape also
     // says reason=policy_revoked. Operators get scope-accurate copy.
     const fetchMock = vi.fn();
@@ -193,9 +193,8 @@ describe('useChat.resolveApproval — error branches', () => {
   });
 
   it('400 with reason=policy_revoked → policy-revoked toast (precedence preserved on non-403), card stays open', async () => {
-    // Regression net for the OTHER direction of Plan 17-09's precedence
-    // change: policy_revoked still wins on a non-403 4xx (e.g. 400) per
-    // Phase 16 D-12.
+    // Regression net for the OTHER direction of the precedence
+    // change: policy_revoked still wins on a non-403 4xx (e.g. 400).
     const fetchMock = vi.fn();
     const { result } = hydratedHook('cid-policy-400', fetchMock);
     await waitFor(() => expect(result.current.isLoading).toBe(false));

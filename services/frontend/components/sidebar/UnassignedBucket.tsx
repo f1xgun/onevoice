@@ -39,10 +39,9 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
   const count = conversations.length;
   const visible = conversations.slice(0, MAX_VISIBLE);
 
-  // Phase 19 / Plan 19-05 / D-17 — roving-tabindex on the chat-list portion.
-  // Tab enters the list once, ↑/↓/Home/End navigate. The «Без проекта»
-  // header (chevron / title / +) sits OUTSIDE the container — it remains a
-  // separate Tab stop, which D-17 explicitly requires.
+  // Roving-tabindex on the chat-list portion. Tab enters the list once,
+  // ↑/↓/Home/End navigate. The «Без проекта» header (chevron / title / +)
+  // sits OUTSIDE the container — it remains a separate Tab stop.
   const { containerRef, onKeyDown } = useRovingTabIndex(visible.length);
 
   async function handleCreate() {
@@ -126,9 +125,9 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
                       : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                   )}
                 >
-                  {/* Phase 19 / Plan 19-02 / D-05 — bookmark indicator on
-                      pinned rows; chats in «Без проекта» get NO ProjectChip
-                      in the pinned row (the indicator alone disambiguates). */}
+                  {/* Bookmark indicator on pinned rows; chats in «Без проекта»
+                      get NO ProjectChip in the pinned row (the indicator
+                      alone disambiguates). */}
                   {pinned && (
                     <Bookmark size={10} className="shrink-0 text-yellow-400" aria-hidden />
                   )}

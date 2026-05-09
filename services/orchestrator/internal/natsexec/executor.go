@@ -35,21 +35,20 @@ func New(agentID a2a.AgentID, toolName string, requester Requester) *NATSExecuto
 // Execute sends a ToolRequest to the agent and returns its result. It
 // implements tools.Executor. Delegates to ExecuteWithApproval with an
 // empty approvalID — legacy behavior for auto-floor tools that never
-// pass through HITL approval (backward-compat shim per Plan 16-05).
+// pass through HITL approval (backward-compat shim).
 func (e *NATSExecutor) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	return e.ExecuteWithApproval(ctx, args, "")
 }
 
 // ExecuteWithApproval sends a ToolRequest with the given approvalID
-// propagated on the ToolRequest.ApprovalID field (Plan 16-04 protocol
-// extension). When approvalID is empty the behavior is byte-identical to
-// the legacy Execute path — the omitempty JSON tag on ApprovalID means
-// the field is not emitted on the wire, so agents that have not yet been
-// upgraded decode the payload cleanly.
+// propagated on the ToolRequest.ApprovalID field. When approvalID is empty
+// the behavior is byte-identical to the legacy Execute path — the omitempty
+// JSON tag on ApprovalID means the field is not emitted on the wire, so
+// agents that have not yet been upgraded decode the payload cleanly.
 //
 // Agents use approvalID + business_id as the Redis dedupe key
 // (pkg/hitldedupe) so a retry of an already-dispatched call returns the
-// cached response instead of executing twice. Plan 16-05's resume path
+// cached response instead of executing twice. The resume path
 // generates approvalID as "<batch_id>-<call_id>" so each approved call
 // in a batch has a unique key.
 func (e *NATSExecutor) ExecuteWithApproval(ctx context.Context, args map[string]interface{}, approvalID string) (interface{}, error) {

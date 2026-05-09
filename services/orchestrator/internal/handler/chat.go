@@ -56,9 +56,9 @@ type chatRequest struct {
 	ActiveIntegrations []string       `json:"active_integrations"`
 	History            []historyEntry `json:"history"`
 
-	// Phase 15 project enrichment fields — all optional. When ProjectID is
-	// empty, the orchestrator behaves identically to pre-Phase-15. Populated
-	// by the API's chat_proxy.go in Plan 15-04 after resolving the chat's
+	// Project enrichment fields — all optional. When ProjectID is
+	// empty, the orchestrator behaves identically to a no-project chat.
+	// Populated by the API's chat_proxy.go after resolving the chat's
 	// project_id against the Postgres projects table.
 	ProjectID            string   `json:"project_id"`
 	ProjectName          string   `json:"project_name"`
@@ -66,10 +66,10 @@ type chatRequest struct {
 	ProjectWhitelistMode string   `json:"project_whitelist_mode"`
 	ProjectAllowedTools  []string `json:"project_allowed_tools"`
 
-	// Phase 16 HITL identity + policy fields. Forwarded by chat_proxy.go on
+	// HITL identity + policy fields. Forwarded by chat_proxy.go on
 	// every request; threaded into RunRequest so the orchestrator's pause
-	// path persists non-empty IDs onto pending_tool_calls (HITL-01/HITL-11).
-	// GAP-03 (Plan 17-07): these were missing pre-17-07, which made every
+	// path persists non-empty IDs onto pending_tool_calls.
+	// Pre-fix, these were missing, which made every
 	// PendingToolCallBatch.conversation_id="" and broke hydration + the
 	// resolve-time business-scoped auth check.
 	UserID                   string                      `json:"user_id"`
@@ -81,12 +81,12 @@ type chatRequest struct {
 
 // sseEvent matches the JSON shape written to the SSE stream.
 //
-// Phase 16 additions (all omitempty so legacy text/tool_call/tool_result/done
+// HITL fields (all omitempty so legacy text/tool_call/tool_result/done
 // events remain byte-identical on the wire):
 //   - ToolCallID carries the LLM's real tool_call.id on tool_call and
 //     tool_result / tool_rejected events so chat_proxy can persist the
-//     Message.ToolCalls with the real ID (HITL-13: no synthetic "tc-N").
-//   - BatchID + Calls are set on tool_approval_required events (HITL-02).
+//     Message.ToolCalls with the real ID (no synthetic "tc-N").
+//   - BatchID + Calls are set on tool_approval_required events.
 type sseEvent struct {
 	Type            string                             `json:"type"`
 	Content         string                             `json:"content,omitempty"`
@@ -107,9 +107,9 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	// Phase 16 / Plan 17-07 GAP-03: extract the conversation ID from the URL
-	// path so RunRequest.ConversationID is non-empty and the persisted
-	// PendingToolCallBatch is reachable from GET /messages hydration filter.
+	// Extract the conversation ID from the URL path so RunRequest.ConversationID
+	// is non-empty and the persisted PendingToolCallBatch is reachable from
+	// the GET /messages hydration filter.
 	conversationID := chi.URLParam(r, "conversationID")
 	if req.Message == "" {
 		http.Error(w, `{"error":"message is required"}`, http.StatusBadRequest)
@@ -148,8 +148,8 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		ctx = logger.WithCorrelationID(ctx, corrID)
 	}
 
-	// Deserialise whitelist mode. Empty string means "inherit" (v1.3 = all per
-	// D-18). Any other value that is not one of the four defined modes is
+	// Deserialise whitelist mode. Empty string means "inherit" (v1.3 = all).
+	// Any other value that is not one of the four defined modes is
 	// logged and coerced back to inherit — never crash on bad proxy input.
 	mode := domain.WhitelistMode(req.ProjectWhitelistMode)
 	if mode != "" && !domain.ValidWhitelistMode(mode) {
@@ -159,10 +159,10 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		mode = ""
 	}
 
-	// Phase 15 project enrichment: build *prompt.ProjectContext only when the
+	// Project enrichment: build *prompt.ProjectContext only when the
 	// proxy sent a project_id. An empty project_id means "Без проекта" — the
-	// orchestrator runs with no project prompt layer, identical to pre-Phase-15.
-	// WhitelistMode + AllowedTools added in GAP-02 so appendProjectBlock can tell
+	// orchestrator runs with no project prompt layer.
+	// WhitelistMode + AllowedTools let appendProjectBlock tell
 	// the LLM about the whitelist instead of silently substituting tools.
 	var projCtx *prompt.ProjectContext
 	if req.ProjectID != "" {
@@ -190,10 +190,10 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		AllowedTools:       req.ProjectAllowedTools,
 		ActiveIntegrations: req.ActiveIntegrations,
 		Messages:           history,
-		// Phase 16 HITL identity fields — populated from URL + body so the
+		// HITL identity fields — populated from URL + body so the
 		// pause-time persistence writes non-empty values to pending_tool_calls.
-		// GAP-03 closure (Plan 17-07): pre-17-07 these defaulted to "" and
-		// every persisted batch was unreachable by HITL-11 hydration.
+		// Pre-fix, these defaulted to "" and
+		// every persisted batch was unreachable by hydration.
 		ConversationID:           conversationID,
 		BusinessID:               req.BusinessID,
 		ProjectID:                req.ProjectID,
@@ -233,13 +233,13 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			sse.ToolResult = event.ToolResult
 			sse.ToolError = event.ToolError
 		case orchestrator.EventToolRejected:
-			// HITL-09: policy_forbidden / policy_revoked / user_rejected.
+			// policy_forbidden / policy_revoked / user_rejected.
 			// chat_proxy forwards this to the client; the frontend renders
 			// the rejection in the approval card.
 			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
 		case orchestrator.EventToolApprovalRequired:
-			// HITL-02: one pause event per turn carrying all manual calls.
+			// One pause event per turn carrying all manual calls.
 			sse.BatchID = event.BatchID
 			sse.Calls = event.Calls
 		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:

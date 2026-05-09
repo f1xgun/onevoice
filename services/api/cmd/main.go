@@ -60,12 +60,12 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	defer svcs.Close()
 
-	// POLICY-07 startup sweep — non-blocking goroutine. Compares every
+	// startup sweep — non-blocking goroutine. Compares every
 	// tool-approval entry stored in Postgres against the live orchestrator
 	// registry (via svcs.OrchClient) and logs tool_approval_whitelist_unknown
 	// for stale entries. Best-effort: one retry after 5s, skipped silently
-	// on sustained failure. Plan 19-03: moved after BuildServices so the
-	// shared *orchestratorclient.Client is reused (D-11).
+	// on sustained failure. Moved after BuildServices so the
+	// shared *orchestratorclient.Client is reused.
 	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, svcs.OrchClient, cfg.OrchestratorFetchTimeout)
 
 	handlers, err := wire.Handlers(cfg, svcs, repos, handles)

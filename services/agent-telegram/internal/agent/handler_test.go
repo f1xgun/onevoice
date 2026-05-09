@@ -235,7 +235,7 @@ func TestClassifyTelegramError_TokenFetchFailure(t *testing.T) {
 	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "token fetch failure should be NonRetryableError")
 }
 
-// --- Phase 16 HITL-08: Redis dedupe gate tests ---
+// --- Redis dedupe gate tests ---
 
 // countingSender wraps fakeSender with an atomic call counter so
 // second-call-returns-cached tests can prove the tool was NOT re-invoked.
