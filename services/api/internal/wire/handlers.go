@@ -2,11 +2,20 @@ package wire
 
 import (
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
+	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
+	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 )
+
+// Phase 19 / 19-MD-02: NewChatProxyHandler now consumes the shared
+// *orchestratorclient.Client built once in BuildServices (svcs.OrchClient).
+// Remove the legacy (orchestratorURL, httpClient) plumbing — it spawned a
+// second client per process.
 
 // Handlers constructs every HTTP handler used by the API service and
 // returns them aggregated in *router.Handlers ready for router.Setup.
@@ -14,10 +23,11 @@ import (
 // Each handler constructor signature is locked by the existing handler
 // package — this function is wiring only, no business logic.
 //
-// NOTE: 19-01 wires only OAuthHandler. Plan 19-04 will edit this function
-// to add a separate ConnectHandler for the paste-flow integrations.
+// Phase 19 / Plan 19-04 split: OAuthHandler (true OAuth code-flow) lives
+// in handler/oauth; ConnectHandler (paste-flow) lives in handler/connect.
+// Both are constructed here.
 func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*router.Handlers, error) {
-	oauthHandler := handler.NewOAuthHandler(svcs.OAuth, svcs.Integration, svcs.Business, handler.OAuthConfig{
+	oauthHandler := oauth.NewOAuthHandler(svcs.OAuth, svcs.Integration, svcs.Business, oauth.OAuthConfig{
 		VKClientID:         cfg.VKClientID,
 		VKClientSecret:     cfg.VKClientSecret,
 		VKRedirectURI:      cfg.VKRedirectURI,
@@ -25,7 +35,6 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		YandexClientID:     cfg.YandexClientID,
 		YandexClientSecret: cfg.YandexClientSecret,
 		YandexRedirectURI:  cfg.YandexRedirectURI,
-		TelegramBotToken:   cfg.TelegramBotToken,
 		GoogleClientID:     cfg.GoogleClientID,
 		GoogleClientSecret: cfg.GoogleClientSecret,
 		GoogleRedirectURI:  cfg.GoogleRedirectURI,
@@ -33,6 +42,20 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if svcs.AgentTaskPublisher != nil {
 		oauthHandler.WithAgentTaskPublisher(svcs.AgentTaskPublisher)
 	}
+
+	// Plan 19-04: paste-flow handler (Telegram + VK community access token).
+	// Narrow ConnectConfig per RESEARCH §16 Q3 — paste-flow doesn't need
+	// the OAuth client credentials.
+	connectHandler := connect.NewConnectHandler(
+		svcs.Integration,
+		svcs.Business,
+		connect.ConnectConfig{
+			TelegramBotToken: cfg.TelegramBotToken,
+			VKServiceKey:     cfg.VKServiceKey,
+		},
+		&http.Client{Timeout: 10 * time.Second},
+	)
+
 	internalTokenHandler := handler.NewInternalTokenHandler(svcs.Integration)
 
 	authHandler, err := handler.NewAuthHandler(svcs.User, cfg.SecureCookies)
@@ -88,9 +111,8 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		repos.Review,
 		repos.AgentTask,
 		svcs.TaskHub,
-		cfg.OrchestratorURL,
-		nil,
-		svcs.Titler, // Phase 18 Plan 05 — optional auto-titler; nil when titling is disabled.
+		svcs.OrchClient, // Phase 19 / 19-MD-02 — single shared orchestrator client.
+		svcs.Titler,     // Phase 18 Plan 05 — optional auto-titler; nil when titling is disabled.
 	)
 
 	hitlHandler, err := handler.NewHITLHandler(svcs.HITL, svcs.Business, repos.Conversation)
@@ -135,6 +157,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Integration:   integrationHandler,
 		Conversation:  conversationHandler,
 		OAuth:         oauthHandler,
+		Connect:       connectHandler,
 		InternalToken: internalTokenHandler,
 		ChatProxy:     chatProxyHandler,
 		Review:        reviewHandler,

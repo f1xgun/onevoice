@@ -9,18 +9,13 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
-
-// Per-call HTTP timeout for service-to-API integration calls. The
-// orchestrator-fetch budget is env-tunable per cfg.OrchestratorFetchTimeout
-// (ORCHESTRATOR_FETCH_TIMEOUT). integrationFetchTimeout stays a const because
-// it has not (yet) been promoted to env-driven configuration.
-const integrationFetchTimeout = 60 * time.Second
 
 // Services aggregates every business-logic service the API consumes.
 //
@@ -44,6 +39,12 @@ type Services struct {
 	ReviewSyncer  *service.ReviewSyncer
 	TaskHub       *taskhub.Hub
 	ObjectStorage *storage.MinioClient
+
+	// OrchClient is the shared HTTP client for orchestrator endpoints
+	// (chat / resume / internal tool registry). Phase 19 / D-11 — extracted
+	// from the inline plumbing in service/hitl.go so chatproxy collaborators
+	// (Plan 19-03) and handler/hitl.go consume the same client.
+	OrchClient *orchestratorclient.Client
 
 	// AgentTaskPublisher is exposed so handlers (specifically OAuthHandler)
 	// can call WithAgentTaskPublisher when NATS is available. nil when NATS
@@ -95,8 +96,15 @@ func (s *Services) StartReviewSyncer(ctx context.Context, log *slog.Logger, inte
 // returned aggregate type. Callers spell the call site as
 // `wire.BuildServices(...)`.
 func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, repos *Repos, h *DBHandles) (*Services, error) {
+	// Phase 19 / D-11: build the shared orchestrator client BEFORE any service
+	// that talks to the orchestrator. SSE consumers (HITLService.OrchClient,
+	// chatproxy.OrchestrationProxy) require Timeout=0 so streaming requests
+	// are not killed mid-flight; the per-call ctx still bounds the budget.
+	orchClient := orchestratorclient.New(cfg.OrchestratorURL, &http.Client{Timeout: 0})
+
 	s := &Services{
-		TaskHub: taskhub.New(),
+		TaskHub:    taskhub.New(),
+		OrchClient: orchClient,
 	}
 
 	// Phase 18 — Auto-titler LLM Router wiring (Plan 18-02).
@@ -188,11 +196,13 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	if h.NATS != nil {
 		var drafter service.DraftPassRunner
 		if cfg.ReviewDraftEnabled {
+			// Phase 19 / 19-MD-01: drafter consumes the shared orchestrator
+			// client so its calls reuse the same Transport pool as everything
+			// else (HITL, chatproxy, tools cache).
 			drafter = service.NewReviewDrafter(
 				repos.Review,
 				repos.Business,
-				&http.Client{Timeout: integrationFetchTimeout},
-				cfg.OrchestratorURL,
+				orchClient,
 				cfg.ReviewDraftMaxExamples,
 				cfg.ReviewDraftBatchLimit,
 			)
@@ -249,8 +259,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		repos.Business,
 		repos.Project,
 		s.ToolsCache,
-		cfg.OrchestratorURL,
-		&http.Client{Timeout: 0}, // SSE requires no timeout
+		orchClient,
 	)
 
 	return s, nil

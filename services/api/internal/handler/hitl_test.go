@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -232,8 +233,7 @@ func buildHITLHandler(t *testing.T, pr *fakeHITLPendingRepo, biz *domain.Busines
 		&fakeBusinessRepoHITL{biz: biz},
 		&fakeProjectRepoHITL{proj: proj},
 		seededToolsCache(),
-		orchURL,
-		http.DefaultClient,
+		orchestratorclient.New(orchURL, http.DefaultClient),
 	)
 	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{})
 	if err != nil {
@@ -768,8 +768,7 @@ func TestGetTools_ReturnsRegistryProjection(t *testing.T) {
 		&fakeBusinessRepoHITL{biz: biz},
 		&fakeProjectRepoHITL{},
 		cache,
-		orch.URL,
-		orch.Client(),
+		orchestratorclient.New(orch.URL, orch.Client()),
 	)
 	h, err := handler.NewHITLHandler(svc, &hitlBusinessService{biz: biz}, &hitlConvRepo{})
 	if err != nil {
