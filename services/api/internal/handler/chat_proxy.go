@@ -162,6 +162,8 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch action {
+	case chatproxy.GateActionFresh:
+		// Fall through to Step 2 (no active message + no resume header).
 	case chatproxy.GateActionRejoinResume:
 		h.hitl.StreamResume(w, r, conversationID, activeMsg, batchID, persistCtx)
 		return

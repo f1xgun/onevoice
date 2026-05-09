@@ -2,7 +2,7 @@
 // responsibility collaborators (RequestEnricher, OrchestrationProxy,
 // MessagePersister, PostalService, HITLCoordinator). The entry handler
 // services/api/internal/handler/chat_proxy.go drives them sequentially —
-// behaviour is preserved verbatim, only the shape changes.
+// behavior is preserved verbatim, only the shape changes.
 //
 // Phase 19 / D-03 / D-06: this package never starts a fresh LLM turn on its
 // own; the entry handler owns request lifecycle and HTTP error mapping.

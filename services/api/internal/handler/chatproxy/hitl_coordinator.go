@@ -86,7 +86,7 @@ func NewHITLCoordinator(
 //   - batch — the pending batch for ReemitApprovalEvent (nil otherwise)
 //   - batchID — resolved batch ID for the resume call (empty for fresh)
 //   - err — only when ListPendingByConversation hard-fails; soft-errors fall
-//     through (legacy chat_proxy.go behaviour preserved)
+//     through (legacy chat_proxy.go behavior preserved)
 func (c *HITLCoordinator) GateOnRequest(ctx context.Context, conversationID, headerBatchID string) (GateAction, *domain.Message, *domain.PendingToolCallBatch, string, error) {
 	activeMsg, activeErr := c.msgs.FindByConversationActive(ctx, conversationID)
 	if activeErr != nil && !errors.Is(activeErr, domain.ErrMessageNotFound) {
