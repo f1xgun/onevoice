@@ -19,6 +19,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-vk/internal/agent"
 )
 
@@ -115,7 +116,7 @@ func TestHandler_PublishPost(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t1",
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"text":     "Hello VK!",
@@ -142,7 +143,7 @@ func TestHandler_PublishPost_FetchesToken(t *testing.T) {
 	h := agent.NewHandler(tokens, factory, "", nil)
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t2",
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hello", "group_id": "g1"},
 	})
@@ -157,7 +158,7 @@ func TestHandler_TokenError(t *testing.T) {
 	h := agent.NewHandler(tokens, nil, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"group_id": "g1"},
 	})
@@ -178,7 +179,7 @@ func TestHandler_UpdateGroupInfo(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t3",
-		Tool:       "vk__update_group_info",
+		Tool:       tools.VKUpdateGroupInfo,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id":    "-123456",
@@ -205,7 +206,7 @@ func TestHandler_GetComments(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t4",
-		Tool:       "vk__get_comments",
+		Tool:       tools.VKGetComments,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id": "-123456",
@@ -239,7 +240,7 @@ func TestHandler_GetComments_UsesServiceKeyWithoutUserToken(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-service-key",
-		Tool:       "vk__get_comments",
+		Tool:       tools.VKGetComments,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id": "-123456",
@@ -277,7 +278,7 @@ func TestHandler_GetComments_NoPostID_WalksPostsWithComments(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-walk",
-		Tool:       "vk__get_comments",
+		Tool:       tools.VKGetComments,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"group_id": "-123456"},
 	})
@@ -300,7 +301,7 @@ func TestHandler_GetComments_DefaultCount(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t5",
-		Tool:       "vk__get_comments",
+		Tool:       tools.VKGetComments,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"group_id": "-123456"},
 	})
@@ -333,7 +334,7 @@ func TestClassifyVKError_PermanentCode5(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hi", "group_id": "-1"},
 	})
@@ -351,7 +352,7 @@ func TestClassifyVKError_RateLimitCode6(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hi", "group_id": "-1"},
 	})
@@ -369,7 +370,7 @@ func TestClassifyVKError_TransientCode1(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hi", "group_id": "-1"},
 	})
@@ -387,7 +388,7 @@ func TestClassifyVKError_NetworkError(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hi", "group_id": "-1"},
 	})
@@ -400,7 +401,7 @@ func TestClassifyVKError_TokenFetchFailure(t *testing.T) {
 	h := agent.NewHandler(tokens, nil, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"group_id": "g1"},
 	})
@@ -425,7 +426,7 @@ func TestHandler_SchedulePost(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-sched",
-		Tool:       "vk__schedule_post",
+		Tool:       tools.VKSchedulePost,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"text":         "Scheduled!",
@@ -455,7 +456,7 @@ func TestHandler_SchedulePost_RFC3339(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-rfc",
-		Tool:       "vk__schedule_post",
+		Tool:       tools.VKSchedulePost,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"text":         "RFC post",
@@ -475,7 +476,7 @@ func TestHandler_SchedulePost_MissingText(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__schedule_post",
+		Tool:       tools.VKSchedulePost,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"publish_date": strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10),
@@ -492,7 +493,7 @@ func TestHandler_SchedulePost_MissingDate(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__schedule_post",
+		Tool:       tools.VKSchedulePost,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"text":     "Hello",
@@ -510,7 +511,7 @@ func TestHandler_SchedulePost_PastDate(t *testing.T) {
 
 	pastTS := time.Now().Add(-1 * time.Hour).Unix()
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__schedule_post",
+		Tool:       tools.VKSchedulePost,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"text":         "Hello",
@@ -528,7 +529,7 @@ func TestHandler_SchedulePost_InvalidDate(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__schedule_post",
+		Tool:       tools.VKSchedulePost,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"text":         "Hello",
@@ -558,7 +559,7 @@ func TestHandler_ReplyComment(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-reply",
-		Tool:       "vk__reply_comment",
+		Tool:       tools.VKReplyComment,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"post_id":    float64(42),
@@ -579,7 +580,7 @@ func TestHandler_ReplyComment_MissingPostID(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__reply_comment",
+		Tool:       tools.VKReplyComment,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"comment_id": float64(7),
@@ -597,7 +598,7 @@ func TestHandler_ReplyComment_MissingCommentID(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__reply_comment",
+		Tool:       tools.VKReplyComment,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"post_id":  float64(42),
@@ -615,7 +616,7 @@ func TestHandler_ReplyComment_MissingText(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__reply_comment",
+		Tool:       tools.VKReplyComment,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"post_id":    float64(42),
@@ -643,7 +644,7 @@ func TestHandler_DeleteComment(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-del",
-		Tool:       "vk__delete_comment",
+		Tool:       tools.VKDeleteComment,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"comment_id": float64(55),
@@ -662,7 +663,7 @@ func TestHandler_DeleteComment_MissingCommentID(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__delete_comment",
+		Tool:       tools.VKDeleteComment,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id": "-123456",
@@ -683,7 +684,7 @@ func TestHandler_DeleteComment_VKError(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__delete_comment",
+		Tool:       tools.VKDeleteComment,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"comment_id": float64(55),
@@ -710,7 +711,7 @@ func TestHandler_PostPhoto(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-photo",
-		Tool:       "vk__post_photo",
+		Tool:       tools.VKPostPhoto,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"photo_url": "https://example.com/image.jpg",
@@ -730,7 +731,7 @@ func TestHandler_PostPhoto_MissingURL(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__post_photo",
+		Tool:       tools.VKPostPhoto,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"caption":  "No URL",
@@ -752,7 +753,7 @@ func TestHandler_PostPhoto_VKError(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__post_photo",
+		Tool:       tools.VKPostPhoto,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"photo_url": "https://example.com/image.jpg",
@@ -781,7 +782,7 @@ func TestHandler_GetCommunityInfo(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-info",
-		Tool:       "vk__get_community_info",
+		Tool:       tools.VKGetCommunityInfo,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id": "-123456",
@@ -801,7 +802,7 @@ func TestHandler_GetCommunityInfo_MissingGroupID(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__get_community_info",
+		Tool:       tools.VKGetCommunityInfo,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{},
 	})
@@ -820,7 +821,7 @@ func TestHandler_GetCommunityInfo_VKError(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__get_community_info",
+		Tool:       tools.VKGetCommunityInfo,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id": "-123456",
@@ -848,7 +849,7 @@ func TestHandler_GetWallPosts(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-wall",
-		Tool:       "vk__get_wall_posts",
+		Tool:       tools.VKGetWallPosts,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id": "-123456",
@@ -876,7 +877,7 @@ func TestHandler_GetWallPosts_DefaultCount(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-wall-def",
-		Tool:       "vk__get_wall_posts",
+		Tool:       tools.VKGetWallPosts,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id": "-123456",
@@ -899,7 +900,7 @@ func TestHandler_GetWallPosts_ClampCount(t *testing.T) {
 
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t-wall-clamp",
-		Tool:       "vk__get_wall_posts",
+		Tool:       tools.VKGetWallPosts,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"group_id": "-123456",
@@ -916,7 +917,7 @@ func TestHandler_GetWallPosts_MissingGroupID(t *testing.T) {
 	h := agent.NewHandler(tokens, newFactory(&mockVKClient{}), "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__get_wall_posts",
+		Tool:       tools.VKGetWallPosts,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{},
 	})
@@ -943,7 +944,7 @@ func TestReadClient_PrefersUserToken(t *testing.T) {
 	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__get_community_info",
+		Tool:       tools.VKGetCommunityInfo,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"group_id": "-123456"},
 	})
@@ -965,7 +966,7 @@ func TestReadClient_FallsBackToServiceKey(t *testing.T) {
 	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__get_community_info",
+		Tool:       tools.VKGetCommunityInfo,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"group_id": "-123456"},
 	})
@@ -988,7 +989,7 @@ func TestReadClient_FallsBackToCommunityToken(t *testing.T) {
 	h := agent.NewHandler(tokens, factory, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__get_wall_posts",
+		Tool:       tools.VKGetWallPosts,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"group_id": "-123456"},
 	})
@@ -1010,7 +1011,7 @@ func TestWriteClient_AlwaysUsesCommunityToken(t *testing.T) {
 	h := agent.NewHandler(tokens, factory, "service-key-tok", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hello", "group_id": "-123456"},
 	})
@@ -1034,7 +1035,7 @@ func TestReadClient_ExternalIDFallback(t *testing.T) {
 	h := agent.NewHandler(tokens, factory, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__get_community_info",
+		Tool:       tools.VKGetCommunityInfo,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{}, // no group_id — should resolve from ExternalID
 	})
@@ -1057,7 +1058,7 @@ func TestGetComments_UsesResolvedGroupID(t *testing.T) {
 	h := agent.NewHandler(tokens, factory, "", nil)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "vk__get_comments",
+		Tool:       tools.VKGetComments,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"post_id": float64(1)}, // provide post_id to skip auto-fetch
 	})
@@ -1081,7 +1082,7 @@ func newVKDedupeTestHandler(t *testing.T, vkClient agent.VKClient, publishCalls 
 func vkPublishReqWithApproval(approvalID string) a2a.ToolRequest {
 	return a2a.ToolRequest{
 		TaskID:     "task-v",
-		Tool:       "vk__publish_post",
+		Tool:       tools.VKPublishPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hi", "group_id": "-123456"},
 		ApprovalID: approvalID,

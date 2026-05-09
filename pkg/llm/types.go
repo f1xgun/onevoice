@@ -6,6 +6,11 @@ import (
 	"github.com/google/uuid"
 )
 
+// ToolCallTypeFunction is the wire-format value emitted by OpenAI/OpenRouter
+// for function-type tool calls. Centralized so test fixtures and any local
+// adapter use the same string instead of re-declaring "function".
+const ToolCallTypeFunction = "function"
+
 // Message represents a single message in a conversation.
 type Message struct {
 	Role       string     `json:"role"` // "system", "user", "assistant", "tool"
@@ -17,7 +22,7 @@ type Message struct {
 // ToolCall represents a function call request from the LLM.
 type ToolCall struct {
 	ID       string       `json:"id"`
-	Type     string       `json:"type"` // "function"
+	Type     string       `json:"type"` // ToolCallTypeFunction
 	Function FunctionCall `json:"function"`
 }
 
@@ -29,7 +34,7 @@ type FunctionCall struct {
 
 // ToolDefinition defines a tool that can be called by the LLM.
 type ToolDefinition struct {
-	Type     string             `json:"type"` // "function"
+	Type     string             `json:"type"` // ToolCallTypeFunction
 	Function FunctionDefinition `json:"function"`
 }
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -209,14 +210,14 @@ func seededToolsCache() *service.ToolsRegistryCache {
 	cache := service.NewToolsRegistryCache("", nil, time.Minute)
 	cache.Seed([]service.ToolsRegistryEntry{
 		{
-			Name:           "telegram__send_channel_post",
+			Name:           tools.TelegramSendChannelPost,
 			Platform:       "telegram",
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text", "parse_mode"},
 			Description:    "telegram post",
 		},
 		{
-			Name:           "vk__publish_post",
+			Name:           tools.VKPublishPost,
 			Platform:       "vk",
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text"},
@@ -278,8 +279,8 @@ func TestResolve_Happy_Returns200WithDecisions(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
-		{CallID: "tc_b", ToolName: "vk__publish_post", Arguments: map[string]interface{}{"text": "yo"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_b", ToolName: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "yo"}},
 	})
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
@@ -321,7 +322,7 @@ func TestResolve_CrossTenant_Returns403(t *testing.T) {
 	ownerID := uuid.New().String()
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", ownerID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	h := buildHITLHandler(t, pr, attacker, nil, "")
 
@@ -338,9 +339,9 @@ func TestResolve_PartialDecisions_Returns400WithMissing(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
-		{CallID: "tc_b", ToolName: "vk__publish_post"},
-		{CallID: "tc_c", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
+		{CallID: "tc_b", ToolName: tools.VKPublishPost},
+		{CallID: "tc_c", ToolName: tools.TelegramSendChannelPost},
 	})
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
@@ -368,7 +369,7 @@ func TestResolve_EditInvalidField_Returns400WithEditable(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 	})
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
@@ -404,7 +405,7 @@ func TestResolve_EditCaseMismatch_Returns400(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 	})
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
@@ -423,7 +424,7 @@ func TestResolve_EditNestedObject_Returns400(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 	})
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
@@ -442,7 +443,7 @@ func TestResolve_RejectReasonTooLong_Returns400(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
@@ -464,7 +465,7 @@ func TestResolve_ConcurrentResolve_ExactlyOneWins_OtherGets409(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
@@ -526,13 +527,13 @@ func TestResolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject(t *testing.T) {
 		ID: bizUUID,
 		Settings: map[string]interface{}{
 			"tool_approvals": map[string]interface{}{
-				"telegram__send_channel_post": "forbidden",
+				tools.TelegramSendChannelPost: "forbidden",
 			},
 		},
 	}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", bizUUID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 	})
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
@@ -568,14 +569,14 @@ func TestResolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 	})
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"decisions": []map[string]interface{}{
 			{"id": "tc_a", "action": "edit", "edited_args": map[string]interface{}{
-				"tool_name": "telegram__send_channel_photo",
+				"tool_name": tools.TelegramSendChannelPhoto,
 			}},
 		},
 	})
@@ -585,7 +586,7 @@ func TestResolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.T) {
 		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
 	}
 	b, _ := pr.GetByBatchID(context.Background(), "b1")
-	if b.Calls[0].ToolName != "telegram__send_channel_post" {
+	if b.Calls[0].ToolName != tools.TelegramSendChannelPost {
 		t.Fatalf("tool_name mutated: got %q", b.Calls[0].ToolName)
 	}
 }
@@ -603,7 +604,7 @@ func TestResume_BatchResolving_Allowed(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	// Move batch to status=resolving (post-resolve, pre-dispatch).
 	pr.mu.Lock()
@@ -645,7 +646,7 @@ func TestResume_BatchResolved_Returns409(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	pr.mu.Lock()
 	pr.batches["b1"].Status = "resolved"
@@ -672,7 +673,7 @@ func TestResume_Expired_Returns410(t *testing.T) {
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	pr.mu.Lock()
 	pr.batches["b1"].Status = "expired"
@@ -696,7 +697,7 @@ func TestResume_Happy_OpensSSEStream_ForwardingOrchestratorEvents(t *testing.T) 
 	biz := &domain.Business{ID: uuid.New()}
 	pr := newFakeHITLPendingRepo()
 	seedHandlerBatch(pr, "b1", "c1", biz.ID.String(), []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 
 	// Mock orchestrator resume endpoint.

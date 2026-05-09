@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // setupPendingToolCallDB returns a fresh isolated Mongo database for a single
@@ -318,8 +319,8 @@ func TestPendingToolCall_MarkDispatched_PositionalUpdate(t *testing.T) {
 		UpdatedAt:      now,
 		ExpiresAt:      now.Add(24 * time.Hour),
 		Calls: []domain.PendingCall{
-			{CallID: "call_1", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "first"}},
-			{CallID: "call_2", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "second"}},
+			{CallID: "call_1", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "first"}},
+			{CallID: "call_2", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "second"}},
 		},
 	})
 
