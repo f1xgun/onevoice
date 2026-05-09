@@ -31,6 +31,7 @@ export function DeleteProjectDialog({
   onConfirm,
 }: DeleteProjectDialogProps) {
   const tCommon = useTranslations('common');
+  const tDelete = useTranslations('projects.deleteDialog');
   const [pending, setPending] = useState(false);
 
   const description =
@@ -70,7 +71,7 @@ export function DeleteProjectDialog({
               void handleConfirm();
             }}
           >
-            {pending ? 'Удаляем…' : 'Удалить'}
+            {pending ? tDelete('deleting') : tDelete('delete')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

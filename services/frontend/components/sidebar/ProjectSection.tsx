@@ -42,6 +42,7 @@ export function ProjectSection({
 }: Props) {
   const tSide = useTranslations('sidebar');
   const tProjects = useTranslations('projects');
+  const tChat = useTranslations('chat');
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const createConversation = useCreateConversation();
@@ -58,7 +59,7 @@ export function ProjectSection({
   async function handleCreate() {
     try {
       const conv = await createConversation.mutateAsync({
-        title: 'Новый диалог',
+        title: tChat('newConversation'),
         projectId: project.id,
       });
       onNavigate?.();
@@ -140,7 +141,7 @@ export function ProjectSection({
                   {pinned && (
                     <Bookmark size={10} className="shrink-0 text-yellow-400" aria-hidden />
                   )}
-                  <span className="flex-1 truncate">{conv.title || 'Новый диалог'}</span>
+                  <span className="flex-1 truncate">{conv.title || tChat('newConversation')}</span>
                 </Link>
                 <ChatRowMenu
                   conversation={conv}
@@ -148,7 +149,9 @@ export function ProjectSection({
                   trigger={
                     <button
                       type="button"
-                      aria-label={`Меню чата «${conv.title || 'Новый диалог'}»`}
+                      aria-label={tSide('chatRowMenuAria', {
+                        title: conv.title || tChat('newConversation'),
+                      })}
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/row:opacity-100"
                     >
                       <MoreHorizontal size={12} />

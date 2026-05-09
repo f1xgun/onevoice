@@ -40,6 +40,7 @@ interface LastRegistered {
 export default function IntegrationsPage() {
   const qc = useQueryClient();
   const tIntegrations = useTranslations('integrations');
+  const tPlatforms = useTranslations('platforms');
   const searchParams = useSearchParams();
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
@@ -234,7 +235,11 @@ export default function IntegrationsPage() {
             <SectionLabel className="mt-12">{tIntegrations('page.comingSoon')}</SectionLabel>
             <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
               {comingSoonPlatforms.map((p) => (
-                <SoonCard key={p.id} label={p.fullLabel} when={p.comingSoonWhen ?? 'скоро'} />
+                <SoonCard
+                  key={p.id}
+                  label={p.fullLabel}
+                  when={p.comingSoonWhen ?? tPlatforms('comingSoonFallback')}
+                />
               ))}
             </div>
           </>

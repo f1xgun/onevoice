@@ -280,7 +280,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[14px] font-medium text-ink">
-                      {c.name || 'Без названия'}
+                      {c.name || tYa('unnamedOrg')}
                     </div>
                     <div className="truncate font-mono text-[11px] text-gray-500">
                       {c.permalink}

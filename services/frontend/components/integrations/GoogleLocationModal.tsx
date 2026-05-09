@@ -141,7 +141,7 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
             {tGoogle('cancel')}
           </Button>
           <Button onClick={handleSelect} disabled={!selectedLocation || connectMutation.isPending}>
-            {connectMutation.isPending ? 'Подключение...' : 'Подключить'}
+            {connectMutation.isPending ? tGoogle('connecting') : tGoogle('connect')}
           </Button>
         </div>
       </DialogContent>

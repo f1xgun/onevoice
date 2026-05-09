@@ -102,9 +102,7 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <p className="text-xs text-ink-soft">
-          {count === 0
-            ? 'Ничего не выбрано — это тоже вариант, OneVoice выберет нейтральный тон.'
-            : `Выбрано ${count} — можно больше или ничего.`}
+          {count === 0 ? tVoice('noneHint') : tVoice('selectedHint', { count })}
         </p>
         <Button
           type="button"
@@ -113,7 +111,7 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
           onClick={handleSave}
           disabled={!dirty || mutation.isPending}
         >
-          {mutation.isPending ? 'Сохраняем…' : 'Сохранить голос'}
+          {mutation.isPending ? tVoice('saving') : tVoice('saveButton')}
         </Button>
       </div>
     </div>
