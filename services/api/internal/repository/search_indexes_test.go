@@ -6,43 +6,59 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// TestEnsureSearchIndexes_Idempotent — Plan 19-03 / Task 2 / SEARCH-01.
+// TestEnsureSearchIndexes_DropsLegacyTextIndexes — v20.1 cleanup contract.
 //
 // Verifies that EnsureSearchIndexes:
-//  1. Creates the two named text indexes on first call.
-//  2. Is idempotent on second call (no error, indexes still present).
-//  3. The conversations.title index name is "conversations_title_text_v19".
-//  4. The messages.content index name is "messages_content_text_v19".
-//  5. Both indexes carry default_language: "russian" + appropriate weights
-//     (asserted indirectly through name presence + the spec listing).
-func TestEnsureSearchIndexes_Idempotent(t *testing.T) {
+//  1. Drops legacy v19 text indexes if present.
+//  2. Drops legacy v20 text indexes if present.
+//  3. Is a no-op on a clean DB (idempotent).
+//  4. Does NOT create any new text indexes — search now uses regex
+//     against the existing scope indexes.
+func TestEnsureSearchIndexes_DropsLegacyTextIndexes(t *testing.T) {
 	db := setupMongoTestDB(t)
 	ctx := context.Background()
 
-	// Drop any pre-existing text indexes for a clean-slate cold-boot.
-	_ = db.Collection("conversations").Indexes().DropAll(ctx)
-	_ = db.Collection("messages").Indexes().DropAll(ctx)
-
-	require.NoError(t, EnsureSearchIndexes(ctx, db), "first call")
-	require.NoError(t, EnsureSearchIndexes(ctx, db), "second call (idempotent)")
-
-	convSpecs, err := db.Collection("conversations").Indexes().ListSpecifications(ctx)
-	require.NoError(t, err)
-	convNames := map[string]bool{}
-	for _, s := range convSpecs {
-		convNames[s.Name] = true
+	// Plant legacy v19 + v20 text indexes (simulating upgrade from older
+	// deploys). EnsureSearchIndexes must remove them.
+	mustCreate := func(coll *mongo.Collection, field, name, lang string) {
+		_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys: bson.D{{Key: field, Value: "text"}},
+			Options: options.Index().
+				SetName(name).
+				SetDefaultLanguage(lang),
+		})
+		require.NoError(t, err, "seed legacy index %s", name)
 	}
-	assert.True(t, convNames["conversations_title_text_v19"],
-		"phase-19 title text index must exist after EnsureSearchIndexes")
+	mustCreate(db.Collection("conversations"), "title", "conversations_title_text_v19", "russian")
+	mustCreate(db.Collection("messages"), "content", "messages_content_text_v19", "russian")
 
-	msgSpecs, err := db.Collection("messages").Indexes().ListSpecifications(ctx)
-	require.NoError(t, err)
-	msgNames := map[string]bool{}
-	for _, s := range msgSpecs {
-		msgNames[s.Name] = true
+	require.NoError(t, EnsureSearchIndexes(ctx, db), "first call (cleanup)")
+	require.NoError(t, EnsureSearchIndexes(ctx, db), "second call (idempotent no-op)")
+
+	hasIndex := func(coll *mongo.Collection, name string) bool {
+		specs, err := coll.Indexes().ListSpecifications(ctx)
+		require.NoError(t, err)
+		for _, s := range specs {
+			if s.Name == name {
+				return true
+			}
+		}
+		return false
 	}
-	assert.True(t, msgNames["messages_content_text_v19"],
-		"phase-19 content text index must exist after EnsureSearchIndexes")
+	convs := db.Collection("conversations")
+	msgs := db.Collection("messages")
+
+	assert.False(t, hasIndex(convs, "conversations_title_text_v19"),
+		"legacy v19 title text index must be dropped")
+	assert.False(t, hasIndex(convs, "conversations_title_text_v20"),
+		"legacy v20 title text index must be dropped (regex search needs none)")
+	assert.False(t, hasIndex(msgs, "messages_content_text_v19"),
+		"legacy v19 content text index must be dropped")
+	assert.False(t, hasIndex(msgs, "messages_content_text_v20"),
+		"legacy v20 content text index must be dropped (regex search needs none)")
 }

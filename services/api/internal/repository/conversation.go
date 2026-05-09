@@ -323,22 +323,29 @@ func (r *conversationRepository) Unpin(ctx context.Context, id, businessID, user
 // logged + truncated to the most-recently-active 1000 (Pitfalls §15 Q10).
 const MaxScopedConversations = 1000
 
-// SearchTitles — Phase 19 / Plan 19-03 / D-12 phase 1.
+// SearchTitles — title search via word-prefix regex (v20.1).
 //
-// Runs the $text query against conversations.title scoped by
-// (user_id, business_id, project_id?). Returns title hits AND the slice
-// of conversation IDs that matched the title query (callers may use the
-// IDs to short-circuit phase 2 if every match was title-only).
+// Runs an AND-of-prefixes regex query against conversations.title scoped
+// by (user_id, business_id, project_id?). Returns title hits AND the
+// slice of conversation IDs that matched.
+//
+// Why not $text: see message.go::SearchByConversationIDs — Mongo's
+// Russian Snowball had asymmetric stems that broke recall. v20.1 uses
+// per-token word-prefix regex (one pattern per query token, AND-ed
+// together) which gives morphological recall over inflectional suffixes
+// without the asymmetry.
 //
 // Defense-in-depth: empty businessID or userID returns
 // domain.ErrInvalidScope immediately. Repository-level guard parallel to
 // the service-layer guard so cross-tenant leak (T-19-CROSS-TENANT) cannot
 // happen even if a future caller forgets to scope.
 //
-// Mongo $text rule (RESEARCH §5): $text MUST be the FIRST $match stage in
-// any aggregation. We use Find() (no aggregation pipeline) which is
-// equivalent: $text + non-$text equality filters in a single filter
-// document. Avoid $or wrapping.
+// Empty / whitespace-only query returns ([], nil, nil) — no work to do
+// (the handler already enforces len(q) >= 2).
+//
+// Score: hit.Score is set to 1.0 (per matching conversation, since each
+// title is a single string). The downstream merge in service.Searcher
+// applies titleHitWeight to bias title hits over content hits.
 func (r *conversationRepository) SearchTitles(
 	ctx context.Context,
 	businessID, userID, query string,
@@ -351,24 +358,35 @@ func (r *conversationRepository) SearchTitles(
 	if limit <= 0 {
 		limit = 20
 	}
+	tokens := tokenizeQuery(query)
+	if len(tokens) == 0 {
+		return []domain.ConversationTitleHit{}, nil, nil
+	}
+
+	titleMatches := make([]bson.M, len(tokens))
+	for i, t := range tokens {
+		titleMatches[i] = bson.M{"title": bson.M{
+			"$regex":   wordPrefixRegex(t),
+			"$options": "i",
+		}}
+	}
 	filter := bson.M{
-		"$text":       bson.M{"$search": query},
 		"user_id":     userID,
 		"business_id": businessID,
+		"$and":        titleMatches,
 	}
 	if projectID != nil {
 		filter["project_id"] = *projectID
 	}
 	opts := options.Find().
 		SetProjection(bson.M{
-			"score":           bson.M{"$meta": "textScore"},
 			"title":           1,
 			"project_id":      1,
 			"user_id":         1,
 			"business_id":     1,
 			"last_message_at": 1,
 		}).
-		SetSort(bson.D{{Key: "score", Value: bson.M{"$meta": "textScore"}}}).
+		SetSort(bson.D{{Key: "last_message_at", Value: -1}}).
 		SetLimit(int64(limit))
 
 	cursor, err := r.collection.Find(ctx, filter, opts)
@@ -380,6 +398,11 @@ func (r *conversationRepository) SearchTitles(
 	var hits []domain.ConversationTitleHit
 	if err := cursor.All(ctx, &hits); err != nil {
 		return nil, nil, fmt.Errorf("decode title hits: %w", err)
+	}
+	for i := range hits {
+		// Stable, non-zero score so mergeAndRank's `t.Score * titleW`
+		// formula keeps title hits ranked above zero-content matches.
+		hits[i].Score = 1.0
 	}
 	ids := make([]string, len(hits))
 	for i, h := range hits {

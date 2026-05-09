@@ -3,124 +3,52 @@ package repository
 import (
 	"context"
 	"errors"
-	"fmt"
 
-	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// Search-index weights and Mongo error codes.
-const (
-	// titleSearchWeight biases conversation-title hits 2x over message-content
-	// hits when both indexes match the same query (RESEARCH §4 / SEARCH-01).
-	titleSearchWeight = 20
-
-	// mongoIndexOptionsConflictErr (85) and mongoIndexKeySpecsConflictErr (86)
-	// are the CommandError codes Mongo returns when CreateOne hits an existing
-	// index with a divergent spec — treated as "already exists" since both
-	// signal the index is in place.
-	mongoIndexOptionsConflictErr  = 85
-	mongoIndexKeySpecsConflictErr = 86
-)
-
-// EnsureSearchIndexes — Phase 19 / Plan 19-03 / SEARCH-01.
+// EnsureSearchIndexes — v20.1: best-effort cleanup of legacy text
+// indexes.
 //
-// Creates the v1.3 text-search indexes idempotently at API startup. Two
-// independent text indexes:
+// History:
 //
-//  1. conversations.title — name "conversations_title_text_v19", weight 20,
-//     default_language "russian".
-//  2. messages.content — name "messages_content_text_v19", weight 10,
-//     default_language "russian".
+//   - v19 created `_text_v19` indexes with default_language "russian"
+//     (Snowball). These had asymmetric stems (e.g. "отзыв" vs "отзывы")
+//     that broke recall.
+//   - v20 renamed to `_text_v20` with default_language "none" — fixed
+//     the asymmetry but lost morphological recall.
+//   - v20.1 abandons $text entirely. Search uses word-prefix regex
+//     (see message.go::SearchByConversationIDs and
+//     conversation.go::SearchTitles), which works against the existing
+//     scope indexes (`conversation_id_1_created_at_1` on messages,
+//     ESR pin-aware compound on conversations).
 //
-// background:true is intentionally NOT called: the Go driver v2.5.0 has
-// dropped the option (RESEARCH §4 — Mongo 4.2+ uses an optimized hybrid
-// build that allows concurrent reads/writes during index construction,
-// making the option a no-op the driver no longer exposes). The actual
-// readiness gate is implemented as an atomic.Bool flag in service.Searcher
-// (RESEARCH §7) — handler returns 503 + Retry-After: 5 until the flag
-// flips after EnsureSearchIndexes returns nil.
+// This function now exists ONLY to drop the legacy text indexes left
+// behind by previous deploys. Drops are best-effort — IndexNotFound
+// (code 27) is the steady-state no-op.
 //
-// Idempotency: a duplicate-key error from CreateOne (same name + same
-// spec) is swallowed — we keep the same fail-safe shape used by
-// EnsureConversationIndexes. The mongo.Indexes().CreateOne invocation
-// returns IsDuplicateKeyError for true name collisions; some driver
-// versions surface "already exists" as a CommandError with code 86
-// (IndexKeySpecsConflict) or code 85 (IndexOptionsConflict) — we
-// recognize the broader "index already exists" message family by
-// checking IsDuplicateKeyError first, then by string-suffix on the error
-// message, so reruns over a stable spec are safe.
-//
-// Wired into services/api/cmd/main.go AFTER EnsureConversationIndexes
-// (Plan 19-02) and BEFORE searcher.MarkIndexesReady() — see RESEARCH §7
-// for the happens-before edge enforced by the atomic.Bool.Store.
+// We keep the function (rather than removing it) so cmd/main.go's
+// startup wiring stays unchanged; the readiness flag still flips after
+// this returns and gates 503/Retry-After until the search service is
+// wired.
 func EnsureSearchIndexes(ctx context.Context, db *mongo.Database) error {
 	convs := db.Collection("conversations")
 	msgs := db.Collection("messages")
 
-	titleIdx := mongo.IndexModel{
-		Keys: bson.D{{Key: "title", Value: "text"}},
-		Options: options.Index().
-			SetName("conversations_title_text_v19").
-			SetDefaultLanguage("russian").
-			SetWeights(bson.D{{Key: "title", Value: titleSearchWeight}}),
-	}
-	if _, err := convs.Indexes().CreateOne(ctx, titleIdx); err != nil {
-		if !isIndexAlreadyExistsErr(err) {
-			return fmt.Errorf("ensure conversations title text index: %w", err)
+	dropLegacy := func(coll *mongo.Collection, name string) {
+		if err := coll.Indexes().DropOne(ctx, name); err != nil {
+			var cmdErr mongo.CommandError
+			if errors.As(err, &cmdErr) && cmdErr.Code == 27 {
+				return
+			}
+			// Non-fatal: search itself doesn't need these indexes any more.
+			_ = err
 		}
 	}
-
-	contentIdx := mongo.IndexModel{
-		Keys: bson.D{{Key: "content", Value: "text"}},
-		Options: options.Index().
-			SetName("messages_content_text_v19").
-			SetDefaultLanguage("russian").
-			SetWeights(bson.D{{Key: "content", Value: 10}}),
-	}
-	if _, err := msgs.Indexes().CreateOne(ctx, contentIdx); err != nil {
-		if !isIndexAlreadyExistsErr(err) {
-			return fmt.Errorf("ensure messages content text index: %w", err)
-		}
-	}
+	dropLegacy(convs, "conversations_title_text_v19")
+	dropLegacy(convs, "conversations_title_text_v20")
+	dropLegacy(msgs, "messages_content_text_v19")
+	dropLegacy(msgs, "messages_content_text_v20")
 	return nil
 }
 
-// isIndexAlreadyExistsErr returns true when the driver reports that the
-// index already exists with a matching spec. Covers (a)
-// mongo.IsDuplicateKeyError, (b) command-error messages that include
-// "already exists" or "Index with name", to catch the IndexKeySpecsConflict
-// / IndexOptionsConflict family across driver versions.
-func isIndexAlreadyExistsErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	if mongo.IsDuplicateKeyError(err) {
-		return true
-	}
-	var cmdErr mongo.CommandError
-	if errors.As(err, &cmdErr) {
-		// 85 IndexOptionsConflict, 86 IndexKeySpecsConflict, 96 OperationFailed (rare).
-		switch cmdErr.Code {
-		case mongoIndexOptionsConflictErr, mongoIndexKeySpecsConflictErr:
-			return true
-		}
-	}
-	msg := err.Error()
-	return contains(msg, "already exists") ||
-		contains(msg, "Index with name") ||
-		contains(msg, "IndexOptionsConflict")
-}
-
-func contains(s, sub string) bool {
-	if len(sub) > len(s) {
-		return false
-	}
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
