@@ -1,49 +1,79 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import Link from 'next/link';
+import { Bookmark, Plus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { EmptyFrame } from '@/components/states';
-import { api } from '@/lib/api';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
-import { useProjectConversationCount, useProjectQuery } from '@/hooks/useProjects';
-
-interface Conversation {
-  id: string;
-  title: string;
-  createdAt: string;
-}
+import { useConversationsQuery, useCreateConversation } from '@/hooks/useConversations';
+import { useProjectQuery } from '@/hooks/useProjects';
+import { cn } from '@/lib/utils';
+import type { Conversation } from '@/lib/conversations';
 
 export default function ProjectChatsPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params?.id ?? '';
-  const queryClient = useQueryClient();
+
+  const tProjects = useTranslations('projects');
+  const tChat = useTranslations('chat');
 
   const { data: project, isLoading: projectLoading } = useProjectQuery(id);
-  const { data: chatCount = 0, isLoading: countLoading } = useProjectConversationCount(id);
+  const { data: conversations, isLoading: conversationsLoading } = useConversationsQuery();
+  const createConversation = useCreateConversation();
 
-  const createConversation = useMutation({
-    mutationFn: () =>
-      api
-        .post('/conversations', { title: 'Новый диалог', projectId: id })
-        .then((r) => r.data as Conversation),
-    onSuccess: (conv) => {
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROJECT_CONVERSATION_COUNT(id) });
+  // Project-scoped slice. Pinned first, then most-recent-activity desc.
+  // `lastMessageAt` is nullable on freshly-created chats (no messages yet);
+  // fall back to updatedAt → createdAt so the order stays stable.
+  const chats = useMemo<Conversation[]>(() => {
+    const list = (conversations ?? []).filter((c) => c.projectId === id);
+    const recencyKey = (c: Conversation) => c.lastMessageAt ?? c.updatedAt ?? c.createdAt;
+    return [...list].sort((a, b) => {
+      const aPinned = a.pinnedAt != null;
+      const bPinned = b.pinnedAt != null;
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
+      return recencyKey(b).localeCompare(recencyKey(a));
+    });
+  }, [conversations, id]);
+
+  async function handleCreate() {
+    try {
+      const conv = await createConversation.mutateAsync({
+        title: tChat('newConversation'),
+        projectId: id,
+      });
       router.push(`/chat/${conv.id}`);
-    },
-  });
+    } catch {
+      toast.error(tProjects('errorCreateChat'));
+    }
+  }
 
-  if (projectLoading || countLoading) {
+  const newChatButton = (
+    <Button
+      variant="primary"
+      size="md"
+      onClick={() => void handleCreate()}
+      disabled={createConversation.isPending}
+    >
+      <Plus size={16} aria-hidden />
+      {tProjects('newChat')}
+    </Button>
+  );
+
+  if (projectLoading || conversationsLoading) {
     return (
       <>
-        <PageHeader title="Проект" />
+        <PageHeader title={tProjects('fallbackTitle')} />
         <div className="mx-auto w-full max-w-2xl space-y-3 px-4 pb-10 sm:px-12 sm:pb-16">
+          <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />
         </div>
@@ -54,10 +84,10 @@ export default function ProjectChatsPage() {
   if (!project) {
     return (
       <>
-        <PageHeader title="Проект" />
+        <PageHeader title={tProjects('fallbackTitle')} />
         <div className="mx-auto w-full max-w-2xl px-4 pb-10 sm:px-12 sm:pb-16">
           <div className="border-[var(--ov-danger)]/40 rounded-lg border bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
-            Не удалось загрузить проект. Обновите страницу или попробуйте позже.
+            {tProjects('errorLoad')}
           </div>
         </div>
       </>
@@ -66,48 +96,28 @@ export default function ProjectChatsPage() {
 
   return (
     <>
-      <PageHeader
-        title={project.name}
-        sub={project.description}
-        actions={
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => createConversation.mutate()}
-            disabled={createConversation.isPending}
-          >
-            <Plus size={16} />
-            Новый чат
-          </Button>
-        }
-      />
+      <PageHeader title={project.name} sub={project.description} actions={newChatButton} />
 
       <div className="mx-auto w-full max-w-2xl px-4 pb-10 sm:px-12 sm:pb-16">
-        {chatCount === 0 ? (
+        {chats.length === 0 ? (
           <EmptyFrame
-            title="В этом проекте ещё нет чатов"
-            body="Начните первый диалог — он унаследует системный промпт и whitelist этого проекта."
-            action={
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => createConversation.mutate()}
-                disabled={createConversation.isPending}
-              >
-                <Plus size={16} />
-                Новый чат
-              </Button>
-            }
+            title={tProjects('chats.empty.title')}
+            body={tProjects('chats.empty.body')}
+            action={newChatButton}
           />
         ) : (
-          // TODO(Phase 19): full chat list here — Plan 15-06 supplies the
-          // sidebar chat list. Until then, point the operator at the rail.
-          <section className="rounded-lg border border-line bg-paper-raised p-5">
-            <MonoLabel>Чаты проекта</MonoLabel>
-            <p className="mt-2 text-sm text-ink">
-              В этом проекте {chatCount} {pluralizeChats(chatCount)}.
-            </p>
-            <p className="mt-1 text-sm text-ink-mid">Откройте нужный через боковую панель.</p>
+          <section className="overflow-hidden rounded-lg border border-line bg-paper-raised">
+            <div className="flex items-center justify-between border-b border-line-soft px-5 py-3">
+              <MonoLabel>{tProjects('chats.sectionLabel')}</MonoLabel>
+              <MonoLabel>{chats.length}</MonoLabel>
+            </div>
+            <ul className="divide-y divide-line-soft">
+              {chats.map((chat) => (
+                <li key={chat.id}>
+                  <ChatRow chat={chat} fallbackTitle={tChat('newConversation')} />
+                </li>
+              ))}
+            </ul>
           </section>
         )}
       </div>
@@ -115,11 +125,25 @@ export default function ProjectChatsPage() {
   );
 }
 
-function pluralizeChats(n: number): string {
-  const last = n % 10;
-  const lastTwo = n % 100;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'чатов';
-  if (last === 1) return 'чат';
-  if (last >= 2 && last <= 4) return 'чата';
-  return 'чатов';
+function ChatRow({ chat, fallbackTitle }: { chat: Conversation; fallbackTitle: string }) {
+  const title = chat.title?.trim() || fallbackTitle;
+  const ts = chat.lastMessageAt ?? chat.updatedAt ?? chat.createdAt;
+  const when = format(new Date(ts), 'd MMM · HH:mm', { locale: ru });
+  const pinned = chat.pinnedAt != null;
+
+  return (
+    <Link
+      href={`/chat/${chat.id}`}
+      className={cn(
+        'flex items-center gap-3 px-5 py-3.5 transition-colors',
+        'hover:bg-paper-sunken focus-visible:bg-paper-sunken focus-visible:outline-none'
+      )}
+    >
+      {pinned && <Bookmark size={14} className="shrink-0 text-yellow-400" aria-hidden />}
+      <span className="min-w-0 flex-1 truncate text-sm text-ink">{title}</span>
+      <MonoLabel tone="mid" className="shrink-0 normal-case tracking-normal">
+        {when}
+      </MonoLabel>
+    </Link>
+  );
 }
