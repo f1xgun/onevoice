@@ -77,6 +77,7 @@ interface Props {
 
 export function SearchResultRow({ result, onSelect }: Props) {
   const tSide = useTranslations('sidebar');
+  const tChat = useTranslations('chat');
   const href = result.topMessageId
     ? `/chat/${result.conversationId}?highlight=${encodeURIComponent(result.topMessageId)}`
     : `/chat/${result.conversationId}`;
@@ -97,7 +98,7 @@ export function SearchResultRow({ result, onSelect }: Props) {
           data-roving-item="true"
           className="flex flex-1 items-center gap-2 truncate text-sm text-ink"
         >
-          <span className="flex-1 truncate">{result.title || 'Новый диалог'}</span>
+          <span className="flex-1 truncate">{result.title || tChat('newConversation')}</span>
         </Link>
         {result.projectId && <ProjectChip projectId={result.projectId} size="xs" />}
         {dateLabel && <span className="shrink-0 text-xs text-ink-faint">{dateLabel}</span>}

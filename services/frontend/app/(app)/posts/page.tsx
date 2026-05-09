@@ -461,6 +461,7 @@ function PlatformResultCard({
   platform: string;
   result: NonNullable<Post['platformResults']>[string];
 }) {
+  const tPostStatus = useTranslations('posts.status');
   const ok = !result.error && (result.status === 'published' || result.status === 'ok');
   const display =
     CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
@@ -470,7 +471,7 @@ function PlatformResultCard({
       <span className="flex-1 truncate text-[13px] text-ink-mid">
         {ok
           ? result.url
-            ? 'Опубликовано'
+            ? tPostStatus('published')
             : (platformShort[platform] ?? display)
           : (result.error ?? result.status)}
       </span>
