@@ -12,6 +12,8 @@ import (
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
+	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
+	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
@@ -41,7 +43,8 @@ type Handlers struct {
 	Business      *handler.BusinessHandler
 	Integration   *handler.IntegrationHandler
 	Conversation  *handler.ConversationHandler
-	OAuth         *handler.OAuthHandler
+	OAuth         *oauth.OAuthHandler     // Phase 19 / Plan 19-04: true OAuth code-flow (VK / Yandex / Google)
+	Connect       *connect.ConnectHandler // Phase 19 / Plan 19-04: paste-flow integrations (Telegram bot-token, VK community access token)
 	InternalToken *handler.InternalTokenHandler
 	ChatProxy     *handler.ChatProxyHandler
 	Review        *handler.ReviewHandler
@@ -137,14 +140,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Post("/integrations/yandex_business/{id}/refresh-name", handlers.OAuth.RefreshYandexBusinessName)
 
 			// VK community token route
-			r.Post("/integrations/vk/connect", handlers.OAuth.ConnectVK)
+			r.Post("/integrations/vk/connect", handlers.Connect.ConnectVK)
 			// Lazy backfill of missing community names on existing integrations.
-			r.Post("/integrations/vk/{id}/refresh-name", handlers.OAuth.RefreshVKCommunityName)
+			r.Post("/integrations/vk/{id}/refresh-name", handlers.Connect.RefreshVKCommunityName)
 
 			// Telegram routes
-			r.Post("/integrations/telegram/verify", handlers.OAuth.VerifyTelegramLogin)
-			r.Post("/integrations/telegram/connect", handlers.OAuth.ConnectTelegram)
-			r.Post("/integrations/telegram/refresh", handlers.OAuth.RefreshTelegramLinkedGroup)
+			r.Post("/integrations/telegram/verify", handlers.Connect.VerifyTelegramLogin)
+			r.Post("/integrations/telegram/connect", handlers.Connect.ConnectTelegram)
+			r.Post("/integrations/telegram/refresh", handlers.Connect.RefreshTelegramLinkedGroup)
 
 			// Google Business routes
 			r.Get("/integrations/google_business/auth-url", handlers.OAuth.GetGoogleAuthURL)

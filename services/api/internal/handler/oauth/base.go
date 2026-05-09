@@ -5,7 +5,7 @@
 //
 // Both sub-packages preserve the public REST routes registered in
 // services/api/internal/router/router.go; the split is purely structural
-// (single-responsibility per platform), no behaviour change.
+// (single-responsibility per platform), no behavior change.
 package oauth
 
 import (
@@ -72,18 +72,18 @@ type OAuthConfig struct {
 	YandexClientID     string
 	YandexClientSecret string
 	YandexRedirectURI  string
-	TelegramBotToken   string
-	FrontendURL        string // for redirects, defaults to "/"
 	GoogleClientID     string
 	GoogleClientSecret string
 	GoogleRedirectURI  string
 
-	// Overridable base URLs for testing
+	// Overridable base URLs for testing.
+	// vkAPIBaseURL / telegramAPIBaseURL live on connect.ConnectConfig
+	// because the paste-flow handler is the only consumer of api.vk.com
+	// and api.telegram.org. Yandex / Google / VK-OAuth overrides stay
+	// here because the OAuth code-flow methods drive those endpoints.
 	vkTokenBaseURL        string
-	vkAPIBaseURL          string // test override for api.vk.com (groups.getById, groups.getTokenPermissions)
 	yandexTokenBaseURL    string
 	yandexProbeBaseURL    string // test override for the cookie-validity probe
-	telegramAPIBaseURL    string
 	googleTokenBaseURL    string // test override
 	googleAccountsBaseURL string // test override for account management API
 	googleBusinessInfoURL string // test override for business information API
@@ -142,16 +142,6 @@ func NewOAuthHandler(
 func (h *OAuthHandler) WithAgentTaskPublisher(p AgentTaskPublisher) *OAuthHandler {
 	h.taskPublisher = p
 	return h
-}
-
-// vkAPIBase returns the api.vk.com base URL, honoring the test override.
-// Used by the paste-flow connect path so unit tests can stub VK's responses
-// without binding outbound DNS.
-func (h *OAuthHandler) vkAPIBase() string {
-	if h.cfg.vkAPIBaseURL != "" {
-		return h.cfg.vkAPIBaseURL
-	}
-	return vkapi.DefaultAPIBaseURL
 }
 
 // vkTokenBaseURL returns the classic VK OAuth base URL.
