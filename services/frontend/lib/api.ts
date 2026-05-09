@@ -1,10 +1,10 @@
 import axios from 'axios';
-import { API_PATHS, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
+import { API_BASE_URL, API_PATHS, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { useAuthStore } from './auth';
 import type { User } from './auth';
 
 export const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
 });
