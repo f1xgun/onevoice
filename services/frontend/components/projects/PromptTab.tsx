@@ -34,11 +34,7 @@ export function PromptTab({ form, systemPromptLen, overCap }: PromptTabProps) {
             <FormLabel>{tForm('systemPrompt')}</FormLabel>
             <FormDescription>{tForm('systemPromptDescription')}</FormDescription>
             <FormControl>
-              <Textarea
-                rows={10}
-                placeholder="Ты — помощник по отзывам. Отвечай вежливо, по существу…"
-                {...field}
-              />
+              <Textarea rows={10} placeholder={tForm('systemPromptPlaceholder')} {...field} />
             </FormControl>
             <div className="flex justify-end">
               <span
