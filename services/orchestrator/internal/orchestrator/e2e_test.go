@@ -15,6 +15,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
@@ -77,9 +78,9 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type: "function",
+		Type: llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{
-			Name:        "vk__publish_post",
+			Name:        tools.VKPublishPost,
 			Description: "Публикует пост в VK",
 			Parameters: map[string]interface{}{
 				"type": "object",
@@ -90,7 +91,7 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 				"required": []string{"text"},
 			},
 		},
-	}, "", natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
+	}, "", natsexec.New(a2a.AgentVK, tools.VKPublishPost, conn), domain.ToolFloorAuto, nil)
 
 	// Stub LLM: first call → tool_call, second call → text answer
 	toolArgs, _ := json.Marshal(map[string]interface{}{
@@ -102,9 +103,9 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:   "call_vk_1",
-				Type: "function",
+				Type: llm.ToolCallTypeFunction,
 				Function: llm.FunctionCall{
-					Name:      "vk__publish_post",
+					Name:      tools.VKPublishPost,
 					Arguments: string(toolArgs),
 				},
 			}},
@@ -147,12 +148,12 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 
 	// tool_call emitted
 	require.Len(t, toolCalls, 1)
-	assert.Equal(t, "vk__publish_post", toolCalls[0].ToolName)
+	assert.Equal(t, tools.VKPublishPost, toolCalls[0].ToolName)
 	assert.Equal(t, "Привет, мир!", toolCalls[0].ToolArgs["text"])
 
 	// tool_result from agent came back
 	require.Len(t, toolResults, 1)
-	assert.Equal(t, "vk__publish_post", toolResults[0].ToolName)
+	assert.Equal(t, tools.VKPublishPost, toolResults[0].ToolName)
 	assert.Empty(t, toolResults[0].ToolError)
 	resultMap, ok := toolResults[0].ToolResult.(map[string]interface{})
 	require.True(t, ok)
@@ -188,13 +189,13 @@ func TestE2E_AgentError(t *testing.T) {
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type: "function",
+		Type: llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{
-			Name:        "vk__publish_post",
+			Name:        tools.VKPublishPost,
 			Description: "Публикует пост",
 			Parameters:  map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
 		},
-	}, "", natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
+	}, "", natsexec.New(a2a.AgentVK, tools.VKPublishPost, conn), domain.ToolFloorAuto, nil)
 
 	toolArgs, _ := json.Marshal(map[string]interface{}{"text": "test"})
 	stub := &stubLLM{responses: []*llm.ChatResponse{
@@ -202,8 +203,8 @@ func TestE2E_AgentError(t *testing.T) {
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:       "call_err",
-				Type:     "function",
-				Function: llm.FunctionCall{Name: "vk__publish_post", Arguments: string(toolArgs)},
+				Type:     llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{Name: tools.VKPublishPost, Arguments: string(toolArgs)},
 			}},
 		},
 		{Content: "Не удалось опубликовать пост — ошибка доступа.", FinishReason: "stop"},
@@ -229,7 +230,7 @@ func TestE2E_AgentError(t *testing.T) {
 	}
 
 	require.Len(t, toolResults, 1)
-	assert.Equal(t, "vk__publish_post", toolResults[0].ToolName)
+	assert.Equal(t, tools.VKPublishPost, toolResults[0].ToolName)
 	assert.Contains(t, toolResults[0].ToolError, "access denied")
 }
 
@@ -270,13 +271,13 @@ func TestE2E_MultipleAgents(t *testing.T) {
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
-		Function: llm.FunctionDefinition{Name: "telegram__send_channel_post", Description: "Send TG post", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
-	}, "", natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", conn), domain.ToolFloorAuto, nil)
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "Send TG post", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
+	}, "", natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, conn), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
-		Function: llm.FunctionDefinition{Name: "vk__publish_post", Description: "Send VK post", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
-	}, "", natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.VKPublishPost, Description: "Send VK post", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
+	}, "", natsexec.New(a2a.AgentVK, tools.VKPublishPost, conn), domain.ToolFloorAuto, nil)
 
 	// LLM calls telegram tool first, then vk, then answers
 	tgArgs, _ := json.Marshal(map[string]interface{}{"text": "tg post"})
@@ -286,16 +287,16 @@ func TestE2E_MultipleAgents(t *testing.T) {
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:       "call_tg",
-				Type:     "function",
-				Function: llm.FunctionCall{Name: "telegram__send_channel_post", Arguments: string(tgArgs)},
+				Type:     llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{Name: tools.TelegramSendChannelPost, Arguments: string(tgArgs)},
 			}},
 		},
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:       "call_vk",
-				Type:     "function",
-				Function: llm.FunctionCall{Name: "vk__publish_post", Arguments: string(vkArgs)},
+				Type:     llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{Name: tools.VKPublishPost, Arguments: string(vkArgs)},
 			}},
 		},
 		{Content: "Посты опубликованы в обоих каналах!", FinishReason: "stop"},
@@ -329,8 +330,8 @@ func TestE2E_MultipleAgents(t *testing.T) {
 		require.True(t, ok)
 		platforms[tr.ToolName] = rm["platform"].(string)
 	}
-	assert.Equal(t, "telegram", platforms["telegram__send_channel_post"])
-	assert.Equal(t, "vk", platforms["vk__publish_post"])
+	assert.Equal(t, "telegram", platforms[tools.TelegramSendChannelPost])
+	assert.Equal(t, "vk", platforms[tools.VKPublishPost])
 }
 
 // TestE2E_BusinessIDPropagation verifies that the business ID from context
@@ -353,15 +354,15 @@ func TestE2E_BusinessIDPropagation(t *testing.T) {
 	conn := natsexec.NewNATSConn(orchNC)
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
-		Function: llm.FunctionDefinition{Name: "vk__publish_post", Description: "d", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
-	}, "", natsexec.New(a2a.AgentVK, "vk__publish_post", conn), domain.ToolFloorAuto, nil)
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.VKPublishPost, Description: "d", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
+	}, "", natsexec.New(a2a.AgentVK, tools.VKPublishPost, conn), domain.ToolFloorAuto, nil)
 
 	args, _ := json.Marshal(map[string]interface{}{})
 	stub := &stubLLM{responses: []*llm.ChatResponse{
 		{
 			FinishReason: "tool_calls",
-			ToolCalls:    []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.FunctionCall{Name: "vk__publish_post", Arguments: string(args)}}},
+			ToolCalls:    []llm.ToolCall{{ID: "c1", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: tools.VKPublishPost, Arguments: string(args)}}},
 		},
 		{Content: "ok", FinishReason: "stop"},
 	}}

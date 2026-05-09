@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-telegram/internal/agent"
 )
 
@@ -84,7 +85,7 @@ func TestHandler_SendChannelPost_FetchesTokenPerRequest(t *testing.T) {
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t1",
 		BusinessID: "biz-42",
-		Tool:       "telegram__send_channel_post",
+		Tool:       tools.TelegramSendChannelPost,
 		Args: map[string]interface{}{
 			"text":       "Hello, channel!",
 			"channel_id": "-1001234567890",
@@ -111,7 +112,7 @@ func TestHandler_SendNotification_FetchesTokenPerRequest(t *testing.T) {
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t2",
 		BusinessID: "biz-99",
-		Tool:       "telegram__send_notification",
+		Tool:       tools.TelegramSendNotification,
 		Args: map[string]interface{}{
 			"text":    "You have a new review!",
 			"chat_id": "123456789",
@@ -135,7 +136,7 @@ func TestHandler_TokenFetchError_ReturnsError(t *testing.T) {
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID: "t3",
-		Tool:   "telegram__send_channel_post",
+		Tool:   tools.TelegramSendChannelPost,
 		Args: map[string]interface{}{
 			"text":       "Hello",
 			"channel_id": "-1001234567890",
@@ -182,7 +183,7 @@ func newHandlerWithErrSender(fetcher agent.TokenFetcher, sendErr error) *agent.H
 
 func sendPostReq() a2a.ToolRequest {
 	return a2a.ToolRequest{
-		Tool:       "telegram__send_channel_post",
+		Tool:       tools.TelegramSendChannelPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hi", "channel_id": "123"},
 	}
@@ -264,7 +265,7 @@ func newDedupeTestHandler(t *testing.T, sender agent.Sender) (*agent.Handler, *m
 func sendPostReqWithApproval(approvalID string) a2a.ToolRequest {
 	return a2a.ToolRequest{
 		TaskID:     "task-t",
-		Tool:       "telegram__send_channel_post",
+		Tool:       tools.TelegramSendChannelPost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hi", "channel_id": "-1001234567890"},
 		ApprovalID: approvalID,

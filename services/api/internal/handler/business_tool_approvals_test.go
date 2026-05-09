@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
@@ -103,7 +104,7 @@ func TestGetBusinessToolApprovals_ReturnsCurrentMap(t *testing.T) {
 	svc := &stubBusinessServiceForApprovals{
 		bizByUser: &domain.Business{ID: bizID, UserID: userID},
 		GetApprovalsFn: func(_ context.Context, _, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
-			return map[string]domain.ToolFloor{"telegram__send_channel_post": "manual"}, nil
+			return map[string]domain.ToolFloor{tools.TelegramSendChannelPost: "manual"}, nil
 		},
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
@@ -119,7 +120,7 @@ func TestGetBusinessToolApprovals_ReturnsCurrentMap(t *testing.T) {
 	var resp map[string]interface{}
 	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 	approvals, _ := resp["toolApprovals"].(map[string]interface{})
-	if approvals["telegram__send_channel_post"] != "manual" {
+	if approvals[tools.TelegramSendChannelPost] != "manual" {
 		t.Errorf("approvals = %v, want telegram__send_channel_post=manual", approvals)
 	}
 }
@@ -132,12 +133,12 @@ func TestUpdateBusinessToolApprovals_ValidPayload_Persists(t *testing.T) {
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
 	require.NoError(t, err)
-	h.SetToolsCache(newStubToolsCache("telegram__send_channel_post", "vk__publish_post"))
+	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost, tools.VKPublishPost))
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"toolApprovals": map[string]string{
-			"telegram__send_channel_post": "manual",
-			"vk__publish_post":            "auto",
+			tools.TelegramSendChannelPost: "manual",
+			tools.VKPublishPost:           "auto",
 		},
 	})
 	rec := routeAndServe(h, http.MethodPut,
@@ -147,10 +148,10 @@ func TestUpdateBusinessToolApprovals_ValidPayload_Persists(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if svc.updateCallApprovals["telegram__send_channel_post"] != domain.ToolFloorManual {
+	if svc.updateCallApprovals[tools.TelegramSendChannelPost] != domain.ToolFloorManual {
 		t.Errorf("expected manual for telegram, got %v", svc.updateCallApprovals)
 	}
-	if svc.updateCallApprovals["vk__publish_post"] != domain.ToolFloorAuto {
+	if svc.updateCallApprovals[tools.VKPublishPost] != domain.ToolFloorAuto {
 		t.Errorf("expected auto for vk, got %v", svc.updateCallApprovals)
 	}
 }
@@ -163,7 +164,7 @@ func TestUpdateBusinessToolApprovals_UnknownTool_Returns400(t *testing.T) {
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
 	require.NoError(t, err)
-	h.SetToolsCache(newStubToolsCache("telegram__send_channel_post"))
+	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"toolApprovals": map[string]string{"unknown_tool": "manual"},
@@ -188,10 +189,10 @@ func TestUpdateBusinessToolApprovals_InvalidValue_Returns400(t *testing.T) {
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
 	require.NoError(t, err)
-	h.SetToolsCache(newStubToolsCache("telegram__send_channel_post"))
+	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"toolApprovals": map[string]string{"telegram__send_channel_post": "forbidden"},
+		"toolApprovals": map[string]string{tools.TelegramSendChannelPost: "forbidden"},
 	})
 	rec := routeAndServe(h, http.MethodPut,
 		"/api/v1/business/"+bizID.String()+"/tool-approvals",
@@ -217,10 +218,10 @@ func TestUpdateBusinessToolApprovals_CrossTenant_Returns403(t *testing.T) {
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
 	require.NoError(t, err)
-	h.SetToolsCache(newStubToolsCache("telegram__send_channel_post"))
+	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"toolApprovals": map[string]string{"telegram__send_channel_post": "manual"},
+		"toolApprovals": map[string]string{tools.TelegramSendChannelPost: "manual"},
 	})
 	rec := routeAndServe(h, http.MethodPut,
 		"/api/v1/business/"+bizID.String()+"/tool-approvals",
@@ -249,10 +250,10 @@ func TestUpdateBusinessToolApprovals_PreservesOtherSettings(t *testing.T) {
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
 	require.NoError(t, err)
-	h.SetToolsCache(newStubToolsCache("telegram__send_channel_post"))
+	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"toolApprovals": map[string]string{"telegram__send_channel_post": "manual"},
+		"toolApprovals": map[string]string{tools.TelegramSendChannelPost: "manual"},
 	})
 	rec := routeAndServe(h, http.MethodPut,
 		"/api/v1/business/"+bizID.String()+"/tool-approvals",
@@ -267,7 +268,7 @@ func TestUpdateBusinessToolApprovals_PreservesOtherSettings(t *testing.T) {
 	if len(svc.updateCallApprovals) != 1 {
 		t.Fatalf("unexpected approvals size %d: %v", len(svc.updateCallApprovals), svc.updateCallApprovals)
 	}
-	if svc.updateCallApprovals["telegram__send_channel_post"] != domain.ToolFloorManual {
+	if svc.updateCallApprovals[tools.TelegramSendChannelPost] != domain.ToolFloorManual {
 		t.Errorf("wrong value: %v", svc.updateCallApprovals)
 	}
 }

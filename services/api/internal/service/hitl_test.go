@@ -14,6 +14,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/pkg/toolvalidation"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -158,14 +159,14 @@ func newSvc(t *testing.T, pending *stubPendingRepo, biz *stubBusinessRepo, proj 
 	cache := service.NewToolsRegistryCache("", nil, time.Minute)
 	cache.Seed([]service.ToolsRegistryEntry{
 		{
-			Name:           "telegram__send_channel_post",
+			Name:           tools.TelegramSendChannelPost,
 			Platform:       "telegram",
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text", "parse_mode"},
 			Description:    "Publish to Telegram channel",
 		},
 		{
-			Name:           "vk__publish_post",
+			Name:           tools.VKPublishPost,
 			Platform:       "vk",
 			Floor:          domain.ToolFloorManual,
 			EditableFields: []string{"text"},
@@ -214,7 +215,7 @@ func TestHITLService_Resolve_Happy(t *testing.T) {
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 	})
 	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
 
@@ -246,7 +247,7 @@ func TestHITLService_Resolve_CrossTenant_Returns403(t *testing.T) {
 	attackerBiz := uuid.New().String()
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", ownerBiz, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(attackerBiz)}}, &stubProjectRepo{})
 
@@ -281,9 +282,9 @@ func TestHITLService_Resolve_PartialDecisions_Returns400WithMissing(t *testing.T
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
-		{CallID: "tc_b", ToolName: "vk__publish_post"},
-		{CallID: "tc_c", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
+		{CallID: "tc_b", ToolName: tools.VKPublishPost},
+		{CallID: "tc_c", ToolName: tools.TelegramSendChannelPost},
 	})
 	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
 
@@ -312,7 +313,7 @@ func TestHITLService_Resolve_EditInvalidField_Returns400WithEditable(t *testing.
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 	})
 	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
 
@@ -341,7 +342,7 @@ func TestHITLService_Resolve_EditNestedObject_Returns400(t *testing.T) {
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 	})
 	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
 
@@ -364,7 +365,7 @@ func TestHITLService_Resolve_RejectReasonTooLong_Returns400(t *testing.T) {
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
 
@@ -392,7 +393,7 @@ func TestHITLService_Resolve_ConcurrentResolve_ExactlyOneWins_OtherGets409(t *te
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
 
@@ -451,7 +452,7 @@ func TestHITLService_Resolve_PreservesApproveWhenFloorAtPauseManual(t *testing.T
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
 		{
 			CallID:       "tc_a",
-			ToolName:     "telegram__send_channel_post",
+			ToolName:     tools.TelegramSendChannelPost,
 			Arguments:    map[string]interface{}{"text": "hi"},
 			FloorAtPause: domain.ToolFloorManual,
 		},
@@ -500,7 +501,7 @@ func TestHITLService_Resolve_FloorAtPauseManual_BusinessFlipsToForbidden_Rewrite
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
 		{
 			CallID:       "tc_a",
-			ToolName:     "telegram__send_channel_post",
+			ToolName:     tools.TelegramSendChannelPost,
 			Arguments:    map[string]interface{}{"text": "hi"},
 			FloorAtPause: domain.ToolFloorManual,
 		},
@@ -509,7 +510,7 @@ func TestHITLService_Resolve_FloorAtPauseManual_BusinessFlipsToForbidden_Rewrite
 		ID: bizUUID,
 		Settings: map[string]interface{}{
 			"tool_approvals": map[string]interface{}{
-				"telegram__send_channel_post": "forbidden",
+				tools.TelegramSendChannelPost: "forbidden",
 			},
 		},
 	}}
@@ -546,7 +547,7 @@ func TestHITLService_Resolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
 		{
 			CallID:    "tc_a",
-			ToolName:  "telegram__send_channel_post",
+			ToolName:  tools.TelegramSendChannelPost,
 			Arguments: map[string]interface{}{"text": "hi"},
 		},
 	})
@@ -559,7 +560,7 @@ func TestHITLService_Resolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.
 		ActorBusinessID: bizID,
 		Decisions: []service.DecisionInput{
 			{ID: "tc_a", Action: "edit", EditedArgs: map[string]interface{}{
-				"tool_name": "telegram__send_channel_photo", // attempted tool swap
+				"tool_name": tools.TelegramSendChannelPhoto, // attempted tool swap
 			}},
 		},
 	})
@@ -569,7 +570,7 @@ func TestHITLService_Resolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.
 	}
 	// Persisted batch must keep the original tool_name (no mutation allowed).
 	b, _ := pr.GetByBatchID(context.Background(), "batch-1")
-	if b.Calls[0].ToolName != "telegram__send_channel_post" {
+	if b.Calls[0].ToolName != tools.TelegramSendChannelPost {
 		t.Fatalf("tool_name mutated: got %q", b.Calls[0].ToolName)
 	}
 }
@@ -579,7 +580,7 @@ func TestHITLService_Resolve_Expired_Returns410(t *testing.T) {
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()
 	b := seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post"},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost},
 	})
 	b.Status = "expired"
 	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
@@ -602,7 +603,7 @@ func TestHITLService_Resolve_EditCaseMismatch_Returns400(t *testing.T) {
 	bizID := uuid.New().String()
 	pr := newStubPendingRepo()
 	seedBatch(pr, "batch-1", "conv-1", bizID, []domain.PendingCall{
-		{CallID: "tc_a", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+		{CallID: "tc_a", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 	})
 	svc := newSvc(t, pr, &stubBusinessRepo{Business: &domain.Business{ID: uuid.MustParse(bizID)}}, &stubProjectRepo{})
 
@@ -649,14 +650,14 @@ func TestToolsRegistryCache_FetchAndCache(t *testing.T) {
 	if callCount != 1 {
 		t.Errorf("expected still 1 HTTP call after cache hit, got %d", callCount)
 	}
-	if cache.Floor("telegram__send_channel_post") != domain.ToolFloorManual {
+	if cache.Floor(tools.TelegramSendChannelPost) != domain.ToolFloorManual {
 		t.Errorf("Floor lookup failed")
 	}
-	ef := cache.EditableFields("telegram__send_channel_post")
+	ef := cache.EditableFields(tools.TelegramSendChannelPost)
 	if len(ef) != 1 || ef[0] != "text" {
 		t.Errorf("EditableFields = %v, want [text]", ef)
 	}
-	if !cache.Has("telegram__send_channel_post") {
+	if !cache.Has(tools.TelegramSendChannelPost) {
 		t.Errorf("Has should return true for registered tool")
 	}
 	if cache.Has("ghost_tool") {

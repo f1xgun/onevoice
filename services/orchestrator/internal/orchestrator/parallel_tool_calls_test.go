@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
@@ -57,9 +58,9 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "call_yb", Type: "function", Function: llm.FunctionCall{Name: "yandex_business__get_reviews", Arguments: string(argsA)}},
-				{ID: "call_tg", Type: "function", Function: llm.FunctionCall{Name: "telegram__get_reviews", Arguments: string(argsB)}},
-				{ID: "call_vk", Type: "function", Function: llm.FunctionCall{Name: "vk__get_comments", Arguments: string(argsC)}},
+				{ID: "call_yb", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: tools.YandexBusinessGetReviews, Arguments: string(argsA)}},
+				{ID: "call_tg", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: tools.TelegramGetReviews, Arguments: string(argsB)}},
+				{ID: "call_vk", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: tools.VKGetComments, Arguments: string(argsC)}},
 			},
 		},
 		{Content: "Собрал отзывы со всех трёх платформ.", FinishReason: "stop"},
@@ -74,9 +75,9 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 			return nil, ctx.Err()
 		}
 	})
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "yandex_business__get_reviews"}}, "", slow, domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "telegram__get_reviews"}}, "", slow, domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "vk__get_comments"}}, "", slow, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.YandexBusinessGetReviews}}, "", slow, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.TelegramGetReviews}}, "", slow, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.VKGetComments}}, "", slow, domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
 
@@ -146,15 +147,15 @@ func TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "call_slow", Type: "function", Function: llm.FunctionCall{Name: "slow_tool", Arguments: string(args)}},
-				{ID: "call_fast", Type: "function", Function: llm.FunctionCall{Name: "fast_tool", Arguments: string(args)}},
+				{ID: "call_slow", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "slow_tool", Arguments: string(args)}},
+				{ID: "call_fast", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "fast_tool", Arguments: string(args)}},
 			},
 		},
 		{Content: "ok", FinishReason: "stop"},
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "slow_tool"}}, "",
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "slow_tool"}}, "",
 		toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 			select {
 			case <-time.After(slowDelay):
@@ -163,7 +164,7 @@ func TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish(t *testing.T) {
 				return nil, ctx.Err()
 			}
 		}), domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "fast_tool"}}, "",
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "fast_tool"}}, "",
 		toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 			select {
 			case <-time.After(fastDelay):
@@ -215,9 +216,9 @@ func TestRun_ParallelToolCalls_OneFailsOthersSucceed(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "call_ok_a", Type: "function", Function: llm.FunctionCall{Name: "tool_ok_a", Arguments: string(args)}},
-				{ID: "call_fail", Type: "function", Function: llm.FunctionCall{Name: "tool_fail", Arguments: string(args)}},
-				{ID: "call_ok_b", Type: "function", Function: llm.FunctionCall{Name: "tool_ok_b", Arguments: string(args)}},
+				{ID: "call_ok_a", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "tool_ok_a", Arguments: string(args)}},
+				{ID: "call_fail", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "tool_fail", Arguments: string(args)}},
+				{ID: "call_ok_b", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "tool_ok_b", Arguments: string(args)}},
 			},
 		},
 		{Content: "ok", FinishReason: "stop"},
@@ -235,9 +236,9 @@ func TestRun_ParallelToolCalls_OneFailsOthersSucceed(t *testing.T) {
 	failExec := toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, errors.New("boom")
 	})
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_ok_a"}}, "", okExec, domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_fail"}}, "", failExec, domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "tool_ok_b"}}, "", okExec, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_ok_a"}}, "", okExec, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_fail"}}, "", failExec, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_ok_b"}}, "", okExec, domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -272,8 +273,8 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "call_a", Type: "function", Function: llm.FunctionCall{Name: "telegram__send_channel_post", Arguments: string(argsA)}},
-				{ID: "call_b", Type: "function", Function: llm.FunctionCall{Name: "telegram__send_channel_post", Arguments: string(argsB)}},
+				{ID: "call_a", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: tools.TelegramSendChannelPost, Arguments: string(argsA)}},
+				{ID: "call_b", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: tools.TelegramSendChannelPost, Arguments: string(argsB)}},
 			},
 		},
 		{Content: "оба опубликованы", FinishReason: "stop"},
@@ -286,7 +287,7 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 	})
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "telegram__send_channel_post"}}, "", exec, domain.ToolFloorAuto, nil)
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost}}, "", exec, domain.ToolFloorAuto, nil)
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -337,20 +338,20 @@ func TestRun_PerToolTimeout_BoundsSingleTool(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "call_hang", Type: "function", Function: llm.FunctionCall{Name: "hang", Arguments: string(args)}},
-				{ID: "call_fast", Type: "function", Function: llm.FunctionCall{Name: "fast", Arguments: string(args)}},
+				{ID: "call_hang", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "hang", Arguments: string(args)}},
+				{ID: "call_fast", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "fast", Arguments: string(args)}},
 			},
 		},
 		{Content: "done", FinishReason: "stop"},
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "hang"}}, "",
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "hang"}}, "",
 		toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 			<-ctx.Done()
 			return nil, ctx.Err()
 		}), domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{Name: "fast"}}, "",
+	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "fast"}}, "",
 		toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 			return map[string]interface{}{"ok": true}, nil
 		}), domain.ToolFloorAuto, nil)
