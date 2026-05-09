@@ -1,23 +1,40 @@
 // Voice/tone vocabulary for the business profile. Stored as stable enum
 // ids (e.g. "warm") in business.settings.voiceTone — labels are rendered
-// via this table so the DB stays locale-agnostic. Adding an `en` field is
-// the only change needed for English UI.
+// at the call site via `toneLabel(id)` which reads
+// `business.voiceTone.options.<id>` from messages/ru.json, so the DB
+// stays locale-agnostic.
 
-export const TONE_OPTIONS = [
-  { id: 'warm', label: { ru: 'Тёплый' } },
-  { id: 'calm', label: { ru: 'Спокойный' } },
-  { id: 'friendly', label: { ru: 'Дружеский' } },
-  { id: 'professional', label: { ru: 'Профессиональный' } },
-  { id: 'playful', label: { ru: 'Игривый' } },
-  { id: 'businesslike', label: { ru: 'Деловой' } },
+import { getTranslator } from '@/lib/i18n/translator';
+
+const tToneOptions = getTranslator('business.voiceTone.options');
+
+export const TONE_IDS = [
+  'warm',
+  'calm',
+  'friendly',
+  'professional',
+  'playful',
+  'businesslike',
 ] as const;
 
-export type ToneId = (typeof TONE_OPTIONS)[number]['id'];
+export type ToneId = (typeof TONE_IDS)[number];
 
-const VALID_IDS = new Set<string>(TONE_OPTIONS.map((o) => o.id));
+// Display option list for the chip selector. Labels are resolved once at
+// module load via the module-level translator; the shape mirrors the
+// previous `TONE_OPTIONS` so consumers (VoiceToneSection) can keep
+// iterating in display order without restructuring.
+export const TONE_OPTIONS: ReadonlyArray<{ id: ToneId; label: string }> = TONE_IDS.map((id) => ({
+  id,
+  label: tToneOptions(id),
+}));
+
+const VALID_IDS = new Set<string>(TONE_IDS);
+// Pre-built reverse index for the legacy "stored Russian label" branch in
+// `normalizeStoredTones`. Keys are lowercased Russian labels — the stored
+// data only ever held Russian, so a single-locale lookup is enough.
 const RU_LABEL_TO_ID: Record<string, ToneId> = TONE_OPTIONS.reduce(
   (acc, o) => {
-    acc[o.label.ru.toLowerCase()] = o.id;
+    acc[o.label.toLowerCase()] = o.id;
     return acc;
   },
   {} as Record<string, ToneId>
@@ -52,7 +69,6 @@ export function normalizeStoredTones(raw: unknown): ToneId[] {
   return out;
 }
 
-export function toneLabel(id: ToneId, locale: 'ru' = 'ru'): string {
-  const opt = TONE_OPTIONS.find((o) => o.id === id);
-  return opt ? opt.label[locale] : id;
+export function toneLabel(id: ToneId): string {
+  return isToneId(id) ? tToneOptions(id) : id;
 }
