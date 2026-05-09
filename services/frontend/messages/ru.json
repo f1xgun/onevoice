@@ -67,10 +67,13 @@
     },
     "header": {
       "menuAria": "Меню чата",
-      "menuTitle": "Действия"
+      "menuTitle": "Действия",
+      "pinAria": "Закрепить чат",
+      "unpinAria": "Открепить чат"
     },
     "projectChip": {
-      "unlinkedAria": "Чат не привязан к проекту"
+      "unlinkedAria": "Чат не привязан к проекту",
+      "openProjectAria": "Открыть проект «{name}»"
     },
     "moveMenu": {
       "trigger": "Переместить в…",
@@ -662,7 +665,12 @@
     "unassignedNewChatAria": "Новый чат без проекта",
     "unassignedNewChatTitle": "Новый чат без проекта",
     "unassignedSectionAria": "Чаты без проекта",
-    "pinnedSectionAria": "Закреплённые чаты"
+    "pinnedSectionAria": "Закреплённые чаты",
+    "expandUnassigned": "Развернуть «Без проекта»",
+    "collapseUnassigned": "Свернуть «Без проекта»",
+    "expandPinned": "Развернуть «Закреплённые»",
+    "collapsePinned": "Свернуть «Закреплённые»",
+    "chatRowMenuAria": "Меню чата «{title}»"
   },
   "states": {
     "channelConnectProgress": "в процессе",

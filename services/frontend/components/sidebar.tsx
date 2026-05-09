@@ -35,7 +35,7 @@ export function Sidebar() {
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Открыть боковое меню"
+            aria-label={tSide('toggleAria')}
             className="md:hidden"
           >
             <Menu className="h-5 w-5" />

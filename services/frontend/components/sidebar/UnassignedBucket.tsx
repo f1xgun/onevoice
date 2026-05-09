@@ -33,6 +33,7 @@ const MAX_VISIBLE = 20;
 export function UnassignedBucket({ conversations, activeConversationId, onNavigate }: Props) {
   const tSide = useTranslations('sidebar');
   const tProjects = useTranslations('projects');
+  const tChat = useTranslations('chat');
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const createConversation = useCreateConversation();
@@ -48,7 +49,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
   async function handleCreate() {
     try {
       const conv = await createConversation.mutateAsync({
-        title: 'Новый диалог',
+        title: tChat('newConversation'),
         projectId: null,
       });
       onNavigate?.();
@@ -66,7 +67,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
           onClick={() => setCollapsed((v) => !v)}
           className="flex min-w-0 flex-1 items-center gap-1 text-left"
           aria-expanded={!collapsed}
-          aria-label={collapsed ? 'Развернуть «Без проекта»' : 'Свернуть «Без проекта»'}
+          aria-label={collapsed ? tSide('expandUnassigned') : tSide('collapseUnassigned')}
         >
           {collapsed ? (
             <ChevronRight size={12} className="shrink-0 text-ink-faint" />
@@ -85,8 +86,8 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
           type="button"
           onClick={handleCreate}
           disabled={createConversation.isPending}
-          aria-label="Новый чат без проекта"
-          title="Новый чат без проекта"
+          aria-label={tSide('unassignedNewChatAria')}
+          title={tSide('unassignedNewChatTitle')}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/bucket:opacity-100 md:h-8 md:w-8"
         >
           <Plus size={14} />
@@ -105,7 +106,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
           ref={containerRef as RefObject<HTMLDivElement>}
           onKeyDown={onKeyDown}
           role="listbox"
-          aria-label="Чаты без проекта"
+          aria-label={tSide('unassignedSectionAria')}
           className="ml-5 mt-0.5 space-y-0.5"
         >
           {visible.map((conv, i) => {
@@ -140,7 +141,9 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
                   trigger={
                     <button
                       type="button"
-                      aria-label={`Меню чата «${conv.title || 'Новый диалог'}»`}
+                      aria-label={tSide('chatRowMenuAria', {
+                        title: conv.title || tChat('newConversation'),
+                      })}
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/row:opacity-100"
                     >
                       <MoreHorizontal size={12} />
