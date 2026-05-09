@@ -213,10 +213,7 @@ export default function ReviewsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Отзывы"
-        sub="Здесь собираются отзывы клиентов с подключённых каналов. OneVoice предложит образец ответа — отправлять решаете вы."
-      />
+      <PageHeader title={tReviews('title')} sub={tReviews('subtitle')} />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">
         {/* Stat strip — three quiet metrics. No celebratory tone. */}
