@@ -178,7 +178,8 @@ export function ToolApprovalAccordionEntry({
                   counterOver ? 'text-destructive' : 'text-muted-foreground'
                 )}
               >
-                {draft.rejectReason.length} / 500
+                {/* eslint-disable-next-line i18next/no-literal-string -- pure numeric counter "<n> / <max>", no localizable copy. File opts out of i18n per 17-RESEARCH §Don't Hand-Roll. */}
+                {draft.rejectReason.length} / {REJECT_REASON_MAX_LEN}
               </p>
             </div>
           )}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -47,6 +48,7 @@ function sameDraft(
 }
 
 export function ToolsPageClient() {
+  const tTools = useTranslations('settings.tools');
   const { data: business, isLoading: businessLoading } = useQuery<Business>({
     queryKey: QUERY_KEYS.BUSINESS,
     queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
@@ -124,7 +126,7 @@ export function ToolsPageClient() {
       <div className="mx-auto flex w-full max-w-[860px] flex-col gap-6 px-4 pb-10 sm:px-12 sm:pb-16">
         {dirty && (
           <div className="rounded-md border border-line bg-paper-raised px-4 py-3 text-xs text-ink-mid">
-            Есть несохранённые изменения. Нажмите «Сохранить», чтобы применить.
+            {tTools('unsavedChanges')}
           </div>
         )}
 
@@ -138,15 +140,13 @@ export function ToolsPageClient() {
 
         {loadError && !isLoading && (
           <div className="rounded-md border border-[oklch(0.85_0.08_25)] bg-[var(--ov-danger-soft)] p-4 text-sm text-[var(--ov-danger)]">
-            Не удалось загрузить список инструментов. Обновите страницу или попробуйте позже.
+            {tTools('loadError')}
           </div>
         )}
 
         {!isLoading && !loadError && tools && (
           <>
-            {platforms.length === 0 && (
-              <p className="text-sm text-ink-mid">Нет настраиваемых инструментов.</p>
-            )}
+            {platforms.length === 0 && <p className="text-sm text-ink-mid">{tTools('noTools')}</p>}
             {platforms.map((platform) => {
               const toolsForPlatform = buckets[platform].filter(
                 (t) => t.floor === 'manual' || t.floor === 'forbidden'
@@ -160,7 +160,7 @@ export function ToolsPageClient() {
                 >
                   <header className="flex items-center justify-between border-b border-line-soft px-5 py-4">
                     <div>
-                      <MonoLabel>Платформа</MonoLabel>
+                      <MonoLabel>{tTools('platform')}</MonoLabel>
                       <h2 className="mt-1 text-base font-medium text-ink">{label}</h2>
                     </div>
                     <MonoLabel>

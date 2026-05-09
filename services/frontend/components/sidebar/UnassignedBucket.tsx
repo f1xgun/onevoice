@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Plus,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useCreateConversation } from '@/hooks/useConversations';
@@ -30,6 +31,7 @@ interface Props {
 const MAX_VISIBLE = 20;
 
 export function UnassignedBucket({ conversations, activeConversationId, onNavigate }: Props) {
+  const tSide = useTranslations('sidebar');
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const createConversation = useCreateConversation();
@@ -73,7 +75,9 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
           )}
           <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
             <FolderMinus size={12} className="shrink-0 text-ink-faint" />
-            <span className="min-w-0 flex-1 truncate italic text-ink-soft">Без проекта</span>
+            <span className="min-w-0 flex-1 truncate italic text-ink-soft">
+              {tSide('unassigned')}
+            </span>
             <span className="shrink-0 text-xs text-ink-faint">· {count}</span>
           </span>
         </button>
@@ -92,7 +96,9 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
       {!collapsed && visible.length === 0 && (
         // Empty-state: NOT a listbox (a listbox MUST contain options —
         // otherwise axe flags `aria-required-children` (critical)).
-        <p className="ml-5 mt-0.5 px-2 py-1 text-xs italic text-ink-faint">Чаты без проекта</p>
+        <p className="ml-5 mt-0.5 px-2 py-1 text-xs italic text-ink-faint">
+          {tSide('unassignedChats')}
+        </p>
       )}
       {!collapsed && visible.length > 0 && (
         <div
@@ -145,7 +151,9 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
             );
           })}
           {count > MAX_VISIBLE && (
-            <p className="px-2 py-1 text-xs text-ink-faint">…и ещё {count - MAX_VISIBLE}</p>
+            <p className="px-2 py-1 text-xs text-ink-faint">
+              {tSide('moreCount', { count: count - MAX_VISIBLE })}
+            </p>
           )}
         </div>
       )}

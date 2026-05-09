@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { CalendarIcon, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -193,6 +194,7 @@ interface SpecialDatesFormProps {
 }
 
 export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: SpecialDatesFormProps) {
+  const tSchedule = useTranslations('business.scheduleForm');
   const { schedule, specialDates, setSpecialDates } = useSchedule(
     initialSchedule,
     initialSpecialDates
@@ -218,10 +220,7 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
   return (
     <div className="flex flex-col gap-4">
       {specialDates.length === 0 && (
-        <p className="text-sm text-ink-soft">
-          Пока ничего не отмечено. Добавьте даты, которые ИИ должен учесть — праздники, ремонты,
-          корпоративы.
-        </p>
+        <p className="text-sm text-ink-soft">{tSchedule('noSpecialDates')}</p>
       )}
 
       {specialDates.length > 0 && (
@@ -242,7 +241,7 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
           <PopoverTrigger asChild>
             <Button type="button" variant="secondary" size="sm">
               <CalendarIcon className="mr-1.5 h-4 w-4" aria-hidden />
-              Добавить дату
+              {tSchedule('addDate')}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
@@ -273,6 +272,7 @@ function SpecialDateRow({
   onChange: (updates: Partial<SpecialDate>) => void;
   onRemove: () => void;
 }) {
+  const tSchedule = useTranslations('business.scheduleForm');
   const closed = date.closed;
   const formatted = format(parseISO(date.date), 'd MMMM · yyyy', { locale: ru });
   return (
@@ -284,11 +284,11 @@ function SpecialDateRow({
       <div className="flex items-center gap-3">
         {closed ? (
           <Badge tone="warning" dot>
-            Закрыто
+            {tSchedule('closed')}
           </Badge>
         ) : (
           <Badge tone="info" dot>
-            Особый режим
+            {tSchedule('specialMode')}
           </Badge>
         )}
         <Switch

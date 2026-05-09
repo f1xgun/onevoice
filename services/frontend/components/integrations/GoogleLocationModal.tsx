@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -32,6 +33,7 @@ interface GoogleLocationModalProps {
 }
 
 export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps) {
+  const tGoogle = useTranslations('integrations.googleLocation');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const qc = useQueryClient();
@@ -84,10 +86,8 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Выберите локацию</DialogTitle>
-          <DialogDescription>
-            В вашем аккаунте Google несколько бизнес-локаций. Выберите одну для подключения.
-          </DialogDescription>
+          <DialogTitle>{tGoogle('title')}</DialogTitle>
+          <DialogDescription>{tGoogle('description')}</DialogDescription>
         </DialogHeader>
 
         {isLoading && (
@@ -95,13 +95,11 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
         )}
 
         {isError && (
-          <div className="py-8 text-center text-sm text-red-500">
-            Сессия истекла. Пожалуйста, подключите Google заново.
-          </div>
+          <div className="py-8 text-center text-sm text-red-500">{tGoogle('sessionExpired')}</div>
         )}
 
         {!isLoading && !isError && locations.length === 0 && (
-          <div className="py-8 text-center text-sm text-gray-500">Локации не найдены.</div>
+          <div className="py-8 text-center text-sm text-gray-500">{tGoogle('noLocations')}</div>
         )}
 
         {!isLoading && !isError && locations.length > 0 && (
@@ -139,7 +137,7 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
 
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="outline" onClick={onClose}>
-            Отмена
+            {tGoogle('cancel')}
           </Button>
           <Button onClick={handleSelect} disabled={!selectedLocation || connectMutation.isPending}>
             {connectMutation.isPending ? 'Подключение...' : 'Подключить'}

@@ -14,6 +14,7 @@
 'use client';
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -40,10 +41,13 @@ export function ToolNeedsHelpCard({
   message,
   onHelp,
   onProvideContext,
-  helpLabel = 'Помочь',
-  contextLabel = 'Дать контекст',
+  helpLabel,
+  contextLabel,
   className,
 }: ToolNeedsHelpCardProps) {
+  const tHelp = useTranslations('chat.toolNeedsHelp');
+  const resolvedHelpLabel = helpLabel ?? tHelp('helpAction');
+  const resolvedContextLabel = contextLabel ?? tHelp('contextAction');
   return (
     <div
       role="status"
@@ -69,17 +73,17 @@ export function ToolNeedsHelpCard({
             aria-hidden="true"
             className="h-[6px] w-[6px] rounded-full bg-[var(--ov-warning)]"
           />
-          нужна помощь
+          {tHelp('badge')}
         </span>
       </div>
       <p className="leading-relaxed text-ink">{message}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button variant="primary" size="sm" onClick={onHelp}>
-          {helpLabel}
+          {resolvedHelpLabel}
         </Button>
         {onProvideContext && (
           <Button variant="secondary" size="sm" onClick={onProvideContext}>
-            {contextLabel}
+            {resolvedContextLabel}
           </Button>
         )}
       </div>

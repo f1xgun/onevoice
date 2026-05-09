@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { usePathname } from 'next/navigation';
 import * as Popover from '@radix-ui/react-popover';
 import { Loader2, Search } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -54,6 +55,7 @@ async function fetchBusinessId(): Promise<string | null> {
 }
 
 export function SidebarSearch() {
+  const tSide = useTranslations('sidebar');
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -190,7 +192,7 @@ export function SidebarSearch() {
                 checked={scopeAllBusiness}
                 onChange={(e) => setScopeAllBusiness(e.target.checked)}
               />
-              По всему бизнесу
+              {tSide('scopeAllBusiness')}
             </label>
           )}
           {results.length === 0 && !isFetching && (
@@ -204,9 +206,7 @@ export function SidebarSearch() {
               <div className="text-[13px] leading-relaxed text-ink-mid">
                 {`Ничего не найдено по «${debounced}»`}
               </div>
-              <div className="mt-1 text-[12px] text-ink-soft">
-                Попробуйте короче или поменяйте период.
-              </div>
+              <div className="mt-1 text-[12px] text-ink-soft">{tSide('noResults')}</div>
             </div>
           )}
           {results.map((r) => (

@@ -8,7 +8,10 @@
 // Brand voice: factual, single sentence, single optional action. No
 // celebration of emptiness.
 
+'use client';
+
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { EmptyFrame } from './EmptyFrame';
 
@@ -18,6 +21,7 @@ export interface EmptyInboxProps {
 }
 
 export function EmptyInbox({ onOpenArchive }: EmptyInboxProps) {
+  const tStates = useTranslations('states.emptyInbox');
   return (
     <EmptyFrame
       title="Ящик пуст"
@@ -25,7 +29,7 @@ export function EmptyInbox({ onOpenArchive }: EmptyInboxProps) {
       action={
         onOpenArchive ? (
           <Button variant="secondary" size="sm" onClick={onOpenArchive}>
-            Открыть архив
+            {tStates('openArchive')}
           </Button>
         ) : undefined
       }
