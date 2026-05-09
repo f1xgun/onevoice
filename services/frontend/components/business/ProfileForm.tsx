@@ -161,11 +161,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field label={tProfileForm('fields.name')} required error={errors.name?.message}>
-          <Input
-            id="name"
-            {...register('name')}
-            placeholder={tProfileForm('namePlaceholder')}
-          />
+          <Input id="name" {...register('name')} placeholder={tProfileForm('namePlaceholder')} />
         </Field>
 
         <Field label={tProfileForm('fields.category')} required error={errors.category?.message}>

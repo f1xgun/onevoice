@@ -203,11 +203,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                       <span className="text-muted-foreground">{tForm('optional')}</span>
                     </FormLabel>
                     <FormControl>
-                      <Textarea
-                        rows={3}
-                        placeholder={tForm('descriptionPlaceholder')}
-                        {...field}
-                      />
+                      <Textarea rows={3} placeholder={tForm('descriptionPlaceholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
