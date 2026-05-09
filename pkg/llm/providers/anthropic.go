@@ -11,6 +11,9 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
+// claudeContextLength is the context window size (in tokens) for Claude 3.5 family models.
+const claudeContextLength = 200_000
+
 // AnthropicProvider implements llm.Provider using the Anthropic API
 type AnthropicProvider struct {
 	client *anthropic.Client
@@ -54,7 +57,7 @@ func (p *AnthropicProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, er
 			ID:                 "claude-3-5-sonnet-20241022",
 			Name:               "Claude 3.5 Sonnet",
 			Provider:           "anthropic",
-			ContextLength:      200000,
+			ContextLength:      claudeContextLength,
 			InputCostPer1MTok:  &input3,
 			OutputCostPer1MTok: &output3,
 			SupportsToolUse:    true,
@@ -65,7 +68,7 @@ func (p *AnthropicProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, er
 			ID:                 "claude-3-5-haiku-20241022",
 			Name:               "Claude 3.5 Haiku",
 			Provider:           "anthropic",
-			ContextLength:      200000,
+			ContextLength:      claudeContextLength,
 			InputCostPer1MTok:  &input5,
 			OutputCostPer1MTok: &output5,
 			SupportsToolUse:    true,

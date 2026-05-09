@@ -157,11 +157,11 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 	}
 	var userText, assistantText string
 	for i := len(msgs) - 1; i >= 0 && (userText == "" || assistantText == ""); i-- {
-		if assistantText == "" && msgs[i].Role == "assistant" &&
+		if assistantText == "" && msgs[i].Role == roleAssistant &&
 			(msgs[i].Status == domain.MessageStatusComplete || msgs[i].Status == "") {
 			assistantText = msgs[i].Content
 		}
-		if userText == "" && msgs[i].Role == "user" {
+		if userText == "" && msgs[i].Role == roleUser {
 			userText = msgs[i].Content
 		}
 	}

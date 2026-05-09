@@ -19,3 +19,7 @@ const (
 	defaultWallPostCount = 10
 	maxWallPostCount     = 100
 )
+
+// recentPostsBatchSize is the wall.get count used by handler paths that need
+// a small recent-post window (e.g. resolving an external ID by recency).
+const recentPostsBatchSize = 20

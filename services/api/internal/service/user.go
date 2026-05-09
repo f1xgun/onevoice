@@ -23,6 +23,21 @@ const (
 	refreshTokenKeyPrefix = "onevoice:auth:refresh_token:" //nolint:gosec // not a credential, just a Redis key prefix
 )
 
+// User credential validation thresholds.
+const (
+	// jwtSecretMinLen is the minimum acceptable JWT signing secret length.
+	// HS256 mandates ≥32 bytes (256 bits) of entropy; rejecting shorter
+	// secrets at construction time fails the service hard rather than
+	// shipping with a weak signing key.
+	jwtSecretMinLen = 32
+
+	// passwordMinLen / passwordMaxLen bound the user-supplied password length.
+	// 72 is the bcrypt silent-truncation boundary (longer passwords lose the
+	// suffix without an error); 8 is the conventional lower bound.
+	passwordMinLen = 8
+	passwordMaxLen = 72
+)
+
 // UserService defines the interface for user-related operations
 type UserService interface {
 	Register(ctx context.Context, email, password string) (*domain.User, error)
@@ -44,8 +59,8 @@ var _ UserService = (*userService)(nil)
 
 // NewUserService creates a new user service instance
 func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSecret string) (UserService, error) {
-	if len(jwtSecret) < 32 {
-		return nil, fmt.Errorf("NewUserService: jwt secret must be at least 32 bytes (got %d)", len(jwtSecret))
+	if len(jwtSecret) < jwtSecretMinLen {
+		return nil, fmt.Errorf("NewUserService: jwt secret must be at least %d bytes (got %d)", jwtSecretMinLen, len(jwtSecret))
 	}
 	return &userService{
 		repo:      repo,
@@ -305,12 +320,12 @@ func validateEmail(email string) error {
 
 // validatePassword checks if password meets security requirements
 func validatePassword(password string) error {
-	if len(password) < 8 {
-		return fmt.Errorf("password must be at least 8 characters")
+	if len(password) < passwordMinLen {
+		return fmt.Errorf("password must be at least %d characters", passwordMinLen)
 	}
-	if len(password) > 72 {
+	if len(password) > passwordMaxLen {
 		// bcrypt silently truncates passwords longer than 72 bytes
-		return fmt.Errorf("password must be at most 72 characters")
+		return fmt.Errorf("password must be at most %d characters", passwordMaxLen)
 	}
 	return nil
 }

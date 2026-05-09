@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
@@ -62,13 +63,13 @@ func (h *PlatformsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *PlatformsHandler) isConfigured(id string) bool {
 	switch id {
-	case "telegram":
+	case a2a.AgentTelegram:
 		return h.availability.Telegram
-	case "vk":
+	case a2a.AgentVK:
 		return h.availability.VK
-	case "yandex_business":
+	case a2a.AgentYandexBusiness:
 		return h.availability.YandexBusiness
-	case "google_business":
+	case a2a.AgentGoogleBusiness:
 		return h.availability.GoogleBusiness
 	}
 	// Coming-soon platforms never reach this branch (early-returned by caller).

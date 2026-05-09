@@ -137,7 +137,7 @@ func luhnValid(card string) bool {
 		// Double every second digit from the right.
 		if (len(digits)-i)%2 == 0 {
 			d *= 2
-			if d > 9 {
+			if d > 9 { //nolint:mnd // Luhn check digit overflow boundary
 				d -= 9
 			}
 		}
