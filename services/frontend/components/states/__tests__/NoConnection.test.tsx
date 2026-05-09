@@ -5,15 +5,15 @@ import userEvent from '@testing-library/user-event';
 import { NoConnection } from '../NoConnection';
 
 describe('NoConnection', () => {
-  it('renders the calm Russian copy and a status link', () => {
+  it('renders the calm Russian copy without a status link by default', () => {
     render(<NoConnection />);
     expect(
       screen.getByRole('heading', { name: /Не получается дотянуться до OneVoice/ })
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Открыть статус' })).toHaveAttribute('href', '/status');
+    expect(screen.queryByRole('link', { name: 'Открыть статус' })).not.toBeInTheDocument();
   });
 
-  it('uses a custom statusUrl when provided', () => {
+  it('renders the status link only when statusUrl is provided', () => {
     render(<NoConnection statusUrl="https://status.example.com" />);
     expect(screen.getByRole('link', { name: 'Открыть статус' })).toHaveAttribute(
       'href',
