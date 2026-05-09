@@ -7,15 +7,21 @@ Receives chat requests, runs the LLM agent loop, dispatches tool calls to platfo
 ## Architecture
 
 ```
-cmd/main.go             → wiring (LLM providers, NATS, tool registry, chi router)
+cmd/main.go             → thin entry point (≤200 LOC); delegates to wire/
 internal/
 ├── config/             → env config (LLM_MODEL required, PORT=8090, MAX_ITERATIONS=10, NATS_URL)
+├── wire/               → startup wiring split out of cmd/main.go
+│                         (llm.go, mongo.go, tools.go + per-platform
+│                          tools_telegram.go / tools_vk.go / tools_yandex.go /
+│                          tools_google.go, handlers.go)
 ├── handler/chat.go     → POST /chat/{conversationID} → SSE stream
 ├── orchestrator/       → Run(ctx, messages) → <-chan Event (agent loop)
 ├── prompt/builder.go   → Build(BusinessContext, history) → system prompt + messages
 ├── tools/registry.go   → Tool registry ({platform}__action naming, Available(integrations))
 └── natsexec/           → NATSExecutor: sends tool calls via NATS request/reply
 ```
+
+`internal/wire/` owns startup wiring (LLM provider chain, MongoDB client, tool registration per platform, HTTP handlers). `cmd/main.go` calls into wire/ and stays ≤200 LOC.
 
 ## Key Concepts
 

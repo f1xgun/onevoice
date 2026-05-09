@@ -22,13 +22,35 @@ src/
 ├── app/              # Next.js App Router pages
 │   ├── (auth)/       # Auth route group (login, register)
 │   └── (dashboard)/  # Dashboard route group
+│       └── posts/_components/  # Page-scoped split-out components for posts page
 ├── components/
 │   ├── ui/           # shadcn/ui primitives (don't edit manually)
-│   └── ...           # Feature components
-├── lib/              # Utilities, API client, constants
-├── hooks/            # Custom React hooks
+│   ├── lists/
+│   │   └── DataTable.tsx        # Composition primitive used by list pages
+│   ├── projects/
+│   │   ├── ProjectForm.tsx      # Thin shell that wires useProjectForm + tabs
+│   │   ├── useProjectForm.ts    # Single source of truth (react-hook-form schema)
+│   │   ├── BasicsTab.tsx        # "Основное" tab fields
+│   │   ├── PromptTab.tsx        # "Промпт" tab fields
+│   │   ├── ToolsTab.tsx         # "Инструменты" tab fields
+│   │   └── QuickActionsTab.tsx  # "Быстрые действия" tab fields
+│   └── ...           # Other feature components
+├── lib/
+│   ├── sse.ts        # Pure SSE helpers (parseSSELine, applySSEEvent) — shared by chat hooks
+│   └── ...           # Other utilities, API client, constants
+├── hooks/
+│   ├── useChat.ts                  # Message[] + SSE driver; accepts onApprovalRequired callback
+│   ├── usePendingApprovalFlow.ts   # HITL approval state + resolveApproval/resume stream
+│   ├── useDataTableFilters.ts      # Filter primitive composed by list pages
+│   ├── useDataTableSearch.ts       # Search primitive composed by list pages
+│   └── ...                         # Other custom React hooks
 └── stores/           # Zustand stores
 ```
+
+**Composition note:** `useChat` and `usePendingApprovalFlow` are sibling hooks consumed in
+parallel by `ChatPage` (D-19 of Phase 19). `<DataTable>` + the two `useDataTable*` hooks are
+composition primitives — list pages (tasks, posts, integrations, reviews) compose them
+locally rather than wrapping a monolithic table component (D-21).
 
 ## Rules
 
