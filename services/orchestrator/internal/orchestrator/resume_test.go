@@ -16,7 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // --- Instrumented executor that records approvalID + args ---
@@ -71,7 +71,7 @@ func (r *recordingExecutor) approvalIDs() []string {
 }
 
 // Compile-time guard: recordingExecutor implements ApprovalExecutor.
-var _ tools.ApprovalExecutor = (*recordingExecutor)(nil)
+var _ toolregistry.ApprovalExecutor = (*recordingExecutor)(nil)
 
 // --- Helpers ---
 
@@ -99,10 +99,10 @@ func batchWithCalls(t *testing.T, batchID string, calls []domain.PendingCall) *d
 // registryWithRecording registers the given toolName with the given floor and
 // uses recordingExecutor as the implementation. Returns the executor so tests
 // can inspect what it captured.
-func registryWithRecording(t *testing.T, toolName string, floor domain.ToolFloor) (*tools.Registry, *recordingExecutor) {
+func registryWithRecording(t *testing.T, toolName string, floor domain.ToolFloor) (*toolregistry.Registry, *recordingExecutor) {
 	t.Helper()
 	rec := &recordingExecutor{}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: toolName, Description: "d", Parameters: map[string]interface{}{}},
@@ -155,7 +155,7 @@ func TestResume_AllApproved_DispatchesInParallel(t *testing.T) {
 		delay:  100 * time.Millisecond,
 		result: map[string]interface{}{"ok": true},
 	}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "parallel_tool", Description: "d", Parameters: map[string]interface{}{}},
@@ -200,7 +200,7 @@ func TestResume_RejectedCall_SynthesizesToolMessage_SkipsDispatch(t *testing.T) 
 
 	var dispatched int32
 	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatched, 1) }}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "rej_tool", Description: "d", Parameters: map[string]interface{}{}},
@@ -234,7 +234,7 @@ func TestResume_TOCTOU_PolicyRevoked_DropsCallWithSyntheticMessage(t *testing.T)
 
 	var dispatched int32
 	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatched, 1) }}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "toctou_tool", Description: "d", Parameters: map[string]interface{}{}},
@@ -272,7 +272,7 @@ func TestResume_AlreadyDispatched_SkipsReDispatch(t *testing.T) {
 
 	var dispatched int32
 	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatched, 1) }}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "done_tool", Description: "d", Parameters: map[string]interface{}{}},
@@ -310,7 +310,7 @@ func TestResume_EditedArgs_PassesMergedArgsToExecutor(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 
 	rec := &recordingExecutor{}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "edit_tool", Description: "d", Parameters: map[string]interface{}{}},
@@ -350,7 +350,7 @@ func TestResume_ApprovalID_IsBatchIDDashCallID(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 
 	rec := &recordingExecutor{}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "appr_tool", Description: "d", Parameters: map[string]interface{}{}},
@@ -382,7 +382,7 @@ func TestResume_CompletesAndContinuesStepRun_ToDone(t *testing.T) {
 	}}
 
 	rec := &recordingExecutor{}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "cont_tool", Description: "d", Parameters: map[string]interface{}{}},
@@ -413,7 +413,7 @@ func TestResume_MixedRejectAndApprove_BothProcessed(t *testing.T) {
 	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
 
 	rec := &recordingExecutor{}
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "mix_tool", Description: "d", Parameters: map[string]interface{}{}},
@@ -457,7 +457,7 @@ func (i *instrumentedExecutor) ExecuteWithApproval(_ context.Context, _ map[stri
 	return map[string]interface{}{"ok": true}, nil
 }
 
-var _ tools.ApprovalExecutor = (*instrumentedExecutor)(nil)
+var _ toolregistry.ApprovalExecutor = (*instrumentedExecutor)(nil)
 
 // Ensure imports are referenced — fmt/strings are used above in minor
 // contexts; this no-op keeps the compiler happy if any edit trims a usage.

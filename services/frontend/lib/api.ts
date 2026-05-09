@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { API_PATHS, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { useAuthStore } from './auth';
 import type { User } from './auth';
 
@@ -35,7 +36,7 @@ api.interceptors.response.use(
     const url = original?.url ?? '';
 
     // Track API errors with correlation ID (skip telemetry endpoint to prevent loops)
-    if (error.response && !url.includes('/telemetry')) {
+    if (error.response && !url.includes(API_PATHS.TELEMETRY)) {
       const correlationId = error.response.headers?.['x-correlation-id'] as string | undefined;
       if (correlationId) {
         // Lazy import to avoid circular dependency (telemetry.ts imports api)
@@ -60,8 +61,8 @@ api.interceptors.response.use(
     }
 
     const isAuthEndpoint =
-      url.includes('/auth/login') ||
-      url.includes('/auth/register') ||
+      url.includes(API_PATHS.AUTH.LOGIN) ||
+      url.includes(API_PATHS.AUTH.REGISTER) ||
       url.includes('/auth/refresh');
 
     if (error.response?.status !== 401 || original._retry || isAuthEndpoint) {
@@ -82,7 +83,7 @@ api.interceptors.response.use(
 
     try {
       const { data } = await axios.post<RefreshResponse>(
-        '/api/v1/auth/refresh',
+        API_STREAM_PATHS.AUTH_REFRESH,
         {},
         { withCredentials: true }
       );

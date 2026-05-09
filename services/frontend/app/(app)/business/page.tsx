@@ -11,6 +11,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { ProfileForm } from '@/components/business/ProfileForm';
 import { HoursForm, SpecialDatesForm } from '@/components/business/ScheduleForm';
 import { VoiceToneSection } from '@/components/business/VoiceToneSection';
@@ -52,8 +54,8 @@ function BusinessSkeleton() {
 
 export default function BusinessPage() {
   const { data, isLoading, isError, error } = useQuery<Business>({
-    queryKey: ['business'],
-    queryFn: () => api.get('/business').then((r) => r.data as Business),
+    queryKey: QUERY_KEYS.BUSINESS,
+    queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
     retry: false,
   });
 

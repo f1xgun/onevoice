@@ -32,7 +32,7 @@ type Bot struct {
 // (api.telegram.org drops ~20% of TLS handshakes on some networks).
 func New(token string) (*Bot, error) {
 	var api *tgbotapi.BotAPI
-	err := retryTransient(3, 500*time.Millisecond, func() error {
+	err := retryTransient(defaultBotRetryAttempts, defaultBotRetryDelay, func() error {
 		var e error
 		api, e = tgbotapi.NewBotAPI(token)
 		return e
@@ -90,7 +90,7 @@ func sanitizeTokenError(err error, token string) error {
 		return err
 	}
 	msg := err.Error()
-	redacted := strings.ReplaceAll(msg, token, "***REDACTED_BOT_TOKEN***")
+	redacted := strings.ReplaceAll(msg, token, tokenRedactionMarker)
 	if redacted == msg {
 		return err
 	}
@@ -146,14 +146,14 @@ func (b *Bot) SendReply(chatID int64, messageID int, text string) error {
 func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 	const batchSize = 100
 	if limit <= 0 {
-		limit = 500
+		limit = defaultReviewLimit
 	}
 
 	var allUpdates []tgbotapi.Update
 	offset := 0
 	for {
 		var batch []tgbotapi.Update
-		err := retryTransient(3, 500*time.Millisecond, func() error {
+		err := retryTransient(defaultBotRetryAttempts, defaultBotRetryDelay, func() error {
 			var e error
 			// Channel posts ("channel_post"/"edited_channel_post") are
 			// admin-authored content, not customer feedback — including
@@ -165,7 +165,7 @@ func (b *Bot) GetReviews(limit int) ([]map[string]interface{}, error) {
 			batch, e = b.api.GetUpdates(tgbotapi.UpdateConfig{
 				Offset:         offset,
 				Limit:          batchSize,
-				AllowedUpdates: []string{"message", "edited_message"},
+				AllowedUpdates: allowedUpdateTypes,
 			})
 			return e
 		})

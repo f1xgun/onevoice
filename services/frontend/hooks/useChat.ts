@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/auth';
+import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { trackEvent } from '@/lib/telemetry';
 import { resolveErrorToRussian, RESUME_STREAM_ERROR } from '@/lib/resolveErrorMap';
 import type {
@@ -159,7 +161,7 @@ export function useChat(conversationId: string) {
   const isStreamingRef = useRef(false);
   const accessToken = useAuthStore((s) => s.accessToken);
   const abortRef = useRef<AbortController | null>(null);
-  // Phase 18 / TITLE-06 / D-10: handleSSEEvent invalidates ['conversations']
+  // Phase 18 / TITLE-06 / D-10: handleSSEEvent invalidates QUERY_KEYS.CONVERSATIONS
   // when SSE 'done' arrives so an auto-titled chat picks up its new title
   // out-of-band. PITFALLS §13: NEVER mux titles into chat SSE.
   const queryClient = useQueryClient();
@@ -170,7 +172,7 @@ export function useChat(conversationId: string) {
   // reloaded tab immediately shows the approval card (D-11).
   useEffect(() => {
     setIsLoading(true);
-    fetch(`/api/v1/conversations/${conversationId}/messages`, {
+    fetch(API_STREAM_PATHS.CONVERSATION_MESSAGES(conversationId), {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then((r) => {
@@ -245,10 +247,10 @@ export function useChat(conversationId: string) {
     (event: Record<string, unknown>) => {
       // Phase 18 / TITLE-06 / D-10: out-of-band auto-title propagation. The
       // titler goroutine on the API side races chat 'done'; invalidating
-      // ['conversations'] picks up whatever title has landed. PITFALLS §13
+      // QUERY_KEYS.CONVERSATIONS picks up whatever title has landed. PITFALLS §13
       // hard rule — NEVER mux titles into chat SSE.
       if (event.type === 'done') {
-        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
       }
 
       if (event.type === 'tool_approval_required') {
@@ -316,7 +318,7 @@ export function useChat(conversationId: string) {
       abortRef.current = controller;
 
       try {
-        const response = await fetch(`/api/v1/chat/${conversationId}`, {
+        const response = await fetch(API_STREAM_PATHS.CHAT(conversationId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -370,7 +372,7 @@ export function useChat(conversationId: string) {
       let resolveRes: Response;
       try {
         resolveRes = await fetch(
-          `/api/v1/conversations/${conversationId}/pending-tool-calls/${pendingApproval.batchId}/resolve`,
+          API_STREAM_PATHS.PENDING_TOOL_CALLS_RESOLVE(conversationId, pendingApproval.batchId),
           {
             method: 'POST',
             headers: {
@@ -405,7 +407,7 @@ export function useChat(conversationId: string) {
 
       try {
         const resumeRes = await fetch(
-          `/api/v1/chat/${conversationId}/resume?batch_id=${pendingApproval.batchId}`,
+          API_STREAM_PATHS.CHAT_RESUME(conversationId, pendingApproval.batchId),
           {
             method: 'POST',
             headers: { Authorization: `Bearer ${accessToken}` },

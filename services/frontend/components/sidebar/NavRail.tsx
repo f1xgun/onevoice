@@ -17,6 +17,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 
 interface Integration {
   platform: string;
@@ -32,19 +35,13 @@ interface Integration {
 // бизнеса → Отзывы → Посты → Задачи → Настройки.
 const navItems = [
   { href: '/chat', label: 'Чат', icon: MessageCircle },
-  { href: '/integrations', label: 'Интеграции', icon: Plug },
-  { href: '/business', label: 'Профиль бизнеса', icon: Building2 },
+  { href: API_PATHS.INTEGRATIONS.ROOT, label: 'Интеграции', icon: Plug },
+  { href: API_PATHS.BUSINESS.ROOT, label: 'Профиль бизнеса', icon: Building2 },
   { href: '/reviews', label: 'Отзывы', icon: Star },
   { href: '/posts', label: 'Посты', icon: FileText },
-  { href: '/tasks', label: 'Задачи', icon: ListTodo },
+  { href: API_PATHS.TASKS, label: 'Задачи', icon: ListTodo },
   { href: '/settings', label: 'Настройки', icon: Settings },
 ];
-
-const platformLabels: Record<string, string> = {
-  telegram: 'Telegram',
-  vk: 'ВКонтакте',
-  yandex_business: 'Яндекс.Бизнес',
-};
 
 export interface NavRailProps {
   /**
@@ -61,9 +58,11 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   const logout = useAuthStore((s) => s.logout);
 
   const { data: integrations } = useQuery<Integration[]>({
-    queryKey: ['integrations'],
+    queryKey: QUERY_KEYS.INTEGRATIONS,
     queryFn: () =>
-      api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
+      api
+        .get(API_PATHS.INTEGRATIONS.ROOT)
+        .then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
     retry: false,
     placeholderData: [],
   });
@@ -161,7 +160,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
                         connected ? 'bg-success' : 'bg-ink-faint'
                       )}
                     />
-                    {platformLabels[platform]}
+                    {PLATFORM_FULL_LABELS[platform]}
                   </li>
                 );
               })}

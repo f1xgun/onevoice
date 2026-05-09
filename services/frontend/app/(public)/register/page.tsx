@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { useAuthStore } from '@/lib/auth';
 import { registerSchema, type RegisterInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: RegisterInput) => {
     try {
-      const res = await api.post('/auth/register', {
+      const res = await api.post(API_PATHS.AUTH.REGISTER, {
         name: data.name,
         email: data.email,
         password: data.password,

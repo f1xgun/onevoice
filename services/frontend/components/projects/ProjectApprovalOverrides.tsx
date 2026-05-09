@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
-import { groupByPlatform, type PlatformKey } from '@/lib/hooks/useTools';
+import { groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import {
   toolLabel,
   toolUserDescription,
@@ -40,13 +40,6 @@ const SELECTION_AUTO = 'auto' as const;
 const SELECTION_MANUAL = 'manual' as const;
 
 type Selection = typeof SELECTION_INHERIT | typeof SELECTION_AUTO | typeof SELECTION_MANUAL;
-
-const PLATFORM_DISPLAY_ORDER: PlatformKey[] = [
-  'telegram',
-  'vk',
-  'yandex_business',
-  'google_business',
-];
 
 function selectionFor(toolName: string, value: Record<string, ToolApprovalValue>): Selection {
   const explicit = value[toolName];
@@ -152,7 +145,7 @@ export function ProjectApprovalOverrides({
   // meaningful here.
   const manualTools = tools.filter((t) => t.floor === 'manual');
   const buckets = groupByPlatform(manualTools);
-  const platforms = PLATFORM_DISPLAY_ORDER.filter((p) => buckets[p].length > 0);
+  const platforms = TOOL_PLATFORM_ORDER.filter((p) => buckets[p].length > 0);
 
   if (manualTools.length === 0) {
     return (

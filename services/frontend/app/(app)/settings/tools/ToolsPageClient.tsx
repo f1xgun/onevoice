@@ -8,8 +8,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
-import { useTools, groupByPlatform, type PlatformKey } from '@/lib/hooks/useTools';
+import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import {
   useBusinessToolApprovals,
   useUpdateBusinessToolApprovals,
@@ -17,13 +19,6 @@ import {
 import type { Business } from '@/types/business';
 import type { Tool, ToolApprovalValue, ToolApprovals } from '@/lib/schemas';
 import { ToolApprovalToggle } from './ToolApprovalToggle';
-
-const PLATFORM_DISPLAY_ORDER: PlatformKey[] = [
-  'telegram',
-  'vk',
-  'yandex_business',
-  'google_business',
-];
 
 function buildDraftFromManualTools(
   manualTools: Tool[],
@@ -52,8 +47,8 @@ function sameDraft(
 
 export function ToolsPageClient() {
   const { data: business, isLoading: businessLoading } = useQuery<Business>({
-    queryKey: ['business'],
-    queryFn: () => api.get('/business').then((r) => r.data as Business),
+    queryKey: QUERY_KEYS.BUSINESS,
+    queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
   });
 
   const { data: tools, isLoading: toolsLoading, error: toolsError } = useTools();
@@ -84,7 +79,7 @@ export function ToolsPageClient() {
   }, [initialDraft]);
 
   const buckets = useMemo(() => groupByPlatform(tools ?? []), [tools]);
-  const platforms = PLATFORM_DISPLAY_ORDER.filter((p) =>
+  const platforms = TOOL_PLATFORM_ORDER.filter((p) =>
     buckets[p].some((t) => t.floor === 'manual' || t.floor === 'forbidden')
   );
 

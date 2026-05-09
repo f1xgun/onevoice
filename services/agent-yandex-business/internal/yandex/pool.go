@@ -97,7 +97,7 @@ func (p *BrowserPool) getOrCreateContext(businessID, cookiesJSON string) (*poole
 	}
 
 	bCtx, err := p.browser.NewContext(playwright.BrowserNewContextOptions{
-		UserAgent: playwright.String("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"),
+		UserAgent: playwright.String(defaultUserAgent),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("playwright: new context: %w", err)
@@ -247,10 +247,10 @@ func exchangeOAuthForSession(bCtx playwright.BrowserContext, oauthToken string) 
 
 	// Yandex's internal session creation: navigate to passport with OAuth token.
 	// The /auth/welcome endpoint with access_token creates a full session.
-	authURL := "https://passport.yandex.ru/auth/welcome?retpath=https%3A%2F%2Fbusiness.yandex.ru"
+	authURL := yandexPassportAuthURL
 	_, _ = page.Goto(authURL, playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-		Timeout:   playwright.Float(15000),
+		Timeout:   playwright.Float(tabSwitchTimeoutMs),
 	})
 
 	// Use in-browser fetch to call Yandex session exchange API
@@ -275,16 +275,16 @@ func exchangeOAuthForSession(bCtx playwright.BrowserContext, oauthToken string) 
 	_, _ = page.Evaluate(script)
 
 	// Verify session was created by checking for Session_id cookie
-	cookies, err := bCtx.Cookies("https://passport.yandex.ru", "https://yandex.ru")
+	cookies, err := bCtx.Cookies(yandexPassportCookieHost, yandexCookieHost)
 	if err != nil {
 		return fmt.Errorf("read cookies after exchange: %w", err)
 	}
 	for _, c := range cookies {
 		if c.Name == "Session_id" || c.Name == "sessionid2" {
 			// Session established — navigate to business to confirm
-			_, err = page.Goto("https://business.yandex.ru", playwright.PageGotoOptions{
+			_, err = page.Goto(yandexBusinessBaseURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(20000),
+				Timeout:   playwright.Float(pageHydrateTimeoutMs),
 			})
 			return err
 		}
@@ -335,14 +335,14 @@ func (bb *BusinessBrowser) baseURL() string {
 // JS, waits for the company-card list to mount, and reads the first-row
 // data attributes / text content.
 func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]interface{}, error) {
-	const companiesURL = "https://yandex.ru/sprav/companies/?no_redirect=1"
+	const companiesURL = yandexSpravCompaniesURL
 
 	var result []map[string]interface{}
 	err := withRetry(ctx, 2, func() error {
 		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
 			if _, err := page.Goto(companiesURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(30000),
+				Timeout:   playwright.Float(pageNavTimeoutMs),
 			}); err != nil {
 				return fmt.Errorf("navigate to companies: %w", err)
 			}
@@ -360,7 +360,7 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 			// uses CompaniesCompanyRow's container so this selector covers
 			// "no orgs yet" — we just return [].
 			if err := page.Locator(".CompaniesCompanyRow").First().WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(15000),
+				Timeout: playwright.Float(tabSwitchTimeoutMs),
 				State:   playwright.WaitForSelectorStateVisible,
 			}); err != nil {
 				// SPA may render a different empty layout — treat as 0 orgs.
@@ -416,7 +416,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 			reviewsURL := bb.baseURL() + "/reviews"
 			if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(30000),
+				Timeout:   playwright.Float(pageNavTimeoutMs),
 			}); err != nil {
 				debugScreenshot(page, "reviews_navigate_error")
 				return fmt.Errorf("navigate to reviews: %w", err)
@@ -444,7 +444,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 			containerFound := false
 			for _, sel := range containerSelectors {
 				err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(5000),
+					Timeout: playwright.Float(primaryActionTimeoutMs),
 				})
 				if err == nil {
 					containerFound = true
@@ -482,7 +482,7 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 				for _, sel := range loadMoreSelectors {
 					btn := page.Locator(sel).First()
 					if err := btn.WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: playwright.Float(3000),
+						Timeout: playwright.Float(uiPollTimeoutMs),
 						State:   playwright.WaitForSelectorStateVisible,
 					}); err == nil {
 						if err := btn.Click(); err == nil {
@@ -637,7 +637,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 			reviewsURL := bb.baseURL() + "/reviews"
 			if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(30000),
+				Timeout:   playwright.Float(pageNavTimeoutMs),
 			}); err != nil {
 				return fmt.Errorf("navigate to reviews: %w", err)
 			}
@@ -651,7 +651,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 			// Locate the review by ID
 			reviewCard := page.Locator(fmt.Sprintf("[data-review-id='%s']", reviewID)).First()
 			if err := reviewCard.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(10000),
+				Timeout: playwright.Float(listItemTimeoutMs),
 			}); err != nil {
 				return a2a.NewNonRetryableError(fmt.Errorf("review not found: %s", reviewID))
 			}
@@ -667,7 +667,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 			for _, sel := range replyBtnSelectors {
 				btn := reviewCard.Locator(sel).First()
 				if err := btn.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(3000),
+					Timeout: playwright.Float(uiPollTimeoutMs),
 					State:   playwright.WaitForSelectorStateVisible,
 				}); err == nil {
 					if err := btn.Click(); err == nil {
@@ -693,7 +693,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 			for _, sel := range textareaSelectors {
 				textarea := page.Locator(sel).First()
 				if err := textarea.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(5000),
+					Timeout: playwright.Float(primaryActionTimeoutMs),
 					State:   playwright.WaitForSelectorStateVisible,
 				}); err == nil {
 					if err := textarea.Fill(text); err == nil {
@@ -718,7 +718,7 @@ func (bb *BusinessBrowser) ReplyReview(ctx context.Context, reviewID, text strin
 			for _, sel := range submitSelectors {
 				btn := page.Locator(sel).First()
 				if err := btn.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(3000),
+					Timeout: playwright.Float(uiPollTimeoutMs),
 					State:   playwright.WaitForSelectorStateVisible,
 				}); err == nil {
 					if err := btn.Click(); err == nil {
@@ -743,7 +743,7 @@ func (bb *BusinessBrowser) navigateToEditPage(page playwright.Page) error {
 	editURL := bb.baseURL() + "/"
 	if _, err := page.Goto(editURL, playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateNetworkidle,
-		Timeout:   playwright.Float(30000),
+		Timeout:   playwright.Float(pageNavTimeoutMs),
 	}); err != nil {
 		debugScreenshot(page, "edit_navigate_error")
 		return fmt.Errorf("navigate to edit page: %w", err)
@@ -760,7 +760,7 @@ func (bb *BusinessBrowser) navigateToEditPage(page playwright.Page) error {
 func clickSave(page playwright.Page) error {
 	saveBtn := page.Locator(".SaveButton-Button").First()
 	if err := saveBtn.WaitFor(playwright.LocatorWaitForOptions{
-		Timeout: playwright.Float(5000),
+		Timeout: playwright.Float(primaryActionTimeoutMs),
 		State:   playwright.WaitForSelectorStateVisible,
 	}); err != nil {
 		debugScreenshot(page, "save_not_found")
@@ -787,31 +787,31 @@ func (bb *BusinessBrowser) GetInfo(ctx context.Context) (map[string]interface{},
 
 			// Business name from sidebar
 			nameEl := page.Locator("[class*='CompanyName'], [class*='company-name'], .SidebarCompanyInfo span").First()
-			if name, err := nameEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(3000)}); err == nil {
+			if name, err := nameEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
 				info["name"] = strings.TrimSpace(name)
 			}
 
 			// Hours — from WorkIntervalsUnificationInput
 			hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
-			if val, err := hoursInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+			if val, err := hoursInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
 				info["hours"] = val
 			}
 
 			// Phone — from InfoPhones section
 			phoneInput := page.Locator(".InfoPhones input.ya-business-input__control").First()
-			if val, err := phoneInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+			if val, err := phoneInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
 				info["phone"] = val
 			}
 
 			// Email — from InfoEmails section
 			emailInput := page.Locator(".InfoEmails input.ya-business-input__control").First()
-			if val, err := emailInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+			if val, err := emailInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
 				info["email"] = val
 			}
 
 			// Description
 			descInput := page.Locator("input.ya-business-input__control[placeholder*='Описание'], .ya-business-input__label:has-text('Описание') ~ input, span:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input").First()
-			if val, err := descInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(3000)}); err == nil && val != "" {
+			if val, err := descInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
 				info["description"] = val
 			}
 
@@ -852,7 +852,7 @@ func (bb *BusinessBrowser) GetInfo(ctx context.Context) (map[string]interface{},
 
 			// Status
 			statusEl := page.Locator(".InfoWorkIntervals-StatusWrapper .ya-business-select__button-content").First()
-			if text, err := statusEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(3000)}); err == nil {
+			if text, err := statusEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
 				info["status"] = strings.TrimSpace(text)
 			}
 
@@ -892,7 +892,7 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 
 				input := page.Locator(sel).First()
 				if err := input.WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(5000),
+					Timeout: playwright.Float(primaryActionTimeoutMs),
 					State:   playwright.WaitForSelectorStateVisible,
 				}); err != nil {
 					debugScreenshot(page, "updateinfo_field_not_found_"+key)
@@ -907,7 +907,7 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 					return fmt.Errorf("type %q: %w", key, err)
 				}
 				// Blur to trigger validation
-				_ = page.Locator("h1, .InfoBlockCarcass, body").First().Click(playwright.LocatorClickOptions{Timeout: playwright.Float(2000)})
+				_ = page.Locator("h1, .InfoBlockCarcass, body").First().Click(playwright.LocatorClickOptions{Timeout: playwright.Float(clickAwayTimeoutMs)})
 				time.Sleep(1 * time.Second)
 				humanDelay()
 			}
@@ -945,7 +945,7 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 			// Find the hours input field
 			hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
 			if err := hoursInput.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(10000),
+				Timeout: playwright.Float(listItemTimeoutMs),
 				State:   playwright.WaitForSelectorStateVisible,
 			}); err != nil {
 				debugScreenshot(page, "hours_input_not_found")
@@ -961,7 +961,7 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 			}
 			// Blur to trigger Yandex auto-format and show save button
 			_ = page.Locator("h1, .InfoWorkIntervals, body").First().Click(playwright.LocatorClickOptions{
-				Timeout: playwright.Float(3000),
+				Timeout: playwright.Float(uiPollTimeoutMs),
 			})
 			time.Sleep(2 * time.Second)
 			debugScreenshot(page, "hours_after_fill")
@@ -985,7 +985,7 @@ func closePopups(page playwright.Page) {
 	}
 	for _, sel := range closeBtnSelectors {
 		btn := page.Locator(sel).First()
-		if err := btn.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(2000)}); err == nil {
+		if err := btn.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(clickAwayTimeoutMs)}); err == nil {
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
@@ -1104,7 +1104,7 @@ func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
 			postsURL := bb.baseURL() + "/posts/"
 			if _, err := page.Goto(postsURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(30000),
+				Timeout:   playwright.Float(pageNavTimeoutMs),
 			}); err != nil {
 				debugScreenshot(page, "post_navigate_error")
 				return fmt.Errorf("navigate to posts page: %w", err)
@@ -1119,7 +1119,7 @@ func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
 			// Find the post textarea
 			textarea := page.Locator(".PostAddForm-Textarea textarea").First()
 			if err := textarea.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(10000),
+				Timeout: playwright.Float(listItemTimeoutMs),
 				State:   playwright.WaitForSelectorStateVisible,
 			}); err != nil {
 				debugScreenshot(page, "post_textarea_not_found")
@@ -1139,7 +1139,7 @@ func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
 			// Click "Создать" (Submit) button
 			submitBtn := page.Locator(".PostAddForm-Submit").First()
 			if err := submitBtn.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(5000),
+				Timeout: playwright.Float(primaryActionTimeoutMs),
 				State:   playwright.WaitForSelectorStateVisible,
 			}); err != nil {
 				debugScreenshot(page, "post_submit_not_found")
@@ -1184,7 +1184,7 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 			photosURL := bb.baseURL() + "/photos/"
 			if _, err := page.Goto(photosURL, playwright.PageGotoOptions{
 				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(30000),
+				Timeout:   playwright.Float(pageNavTimeoutMs),
 			}); err != nil {
 				debugScreenshot(page, "photo_navigate_error")
 				return fmt.Errorf("navigate to photos page: %w", err)
@@ -1229,7 +1229,7 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 			// Handle crop dialog if it appears (logo uploads show a crop modal)
 			cropSaveBtn := page.Locator("button:has-text('Сохранить')").First()
 			if err := cropSaveBtn.WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(5000),
+				Timeout: playwright.Float(primaryActionTimeoutMs),
 				State:   playwright.WaitForSelectorStateVisible,
 			}); err == nil {
 				_ = cropSaveBtn.Click()

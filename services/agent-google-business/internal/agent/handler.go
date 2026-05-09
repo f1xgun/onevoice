@@ -9,6 +9,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tools"
 
 	"github.com/f1xgun/onevoice/services/agent-google-business/internal/gbp"
 )
@@ -60,9 +61,9 @@ func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolRes
 		err  error
 	)
 	switch req.Tool {
-	case "google_business__get_reviews":
+	case tools.GoogleBusinessGetReviews:
 		resp, err = h.getReviews(ctx, req)
-	case "google_business__reply_review":
+	case tools.GoogleBusinessReplyReview:
 		resp, err = h.replyReview(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
@@ -131,7 +132,7 @@ func classifyGBPError(err error) error {
 }
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (GBPClient, string, error) {
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, "google_business", "")
+	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentGoogleBusiness, "")
 	if err != nil {
 		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
 	}
@@ -143,7 +144,7 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 	limitF, _ := req.Args["limit"].(float64)
 	limit := int(limitF)
 	if limit == 0 {
-		limit = 20
+		limit = gbp.DefaultReviewLimit
 	}
 
 	client, locationName, err := h.getClient(ctx, req)

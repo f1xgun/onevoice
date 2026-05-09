@@ -1,4 +1,5 @@
 import { api } from './api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 
 export interface TelemetryEvent {
   eventType: string;
@@ -74,7 +75,7 @@ export async function flushTelemetry(): Promise<void> {
   }
 
   try {
-    await api.post('/telemetry', batch);
+    await api.post(API_PATHS.TELEMETRY, batch);
   } catch {
     // Silently swallow — telemetry must never break the app
   }

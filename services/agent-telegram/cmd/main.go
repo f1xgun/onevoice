@@ -22,6 +22,12 @@ import (
 	"github.com/f1xgun/onevoice/services/agent-telegram/internal/telegram"
 )
 
+const (
+	healthReadHeaderTimeout = 5 * time.Second
+	shutdownTimeout         = 5 * time.Second
+	natsPingTimeout         = 2 * time.Second
+)
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("fatal error", "error", err)
@@ -59,7 +65,7 @@ func run() error {
 	mux.HandleFunc("/health/ready", hc.ReadyHandler())
 	mux.HandleFunc("/health", hc.LiveHandler())
 	healthPort := getEnv("HEALTH_PORT", "8081")
-	healthSrv := &http.Server{Addr: ":" + healthPort, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	healthSrv := &http.Server{Addr: ":" + healthPort, Handler: mux, ReadHeaderTimeout: healthReadHeaderTimeout}
 	go func() {
 		slog.Info("health server listening", "addr", ":"+healthPort)
 		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -77,7 +83,7 @@ func run() error {
 	slog.Info("telegram agent started", "subject", a2a.Subject(a2a.AgentTelegram))
 	<-ctx.Done()
 	slog.Info("telegram agent shutting down — draining in-flight requests")
-	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutCtx, shutCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutCancel()
 	_ = healthSrv.Shutdown(shutCtx)
 	transport.Close() // drain NATS — no new messages
@@ -122,7 +128,7 @@ func newDedupeClient(redisURL string) *hitldedupe.DedupeClient {
 		return nil
 	}
 	rdb := redis.NewClient(opts)
-	pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	pingCtx, cancel := context.WithTimeout(context.Background(), natsPingTimeout)
 	defer cancel()
 	if err := rdb.Ping(pingCtx).Err(); err != nil {
 		slog.Warn("Redis ping failed; HITL dedupe disabled", "error", err)

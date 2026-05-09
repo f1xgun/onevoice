@@ -22,6 +22,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { MAX_QUICK_ACTIONS } from '@/lib/quick-actions';
 import {
   useCreateProject,
@@ -97,8 +99,9 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
   const systemPromptLen = form.watch('systemPrompt').length;
 
   const { data: integrations = [] } = useQuery<Integration[]>({
-    queryKey: ['integrations'],
-    queryFn: () => api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : [])),
+    queryKey: QUERY_KEYS.INTEGRATIONS,
+    queryFn: () =>
+      api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : [])),
   });
   const activePlatforms = integrations.filter((i) => i.status === 'active').map((i) => i.platform);
 

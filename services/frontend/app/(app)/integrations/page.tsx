@@ -5,6 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
@@ -16,6 +18,7 @@ import { VKCommunityModal } from '@/components/integrations/VKCommunityModal';
 import { GoogleLocationModal } from '@/components/integrations/GoogleLocationModal';
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
+import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import type { Business } from '@/types/business';
 
 interface Integration {
@@ -26,22 +29,6 @@ interface Integration {
   metadata?: Record<string, unknown>;
   createdAt: string;
 }
-
-// MVP-supported platforms — backend can connect, OneVoice can post/read.
-// Per design_handoff README v2 §5: Google Business + 2GIS render only in
-// the "Скоро" section, never as live integrations.
-const PLATFORMS = [
-  { id: 'telegram', label: 'Telegram', description: 'Бот для канала и уведомлений' },
-  { id: 'vk', label: 'ВКонтакте', description: 'Публикации и комментарии' },
-  { id: 'yandex_business', label: 'Яндекс.Бизнес', description: 'Отзывы и информация' },
-];
-
-const SOON_PLATFORMS = [
-  { id: 'google_business', label: 'Google Business', when: 'оценивается' },
-  { id: '2gis', label: '2ГИС', when: 'Q3 2026' },
-  { id: 'avito', label: 'Авито', when: 'Q4 2026' },
-  { id: 'whatsapp', label: 'WhatsApp', when: 'оценивается' },
-];
 
 interface LastRegistered {
   integrationId: string;
@@ -59,6 +46,14 @@ export default function IntegrationsPage() {
   const [lastRegistered, setLastRegistered] = useState<LastRegistered | null>(null);
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
 
+  // Platforms come from GET /api/v1/platforms (backed by pkg/domain/platform.go)
+  // — single source of truth for what we expose. status="oauth_not_configured"
+  // entries are hidden so we never advertise a flow that would dead-end at
+  // missing-creds. coming_soon entries render as the marketing teaser cards.
+  const { platforms } = usePlatforms();
+  const activePlatforms = platforms.filter((p) => p.status === 'active');
+  const comingSoonPlatforms = platforms.filter((p) => p.status === 'coming_soon');
+
   // Handle OAuth callback results
   useEffect(() => {
     const connected = searchParams.get('connected');
@@ -66,19 +61,19 @@ export default function IntegrationsPage() {
 
     if (connected === 'vk') {
       toast.success('VK сообщество подключено');
-      qc.invalidateQueries({ queryKey: ['integrations'] });
-      window.history.replaceState({}, '', '/integrations');
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
     if (connected === 'google_business') {
       toast.success('Google Business Profile подключён');
-      qc.invalidateQueries({ queryKey: ['integrations'] });
-      window.history.replaceState({}, '', '/integrations');
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
     const googleStep = searchParams.get('google_step');
     if (googleStep === 'select_location') {
       setGoogleLocationOpen(true);
-      window.history.replaceState({}, '', '/integrations');
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
     if (error) {
@@ -93,19 +88,21 @@ export default function IntegrationsPage() {
         no_locations: 'В этом аккаунте Google нет бизнес-локаций.',
       };
       toast.error(messages[error] || `Не получилось: ${error}`);
-      window.history.replaceState({}, '', '/integrations');
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
   }, [searchParams, qc]);
 
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
-    queryKey: ['integrations'],
+    queryKey: QUERY_KEYS.INTEGRATIONS,
     queryFn: () =>
-      api.get('/integrations').then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
+      api
+        .get(API_PATHS.INTEGRATIONS.ROOT)
+        .then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
   });
 
   const { data: business } = useQuery<Business>({
-    queryKey: ['business'],
-    queryFn: () => api.get('/business').then((r) => r.data as Business),
+    queryKey: QUERY_KEYS.BUSINESS,
+    queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
   });
 
   // Detect newly-registered integrations to show the post-connect banner
@@ -135,7 +132,7 @@ export default function IntegrationsPage() {
     mutationFn: (integrationId: string) => api.delete(`/integrations/${integrationId}`),
     onSuccess: () => {
       trackClick('disconnect_integration');
-      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       toast.success('Канал отключён');
     },
     onError: () => toast.error('Не получилось отключить'),
@@ -156,7 +153,7 @@ export default function IntegrationsPage() {
     }
     if (platformId === 'google_business') {
       try {
-        const { data } = await api.get('/integrations/google_business/auth-url');
+        const { data } = await api.get(API_PATHS.INTEGRATIONS.GOOGLE_AUTH_URL);
         window.location.href = data.url;
       } catch {
         toast.error('Не получилось открыть авторизацию Google');
@@ -214,13 +211,13 @@ export default function IntegrationsPage() {
           id="integrations-platform-grid"
           className="grid grid-cols-1 items-start gap-4 md:grid-cols-2"
         >
-          {PLATFORMS.map((p) => {
+          {activePlatforms.map((p) => {
             const platformIntegrations = getIntegrationsForPlatform(p.id);
             return (
               <PlatformCard
                 key={p.id}
                 platform={p.id}
-                label={p.label}
+                label={p.fullLabel}
                 description={p.description}
                 integrations={platformIntegrations}
                 onConnect={() => handleConnect(p.id)}
@@ -230,12 +227,16 @@ export default function IntegrationsPage() {
           })}
         </div>
 
-        <SectionLabel className="mt-12">Скоро</SectionLabel>
-        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {SOON_PLATFORMS.map((p) => (
-            <SoonCard key={p.id} label={p.label} when={p.when} />
-          ))}
-        </div>
+        {comingSoonPlatforms.length > 0 && (
+          <>
+            <SectionLabel className="mt-12">Скоро</SectionLabel>
+            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {comingSoonPlatforms.map((p) => (
+                <SoonCard key={p.id} label={p.fullLabel} when={p.comingSoonWhen ?? 'скоро'} />
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="mt-14 flex flex-col items-stretch gap-4 rounded-lg border border-line bg-paper-sunken p-6 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">
@@ -256,7 +257,7 @@ export default function IntegrationsPage() {
         open={telegramOpen}
         onClose={() => {
           setTelegramOpen(false);
-          qc.invalidateQueries({ queryKey: ['integrations'] });
+          qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
         }}
       />
 
@@ -264,7 +265,7 @@ export default function IntegrationsPage() {
         open={vkCommunityOpen}
         onClose={() => {
           setVkCommunityOpen(false);
-          qc.invalidateQueries({ queryKey: ['integrations'] });
+          qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
         }}
       />
 
@@ -272,7 +273,7 @@ export default function IntegrationsPage() {
         open={googleLocationOpen}
         onClose={() => {
           setGoogleLocationOpen(false);
-          qc.invalidateQueries({ queryKey: ['integrations'] });
+          qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
         }}
       />
 

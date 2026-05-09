@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { api } from '@/lib/api';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { cn } from '@/lib/utils';
 
 interface Integration {
@@ -92,7 +93,7 @@ export function PlatformCard({
       } else {
         toast.warning('Бот всё ещё не в группе обсуждений.');
       }
-      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
@@ -229,10 +230,10 @@ function ChannelList({
             // the background (~25–45s). Poll the integrations list a few
             // times so the resolved name appears without a manual reload.
             [10_000, 30_000, 60_000].forEach((delay) => {
-              setTimeout(() => qc.invalidateQueries({ queryKey: ['integrations'] }), delay);
+              setTimeout(() => qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS }), delay);
             });
           } else {
-            qc.invalidateQueries({ queryKey: ['integrations'] });
+            qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
           }
         })
         .catch(() => {

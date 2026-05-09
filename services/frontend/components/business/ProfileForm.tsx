@@ -13,6 +13,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { businessSchema, type BusinessInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,9 +61,9 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   }, [defaultValues, reset]);
 
   const mutation = useMutation({
-    mutationFn: (data: BusinessInput) => api.put('/business', data),
+    mutationFn: (data: BusinessInput) => api.put(API_PATHS.BUSINESS.ROOT, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['business'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
       toast.success('Данные сохранены');
     },
     onError: () => toast.error('Не получилось сохранить'),
@@ -77,7 +79,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
     },
     onSuccess: (res) => {
       setLogoUrl(res.data.logoUrl ?? '');
-      qc.invalidateQueries({ queryKey: ['business'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
       toast.success('Логотип обновлён');
     },
     onError: () => toast.error('Не получилось загрузить логотип'),

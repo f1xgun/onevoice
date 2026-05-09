@@ -14,7 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // TestRun_MultipleToolCallsInSingleResponse verifies that when the LLM returns
@@ -34,17 +34,17 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 		{Content: "Оба поста опубликованы!", FinishReason: "stop"},
 	}}
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "telegram__send_channel_post", Description: "d", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"message_id": "tg_42", "platform": "telegram"}, nil
 	}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "vk__publish_post", Description: "d", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"post_id": "vk_99", "platform": "vk"}, nil
 	}), domain.ToolFloorAuto, nil)
 
@@ -108,11 +108,11 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 		{Content: "Инструмент не сработал, извините.", FinishReason: "stop"},
 	}}
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: "failing_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, "", tools.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, context.DeadlineExceeded
 	}), domain.ToolFloorAuto, nil)
 
@@ -154,7 +154,7 @@ func TestRun_ContextCancel_StopsLoop(t *testing.T) {
 	blockingLLM := &stubLLM{responses: []*llm.ChatResponse{}}
 	// stubLLM returns "done" when idx >= len(responses), which is fine
 
-	reg := tools.NewRegistry()
+	reg := toolregistry.NewRegistry()
 	orch := orchestrator.New(blockingLLM, reg)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)

@@ -11,7 +11,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/hitl"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // StepOutcome identifies the terminal state of a stepRun invocation. Callers
@@ -311,7 +311,7 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 // emitted on the tool_approval_required SSE event. EditableFields comes from
 // the tool registry (Plan 16-03); Floor is always ToolFloorManual because
 // these are the calls that triggered the pause.
-func summarizeManualCalls(reg *tools.Registry, calls []llm.ToolCall) []ApprovalCallSummary {
+func summarizeManualCalls(reg *toolregistry.Registry, calls []llm.ToolCall) []ApprovalCallSummary {
 	out := make([]ApprovalCallSummary, 0, len(calls))
 	for _, tc := range calls {
 		var args map[string]interface{}
