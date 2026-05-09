@@ -66,6 +66,7 @@ const platformShort: Record<string, string> = {
 // ─── Page ────────────────────────────────────────────────────────────
 
 export default function PostsPage() {
+  const tPosts = useTranslations('posts');
   const tCommon = useTranslations('common');
   const [status, setStatus] = useState<StatusKey>('all');
   const [platform, setPlatform] = useState<PlatformKey>('all');
@@ -106,8 +107,8 @@ export default function PostsPage() {
   return (
     <>
       <PageHeader
-        title="Посты"
-        sub="Все публикации на подключённых каналах. Один пост — везде сразу."
+        title={tPosts('title')}
+        sub={tPosts('subtitle')}
         actions={
           <Button variant="primary" size="md">
             <Plus aria-hidden />

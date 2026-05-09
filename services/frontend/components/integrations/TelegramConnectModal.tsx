@@ -16,6 +16,7 @@ interface Props {
 
 export function TelegramConnectModal({ open, onClose }: Props) {
   const tIntegrations = useTranslations('integrations');
+  const tCommon = useTranslations('common');
   const [step, setStep] = useState(1);
   const [channelId, setChannelId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,7 +31,7 @@ export function TelegramConnectModal({ open, onClose }: Props) {
       toast.success(tIntegrations('telegramConnected'));
       handleClose();
     } catch {
-      toast.error('Ошибка подключения. Убедитесь, что бот добавлен как администратор в канал.');
+      toast.error(tIntegrations('telegramConnectFail'));
     } finally {
       setLoading(false);
     }
@@ -51,20 +52,18 @@ export function TelegramConnectModal({ open, onClose }: Props) {
 
         {step === 1 && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Для подключения Telegram канала необходимо добавить бота OneVoice в ваш канал как
-              администратора.
-            </p>
+            <p className="text-sm text-gray-600">{tIntegrations('telegramStep1Intro')}</p>
             <ol className="list-inside list-decimal space-y-2 text-sm text-gray-600">
-              <li>Откройте ваш Telegram канал</li>
-              <li>Перейдите в настройки канала → Администраторы</li>
+              <li>{tIntegrations('telegramStep1Item1')}</li>
+              <li>{tIntegrations('telegramStep1Item2')}</li>
               <li>
-                Добавьте бота <code className="rounded bg-gray-100 px-1">@OneVoiceBot</code>
+                {tIntegrations('telegramStep1Item3Prefix')}{' '}
+                <code className="rounded bg-gray-100 px-1">@OneVoiceBot</code>
               </li>
-              <li>Дайте боту право публиковать сообщения</li>
+              <li>{tIntegrations('telegramStep1Item4')}</li>
             </ol>
             <Button className="w-full" onClick={() => setStep(2)}>
-              Далее
+              {tCommon('next')}
             </Button>
           </div>
         )}
@@ -72,25 +71,27 @@ export function TelegramConnectModal({ open, onClose }: Props) {
         {step === 2 && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              Введите ID или username вашего канала (например,{' '}
-              <code className="rounded bg-gray-100 px-1">@mychannel</code> или{' '}
-              <code className="rounded bg-gray-100 px-1">-1001234567890</code>):
+              {tIntegrations('telegramStep2IntroBefore')}{' '}
+              <code className="rounded bg-gray-100 px-1">@mychannel</code>{' '}
+              {tIntegrations('telegramStep2IntroOr')}{' '}
+              <code className="rounded bg-gray-100 px-1">-1001234567890</code>
+              {tIntegrations('telegramStep2IntroAfter')}
             </p>
             <Input
-              placeholder="@channel или -100..."
+              placeholder={tIntegrations('telegramStep2Placeholder')}
               value={channelId}
               onChange={(e) => setChannelId(e.target.value)}
             />
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                Назад
+                {tCommon('back')}
               </Button>
               <Button
                 onClick={handleConnect}
                 disabled={!channelId.trim() || loading}
                 className="flex-1"
               >
-                {loading ? 'Проверка...' : 'Подключить'}
+                {loading ? tIntegrations('telegramChecking') : tIntegrations('telegramSubmit')}
               </Button>
             </div>
           </div>

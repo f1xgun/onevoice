@@ -58,7 +58,7 @@ export default function ChatListPage() {
   // Phase 18 / TITLE-09 / D-12: kicks off the auto-title goroutine on the API
   // side. 200 → silently invalidates so the new title arrives via React Query;
   // 409 → server-supplied Russian copy (D-02 / D-03 verbatim) surfaced via
-  // sonner toast. Network failure → 'Ошибка соединения' fallback.
+  // sonner toast. Network failure → tCommon('connectionError') fallback.
   const { mutate: regenerateTitle } = useMutation({
     mutationFn: (id: string) =>
       api.post(API_PATHS.CONVERSATIONS.REGENERATE_TITLE(id)).then((r) => r.data),

@@ -79,17 +79,25 @@ export default function IntegrationsPage() {
     }
 
     if (error) {
-      const messages: Record<string, string> = {
-        missing_params: 'Не получилось войти: не хватает параметров',
-        invalid_state: 'Не получилось войти: сессия истекла',
-        token_exchange: 'Не удалось обменять токен',
-        connect_failed: 'Не удалось подключить',
-        no_community_token: 'Не удалось получить токен сообщества',
-        internal: 'Что-то пошло не так. Попробуйте ещё раз.',
-        no_refresh_token: 'Google не вернул refresh-токен. Попробуйте подключить снова.',
-        no_locations: 'В этом аккаунте Google нет бизнес-локаций.',
+      // Server emits snake_case slugs; map to camelCase keys under
+      // integrations.oauthErrors. Unknown slugs render the templated
+      // fallback ("Не получилось: <slug>") so the user still gets a
+      // hint while we add the missing translation.
+      const oauthErrorKeyMap: Record<string, string> = {
+        missing_params: 'missingParams',
+        invalid_state: 'invalidState',
+        token_exchange: 'tokenExchange',
+        connect_failed: 'connectFailed',
+        no_community_token: 'noCommunityToken',
+        internal: 'internal',
+        no_refresh_token: 'noRefreshToken',
+        no_locations: 'noLocations',
       };
-      toast.error(messages[error] || `Не получилось: ${error}`);
+      const key = oauthErrorKeyMap[error];
+      const message = key
+        ? tIntegrations(`oauthErrors.${key}`)
+        : tIntegrations('oauthErrors.fallback', { error });
+      toast.error(message);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
   }, [searchParams, qc, tIntegrations]);
@@ -172,8 +180,8 @@ export default function IntegrationsPage() {
   return (
     <>
       <PageHeader
-        title="Интеграции"
-        sub="Подключите каналы, по которым с вами общаются клиенты. OneVoice будет принимать в них сообщения и публиковать посты."
+        title={tIntegrations('title')}
+        sub={tIntegrations('subtitle')}
         actions={
           <Button variant="ghost" size="md" disabled>
             Журнал событий
