@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/agent"
 )
@@ -346,8 +347,9 @@ func newYandexDedupeTestHandler(t *testing.T, browser agent.YandexBrowser) (*age
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 	dedupe := hitldedupe.New(rdb)
+	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agent.ClassifyYandexError))
 	fetcher := &fakeTokenFetcher{token: "cookies"}
-	return agent.NewHandler(fetcher, &stubPool{browser: browser}, dedupe), mr
+	return agent.NewHandler(fetcher, &stubPool{browser: browser}, dispatcher), mr
 }
 
 func yandexCreatePostReqWithApproval(approvalID string) a2a.ToolRequest {

@@ -45,15 +45,16 @@ func run() error {
 		return fmt.Errorf("failed to connect to NATS (url=%s): %w", natsURL, err)
 	}
 	tc := tokenclient.New(apiURL, nil)
-	tokens := &tokenAdapter{client: tc}
+	tokens := agentbase.NewTokenResolver(tc)
 	serviceKey := os.Getenv("VK_SERVICE_KEY")
 	if serviceKey != "" {
 		slog.Info("VK service key configured — read operations will use it")
 	}
 	dedupe := agentbase.NewDedupeClient(agentbase.GetEnv("REDIS_URL", "redis://redis:6379"))
+	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyVKError))
 	handler := agentpkg.NewHandler(tokens, func(token string) agentpkg.VKClient {
 		return vk.New(token)
-	}, serviceKey, dedupe)
+	}, serviceKey, dispatcher)
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentVK, transport, handler)
 
@@ -95,21 +96,4 @@ func run() error {
 	ag.Stop()         // wait for in-flight handlers
 	slog.Info("VK agent stopped")
 	return nil
-}
-
-// tokenAdapter adapts tokenclient.Client to the agent's TokenFetcher interface.
-type tokenAdapter struct {
-	client *tokenclient.Client
-}
-
-func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (agentpkg.TokenInfo, error) {
-	resp, err := a.client.GetToken(ctx, businessID, platform, externalID)
-	if err != nil {
-		return agentpkg.TokenInfo{}, err
-	}
-	return agentpkg.TokenInfo{
-		AccessToken: resp.AccessToken,
-		UserToken:   resp.UserToken,
-		ExternalID:  resp.ExternalID,
-	}, nil
 }

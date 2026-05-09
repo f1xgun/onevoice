@@ -42,11 +42,12 @@ func run() error {
 	}
 
 	tc := tokenclient.New(cfg.APIInternalURL, nil)
-	tokens := &tokenAdapter{client: tc}
+	tokens := agentbase.NewTokenResolver(tc)
 	dedupe := agentbase.NewDedupeClient(cfg.RedisURL)
+	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyGBPError))
 	handler := agentpkg.NewHandler(tokens, func(token string) agentpkg.GBPClient {
 		return gbp.New(token)
-	}, dedupe)
+	}, dispatcher)
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentGoogleBusiness, transport, handler)
 
@@ -87,20 +88,4 @@ func run() error {
 	ag.Stop()
 	slog.Info("Google Business agent stopped")
 	return nil
-}
-
-// tokenAdapter adapts tokenclient.Client to the agent's TokenFetcher interface.
-type tokenAdapter struct {
-	client *tokenclient.Client
-}
-
-func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (agentpkg.TokenInfo, error) {
-	resp, err := a.client.GetToken(ctx, businessID, platform, externalID)
-	if err != nil {
-		return agentpkg.TokenInfo{}, err
-	}
-	return agentpkg.TokenInfo{
-		AccessToken: resp.AccessToken,
-		ExternalID:  resp.ExternalID,
-	}, nil
 }

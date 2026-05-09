@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/services/agent-google-business/internal/gbp"
 )
@@ -250,8 +251,9 @@ func newGBPDedupeTestHandler(t *testing.T, client GBPClient) (*Handler, *minired
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 	dedupe := hitldedupe.New(rdb)
+	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(ClassifyGBPError))
 	tokens := &mockTokenFetcher{}
-	return NewHandler(tokens, func(_ string) GBPClient { return client }, dedupe), mr
+	return NewHandler(tokens, func(_ string) GBPClient { return client }, dispatcher), mr
 }
 
 func gbpReplyReqWithApproval(approvalID string) a2a.ToolRequest {

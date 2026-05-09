@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/services/agent-telegram/internal/agent"
 )
@@ -254,9 +255,10 @@ func newDedupeTestHandler(t *testing.T, sender agent.Sender) (*agent.Handler, *m
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 	dedupe := hitldedupe.New(rdb)
+	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agent.ClassifyTelegramError))
 	fetcher := &fakeTokenFetcher{token: "bot-token", externalID: "-1001234567890"}
 	factory := func(_ string) (agent.Sender, error) { return sender, nil }
-	return agent.NewHandler(fetcher, factory, dedupe), mr, fetcher
+	return agent.NewHandler(fetcher, factory, dispatcher), mr, fetcher
 }
 
 func sendPostReqWithApproval(approvalID string) a2a.ToolRequest {
