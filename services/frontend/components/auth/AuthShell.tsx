@@ -48,16 +48,7 @@ export function AuthShell({ eyebrow, title, description, children, aside }: Auth
           <div className="mt-8">{children}</div>
         </div>
 
-        <MonoLabel className="mt-auto pt-8 text-ink-soft">
-          © {new Date().getFullYear()} OneVoice ·{' '}
-          <Link href="/terms" className="text-inherit hover:text-ink-mid">
-            Условия
-          </Link>{' '}
-          ·{' '}
-          <Link href="/privacy" className="text-inherit hover:text-ink-mid">
-            Конфиденциальность
-          </Link>
-        </MonoLabel>
+        <MonoLabel className="mt-auto pt-8 text-ink-soft">© 2026 OneVoice</MonoLabel>
       </div>
 
       {/* Editorial column — hidden below md per spec. paper-sunken backdrop, line border on the inside edge. */}
