@@ -25,6 +25,11 @@ const RU = {
 // write position inside this file (supply-chain grep invariant).
 const FORBIDDEN_EDIT_KEYS: Set<string> = new Set(['tool' + '_name']);
 
+// Maximum length of the optional rejection reason. Mirrors
+// REJECT_REASON_MAX_LEN in ToolApprovalAccordionEntry — the entry shows
+// the over-length counter as soon as the reducer would slice.
+const REJECT_REASON_MAX_LEN = 500;
+
 export type Decision = ApprovalAction | 'undecided';
 
 export interface CallDraft {
@@ -77,7 +82,9 @@ export function draftReducer(state: CallDraft[], action: DraftAction): CallDraft
       );
     case 'setRejectReason':
       return state.map((d) =>
-        d.callId === action.callId ? { ...d, rejectReason: action.reason.slice(0, 500) } : d
+        d.callId === action.callId
+          ? { ...d, rejectReason: action.reason.slice(0, REJECT_REASON_MAX_LEN) }
+          : d
       );
     case 'highlightUndecided':
       return state.map((d) => ({

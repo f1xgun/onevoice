@@ -10,6 +10,19 @@ import * as React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
+// Pseudo-randomised widths (% of available row space) for the two text
+// lines. Title gets a base of 30 % with up to +24 % jitter; subtitle gets
+// a base of 55 % with up to +29 % jitter. The jitter is computed by
+// (i * primeStep) % jitterRange so the rows feel uneven without using
+// Math.random (no SSR mismatch). Steps are coprime with the modulus to
+// spread the values evenly across rows.
+const TITLE_BASE_PCT = 30;
+const TITLE_JITTER_STEP = 7;
+const TITLE_JITTER_RANGE_PCT = 25;
+const SUBTITLE_BASE_PCT = 55;
+const SUBTITLE_JITTER_STEP = 11;
+const SUBTITLE_JITTER_RANGE_PCT = 30;
+
 export interface SkeletonInboxProps {
   /** Row count. Default 4 — matches the mock. */
   rows?: number;
@@ -37,10 +50,17 @@ export function SkeletonInbox({ rows = 4, className }: SkeletonInboxProps) {
           <div className="flex flex-col gap-2">
             {/* Width pseudo-randomised by index so the rows don't read
                 like a perfect rectangle. Static — no animation. */}
-            <Skeleton className="h-[11px]" style={{ width: `${30 + ((i * 7) % 25)}%` }} />
+            <Skeleton
+              className="h-[11px]"
+              style={{
+                width: `${TITLE_BASE_PCT + ((i * TITLE_JITTER_STEP) % TITLE_JITTER_RANGE_PCT)}%`,
+              }}
+            />
             <Skeleton
               className="h-[9px] opacity-60"
-              style={{ width: `${55 + ((i * 11) % 30)}%` }}
+              style={{
+                width: `${SUBTITLE_BASE_PCT + ((i * SUBTITLE_JITTER_STEP) % SUBTITLE_JITTER_RANGE_PCT)}%`,
+              }}
             />
           </div>
           <Skeleton className="h-[9px] w-[50px]" />

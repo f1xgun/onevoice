@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { fetchPlatforms, type Platform, type PlatformStatus } from '@/lib/api/platforms';
+import { STALE_TIME_5_MIN } from '@/lib/constants/cacheTTL';
 import {
   PLATFORM_META,
   PLATFORM_DISPLAY_ORDER,
@@ -19,7 +20,7 @@ export const PLATFORMS_QUERY_KEY = ['platforms'] as const;
 
 // 5 minutes — the registry only changes when the deployment is reconfigured
 // or a new platform is added in code. There is no per-tenant variation.
-export const PLATFORMS_STALE_TIME_MS = 5 * 60 * 1000;
+export const PLATFORMS_STALE_TIME_MS = STALE_TIME_5_MIN;
 
 // Fallback used while the request is in-flight or if it fails outright.
 // Status comes from PLATFORM_META.defaultStatus, which mirrors the at-rest

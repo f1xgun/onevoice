@@ -16,10 +16,12 @@ import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 
+const NEW_PASSWORD_MIN_LEN = 8;
+
 const passwordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Введите текущий пароль'),
-    newPassword: z.string().min(8, 'Минимум 8 символов'),
+    newPassword: z.string().min(NEW_PASSWORD_MIN_LEN, 'Минимум 8 символов'),
     confirmPassword: z.string(),
   })
   .refine((d) => d.newPassword === d.confirmPassword, {

@@ -18,6 +18,13 @@ const CATEGORY_LABEL: Record<string, string> = {
   other: 'локальный бизнес',
 };
 
+// Truncation thresholds for the AI summary preview. We only truncate
+// when the description exceeds DESCRIPTION_PREVIEW_MAX_LEN, and we slice
+// at DESCRIPTION_PREVIEW_TRIM_LEN so the appended ellipsis fits within
+// the original cap.
+const DESCRIPTION_PREVIEW_MAX_LEN = 120;
+const DESCRIPTION_PREVIEW_TRIM_LEN = 117;
+
 function buildSummary(business: Partial<Business> | undefined, tones: ToneId[]): string {
   if (!business) {
     return 'Заполните основное и OneVoice опишет ваш бизнес здесь — так вы увидите, как это прозвучит для клиентов.';
@@ -32,7 +39,10 @@ function buildSummary(business: Partial<Business> | undefined, tones: ToneId[]):
     `OneVoice описывает вас как ${kind}${name ? ` «${name}»` : ''}${where ? ` — ${where}` : ''}.`
   );
   if (description) {
-    const short = description.length > 120 ? `${description.slice(0, 117).trim()}…` : description;
+    const short =
+      description.length > DESCRIPTION_PREVIEW_MAX_LEN
+        ? `${description.slice(0, DESCRIPTION_PREVIEW_TRIM_LEN).trim()}…`
+        : description;
     parts.push(short);
   }
   if (tones.length > 0) {
