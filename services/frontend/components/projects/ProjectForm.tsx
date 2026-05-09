@@ -357,7 +357,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
                   <FormControl>
                     <Textarea
                       rows={3}
-                      placeholder="Короткое описание — для кого этот проект."
+                      placeholder={tForm('descriptionPlaceholder')}
                       {...field}
                     />
                   </FormControl>
