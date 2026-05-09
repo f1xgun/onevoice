@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SkeletonChat } from '@/components/states';
 import { useChat } from '@/hooks/useChat';
+import { usePendingApprovalFlow } from '@/hooks/usePendingApprovalFlow';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
 import { DEFAULT_QUICK_ACTIONS } from '@/lib/quick-actions';
@@ -22,6 +23,7 @@ import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import type { Conversation } from '@/lib/conversations';
+import type { PendingApproval } from '@/types/chat';
 
 async function fetchConversation(id: string): Promise<Conversation> {
   const { data } = await api.get<Conversation>(API_PATHS.CONVERSATIONS.BY_ID(id));
@@ -38,8 +40,27 @@ interface ChatWindowProps {
 
 export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindowProps) {
   const tChat = useTranslations('chat.window');
-  const { messages, isLoading, isStreaming, pendingApproval, resolveApproval, sendMessage } =
-    useChat(conversationId);
+  // Sibling hooks (Phase 19, plan 19-10, decision D-19): `useChat` owns
+  // messages + streaming, `usePendingApprovalFlow` owns the approval slice.
+  // Wiring forms a tight loop:
+  //   chat.onApprovalRequired → approvalFlow.setPending      (SSE arrival)
+  //   approvalFlow.onResumeEvent → chat.appendSSEEvent       (resume frames)
+  // Both directions are read at dispatch time via internal refs, so the
+  // forward-reference between the two hook calls is safe in practice.
+  const approvalFlowRef = useRef<{ setPending: (a: PendingApproval) => void } | null>(null);
+  const chat = useChat({
+    conversationId,
+    onApprovalRequired: (approval) => approvalFlowRef.current?.setPending(approval),
+  });
+  const approvalFlow = usePendingApprovalFlow({
+    conversationId,
+    onResumeEvent: chat.appendSSEEvent,
+  });
+  useEffect(() => {
+    approvalFlowRef.current = approvalFlow;
+  });
+  const { messages, isLoading, isStreaming, sendMessage } = chat;
+  const { pendingApproval, resolveApproval } = approvalFlow;
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
@@ -183,7 +204,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void handleSend()}
-            placeholder={tChat('messagePlaceholder')}
+            placeholder="Напишите сообщение..."
             disabled={composerDisabled}
             // Inner Input loses its own border/focus ring — the outer
             // shell now owns the focused state. Background goes to paper
@@ -198,7 +219,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             size="md"
             onClick={handleSend}
             disabled={composerDisabled || !input.trim()}
-            aria-label={tChat('sendAria')}
+            aria-label="Отправить"
           >
             <Send size={16} />
           </Button>
