@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { useAuthStore } from '@/lib/auth';
 import { loginSchema, type LoginInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginInput) => {
     try {
-      const res = await api.post('/auth/login', data);
+      const res = await api.post(API_PATHS.AUTH.LOGIN, data);
       setAuth(res.data.user, res.data.accessToken);
       router.push('/chat');
     } catch (err) {

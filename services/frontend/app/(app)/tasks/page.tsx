@@ -21,7 +21,16 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import {
+  TASK_STATUS_DOT_CLASSES,
+  TASK_STATUS_LABELS,
+  type TaskStatus,
+} from '@/lib/constants/statuses';
+import { CHANNEL_NAMES } from '@/lib/platforms';
 import { useTasksStream } from '@/hooks/useTasksStream';
+
 import type { AgentTask, TaskStreamEvent } from '@/types/task';
 import { Button } from '@/components/ui/button';
 import { ChannelMark } from '@/components/ui/channel-mark';
@@ -31,29 +40,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyTasks } from '@/components/states';
 import { cn } from '@/lib/utils';
 
-// ─── Status / platform vocabulary ───────────────────────────────────
-
-type TaskStatus = 'pending' | 'running' | 'done' | 'error';
-
-const statusLabel: Record<TaskStatus, string> = {
-  pending: 'Запланировано',
-  running: 'В работе',
-  done: 'Готово',
-  error: 'Нужна помощь',
-};
-
-const statusDotClass: Record<TaskStatus, string> = {
-  pending: 'bg-ink-faint',
-  running: 'bg-ochre',
-  done: 'bg-success',
-  error: 'bg-danger',
-};
-
-const platformLabel: Record<string, string> = {
-  telegram: 'Telegram',
-  vk: 'VK',
-  yandex_business: 'Yandex.Business',
-};
+// Background poll cadence for the tasks list. SSE drives realtime updates;
+// the poll is a belt-and-braces refresh in case the stream missed an event
+// (e.g. browser put us to sleep). 30 s is fast enough that a missed task
+// surfaces within one poll cycle without flooding the backend.
+const POLL_INTERVAL_MS = 30_000;
 
 // ─── Plain-Russian error explainer ──────────────────────────────────
 //
@@ -80,7 +71,7 @@ function explainError(task: AgentTask): HumanError {
             : 'Доступ к платформе истёк. Переподключите канал, чтобы мы могли продолжить.',
       cta: {
         label: platform === 'vk' ? 'Переподключить ВКонтакте' : 'Переподключить',
-        href: '/integrations',
+        href: API_PATHS.INTEGRATIONS.ROOT,
       },
     };
   }
@@ -104,7 +95,7 @@ function explainError(task: AgentTask): HumanError {
   if (/not.?found|404|канал.*не/.test(raw)) {
     return {
       summary: 'Канал не найден. Проверьте, что он всё ещё подключён и доступен.',
-      cta: { label: 'Открыть каналы', href: '/integrations' },
+      cta: { label: 'Открыть каналы', href: API_PATHS.INTEGRATIONS.ROOT },
     };
   }
 
@@ -127,20 +118,20 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
 
   const { data: tasks = [], isLoading } = useQuery<AgentTask[]>({
-    queryKey: ['tasks'],
+    queryKey: QUERY_KEYS.TASKS,
     queryFn: () =>
-      api.get('/tasks').then((r) => {
+      api.get(API_PATHS.TASKS).then((r) => {
         const data = r.data as unknown;
         if (Array.isArray(data)) return data as AgentTask[];
         const list = (data as { tasks?: AgentTask[] } | null)?.tasks;
         return Array.isArray(list) ? list : [];
       }),
-    refetchInterval: 30_000,
+    refetchInterval: POLL_INTERVAL_MS,
   });
 
   const onStreamEvent = useCallback(
     (_: TaskStreamEvent) => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TASKS });
     },
     [queryClient]
   );
@@ -214,7 +205,7 @@ export default function TasksPage() {
 
 function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
   const status = (task.status as TaskStatus) ?? 'pending';
-  const platformName = platformLabel[task.platform] ?? task.platform;
+  const platformName = CHANNEL_NAMES[task.platform as keyof typeof CHANNEL_NAMES] ?? task.platform;
   const titleClass =
     status === 'error'
       ? 'text-sm font-medium text-[var(--ov-danger-ink)] tracking-[-0.005em]'
@@ -229,7 +220,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
           aria-hidden
           className={cn(
             'mt-1.5 size-2 shrink-0 rounded-full sm:mt-0 sm:justify-self-center',
-            statusDotClass[status]
+            TASK_STATUS_DOT_CLASSES[status]
           )}
         />
 
@@ -251,7 +242,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
             <span aria-hidden>·</span>
             <span>{format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}</span>
             <span aria-hidden>·</span>
-            <span>{statusLabel[status]}</span>
+            <span>{TASK_STATUS_LABELS[status]}</span>
           </div>
         </div>
 
@@ -266,7 +257,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
           <span className="text-[13px] text-ink-mid">
             {format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}
           </span>
-          <span className="text-xs text-ink-soft">{statusLabel[status]}</span>
+          <span className="text-xs text-ink-soft">{TASK_STATUS_LABELS[status]}</span>
         </div>
       </div>
 

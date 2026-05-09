@@ -9,6 +9,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,7 +43,7 @@ export default function SettingsPage() {
 
   const mutation = useMutation({
     mutationFn: (data: PasswordInput) =>
-      api.put('/auth/password', {
+      api.put(API_PATHS.AUTH.PASSWORD, {
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,
       }),

@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 
 interface GoogleLocation {
   name: string;
@@ -41,16 +43,16 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
   } = useQuery<GoogleLocation[]>({
     queryKey: ['google-locations'],
     queryFn: () =>
-      api.get('/integrations/google_business/locations').then((r) => r.data as GoogleLocation[]),
+      api.get(API_PATHS.INTEGRATIONS.GOOGLE_LOCATIONS).then((r) => r.data as GoogleLocation[]),
     enabled: open,
   });
 
   const connectMutation = useMutation({
     mutationFn: (params: { account_id: string; location_id: string }) =>
-      api.post('/integrations/google_business/select-location', params),
+      api.post(API_PATHS.INTEGRATIONS.GOOGLE_SELECT_LOCATION, params),
     onSuccess: () => {
       toast.success('Google Business Profile подключен!');
-      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       onClose();
     },
     onError: () => {
