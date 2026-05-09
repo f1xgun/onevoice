@@ -43,9 +43,9 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      eyebrow="Вход"
-      title="С возвращением."
-      description="Введите почту и пароль, чтобы открыть общий ящик."
+      eyebrow={tLogin('eyebrow')}
+      title={tLogin('title')}
+      description={tLogin('description')}
       aside={<LoginEditorial />}
     >
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
@@ -82,7 +82,7 @@ export default function LoginPage() {
         </div>
 
         <Button type="submit" size="lg" className="mt-2 w-full" disabled={isSubmitting}>
-          {isSubmitting ? 'Входим…' : 'Войти'}
+          {isSubmitting ? tLogin('submitting') : tLogin('submit')}
         </Button>
 
         <p className="mt-6 text-sm text-ink-soft">
