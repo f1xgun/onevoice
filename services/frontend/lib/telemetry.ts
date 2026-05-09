@@ -1,5 +1,5 @@
 import { api } from './api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { API_BASE_URL, API_PATHS } from '@/lib/constants/apiPaths';
 
 export interface TelemetryEvent {
   eventType: string;
@@ -96,7 +96,7 @@ if (typeof document !== 'undefined') {
       const blob = new Blob([JSON.stringify(batch)], {
         type: 'application/json',
       });
-      navigator.sendBeacon('/api/v1/telemetry', blob);
+      navigator.sendBeacon(`${API_BASE_URL}${API_PATHS.TELEMETRY}`, blob);
     }
   });
 }

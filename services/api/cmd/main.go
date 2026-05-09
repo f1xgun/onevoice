@@ -43,16 +43,16 @@ import (
 // every blocking pre-listen step (Mongo backfill, search-index creation,
 // orphan-reconciliation sweep) because they all run sequentially against
 // the same Mongo connection.
+//
+// HTTP server / orchestrator-fetch timeouts have been hoisted to env
+// vars (HTTP_READ_TIMEOUT, HTTP_READ_HEADER_TIMEOUT, HTTP_IDLE_TIMEOUT,
+// ORCHESTRATOR_FETCH_TIMEOUT) — see config.Config for the defaults.
 const (
 	startupTimeout            = 30 * time.Second
 	startupSearchIndexTimeout = 60 * time.Second
-	httpReadTimeout           = 15 * time.Second
-	httpReadHeaderTimeout     = 10 * time.Second
-	httpIdleTimeout           = 60 * time.Second
 	orphanReconcileWindow     = 5 * time.Minute
 	toolsCacheTTL             = 5 * time.Minute
 	integrationFetchTimeout   = 60 * time.Second
-	orchestratorFetchTimeout  = 10 * time.Second
 	pendingSweepLoopInterval  = 5 * time.Second
 )
 
@@ -208,7 +208,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// longer exist in the live registry. Non-blocking: the sweep runs in a
 	// goroutine, retries once after 5s on HTTP failure, and quietly skips
 	// on second failure so a slow orchestrator boot does not gate the API.
-	go runToolApprovalStartupValidation(ctx, pgPool, cfg.OrchestratorURL)
+	go runToolApprovalStartupValidation(ctx, pgPool, cfg.OrchestratorURL, cfg.OrchestratorFetchTimeout)
 
 	// Redis
 	redisClient := redis.NewClient(&redis.Options{
@@ -318,7 +318,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		refresher = &googleTokenRefresher{
 			clientID:     cfg.GoogleClientID,
 			clientSecret: cfg.GoogleClientSecret,
-			httpClient:   &http.Client{Timeout: orchestratorFetchTimeout},
+			httpClient:   &http.Client{Timeout: cfg.OrchestratorFetchTimeout},
 		}
 	}
 	integrationService := service.NewIntegrationService(integrationRepo, enc, refresher)
@@ -562,21 +562,31 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	hc.AddCheck("postgres", func(ctx context.Context) error { return pgPool.Ping(ctx) })
 	hc.AddCheck("redis", func(ctx context.Context) error { return redisClient.Ping(ctx).Err() })
 
-	// Setup router
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, hc)
+	// Setup router. CORS allowed origins are sourced from the
+	// CORS_ALLOWED_ORIGINS env var (comma-separated); the dev default is a
+	// single localhost:3000 entry — production deploys MUST set the public
+	// frontend origin explicitly. Per-endpoint rate limits are tunable via
+	// RATE_LIMIT_REGISTER/LOGIN/CHAT/HITL env vars.
+	rateLimits := router.RateLimits{
+		Register: cfg.RateLimitRegister,
+		Login:    cfg.RateLimitLogin,
+		Chat:     cfg.RateLimitChat,
+		HITL:     cfg.RateLimitHITL,
+	}
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, hc, cfg.CORSAllowedOrigins, rateLimits)
 
 	// Start HTTP server
 	addr := ":" + cfg.Port
 	srv := &http.Server{
 		Addr:        addr,
 		Handler:     r,
-		ReadTimeout: httpReadTimeout,
+		ReadTimeout: cfg.HTTPReadTimeout,
 		// WriteTimeout=0: SSE requires long-lived connections (/api/v1/chat/{id}
 		// proxies the orchestrator stream, which may run for minutes while
 		// RPA tool calls complete). Per-request deadlines are enforced by
 		// context.WithTimeout in handlers that need them.
 		WriteTimeout: 0,
-		IdleTimeout:  httpIdleTimeout,
+		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
 
 	// Start server in goroutine
@@ -594,7 +604,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	internalSrv := &http.Server{
 		Addr:              internalAddr,
 		Handler:           internalRouter,
-		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
 	}
 	go func() {
 		log.Info("internal server listening", "addr", internalAddr)
@@ -712,11 +722,11 @@ func (a *integrationSyncAdapter) GetDecryptedToken(ctx context.Context, business
 // silently on sustained failure so a slow/dead orchestrator cannot block API
 // boot. The sweep is advisory — production alerts should watch for
 // `tool_approval_whitelist_unknown` events in Loki/Grafana.
-func runToolApprovalStartupValidation(_ context.Context, pgPool *pgxpool.Pool, orchestratorURL string) {
+func runToolApprovalStartupValidation(_ context.Context, pgPool *pgxpool.Pool, orchestratorURL string, fetchTimeout time.Duration) {
 	sweepCtx, cancel := context.WithTimeout(context.Background(), startupTimeout)
 	defer cancel()
 
-	registered, err := fetchOrchestratorToolNames(sweepCtx, orchestratorURL)
+	registered, err := fetchOrchestratorToolNames(sweepCtx, orchestratorURL, fetchTimeout)
 	if err != nil {
 		slog.WarnContext(sweepCtx, "tool_approval_whitelist_sweep: fetch registry failed, retrying",
 			"orchestrator", orchestratorURL, "error", err,
@@ -726,7 +736,7 @@ func runToolApprovalStartupValidation(_ context.Context, pgPool *pgxpool.Pool, o
 		case <-sweepCtx.Done():
 			return
 		}
-		registered, err = fetchOrchestratorToolNames(sweepCtx, orchestratorURL)
+		registered, err = fetchOrchestratorToolNames(sweepCtx, orchestratorURL, fetchTimeout)
 		if err != nil {
 			slog.WarnContext(sweepCtx, "tool_approval_whitelist_sweep: skipped (orchestrator unreachable)",
 				"orchestrator", orchestratorURL, "error", err,
@@ -756,10 +766,11 @@ func runToolApprovalStartupValidation(_ context.Context, pgPool *pgxpool.Pool, o
 
 // fetchOrchestratorToolNames calls GET {orchestratorURL}/internal/tools/names
 // and decodes the `{names: [...]}` response into a map usable by
-// hitlvalidation.ValidateApprovalSettings. A 10s timeout protects against
-// a hung orchestrator; the caller handles retry.
-func fetchOrchestratorToolNames(ctx context.Context, orchestratorURL string) (map[string]struct{}, error) {
-	reqCtx, cancel := context.WithTimeout(ctx, orchestratorFetchTimeout)
+// hitlvalidation.ValidateApprovalSettings. fetchTimeout is the per-request
+// budget (default 10s, tunable via ORCHESTRATOR_FETCH_TIMEOUT); the caller
+// handles retry.
+func fetchOrchestratorToolNames(ctx context.Context, orchestratorURL string, fetchTimeout time.Duration) (map[string]struct{}, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 
 	u := strings.TrimRight(orchestratorURL, "/") + "/internal/tools/names"

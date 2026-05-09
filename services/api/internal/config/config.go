@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -81,6 +82,35 @@ type Config struct {
 
 	PublicURL string
 
+	// CORS — comma-separated list of allowed origins, parsed from
+	// CORS_ALLOWED_ORIGINS. Defaults to a single localhost:3000 entry for
+	// dev parity. In production this MUST be set to the public frontend
+	// origin (e.g. https://app.example.com); a missing env var leaves the
+	// API reachable only from localhost.
+	CORSAllowedOrigins []string
+
+	// HTTP server / orchestrator timeouts. All optional; defaults preserve
+	// the values that were hardcoded in services/api/cmd/main.go before
+	// Wave 2.4. Knob purpose:
+	//   HTTPReadTimeout       — http.Server.ReadTimeout for the public API.
+	//   HTTPReadHeaderTimeout — http.Server.ReadHeaderTimeout for the internal mTLS server.
+	//   HTTPIdleTimeout       — http.Server.IdleTimeout for keepalive sockets.
+	//   OrchestratorFetchTimeout — per-request budget on /internal/tools/* and
+	//                              token-refresh fan-out toward Google/etc.
+	HTTPReadTimeout          time.Duration
+	HTTPReadHeaderTimeout    time.Duration
+	HTTPIdleTimeout          time.Duration
+	OrchestratorFetchTimeout time.Duration
+
+	// Per-endpoint per-minute request budgets. Defaults match the values
+	// previously hardcoded in services/api/internal/router/router.go.
+	// Operators tune these via RATE_LIMIT_* env vars when the service sees
+	// abnormal traffic shape (e.g., a customer integration polling /chat).
+	RateLimitRegister int
+	RateLimitLogin    int
+	RateLimitChat     int
+	RateLimitHITL     int
+
 	// Shutdown
 	ShutdownTimeout time.Duration
 
@@ -154,7 +184,19 @@ func Load() (*Config, error) {
 		S3UseSSL:          getEnv("S3_USE_SSL", "false") == "true",
 		S3PublicURLPrefix: getEnv("S3_PUBLIC_URL_PREFIX", "/media"),
 
-		PublicURL:       getEnv("PUBLIC_URL", "http://localhost:8080"),
+		PublicURL:          getEnv("PUBLIC_URL", "http://localhost:8080"),
+		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
+
+		HTTPReadTimeout:          getEnvDuration("HTTP_READ_TIMEOUT", 15*time.Second),
+		HTTPReadHeaderTimeout:    getEnvDuration("HTTP_READ_HEADER_TIMEOUT", 10*time.Second),
+		HTTPIdleTimeout:          getEnvDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
+		OrchestratorFetchTimeout: getEnvDuration("ORCHESTRATOR_FETCH_TIMEOUT", 10*time.Second),
+
+		RateLimitRegister: getEnvInt("RATE_LIMIT_REGISTER", 5),
+		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
+		RateLimitChat:     getEnvInt("RATE_LIMIT_CHAT", 10),
+		RateLimitHITL:     getEnvInt("RATE_LIMIT_HITL", 10),
+
 		ShutdownTimeout: shutdownTimeout,
 	}
 
@@ -208,6 +250,39 @@ func getEnvInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// getEnvDuration parses a Go-style duration env var (e.g. "30s", "5m").
+// Invalid or missing values fall back to the supplied default so an
+// operator typo can't crash startup of an otherwise-healthy service.
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if d, err := time.ParseDuration(value); err == nil {
+			return d
+		}
+	}
+	return defaultValue
+}
+
+// getEnvSlice parses a comma-separated env var into a trimmed []string.
+// Empty entries (e.g. "a,,b") are dropped; a fully blank value falls back
+// to the supplied default (typically a dev-friendly localhost entry).
+func getEnvSlice(key string, defaultValue []string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return defaultValue
+	}
+	return out
 }
 
 // parseIndexedEndpoints scans SELF_HOSTED_N_URL / _MODEL / _API_KEY env vars
