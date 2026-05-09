@@ -35,6 +35,17 @@ const (
 	envBoolTrue = "true"
 )
 
+// Default endpoint URLs for env-driven config. These are dev-mode
+// fallbacks; production deployments must set the corresponding env vars.
+const (
+	defaultVKRedirectURI     = "http://localhost/api/v1/oauth/vk/callback"
+	defaultYandexRedirectURI = "http://localhost/api/v1/oauth/yandex_business/callback"
+	defaultGoogleRedirectURI = "http://localhost/api/v1/oauth/google_business/callback"
+	defaultOrchestratorURL   = "http://localhost:8090"
+	defaultPublicURL         = "http://localhost:8080"
+	defaultCORSDevOrigin     = "http://localhost:3000"
+)
+
 // SelfHostedEndpoint holds configuration for one self-hosted LLM inference
 // endpoint. Lifted verbatim from
 // services/orchestrator/internal/config/config.go so the API-side titler
@@ -186,17 +197,17 @@ func Load() (*Config, error) {
 
 		VKClientID:         os.Getenv("VK_CLIENT_ID"),
 		VKClientSecret:     os.Getenv("VK_CLIENT_SECRET"),
-		VKRedirectURI:      getEnv("VK_REDIRECT_URI", "http://localhost/api/v1/oauth/vk/callback"),
+		VKRedirectURI:      getEnv("VK_REDIRECT_URI", defaultVKRedirectURI),
 		VKServiceKey:       os.Getenv("VK_SERVICE_KEY"),
 		YandexClientID:     os.Getenv("YANDEX_CLIENT_ID"),
 		YandexClientSecret: os.Getenv("YANDEX_CLIENT_SECRET"),
-		YandexRedirectURI:  getEnv("YANDEX_REDIRECT_URI", "http://localhost/api/v1/oauth/yandex_business/callback"),
+		YandexRedirectURI:  getEnv("YANDEX_REDIRECT_URI", defaultYandexRedirectURI),
 		TelegramBotToken:   os.Getenv("TELEGRAM_BOT_TOKEN"),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		GoogleRedirectURI:  getEnv("GOOGLE_REDIRECT_URI", "http://localhost/api/v1/oauth/google_business/callback"),
+		GoogleRedirectURI:  getEnv("GOOGLE_REDIRECT_URI", defaultGoogleRedirectURI),
 		InternalPort:       getEnv("INTERNAL_PORT", "8443"),
-		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", "http://localhost:8090"),
+		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", defaultOrchestratorURL),
 		NATSUrl:            os.Getenv("NATS_URL"),
 		ReviewSyncInterval: getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30), //nolint:mnd // env-driven default
 
@@ -211,8 +222,8 @@ func Load() (*Config, error) {
 		S3UseSSL:          getEnv("S3_USE_SSL", "false") == envBoolTrue,
 		S3PublicURLPrefix: getEnv("S3_PUBLIC_URL_PREFIX", "/media"),
 
-		PublicURL:          getEnv("PUBLIC_URL", "http://localhost:8080"),
-		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
+		PublicURL:          getEnv("PUBLIC_URL", defaultPublicURL),
+		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{defaultCORSDevOrigin}),
 
 		HTTPReadTimeout:          getEnvDuration("HTTP_READ_TIMEOUT", defaultHTTPReadTimeout),
 		HTTPReadHeaderTimeout:    getEnvDuration("HTTP_READ_HEADER_TIMEOUT", defaultHTTPReadHeaderTimeout),
