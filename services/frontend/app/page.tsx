@@ -500,22 +500,17 @@ function Quote() {
   return (
     <section className="border-b border-line-soft">
       <div className="mx-auto w-full max-w-[880px] px-6 py-28 sm:px-12">
-        <MonoLabel>Из писем</MonoLabel>
-        <blockquote
+        <MonoLabel>Иллюстрация</MonoLabel>
+        <p
           className="mt-6 text-pretty text-[26px] font-normal leading-snug tracking-[-0.015em] text-ink sm:text-[32px]"
           style={{ fontFamily: SERIF, fontStyle: 'italic' }}
         >
-          «Раньше я открывала пять вкладок, чтобы понять, где у меня сегодня пожар. Теперь смотрю в
-          один ящик — и вижу, что OneVoice уже ответил на половину, а с другой половиной просит мою
-          подпись.»
-        </blockquote>
-        <div className="mt-7 flex items-center gap-3">
-          <ChannelMark name="You" size={36} />
-          <div>
-            <div className="text-[14px] font-medium">Татьяна Б.</div>
-            <MonoLabel>Кофейня «Мята», Москва · с нами 6 месяцев</MonoLabel>
-          </div>
-        </div>
+          Утром — один ящик, а не пять вкладок. На простые вопросы OneVoice уже ответил — на сложные
+          просит вашу подпись.
+        </p>
+        <p className="mt-7 text-[13px] text-ink-soft">
+          Так может выглядеть обычный день, когда подключены все каналы.
+        </p>
       </div>
     </section>
   );
