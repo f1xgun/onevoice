@@ -23,6 +23,10 @@ import (
 const (
 	healthReadHeaderTimeout = 5 * time.Second
 	shutdownTimeout         = 5 * time.Second
+
+	// defaultAPIInternalURL is the dev-mode fallback for API_INTERNAL_URL —
+	// the local API service binding. Production must set the env var.
+	defaultAPIInternalURL = "http://localhost:8443"
 )
 
 func main() {
@@ -33,7 +37,7 @@ func main() {
 }
 
 func run() error {
-	apiURL := agentbase.GetEnv("API_INTERNAL_URL", "http://localhost:8443")
+	apiURL := agentbase.GetEnv("API_INTERNAL_URL", defaultAPIInternalURL)
 
 	natsURL := agentbase.GetEnv("NATS_URL", natslib.DefaultURL)
 	nc, err := natslib.Connect(natsURL)

@@ -2,6 +2,10 @@ package config
 
 import "os"
 
+// defaultAPIInternalURL is the dev-mode fallback for API_INTERNAL_URL —
+// the local API service binding. Production must set the env var.
+const defaultAPIInternalURL = "http://localhost:8443"
+
 // Config holds the agent-google-business configuration.
 type Config struct {
 	NATSUrl        string
@@ -16,7 +20,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		NATSUrl:        getEnv("NATS_URL", "nats://localhost:4222"),
-		APIInternalURL: getEnv("API_INTERNAL_URL", "http://localhost:8443"),
+		APIInternalURL: getEnv("API_INTERNAL_URL", defaultAPIInternalURL),
 		HealthPort:     getEnv("HEALTH_PORT", "8083"),
 		RedisURL:       getEnv("REDIS_URL", "redis://redis:6379"),
 	}
