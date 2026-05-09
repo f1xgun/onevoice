@@ -132,8 +132,6 @@ function Hero() {
               <a href="#features">Посмотреть, как работает</a>
             </Button>
           </div>
-          <p className="mt-6 text-[13px] text-ink-soft">Без карты · бесплатно · до 3 каналов</p>
-          {/* временно убрана упоминалка пробного периода — продукт бесплатный */}
         </div>
         <HeroPreview />
       </div>
