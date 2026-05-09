@@ -115,18 +115,19 @@ func (r *messageRepository) FindByConversationActive(ctx context.Context, conver
 	return &msg, nil
 }
 
-// SearchByConversationIDs — Phase 19 / Plan 19-03 / D-12 phase 2.
+// SearchByConversationIDs — content search via word-prefix regex (v20.1).
 //
-// Aggregation pipeline that runs $text on messages.content scoped by
-// conversation_id ∈ allowlist (which the caller built from
-// ScopedConversationIDs). Returns one row per conversation:
-// (top_message_id, top_content, top_score, match_count), sorted by
-// top_score desc.
+// We previously used Mongo's $text index. v20 dropped Snowball stemming
+// because of asymmetric stems (e.g. "отзыв" vs "отзывы" did not co-match);
+// v20.1 replaces $text entirely with a word-anchored regex per query
+// token. Each lowercased token must match SOME word in `content` whose
+// lowercased prefix equals it — covering inflectional morphology
+// ("отзыв" → "отзыв|отзывы|отзыва|отзывов|…") without the asymmetry.
 //
-// Mongo $text rule (RESEARCH §5):
-//
-//	The $match stage that includes $text MUST be the FIRST stage of the
-//	pipeline. $text cannot live inside $or or $not. We honor both rules.
+// Returns one row per conversation: (top_message_id, top_content,
+// top_score=match_count, match_count), sorted by match_count desc.
+// "Top message" is the most-recently-created matching message (best
+// snippet candidate for chat search; recency beats relevance here).
 //
 // Cross-tenant defense: Message documents have NO business_id field
 // (verified pkg/domain/mongo_models.go:57-75). The (user_id, business_id)
@@ -136,6 +137,9 @@ func (r *messageRepository) FindByConversationActive(ctx context.Context, conver
 //
 // Empty allowlist returns (nil, nil) without invoking Mongo. Allowlist
 // > 1000 elements is logged + truncated (Pitfalls §15 Q10).
+//
+// Empty/whitespace query returns (nil, nil) — no work to do, the handler
+// already enforces len(q) >= 2.
 func (r *messageRepository) SearchByConversationIDs(
 	ctx context.Context,
 	query string,
@@ -153,32 +157,41 @@ func (r *messageRepository) SearchByConversationIDs(
 	if limit <= 0 {
 		limit = 40
 	}
+	tokens := tokenizeQuery(query)
+	if len(tokens) == 0 {
+		return []domain.MessageSearchHit{}, nil
+	}
+
+	contentMatches := make([]bson.M, len(tokens))
+	for i, t := range tokens {
+		contentMatches[i] = bson.M{"content": bson.M{
+			"$regex":   wordPrefixRegex(t),
+			"$options": "i",
+		}}
+	}
+	matchStage := bson.M{
+		"conversation_id": bson.M{"$in": convIDs},
+		"$and":            contentMatches,
+	}
+
 	pipeline := mongo.Pipeline{
-		// Stage 1 — $match MUST be first when including $text. Combines
-		// $text with the conversation_id allowlist (cross-tenant scope).
-		bson.D{{Key: "$match", Value: bson.M{
-			"$text":           bson.M{"$search": query},
-			"conversation_id": bson.M{"$in": convIDs},
-		}}},
-		// Stage 2 — score becomes available only AFTER the $match with $text.
-		bson.D{{Key: "$addFields", Value: bson.M{
-			"score": bson.M{"$meta": "textScore"},
-		}}},
-		// Stage 3 — sort by per-message score so $group's $first picks
-		// the top-scored snippet for each conversation.
-		bson.D{{Key: "$sort", Value: bson.D{{Key: "score", Value: -1}}}},
-		// Stage 4 — group by conversation_id; $first picks the top-scored
-		// message's id+content+score, $sum counts hits.
+		bson.D{{Key: "$match", Value: matchStage}},
+		// Sort by recency so $group's $first picks the most-recently-created
+		// matching message per conversation — best snippet for chat search.
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "created_at", Value: -1}}}},
 		bson.D{{Key: "$group", Value: bson.D{
 			{Key: "_id", Value: "$conversation_id"},
 			{Key: "top_message_id", Value: bson.D{{Key: "$first", Value: "$_id"}}},
 			{Key: "top_content", Value: bson.D{{Key: "$first", Value: "$content"}}},
-			{Key: "top_score", Value: bson.D{{Key: "$first", Value: "$score"}}},
 			{Key: "match_count", Value: bson.D{{Key: "$sum", Value: 1}}},
 		}}},
-		// Stage 5 — group-level ordering by top_score (rebound from `score`).
-		bson.D{{Key: "$sort", Value: bson.D{{Key: "top_score", Value: -1}}}},
-		// Stage 6 — bound result set.
+		// `top_score` exists in domain.MessageSearchHit for compat with the
+		// previous $text-based ranking. Bind it to match_count so the
+		// downstream merge in service.Searcher keeps a stable contract.
+		bson.D{{Key: "$addFields", Value: bson.M{
+			"top_score": "$match_count",
+		}}},
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "match_count", Value: -1}}}},
 		bson.D{{Key: "$limit", Value: int64(limit)}},
 	}
 	cur, err := r.collection.Aggregate(ctx, pipeline)

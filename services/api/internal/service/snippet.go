@@ -1,43 +1,33 @@
-// Package service — Phase 19 / Plan 19-03 / D-09 snippet + highlight helpers.
+// Package service — search snippet + highlight helpers.
 //
 // Pure functions only: no DB, no HTTP, no slog. Token boundaries are
-// rune-aware (Russian is multi-byte UTF-8) but byte offsets are returned
-// for the JSON frontend. Stemming is performed by
-// github.com/kljensen/snowball/russian (Russian Snowball, MIT, pure Go).
+// rune-aware (Cyrillic is multi-byte UTF-8) but byte offsets are
+// returned for the JSON frontend.
 //
-// Caveat (RESEARCH §1): kljensen/snowball stems «злейший» → «зл», not
-// «злейш» as the original Russian Snowball algorithm dictates. Mongo's
-// libstemmer drives the $text retrieval, so any divergence is at most a
-// missed <mark> highlight (cosmetic), never a missed result.
+// Matching model (v20): word-prefix. A query token "отзыв" matches any
+// word in the content that starts with "отзыв" (case-insensitive),
+// covering "отзыв", "отзывы", "отзыва", "отзывов", … in one rule.
+// We deliberately do NOT use Russian Snowball — its asymmetric stem
+// behaviour ("отзыв" vs "отзывы") was the bug that motivated v20.
+// Prefix matching gives morphological recall over inflectional suffixes
+// (which is most of Russian noun/verb morphology) without the asymmetry.
 package service
 
 import (
 	"strings"
 	"unicode"
-
-	"github.com/kljensen/snowball/russian"
 )
 
-// halfWindow is the snippet half-window in bytes (RESEARCH §10:
-// SEARCH-03 locks ±40-120 chars; we pick 50 as the sweet spot).
+// halfWindow is the snippet half-window in bytes.
 const halfWindow = 50
 
 // BuildSnippet returns a snippet of `content` centered on the first
-// token whose stem matches any of `queryStems`, clamped to roughly
-// [80,120] chars and aligned to word boundaries (so we don't cut a
-// word in half). Returns the empty string if no token matches.
-//
-// Algorithm (RESEARCH §10):
-//  1. Find the byte range of the first stem-match token.
-//  2. Compute the desired window:
-//     [matchStart - halfWindow, matchEnd + halfWindow], clamped to
-//     [0, len(content)].
-//  3. Expand the window outward to the nearest preceding/following
-//     whitespace.
-//  4. Prepend "…" if window starts > 0; append "…" if window ends
-//     before len(content).
-func BuildSnippet(content string, queryStems map[string]struct{}) string {
-	matchStart, matchEnd := firstStemMatch(content, queryStems)
+// token whose lowercased form starts with any of `queryPrefixes`,
+// clamped to roughly [80,120] chars and aligned to word boundaries
+// (so we don't cut a word in half). Returns the empty string if no
+// token matches.
+func BuildSnippet(content string, queryPrefixes map[string]struct{}) string {
+	matchStart, matchEnd := firstPrefixMatch(content, queryPrefixes)
 	if matchStart < 0 {
 		return ""
 	}
@@ -63,26 +53,26 @@ func BuildSnippet(content string, queryStems map[string]struct{}) string {
 	return snippet
 }
 
-// firstStemMatch scans content token-by-token and returns the byte
-// range of the first token whose stem hits queryStems. Returns
-// (-1, -1) on no match.
-func firstStemMatch(content string, queryStems map[string]struct{}) (start, end int) {
+// firstPrefixMatch scans content token-by-token and returns the byte
+// range of the first token whose lowercased form starts with any
+// prefix in queryPrefixes. Returns (-1, -1) on no match.
+func firstPrefixMatch(content string, queryPrefixes map[string]struct{}) (start, end int) {
 	runes := []rune(content)
 	pos := 0
 	for pos < len(runes) {
-		for pos < len(runes) && !unicode.IsLetter(runes[pos]) {
+		for pos < len(runes) && !unicode.IsLetter(runes[pos]) && !unicode.IsDigit(runes[pos]) {
 			pos++
 		}
-		start := pos
-		for pos < len(runes) && unicode.IsLetter(runes[pos]) {
+		ts := pos
+		for pos < len(runes) && (unicode.IsLetter(runes[pos]) || unicode.IsDigit(runes[pos])) {
 			pos++
 		}
-		if start == pos {
+		if ts == pos {
 			continue
 		}
-		token := strings.ToLower(string(runes[start:pos]))
-		if _, hit := queryStems[russian.Stem(token, false)]; hit {
-			byteStart := len(string(runes[:start]))
+		token := strings.ToLower(string(runes[ts:pos]))
+		if anyPrefixMatches(token, queryPrefixes) {
+			byteStart := len(string(runes[:ts]))
 			byteEnd := len(string(runes[:pos]))
 			return byteStart, byteEnd
 		}
@@ -110,31 +100,31 @@ func expandRightToBoundary(s string, pos int) int {
 }
 
 // HighlightRanges returns byte ranges in `snippet` where any token's
-// stem matches any query stem. Stable order, non-overlapping. Used by
-// the search service to build the `marks` array sent to the frontend
-// (D-09); the frontend wraps each [start, end) range in <mark>.
+// lowercased form starts with one of `queryPrefixes`. Stable order,
+// non-overlapping. Used by the search service to build the `marks`
+// array sent to the frontend; the frontend wraps each [start, end)
+// range in <mark>.
 //
 // Byte offsets — NOT rune offsets — because the frontend slices by byte
-// in the response payload. Rune-vs-byte conversion uses
-// `len(string(runes[:i]))` per RESEARCH §1 lines 122-125.
-func HighlightRanges(snippet string, queryStems map[string]struct{}) [][2]int {
+// in the response payload.
+func HighlightRanges(snippet string, queryPrefixes map[string]struct{}) [][2]int {
 	var marks [][2]int
 	runes := []rune(snippet)
 	pos := 0
 	for pos < len(runes) {
-		for pos < len(runes) && !unicode.IsLetter(runes[pos]) {
+		for pos < len(runes) && !unicode.IsLetter(runes[pos]) && !unicode.IsDigit(runes[pos]) {
 			pos++
 		}
-		start := pos
-		for pos < len(runes) && unicode.IsLetter(runes[pos]) {
+		ts := pos
+		for pos < len(runes) && (unicode.IsLetter(runes[pos]) || unicode.IsDigit(runes[pos])) {
 			pos++
 		}
-		if start == pos {
+		if ts == pos {
 			continue
 		}
-		token := strings.ToLower(string(runes[start:pos]))
-		if _, hit := queryStems[russian.Stem(token, false)]; hit {
-			byteStart := len(string(runes[:start]))
+		token := strings.ToLower(string(runes[ts:pos]))
+		if anyPrefixMatches(token, queryPrefixes) {
+			byteStart := len(string(runes[:ts]))
 			byteEnd := len(string(runes[:pos]))
 			marks = append(marks, [2]int{byteStart, byteEnd})
 		}
@@ -142,28 +132,38 @@ func HighlightRanges(snippet string, queryStems map[string]struct{}) [][2]int {
 	return marks
 }
 
-// QueryStems builds the deduplicated set of Russian stems used by
-// BuildSnippet and HighlightRanges. Tokenizes `query` on letter / non-
-// letter boundaries, lowercases each token, runs russian.Stem(_, false)
-// (stemStopWords=false leaves Russian stop-words alone — Mongo's stemmer
-// already filters them, so we never produce a highlight on a stop-word).
-func QueryStems(query string) map[string]struct{} {
+// anyPrefixMatches reports whether token starts with any prefix in the
+// set. Both token and prefixes are expected to be lowercased.
+func anyPrefixMatches(token string, prefixes map[string]struct{}) bool {
+	for p := range prefixes {
+		if p != "" && strings.HasPrefix(token, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// QueryPrefixes builds the deduplicated set of lowercased query tokens
+// used by BuildSnippet, HighlightRanges, and the repository regex
+// builders. Tokenizes `query` on letter/digit boundaries; punctuation
+// and whitespace become separators.
+func QueryPrefixes(query string) map[string]struct{} {
 	result := make(map[string]struct{})
 	runes := []rune(query)
 	pos := 0
 	for pos < len(runes) {
-		for pos < len(runes) && !unicode.IsLetter(runes[pos]) {
+		for pos < len(runes) && !unicode.IsLetter(runes[pos]) && !unicode.IsDigit(runes[pos]) {
 			pos++
 		}
-		start := pos
-		for pos < len(runes) && unicode.IsLetter(runes[pos]) {
+		ts := pos
+		for pos < len(runes) && (unicode.IsLetter(runes[pos]) || unicode.IsDigit(runes[pos])) {
 			pos++
 		}
-		if start == pos {
+		if ts == pos {
 			continue
 		}
-		token := strings.ToLower(string(runes[start:pos]))
-		result[russian.Stem(token, false)] = struct{}{}
+		token := strings.ToLower(string(runes[ts:pos]))
+		result[token] = struct{}{}
 	}
 	return result
 }

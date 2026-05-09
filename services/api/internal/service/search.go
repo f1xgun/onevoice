@@ -156,8 +156,8 @@ func (s *Searcher) Search(
 		return nil, err
 	}
 
-	stems := QueryStems(query)
-	merged := mergeAndRank(titleHits, msgHits, titleHitWeight, messageHitWeight, limit, stems)
+	prefixes := QueryPrefixes(query)
+	merged := mergeAndRank(titleHits, msgHits, titleHitWeight, messageHitWeight, limit, prefixes)
 	return merged, nil
 }
 
@@ -171,7 +171,7 @@ func mergeAndRank(
 	msgHits []domain.MessageSearchHit,
 	titleW, contentW float64,
 	limit int,
-	stems map[string]struct{},
+	prefixes map[string]struct{},
 ) []SearchResult {
 	byID := make(map[string]*SearchResult)
 	for _, t := range titleHits {
@@ -185,8 +185,8 @@ func mergeAndRank(
 	}
 	for _, m := range msgHits {
 		score := m.TopScore * contentW
-		snippet := BuildSnippet(m.TopContent, stems)
-		marks := HighlightRanges(snippet, stems)
+		snippet := BuildSnippet(m.TopContent, prefixes)
+		marks := HighlightRanges(snippet, prefixes)
 		if existing, ok := byID[m.ConversationID]; ok {
 			// Title and content both hit; keep the stronger score and
 			// fill snippet/marks/match_count from the content side.
