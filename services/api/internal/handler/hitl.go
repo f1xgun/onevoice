@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -316,20 +315,11 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := json.Marshal(body)
 
-	orchURL := fmt.Sprintf("%s/chat/%s/resume?batch_id=%s",
-		strings.TrimRight(h.hitlService.OrchestratorURL(), "/"),
-		conversationID, batchID)
-	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, orchURL, strings.NewReader(string(raw)))
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-	proxyReq.Header.Set("Content-Type", "application/json")
+	headers := map[string]string{}
 	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
-		proxyReq.Header.Set("X-Correlation-ID", corrID)
+		headers["X-Correlation-ID"] = corrID
 	}
-
-	resp, err := h.hitlService.HTTPClient().Do(proxyReq)
+	resp, err := h.hitlService.OrchClient().StreamResume(r.Context(), conversationID, batchID, raw, headers)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "resume: orchestrator request failed", "error", err)
 		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
