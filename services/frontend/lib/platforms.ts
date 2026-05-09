@@ -5,9 +5,15 @@
 // registry uses the same ids verbatim, so a join by id is exact.
 //
 // Adding a new platform = one entry in PLATFORM_META + one entry in the Go
-// registry (pkg/domain/platform.go). All consumers (landing, /integrations,
-// filter dropdowns, tool whitelist UI, chat tool cards) read from here, so
+// registry (pkg/domain/platform.go) + one entry under platforms.fullLabel
+// in messages/ru.json. All consumers (landing, /integrations, filter
+// dropdowns, tool whitelist UI, chat tool cards) read from here, so
 // nothing else needs to be touched.
+
+import { getTranslator } from '@/lib/i18n/translator';
+
+const tPlatforms = getTranslator('platforms');
+const tFullLabel = getTranslator('platforms.fullLabel');
 
 export type PlatformId =
   | 'telegram'
@@ -38,59 +44,61 @@ export interface PlatformMeta {
   comingSoonWhen?: string;
 }
 
+const COMING_SOON_WHEN = tPlatforms('comingSoonWhen');
+
 export const PLATFORM_META: Record<PlatformId, PlatformMeta> = {
   telegram: {
     color: '#2AABEE',
     shortLabel: 'TG',
-    fullLabel: 'Telegram',
+    fullLabel: tFullLabel('telegram'),
     displayOrder: 0,
     defaultStatus: 'active',
   },
   vk: {
     color: '#4680C2',
     shortLabel: 'VK',
-    fullLabel: 'ВКонтакте',
+    fullLabel: tFullLabel('vk'),
     displayOrder: 1,
     defaultStatus: 'active',
   },
   yandex_business: {
     color: '#FC3F1D',
     shortLabel: 'YB',
-    fullLabel: 'Яндекс.Бизнес',
+    fullLabel: tFullLabel('yandex_business'),
     displayOrder: 2,
     defaultStatus: 'active',
   },
   google_business: {
     color: '#1A73E8',
     shortLabel: 'GB',
-    fullLabel: 'Google Business',
+    fullLabel: tFullLabel('google_business'),
     displayOrder: 3,
     defaultStatus: 'coming_soon',
-    comingSoonWhen: 'оценивается',
+    comingSoonWhen: COMING_SOON_WHEN,
   },
   '2gis': {
     color: '#1DA045',
     shortLabel: '2G',
-    fullLabel: '2ГИС',
+    fullLabel: tFullLabel('2gis'),
     displayOrder: 4,
     defaultStatus: 'coming_soon',
-    comingSoonWhen: 'оценивается',
+    comingSoonWhen: COMING_SOON_WHEN,
   },
   avito: {
     color: '#00AAFF',
     shortLabel: 'AV',
-    fullLabel: 'Авито',
+    fullLabel: tFullLabel('avito'),
     displayOrder: 5,
     defaultStatus: 'coming_soon',
-    comingSoonWhen: 'оценивается',
+    comingSoonWhen: COMING_SOON_WHEN,
   },
   whatsapp: {
     color: '#25D366',
     shortLabel: 'WA',
-    fullLabel: 'WhatsApp',
+    fullLabel: tFullLabel('whatsapp'),
     displayOrder: 6,
     defaultStatus: 'coming_soon',
-    comingSoonWhen: 'оценивается',
+    comingSoonWhen: COMING_SOON_WHEN,
   },
 };
 

@@ -13,17 +13,22 @@ import { vi } from 'vitest';
 // a context-not-found exception.
 import ruMessages from './messages/ru.json';
 
-function lookupTranslation(namespace: string | undefined, key: string): string {
+function lookupRaw(namespace: string | undefined, key: string): unknown {
   const path = namespace ? `${namespace}.${key}`.split('.') : key.split('.');
   let cursor: unknown = ruMessages;
   for (const part of path) {
     if (typeof cursor === 'object' && cursor !== null && part in cursor) {
       cursor = (cursor as Record<string, unknown>)[part];
     } else {
-      return namespace ? `${namespace}.${key}` : key;
+      return undefined;
     }
   }
-  return typeof cursor === 'string' ? cursor : namespace ? `${namespace}.${key}` : key;
+  return cursor;
+}
+
+function lookupTranslation(namespace: string | undefined, key: string): string {
+  const v = lookupRaw(namespace, key);
+  return typeof v === 'string' ? v : namespace ? `${namespace}.${key}` : key;
 }
 
 // Russian plural category for an integer per CLDR rules. Used by the
@@ -80,11 +85,12 @@ function parsePluralOptions(body: string): Record<string, string> {
   return out;
 }
 
-// ICU-aware placeholder substitution for tests. Supports two shapes:
+// ICU-aware placeholder substitution for tests. Supports three shapes:
 //   - simple `{name}` → params[name]
 //   - `{count, plural, =N {…} one {…} few {…} many {…} other {…}}` (ru rules)
-// Other ICU features (select, number formatters) are NOT covered — none of
-// our keys use them yet. Add support here if/when they appear.
+//   - `{var, select, key {…} other {…}}` — chosen body is recursively
+//     interpolated so nested `{otherVar}` placeholders inside the select
+//     body still resolve. Number formatters are not covered.
 function interpolate(template: string, params?: Record<string, unknown>): string {
   if (!params) return template;
   let out = '';
@@ -103,12 +109,8 @@ function interpolate(template: string, params?: Record<string, unknown>): string
     }
     const expr = inner.body;
     const pluralIdx = expr.indexOf(', plural,');
-    if (pluralIdx === -1) {
-      // Simple `{name}` placeholder.
-      const name = expr.trim();
-      const v = params[name];
-      out += v === undefined || v === null ? `{${name}}` : String(v);
-    } else {
+    const selectIdx = expr.indexOf(', select,');
+    if (pluralIdx !== -1) {
       const name = expr.slice(0, pluralIdx).trim();
       const value = params[name];
       const num = typeof value === 'number' ? value : Number(value);
@@ -116,7 +118,20 @@ function interpolate(template: string, params?: Record<string, unknown>): string
       const exact = opts[`=${num}`];
       const cat = ruPluralCategory(num);
       const chosen = exact ?? opts[cat] ?? opts.other ?? '';
-      out += chosen.replace(/#/g, String(num));
+      // `#` placeholder = the count itself; remaining `{name}` slots are
+      // resolved recursively (real ICU also drops back into normal scope).
+      out += interpolate(chosen.replace(/#/g, String(num)), params);
+    } else if (selectIdx !== -1) {
+      const name = expr.slice(0, selectIdx).trim();
+      const value = params[name];
+      const opts = parsePluralOptions(expr.slice(selectIdx + ', select,'.length));
+      const chosen = opts[String(value)] ?? opts.other ?? '';
+      out += interpolate(chosen, params);
+    } else {
+      // Simple `{name}` placeholder.
+      const name = expr.trim();
+      const v = params[name];
+      out += v === undefined || v === null ? `{${name}}` : String(v);
     }
     i = inner.end + 1;
   }
@@ -128,8 +143,10 @@ vi.mock('next-intl', () => {
     const t = (key: string, params?: Record<string, unknown>) =>
       interpolate(lookupTranslation(namespace, key), params);
     (t as unknown as { has: (k: string) => boolean }).has = () => true;
-    (t as unknown as { raw: (k: string) => string }).raw = (k: string) =>
-      lookupTranslation(namespace, k);
+    // Real next-intl returns the raw JSON node here (object, array, or
+    // string). The previous stub coerced everything to a string, which
+    // hid `t.raw('arrayKey')` callers (lib/quick-actions.ts).
+    (t as unknown as { raw: (k: string) => unknown }).raw = (k: string) => lookupRaw(namespace, k);
     return t;
   };
   return {

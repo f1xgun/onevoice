@@ -8,16 +8,17 @@
 import { useTranslations } from 'next-intl';
 import { MonoLabel } from '@/components/ui/mono-label';
 import type { Business } from '@/types/business';
+import { getTranslator } from '@/lib/i18n/translator';
 import { toneLabel, type ToneId } from '@/lib/tones';
 
-const CATEGORY_LABEL: Record<string, string> = {
-  cafe: 'кофейня',
-  retail: 'магазин',
-  service: 'студия услуг',
-  beauty: 'студия красоты',
-  education: 'учебный центр',
-  other: 'локальный бизнес',
-};
+// Module-level translators for `buildSummary` (a plain helper, not a
+// hook). Two namespaces:
+//   business.categoriesShort.* — short kind labels for the summary
+//     ("кофейня", "магазин"); distinct from business.categories.* which
+//     drives the form select.
+//   business.aiSummaryRail.*   — the assembled-summary copy.
+const tCategoriesShort = getTranslator('business.categoriesShort');
+const tRail = getTranslator('business.aiSummaryRail');
 
 // Truncation thresholds for the AI summary preview. We only truncate
 // when the description exceeds DESCRIPTION_PREVIEW_MAX_LEN, and we slice
@@ -26,18 +27,32 @@ const CATEGORY_LABEL: Record<string, string> = {
 const DESCRIPTION_PREVIEW_MAX_LEN = 120;
 const DESCRIPTION_PREVIEW_TRIM_LEN = 117;
 
+const KNOWN_CATEGORIES = new Set(['cafe', 'retail', 'service', 'beauty', 'education', 'other']);
+
 function buildSummary(business: Partial<Business> | undefined, tones: ToneId[]): string {
   if (!business) {
-    return 'Заполните основное и OneVoice опишет ваш бизнес здесь — так вы увидите, как это прозвучит для клиентов.';
+    return tRail('placeholder');
   }
-  const name = business.name?.trim() || 'Ваш бизнес';
-  const kind = (business.category && CATEGORY_LABEL[business.category]) || 'локальный бизнес';
+  const name = business.name?.trim() || tRail('nameFallback');
+  const kind =
+    business.category && KNOWN_CATEGORIES.has(business.category)
+      ? tCategoriesShort(business.category as Parameters<typeof tCategoriesShort>[0])
+      : tCategoriesShort('other');
   const where = business.address?.split(',')[0]?.trim();
   const description = business.description?.trim();
 
   const parts: string[] = [];
+  // ICU select keeps the optional name/where fragments out of TS — the
+  // `hasName`/`hasWhere` boolean params drive whether the brace block is
+  // emitted, so the message stays a single key without four variants.
   parts.push(
-    `OneVoice описывает вас как ${kind}${name ? ` «${name}»` : ''}${where ? ` — ${where}` : ''}.`
+    tRail('describes', {
+      kind,
+      hasName: name ? 'true' : 'false',
+      name,
+      hasWhere: where ? 'true' : 'false',
+      where: where ?? '',
+    })
   );
   if (description) {
     const short =
@@ -48,7 +63,7 @@ function buildSummary(business: Partial<Business> | undefined, tones: ToneId[]):
   }
   if (tones.length > 0) {
     const list = tones.map((id) => toneLabel(id).toLowerCase()).join(', ');
-    parts.push(`Тон — ${list}.`);
+    parts.push(tRail('toneLine', { list }));
   }
   return parts.join(' ');
 }
