@@ -54,6 +54,7 @@ function BusinessSkeleton() {
 
 export default function BusinessPage() {
   const tBusiness = useTranslations('business');
+  const tSections = useTranslations('business.sections');
   const { data, isLoading, isError, error } = useQuery<Business>({
     queryKey: QUERY_KEYS.BUSINESS,
     queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
@@ -110,9 +111,9 @@ export default function BusinessPage() {
         {/* Main column */}
         <div className="flex flex-col gap-6">
           <Section
-            caption="Основное"
-            title="О бизнесе"
-            sub="Имя, контакты и описание для ИИ-ассистента."
+            caption={tSections('profile.caption')}
+            title={tSections('profile.title')}
+            sub={tSections('profile.sub')}
           >
             <ProfileForm defaultValues={isCreateMode ? undefined : data} />
           </Section>
@@ -120,17 +121,17 @@ export default function BusinessPage() {
           {!isCreateMode && (
             <>
               <Section
-                caption="Голос"
-                title="Голос и тон"
-                sub="Как ИИ должен звучать от вашего имени."
+                caption={tSections('voice.caption')}
+                title={tSections('voice.title')}
+                sub={tSections('voice.sub')}
               >
                 <VoiceToneSection initial={tones} onChange={setTones} />
               </Section>
 
               <Section
-                caption="Часы"
-                title="Часы работы"
-                sub="Используется, когда клиенты спрашивают «вы открыты?»."
+                caption={tSections('hours.caption')}
+                title={tSections('hours.title')}
+                sub={tSections('hours.sub')}
               >
                 <HoursForm
                   initialSchedule={initialSchedule}
@@ -139,9 +140,9 @@ export default function BusinessPage() {
               </Section>
 
               <Section
-                caption="Особые даты"
-                title="Праздники и особый режим"
-                sub="Что ИИ должен учесть — праздники, ремонты, корпоративы."
+                caption={tSections('specialDates.caption')}
+                title={tSections('specialDates.title')}
+                sub={tSections('specialDates.sub')}
               >
                 <SpecialDatesForm
                   initialSchedule={initialSchedule}

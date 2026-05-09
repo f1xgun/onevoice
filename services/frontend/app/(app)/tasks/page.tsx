@@ -150,21 +150,25 @@ export default function TasksPage() {
           value={doneToday}
           hint={
             doneToday === 0
-              ? 'пока ничего'
-              : `из них ${doneToday} успешно, ${needsHelp} ${needsHelpPlural(needsHelp)} вашего внимания`
+              ? tStats('doneEmptyHint')
+              : tStats('doneSummary', {
+                  success: doneToday,
+                  needsHelp,
+                  needsHelpWord: needsHelpPlural(needsHelp),
+                })
           }
           tone="default"
         />
         <BigStat
           label={tStats('inProgress')}
           value={inFlight}
-          hint={inFlight === 0 ? 'нет активных задач' : 'идёт прямо сейчас'}
+          hint={inFlight === 0 ? tStats('inProgressNone') : tStats('inProgressSome')}
           tone={inFlight > 0 ? 'accent' : 'default'}
         />
         <BigStat
           label={tStats('awaitingUser')}
           value={needsHelp}
-          hint={needsHelp === 0 ? 'всё в порядке' : 'требуется ваше внимание'}
+          hint={needsHelp === 0 ? tStats('awaitingNone') : tStats('awaitingSome')}
           tone={needsHelp > 0 ? 'warning' : 'default'}
         />
       </div>

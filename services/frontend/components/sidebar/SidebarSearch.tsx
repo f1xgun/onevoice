@@ -179,7 +179,7 @@ export function SidebarSearch() {
           // aria-controls because the element identity is stable).
           role={results.length > 0 ? 'listbox' : 'status'}
           aria-live={results.length === 0 ? 'polite' : undefined}
-          aria-label={results.length > 0 ? 'Результаты поиска' : 'Состояние поиска'}
+          aria-label={results.length > 0 ? tSide('search.resultsAria') : tSide('search.stateAria')}
           className="z-50 max-h-96 w-[var(--radix-popover-trigger-width)] overflow-y-auto rounded-md border border-line bg-paper-raised p-1 shadow-ov-2"
           // Keep focus in the search <input> so the user can keep typing.
           onOpenAutoFocus={(e) => e.preventDefault()}

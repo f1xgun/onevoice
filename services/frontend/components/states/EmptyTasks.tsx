@@ -5,14 +5,13 @@
 // "Не «Поздравляем!». Просто факт." — the brand voice forbids
 // celebration; we just state what is.
 
+'use client';
+
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { EmptyFrame } from './EmptyFrame';
 
 export function EmptyTasks() {
-  return (
-    <EmptyFrame
-      title="Сегодня всё сделано"
-      body="Можно выдохнуть. Если придёт что-то новое, OneVoice предупредит."
-    />
-  );
+  const tStates = useTranslations('states.emptyTasks');
+  return <EmptyFrame title={tStates('title')} body={tStates('body')} />;
 }

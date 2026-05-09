@@ -112,7 +112,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
               spellCheck={false}
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="vk1.a.…"
+              placeholder={tVk('tokenPlaceholder')}
               rows={3}
               className="font-mono text-xs"
               disabled={submitting}
@@ -132,7 +132,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
             </Button>
             <Button type="submit" disabled={submitting || !token.trim()} className="flex-1">
               {submitting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              {submitting ? 'Подключаем…' : 'Подключить'}
+              {submitting ? tVk('connecting') : tVk('connect')}
             </Button>
           </div>
         </form>

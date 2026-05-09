@@ -24,8 +24,8 @@ export function EmptyInbox({ onOpenArchive }: EmptyInboxProps) {
   const tStates = useTranslations('states.emptyInbox');
   return (
     <EmptyFrame
-      title="Ящик пуст"
-      body="Ничего не ждёт ответа. Новые сообщения появятся здесь автоматически."
+      title={tStates('title')}
+      body={tStates('body')}
       action={
         onOpenArchive ? (
           <Button variant="secondary" size="sm" onClick={onOpenArchive}>
