@@ -46,6 +46,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptySearch, SkeletonMetricStrip } from '@/components/states';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Post } from '@/types/post';
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -379,6 +380,7 @@ function PostRow({
 }
 
 function ExpandedPanel({ post }: { post: Post }) {
+  const tPosts = useTranslations('posts');
   const results = post.platformResults ? Object.entries(post.platformResults) : [];
   // Aggregate failure: any platform-level error, or top-level status=error.
   const firstError = results.find(([, r]) => r.error);
@@ -401,14 +403,27 @@ function ExpandedPanel({ post }: { post: Post }) {
           <div className="mt-3 flex items-center gap-3 rounded-sm border border-[var(--ov-danger-soft)] bg-[var(--ov-danger-soft)] px-3.5 py-2.5">
             <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--ov-danger)]" />
             <span className="flex-1 text-sm text-[var(--ov-danger)]">{failureMessage}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-[var(--ov-danger)] hover:bg-[var(--ov-danger-soft)] hover:text-[var(--ov-danger)]"
-              // TODO(api): wire to POST /posts/:id/retry once backend exposes it.
-            >
-              Повторить
-            </Button>
+            {/* Disabled until POST /posts/:id/retry exists. Wrapper span
+                is the tooltip trigger because disabled <button>s don't
+                fire pointer events. */}
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="inline-flex">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled
+                      aria-disabled
+                      className="text-[var(--ov-danger)]"
+                    >
+                      {tPosts('retry')}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{tPosts('retryUnavailable')}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         )}
       </div>
