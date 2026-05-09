@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { MessageCircle, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
@@ -27,6 +28,8 @@ import { SkeletonInbox } from '@/components/states';
 export default function ChatListPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const tChat = useTranslations('chat');
+  const tCommon = useTranslations('common');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
@@ -36,7 +39,9 @@ export default function ChatListPage() {
 
   const { mutate: createConversation, isPending } = useMutation({
     mutationFn: () =>
-      api.post(API_PATHS.CONVERSATIONS.ROOT, { title: 'Новый диалог' }).then((r) => r.data),
+      api
+        .post(API_PATHS.CONVERSATIONS.ROOT, { title: tChat('newConversation') })
+        .then((r) => r.data),
     onSuccess: (conv: Conversation) => {
       trackClick('create_conversation');
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
@@ -53,14 +58,14 @@ export default function ChatListPage() {
   // Phase 18 / TITLE-09 / D-12: kicks off the auto-title goroutine on the API
   // side. 200 → silently invalidates so the new title arrives via React Query;
   // 409 → server-supplied Russian copy (D-02 / D-03 verbatim) surfaced via
-  // sonner toast. Network failure → 'Ошибка соединения' fallback.
+  // sonner toast. Network failure → tCommon('connectionError') fallback.
   const { mutate: regenerateTitle } = useMutation({
     mutationFn: (id: string) =>
       api.post(API_PATHS.CONVERSATIONS.REGENERATE_TITLE(id)).then((r) => r.data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS }),
     onError: (err: unknown) => {
       const axErr = err as AxiosError<{ message?: string }> | undefined;
-      const msg = axErr?.response?.data?.message ?? 'Ошибка соединения';
+      const msg = axErr?.response?.data?.message ?? tCommon('connectionError');
       toast.error(msg);
     },
   });
@@ -77,10 +82,10 @@ export default function ChatListPage() {
   return (
     <div className="mx-auto max-w-2xl p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Диалоги</h1>
+        <h1 className="text-2xl font-semibold">{tChat('heading')}</h1>
         <Button onClick={() => createConversation()} disabled={isPending}>
           <Plus size={16} className="mr-2" />
-          Новый диалог
+          {tChat('newConversation')}
         </Button>
       </div>
 
@@ -90,8 +95,8 @@ export default function ChatListPage() {
       ) : conversations.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
           <MessageCircle size={48} className="mb-4 opacity-40" />
-          <p className="text-lg">Нет диалогов</p>
-          <p className="mt-1 text-sm">Начните новый диалог с AI-ассистентом</p>
+          <p className="text-lg">{tChat('noConversations')}</p>
+          <p className="mt-1 text-sm">{tChat('newConversationCta')}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -114,18 +119,18 @@ export default function ChatListPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить диалог?</AlertDialogTitle>
+            <AlertDialogTitle>{tChat('deleteConversationTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Это действие нельзя отменить. Все сообщения будут безвозвратно удалены.
+              {tChat('deleteConversationDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="hover:bg-[var(--ov-danger)]/90 border-[var(--ov-danger)] bg-[var(--ov-danger)] text-[oklch(0.99_0_0)]"
               onClick={() => deleteTarget && deleteConversation(deleteTarget)}
             >
-              Удалить
+              {tCommon('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

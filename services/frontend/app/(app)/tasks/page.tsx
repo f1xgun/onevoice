@@ -17,6 +17,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Link from 'next/link';
@@ -51,9 +52,12 @@ const POLL_INTERVAL_MS = 30_000;
 // Brand Voice Guide §3: explain what + why + what-to-do-next, calmly,
 // no exclamation marks. We never surface the raw error string.
 
+// HumanError uses key references (summaryKey / ctaLabelKey) instead of
+// pre-rendered strings so the function stays pure and the actual
+// translation happens inside TaskRow via useTranslations.
 interface HumanError {
-  summary: string;
-  cta?: { label: string; href: string };
+  summaryKey: string;
+  cta?: { labelKey: string; href: string };
   willAutoRetry?: boolean;
 }
 
@@ -63,59 +67,43 @@ function explainError(task: AgentTask): HumanError {
 
   if (/token|unauthor|401|403|expired|истёк|истек/.test(raw)) {
     return {
-      summary:
-        platform === 'vk'
-          ? 'Похоже, доступ к сообществу ВКонтакте истёк. Это бывает раз в пару недель — нужно переподключить канал, на это уйдёт минута.'
-          : platform === 'telegram'
-            ? 'Telegram больше не принимает наш токен — возможно, бот был исключён из канала. Нужно переподключить.'
-            : 'Доступ к платформе истёк. Переподключите канал, чтобы мы могли продолжить.',
+      summaryKey:
+        platform === 'vk' ? 'tokenVk' : platform === 'telegram' ? 'tokenTelegram' : 'tokenGeneric',
       cta: {
-        label: platform === 'vk' ? 'Переподключить ВКонтакте' : 'Переподключить',
+        labelKey: platform === 'vk' ? 'reconnectVk' : 'reconnect',
         href: API_PATHS.INTEGRATIONS.ROOT,
       },
     };
   }
 
   if (/rate.?limit|too many|429/.test(raw)) {
-    return {
-      summary:
-        'Платформа попросила подождать — мы попробуем ещё раз через несколько минут автоматически.',
-      willAutoRetry: true,
-    };
+    return { summaryKey: 'rateLimit', willAutoRetry: true };
   }
 
   if (/timeout|deadline|временно|unavailable|503|502|504/.test(raw)) {
-    return {
-      summary:
-        'Сервис временно не отвечал. Уже попробовали несколько раз — повторим при следующей синхронизации.',
-      willAutoRetry: true,
-    };
+    return { summaryKey: 'transient', willAutoRetry: true };
   }
 
   if (/not.?found|404|канал.*не/.test(raw)) {
     return {
-      summary: 'Канал не найден. Проверьте, что он всё ещё подключён и доступен.',
-      cta: { label: 'Открыть каналы', href: API_PATHS.INTEGRATIONS.ROOT },
+      summaryKey: 'notFound',
+      cta: { labelKey: 'openIntegrations', href: API_PATHS.INTEGRATIONS.ROOT },
     };
   }
 
   if (/photo|image|media|too.?large|размер/.test(raw)) {
-    return {
-      summary:
-        'Не получилось загрузить изображение — возможно, файл слишком большой или платформа его отклонила.',
-    };
+    return { summaryKey: 'media' };
   }
 
-  return {
-    summary: 'Что-то пошло не так. Мы попробуем ещё раз при следующей синхронизации.',
-    willAutoRetry: true,
-  };
+  return { summaryKey: 'fallback', willAutoRetry: true };
 }
 
 // ─── Top-level page ─────────────────────────────────────────────────
 
 export default function TasksPage() {
   const queryClient = useQueryClient();
+  const tHeader = useTranslations('tasks');
+  const tStats = useTranslations('tasks.stats');
 
   const { data: tasks = [], isLoading } = useQuery<AgentTask[]>({
     queryKey: QUERY_KEYS.TASKS,
@@ -152,15 +140,12 @@ export default function TasksPage() {
 
   return (
     <div className="min-h-screen bg-paper">
-      <PageHeader
-        title="Что сделано"
-        sub="Здесь видно всё, что OneVoice делал от вашего имени. Можно ничего не нажимать — мы сами повторим, если что-то не получилось."
-      />
+      <PageHeader title={tHeader('title')} sub={tHeader('subtitle')} />
 
       {/* BigStat tiles per v2 mock */}
       <div className="grid grid-cols-1 gap-3 px-4 pb-6 sm:grid-cols-3 sm:px-12">
         <BigStat
-          label="Сделано"
+          label={tStats('done')}
           value={doneToday}
           hint={
             doneToday === 0
@@ -170,13 +155,13 @@ export default function TasksPage() {
           tone="default"
         />
         <BigStat
-          label="Сейчас в работе"
+          label={tStats('inProgress')}
           value={inFlight}
           hint={inFlight === 0 ? 'нет активных задач' : 'идёт прямо сейчас'}
           tone={inFlight > 0 ? 'accent' : 'default'}
         />
         <BigStat
-          label="Ждут вашего шага"
+          label={tStats('awaitingUser')}
           value={needsHelp}
           hint={needsHelp === 0 ? 'всё в порядке' : 'требуется ваше внимание'}
           tone={needsHelp > 0 ? 'warning' : 'default'}
@@ -204,6 +189,7 @@ export default function TasksPage() {
 // ─── Single row (no expand/collapse) ────────────────────────────────
 
 function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
+  const tErrors = useTranslations('tasks.errors');
   const status = (task.status as TaskStatus) ?? 'pending';
   const platformName = CHANNEL_NAMES[task.platform as keyof typeof CHANNEL_NAMES] ?? task.platform;
   const titleClass =
@@ -271,20 +257,20 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
             !
           </span>
           <div className="flex-1">
-            <p className="text-[14px] leading-relaxed text-warning-ink">{human.summary}</p>
+            <p className="text-[14px] leading-relaxed text-warning-ink">
+              {tErrors(human.summaryKey)}
+            </p>
             {human.cta && (
               <div className="mt-3">
                 <Link href={human.cta.href}>
                   <Button variant="primary" size="sm">
-                    {human.cta.label}
+                    {tErrors(human.cta.labelKey)}
                   </Button>
                 </Link>
               </div>
             )}
             {human.willAutoRetry && (
-              <p className="mt-2 text-xs text-ink-soft">
-                Можно ничего не нажимать — мы попробуем ещё раз сами.
-              </p>
+              <p className="mt-2 text-xs text-ink-soft">{tErrors('autoRetryHint')}</p>
             )}
           </div>
         </div>
