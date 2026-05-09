@@ -62,7 +62,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="flex flex-1 items-center gap-2 text-left"
+          className="flex flex-1 items-center gap-1 text-left"
           aria-expanded={!collapsed}
           aria-label={collapsed ? 'Развернуть «Без проекта»' : 'Свернуть «Без проекта»'}
         >
@@ -71,9 +71,11 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
           ) : (
             <ChevronDown size={12} className="shrink-0 text-ink-faint" />
           )}
-          <FolderMinus size={12} className="shrink-0 text-ink-faint" />
-          <span className="flex-1 truncate italic text-ink-soft">Без проекта</span>
-          <span className="text-xs text-ink-faint">· {count}</span>
+          <span className="flex flex-1 items-center gap-2 truncate">
+            <FolderMinus size={12} className="shrink-0 text-ink-faint" />
+            <span className="flex-1 truncate italic text-ink-soft">Без проекта</span>
+            <span className="text-xs text-ink-faint">· {count}</span>
+          </span>
         </button>
         <button
           type="button"
