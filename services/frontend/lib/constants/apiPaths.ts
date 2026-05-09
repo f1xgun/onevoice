@@ -3,22 +3,26 @@
 // Two flavours of paths live here:
 //
 // 1. Relative paths consumed by the axios instance in lib/api (which
-//    prepends the base URL like "/api/v1"). These start without "/api/v1".
+//    prepends API_BASE_URL). These start without "/api/v1".
 //    Example: API_PATHS.AUTH.LOGIN  →  '/auth/login'
 //
 // 2. Absolute paths used by the bare `fetch(...)` calls inside hooks that
-//    need streaming (SSE) or custom headers — for those we keep the
-//    "/api/v1" prefix inline. They live under API_PATHS.STREAM.
+//    need streaming (SSE) or custom headers. They prepend API_BASE_URL
+//    explicitly. They live under API_STREAM_PATHS.
 //
-// Wave 2.2 will move "/api/v1" itself to NEXT_PUBLIC_API_URL; until then,
-// the absolute paths below carry the literal prefix so a single env
-// rollover stays scoped to one file.
+// API_BASE_URL is sourced from NEXT_PUBLIC_API_URL (build-time inlined by
+// Next.js). Default is "/api/v1" so the existing same-origin rewrite proxy
+// in next.config.js (source: /api/v1/:path*) keeps working unchanged.
+// Production deploys serving the frontend from a different origin can set
+// NEXT_PUBLIC_API_URL=https://api.example.com/api/v1 to bypass the rewrite.
 //
 // Functions vs strings:
 //   - Static endpoints are exported as plain strings (`'/business'`).
 //   - Endpoints that take an id (or other path param) are exported as
 //     functions (`CONVERSATION_BY_ID(id)`) so call sites can't forget to
 //     interpolate.
+
+export const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 export const API_PATHS = {
   AUTH: {
@@ -60,15 +64,15 @@ export const API_PATHS = {
 
 // Absolute paths used by bare `fetch(...)` / `axios(...)` calls that
 // bypass the wrapped api instance (SSE streaming, HITL resume, and the
-// refresh-token interceptor where wrapping would recurse). These keep
-// the "/api/v1" prefix; Wave 2.2 will refactor it to env-driven.
+// refresh-token interceptor where wrapping would recurse). They prepend
+// API_BASE_URL explicitly so NEXT_PUBLIC_API_URL applies uniformly.
 export const API_STREAM_PATHS = {
-  AUTH_REFRESH: '/api/v1/auth/refresh',
-  TASKS_STREAM: '/api/v1/tasks/stream',
-  CONVERSATION_MESSAGES: (id: string) => `/api/v1/conversations/${id}/messages`,
-  CHAT: (id: string) => `/api/v1/chat/${id}`,
+  AUTH_REFRESH: `${API_BASE_URL}/auth/refresh`,
+  TASKS_STREAM: `${API_BASE_URL}/tasks/stream`,
+  CONVERSATION_MESSAGES: (id: string) => `${API_BASE_URL}/conversations/${id}/messages`,
+  CHAT: (id: string) => `${API_BASE_URL}/chat/${id}`,
   PENDING_TOOL_CALLS_RESOLVE: (conversationId: string, batchId: string) =>
-    `/api/v1/conversations/${conversationId}/pending-tool-calls/${batchId}/resolve`,
+    `${API_BASE_URL}/conversations/${conversationId}/pending-tool-calls/${batchId}/resolve`,
   CHAT_RESUME: (conversationId: string, batchId: string) =>
-    `/api/v1/chat/${conversationId}/resume?batch_id=${batchId}`,
-} as const;
+    `${API_BASE_URL}/chat/${conversationId}/resume?batch_id=${batchId}`,
+};
