@@ -10,6 +10,7 @@
 
 import Link from 'next/link';
 import { ArrowRight, Calendar } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -497,20 +498,18 @@ function Platforms() {
 // ─── Quote ────────────────────────────────────────────────────────────
 
 function Quote() {
+  const t = useTranslations('landing.quote');
   return (
     <section className="border-b border-line-soft">
       <div className="mx-auto w-full max-w-[880px] px-6 py-28 sm:px-12">
-        <MonoLabel>Иллюстрация</MonoLabel>
+        <MonoLabel>{t('label')}</MonoLabel>
         <p
           className="mt-6 text-pretty text-[26px] font-normal leading-snug tracking-[-0.015em] text-ink sm:text-[32px]"
           style={{ fontFamily: SERIF, fontStyle: 'italic' }}
         >
-          Утром — один ящик, а не пять вкладок. На простые вопросы OneVoice уже ответил — на сложные
-          просит вашу подпись.
+          {t('body')}
         </p>
-        <p className="mt-7 text-[13px] text-ink-soft">
-          Так может выглядеть обычный день, когда подключены все каналы.
-        </p>
+        <p className="mt-7 text-[13px] text-ink-soft">{t('note')}</p>
       </div>
     </section>
   );
