@@ -40,7 +40,7 @@ function makeQueryClient(): QueryClient {
   });
 }
 
-// JSX-free wrapper so the file can stay as `.ts` (per Plan 17-08 done-criteria
+// JSX-free wrapper so the file can stay as `.ts` (per done-criteria
 // grep paths) while still mounting `<ChatWindow />` for the integration test.
 function QueryWrapper({ children }: { children: ReactNode }) {
   return createElement(QueryClientProvider, { client: makeQueryClient() }, children);
@@ -141,11 +141,11 @@ describe('useChat — hydration from GET /messages pendingApprovals', () => {
     expect(result.current.pendingApproval!.batchId).toBe('batch-expired');
   });
 
-  // ── Plan 17-08 GAP-03 belt-and-braces — frontend hydration consumer ─────
+  // ── Belt-and-braces — frontend hydration consumer ─────
   //
   // These tests pin the contract that `useChat` correctly surfaces the
   // `pendingApprovals[0]` envelope from `GET /messages` to the consumer
-  // (`ChatWindow` → `ToolApprovalCard`). The original GAP-03 was a backend
+  // (`ChatWindow` → `ToolApprovalCard`). The original issue was a backend
   // regression (empty identity fields on persisted batches → API returns
   // empty `pendingApprovals[]`); these tests ensure that even after that
   // backend fix lands, a future regression on the frontend half (e.g.
@@ -153,8 +153,7 @@ describe('useChat — hydration from GET /messages pendingApprovals', () => {
   // instead of silently breaking reload-recovery in production.
 
   it('hydrates pendingApproval state when GET /messages returns a non-empty pendingApprovals array', async () => {
-    // Re-asserts the hook-level contract specifically labelled per Plan 17-08
-    // §"Required gap-closure fix" item 4 (the existing test above asserts the
+    // Re-asserts the hook-level contract (the existing test above asserts the
     // same shape; this one matches the spec's wording verbatim so its grep
     // anchor — `hydrates pendingApproval` — survives any future test reshuffle).
     const fetchMock = vi.fn().mockImplementationOnce(async () => {
@@ -220,15 +219,15 @@ describe('useChat — hydration from GET /messages pendingApprovals', () => {
     expect(screen.queryByRole('region', { name: /Ожидает подтверждения/ })).not.toBeInTheDocument();
   });
 
-  // Plan 17-08 Test 4 (negative — expired): the plan specifies that if
-  // `useChat` does NOT filter expired batches, the test should be marked
-  // `it.skip` with a comment. The current `useChat.normalizePendingApproval`
-  // intentionally preserves `status === 'expired'` so the UI layer (Plan
-  // 17-05 `ExpiredApprovalBanner`) owns the render decision (CONTEXT.md
-  // D-11). Keeping this skipped so a future contract flip — moving the
-  // expired filter into the hook — has a place to land without re-deriving
-  // the test surface from scratch. The existing "STILL sets pendingApproval"
-  // assertion above covers the current behaviour positively.
+  // Negative test (expired): if `useChat` does NOT filter expired batches,
+  // the test should be marked `it.skip` with a comment. The current
+  // `useChat.normalizePendingApproval` intentionally preserves
+  // `status === 'expired'` so the UI layer (`ExpiredApprovalBanner`)
+  // owns the render decision. Keeping this skipped so a future contract
+  // flip — moving the expired filter into the hook — has a place to land
+  // without re-deriving the test surface from scratch. The existing
+  // "STILL sets pendingApproval" assertion above covers the current
+  // behaviour positively.
   it.skip('does not hydrate pendingApproval when the batch is expired (TODO: gated on useChat filter)', () => {
     // Intentionally skipped — see preceding block comment.
   });

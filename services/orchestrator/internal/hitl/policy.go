@@ -1,8 +1,8 @@
 // Package hitl contains pure policy-resolution helpers used by both the
 // orchestrator (at pause time, when deciding whether to request an approval)
-// and the API (at resolve time, for the TOCTOU re-check per HITL-06).
+// and the API (at resolve time, for the TOCTOU re-check).
 //
-// Plan 16-07 relocation: the canonical pure-function Resolve now lives in
+// The canonical pure-function Resolve lives in
 // pkg/hitl so that services/api can import it directly (Go's internal-
 // visibility rule blocks cross-module imports of services/orchestrator/
 // internal/*). This file is kept as a thin compat shim so existing

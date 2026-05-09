@@ -16,7 +16,7 @@ type Executor interface {
 }
 
 // ApprovalExecutor extends Executor with a variant that accepts an approvalID
-// propagated into the dispatch payload (Plan 16-04's a2a.ToolRequest.ApprovalID
+// propagated into the dispatch payload (a2a.ToolRequest.ApprovalID
 // field). Implemented by natsexec.NATSExecutor; internal-only executors that
 // never pass through HITL approval do not need to implement it — Registry
 // falls back to plain Execute (discarding approvalID, which is correct for
@@ -54,8 +54,8 @@ func NewRegistry() *Registry {
 
 // Register adds a tool definition with its executor (may be nil for stub tools),
 // the human-readable displayName surfaced on the Tasks page, the ToolFloor
-// baseline (POLICY-01), and the per-tool EditableFields allowlist for HITL-07
-// edit-args validation (HITL-L4 promoted into v1.3 per D-10/D-11).
+// baseline, and the per-tool EditableFields allowlist for HITL
+// edit-args validation.
 //
 // The caller MUST pass all five arguments explicitly — every registration site
 // in services/orchestrator/cmd/main.go must deliberately choose a floor and an
@@ -63,7 +63,7 @@ func NewRegistry() *Registry {
 // silently inherit an unsafe policy. EditableFields is copied defensively so
 // subsequent caller-side mutations cannot change registered behavior.
 //
-// Convention (Pitfall 8): EditableFields is always lowercase_with_underscore
+// Convention: EditableFields is always lowercase_with_underscore
 // matching the tool's JSON arguments schema keys. The comparison performed by
 // ValidateEditArgs is case-sensitive.
 func (r *Registry) Register(
@@ -133,21 +133,20 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 	return result
 }
 
-// AvailableForWhitelist applies Phase 15's typed WhitelistMode filter on top
+// AvailableForWhitelist applies a typed WhitelistMode filter on top
 // of Available. Unknown tool names in `allowed` are logged (slog WARN) and
-// silently dropped — the safe-default behavior documented in
-// .planning/research/PITFALLS.md §9 (whitelist drift: a renamed or missing
-// tool is treated as denied rather than surfaced as an error).
+// silently dropped — the safe-default behavior (whitelist drift: a renamed
+// or missing tool is treated as denied rather than surfaced as an error).
 //
 // ctx is the request-scoped context threaded from orchestrator.Run. It is
 // used for slog attribution (correlation_id, business_id) and cancellation
 // hygiene. Callers MUST NOT fabricate a root context here — there is always
 // a request-scoped ctx available at the call site in Run.
 //
-// v1.3 scope note (D-18 in 15-CONTEXT.md): inherit == all. Phase 16
-// (POLICY-05) replaces this with a business-level tool_approvals map that
-// will serve as the actual "inherited" baseline; until then, the baseline is
-// "every registered tool for the active integrations".
+// v1.3 scope note: inherit == all. Replaced later with a business-level
+// tool_approvals map that will serve as the actual "inherited" baseline;
+// until then, the baseline is "every registered tool for the active
+// integrations".
 //
 // Auto-floor read tools are always included in WhitelistModeExplicit. Tools
 // registered with ToolFloorAuto are read-only / safe queries by definition
@@ -221,7 +220,7 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]int
 // implement ApprovalExecutor fall back to plain Execute — safe for internal
 // tools that have no agent-side dedupe requirement.
 //
-// Called by Plan 16-05's Resume path after parsing a resolved batch:
+// Called by the Resume path after parsing a resolved batch:
 // approvalID is always "<batch_id>-<call_id>", so each approved call
 // within a batch has a unique dedupe key for the agent's Redis SetNX
 // (pkg/hitldedupe).
@@ -242,10 +241,10 @@ func (r *Registry) ExecuteWithApproval(ctx context.Context, name string, args ma
 }
 
 // Floor returns the registered ToolFloor for toolName or ToolFloorForbidden
-// if the tool is unknown (safe default per POLICY-07 — the runtime policy
-// resolver treats unknown tools as "not permitted", matching the startup
-// validation sweep that logs tool_approval_whitelist_unknown for entries
-// referencing missing tools).
+// if the tool is unknown (safe default — the runtime policy resolver treats
+// unknown tools as "not permitted", matching the startup validation sweep
+// that logs tool_approval_whitelist_unknown for entries referencing missing
+// tools).
 func (r *Registry) Floor(toolName string) domain.ToolFloor {
 	if e, ok := r.tools[toolName]; ok {
 		return e.floor
@@ -256,7 +255,7 @@ func (r *Registry) Floor(toolName string) domain.ToolFloor {
 // EditableFields returns the registered edit allowlist for toolName, or nil
 // if the tool is unknown. The returned slice is a defensive copy — mutating
 // it does not alter registry state. The list is always lowercase_with_underscore
-// matching the tool's JSON args schema (Pitfall 8).
+// matching the tool's JSON args schema.
 func (r *Registry) EditableFields(toolName string) []string {
 	if e, ok := r.tools[toolName]; ok {
 		return append([]string(nil), e.editableFields...)
@@ -264,7 +263,7 @@ func (r *Registry) EditableFields(toolName string) []string {
 	return nil
 }
 
-// Has reports whether toolName is currently registered. Used by the POLICY-07
+// Has reports whether toolName is currently registered. Used by the
 // startup validation sweep to detect whitelist entries that reference a tool
 // which has been renamed or removed between deploys.
 func (r *Registry) Has(toolName string) bool {
@@ -273,8 +272,8 @@ func (r *Registry) Has(toolName string) bool {
 }
 
 // AllFloors returns a snapshot of every registered tool's floor. Used by
-// POLICY-07 startup validation and by GET /api/v1/tools (Plan 16-07) to
-// populate the settings UI's per-tool toggles.
+// startup validation and by GET /api/v1/tools to populate the settings UI's
+// per-tool toggles.
 func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 	out := make(map[string]domain.ToolFloor, len(r.tools))
 	for name, e := range r.tools {
@@ -283,7 +282,7 @@ func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 	return out
 }
 
-// RegistryEntry is the projection exposed by GET /api/v1/tools (Plan 16-07).
+// RegistryEntry is the projection exposed by GET /api/v1/tools.
 // Kept in the tools package so the API handler can import a typed shape.
 type RegistryEntry struct {
 	Name            string           `json:"name"`
@@ -296,9 +295,9 @@ type RegistryEntry struct {
 }
 
 // AllEntries returns a snapshot of (name, displayName, platform, floor, editable, description)
-// for every registered tool. Feeds GET /api/v1/tools in Plan 16-07 as well as
-// the cluster-internal /internal/tools/names endpoint (Plan 16-03 Task 2) used
-// by the POLICY-07 startup validation sweep.
+// for every registered tool. Feeds GET /api/v1/tools as well as
+// the cluster-internal /internal/tools/names endpoint used
+// by the startup validation sweep.
 func (r *Registry) AllEntries() []RegistryEntry {
 	out := make([]RegistryEntry, 0, len(r.tools))
 	for _, e := range r.tools {

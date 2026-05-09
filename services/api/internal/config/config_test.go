@@ -12,8 +12,8 @@ import (
 
 // minTestEnv configures the env vars required by Config.Load()'s existing
 // fail-fast validation (JWT_SECRET ≥32 chars, ENCRYPTION_KEY exactly 32
-// bytes). Each Phase 18 test must call this so the validators pass and we
-// can exercise the new auto-titler fields. Uses the testing helper t.Setenv
+// bytes). Each test must call this so the validators pass and we
+// can exercise the auto-titler fields. Uses the testing helper t.Setenv
 // per repo convention so env state restores automatically on test cleanup.
 func minTestEnv(t *testing.T) {
 	t.Helper()
@@ -41,7 +41,7 @@ func TestLoad_TitlerModel_Fallback(t *testing.T) {
 			want:        "gpt-4o",
 		},
 		{
-			name:        "both unset → empty (graceful disable per Pitfall 1 / A6)",
+			name:        "both unset → empty (graceful disable)",
 			titlerModel: "",
 			llmModel:    "",
 			want:        "",
@@ -63,8 +63,8 @@ func TestLoad_TitlerModel_Fallback(t *testing.T) {
 }
 
 func TestLoad_GracefulDisable_NoLLMEnv(t *testing.T) {
-	// Pitfall 1 / Assumption A6: API must boot cleanly when neither
-	// TITLER_MODEL nor LLM_MODEL is set, AND when no provider key is set.
+	// API must boot cleanly when neither TITLER_MODEL nor LLM_MODEL is set,
+	// AND when no provider key is set.
 	minTestEnv(t)
 	t.Setenv("TITLER_MODEL", "")
 	t.Setenv("LLM_MODEL", "")

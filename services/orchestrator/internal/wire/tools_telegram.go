@@ -34,7 +34,7 @@ func telegramTools() []toolSpec {
 		},
 		// Mutating public: posts a photo + caption. caption editable;
 		// photo_url and channel_id pinned (redirecting either at edit
-		// time would be a HITL-07 footgun).
+		// time would be a footgun).
 		{
 			displayName:     "Отправить фото",
 			userDescription: "Публикует фото с подписью в Telegram-канале.",

@@ -8,11 +8,11 @@ import (
 )
 
 // WhitelistMode is a typed enum that eliminates null-vs-empty ambiguity in
-// project tool whitelists (see .planning/research/PITFALLS.md §10).
+// project tool whitelists.
 type WhitelistMode string
 
 const (
-	WhitelistModeInherit  WhitelistMode = "inherit"  // use business defaults (v1.3 = all registered tools per D-18)
+	WhitelistModeInherit  WhitelistMode = "inherit"  // use business defaults (v1.3 = all registered tools)
 	WhitelistModeAll      WhitelistMode = "all"      // allow every registered tool for an active integration
 	WhitelistModeExplicit WhitelistMode = "explicit" // allow only AllowedTools
 	WhitelistModeNone     WhitelistMode = "none"     // allow nothing — LLM may respond but not act
@@ -28,27 +28,25 @@ func ValidWhitelistMode(m WhitelistMode) bool {
 }
 
 // MaxProjectSystemPromptChars caps user-supplied system-prompt length.
-// The user-facing copy is "4000 символов" (see 15-UI-SPEC.md line 140 and
-// the Plan 05 ProjectForm counter). REQUIREMENTS.md PROJ-01 describes the
-// intent as "max 1000 tokens"; this constant is the concrete character
-// implementation (approx 4 chars/token) and is the invariant enforced at
+// The user-facing copy is "4000 символов"; the underlying intent is
+// "max 1000 tokens" (approx 4 chars/token). The invariant is enforced at
 // four layers: this constant, the Postgres CHECK constraint in
-// 000003_projects.up.sql, the service-layer validator in Plan 03, and the
-// frontend zod schema in Plan 05. All four MUST agree on 4000.
+// 000003_projects.up.sql, the service-layer validator, and the
+// frontend zod schema. All four MUST agree on 4000.
 const MaxProjectSystemPromptChars = 4000
 
 // QuickAction is a plain string. Kept as a named type alias so call sites
 // self-document when they mean "a quick action string" versus any other
-// string. Per D-54, v1.3 ships a plain string list; templating is deferred.
+// string. v1.3 ships a plain string list; templating is deferred.
 type QuickAction = string
 
 // Project is a Postgres-backed grouping of chats with a shared system prompt
 // override, tool whitelist, and quick-action list. Scoped per business.
 //
-// ApprovalOverrides (Phase 16, POLICY-03) carries project-scoped tool-floor
+// ApprovalOverrides carries project-scoped tool-floor
 // overrides persisted as JSONB in Postgres. Key absence ⇒ "inherit" from the
-// business-level setting (see Overview §Anti-Footguns invariant #8: inherit
-// is encoded as KEY ABSENCE, never as a literal "inherit" string). The typed
+// business-level setting (inherit is encoded as KEY ABSENCE, never as a
+// literal "inherit" string). The typed
 // map `map[string]ToolFloor` guarantees only valid enum values reach the
 // resolver.
 type Project struct {
@@ -65,8 +63,8 @@ type Project struct {
 	UpdatedAt         time.Time            `json:"updatedAt" db:"updated_at"`
 }
 
-// ProjectRepository is the contract implemented by services/api/internal/repository
-// in Plan 03. HardDeleteCascade is part of the interface (not an out-of-band
+// ProjectRepository is the contract implemented by services/api/internal/repository.
+// HardDeleteCascade is part of the interface (not an out-of-band
 // helper) so the service layer wires via a single interface type — no type
 // assertions, no anonymous interface widening. Cascade order inside the
 // implementation is mongo messages → mongo conversations → postgres project,

@@ -9,8 +9,7 @@ import { singleCallBatch, nestedArgsBatch } from '@/test-utils/pending-approval-
 // Helper: apply an edit through the exact pipeline the real JsonViewEditor
 // uses at runtime: evaluateEditGate → (accepted) → reducer.editArg. This
 // mirrors the component's onEdit closure without requiring the library's
-// double-click + keydown mount chain (which is fragile under jsdom and
-// was left for Plan 17-04 by the Wave-0 probe — see 17-01 SUMMARY).
+// double-click + keydown mount chain (which is fragile under jsdom).
 function applyEdit(
   drafts: CallDraft[],
   callId: string,

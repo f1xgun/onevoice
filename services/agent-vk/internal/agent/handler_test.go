@@ -1065,7 +1065,7 @@ func TestGetComments_UsesResolvedGroupID(t *testing.T) {
 	assert.Equal(t, "-999888", capturedGroupID, "getComments should use resolved groupID with negative sign")
 }
 
-// --- Phase 16 HITL-08: Redis dedupe gate tests ---
+// --- Redis dedupe gate tests ---
 
 func newVKDedupeTestHandler(t *testing.T, vkClient agent.VKClient, publishCalls *int64) (*agent.Handler, *miniredis.Miniredis) {
 	t.Helper()

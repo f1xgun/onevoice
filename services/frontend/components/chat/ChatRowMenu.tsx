@@ -65,7 +65,7 @@ interface Props {
 // page so the destructive-confirmation contract stays identical.
 //
 // Regenerate-title 409 toasts the server-supplied verbatim Russian
-// message (D-02 / D-03 — see RegenerateMenuItem.test.tsx).
+// message (see RegenerateMenuItem.test.tsx).
 export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDeleted }: Props) {
   const tRow = useTranslations('chat.rowMenu');
   const tCommon = useTranslations('common');

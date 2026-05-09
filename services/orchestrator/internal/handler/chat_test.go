@@ -101,9 +101,9 @@ func TestChatHandler_MissingMessage_Returns400(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// TestChatHandler_with_project_context verifies that the Phase 15 project
+// TestChatHandler_with_project_context verifies that the project
 // fields on the JSON request body flow into orchestrator.RunRequest exactly
-// as the proxy would populate them in Plan 15-04.
+// as the proxy would populate them.
 func TestChatHandler_with_project_context(t *testing.T) {
 	runner := &captureRunner{}
 	h := handler.NewChatHandler(runner, "openai/gpt-4o-mini")
@@ -156,14 +156,14 @@ func TestChatHandler_without_project_context(t *testing.T) {
 	assert.Empty(t, got.AllowedTools)
 }
 
-// TestChatHandler_ThreadsPhase16Fields covers Plan 17-07 GAP-03 closure: the
+// TestChatHandler_ThreadsHITLFields covers the identity-field wiring: the
 // orchestrator handler must extract conversationID from the URL path and
-// decode the five new Phase-16 body fields (user_id, message_id, tier,
+// decode the five HITL body fields (user_id, message_id, tier,
 // business_approvals, project_approval_overrides), threading them all into
 // RunRequest so the pause-time persistence writes non-empty IDs to
 // pending_tool_calls. Without this wiring, every persisted batch had
-// conversation_id="" / business_id="" and HITL-11 hydration was impossible.
-func TestChatHandler_ThreadsPhase16Fields(t *testing.T) {
+// conversation_id="" / business_id="" and pending hydration was impossible.
+func TestChatHandler_ThreadsHITLFields(t *testing.T) {
 	t.Run("populates RunRequest from URL + body", func(t *testing.T) {
 		runner := &captureRunner{}
 		h := handler.NewChatHandler(runner, "openai/gpt-4o-mini")

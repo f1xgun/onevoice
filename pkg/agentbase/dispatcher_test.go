@@ -41,8 +41,8 @@ func okExec(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 
 // TestNewDispatcher_AcceptsNilDedupe_AndNilClassifier verifies that both deps
 // are optional. The four agent main.go files construct a Handler with a nil
-// *hitldedupe.DedupeClient when REDIS_URL is empty (dev/test); after plan
-// 19-07 those paths funnel through agentbase.NewDispatcher.
+// *hitldedupe.DedupeClient when REDIS_URL is empty (dev/test); those paths
+// funnel through agentbase.NewDispatcher.
 func TestNewDispatcher_AcceptsNilDedupe_AndNilClassifier(t *testing.T) {
 	d := agentbase.NewDispatcher(nil, nil)
 	require.NotNil(t, d, "NewDispatcher(nil, nil) must return a usable Dispatcher")
@@ -75,7 +75,7 @@ func TestDispatch_NoDedupe_ExecCalled(t *testing.T) {
 // TestDispatch_ClassifierWraps_NonRetryableError verifies the classifier sits
 // between exec and the caller. Telegram, VK, Yandex and Google each have a
 // classifier that wraps platform-permanent failures as a2a.NonRetryableError;
-// after plan 19-07 those wrappers are passed in via FuncClassifier.
+// those wrappers are passed in via FuncClassifier.
 func TestDispatch_ClassifierWraps_NonRetryableError(t *testing.T) {
 	platformErr := errors.New("Unauthorized")
 	exec := func(_ context.Context, _ a2a.ToolRequest) (*a2a.ToolResponse, error) {
@@ -151,7 +151,7 @@ func TestDispatch_DedupeGate_EmptyApprovalID_BypassesGate(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.True(t, execCalled.Load(), "exec must run when ApprovalID is empty")
 	assert.Equal(t, 0, len(mr.Keys()),
-		"empty ApprovalID must not write any Redis key (anti-footgun #2 from 16-OVERVIEW)")
+		"empty ApprovalID must not write any Redis key (anti-footgun #2)")
 }
 
 // TestDispatch_DedupeGate_InFlight_ShortCircuits verifies the in-flight

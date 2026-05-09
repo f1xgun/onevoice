@@ -15,9 +15,9 @@ import { Button } from '@/components/ui/button';
 import { NavRail } from '@/components/sidebar/NavRail';
 import { ProjectPane } from '@/components/sidebar/ProjectPane';
 
-// Mobile-only shell. Desktop layout lives in app/(app)/layout.tsx (see
-// 19-01 D-14: NavRail + PanelGroup with conditional ProjectPane). Phase
-// 19-05 will own the mobile drawer auto-close-on-chat-select work.
+// Mobile-only shell. Desktop layout lives in app/(app)/layout.tsx
+// (NavRail + PanelGroup with conditional ProjectPane). The mobile drawer
+// auto-close-on-chat-select work is handled separately.
 export function Sidebar() {
   const tSide = useTranslations('sidebar');
   const [open, setOpen] = useState(false);

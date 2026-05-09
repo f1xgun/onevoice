@@ -19,13 +19,12 @@ import (
 // fetch and the single retry. Keeps the sweep best-effort and bounded.
 const pendingSweepLoopInterval = 5 * time.Second
 
-// RunToolApprovalStartupValidation implements POLICY-07 — compares every
-// tool-approval entry stored in Postgres against the live orchestrator
-// registry (fetched over HTTP via pkg/orchestratorclient) and logs
-// tool_approval_whitelist_unknown for entries whose tool no longer exists.
-// Unknown entries are NOT auto-pruned; they are treated as denied by the
-// runtime policy resolver (Registry.Floor returns ToolFloorForbidden for
-// unknown tools — enforced in Plan 16-03 Task 1).
+// RunToolApprovalStartupValidation compares every tool-approval entry
+// stored in Postgres against the live orchestrator registry (fetched over
+// HTTP via pkg/orchestratorclient) and logs tool_approval_whitelist_unknown
+// for entries whose tool no longer exists. Unknown entries are NOT
+// auto-pruned; they are treated as denied by the runtime policy resolver
+// (Registry.Floor returns ToolFloorForbidden for unknown tools).
 //
 // Non-blocking, best-effort: runs in a goroutine; one retry after 5s; skips
 // silently on sustained failure so a slow/dead orchestrator cannot block API
@@ -34,7 +33,7 @@ const pendingSweepLoopInterval = 5 * time.Second
 func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Pool, orch *orchestratorclient.Client, fetchTimeout time.Duration) {
 	// Thread the parent (signal-derived) context so SIGTERM cancels the
 	// sweep early instead of waiting up to startupTimeout for a slow or
-	// dead orchestrator on the second retry. (LOW-02 fix.)
+	// dead orchestrator on the second retry.
 	// fetchTimeout is env-tunable per cfg.OrchestratorFetchTimeout
 	// (ORCHESTRATOR_FETCH_TIMEOUT) and bounds each individual orchestrator
 	// HTTP call; the outer startupTimeout caps the whole sweep.
@@ -133,8 +132,8 @@ func loadBusinessApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]hit
 }
 
 // loadProjectApprovalSources reads every project's approval_overrides JSONB
-// column. Uses COALESCE so projects predating Phase 16 (null column) are
-// surfaced as empty maps, not as an error.
+// column. Uses COALESCE so older projects (null column) are surfaced as
+// empty maps, not as an error.
 func loadProjectApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]hitlvalidation.ApprovalSource, error) {
 	rows, err := pool.Query(ctx, "SELECT id, COALESCE(approval_overrides, '{}'::jsonb)::text FROM projects")
 	if err != nil {

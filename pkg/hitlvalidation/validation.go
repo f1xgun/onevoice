@@ -1,12 +1,12 @@
-// Package hitlvalidation holds POLICY-07's startup-validation primitives for
-// the HITL tool-approval whitelist (Phase 16).
+// Package hitlvalidation holds startup-validation primitives for
+// the HITL tool-approval whitelist.
 //
 // Both services/api (which owns the business + project repositories) and
 // services/orchestrator (which owns the live tool registry) need to agree on
 // the interpretation of "unknown tool in tool_approvals or approval_overrides".
 // Placing the validator in pkg/ keeps the logic in exactly one place — every
-// caller interprets a missing tool the same way: treat as denied (POLICY-07
-// safe default), log a warning tagged `tool_approval_whitelist_unknown`, do
+// caller interprets a missing tool the same way: treat as denied (safe
+// default), log a warning tagged `tool_approval_whitelist_unknown`, do
 // NOT auto-prune the setting.
 //
 // The runtime enforcement is in services/orchestrator/internal/toolregistry.Registry:
@@ -41,7 +41,7 @@ type ApprovalSource struct {
 // ValidateApprovalSettings logs a warning for every tool name referenced by a
 // business's `tool_approvals` or a project's `approval_overrides` that is NOT
 // present in the live registry. Unknown entries are treated as denied by the
-// runtime policy resolver (POLICY-07 safe default — Registry.Floor returns
+// runtime policy resolver (safe default — Registry.Floor returns
 // ToolFloorForbidden for unknown tools).
 //
 // This function is pure logging — it does not mutate configuration. Callers

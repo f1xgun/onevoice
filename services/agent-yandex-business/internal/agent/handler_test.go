@@ -328,8 +328,6 @@ func TestClassifyYandexError_TransientNetworkError(t *testing.T) {
 	assert.False(t, errors.Is(err, &a2a.NonRetryableError{}), "network error should NOT be NonRetryableError")
 }
 
-// --- Phase 16 HITL-08: Redis dedupe gate tests ---
-
 // countingBrowser wraps stubBrowser behavior with an atomic call counter.
 type countingBrowser struct {
 	stubBrowser

@@ -6,14 +6,13 @@ import (
 )
 
 // redactionToken is the literal Russian placeholder that replaces every PII
-// match in RedactPII output. D-14 locked this exact token; downstream prompt
-// builders rely on it verbatim.
+// match in RedactPII output. Downstream prompt builders rely on it verbatim.
 //
 //nolint:gosec // G101 false positive: this is a placeholder string, not a credential.
 const redactionToken = "[Скрыто]"
 
 // Compiled regex classes. Each class is responsible for one trust-boundary PII
-// shape; the named-class lookup feeds D-16's regex_class log field.
+// shape; the named-class lookup feeds the regex_class log field.
 var (
 	// Email — RFC 5322 simplified; covers >99% of practical inputs.
 	reEmail = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
@@ -39,18 +38,18 @@ var (
 
 	// INN — 10 digits (legal entity) or 12 digits (individual), but ONLY when
 	// prefixed by "ИНН" / "INN" (case-insensitive). Bare numbers without the
-	// prefix (e.g. "Заявка 7654321098") MUST NOT match — Landmine 2.
+	// prefix (e.g. "Заявка 7654321098") MUST NOT match.
 	//
 	// NOTE: Go's RE2 \b is ASCII-only — a word boundary is not detected at the
 	// transition between a space and a Cyrillic letter, so a literal `\bИНН`
 	// never matches in practice. We split the alternation: Latin "INN" keeps
 	// `\b` (where ASCII boundary detection works), Cyrillic "ИНН" drops it
 	// (the prefix is unique enough that mid-word collision is not a realistic
-	// false-positive in Russian text). Deviation from research draft regex.
+	// false-positive in Russian text).
 	reINN = regexp.MustCompile(`(?i)(?:\bINN|ИНН)[\s:№]*\d{10}(?:\d{2})?\b`)
 )
 
-// piiClass binds a name (used as the D-16 regex_class log field) to a compiled
+// piiClass binds a name (used as the regex_class log field) to a compiled
 // pattern and an optional extra validator (e.g. Luhn for cc).
 type piiClass struct {
 	name    string
@@ -73,8 +72,8 @@ var piiClasses = []piiClass{
 // RedactPII replaces every PII match in s with the placeholder "[Скрыто]".
 // Idempotent. Safe on empty string. UTF-8 / Cyrillic preserved.
 //
-// Used by Phase 18 (titler) on the user message + assistant message BEFORE
-// they reach the cheap LLM endpoint (D-14 defense-in-depth).
+// Used by the titler on the user message + assistant message BEFORE
+// they reach the cheap LLM endpoint (defense-in-depth).
 func RedactPII(s string) string {
 	out := s
 	for _, c := range piiClasses {
@@ -98,8 +97,7 @@ func ContainsPII(s string) bool {
 // ContainsPIIClass reports the first matching class name (or "", false). The
 // class name is one of: "email", "phone", "iban", "passport", "inn", "cc".
 //
-// Phase 18 logs this as the `regex_class` field per D-16 — never the matched
-// substring.
+// Logs this as the `regex_class` field — never the matched substring.
 func ContainsPIIClass(s string) (string, bool) {
 	for _, c := range piiClasses {
 		loc := c.pattern.FindStringIndex(s)
@@ -120,7 +118,7 @@ func ContainsPIIClass(s string) (string, bool) {
 // space/dash separators), strips non-digit runes, requires 13–19 digits, and
 // returns true only when the checksum is divisible by 10.
 //
-// Phase 18 uses Luhn to reject 16-digit IDs, order numbers, and other numeric
+// Uses Luhn to reject 16-digit IDs, order numbers, and other numeric
 // titles that the cc regex would otherwise over-match.
 func luhnValid(card string) bool {
 	digits := make([]int, 0, 19)

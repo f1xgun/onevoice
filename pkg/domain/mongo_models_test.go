@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestConversation_PinnedAtJSON — Phase 19 / D-02. The Conversation struct's
-// `PinnedAt *time.Time` (added in Phase 19) replaces the legacy `Pinned bool`.
+// TestConversation_PinnedAtJSON verifies that the Conversation struct's
+// `PinnedAt *time.Time` field replaces the legacy `Pinned bool`.
 // The new field MUST be JSON-omitted when nil so the API response shape stays
 // minimal for unpinned chats and the frontend's `pinnedAt: string | null` model
 // receives `undefined` (which == null on read) rather than a literal `null`.
@@ -38,17 +38,17 @@ func TestConversation_PinnedAtJSON(t *testing.T) {
 			"nil PinnedAt must NOT emit a pinnedAt key (json:omitempty)")
 	})
 
-	t.Run("legacy Pinned bool field is removed (D-02 single source of truth)", func(t *testing.T) {
+	t.Run("legacy Pinned bool field is removed (single source of truth)", func(t *testing.T) {
 		// If `Pinned bool` ever returns to the struct it would re-introduce
-		// the dual-source-of-truth bug Phase 19 D-02 explicitly removed.
+		// the dual-source-of-truth bug.
 		// Marshal a zero Conversation and assert the JSON contains no
-		// `"pinned"` token (only `pinnedAt` is allowed in Phase 19+).
+		// `"pinned"` token (only `pinnedAt` is allowed).
 		conv := Conversation{ID: "abc"}
 		b, err := json.Marshal(conv)
 		require.NoError(t, err)
 		s := string(b)
 		assert.False(t, strings.Contains(s, `"pinned"`),
-			"legacy Pinned bool field is removed in Phase 19 D-02 — JSON output must contain no `pinned` key")
+			"legacy Pinned bool field is removed — JSON output must contain no `pinned` key")
 	})
 
 	t.Run("JSON unmarshaling parses pinnedAt back to *time.Time", func(t *testing.T) {

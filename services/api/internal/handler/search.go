@@ -18,26 +18,25 @@ import (
 
 // searchBusinessLookup is the narrow interface SearchHandler needs from
 // the business service. Lives here (not in business.go's wider
-// BusinessService) so the search handler is decoupled from POLICY-05's
+// BusinessService) so the search handler is decoupled from the
 // tool-approvals path. Implemented by *service.BusinessService through
 // Go's structural typing.
 type searchBusinessLookup interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
 }
 
-// SearchHandler — Phase 19 / Plan 19-03 / Task 4. Implements
+// SearchHandler implements
 // GET /api/v1/search?q=&project_id=&limit=20.
 //
 // Maps the three search sentinel errors:
 //
-//   - domain.ErrSearchIndexNotReady → 503 + Retry-After: 5 header
-//     (T-19-INDEX-503 mitigation; also satisfies SEARCH-06).
+//   - domain.ErrSearchIndexNotReady → 503 + Retry-After: 5 header.
 //   - domain.ErrInvalidScope        → 500 (defense-in-depth; should not
 //     be reachable because we resolve scope server-side, but the repo
 //     guards anyway).
 //   - other errors                  → 500 with metadata-only log line.
 //
-// Logging contract (SEARCH-07 / T-19-LOG-LEAK): every log line carries
+// Logging contract: every log line carries
 // {user_id, business_id, query_length}. NEVER the literal query text.
 // NO `"query"` slog field key.
 type SearchHandler struct {
@@ -112,7 +111,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	results, err := h.searcher.Search(r.Context(), biz.ID.String(), userID.String(), q, projectID, limit)
 	if errors.Is(err, domain.ErrSearchIndexNotReady) {
-		// SEARCH-06 / T-19-INDEX-503 mitigation. The atomic.Bool flag
+		// The atomic.Bool flag
 		// in service.Searcher flips to true after EnsureSearchIndexes
 		// returns nil at startup; until then we surface a retryable
 		// 503 with Retry-After: 5.
@@ -124,7 +123,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		// Should not be reachable: handler resolves businessID/userID
 		// server-side. If we surface ErrInvalidScope, a future caller
 		// must have introduced an empty-scope path — log loudly with
-		// metadata-only fields (SEARCH-07).
+		// metadata-only fields.
 		slog.ErrorContext(r.Context(), "search: invalid scope reached handler",
 			"user_id", userID.String(),
 			"business_id", biz.ID.String(),
@@ -133,8 +132,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		// Metadata-only log — NEVER the query text (SEARCH-07 /
-		// T-19-LOG-LEAK).
+		// Metadata-only log — NEVER the query text.
 		slog.ErrorContext(r.Context(), "search failed",
 			"user_id", userID.String(),
 			"business_id", biz.ID.String(),

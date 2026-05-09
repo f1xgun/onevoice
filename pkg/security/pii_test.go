@@ -9,7 +9,7 @@ import (
 //
 //   - The full true-positive corpus (≥9 cases across all 6 classes).
 //   - The Russian false-positive corpus (≥10 cases) that legitimate numeric
-//     titles MUST NOT trigger — Landmine 2 / Pitfall 3. Without prefix anchors
+//     titles MUST NOT trigger. Without prefix anchors
 //     on passport / INN and Luhn on cc, the auto-titler would terminal-fail
 //     on every order/invoice title.
 func TestContainsPII(t *testing.T) {
@@ -88,10 +88,9 @@ func TestRedactPII(t *testing.T) {
 	}
 }
 
-// TestRedactPII_LogShape is the negative-assertion regression test required by
-// Landmine 6 / Pitfall 8: D-16 is a "MUST NOT log X" rule and positive
-// field-presence assertions can't catch a future "I added a debug field"
-// regression. For each PII input we assert:
+// TestRedactPII_LogShape is a negative-assertion regression test:
+// "MUST NOT log X" rule — positive field-presence assertions can't catch
+// a future "I added a debug field" regression. For each PII input we assert:
 //
 //   - The original PII substring does NOT appear in the redacted output.
 //   - The placeholder "[Скрыто]" DOES appear.

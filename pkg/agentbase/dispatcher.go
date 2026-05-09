@@ -20,8 +20,7 @@ import (
 //	}
 //
 // Where h.routeTool is the platform switch that lived inline in Handle before
-// plan 19-07. See phase 19-RESEARCH §5b for the duplication audit that
-// motivates this extraction.
+// the agentbase extraction.
 type Dispatcher interface {
 	Dispatch(
 		ctx context.Context,

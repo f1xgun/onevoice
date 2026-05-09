@@ -229,7 +229,7 @@ func TestClient_NetworkError(t *testing.T) {
 	require.Error(t, pubErr)
 }
 
-// --- Tests for Phase 3 new tools ---
+// --- Tests for new tools ---
 
 func TestClient_PostPhoto_Success(t *testing.T) {
 	srv := newMockVKServer()

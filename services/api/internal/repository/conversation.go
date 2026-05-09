@@ -77,7 +77,7 @@ func (r *conversationRepository) ListByUserID(ctx context.Context, userID string
 // Update modifies only mutable fields (user_id, title, title_status).
 // created_at is intentionally not updated to preserve creation timestamp.
 //
-// Phase 18 / D-06 / Landmine 7: persist title_status so the handler-level flip
+// Landmine 7: persist title_status so the handler-level flip
 // to "manual" (in PUT /conversations/{id}) is durable. Without this, the
 // trust-critical contract that PUT renames are sovereign would be silently
 // dropped at the repo layer and an in-flight titler could clobber the user's
@@ -89,7 +89,7 @@ func (r *conversationRepository) Update(ctx context.Context, conv *domain.Conver
 		"$set": bson.M{
 			"user_id":      conv.UserID,
 			"title":        conv.Title,
-			"title_status": conv.TitleStatus, // D-06 plumbing: rename path persists status flip
+			"title_status": conv.TitleStatus, // rename path persists status flip
 			"updated_at":   conv.UpdatedAt,
 		},
 	}
@@ -122,7 +122,7 @@ func (r *conversationRepository) Delete(ctx context.Context, id string) error {
 // UpdateProjectAssignment atomically updates project_id and updated_at.
 // Passing projectID = nil persists `project_id: null` (not a missing field)
 // because Conversation.ProjectID's BSON tag deliberately omits omitempty.
-// This is the write path used by the move-chat endpoint in Plan 15-04.
+// This is the write path used by the move-chat endpoint.
 func (r *conversationRepository) UpdateProjectAssignment(ctx context.Context, id string, projectID *string) error {
 	update := bson.M{
 		"$set": bson.M{
@@ -140,17 +140,15 @@ func (r *conversationRepository) UpdateProjectAssignment(ctx context.Context, id
 	return nil
 }
 
-// UpdateTitleIfPending — Phase 18 / TITLE-04 / D-08.
-//
-// Atomic conditional Mongo write that guards manual renames from titler
-// clobber. The filter `{_id, title_status: {$in: ["auto_pending", null]}}`
+// UpdateTitleIfPending performs an atomic conditional Mongo write that
+// guards manual renames from titler clobber. The filter `{_id, title_status: {$in: ["auto_pending", null]}}`
 // matches zero documents when a manual rename has flipped status to "manual"
 // mid-flight; the titler write becomes a silent no-op surfaced as
 // ErrConversationNotFound.
 //
-// The $in over [TitleStatusAutoPending, nil] also covers legacy / pre-Phase-18
+// The $in over [TitleStatusAutoPending, nil] also covers legacy
 // rows that never had title_status written — they are eligible for the first
-// auto-titler pass. Phase 18 Landmine 8: relies on Conversation.TitleStatus
+// auto-titler pass. Landmine 8: relies on Conversation.TitleStatus
 // having NO bson `omitempty` so legacy null docs surface as `null` (not
 // missing) and the $in match is stable across drivers.
 func (r *conversationRepository) UpdateTitleIfPending(ctx context.Context, id, title string) error {
@@ -177,11 +175,10 @@ func (r *conversationRepository) UpdateTitleIfPending(ctx context.Context, id, t
 	return nil
 }
 
-// TransitionToAutoPending — Phase 18 / TITLE-09 / D-07.
-//
-// Atomically flips title_status to auto_pending and bumps updated_at.
-// Used by POST /regenerate-title (Plan 05). Filter excludes "manual"
-// (sovereign per D-02). The caller (handler.RegenerateTitle) is the
+// TransitionToAutoPending atomically flips title_status to auto_pending
+// and bumps updated_at.
+// Used by POST /regenerate-title. Filter excludes "manual"
+// (sovereign). The caller (handler.RegenerateTitle) is the
 // authority on whether re-pending is allowed — it gates double-clicks
 // via a 30s grace window on UpdatedAt and only invokes this method when
 // the click is either (a) auto/null → first generation or (b) stuck
@@ -215,18 +212,16 @@ func (r *conversationRepository) TransitionToAutoPending(ctx context.Context, id
 	return nil
 }
 
-// EnsureConversationIndexes — Phase 18 / D-08a + Phase 19 / Plan 19-02.
+// EnsureConversationIndexes creates compound indexes on the conversations
+// collection idempotently at API startup. Two named indexes are managed here:
 //
-// Creates compound indexes on the conversations collection idempotently at
-// API startup. Two named indexes are managed here:
-//
-//  1. conversations_user_biz_title_status (Phase 18 / D-08a — DO NOT MODIFY).
-//     Backs the auto-titler's atomic UpdateTitleIfPending lookups (TITLE-04 /
-//     D-08) and Phase 19's sidebar queries that surface auto_pending rows
+//  1. conversations_user_biz_title_status — DO NOT MODIFY.
+//     Backs the auto-titler's atomic UpdateTitleIfPending lookups
+//     and the sidebar queries that surface auto_pending rows
 //     distinctly.
 //
-//  2. conversations_user_biz_proj_pinned_recency (Phase 19 / Plan 19-02). NEW
-//     index — DOES NOT extend or replace the Phase 18 index (D-08a is locked).
+//  2. conversations_user_biz_proj_pinned_recency. NEW
+//     index — DOES NOT extend or replace the title_status index (locked).
 //     Compound shape `{user_id, business_id, project_id, pinned_at:-1,
 //     last_message_at:-1}` follows ESR (Equality, Sort, Range) — equality on
 //     user/business/project, descending sort on pinned_at then
@@ -249,10 +244,10 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 			Options: options.Index().SetName("conversations_user_biz_title_status"),
 		},
 		{
-			// Phase 19 / Plan 19-02 — sidebar PinnedSection compound index.
+			// sidebar PinnedSection compound index.
 			// ESR layout: equality on (user_id, business_id, project_id)
 			// followed by descending sort on (pinned_at, last_message_at).
-			// Pinned chats sort by pinned_at desc (D-03); ties (or unpinned
+			// Pinned chats sort by pinned_at desc; ties (or unpinned
 			// rows in the same project bucket) tie-break by last_message_at.
 			Keys: bson.D{
 				{Key: "user_id", Value: 1},
@@ -273,7 +268,7 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 	return nil
 }
 
-// Pin — Phase 19 / D-02 + Pitfalls §19.
+// Pin — Pitfalls §19.
 //
 // Atomic conditional update that sets pinned_at = now (UTC) on the
 // conversation, scoped by (id, business_id, user_id) for defense-in-depth.
@@ -281,10 +276,9 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 // manipulation even if a caller misroutes IDs: when MatchedCount==0 we
 // return domain.ErrConversationNotFound, which the handler layer maps to
 // uniform HTTP 404 (NEVER 403 — uniform 404 vs ownership-aware 403 is the
-// industry-standard guard against existence enumeration; see threat model
-// T-19-02-01 / T-19-02-02 in 19-02-pinned-PLAN.md).
+// industry-standard guard against existence enumeration).
 //
-// Atomic-conditional-update analog of UpdateTitleIfPending (lines 155-177).
+// Atomic-conditional-update analog of UpdateTitleIfPending.
 func (r *conversationRepository) Pin(ctx context.Context, id, businessID, userID string) error {
 	now := time.Now().UTC()
 	filter := bson.M{"_id": id, "business_id": businessID, "user_id": userID}
@@ -299,7 +293,7 @@ func (r *conversationRepository) Pin(ctx context.Context, id, businessID, userID
 	return nil
 }
 
-// Unpin — Phase 19 / D-02. Symmetric to Pin: atomically sets pinned_at = nil
+// Unpin. Symmetric to Pin: atomically sets pinned_at = nil
 // on the conversation, scoped by (id, business_id, user_id). Returns
 // domain.ErrConversationNotFound on mismatch.
 func (r *conversationRepository) Unpin(ctx context.Context, id, businessID, userID string) error {
@@ -317,7 +311,7 @@ func (r *conversationRepository) Unpin(ctx context.Context, id, businessID, user
 }
 
 // MaxScopedConversations caps the conversation-id allowlist that
-// SearchByConversationIDs receives in phase 2 of D-12's two-phase strategy.
+// SearchByConversationIDs receives in phase 2 of the two-phase strategy.
 // At v1.3 single-owner scale this is well above ceiling; the cap exists
 // to bound query cost (and Mongo's $in size) on future paths. Overflow is
 // logged + truncated to the most-recently-active 1000 (Pitfalls §15 Q10).
@@ -337,7 +331,7 @@ const MaxScopedConversations = 1000
 //
 // Defense-in-depth: empty businessID or userID returns
 // domain.ErrInvalidScope immediately. Repository-level guard parallel to
-// the service-layer guard so cross-tenant leak (T-19-CROSS-TENANT) cannot
+// the service-layer guard so cross-tenant leak cannot
 // happen even if a future caller forgets to scope.
 //
 // Empty / whitespace-only query returns ([], nil, nil) — no work to do
@@ -411,7 +405,7 @@ func (r *conversationRepository) SearchTitles(
 	return hits, ids, nil
 }
 
-// ScopedConversationIDs — Phase 19 / Plan 19-03 / D-12 phase 1 allowlist.
+// ScopedConversationIDs — phase 1 allowlist.
 //
 // Returns the IDs of every conversation visible to (user_id, business_id,
 // project_id?) ordered by last_message_at desc and capped at
@@ -421,7 +415,7 @@ func (r *conversationRepository) SearchTitles(
 //
 // Defense-in-depth: empty businessID or userID returns ErrInvalidScope.
 // Overflow above MaxScopedConversations is logged with
-// metadata-only fields (SEARCH-07: never the query, never the IDs) and
+// metadata-only fields (never the query, never the IDs) and
 // the slice is truncated to the most-recently-active MaxScopedConversations.
 func (r *conversationRepository) ScopedConversationIDs(
 	ctx context.Context,

@@ -12,11 +12,11 @@ import (
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
 )
 
-// TokenInfo aliases agentbase.TokenInfo so existing test mocks compile
-// after plan 19-07 migration. ExternalID carries the Yandex Sprav permalink.
+// TokenInfo aliases agentbase.TokenInfo so existing test mocks compile.
+// ExternalID carries the Yandex Sprav permalink.
 type TokenInfo = agentbase.TokenInfo
 
-// TokenFetcher aliases agentbase.TokenResolver — kept for D-16 test
+// TokenFetcher aliases agentbase.TokenResolver — kept for test
 // compatibility (import-path/wiring-only changes in handler_test.go).
 type TokenFetcher = agentbase.TokenResolver
 

@@ -50,7 +50,7 @@ func (p *MessagePersister) PersistUserMessage(ctx context.Context, msg *domain.M
 // PersistAssistantPause writes the assistant Message at the
 // tool_approval_required pause point. Status=pending_approval; ToolCalls
 // already carry ApprovalID=<batch>-<call> + Status=pending. Mirrors the
-// chat_proxy.go:573-602 sequence verbatim.
+// chat_proxy.go pause sequence verbatim.
 func (p *MessagePersister) PersistAssistantPause(ctx context.Context, msg *domain.Message) error {
 	return p.msgs.Create(ctx, msg)
 }
@@ -64,14 +64,14 @@ func (p *MessagePersister) PersistAssistantComplete(ctx context.Context, msg *do
 
 // PersistAssistantUpdate writes the assistant Message via Update — used by
 // the resume path's done/error branches where the same Message ID must be
-// preserved (D-17).
+// preserved.
 func (p *MessagePersister) PersistAssistantUpdate(ctx context.Context, msg *domain.Message) error {
 	return p.msgs.Update(ctx, msg)
 }
 
 // FireAutoTitleIfPending re-reads the conversation AFTER messageRepo.Create
 // returned and spawns the titler goroutine when title_status is still
-// "auto_pending". Phase 18 / D-01 / Pitfalls 2 + 7 / Landmines 4 + 5.
+// "auto_pending". Pitfalls 2 + 7 / Landmines 4 + 5.
 //
 // The re-read is mandatory: a manual rename arriving between the request
 // entering chat_proxy and reaching this fire-point would leave a stale
@@ -97,7 +97,7 @@ func (p *MessagePersister) FireAutoTitleIfPending(persistCtx PersistContextFn, c
 		return
 	}
 	if conv.TitleStatus != domain.TitleStatusAutoPending {
-		return // D-01: only fires on auto_pending; manual + auto are terminal.
+		return // only fires on auto_pending; manual + auto are terminal.
 	}
 
 	// Detached 30s ctx for the titler goroutine. The cancel is wired through

@@ -4,15 +4,15 @@ import { toast } from 'sonner';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { usePinConversation, useUnpinConversation } from '@/hooks/useConversations';
 
-// PinChatMenuItem — Phase 19 / Plan 19-02 / UI-03.
+// PinChatMenuItem.
 //
 // Single context-menu entry that flips between «Закрепить» (when the chat
 // is currently unpinned) and «Открепить» (when it's pinned). Mutations
-// invalidate the ['conversations'] cache (Phase 18 D-10 invalidation
+// invalidate the ['conversations'] cache (invalidation
 // pattern extended for pin) so the sidebar PinnedSection + ChatHeader
 // bookmark icon refresh from a single source on success.
 //
-// Russian copy is locked verbatim per 19-CONTEXT.md (Закрепить / Открепить).
+// Russian copy is locked verbatim (Закрепить / Открепить).
 interface Props {
   conversationId: string;
   pinned: boolean;

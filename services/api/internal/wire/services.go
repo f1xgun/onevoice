@@ -41,9 +41,9 @@ type Services struct {
 	ObjectStorage *storage.MinioClient
 
 	// OrchClient is the shared HTTP client for orchestrator endpoints
-	// (chat / resume / internal tool registry). Phase 19 / D-11 — extracted
-	// from the inline plumbing in service/hitl.go so chatproxy collaborators
-	// (Plan 19-03) and handler/hitl.go consume the same client.
+	// (chat / resume / internal tool registry). Extracted from the inline
+	// plumbing in service/hitl.go so chatproxy collaborators and
+	// handler/hitl.go consume the same client.
 	OrchClient *orchestratorclient.Client
 
 	// AgentTaskPublisher is exposed so handlers (specifically OAuthHandler)
@@ -89,15 +89,15 @@ func (s *Services) StartReviewSyncer(ctx context.Context, log *slog.Logger, inte
 // Construction order matters: Titler depends on the LLM router; Searcher's
 // readiness flag must flip AFTER BootstrapDatabases ensured the search
 // indexes exist (the atomic.Bool.Store provides a happens-before edge for
-// every subsequent Load by handler goroutines — see RESEARCH §7).
+// every subsequent Load by handler goroutines).
 //
 // Named BuildServices (not Services) because Go forbids a type and a
 // function with identical identifiers in one package — Services is the
 // returned aggregate type. Callers spell the call site as
 // `wire.BuildServices(...)`.
 func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, repos *Repos, h *DBHandles) (*Services, error) {
-	// Phase 19 / D-11: build the shared orchestrator client BEFORE any service
-	// that talks to the orchestrator. SSE consumers (HITLService.OrchClient,
+	// Build the shared orchestrator client BEFORE any service that talks to
+	// the orchestrator. SSE consumers (HITLService.OrchClient,
 	// chatproxy.OrchestrationProxy) require Timeout=0 so streaming requests
 	// are not killed mid-flight; the per-call ctx still bounds the budget.
 	orchClient := orchestratorclient.New(cfg.OrchestratorURL, &http.Client{Timeout: 0})
@@ -107,12 +107,12 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		OrchClient: orchClient,
 	}
 
-	// Phase 18 — Auto-titler LLM Router wiring (Plan 18-02).
+	// Auto-titler LLM Router wiring.
 	//
-	// Graceful disable per Pitfall 1 / Assumption A6: when no LLM provider
-	// key is set OR no model is configured, the titler is left nil and
-	// downstream Plan 18-05's fireAutoTitleIfPending becomes a no-op. The
-	// API service must boot in dev environments without any LLM env at all.
+	// Graceful disable: when no LLM provider key is set OR no model is
+	// configured, the titler is left nil and downstream
+	// fireAutoTitleIfPending becomes a no-op. The API service must boot in
+	// dev environments without any LLM env at all.
 	var llmRouter *llm.Router
 	titlerModel := cfg.TitlerModel
 	if titlerModel != "" {
@@ -128,23 +128,23 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		log.Warn("auto-titler: disabled (TITLER_MODEL and LLM_MODEL both unset)")
 	}
 
-	// Phase 18 Plan 04 — construct the Titler service when the Router is
-	// available. Stays nil on the graceful-disable branch so Plan 05's
-	// fireAutoTitleIfPending becomes a no-op (Pitfall 1 / Assumption A6).
+	// Construct the Titler service when the Router is available. Stays nil
+	// on the graceful-disable branch so fireAutoTitleIfPending becomes a
+	// no-op.
 	if llmRouter != nil {
 		s.Titler = service.NewTitler(llmRouter, repos.Conversation, titlerModel)
 		log.Info("auto-titler: service constructed", "model", titlerModel)
 	}
 
-	// Phase 19 Plan 19-03 — Search service.
+	// Search service.
 	//
-	// CRITICAL ORDERING (T-19-INDEX-503 mitigation): MarkIndexesReady is
-	// called HERE, AFTER BootstrapDatabases.EnsureSearchIndexes has already
-	// returned nil. The atomic.Bool's Store ensures a happens-before edge
-	// against every subsequent Load by handler goroutines. Reordering this
-	// would cause the readiness flag to flip before indexes exist —
-	// Searcher.Search would no longer return ErrSearchIndexNotReady on a
-	// cold boot, and queries would hit a missing $text index.
+	// CRITICAL ORDERING: MarkIndexesReady is called HERE, AFTER
+	// BootstrapDatabases.EnsureSearchIndexes has already returned nil. The
+	// atomic.Bool's Store ensures a happens-before edge against every
+	// subsequent Load by handler goroutines. Reordering this would cause the
+	// readiness flag to flip before indexes exist — Searcher.Search would
+	// no longer return ErrSearchIndexNotReady on a cold boot, and queries
+	// would hit a missing $text index.
 	s.Searcher = service.NewSearcher(repos.Conversation, repos.Message)
 	s.Searcher.MarkIndexesReady()
 
@@ -196,9 +196,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	if h.NATS != nil {
 		var drafter service.DraftPassRunner
 		if cfg.ReviewDraftEnabled {
-			// Phase 19 / 19-MD-01: drafter consumes the shared orchestrator
-			// client so its calls reuse the same Transport pool as everything
-			// else (HITL, chatproxy, tools cache).
+			// Drafter consumes the shared orchestrator client so its calls
+			// reuse the same Transport pool as everything else (HITL,
+			// chatproxy, tools cache).
 			drafter = service.NewReviewDrafter(
 				repos.Review,
 				repos.Business,
@@ -250,9 +250,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	}
 	s.PlatformSync = platform.NewSyncer(adapter, repos.AgentTask, s.TaskHub, perPlatform)
 
-	// Plan 16-07 HITL services. ToolsRegistryCache talks to the
-	// orchestrator's /internal/tools endpoint with a 5-min TTL so
-	// settings/project pages + edit-validation share one source of truth.
+	// HITL services. ToolsRegistryCache talks to the orchestrator's
+	// /internal/tools endpoint with a 5-min TTL so settings/project pages
+	// + edit-validation share one source of truth.
 	s.ToolsCache = service.NewToolsRegistryCache(cfg.OrchestratorURL, nil, toolsCacheTTL)
 	s.HITL = service.NewHITLService(
 		h.PendingToolCallRepo,

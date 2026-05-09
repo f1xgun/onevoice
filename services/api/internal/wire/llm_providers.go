@@ -13,11 +13,11 @@ import (
 // config, and registers the LLM model → provider mapping in the registry
 // for each. Returns at least one option if any key is set, nil if none.
 //
-// Lifted verbatim from services/orchestrator/cmd/main.go:740-788 so the
-// API-side titler Router constructs over byte-identical provider semantics
-// (Phase 18 — Landmine 3). The only intentional difference between this
-// copy and the orchestrator's is package locality; the body is unchanged
-// so future audits can diff the two and confirm parity.
+// Lifted verbatim from services/orchestrator/cmd/main.go so the API-side
+// titler Router constructs over byte-identical provider semantics. The
+// only intentional difference between this copy and the orchestrator's
+// is package locality; the body is unchanged so future audits can diff
+// the two and confirm parity.
 func LLMProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) []llm.RouterOption {
 	type providerSpec struct {
 		name    string

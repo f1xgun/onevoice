@@ -55,8 +55,8 @@ func TestProjectRepository_Create(t *testing.T) {
 		// Squirrel serializes uuid.UUID to string via Stringer before passing
 		// to pgx; pgxmock sees a string, not the original uuid.UUID. Use
 		// AnyArg() for every value to avoid driver-specific conversions.
-		// Phase 16: approval_overrides JSONB column inserted between allowed_tools
-		// and quick_actions — 11 args total (was 10).
+		// approval_overrides JSONB column is inserted between allowed_tools
+		// and quick_actions — 11 args total.
 		mockPool.ExpectExec(`INSERT INTO projects`).
 			WithArgs(
 				pgxmock.AnyArg(), // id
@@ -213,7 +213,7 @@ func TestProjectRepository_Update(t *testing.T) {
 
 		// UPDATE has 9 bound arguments (name, description, system_prompt,
 		// whitelist_mode, allowed_tools, approval_overrides, quick_actions,
-		// updated_at, id). Phase 16 added approval_overrides.
+		// updated_at, id).
 		mockPool.ExpectExec(`UPDATE projects SET`).
 			WithArgs(
 				pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
@@ -322,7 +322,7 @@ func setupMongoTestDBForProject(t *testing.T) *mongo.Database {
 }
 
 // TestProjectRepository_CountConversationsByID verifies the Mongo count query
-// that feeds the delete-confirmation dialog (D-06).
+// that feeds the delete-confirmation dialog.
 func TestProjectRepository_CountConversationsByID(t *testing.T) {
 	db := setupMongoTestDBForProject(t)
 	ctx := context.Background()

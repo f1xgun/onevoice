@@ -1,7 +1,7 @@
 import { api } from '@/lib/api';
 import { businessToolApprovalsResponseSchema, type ToolApprovals } from '@/lib/schemas';
 
-// Backend contracts (Phase 16-07):
+// Backend contracts:
 //   GET  /api/v1/business/{id}/tool-approvals → 200 { toolApprovals: {[name]: "auto"|"manual"} }
 //   PUT  /api/v1/business/{id}/tool-approvals
 //        body: { toolApprovals: { [name]: "auto" | "manual" } }

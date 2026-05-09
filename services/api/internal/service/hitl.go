@@ -10,12 +10,12 @@
 //   - Atomic status transition via findOneAndUpdate — race → 409 {retry_after_ms}
 //   - TOCTOU re-check via pkg/hitl.Resolve with FRESH business/project maps —
 //     post-pause Forbidden flips to a synthetic "policy_revoked" rejection
-//     (HITL-06 — the resolve call still succeeds so the response to the
+//     (the resolve call still succeeds so the response to the
 //     client is 200; the LLM sees the synthetic rejection on resume)
-//   - tool_name pinning (HITL-07) — the server NEVER reads tool_name from the
+//   - tool_name pinning — the server NEVER reads tool_name from the
 //     request body; it always pulls from the persisted PendingCall row
 //
-// Anti-footgun #5: the AtomicTransitionToResolving primitive (findOneAndUpdate
+// Anti-footgun: the AtomicTransitionToResolving primitive (findOneAndUpdate
 // with filter {_id, status: "pending"}) guarantees exactly-one-wins on
 // concurrent resolve attempts. Under contention, the loser gets
 // ErrBatchNotPending which maps to 409 — see handler/hitl.go.
@@ -67,7 +67,7 @@ func (e *ErrHITLDecisionsShape) Error() string {
 }
 
 // ErrHITLRejectReasonTooLong is returned when a reject_reason exceeds the
-// 500-char cap enforced by D-08.
+// 500-char cap.
 type ErrHITLRejectReasonTooLong struct {
 	Max int
 	Got int
@@ -77,15 +77,15 @@ func (e *ErrHITLRejectReasonTooLong) Error() string {
 	return fmt.Sprintf("hitl: reject_reason too long (max %d, got %d)", e.Max, e.Got)
 }
 
-// MaxRejectReasonChars caps the user-supplied reject_reason free-form text
-// (D-08). Frontend textarea enforces the same limit.
+// MaxRejectReasonChars caps the user-supplied reject_reason free-form text.
+// Frontend textarea enforces the same limit.
 const MaxRejectReasonChars = 500
 
 // HITLService wires every HITL primitive (pending-tool-call repo, business
 // repo, project repo, tool registry cache) together behind the Resolve
 // business-logic entry point consumed by handler/hitl.go.
 //
-// Phase 19 / D-11: the inline orchestrator HTTP client moved into
+// The inline orchestrator HTTP client moved into
 // pkg/orchestratorclient. HITLService exposes the *orchestratorclient.Client
 // via OrchClient() so handler/hitl.go's Resume can call StreamResume without
 // re-implementing the HTTP plumbing.
@@ -143,7 +143,7 @@ func (s *HITLService) BusinessRepo() domain.BusinessRepository { return s.busine
 func (s *HITLService) ProjectRepo() domain.ProjectRepository { return s.projectRepo }
 
 // ToolsCache exposes the tools-registry cache so handlers outside this file
-// (GET /api/v1/tools, POLICY-05 PUT) can share the cache.
+// (GET /api/v1/tools, PUT approvals) can share the cache.
 func (s *HITLService) ToolsCache() *ToolsRegistryCache { return s.toolsCache }
 
 // OrchClient exposes the shared orchestrator HTTP client used by handler/hitl
@@ -194,16 +194,16 @@ type ResolveResult struct {
 //  1. Load the batch (ownership + existence check)
 //  2. Validate decisions shape (must cover every call exactly once)
 //  3. Validate edit arguments against the pinned tool_name's EditableFields
-//     (HITL-07 + D-12 — 400 with editable list on violation; client-supplied
+//     (400 with editable list on violation; client-supplied
 //     tool_name is NEVER read — we always use the persisted PendingCall row)
 //  4. Atomic status transition to "resolving" — 409 on concurrent-resolve
-//     race (anti-footgun #5)
+//     race (anti-footgun)
 //  5. Re-fetch business/project state and re-run pkg/hitl.Resolve against
-//     FRESH maps (HITL-06 TOCTOU). Forbidden-after-pause becomes a synthetic
+//     FRESH maps (TOCTOU). Forbidden-after-pause becomes a synthetic
 //     rejection ("policy_revoked") that the LLM sees on resume.
 //  6. Persist final per-call verdicts via RecordDecisions
 //
-// The response is plain JSON (D-05) — the client separately opens the
+// The response is plain JSON — the client separately opens the
 // /chat/{id}/resume endpoint to get the SSE continuation stream.
 func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveResult, error) {
 	// Step 1: load batch for ownership + existence checks.
@@ -234,7 +234,7 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		decisionByID[d.ID] = d
 	}
 
-	// Step 3: edit validation (HITL-07 + D-12, per call).
+	// Step 3: edit validation (per call).
 	// tool_name is ALWAYS read from the persisted PendingCall (c.ToolName),
 	// NEVER from the client's body. This is the pinning invariant.
 	for _, c := range batch.Calls {
@@ -298,22 +298,22 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		finalized[i].RejectReason = d.RejectReason
 
 		if d.Action == "approve" || d.Action == "edit" {
-			// Plan 17-11 / GAP-04: consult the pause-time floor persisted by
+			// Consult the pause-time floor persisted by
 			// the orchestrator rather than s.toolsCache.Floor. The api-side
 			// ToolsRegistryCache is HTTP-backed and lazily warmed (only
 			// GET /api/v1/tools triggers a refresh), so it would spuriously
 			// return Forbidden for valid manual-floor tools whenever the
 			// settings page had not been visited in this api process
-			// lifetime — see 17-VERIFICATION.md §GAP-04. The persisted
-			// FloorAtPause is the faithful echo of the orchestrator's
-			// in-process tools.Registry (always warm) at the moment of
-			// pause; the orchestrator-side resume goroutine remains the
-			// load-bearing TOCTOU recheck (resume.go: dispatchApprovedCalls).
+			// lifetime. The persisted FloorAtPause is the faithful echo
+			// of the orchestrator's in-process tools.Registry (always
+			// warm) at the moment of pause; the orchestrator-side resume
+			// goroutine remains the load-bearing TOCTOU recheck
+			// (resume.go: dispatchApprovedCalls).
 			floor := c.FloorAtPause
 			effective := pkghitl.Resolve(floor, businessApprovals, projectOverrides, c.ToolName)
 			if effective == domain.ToolFloorForbidden {
 				// TOCTOU: flipped to forbidden post-pause. Rewrite to synthetic
-				// rejection — the LLM sees the outcome on resume (HITL-09).
+				// rejection — the LLM sees the outcome on resume.
 				finalized[i].Verdict = "reject"
 				finalized[i].RejectReason = "policy_revoked"
 				result.Decisions = append(result.Decisions, ResolvedCall{
@@ -408,7 +408,7 @@ type ToolsRegistryEntry struct {
 
 // NewToolsRegistryCache constructs a cache bound to orchestratorURL (e.g.,
 // "http://orchestrator:8090"). Pass httpClient=nil to use http.DefaultClient.
-// ttl defaults to 5 minutes when zero. Phase 19 / D-11 — internally builds
+// ttl defaults to 5 minutes when zero. Internally builds
 // an *orchestratorclient.Client; signature preserved so existing callers and
 // tests (including hitl_test.go) compile unchanged.
 func NewToolsRegistryCache(orchestratorURL string, httpClient *http.Client, ttl time.Duration) *ToolsRegistryCache {
@@ -476,7 +476,7 @@ func (c *ToolsRegistryCache) Floor(toolName string) domain.ToolFloor {
 }
 
 // EditableFields returns the per-tool edit allowlist, or nil for unknown
-// tools. nil means "every edit on this tool is rejected" — matches POLICY-07.
+// tools. nil means "every edit on this tool is rejected".
 func (c *ToolsRegistryCache) EditableFields(toolName string) []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -490,7 +490,7 @@ func (c *ToolsRegistryCache) EditableFields(toolName string) []string {
 	return nil
 }
 
-// Has reports whether toolName is currently cached. Used by the POLICY-05 PUT
+// Has reports whether toolName is currently cached. Used by the PUT
 // handler to reject unknown tool names before persisting.
 func (c *ToolsRegistryCache) Has(toolName string) bool {
 	c.mu.RLock()

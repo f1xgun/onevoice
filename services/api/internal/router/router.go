@@ -43,8 +43,8 @@ type Handlers struct {
 	Business      *handler.BusinessHandler
 	Integration   *handler.IntegrationHandler
 	Conversation  *handler.ConversationHandler
-	OAuth         *oauth.OAuthHandler     // Phase 19 / Plan 19-04: true OAuth code-flow (VK / Yandex / Google)
-	Connect       *connect.ConnectHandler // Phase 19 / Plan 19-04: paste-flow integrations (Telegram bot-token, VK community access token)
+	OAuth         *oauth.OAuthHandler     // true OAuth code-flow (VK / Yandex / Google)
+	Connect       *connect.ConnectHandler // paste-flow integrations (Telegram bot-token, VK community access token)
 	InternalToken *handler.InternalTokenHandler
 	ChatProxy     *handler.ChatProxyHandler
 	Review        *handler.ReviewHandler
@@ -52,9 +52,9 @@ type Handlers struct {
 	AgentTask     *handler.AgentTaskHandler
 	Telemetry     *handler.TelemetryHandler
 	Project       *handler.ProjectHandler
-	HITL          *handler.HITLHandler   // Phase 16: resolve + resume + GET /tools
-	Titler        *handler.TitlerHandler // Phase 18: POST /conversations/{id}/regenerate-title
-	Search        *handler.SearchHandler // Phase 19 / Plan 19-03: GET /api/v1/search
+	HITL          *handler.HITLHandler   // resolve + resume + GET /tools
+	Titler        *handler.TitlerHandler // POST /conversations/{id}/regenerate-title
+	Search        *handler.SearchHandler // GET /api/v1/search
 	Platforms     *handler.PlatformsHandler
 }
 
@@ -164,29 +164,29 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Put("/conversations/{id}", handlers.Conversation.UpdateConversation)
 			r.Delete("/conversations/{id}", handlers.Conversation.DeleteConversation)
 			r.Get("/conversations/{id}/messages", handlers.Conversation.ListMessages)
-			// Phase 15 (PROJ-06): move a chat between projects (or to "Без проекта")
+			// move a chat between projects (or to "Без проекта")
 			r.Post("/conversations/{id}/move", handlers.Conversation.MoveConversation)
-			// Phase 19 (UI-03 / D-02): pin / unpin a conversation. Atomic
+			// pin / unpin a conversation. Atomic
 			// repo writes scoped by (id, business_id, user_id) defend
-			// against cross-tenant pin manipulation (Pitfalls §19).
+			// against cross-tenant pin manipulation.
 			r.Post("/conversations/{id}/pin", handlers.Conversation.Pin)
 			r.Post("/conversations/{id}/unpin", handlers.Conversation.Unpin)
-			// Phase 18 / TITLE-09: regenerate the auto-title for an existing chat.
+			// regenerate the auto-title for an existing chat.
 			if handlers.Titler != nil {
 				r.Post("/conversations/{id}/regenerate-title", handlers.Titler.RegenerateTitle)
 			}
 
-			// Phase 19 / Plan 19-03 / SEARCH-02: sidebar search.
+			// sidebar search.
 			// Mongo $text against conversations.title + messages.content,
 			// scoped by (business_id, user_id, project_id?). Returns 503 +
 			// Retry-After: 5 until EnsureSearchIndexes completes at startup
-			// (T-19-INDEX-503 mitigation; readiness flag flips after the
+			// (readiness flag flips after the
 			// happens-before edge in service.Searcher.MarkIndexesReady).
 			if handlers.Search != nil {
 				r.Get("/search", handlers.Search.Search)
 			}
 
-			// Project routes (Phase 15 — projects foundation)
+			// Project routes
 			r.Get("/projects", handlers.Project.List)
 			r.Post("/projects", handlers.Project.Create)
 			r.Get("/projects/{id}", handlers.Project.Get)
@@ -194,14 +194,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Delete("/projects/{id}", handlers.Project.Delete)
 			r.Get("/projects/{id}/conversation-count", handlers.Project.ConversationCount)
 
-			// Phase 16 HITL routes (Plan 16-07)
+			// HITL routes
 			if handlers.HITL != nil {
 				r.Post("/conversations/{id}/pending-tool-calls/{batch_id}/resolve", handlers.HITL.ResolvePendingToolCalls)
 				r.With(middleware.RateLimitByUser(redisClient, rateLimits.HITL, time.Minute)).
 					Post("/chat/{id}/resume", handlers.HITL.Resume)
 				r.Get("/tools", handlers.HITL.GetTools)
 			}
-			// POLICY-05 business tool-approvals CRUD.
+			// business tool-approvals CRUD.
 			if handlers.Business != nil {
 				r.Get("/business/{id}/tool-approvals", handlers.Business.GetBusinessToolApprovals)
 				r.Put("/business/{id}/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)

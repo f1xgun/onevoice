@@ -170,15 +170,15 @@ describe('ToolApprovalAccordionEntry', () => {
     expect(trigger).toBeInTheDocument();
   });
 
-  // ── Plan 17-08 GAP-01 / GAP-02 closures ───────────────────────────────────
+  // ── Read-only args + edit affordance hint ────────────────────────────────
   //
-  // GAP-01: operators must be able to read tool args BEFORE selecting a
-  // decision. Pre-fix the `Аргументы` heading + JsonView only rendered when
+  // Operators must be able to read tool args BEFORE selecting a decision.
+  // Pre-fix the `Аргументы` heading + JsonView only rendered when
   // `decision === 'edit'`, so Approve / undecided modes hid the args.
   //
-  // GAP-02: in Edit mode, `@uiw/react-json-view/editor` requires double-click
-  // on a value to invoke the inline editor — this is not discoverable. A
-  // visible hint chip tells first-time operators how to edit.
+  // In Edit mode, `@uiw/react-json-view/editor` requires double-click on a
+  // value to invoke the inline editor — this is not discoverable. A visible
+  // hint chip tells first-time operators how to edit.
 
   it('GAP-01: read-only Аргументы block + value visible when decision is undecided and entry is expanded', async () => {
     const user = userEvent.setup();

@@ -80,12 +80,12 @@ func (r *titlerConvRepo) UpdateTitleIfPending(_ context.Context, id, title strin
 	return r.updateTitleErr
 }
 
-// Pin / Unpin — Phase 19 / D-02 atomic conditional updates (Plan 19-02 Task 1).
+// Pin / Unpin atomic conditional updates.
 // Titler tests don't exercise pin lifecycle; stubs return nil.
 func (r *titlerConvRepo) Pin(_ context.Context, _, _, _ string) error   { return nil }
 func (r *titlerConvRepo) Unpin(_ context.Context, _, _, _ string) error { return nil }
 
-// SearchTitles / ScopedConversationIDs — Phase 19 / Plan 19-03 stubs.
+// SearchTitles / ScopedConversationIDs stubs.
 // Titler tests don't exercise the search path; stubs return nil.
 func (r *titlerConvRepo) SearchTitles(_ context.Context, _, _, _ string, _ *string, _ int) ([]domain.ConversationTitleHit, []string, error) {
 	return nil, nil, nil
@@ -132,7 +132,7 @@ func (m *titlerMsgRepo) FindByConversationActive(_ context.Context, _ string) (*
 	return nil, domain.ErrMessageNotFound
 }
 
-// SearchByConversationIDs — Phase 19 / Plan 19-03 stub. Titler tests
+// SearchByConversationIDs stub. Titler tests
 // don't exercise the search path.
 func (m *titlerMsgRepo) SearchByConversationIDs(_ context.Context, _ string, _ []string, _ int) ([]domain.MessageSearchHit, error) {
 	return nil, nil
@@ -140,7 +140,7 @@ func (m *titlerMsgRepo) SearchByConversationIDs(_ context.Context, _ string, _ [
 
 // newTitlerHandlerWithRealTitler builds a TitlerHandler with a REAL
 // *service.Titler driven by service.FakeChatCaller — the canonical mocking
-// seam introduced in Plan 04. NO parallel titlerCaller interface is used.
+// seam. NO parallel titlerCaller interface is used.
 func newTitlerHandlerWithRealTitler(t *testing.T, conv *domain.Conversation, listMsgs []domain.Message) (*TitlerHandler, *titlerConvRepo, *service.FakeChatCaller) {
 	t.Helper()
 	convRepo := &titlerConvRepo{getByIDReturn: conv}
@@ -187,7 +187,7 @@ func TestRegenerateTitle_200_Success(t *testing.T) {
 }
 
 // TestRegenerateTitle_409_Manual asserts that status=manual returns 409 with
-// the verbatim Russian copy from CONTEXT.md D-02.
+// the verbatim Russian copy from CONTEXT.md.
 func TestRegenerateTitle_409_Manual(t *testing.T) {
 	userID := uuid.New()
 	convID := "507f1f77bcf86cd799439020"
@@ -205,7 +205,7 @@ func TestRegenerateTitle_409_Manual(t *testing.T) {
 	var body map[string]string
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Equal(t, "title_is_manual", body["error"])
-	// D-02 verbatim Russian copy locked in CONTEXT.md.
+	// verbatim Russian copy locked in CONTEXT.md.
 	assert.Equal(t, "Нельзя регенерировать — вы уже переименовали чат вручную", body["message"])
 
 	// Negative assertions: no transition, no goroutine spawn.
@@ -214,7 +214,7 @@ func TestRegenerateTitle_409_Manual(t *testing.T) {
 }
 
 // TestRegenerateTitle_409_InFlight asserts that status=auto_pending returns
-// 409 with the verbatim Russian copy from CONTEXT.md D-03 — but ONLY when
+// 409 with the verbatim Russian copy from CONTEXT.md — but ONLY when
 // the pending state is fresh (UpdatedAt within the 30s grace window).
 // Stale auto_pending (e.g., goroutine never ran) falls into the
 // stuck-recovery path and re-triggers titling instead.
@@ -236,7 +236,7 @@ func TestRegenerateTitle_409_InFlight(t *testing.T) {
 	var body map[string]string
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Equal(t, "title_in_flight", body["error"])
-	// D-03 verbatim Russian copy locked in CONTEXT.md.
+	// verbatim Russian copy locked in CONTEXT.md.
 	assert.Equal(t, "Заголовок уже генерируется", body["message"])
 
 	assert.Equal(t, 0, convRepo.transitionCalls)
@@ -396,7 +396,7 @@ func TestRegenerateTitle_Unauthorized(t *testing.T) {
 // TestRegenerateTitle_BodyVerbatimRussianCopy is a separate guard test that
 // asserts the EXACT byte sequence of the two locked Russian 409 messages so
 // any future copy-edit (e.g., a stray dash variant) fails loudly. CONTEXT.md
-// D-02 / D-03 are byte-locked.
+// copy is byte-locked.
 func TestRegenerateTitle_BodyVerbatimRussianCopy(t *testing.T) {
 	cases := []struct {
 		name        string

@@ -71,7 +71,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [pathname, ready]);
 
-  // D-11: Cmd/Ctrl-K global focus listener. Steals focus from any input
+  // Cmd/Ctrl-K global focus listener. Steals focus from any input
   // INCLUDING the chat composer — Slack/Linear convention. Mount-only.
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
@@ -90,7 +90,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return null;
   }
 
-  // D-14: project-pane is route-conditional. Rendered on /chat/* and
+  // project-pane is route-conditional. Rendered on /chat/* and
   // /projects/* only. Other authenticated routes show NavRail + content.
   const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
 
@@ -110,14 +110,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {/* Desktop: NavRail (always) + PanelGroup hosting conditional
           ProjectPane and main content. autoSaveId persists the resized
           width to localStorage under
-          `react-resizable-panels:onevoice:sidebar-width` (D-15). */}
+          `react-resizable-panels:onevoice:sidebar-width`. */}
       <div className="hidden h-screen md:flex">
         <NavRail />
         <PanelGroup direction="horizontal" autoSaveId="onevoice:sidebar-width" className="flex-1">
           {showProjectPane && (
             <>
-              {/* defaultSize=22 ≈ 280 px on a 1280 px viewport (D-15
-                  default 280 px). minSize=12 / maxSize=35 cover the
+              {/* defaultSize=22 ≈ 280 px on a 1280 px viewport
+                  (default 280 px). minSize=12 / maxSize=35 cover the
                   locked 200–480 px range without clipping.
                   Explicit id+order keep the panel registry stable when
                   showProjectPane toggles between routes — without them

@@ -93,7 +93,7 @@ type resolveRequest struct {
 //
 // On success: 200 with the ResolveResult JSON body.
 //
-// HITL-07 pinning: the handler NEVER reads `tool_name` from the request body.
+// Pinning: the handler NEVER reads `tool_name` from the request body.
 // The service layer always uses c.ToolName from the persisted PendingCall row.
 // Any edit on a "tool_name" field is rejected by ValidateEditArgs because
 // "tool_name" is not in any tool's EditableFields allowlist.
@@ -149,7 +149,7 @@ func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Req
 // mapResolveError translates HITLService errors to HTTP status codes + bodies.
 // Centralized so the happy-path handler stays easy to read.
 func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, err error) {
-	// Edit validation — HITL-07 / D-12: never silently ignore.
+	// Edit validation: never silently ignore.
 	var errEdit *toolvalidation.ErrFieldNotEditable
 	if errors.As(err, &errEdit) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
@@ -225,7 +225,7 @@ func nilToEmptyStringArr(s []string) []string {
 //     in-flight resolve.
 //  3. Rejects resume on expired batches (410).
 //  4. Re-fetches FRESH business approvals + project overrides so the
-//     orchestrator's TOCTOU re-check uses current state (HITL-06).
+//     orchestrator's TOCTOU re-check uses current state.
 //  5. Forwards to the orchestrator's POST /chat/{id}/resume?batch_id=X with
 //     the fresh maps in the JSON body and streams the SSE response back.
 func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
@@ -276,12 +276,12 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusGone, map[string]string{"error": "approval_expired"})
 		return
 	}
-	// Plan 17-11 / GAP-04: previously rejected `status=resolving` here, but
+	// Previously rejected `status=resolving` here, but
 	// that was wrong — `Resolve` atomically transitions `pending → resolving`
 	// and the orchestrator's resume goroutine is the only writer that
 	// transitions `resolving → resolved` (via `MarkResolved` after dispatch
 	// completes). So the legitimate first resume call ALWAYS finds the batch
-	// in `resolving`; rejecting it bricked every approval flow once GAP-03's
+	// in `resolving`; rejecting it bricked every approval flow once the
 	// 403 short-circuit was lifted. The truly-conflicting terminal state is
 	// `resolved` (already-dispatched), and `expired` is handled above as 410.
 	// Per-call double-dispatch protection lives in the orchestrator's
@@ -339,7 +339,7 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1 MB scanner buffer matching chat_proxy (HITL-13: large tool results must flow through).
+	// 1 MB scanner buffer matching chat_proxy (large tool results must flow through).
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, sseBufferBytes), sseBufferBytes)
 	for scanner.Scan() {

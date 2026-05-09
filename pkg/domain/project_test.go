@@ -88,7 +88,7 @@ func TestProject_JSON_CamelCaseKeys(t *testing.T) {
 	assert.Equal(t, p.QuickActions, decoded.QuickActions)
 }
 
-// --- Conversation (Phase 15 extensions) ---
+// --- Conversation ---
 
 func TestConversation_JSON_IncludesNewFields(t *testing.T) {
 	projID := "11111111-1111-1111-1111-111111111111"
@@ -101,7 +101,7 @@ func TestConversation_JSON_IncludesNewFields(t *testing.T) {
 		ProjectID:     &projID,
 		Title:         "Hello",
 		TitleStatus:   TitleStatusAuto,
-		PinnedAt:      &pinned, // Phase 19 D-02 — replaced legacy `Pinned bool`
+		PinnedAt:      &pinned, // replaced legacy `Pinned bool`
 		LastMessageAt: &lm,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -164,11 +164,11 @@ func TestConversation_BSONTags(t *testing.T) {
 	}{
 		// No ,omitempty — nil pointer must serialize as explicit null so
 		// Mongo can distinguish "field not set" from "explicitly no project".
-		// Move-chat in Plan 04 depends on this.
+		// Move-chat depends on this.
 		{"ProjectID", "project_id"},
 		{"BusinessID", "business_id"},
 		{"TitleStatus", "title_status"},
-		// Phase 19 D-02 — `PinnedAt *time.Time` replaces legacy `Pinned bool`.
+		// `PinnedAt *time.Time` replaces legacy `Pinned bool`.
 		// `pinned_at,omitempty` so unpinned chats serialize without the key
 		// (the backfill's $exists:false guard relies on missing-key semantics
 		// — see services/api/internal/repository/mongo_backfill.go:BackfillConversationsV19).
