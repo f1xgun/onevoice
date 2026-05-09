@@ -17,6 +17,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Link from 'next/link';
@@ -116,6 +117,7 @@ function explainError(task: AgentTask): HumanError {
 
 export default function TasksPage() {
   const queryClient = useQueryClient();
+  const tStats = useTranslations('tasks.stats');
 
   const { data: tasks = [], isLoading } = useQuery<AgentTask[]>({
     queryKey: QUERY_KEYS.TASKS,
@@ -160,7 +162,7 @@ export default function TasksPage() {
       {/* BigStat tiles per v2 mock */}
       <div className="grid grid-cols-1 gap-3 px-4 pb-6 sm:grid-cols-3 sm:px-12">
         <BigStat
-          label="Сделано"
+          label={tStats('done')}
           value={doneToday}
           hint={
             doneToday === 0
@@ -170,13 +172,13 @@ export default function TasksPage() {
           tone="default"
         />
         <BigStat
-          label="Сейчас в работе"
+          label={tStats('inProgress')}
           value={inFlight}
           hint={inFlight === 0 ? 'нет активных задач' : 'идёт прямо сейчас'}
           tone={inFlight > 0 ? 'accent' : 'default'}
         />
         <BigStat
-          label="Ждут вашего шага"
+          label={tStats('awaitingUser')}
           value={needsHelp}
           hint={needsHelp === 0 ? 'всё в порядке' : 'требуется ваше внимание'}
           tone={needsHelp > 0 ? 'warning' : 'default'}

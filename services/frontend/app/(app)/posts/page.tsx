@@ -20,6 +20,7 @@
 
 import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { ChevronDown, ChevronRight, FileText, Plus, Search } from 'lucide-react';
@@ -65,6 +66,7 @@ const platformShort: Record<string, string> = {
 // ─── Page ────────────────────────────────────────────────────────────
 
 export default function PostsPage() {
+  const tCommon = useTranslations('common');
   const [status, setStatus] = useState<StatusKey>('all');
   const [platform, setPlatform] = useState<PlatformKey>('all');
   const [search, setSearch] = useState('');
@@ -153,10 +155,10 @@ export default function PostsPage() {
         <div className="mt-6 flex flex-col gap-3 rounded-md border border-line bg-paper-raised p-3 sm:flex-row sm:flex-wrap sm:items-center">
           <Select value={platform} onValueChange={(v) => setPlatform(v as PlatformKey)}>
             <SelectTrigger className="h-8 w-full text-sm sm:w-[180px]">
-              <SelectValue placeholder="Все платформы" />
+              <SelectValue placeholder={tCommon('allPlatforms')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Все платформы</SelectItem>
+              <SelectItem value="all">{tCommon('allPlatforms')}</SelectItem>
               <SelectItem value="telegram">Telegram</SelectItem>
               <SelectItem value="vk">VK</SelectItem>
               <SelectItem value="yandex_business">Яндекс.Бизнес</SelectItem>
@@ -302,6 +304,7 @@ function PostsSkeleton() {
 }
 
 function PostsEmpty({ search, onResetSearch }: { search: string; onResetSearch: () => void }) {
+  const tPosts = useTranslations('posts');
   // Two flavours: "no posts at all" vs "no match for current search".
   // Search variant uses the shared EmptySearch component so the mono
   // query rendering matches mock-states.jsx.
@@ -316,7 +319,7 @@ function PostsEmpty({ search, onResetSearch }: { search: string; onResetSearch: 
   return (
     <div className="flex flex-col items-center px-6 py-16 text-center">
       <FileText aria-hidden className="mb-3 size-9 text-ink-faint" />
-      <p className="text-sm text-ink-mid">Постов пока нет</p>
+      <p className="text-sm text-ink-mid">{tPosts('emptyState')}</p>
       <p className="mt-1 max-w-xs text-xs text-ink-soft">
         Создайте первый пост — OneVoice опубликует его на всех подключённых каналах.
       </p>
