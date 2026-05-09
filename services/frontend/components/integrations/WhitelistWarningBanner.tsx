@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
@@ -18,6 +19,7 @@ interface Props {
 const DISMISS_KEY_PREFIX = 'projects:whitelistWarning:';
 
 export function WhitelistWarningBanner({ integrationId, businessId, platform }: Props) {
+  const tWarn = useTranslations('integrations.whitelistWarning');
   const dismissKey = `${DISMISS_KEY_PREFIX}${businessId}:${integrationId}`;
   const [dismissed, setDismissed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
@@ -65,15 +67,12 @@ export function WhitelistWarningBanner({ integrationId, businessId, platform }: 
       <div className="flex gap-3">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <div className="flex-1">
-          <p className="font-medium">Новая интеграция не попадёт в whitelist проектов</p>
-          <p className="mt-1">
-            Эти проекты используют явный whitelist и не включают инструменты {platformLabel}:{' '}
-            {names}. Откройте проект, чтобы добавить инструменты.
-          </p>
+          <p className="font-medium">{tWarn('title')}</p>
+          <p className="mt-1">{tWarn('body', { platform: platformLabel, names })}</p>
         </div>
         <Button variant="ghost" size="sm" onClick={onDismiss} aria-label="Закрыть предупреждение">
           <X className="h-4 w-4" />
-          <span className="sr-only">Понятно</span>
+          <span className="sr-only">{tWarn('dismissAria')}</span>
         </Button>
       </div>
     </div>

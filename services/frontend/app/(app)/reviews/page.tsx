@@ -133,6 +133,7 @@ function formatReviewDate(iso: string): string {
 export default function ReviewsPage() {
   const qc = useQueryClient();
   const tReviews = useTranslations('reviews');
+  const tCommon = useTranslations('common');
   const [platform, setPlatform] = useState<string>('all');
   const [replyStatus, setReplyStatus] = useState<string>('all');
   const [replyDialog, setReplyDialog] = useState<Review | null>(null);
@@ -238,20 +239,22 @@ export default function ReviewsPage() {
               <SelectValue placeholder="Платформа" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Все платформы</SelectItem>
-              <SelectItem value="yandex_business">Яндекс.Бизнес</SelectItem>
-              <SelectItem value="google">Google</SelectItem>
-              <SelectItem value="2gis">2ГИС</SelectItem>
-              <SelectItem value="telegram">Telegram</SelectItem>
-              <SelectItem value="vk">ВКонтакте</SelectItem>
+              <SelectItem value="all">{tReviews('platformOptions.all')}</SelectItem>
+              <SelectItem value="yandex_business">
+                {tReviews('platformOptions.yandexBusiness')}
+              </SelectItem>
+              <SelectItem value="google">{tReviews('platformOptions.google')}</SelectItem>
+              <SelectItem value="2gis">{tReviews('platformOptions.twoGis')}</SelectItem>
+              <SelectItem value="telegram">{tReviews('platformOptions.telegram')}</SelectItem>
+              <SelectItem value="vk">{tReviews('platformOptions.vk')}</SelectItem>
             </SelectContent>
           </Select>
 
           <Tabs value={replyStatus} onValueChange={setReplyStatus}>
             <TabsList>
-              <TabsTrigger value="all">Все</TabsTrigger>
-              <TabsTrigger value="pending">Без ответа</TabsTrigger>
-              <TabsTrigger value="replied">С ответом</TabsTrigger>
+              <TabsTrigger value="all">{tReviews('tabs.all')}</TabsTrigger>
+              <TabsTrigger value="pending">{tReviews('tabs.pending')}</TabsTrigger>
+              <TabsTrigger value="replied">{tReviews('tabs.replied')}</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -302,7 +305,7 @@ export default function ReviewsPage() {
       <Dialog open={!!replyDialog} onOpenChange={(open) => !open && setReplyDialog(null)}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle className="text-ink">Ответ на отзыв</DialogTitle>
+            <DialogTitle className="text-ink">{tReviews('dialog.title')}</DialogTitle>
           </DialogHeader>
           {replyDialog && (
             <div className="space-y-4">
@@ -317,7 +320,7 @@ export default function ReviewsPage() {
                 <p className="text-sm leading-relaxed text-ink-mid">{replyDialog.text}</p>
               </div>
               <div className="space-y-1.5">
-                <MonoLabel>Ваш ответ</MonoLabel>
+                <MonoLabel>{tReviews('dialog.yourReply')}</MonoLabel>
                 <Textarea
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
@@ -330,7 +333,7 @@ export default function ReviewsPage() {
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setReplyDialog(null)}>
-              Отмена
+              {tCommon('cancel')}
             </Button>
             <Button
               variant="primary"
@@ -383,6 +386,7 @@ function ReviewCard({
   onWriteOwn: () => void;
   isSending: boolean;
 }) {
+  const tReviews = useTranslations('reviews');
   const meta = platformInfo(review.platform);
   const status =
     (review.replyStatus as StatusKey) in statusBadge ? (review.replyStatus as StatusKey) : 'read';
@@ -426,7 +430,7 @@ function ReviewCard({
       {/* Sent reply — quiet sub-panel, no actions */}
       {hasSentReply && (
         <div className="mt-4 rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
-          <MonoLabel>Отправленный ответ</MonoLabel>
+          <MonoLabel>{tReviews('sentReply')}</MonoLabel>
           <p className="mt-1.5 text-sm leading-relaxed text-ink">{review.replyText}</p>
         </div>
       )}
@@ -435,8 +439,8 @@ function ReviewCard({
       {draftReady && (
         <div className="mt-4 rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
           <div className="flex items-center justify-between gap-3">
-            <MonoLabel tone="ochre">Образец ответа AI</MonoLabel>
-            <span className="text-xs text-ink-soft">Можно отправить или отредактировать</span>
+            <MonoLabel tone="ochre">{tReviews('aiSample.label')}</MonoLabel>
+            <span className="text-xs text-ink-soft">{tReviews('aiSample.hint')}</span>
           </div>
           <p className="mt-2 text-sm leading-relaxed text-ink">{review.draftReply}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -444,7 +448,7 @@ function ReviewCard({
               {isSending ? 'Отправляем…' : 'Отправить'}
             </Button>
             <Button variant="ghost" size="sm" onClick={onEdit} disabled={isSending}>
-              Отредактировать
+              {tReviews('aiSample.edit')}
             </Button>
           </div>
         </div>
@@ -453,9 +457,9 @@ function ReviewCard({
       {/* Generating state — quiet hint, no actions until ready. */}
       {draftGenerating && (
         <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
-          <span className="text-sm text-ink-mid">Готовим образец ответа…</span>
+          <span className="text-sm text-ink-mid">{tReviews('aiSample.preparing')}</span>
           <Button variant="secondary" size="sm" onClick={onWriteOwn}>
-            Ответить сейчас
+            {tReviews('aiSample.replyNow')}
           </Button>
         </div>
       )}
@@ -470,7 +474,7 @@ function ReviewCard({
               : 'Образец ещё не подготовлен. Можно ответить вручную.'}
           </span>
           <Button variant="secondary" size="sm" onClick={onWriteOwn}>
-            Написать ответ
+            {tReviews('aiSample.writeOwn')}
           </Button>
         </div>
       )}

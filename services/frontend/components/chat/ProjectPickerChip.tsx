@@ -1,6 +1,7 @@
 'use client';
 
 import { ChevronDown } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -21,6 +22,7 @@ interface Props {
 const UNASSIGNED_LABEL = 'Без проекта';
 
 export function ProjectPickerChip({ value, onChange }: Props) {
+  const tPicker = useTranslations('chat.projectPicker');
   const { data: projects } = useProjectsQuery();
   const sorted = [...(projects ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
@@ -38,13 +40,13 @@ export function ProjectPickerChip({ value, onChange }: Props) {
           size="sm"
           className="text-muted-foreground hover:text-foreground"
         >
-          <span className="truncate">Проект: {currentName}</span>
+          <span className="truncate">{tPicker('currentLabel', { name: currentName })}</span>
           <ChevronDown size={12} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-          Куда сохранить чат?
+          {tPicker('menuLabel')}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem

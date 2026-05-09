@@ -12,14 +12,16 @@
 // button back to /chat. Brand voice — no "Oops!", no emoji.
 
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { Button } from '@/components/ui/button';
 import { MonoLabel } from '@/components/ui/mono-label';
 
-export default function NotFound() {
+export default async function NotFound() {
+  const t = await getTranslations('common.notFound');
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-paper px-6 py-16">
       <div className="flex w-full max-w-[480px] flex-col items-center gap-5 rounded-lg border border-line bg-paper-raised px-8 py-20 text-center shadow-ov-1">
-        <MonoLabel className="text-ink-soft">ERROR · 404</MonoLabel>
+        <MonoLabel className="text-ink-soft">{t('errorLabel')}</MonoLabel>
         <div
           aria-hidden="true"
           className="font-mono text-[56px] leading-none tracking-[-0.02em] text-ink-faint"
@@ -28,15 +30,12 @@ export default function NotFound() {
         </div>
         <div>
           <h1 className="text-[22px] font-medium leading-tight tracking-[-0.01em] text-ink">
-            Такого здесь нет
+            {t('title')}
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-ink-mid">
-            Возможно, ссылка устарела или раздел был перемещён. Попробуйте начать заново — главная
-            всегда на месте.
-          </p>
+          <p className="mt-2 text-sm leading-relaxed text-ink-mid">{t('body')}</p>
         </div>
         <Button asChild variant="primary" size="md">
-          <Link href="/chat">На главную</Link>
+          <Link href="/chat">{t('homeLink')}</Link>
         </Button>
       </div>
     </main>

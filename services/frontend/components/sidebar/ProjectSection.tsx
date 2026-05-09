@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Plus,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useCreateConversation } from '@/hooks/useConversations';
@@ -39,6 +40,7 @@ export function ProjectSection({
   activeConversationId,
   onNavigate,
 }: Props) {
+  const tSide = useTranslations('sidebar');
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const createConversation = useCreateConversation();
@@ -102,7 +104,7 @@ export function ProjectSection({
         // Empty-state: NOT a listbox (a listbox MUST contain options —
         // otherwise axe flags `aria-required-children` (critical)).
         <p className="ml-5 mt-0.5 px-2 py-1 text-xs italic text-ink-faint">
-          В проекте пока нет чатов
+          {tSide('noChatsInProject')}
         </p>
       )}
       {!collapsed && visible.length > 0 && (
@@ -156,7 +158,9 @@ export function ProjectSection({
             );
           })}
           {count > MAX_VISIBLE && (
-            <p className="px-2 py-1 text-xs text-ink-faint">…и ещё {count - MAX_VISIBLE}</p>
+            <p className="px-2 py-1 text-xs text-ink-faint">
+              {tSide('moreCount', { count: count - MAX_VISIBLE })}
+            </p>
           )}
         </div>
       )}

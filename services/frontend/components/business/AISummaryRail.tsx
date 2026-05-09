@@ -5,6 +5,7 @@
 // based on what the owner has filled in, plus quiet tips. Read-only —
 // the owner verifies, then keeps editing the form.
 
+import { useTranslations } from 'next-intl';
 import { MonoLabel } from '@/components/ui/mono-label';
 import type { Business } from '@/types/business';
 import { toneLabel, type ToneId } from '@/lib/tones';
@@ -58,27 +59,25 @@ export interface AISummaryRailProps {
 }
 
 export function AISummaryRail({ business, tones }: AISummaryRailProps) {
+  const t = useTranslations('business.aiSummary');
   const summary = buildSummary(business, tones);
 
   return (
     <aside className="flex flex-col gap-3 lg:sticky lg:top-8 lg:self-start">
       {/* AI understanding */}
       <section className="flex flex-col gap-3 rounded-lg border border-line bg-paper-sunken p-5">
-        <MonoLabel>Образец</MonoLabel>
+        <MonoLabel>{t('sample')}</MonoLabel>
         <p className="text-sm leading-relaxed text-ink">{summary}</p>
-        <p className="text-xs leading-relaxed text-ink-mid">
-          Так OneVoice описывает вас клиентам, когда отвечает на вопросы или пишет посты. Если
-          звучит не так — поправьте «Основное» или тон.
-        </p>
+        <p className="text-xs leading-relaxed text-ink-mid">{t('sampleBody')}</p>
       </section>
 
       {/* Tips */}
       <section className="flex flex-col gap-3 rounded-lg border border-line bg-paper-raised p-5">
-        <MonoLabel>Подсказки</MonoLabel>
+        <MonoLabel>{t('tips')}</MonoLabel>
         <ul className="flex flex-col gap-2 text-[13px] leading-relaxed text-ink-mid">
-          <li>Опишите ваш район — клиенты узнают вас по нему.</li>
-          <li>Укажите парковку или ориентир: про это часто спрашивают.</li>
-          <li>В описании оставьте одну деталь, по которой узнают именно вас.</li>
+          <li>{t('tip1')}</li>
+          <li>{t('tip2')}</li>
+          <li>{t('tip3')}</li>
         </ul>
       </section>
     </aside>

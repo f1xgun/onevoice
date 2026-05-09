@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useConversationsQuery } from '@/hooks/useConversations';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { PinnedSection } from '@/components/sidebar/PinnedSection';
@@ -21,6 +22,7 @@ interface ProjectPaneProps {
 // Plan 19-02 / D-04+D-05 — hidden when empty), the «Без проекта» bucket,
 // the project tree, and the «+ Новый проект» link.
 export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
+  const tSide = useTranslations('sidebar');
   const pathname = usePathname();
   const { data: projects } = useProjectsQuery();
   const { data: conversations } = useConversationsQuery();
@@ -111,7 +113,7 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
         onClick={onNavigate}
         className="mt-1 block px-2 py-1 text-xs text-ink-faint hover:text-ink"
       >
-        + Новый проект
+        {tSide('newProject')}
       </Link>
     </aside>
   );

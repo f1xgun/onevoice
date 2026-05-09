@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Menu } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import {
   Sheet,
   SheetContent,
@@ -18,6 +19,7 @@ import { ProjectPane } from '@/components/sidebar/ProjectPane';
 // 19-01 D-14: NavRail + PanelGroup with conditional ProjectPane). Phase
 // 19-05 will own the mobile drawer auto-close-on-chat-select work.
 export function Sidebar() {
+  const tSide = useTranslations('sidebar');
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -46,10 +48,8 @@ export function Sidebar() {
           // NavRail) on every other route — no awkward empty cream gap.
           className={`flex gap-0 p-0 ${showProjectPane ? 'w-72' : 'w-14'}`}
         >
-          <SheetTitle className="sr-only">Боковое меню</SheetTitle>
-          <SheetDescription className="sr-only">
-            Навигация по приложению и список проектов
-          </SheetDescription>
+          <SheetTitle className="sr-only">{tSide('menuLabel')}</SheetTitle>
+          <SheetDescription className="sr-only">{tSide('menuDescription')}</SheetDescription>
           <NavRail onNavigate={() => setOpen(false)} />
           {showProjectPane && (
             <div className="flex-1">
@@ -58,7 +58,7 @@ export function Sidebar() {
           )}
         </SheetContent>
       </Sheet>
-      <span className="text-lg font-semibold">OneVoice</span>
+      <span className="text-lg font-semibold">{tSide('wordmark')}</span>
     </div>
   );
 }

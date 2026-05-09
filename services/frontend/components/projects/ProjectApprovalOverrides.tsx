@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -84,6 +85,7 @@ function ToolRow({
   businessDefault: ToolApprovalValue | undefined;
   onChange: (next: Record<string, ToolApprovalValue>) => void;
 }) {
+  const tOver = useTranslations('projects.approvalOverrides');
   const selection = selectionFor(tool.name, value);
   const autoId = `po-auto-${tool.name}`;
   const manualId = `po-manual-${tool.name}`;
@@ -105,28 +107,28 @@ function ToolRow({
         <div className="flex items-center gap-2">
           <RadioGroupItem value={SELECTION_AUTO} id={autoId} />
           <Label htmlFor={autoId} className="cursor-pointer text-sm">
-            Автоматически
+            {tOver('auto')}
           </Label>
         </div>
         <div className="flex items-center gap-2">
           <RadioGroupItem value={SELECTION_MANUAL} id={manualId} />
           <Label htmlFor={manualId} className="cursor-pointer text-sm">
-            Вручную
+            {tOver('manual')}
           </Label>
         </div>
         <div className="flex items-center gap-2">
           <RadioGroupItem value={SELECTION_INHERIT} id={inheritId} />
           <Label htmlFor={inheritId} className="cursor-pointer text-sm">
-            «как у бизнеса»
+            {tOver('inherit')}
           </Label>
           <span
             className={cn(
               'rounded-md border px-2 py-0.5 text-xs text-muted-foreground',
               selection === SELECTION_INHERIT ? 'border-primary/40 bg-accent/40' : 'border-border'
             )}
-            aria-label={`Бизнес: ${businessDefaultLabel(businessDefault)}`}
+            aria-label={tOver('businessTag', { label: businessDefaultLabel(businessDefault) })}
           >
-            Бизнес: {businessDefaultLabel(businessDefault)}
+            {tOver('businessTag', { label: businessDefaultLabel(businessDefault) })}
           </span>
         </div>
       </RadioGroup>
@@ -140,6 +142,7 @@ export function ProjectApprovalOverrides({
   value,
   onChange,
 }: ProjectApprovalOverridesProps) {
+  const tOverMain = useTranslations('projects.approvalOverrides');
   // Only manual-floor tools get a 3-way toggle. Forbidden tools can never
   // be enabled (POLICY-01); auto-floor tools bypass HITL — neither is
   // meaningful here.
@@ -148,11 +151,7 @@ export function ProjectApprovalOverrides({
   const platforms = TOOL_PLATFORM_ORDER.filter((p) => buckets[p].length > 0);
 
   if (manualTools.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Нет инструментов, требующих одобрения — всё работает автоматически.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">{tOverMain('noTools')}</p>;
   }
 
   return (

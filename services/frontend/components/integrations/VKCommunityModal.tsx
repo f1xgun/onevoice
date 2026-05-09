@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
@@ -28,6 +29,7 @@ interface Props {
 //   3. Отметить «Стена», «Сообщения сообщества», «Управление сообществом»
 //   4. Скопировать выданный ключ и вставить ниже.
 export function VKCommunityModal({ open, onClose }: Props) {
+  const tVk = useTranslations('integrations.vkCommunity');
   const qc = useQueryClient();
   const [token, setToken] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -70,34 +72,39 @@ export function VKCommunityModal({ open, onClose }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Подключить сообщество VK</DialogTitle>
+          <DialogTitle>{tVk('title')}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2 rounded-md border border-line-soft bg-paper-sunken px-4 py-3 text-sm text-ink-mid">
-            <p className="font-medium text-ink">Где взять ключ</p>
+            <p className="font-medium text-ink">{tVk('tokenIntro')}</p>
             <ol className="ml-4 list-decimal space-y-1">
-              <li>Откройте сообщество VK → «Управление» → «Работа с API».</li>
+              <li>{tVk('step1')}</li>
               <li>
-                На вкладке «Ключи доступа» нажмите{' '}
-                <span className="font-medium text-ink">«Создать ключ»</span>.
+                {tVk('step2Prefix')}
+                <span className="font-medium text-ink">{tVk('step2Highlight')}</span>
+                {tVk('step2Suffix')}
               </li>
               <li>
-                <span className="font-medium text-ink">Не выбирайте приложение</span> — иначе ключ
-                унаследует ограничения VK Mini App и не сможет отвечать на комментарии.
+                <span className="font-medium text-ink">{tVk('warningHighlight')}</span>
+                {tVk('warningSuffix')}
               </li>
               <li>
-                Включите права: <span className="font-mono text-xs">«Стена»</span>,{' '}
-                <span className="font-mono text-xs">«Сообщения сообщества»</span>,{' '}
-                <span className="font-mono text-xs">«Управление сообществом»</span>.
+                {tVk('permissionsPrefix')}
+                <span className="font-mono text-xs">{tVk('permWall')}</span>
+                {tVk('permSeparator')}
+                <span className="font-mono text-xs">{tVk('permMessages')}</span>
+                {tVk('permSeparator')}
+                <span className="font-mono text-xs">{tVk('permManage')}</span>
+                {tVk('step2Suffix')}
               </li>
-              <li>Скопируйте выданный ключ и вставьте сюда.</li>
+              <li>{tVk('step5')}</li>
             </ol>
           </div>
 
           <div className="space-y-2">
             <label className="text-sm text-ink-mid" htmlFor="vk-community-token">
-              Ключ доступа сообщества
+              {tVk('tokenLabel')}
             </label>
             <Textarea
               id="vk-community-token"
@@ -110,10 +117,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
               className="font-mono text-xs"
               disabled={submitting}
             />
-            <p className="text-xs text-ink-soft">
-              OneVoice проверит ключ, найдёт привязанное сообщество и сохранит интеграцию. Ничего
-              никуда не уходит, кроме самого VK API.
-            </p>
+            <p className="text-xs text-ink-soft">{tVk('tokenFooter')}</p>
           </div>
 
           <div className="flex gap-2 pt-2">
@@ -124,7 +128,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
               className="flex-1"
               disabled={submitting}
             >
-              Отмена
+              {tVk('cancel')}
             </Button>
             <Button type="submit" disabled={submitting || !token.trim()} className="flex-1">
               {submitting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}

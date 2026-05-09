@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
 
@@ -66,6 +67,9 @@ interface Props {
 // Regenerate-title 409 toasts the server-supplied verbatim Russian
 // message (D-02 / D-03 — see RegenerateMenuItem.test.tsx).
 export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDeleted }: Props) {
+  const tRow = useTranslations('chat.rowMenu');
+  const tCommon = useTranslations('common');
+  const tChat = useTranslations('chat');
   const router = useRouter();
   const pathname = usePathname();
   const [renameOpen, setRenameOpen] = useState(false);
@@ -134,12 +138,12 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
         <DropdownMenuContent align={align}>
           <DropdownMenuItem onSelect={openRename}>
             <Pencil size={14} className="mr-2" />
-            Переименовать
+            {tRow('rename')}
           </DropdownMenuItem>
           {canRegenerate && (
             <DropdownMenuItem onSelect={handleRegenerate}>
               <RefreshCw size={14} className="mr-2" />
-              Обновить заголовок
+              {tRow('regenerateTitle')}
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
@@ -157,7 +161,7 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
             }}
           >
             <Trash2 size={14} className="mr-2" />
-            Удалить
+            {tRow('delete')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -165,10 +169,8 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Переименовать чат</DialogTitle>
-            <DialogDescription>
-              Новое название будет видно везде, где отображается чат.
-            </DialogDescription>
+            <DialogTitle>{tRow('renameDialogTitle')}</DialogTitle>
+            <DialogDescription>{tRow('renameDialogDescription')}</DialogDescription>
           </DialogHeader>
           <Input
             value={renameDraft}
@@ -185,10 +187,10 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRenameOpen(false)}>
-              Отмена
+              {tCommon('cancel')}
             </Button>
             <Button onClick={commitRename} disabled={renameMutation.isPending}>
-              Сохранить
+              {tCommon('save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -197,19 +199,19 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить диалог?</AlertDialogTitle>
+            <AlertDialogTitle>{tChat('deleteConversationTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Это действие нельзя отменить. Все сообщения будут безвозвратно удалены.
+              {tChat('deleteConversationDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
               onClick={handleDelete}
               disabled={deleteMutation.isPending}
             >
-              Удалить
+              {tCommon('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

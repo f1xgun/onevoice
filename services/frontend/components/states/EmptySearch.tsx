@@ -8,7 +8,10 @@
 // expose this for full-page search surfaces and as a retuned visual
 // match. The dropdown variant stays inline (text-only) for compactness.
 
+'use client';
+
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { EmptyFrame } from './EmptyFrame';
@@ -23,14 +26,15 @@ export interface EmptySearchProps {
 }
 
 export function EmptySearch({ query, onResetFilters, body }: EmptySearchProps) {
+  const tStates = useTranslations('states.emptySearch');
   return (
     <EmptyFrame
       compact
       title={
         <>
-          Ничего не нашлось по запросу{' '}
+          {tStates('noResultsPrefix')}
           <MonoLabel tone="ink" className="ml-0.5 text-[14px] normal-case tracking-normal">
-            «{query}»
+            {tStates('queryFormat', { query })}
           </MonoLabel>
         </>
       }
@@ -38,7 +42,7 @@ export function EmptySearch({ query, onResetFilters, body }: EmptySearchProps) {
       action={
         onResetFilters ? (
           <Button variant="ghost" size="sm" onClick={onResetFilters}>
-            Сбросить фильтры
+            {tStates('resetFilters')}
           </Button>
         ) : undefined
       }

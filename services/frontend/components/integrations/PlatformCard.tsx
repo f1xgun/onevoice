@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
 import { getIntegrationDisplay } from '@/lib/integrations';
@@ -91,6 +92,7 @@ export function PlatformCard({
   onDisconnect,
   disabled,
 }: Props) {
+  const tCard = useTranslations('integrations.platformCard');
   const qc = useQueryClient();
   const [refreshingID, setRefreshingID] = useState<string | null>(null);
 
@@ -140,10 +142,10 @@ export function PlatformCard({
             <span className="text-[15px] font-semibold text-ink">{label}</span>
             {hasActive ? (
               <Badge tone="success" dot>
-                Подключено
+                {tCard('connected')}
               </Badge>
             ) : (
-              <Badge tone="neutral">Не подключено</Badge>
+              <Badge tone="neutral">{tCard('notConnected')}</Badge>
             )}
           </div>
           <div className="mt-0.5 text-[13px] text-ink-mid">{description}</div>
@@ -153,7 +155,7 @@ export function PlatformCard({
       {/* Channels list */}
       {integrations.length > 0 && (
         <div className="px-5 pb-5">
-          <MonoLabel>Каналы</MonoLabel>
+          <MonoLabel>{tCard('channels')}</MonoLabel>
           <div className="mt-2.5">
             {integrations.length > 3 ? (
               <ScrollArea className="max-h-44">
@@ -177,7 +179,7 @@ export function PlatformCard({
               />
             )}
             <Button variant="secondary" size="sm" className="mt-3" onClick={onConnect}>
-              + Добавить канал
+              {tCard('addChannel')}
             </Button>
           </div>
         </div>
@@ -186,7 +188,7 @@ export function PlatformCard({
       {integrations.length === 0 && (
         <div className="px-5 pb-5">
           <Button variant="primary" size="sm" onClick={onConnect}>
-            Подключить
+            {tCard('connect')}
           </Button>
         </div>
       )}
@@ -209,6 +211,8 @@ function ChannelList({
   refreshingID: string | null;
   onRefreshTelegram: (i: Integration) => void;
 }) {
+  const tCard = useTranslations('integrations.platformCard');
+  const tCommon = useTranslations('common');
   const qc = useQueryClient();
   const refreshedRef = useRef<Set<string>>(new Set());
 
@@ -305,16 +309,11 @@ function ChannelList({
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Добавьте бота в группу обсуждений</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        У этого канала есть связанная группа для комментариев, но бот в неё не
-                        добавлен — поэтому комментарии к постам не собираются. Откройте группу
-                        обсуждений → участники → пригласите бота канала. После этого отключите и
-                        подключите канал заново, чтобы обновить статус.
-                      </AlertDialogDescription>
+                      <AlertDialogTitle>{tCard('addBotToGroupTitle')}</AlertDialogTitle>
+                      <AlertDialogDescription>{tCard('addBotToGroupBody')}</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Закрыть</AlertDialogCancel>
+                      <AlertDialogCancel>{tCard('close')}</AlertDialogCancel>
                       <AlertDialogAction
                         disabled={refreshingID === i.id}
                         onClick={(e) => {
@@ -334,24 +333,23 @@ function ChannelList({
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-7 px-2 text-[var(--ov-danger)]">
-                    Отключить
+                    {tCard('disconnect')}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>{`Отключить ${display.name}?`}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      История сообщений останется в архиве. Чтобы снова получать сообщения из{' '}
-                      {display.name}, канал нужно будет подключить заново.
+                      {tCard('disconnectBody', { name: display.name })}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Отмена</AlertDialogCancel>
+                    <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
                     <AlertDialogAction
                       className="hover:bg-[var(--ov-danger)]/90 border-[var(--ov-danger)] bg-[var(--ov-danger)] text-[oklch(0.99_0_0)]"
                       onClick={() => onDisconnect(i.id)}
                     >
-                      Отключить
+                      {tCard('disconnect')}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

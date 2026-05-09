@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { MessageCircle, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -36,6 +37,7 @@ export function ConversationItem({
   onDelete: () => void;
   onRegenerateTitle: () => void;
 }) {
+  const tRow = useTranslations('chat.rowMenu');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(conv.title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -118,7 +120,7 @@ export function ConversationItem({
               }}
             >
               <Pencil size={14} className="mr-2" />
-              Переименовать
+              {tRow('rename')}
             </DropdownMenuItem>
             {/* Phase 18 / TITLE-09 / D-12: between Переименовать and Удалить.
                 Hidden when titleStatus === 'manual' so manual renames stay
@@ -131,7 +133,7 @@ export function ConversationItem({
                 }}
               >
                 <RefreshCw size={14} className="mr-2" />
-                Обновить заголовок
+                {tRow('regenerateTitle')}
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
@@ -145,7 +147,7 @@ export function ConversationItem({
               }}
             >
               <Trash2 size={14} className="mr-2" />
-              Удалить
+              {tRow('delete')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

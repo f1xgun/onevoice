@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
@@ -52,6 +53,7 @@ type Step = 'paste' | 'searching' | 'pick' | 'connecting';
 //   pick      → if >1 org, radio picker; if 1, auto-skip
 //   connecting → final /connect with chosen permalink + name
 export function YandexBusinessConnectModal({ open, onClose }: Props) {
+  const tYa = useTranslations('integrations.yandexBusiness');
   const qc = useQueryClient();
   const [step, setStep] = useState<Step>('paste');
   const [value, setValue] = useState('');
@@ -176,50 +178,49 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Подключить Яндекс.Бизнес</DialogTitle>
+          <DialogTitle>{tYa('title')}</DialogTitle>
         </DialogHeader>
 
         {step === 'paste' && (
           <form onSubmit={handleSearchCompanies} className="space-y-4">
             <div className="space-y-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-              <p className="font-medium">Зачем нужны cookies?</p>
-              <p>
-                У Яндекс.Бизнеса нет публичного API для управления отзывами и информацией о
-                компании, поэтому OneVoice работает через ваш сеанс — как если бы вы открыли сайт
-                сами. Cookies хранятся зашифрованно и используются только для действий, которые вы
-                инициируете.
-              </p>
+              <p className="font-medium">{tYa('whyCookies')}</p>
+              <p>{tYa('whyCookiesBody')}</p>
             </div>
 
             <details className="rounded-lg border p-3 text-sm">
-              <summary className="cursor-pointer font-medium">Как скопировать cookies</summary>
+              <summary className="cursor-pointer font-medium">{tYa('howToCopy')}</summary>
               <ol className="mt-3 space-y-2 pl-5 text-gray-700 [&>li]:list-decimal">
                 <li>
-                  Установите расширение{' '}
+                  {tYa('step1Prefix')}
                   <a
                     href="https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm"
                     target="_blank"
                     rel="noreferrer"
                     className="text-blue-600 underline"
                   >
-                    Cookie-Editor
+                    {tYa('step1Link')}
                   </a>{' '}
-                  (Chrome / Edge / Firefox).
+                  {tYa('step1Browsers')}
                 </li>
                 <li>
-                  Откройте <span className="font-mono text-xs">business.yandex.ru</span> и войдите в
-                  нужный аккаунт.
+                  {tYa('step2Prefix')}
+                  <span className="font-mono text-xs">{tYa('step2Domain')}</span>
+                  {tYa('step2Suffix')}
                 </li>
                 <li>
-                  Нажмите на иконку расширения → <b>Export</b> → <b>Export as JSON</b> — JSON
-                  автоматически скопируется в буфер.
+                  {tYa('step3Prefix')}
+                  <b>{tYa('step3Export')}</b>
+                  {tYa('step3Arrow')}
+                  <b>{tYa('step3ExportJson')}</b>
+                  {tYa('step3Suffix')}
                 </li>
-                <li>Вставьте в поле ниже.</li>
+                <li>{tYa('step4')}</li>
               </ol>
               <p className="mt-3 text-xs text-gray-500">
-                Альтернативно: можно вставить только значение{' '}
-                <span className="font-mono">Session_id</span> или «сырой» Cookie-заголовок из
-                DevTools → Network → Request Headers.
+                {tYa('alternativePrefix')}
+                <span className="font-mono">{tYa('alternativeSession')}</span>
+                {tYa('alternativeSuffix')}
               </p>
             </details>
 
@@ -237,10 +238,10 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
 
             <div className="flex gap-2 pt-2">
               <Button type="button" variant="outline" onClick={handleClose} className="flex-1">
-                Отмена
+                {tYa('cancel')}
               </Button>
               <Button type="submit" disabled={!canSearch} className="flex-1">
-                Далее
+                {tYa('next')}
               </Button>
             </div>
           </form>
@@ -250,11 +251,8 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
           <div className="flex flex-col items-center gap-4 py-12">
             <Loader2 className="h-10 w-10 animate-spin text-gray-500" />
             <div className="text-center">
-              <p className="font-medium text-ink">Ищем ваши организации в Яндексе…</p>
-              <p className="mt-1 text-sm text-gray-500">
-                Это может занять до минуты. Мы открываем Яндекс.Бизнес от вашего имени, чтобы
-                получить список.
-              </p>
+              <p className="font-medium text-ink">{tYa('searching')}</p>
+              <p className="mt-1 text-sm text-gray-500">{tYa('searchingBody')}</p>
             </div>
           </div>
         )}
@@ -262,8 +260,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
         {step === 'pick' && (
           <form onSubmit={handlePickSubmit} className="space-y-4">
             <p className="text-sm text-gray-700">
-              Найдено {companies.length} организ{plural(companies.length)}. Какую подключить к
-              OneVoice?
+              {tYa('found', { count: companies.length, ending: plural(companies.length) })}
             </p>
             <div className="max-h-80 space-y-2 overflow-y-auto">
               {companies.map((c) => (
@@ -299,10 +296,10 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
                 onClick={() => setStep('paste')}
                 className="flex-1"
               >
-                Назад
+                {tYa('back')}
               </Button>
               <Button type="submit" disabled={!selectedPermalink} className="flex-1">
-                Подключить
+                {tYa('connect')}
               </Button>
             </div>
           </form>
@@ -311,7 +308,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
         {step === 'connecting' && (
           <div className="flex flex-col items-center gap-4 py-12">
             <Loader2 className="h-10 w-10 animate-spin text-gray-500" />
-            <p className="text-sm text-gray-600">Подключение…</p>
+            <p className="text-sm text-gray-600">{tYa('connecting')}</p>
           </div>
         )}
       </DialogContent>
@@ -340,14 +337,19 @@ function ProbeStatus({
   probe: ProbeResponse | null;
   hasInput: boolean;
 }) {
+  const tYa = useTranslations('integrations.yandexBusiness');
   if (!hasInput) return null;
   if (probing) {
-    return <p className="text-sm text-gray-500">Проверяем…</p>;
+    return <p className="text-sm text-gray-500">{tYa('checking')}</p>;
   }
   if (!probe) return null;
 
   if (!probe.ok) {
-    return <p className="text-sm text-red-600">✗ {probe.error || 'Не распознан формат'}</p>;
+    return (
+      <p className="text-sm text-red-600">
+        {tYa('probeError', { error: probe.error || tYa('formatNotRecognized') })}
+      </p>
+    );
   }
 
   const formatLabel = probe.format ? FORMAT_LABELS[probe.format] : 'формат';
@@ -355,26 +357,18 @@ function ProbeStatus({
   return (
     <div className="space-y-1 text-sm">
       <p className="text-green-700">
-        ✓ Формат распознан ({formatLabel})
+        {tYa('formatRecognized', { format: formatLabel })}
         {probe.session_valid === true && probe.username && (
           <>
-            {' '}
-            — вошли как <span className="font-medium">{probe.username}</span>
+            {tYa('loggedInAs')}
+            <span className="font-medium">{probe.username}</span>
           </>
         )}
-        {probe.session_valid === true && !probe.username && <> — сеанс активен</>}
+        {probe.session_valid === true && !probe.username && <>{tYa('sessionActive')}</>}
       </p>
-      {probe.session_valid === false && (
-        <p className="text-amber-700">
-          ⚠ Сеанс выглядит истёкшим — возможно, нужно заново войти в Яндекс и скопировать cookies
-          снова. Можно подключить и проверить — ошибка вылезет при первом действии.
-        </p>
-      )}
+      {probe.session_valid === false && <p className="text-amber-700">{tYa('sessionExpired')}</p>}
       {probe.session_valid === undefined && (
-        <p className="text-gray-500">
-          Не удалось проверить сеанс с нашей стороны (антибот Яндекса). Сеанс будет проверен при
-          первом обращении.
-        </p>
+        <p className="text-gray-500">{tYa('sessionUnchecked')}</p>
       )}
       {probe.warnings?.map((w, i) => (
         <p key={i} className="text-amber-700">

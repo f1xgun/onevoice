@@ -1,6 +1,7 @@
 'use client';
 
 import { Plus, Trash2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MAX_QUICK_ACTIONS } from '@/lib/quick-actions';
@@ -11,6 +12,7 @@ interface QuickActionsEditorProps {
 }
 
 export function QuickActionsEditor({ value, onChange }: QuickActionsEditorProps) {
+  const tQA = useTranslations('projects.quickActions');
   const updateItem = (index: number, text: string) => {
     const next = [...value];
     next[index] = text;
@@ -31,9 +33,7 @@ export function QuickActionsEditor({ value, onChange }: QuickActionsEditorProps)
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        До 6 коротких фраз — появятся кнопками в пустом чате.
-      </p>
+      <p className="text-xs text-muted-foreground">{tQA('hint')}</p>
       {value.length > 0 && (
         <ul className="space-y-2">
           {value.map((item, index) => (
@@ -68,7 +68,7 @@ export function QuickActionsEditor({ value, onChange }: QuickActionsEditorProps)
         className="gap-2"
       >
         <Plus size={14} />
-        Добавить
+        {tQA('add')}
       </Button>
     </div>
   );

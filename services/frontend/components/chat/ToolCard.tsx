@@ -1,3 +1,5 @@
+'use client';
+
 // components/chat/ToolCard.tsx — OneVoice (Linen) tool-call card
 //
 // One tool call = one card with the platform tag, the tool name in
@@ -12,6 +14,7 @@
 // pin these classes/strings — this rebuild keeps them.
 
 import { Pencil } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import type { ToolCall } from '@/types/chat';
 import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
@@ -31,6 +34,7 @@ const RU = {
 } as const;
 
 export function ToolCard({ tool }: { tool: ToolCall }) {
+  const tCard = useTranslations('chat.toolCard');
   const platform = getPlatform(tool.name);
   const color = PLATFORM_COLORS[platform] ?? '#6b7280';
   const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
@@ -64,15 +68,15 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
           <span className={toolNameClasses}>{tool.name}</span>
         </div>
         {tool.status === 'pending' && (
-          <Badge tone="info" dot aria-label="Выполняется">
+          <Badge tone="info" dot aria-label={tCard('running')}>
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-line border-t-blue-500" />
-            Выполняется
+            {tCard('running')}
           </Badge>
         )}
         {tool.status === 'done' && (
-          <Badge tone="success" aria-label="Готово">
+          <Badge tone="success" aria-label={tCard('done')}>
             <span className="text-[var(--ov-success)]">✅</span>
-            Готово
+            {tCard('done')}
           </Badge>
         )}
         {tool.status === 'done' && tool.wasEdited && (
@@ -92,19 +96,15 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
           </TooltipProvider>
         )}
         {tool.status === 'error' && (
-          <Badge tone="danger" aria-label="Ошибка">
+          <Badge tone="danger" aria-label={tCard('error')}>
             <span className="text-[var(--ov-danger)]">❌</span>
-            Ошибка
+            {tCard('error')}
           </Badge>
         )}
         {tool.status === 'aborted' && (
-          <Badge
-            tone="neutral"
-            aria-label="Прервано"
-            title="Выполнение прервано — результат не получен"
-          >
+          <Badge tone="neutral" aria-label={tCard('aborted')} title={tCard('abortedTooltip')}>
             <span className="text-ink-soft">⏸</span>
-            Прервано
+            {tCard('aborted')}
           </Badge>
         )}
         {tool.status === 'rejected' && (
@@ -125,7 +125,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
         </p>
       )}
       {tool.status === 'aborted' && (
-        <p className="text-xs italic text-ink-soft">Выполнение прервано — результат не получен</p>
+        <p className="text-xs italic text-ink-soft">{tCard('abortedNote')}</p>
       )}
     </div>
   );
