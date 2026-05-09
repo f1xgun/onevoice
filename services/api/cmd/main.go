@@ -21,6 +21,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/health"
@@ -392,19 +393,30 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	reviewService := service.NewReviewService(reviewRepo, businessService, natsConn, reviewRefresher)
 
-	// Platform syncer: pushes business info updates to connected platforms
-	platformSyncer := platform.NewSyncer(
-		&integrationSyncAdapter{svc: integrationService},
-		nil,
-		cfg.PublicURL,
-	)
-	platformSyncer.SetTaskRecorder(agentTaskRepo)
-	platformSyncer.SetTaskHub(taskHub)
+	// Platform syncer: pushes business info updates to connected platforms.
+	// Each capability-implementing platform impl is wired into perPlatform
+	// keyed by integ.Platform; Syncer dispatches to whichever interfaces
+	// the impl satisfies (TitleSyncer, DescriptionSyncer, PhotoSyncer,
+	// InfoSyncer, ScheduleSyncer) — no no-op methods required.
+	integrationAdapter := &integrationSyncAdapter{svc: integrationService}
+	platformHTTPClient := &http.Client{Timeout: 10 * time.Second}
 	var agentTaskPublisher *platform.NATSTaskPublisher
 	if natsConn != nil {
 		agentTaskPublisher = platform.NewNATSTaskPublisher(natsConn)
-		platformSyncer.SetTaskPublisher(agentTaskPublisher)
 	}
+	// agentTaskPublisher is *platform.NATSTaskPublisher (nil-typed when
+	// natsConn is nil); cast through the platform.TaskPublisher interface
+	// so YandexSyncer's nil-check sees an honestly-nil value.
+	var yandexPublisher platform.TaskPublisher
+	if agentTaskPublisher != nil {
+		yandexPublisher = agentTaskPublisher
+	}
+	perPlatform := map[string]any{
+		a2a.AgentTelegram:       platform.NewTelegramSyncer(integrationAdapter, platformHTTPClient, "", cfg.PublicURL),
+		a2a.AgentVK:             platform.NewVKSyncer(integrationAdapter, platformHTTPClient, ""),
+		a2a.AgentYandexBusiness: platform.NewYandexSyncer(yandexPublisher),
+	}
+	platformSyncer := platform.NewSyncer(integrationAdapter, agentTaskRepo, taskHub, perPlatform)
 
 	// Initialize handlers
 	oauthHandler := handler.NewOAuthHandler(oauthService, integrationService, businessService, handler.OAuthConfig{
