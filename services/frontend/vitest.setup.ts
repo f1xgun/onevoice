@@ -13,17 +13,22 @@ import { vi } from 'vitest';
 // a context-not-found exception.
 import ruMessages from './messages/ru.json';
 
-function lookupTranslation(namespace: string | undefined, key: string): string {
+function lookupRaw(namespace: string | undefined, key: string): unknown {
   const path = namespace ? `${namespace}.${key}`.split('.') : key.split('.');
   let cursor: unknown = ruMessages;
   for (const part of path) {
     if (typeof cursor === 'object' && cursor !== null && part in cursor) {
       cursor = (cursor as Record<string, unknown>)[part];
     } else {
-      return namespace ? `${namespace}.${key}` : key;
+      return undefined;
     }
   }
-  return typeof cursor === 'string' ? cursor : namespace ? `${namespace}.${key}` : key;
+  return cursor;
+}
+
+function lookupTranslation(namespace: string | undefined, key: string): string {
+  const v = lookupRaw(namespace, key);
+  return typeof v === 'string' ? v : namespace ? `${namespace}.${key}` : key;
 }
 
 // Russian plural category for an integer per CLDR rules. Used by the
@@ -128,8 +133,10 @@ vi.mock('next-intl', () => {
     const t = (key: string, params?: Record<string, unknown>) =>
       interpolate(lookupTranslation(namespace, key), params);
     (t as unknown as { has: (k: string) => boolean }).has = () => true;
-    (t as unknown as { raw: (k: string) => string }).raw = (k: string) =>
-      lookupTranslation(namespace, k);
+    // Real next-intl returns the raw JSON node here (object, array, or
+    // string). The previous stub coerced everything to a string, which
+    // hid `t.raw('arrayKey')` callers (lib/quick-actions.ts).
+    (t as unknown as { raw: (k: string) => unknown }).raw = (k: string) => lookupRaw(namespace, k);
     return t;
   };
   return {
