@@ -78,7 +78,7 @@ export function ProjectSection({
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </button>
         <Link
-          href={`/projects/${project.id}`}
+          href={`/projects/${project.id}/chats`}
           onClick={onNavigate}
           className="flex flex-1 items-center gap-2 truncate"
         >
