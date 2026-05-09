@@ -306,7 +306,7 @@ func (h *ChatProxyHandler) persistAfterStream(
 		assistantMsg := &domain.Message{
 			ID:             streamStartMessageID,
 			ConversationID: conversationID,
-			Role:           "assistant",
+			Role:           roleAssistant,
 			Content:        state.assistantText.String(),
 			ToolCalls:      pendingToolCalls,
 			Status:         domain.MessageStatusPendingApproval,
@@ -331,7 +331,7 @@ func (h *ChatProxyHandler) persistAfterStream(
 	assistantMsg := &domain.Message{
 		ID:             streamStartMessageID,
 		ConversationID: conversationID,
-		Role:           "assistant",
+		Role:           roleAssistant,
 		Content:        content,
 		ToolCalls:      state.toolCalls,
 		ToolResults:    state.toolResults,
@@ -392,13 +392,13 @@ func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID strin
 	history := make([]map[string]string, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
-		case "user":
-			history = append(history, map[string]string{"role": "user", "content": m.Content})
-		case "assistant":
+		case roleUser:
+			history = append(history, map[string]string{"role": roleUser, "content": m.Content})
+		case roleAssistant:
 			if m.Content == "" && len(m.ToolCalls) == 0 {
 				continue
 			}
-			history = append(history, map[string]string{"role": "assistant", "content": m.Content})
+			history = append(history, map[string]string{"role": roleAssistant, "content": m.Content})
 		}
 	}
 	return history
