@@ -1,15 +1,28 @@
 import { z } from 'zod';
 
+// Field length limits — kept here to keep all schema-level
+// constraints in one place and to satisfy the
+// `no-magic-numbers` lint rule.
+const EMAIL_MAX_LEN = 254; // RFC 5321 SMTP local+domain limit
+const PASSWORD_MIN_LEN = 6;
+const NAME_MIN_LEN = 2;
+const NAME_MAX_LEN = 100;
+const TITLE_MAX_LEN = 200;
+const DESCRIPTION_MAX_LEN = 500;
+
 export const loginSchema = z.object({
-  email: z.string().email('Некорректный email').max(254),
-  password: z.string().min(6, 'Минимум 6 символов'),
+  email: z.string().email('Некорректный email').max(EMAIL_MAX_LEN),
+  password: z.string().min(PASSWORD_MIN_LEN, 'Минимум 6 символов'),
 });
 
 export const registerSchema = z
   .object({
-    name: z.string().min(2, 'Минимум 2 символа').max(100, 'Максимум 100 символов'),
-    email: z.string().email('Некорректный email').max(254),
-    password: z.string().min(6, 'Минимум 6 символов'),
+    name: z
+      .string()
+      .min(NAME_MIN_LEN, 'Минимум 2 символа')
+      .max(NAME_MAX_LEN, 'Максимум 100 символов'),
+    email: z.string().email('Некорректный email').max(EMAIL_MAX_LEN),
+    password: z.string().min(PASSWORD_MIN_LEN, 'Минимум 6 символов'),
     confirmPassword: z.string(),
   })
   .refine((d) => d.password === d.confirmPassword, {
@@ -21,7 +34,10 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 
 export const businessSchema = z.object({
-  name: z.string().min(2, 'Минимум 2 символа').max(200, 'Максимум 200 символов'),
+  name: z
+    .string()
+    .min(NAME_MIN_LEN, 'Минимум 2 символа')
+    .max(TITLE_MAX_LEN, 'Максимум 200 символов'),
   category: z.string().min(1, 'Выберите категорию'),
   phone: z
     .string()
@@ -29,8 +45,8 @@ export const businessSchema = z.object({
     .optional()
     .or(z.literal('')),
   website: z.string().url('Некорректный URL').optional().or(z.literal('')),
-  description: z.string().max(500).optional(),
-  address: z.string().max(500).optional(),
+  description: z.string().max(DESCRIPTION_MAX_LEN).optional(),
+  address: z.string().max(DESCRIPTION_MAX_LEN).optional(),
 });
 
 export type BusinessInput = z.infer<typeof businessSchema>;

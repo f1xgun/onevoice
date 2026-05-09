@@ -40,6 +40,11 @@ const jsonViewTheme = {
 
 type Decision = ApprovalAction | 'undecided';
 
+// Maximum length of the optional rejection reason. Mirrors the slice in
+// the parent ToolApprovalCard reducer so the inline length counter stops
+// flagging "over" exactly when the reducer would truncate.
+const REJECT_REASON_MAX_LEN = 500;
+
 /**
  * Minimal per-call draft shape consumed by the accordion entry. The root
  * `ToolApprovalCard` owns the full CallDraft (including batch-level
@@ -88,7 +93,7 @@ export function ToolApprovalAccordionEntry({
   const color = PLATFORM_COLORS[platform] ?? '#6b7280';
   const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
 
-  const counterOver = draft.rejectReason.length > 500;
+  const counterOver = draft.rejectReason.length > REJECT_REASON_MAX_LEN;
 
   return (
     <div

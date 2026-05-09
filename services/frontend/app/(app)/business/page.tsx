@@ -13,6 +13,7 @@ import { useTranslations } from 'next-intl';
 import { isAxiosError } from 'axios';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { ProfileForm } from '@/components/business/ProfileForm';
 import { HoursForm, SpecialDatesForm } from '@/components/business/ScheduleForm';
@@ -71,7 +72,7 @@ export default function BusinessPage() {
   // Sync local state when the underlying business record changes.
   useEffect(() => setTones(persistedTones), [persistedTones]);
 
-  const is404 = isError && isAxiosError(error) && error.response?.status === 404;
+  const is404 = isError && isAxiosError(error) && error.response?.status === HTTP_STATUS.NOT_FOUND;
 
   if (isLoading) return <BusinessSkeleton />;
   if (isError && !is404) {

@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -322,8 +323,11 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
 function plural(n: number): string {
   const mod10 = n % 10;
   const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'ация';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'ации';
+  // The 11–14 range (RU_PLURAL_TEEN_LOWER..RU_PLURAL_TEEN_UPPER) always
+  // takes the genitive-plural ending, overriding the last-digit rule.
+  const isTeen = mod100 >= RU_PLURAL_TEEN_LOWER && mod100 <= RU_PLURAL_TEEN_UPPER;
+  if (mod10 === 1 && !isTeen) return 'ация';
+  if (mod10 >= 2 && mod10 <= RU_PLURAL_PAUCAL_UPPER && !isTeen) return 'ации';
   return 'аций';
 }
 

@@ -24,6 +24,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import {
   TASK_STATUS_DOT_CLASSES,
   TASK_STATUS_LABELS,
@@ -315,23 +316,25 @@ function BigStat({
 function needsHelpPlural(n: number): string {
   const last = n % 10;
   const lastTwo = n % 100;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'требуют';
+  if (lastTwo >= RU_PLURAL_TEEN_LOWER && lastTwo <= RU_PLURAL_TEEN_UPPER) return 'требуют';
   if (last === 1) return 'требует';
-  if (last >= 2 && last <= 4) return 'требуют';
+  if (last >= 2 && last <= RU_PLURAL_PAUCAL_UPPER) return 'требуют';
   return 'требуют';
 }
 
 // ─── Loading skeleton ───────────────────────────────────────────────
 
+const TASK_SKELETON_ROW_COUNT = 6;
+
 function TaskListSkeleton() {
   return (
     <div className="overflow-hidden rounded-md border border-line bg-paper-raised shadow-ov-1">
-      {Array.from({ length: 6 }, (_, i) => (
+      {Array.from({ length: TASK_SKELETON_ROW_COUNT }, (_, i) => (
         <div
           key={i}
           className={cn(
             'flex items-center gap-3 px-4 py-3 sm:grid sm:grid-cols-[24px_1fr_160px_180px] sm:gap-4 sm:px-5 sm:py-4',
-            i < 5 && 'border-b border-line-soft'
+            i < TASK_SKELETON_ROW_COUNT - 1 && 'border-b border-line-soft'
           )}
         >
           <Skeleton className="size-2 shrink-0 rounded-full sm:justify-self-center" />

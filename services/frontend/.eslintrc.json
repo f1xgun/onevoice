@@ -13,6 +13,41 @@
       {
         "prefer": "type-imports"
       }
+    ],
+    "@typescript-eslint/no-magic-numbers": [
+      "error",
+      {
+        "ignore": [-1, 0, 1, 2, 3, 10, 100, 1000],
+        "ignoreNumericLiteralTypes": true,
+        "ignoreReadonlyClassProperties": true,
+        "ignoreEnums": true,
+        "ignoreArrayIndexes": true,
+        "ignoreDefaultValues": true,
+        "ignoreClassFieldInitialValues": true,
+        "enforceConst": true,
+        "detectObjects": false
+      }
     ]
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.test.{ts,tsx}",
+        "**/*.spec.{ts,tsx}",
+        "**/__tests__/**/*",
+        "vitest.setup.ts",
+        "vitest.config.ts",
+        "vitest.config.*.ts"
+      ],
+      "rules": {
+        "@typescript-eslint/no-magic-numbers": "off"
+      }
+    },
+    {
+      "files": ["next.config.js", "tailwind.config.{ts,js}", "postcss.config.js"],
+      "rules": {
+        "@typescript-eslint/no-magic-numbers": "off"
+      }
+    }
+  ]
 }

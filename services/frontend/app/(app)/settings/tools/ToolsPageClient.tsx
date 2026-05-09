@@ -12,6 +12,7 @@ import { API_PATHS } from '@/lib/constants/apiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
+import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import {
   useBusinessToolApprovals,
   useUpdateBusinessToolApprovals,
@@ -190,8 +191,8 @@ export function ToolsPageClient() {
 function pluralizeTools(n: number): string {
   const last = n % 10;
   const lastTwo = n % 100;
-  if (lastTwo >= 11 && lastTwo <= 14) return 'инструментов';
+  if (lastTwo >= RU_PLURAL_TEEN_LOWER && lastTwo <= RU_PLURAL_TEEN_UPPER) return 'инструментов';
   if (last === 1) return 'инструмент';
-  if (last >= 2 && last <= 4) return 'инструмента';
+  if (last >= 2 && last <= RU_PLURAL_PAUCAL_UPPER) return 'инструмента';
   return 'инструментов';
 }

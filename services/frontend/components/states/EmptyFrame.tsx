@@ -11,6 +11,13 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
+// Round-mark sizes (px). The compact variant uses MARK_SIZE_COMPACT_PX
+// so the disc lines up with the smaller padding inside filter-level
+// empties; the default variant uses MARK_SIZE_DEFAULT_PX to match the
+// generous outer padding of the screen-level empty.
+const MARK_SIZE_COMPACT_PX = 36;
+const MARK_SIZE_DEFAULT_PX = 56;
+
 export interface EmptyFrameProps {
   /** Heading — short, factual. Brand voice: no celebration, no emoji. */
   title: React.ReactNode;
@@ -36,7 +43,7 @@ export function EmptyFrame({
   compact = false,
   className,
 }: EmptyFrameProps) {
-  const size = markSize ?? (compact ? 36 : 56);
+  const size = markSize ?? (compact ? MARK_SIZE_COMPACT_PX : MARK_SIZE_DEFAULT_PX);
   return (
     <div
       className={cn(
