@@ -21,7 +21,10 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement;
 };
 
-const actionTypes = {
+// Used only via `typeof actionTypes` for the discriminated-union type
+// below — keeps the literal strings in one place. Underscore-prefixed
+// to satisfy no-unused-vars (value is never read at runtime).
+const _actionTypes = {
   ADD_TOAST: 'ADD_TOAST',
   UPDATE_TOAST: 'UPDATE_TOAST',
   DISMISS_TOAST: 'DISMISS_TOAST',
@@ -35,7 +38,7 @@ function genId() {
   return count.toString();
 }
 
-type ActionType = typeof actionTypes;
+type ActionType = typeof _actionTypes;
 
 type Action =
   | {
