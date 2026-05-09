@@ -44,11 +44,13 @@ import type {
 } from '@/types/project';
 
 const MAX_SYSTEM_PROMPT_CHARS = 4000;
+const PROJECT_NAME_MAX_LEN = 200;
+const PROJECT_DESCRIPTION_MAX_LEN = 2000;
 
 const schema = z
   .object({
-    name: z.string().trim().min(1, 'Укажите название проекта.').max(200),
-    description: z.string().max(2000),
+    name: z.string().trim().min(1, 'Укажите название проекта.').max(PROJECT_NAME_MAX_LEN),
+    description: z.string().max(PROJECT_DESCRIPTION_MAX_LEN),
     systemPrompt: z
       .string()
       .max(MAX_SYSTEM_PROMPT_CHARS, 'Системный промпт слишком длинный (максимум 4000 символов).'),

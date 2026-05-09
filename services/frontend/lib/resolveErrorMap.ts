@@ -1,3 +1,5 @@
+import { HTTP_STATUS } from '@/lib/constants/httpStatus';
+
 // Maps a resolve HTTP error to the exact Russian Sonner toast string per
 // UI-SPEC §Error toasts (17-UI-SPEC.md) + Plan 17-09 closure of
 // VERIFICATION item 6 (403 → dedicated copy). Called ONLY for resolve
@@ -19,7 +21,7 @@ export const RESUME_STREAM_ERROR = 'Ошибка продолжения — пе
 
 export function resolveErrorToRussian(status: number, body: unknown): string {
   // 409 → concurrent resolve lost the race (Phase 16 D-03).
-  if (status === 409) return 'Ошибка: операция уже была обработана';
+  if (status === HTTP_STATUS.CONFLICT) return 'Ошибка: операция уже была обработана';
 
   // 403 → resolve handler rejected the request because the requester's
   // business scope does not match `batch.business_id` (Plan 16-07 auth
@@ -29,7 +31,7 @@ export function resolveErrorToRussian(status: number, body: unknown): string {
   // body.reason='policy_revoked' precedence: a 403 is auth/scope, NOT a
   // policy gate, even if the server happened to attach a policy_revoked
   // body shape.
-  if (status === 403) return 'Отказано: операция вне вашей бизнес-области';
+  if (status === HTTP_STATUS.FORBIDDEN) return 'Отказано: операция вне вашей бизнес-области';
 
   // Policy revocation can surface on any 4xx per Phase 16 D-12.
   const reason = (body as { reason?: unknown } | null | undefined)?.reason;

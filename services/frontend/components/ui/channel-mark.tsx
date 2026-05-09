@@ -10,6 +10,12 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
+// Initial-letter font size as a fraction of the disc width. Tuned
+// visually to match the mock — at size=22 (default), this yields a
+// 9 px font that reads as a confident centred letter without crowding
+// the border.
+const INITIAL_FONT_SIZE_RATIO = 0.42;
+
 export type ChannelName =
   | 'Telegram'
   | 'VK'
@@ -56,7 +62,7 @@ export function ChannelMark({ name, size = 22, className, style, ...props }: Cha
       style={{
         width: size,
         height: size,
-        fontSize: Math.round(size * 0.42),
+        fontSize: Math.round(size * INITIAL_FONT_SIZE_RATIO),
         color,
         ...style,
       }}

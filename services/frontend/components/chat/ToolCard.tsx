@@ -15,6 +15,7 @@ import { Pencil } from 'lucide-react';
 
 import type { ToolCall } from '@/types/chat';
 import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
+import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -167,9 +168,9 @@ function summarizeResult(toolName: string, result: unknown): string | null {
 function pluralRu(n: number, [one, few, many]: [string, string, string]): string {
   const last = n % 10;
   const lastTwo = n % 100;
-  if (lastTwo >= 11 && lastTwo <= 14) return many;
+  if (lastTwo >= RU_PLURAL_TEEN_LOWER && lastTwo <= RU_PLURAL_TEEN_UPPER) return many;
   if (last === 1) return one;
-  if (last >= 2 && last <= 4) return few;
+  if (last >= 2 && last <= RU_PLURAL_PAUCAL_UPPER) return few;
   return many;
 }
 const pluralReviews = (n: number) => pluralRu(n, ['отзыв', 'отзыва', 'отзывов']);

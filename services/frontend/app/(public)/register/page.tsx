@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { useAuthStore } from '@/lib/auth';
 import { registerSchema, type RegisterInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,7 @@ export default function RegisterPage() {
       const status = (err as { response?: { status?: number } })?.response?.status;
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data
         ?.message;
-      if (status === 409) {
+      if (status === HTTP_STATUS.CONFLICT) {
         toast.error('Пользователь с таким email уже существует');
       } else {
         toast.error(message ?? 'Ошибка регистрации. Проверьте данные.');

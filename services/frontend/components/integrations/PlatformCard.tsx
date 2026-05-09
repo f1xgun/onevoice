@@ -24,6 +24,19 @@ import { api } from '@/lib/api';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { cn } from '@/lib/utils';
 
+// Yandex.Business RPA refresh poll cadence (ms). After kicking off a
+// refresh the agent runs for ~25–45s in the background, so we revisit
+// the integrations list at progressively longer intervals to surface the
+// resolved name without forcing the operator to reload manually.
+const YANDEX_REFRESH_POLL_FAST_MS = 10_000;
+const YANDEX_REFRESH_POLL_MEDIUM_MS = 30_000;
+const YANDEX_REFRESH_POLL_SLOW_MS = 60_000;
+const YANDEX_REFRESH_POLL_MS = [
+  YANDEX_REFRESH_POLL_FAST_MS,
+  YANDEX_REFRESH_POLL_MEDIUM_MS,
+  YANDEX_REFRESH_POLL_SLOW_MS,
+] as const;
+
 interface Integration {
   id: string;
   platform: string;
@@ -229,7 +242,7 @@ function ChannelList({
             // Yandex returns 202 immediately and finishes the agent RPA in
             // the background (~25–45s). Poll the integrations list a few
             // times so the resolved name appears without a manual reload.
-            [10_000, 30_000, 60_000].forEach((delay) => {
+            YANDEX_REFRESH_POLL_MS.forEach((delay) => {
               setTimeout(() => qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS }), delay);
             });
           } else {

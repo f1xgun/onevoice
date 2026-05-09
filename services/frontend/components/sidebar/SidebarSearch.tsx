@@ -8,6 +8,7 @@ import { Loader2, Search } from 'lucide-react';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { STALE_TIME_5_MIN } from '@/lib/constants/cacheTTL';
 import type { SearchResult } from '@/types/search';
 import type { Business } from '@/types/business';
 import { SearchResultRow } from './SearchResultRow';
@@ -81,7 +82,7 @@ export function SidebarSearch() {
   const { data: businessId = null } = useQuery<string | null>({
     queryKey: ['business', 'id'],
     queryFn: fetchBusinessId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIME_5_MIN,
   });
 
   const enabled = debounced.trim().length >= MIN_QUERY;

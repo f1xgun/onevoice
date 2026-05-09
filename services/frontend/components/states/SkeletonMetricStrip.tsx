@@ -8,6 +8,11 @@ import * as React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
+// Default Tailwind grid is 4-up on md+; for any other count we
+// switch to an explicit `repeat(count, …)` track so the strip stays
+// rectangular instead of wrapping awkwardly.
+const DEFAULT_GRID_TRACK_COUNT = 4;
+
 export interface SkeletonMetricStripProps {
   /** Number of metric cards. Default 4 — matches /posts. */
   count?: number;
@@ -25,7 +30,10 @@ export function SkeletonMetricStrip({ count = 4, className }: SkeletonMetricStri
         'grid grid-cols-2 gap-3 md:grid-cols-4',
         className
       )}
-      style={{ gridTemplateColumns: count <= 4 ? undefined : `repeat(${count}, minmax(0, 1fr))` }}
+      style={{
+        gridTemplateColumns:
+          count <= DEFAULT_GRID_TRACK_COUNT ? undefined : `repeat(${count}, minmax(0, 1fr))`,
+      }}
     >
       {Array.from({ length: count }, (_, i) => (
         <div

@@ -23,6 +23,9 @@ import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
 // font-family avoids loading a webfont just for one phrase.
 const SERIF = '"Iowan Old Style", "Georgia", "Times New Roman", serif';
 
+// 5-star scale used by the inline review-preview block in the hero.
+const MAX_REVIEW_STARS = 5;
+
 const NAV_LINKS = [
   { href: '#features', label: 'Возможности' },
   { href: '#channels', label: 'Каналы' },
@@ -426,7 +429,7 @@ function SampleReviews() {
           <div className="mb-1.5 flex items-center gap-2">
             <span className="text-[13px] tracking-[1px] text-ochre">
               {'★'.repeat(r.stars)}
-              <span className="text-line">{'★'.repeat(5 - r.stars)}</span>
+              <span className="text-line">{'★'.repeat(MAX_REVIEW_STARS - r.stars)}</span>
             </span>
             <span className="text-[13px] font-medium">{r.name}</span>
             <span className="ml-auto">
