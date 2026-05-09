@@ -50,10 +50,13 @@ type BusinessService interface {
 // need. Strict subset of OAuthConfig per Phase 19 D-04 / RESEARCH §16 Q3 —
 // keeping the field set narrow makes the dependency surface explicit and
 // stops paste-flow tests from accidentally exercising OAuth-only fields.
+//
+// Note: a FrontendURL field used to live here as a mirror of the legacy
+// OAuthConfig.FrontendURL but was never read — paste-flow handlers do not
+// emit absolute redirects. Dropped in 19-LOW-02 cleanup.
 type ConnectConfig struct {
 	TelegramBotToken string
 	VKServiceKey     string
-	FrontendURL      string
 
 	// Overridable base URLs for testing
 	vkAPIBaseURL       string

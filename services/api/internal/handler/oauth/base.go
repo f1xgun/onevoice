@@ -81,6 +81,9 @@ type OAuthConfig struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 	GoogleRedirectURI  string
+	// Note: a FrontendURL field used to live here ("for redirects, defaults
+	// to '/'") but was never read — every redirect uses a relative path
+	// (/integrations?...). Removed in 19-LOW-01 cleanup.
 
 	// Overridable base URLs for testing.
 	// vkAPIBaseURL / telegramAPIBaseURL live on connect.ConnectConfig
