@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { isAxiosError } from 'axios';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -24,12 +25,10 @@ import { normalizeStoredTones, type ToneId } from '@/lib/tones';
 import type { Business, ScheduleDay, SpecialDate } from '@/types/business';
 
 function BusinessSkeleton() {
+  const tBusiness = useTranslations('business');
   return (
     <>
-      <PageHeader
-        title="Профиль бизнеса"
-        sub="Чем подробнее вы расскажете о себе, тем точнее AI будет говорить вашим голосом."
-      />
+      <PageHeader title={tBusiness('title')} sub={tBusiness('subtitle')} />
       <div className="grid grid-cols-1 gap-8 px-4 pb-10 sm:px-12 sm:pb-16 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-6">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -53,6 +52,7 @@ function BusinessSkeleton() {
 }
 
 export default function BusinessPage() {
+  const tBusiness = useTranslations('business');
   const { data, isLoading, isError, error } = useQuery<Business>({
     queryKey: QUERY_KEYS.BUSINESS,
     queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
@@ -77,7 +77,7 @@ export default function BusinessPage() {
   if (isError && !is404) {
     return (
       <>
-        <PageHeader title="Профиль бизнеса" />
+        <PageHeader title={tBusiness('title')} />
         <div className="px-4 pb-10 sm:px-12 sm:pb-16">
           <div className="border-[var(--ov-danger)]/40 rounded-lg border bg-[var(--ov-danger-soft)] p-6 text-sm text-[var(--ov-danger)]">
             Не получилось загрузить данные. Попробуйте обновить страницу.
@@ -88,10 +88,8 @@ export default function BusinessPage() {
   }
 
   const isCreateMode = is404;
-  const title = isCreateMode ? 'Создайте профиль бизнеса' : 'Профиль бизнеса';
-  const sub = isCreateMode
-    ? 'Заполните «Основное», и появятся остальные разделы. OneVoice использует это, когда пишет от вашего имени.'
-    : 'Чем подробнее вы расскажете о себе, тем точнее AI будет говорить вашим голосом.';
+  const title = isCreateMode ? tBusiness('createTitle') : tBusiness('title');
+  const sub = isCreateMode ? tBusiness('createSubtitle') : tBusiness('subtitle');
 
   const schedule = data?.settings?.schedule as
     | { schedule?: ScheduleDay[]; specialDates?: SpecialDate[] }

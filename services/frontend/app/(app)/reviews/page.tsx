@@ -10,6 +10,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -131,6 +132,7 @@ function formatReviewDate(iso: string): string {
 
 export default function ReviewsPage() {
   const qc = useQueryClient();
+  const tReviews = useTranslations('reviews');
   const [platform, setPlatform] = useState<string>('all');
   const [replyStatus, setReplyStatus] = useState<string>('all');
   const [replyDialog, setReplyDialog] = useState<Review | null>(null);
@@ -158,7 +160,7 @@ export default function ReviewsPage() {
       api.put(API_PATHS.REVIEWS.REPLY(id), { replyText: text }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.REVIEWS });
-      toast.success('Ответ отправлен');
+      toast.success(tReviews('replyToast'));
       setReplyDialog(null);
       setReplyText('');
     },
@@ -211,10 +213,7 @@ export default function ReviewsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Отзывы"
-        sub="Здесь собираются отзывы клиентов с подключённых каналов. OneVoice предложит образец ответа — отправлять решаете вы."
-      />
+      <PageHeader title={tReviews('title')} sub={tReviews('subtitle')} />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">
         {/* Stat strip — three quiet metrics. No celebratory tone. */}

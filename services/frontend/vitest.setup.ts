@@ -1,4 +1,49 @@
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
+
+// Global next-intl stub. Real translation plumbing lives at
+// lib/i18n/request.ts and only matters in production / e2e — tests
+// shouldn't have to mount NextIntlClientProvider just to render any
+// component that calls useTranslations.
+//
+// The stub looks the key up in messages/ru.json so tests that assert
+// Russian copy ('Чат', 'Профиль бизнеса', etc.) continue to find what
+// they expect. Missing keys fall back to the namespaced key string so
+// the failure surface is "saw 'nav.foo' instead of 'Чат'" rather than
+// a context-not-found exception.
+import ruMessages from './messages/ru.json';
+
+function lookupTranslation(namespace: string | undefined, key: string): string {
+  const path = namespace ? `${namespace}.${key}`.split('.') : key.split('.');
+  let cursor: unknown = ruMessages;
+  for (const part of path) {
+    if (typeof cursor === 'object' && cursor !== null && part in cursor) {
+      cursor = (cursor as Record<string, unknown>)[part];
+    } else {
+      return namespace ? `${namespace}.${key}` : key;
+    }
+  }
+  return typeof cursor === 'string' ? cursor : namespace ? `${namespace}.${key}` : key;
+}
+
+vi.mock('next-intl', () => {
+  const tFactory = (namespace?: string) => {
+    const t = (key: string) => lookupTranslation(namespace, key);
+    (t as unknown as { has: (k: string) => boolean }).has = () => true;
+    (t as unknown as { raw: (k: string) => string }).raw = (k: string) =>
+      lookupTranslation(namespace, k);
+    return t;
+  };
+  return {
+    useTranslations: tFactory,
+    useLocale: () => 'ru',
+    useFormatter: () => ({
+      dateTime: (d: Date) => d.toISOString(),
+      number: (n: number) => String(n),
+    }),
+    NextIntlClientProvider: ({ children }: { children: React.ReactNode }) => children,
+  };
+});
 
 // localStorage polyfill for jsdom in Vitest vm context
 // jsdom's localStorage proxy does not expose prototype methods across vm realms

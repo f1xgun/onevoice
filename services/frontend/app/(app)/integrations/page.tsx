@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -38,6 +39,7 @@ interface LastRegistered {
 
 export default function IntegrationsPage() {
   const qc = useQueryClient();
+  const tIntegrations = useTranslations('integrations');
   const searchParams = useSearchParams();
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
@@ -60,12 +62,12 @@ export default function IntegrationsPage() {
     const error = searchParams.get('error');
 
     if (connected === 'vk') {
-      toast.success('VK сообщество подключено');
+      toast.success(tIntegrations('vkConnected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
     if (connected === 'google_business') {
-      toast.success('Google Business Profile подключён');
+      toast.success(tIntegrations('googleConnected'));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
@@ -77,20 +79,28 @@ export default function IntegrationsPage() {
     }
 
     if (error) {
-      const messages: Record<string, string> = {
-        missing_params: 'Не получилось войти: не хватает параметров',
-        invalid_state: 'Не получилось войти: сессия истекла',
-        token_exchange: 'Не удалось обменять токен',
-        connect_failed: 'Не удалось подключить',
-        no_community_token: 'Не удалось получить токен сообщества',
-        internal: 'Что-то пошло не так. Попробуйте ещё раз.',
-        no_refresh_token: 'Google не вернул refresh-токен. Попробуйте подключить снова.',
-        no_locations: 'В этом аккаунте Google нет бизнес-локаций.',
+      // Server emits snake_case slugs; map to camelCase keys under
+      // integrations.oauthErrors. Unknown slugs render the templated
+      // fallback ("Не получилось: <slug>") so the user still gets a
+      // hint while we add the missing translation.
+      const oauthErrorKeyMap: Record<string, string> = {
+        missing_params: 'missingParams',
+        invalid_state: 'invalidState',
+        token_exchange: 'tokenExchange',
+        connect_failed: 'connectFailed',
+        no_community_token: 'noCommunityToken',
+        internal: 'internal',
+        no_refresh_token: 'noRefreshToken',
+        no_locations: 'noLocations',
       };
-      toast.error(messages[error] || `Не получилось: ${error}`);
+      const key = oauthErrorKeyMap[error];
+      const message = key
+        ? tIntegrations(`oauthErrors.${key}`)
+        : tIntegrations('oauthErrors.fallback', { error });
+      toast.error(message);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
-  }, [searchParams, qc]);
+  }, [searchParams, qc, tIntegrations]);
 
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
     queryKey: QUERY_KEYS.INTEGRATIONS,
@@ -169,10 +179,7 @@ export default function IntegrationsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Интеграции"
-        sub="Подключите каналы, по которым с вами общаются клиенты. OneVoice будет принимать в них сообщения и публиковать посты."
-      />
+      <PageHeader title={tIntegrations('title')} sub={tIntegrations('subtitle')} />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">
         {lastRegistered && (
