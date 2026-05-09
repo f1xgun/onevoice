@@ -31,6 +31,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	pkghitl "github.com/f1xgun/onevoice/pkg/hitl"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/toolvalidation"
 )
 
@@ -83,16 +84,20 @@ const MaxRejectReasonChars = 500
 // HITLService wires every HITL primitive (pending-tool-call repo, business
 // repo, project repo, tool registry cache) together behind the Resolve
 // business-logic entry point consumed by handler/hitl.go.
+//
+// Phase 19 / D-11: the inline orchestrator HTTP client moved into
+// pkg/orchestratorclient. HITLService exposes the *orchestratorclient.Client
+// via OrchClient() so handler/hitl.go's Resume can call StreamResume without
+// re-implementing the HTTP plumbing.
 type HITLService struct {
-	pendingRepo     domain.PendingToolCallRepository
-	businessRepo    domain.BusinessRepository
-	projectRepo     domain.ProjectRepository
-	toolsCache      *ToolsRegistryCache
-	orchestratorURL string
-	httpClient      *http.Client
+	pendingRepo  domain.PendingToolCallRepository
+	businessRepo domain.BusinessRepository
+	projectRepo  domain.ProjectRepository
+	toolsCache   *ToolsRegistryCache
+	orch         *orchestratorclient.Client
 }
 
-// NewHITLService constructs a HITLService. All four reqiured deps are
+// NewHITLService constructs a HITLService. All five required deps are
 // mandatory — a nil anywhere indicates a wiring bug and is rejected with a
 // panic at construction time.
 func NewHITLService(
@@ -100,8 +105,7 @@ func NewHITLService(
 	businessRepo domain.BusinessRepository,
 	projectRepo domain.ProjectRepository,
 	toolsCache *ToolsRegistryCache,
-	orchestratorURL string,
-	httpClient *http.Client,
+	orch *orchestratorclient.Client,
 ) *HITLService {
 	if pendingRepo == nil {
 		panic("NewHITLService: pendingRepo cannot be nil")
@@ -115,16 +119,15 @@ func NewHITLService(
 	if toolsCache == nil {
 		panic("NewHITLService: toolsCache cannot be nil")
 	}
-	if httpClient == nil {
-		httpClient = http.DefaultClient
+	if orch == nil {
+		panic("NewHITLService: orch cannot be nil")
 	}
 	return &HITLService{
-		pendingRepo:     pendingRepo,
-		businessRepo:    businessRepo,
-		projectRepo:     projectRepo,
-		toolsCache:      toolsCache,
-		orchestratorURL: orchestratorURL,
-		httpClient:      httpClient,
+		pendingRepo:  pendingRepo,
+		businessRepo: businessRepo,
+		projectRepo:  projectRepo,
+		toolsCache:   toolsCache,
+		orch:         orch,
 	}
 }
 
@@ -143,12 +146,10 @@ func (s *HITLService) ProjectRepo() domain.ProjectRepository { return s.projectR
 // (GET /api/v1/tools, POLICY-05 PUT) can share the cache.
 func (s *HITLService) ToolsCache() *ToolsRegistryCache { return s.toolsCache }
 
-// OrchestratorURL returns the configured orchestrator base URL. Used by the
-// resume handler when forwarding the follow-up SSE stream.
-func (s *HITLService) OrchestratorURL() string { return s.orchestratorURL }
-
-// HTTPClient returns the configured HTTP client for orchestrator calls.
-func (s *HITLService) HTTPClient() *http.Client { return s.httpClient }
+// OrchClient exposes the shared orchestrator HTTP client used by handler/hitl
+// (Resume) and chatproxy.HITLCoordinator. Replaces the legacy
+// OrchestratorURL() / HTTPClient() accessors that hand-rolled the HTTP request.
+func (s *HITLService) OrchClient() *orchestratorclient.Client { return s.orch }
 
 // DecisionInput is the per-call verdict submitted in the resolve body.
 // ID must match the `CallID` of a PendingCall in the batch. Action is one of
@@ -375,8 +376,8 @@ func missingCallIDs(calls []domain.PendingCall, decisions []DecisionInput) []str
 //
 // The cache is CONCURRENT-SAFE: sync.RWMutex guards the entries slice and
 // the refresh-in-flight guard. On TTL expiration, the first reader triggers
-// a single refresh via the httpClient; subsequent concurrent readers wait on
-// the in-flight channel and observe the refreshed entries.
+// a single refresh via pkg/orchestratorclient; subsequent concurrent readers
+// wait on the in-flight channel and observe the refreshed entries.
 //
 // Cache miss / orchestrator unreachable semantics:
 //   - Stale entries are preferred over empty results (avoid cascading 500s).
@@ -384,9 +385,8 @@ func missingCallIDs(calls []domain.PendingCall, decisions []DecisionInput) []str
 //     has nil EditableFields which causes edit validation to reject every
 //     field as not-editable (safe default: fail-closed).
 type ToolsRegistryCache struct {
-	orchestratorURL string
-	httpClient      *http.Client
-	ttl             time.Duration
+	orch *orchestratorclient.Client // nil when orchestratorURL was empty (test/seed-only mode)
+	ttl  time.Duration
 
 	mu       sync.RWMutex
 	entries  []ToolsRegistryEntry
@@ -408,7 +408,9 @@ type ToolsRegistryEntry struct {
 
 // NewToolsRegistryCache constructs a cache bound to orchestratorURL (e.g.,
 // "http://orchestrator:8090"). Pass httpClient=nil to use http.DefaultClient.
-// ttl defaults to 5 minutes when zero.
+// ttl defaults to 5 minutes when zero. Phase 19 / D-11 — internally builds
+// an *orchestratorclient.Client; signature preserved so existing callers and
+// tests (including hitl_test.go) compile unchanged.
 func NewToolsRegistryCache(orchestratorURL string, httpClient *http.Client, ttl time.Duration) *ToolsRegistryCache {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -416,11 +418,13 @@ func NewToolsRegistryCache(orchestratorURL string, httpClient *http.Client, ttl 
 	if ttl <= 0 {
 		ttl = defaultToolsRegistryCacheTTL
 	}
-	return &ToolsRegistryCache{
-		orchestratorURL: orchestratorURL,
-		httpClient:      httpClient,
-		ttl:             ttl,
+	c := &ToolsRegistryCache{
+		ttl: ttl,
 	}
+	if orchestratorURL != "" {
+		c.orch = orchestratorclient.New(orchestratorURL, httpClient)
+	}
+	return c
 }
 
 // Seed pre-populates the cache with a static snapshot. Used by tests to avoid
@@ -525,30 +529,28 @@ func (c *ToolsRegistryCache) refresh(ctx context.Context) {
 		c.mu.Unlock()
 	}()
 
-	// No network call during tests that only Seed — detect by empty
-	// orchestratorURL.
-	if c.orchestratorURL == "" {
+	// No network call during tests that only Seed — detect by nil orch.
+	if c.orch == nil {
 		return
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	url := c.orchestratorURL + "/internal/tools"
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, http.NoBody)
+	entries, err := c.orch.ListTools(reqCtx)
 	if err != nil {
 		return
 	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return
-	}
-	var fresh []ToolsRegistryEntry
-	if err := decodeJSON(resp.Body, &fresh); err != nil {
-		return
+	fresh := make([]ToolsRegistryEntry, len(entries))
+	for i, e := range entries {
+		fresh[i] = ToolsRegistryEntry{
+			Name:            e.Name,
+			DisplayName:     e.DisplayName,
+			Platform:        e.Platform,
+			Floor:           domain.ToolFloor(e.Floor),
+			EditableFields:  e.EditableFields,
+			Description:     e.Description,
+			UserDescription: e.UserDescription,
+		}
 	}
 	c.mu.Lock()
 	c.entries = fresh

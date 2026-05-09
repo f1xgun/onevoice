@@ -53,18 +53,20 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	}
 	defer handles.Close()
 
-	// POLICY-07 startup sweep — non-blocking goroutine. Compares every
-	// tool-approval entry stored in Postgres against the live orchestrator
-	// registry and logs tool_approval_whitelist_unknown for stale entries.
-	// Best-effort: one retry after 5s, skipped silently on sustained failure.
-	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, cfg.OrchestratorURL, cfg.OrchestratorFetchTimeout)
-
 	repos := wire.Repositories(handles)
 	svcs, err := wire.BuildServices(ctx, log, cfg, repos, handles)
 	if err != nil {
 		return err
 	}
 	defer svcs.Close()
+
+	// POLICY-07 startup sweep — non-blocking goroutine. Compares every
+	// tool-approval entry stored in Postgres against the live orchestrator
+	// registry (via svcs.OrchClient) and logs tool_approval_whitelist_unknown
+	// for stale entries. Best-effort: one retry after 5s, skipped silently
+	// on sustained failure. Plan 19-03: moved after BuildServices so the
+	// shared *orchestratorclient.Client is reused (D-11).
+	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, svcs.OrchClient, cfg.OrchestratorFetchTimeout)
 
 	handlers, err := wire.Handlers(cfg, svcs, repos, handles)
 	if err != nil {

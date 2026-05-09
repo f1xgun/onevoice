@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/toolvalidation"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -171,7 +172,7 @@ func newSvc(t *testing.T, pending *stubPendingRepo, biz *stubBusinessRepo, proj 
 			Description:    "Publish to VK wall",
 		},
 	})
-	return service.NewHITLService(pending, biz, proj, cache, "", http.DefaultClient)
+	return service.NewHITLService(pending, biz, proj, cache, orchestratorclient.New("", http.DefaultClient))
 }
 
 // seedBatch creates a pending batch with the given calls under the given
