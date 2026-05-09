@@ -2,28 +2,25 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
-// TokenInfo holds the resolved access token and the integration's external ID.
-type TokenInfo struct {
-	AccessToken string
-	ExternalID  string
-}
+// TokenInfo aliases agentbase.TokenInfo so test files that construct
+// agent.TokenInfo{...} continue to compile after plan 19-07 migration.
+// New callers should use agentbase.TokenInfo directly.
+type TokenInfo = agentbase.TokenInfo
 
-// TokenFetcher retrieves token info for a given business/platform/externalID combination.
-// When externalID is empty, the first active integration for the platform is used.
-type TokenFetcher interface {
-	GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error)
-}
+// TokenFetcher aliases agentbase.TokenResolver — same interface contract,
+// kept as a type alias so test mocks declared against agent.TokenFetcher
+// remain byte-identical (D-16: import-path-only test changes).
+type TokenFetcher = agentbase.TokenResolver
 
 // Sender abstracts Telegram message sending for testability.
 type Sender interface {
@@ -40,97 +37,60 @@ type SenderFactory func(botToken string) (Sender, error)
 type Handler struct {
 	tokens        TokenFetcher
 	senderFactory SenderFactory
-	dedupe        *hitldedupe.DedupeClient // optional; nil skips the HITL dedupe gate
+	dispatcher    agentbase.Dispatcher
 }
 
 // NewHandler creates a Handler with the given TokenFetcher, SenderFactory, and
-// optional dedupe client. Passing nil for dedupe disables the HITL dedupe
-// gate — used by unit tests and dev-local environments without Redis.
-func NewHandler(tokens TokenFetcher, factory SenderFactory, dedupe *hitldedupe.DedupeClient) *Handler {
-	return &Handler{tokens: tokens, senderFactory: factory, dedupe: dedupe}
+// agentbase.Dispatcher. The dispatcher owns the HITL dedupe gate and error
+// classification — see pkg/agentbase. Tests may pass a dispatcher built with
+// nil dedupe / nil classifier, or pass nil here to skip HITL entirely (a nil
+// dispatcher acts as identity dispatch).
+func NewHandler(tokens TokenFetcher, factory SenderFactory, dispatcher agentbase.Dispatcher) *Handler {
+	return &Handler{tokens: tokens, senderFactory: factory, dispatcher: dispatcher}
 }
 
-// Handle routes the ToolRequest to the appropriate Telegram operation.
-// Before dispatching, if a dedupe client is configured AND req.ApprovalID is
-// non-empty, the HITL dedupe gate is consulted. See dedupeGate for semantics.
+// Handle routes the ToolRequest to the appropriate Telegram operation via the
+// agentbase.Dispatcher (which runs the HITL dedupe gate, then routeTool, then
+// classifies errors, then caches successful responses). When dispatcher is nil
+// (legacy unit tests pre-19-07) we route directly through routeTool.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	if resp, stop := h.dedupeGate(ctx, req); stop {
-		return resp, nil
+	if h.dispatcher == nil {
+		resp, err := h.routeTool(ctx, req)
+		return resp, ClassifyTelegramError(err)
 	}
+	return h.dispatcher.Dispatch(ctx, req, h.routeTool)
+}
 
-	var (
-		resp *a2a.ToolResponse
-		err  error
-	)
+// routeTool dispatches to the per-tool implementation. The HITL dedupe gate
+// and error classification are handled by the dispatcher in Handle; routeTool
+// is exec callback shape required by agentbase.Dispatcher.
+func (h *Handler) routeTool(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	switch req.Tool {
 	case tools.TelegramSendChannelPost:
-		resp, err = h.sendChannelPost(ctx, req)
+		return h.sendChannelPost(ctx, req)
 	case tools.TelegramSendChannelPhoto:
-		resp, err = h.sendChannelPhoto(ctx, req)
+		return h.sendChannelPhoto(ctx, req)
 	case tools.TelegramSendNotification:
-		resp, err = h.sendNotification(ctx, req)
+		return h.sendNotification(ctx, req)
 	case tools.TelegramGetReviews:
-		resp, err = h.getReviews(ctx, req)
+		return h.getReviews(ctx, req)
 	case tools.TelegramReplyToComment:
-		resp, err = h.replyToComment(ctx, req)
+		return h.replyToComment(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
-
-	h.dedupeStore(ctx, req, resp, err)
-	return resp, err
 }
 
-// dedupeGate consults the Redis dedupe cache BEFORE tool dispatch when a HITL
-// approval is in play. It returns (resp, true) when the caller should stop
-// executing (in-flight elsewhere, or already-completed duplicate). On any
-// error the gate is best-effort — we log and fall through rather than fail
-// a turn because Redis blinked.
-func (h *Handler) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, bool) {
-	if h.dedupe == nil || req.ApprovalID == "" {
-		return nil, false
-	}
-	outcome, cached, err := h.dedupe.Claim(ctx, req.BusinessID, req.ApprovalID)
-	if err != nil {
-		slog.WarnContext(ctx, "hitl dedupe claim failed; proceeding without dedupe",
-			"error", err, "business_id", req.BusinessID, "approval_id", req.ApprovalID)
-		return nil, false
-	}
-	switch outcome {
-	case hitldedupe.ClaimOutcomeInFlight:
-		return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: already in flight"}, true
-	case hitldedupe.ClaimOutcomeDuplicate:
-		var cachedResp a2a.ToolResponse
-		if uerr := json.Unmarshal([]byte(cached), &cachedResp); uerr != nil {
-			slog.WarnContext(ctx, "hitl dedupe cached result malformed; returning generic duplicate",
-				"error", uerr)
-			return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: cached result unavailable"}, true
-		}
-		// The cached response was stored for the original TaskID; rewrite to
-		// this replay's TaskID so the orchestrator correlates correctly.
-		cachedResp.TaskID = req.TaskID
-		return &cachedResp, true
-	case hitldedupe.ClaimOutcomeClaimed, hitldedupe.ClaimOutcomeSkip:
-		// Proceed with execution — no cached response.
-	}
-	return nil, false
-}
-
-// dedupeStore persists a successful ToolResponse under the HITL dedupe key so
-// replays see ClaimOutcomeDuplicate. Errors and nil responses are NOT cached
-// (a replay should be free to retry when the original failed).
-func (h *Handler) dedupeStore(ctx context.Context, req a2a.ToolRequest, resp *a2a.ToolResponse, err error) {
-	if h.dedupe == nil || req.ApprovalID == "" || err != nil || resp == nil {
-		return
-	}
-	if serr := h.dedupe.Store(ctx, req.BusinessID, req.ApprovalID, resp); serr != nil {
-		slog.WarnContext(ctx, "hitl dedupe store failed; result returned but not cached",
-			"error", serr, "approval_id", req.ApprovalID)
-	}
-}
-
-// classifyTelegramError wraps permanent Telegram API errors as NonRetryableError.
+// ClassifyTelegramError wraps permanent Telegram API errors as NonRetryableError.
 // Checks error message strings since tgbotapi returns errors with descriptions.
+// Exported so cmd/main.go can wire it through agentbase.FuncClassifier; the
+// dispatcher invokes it after exec returns.
+func ClassifyTelegramError(err error) error {
+	return classifyTelegramError(err)
+}
+
+// classifyTelegramError is the internal implementation used by per-tool
+// handlers (sendChannelPost wraps with %w). Body unchanged from pre-19-07.
 func classifyTelegramError(err error) error {
 	if err == nil {
 		return nil

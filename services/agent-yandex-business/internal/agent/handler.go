@@ -2,28 +2,23 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
 )
 
-// TokenInfo holds the resolved token and external ID for an integration.
-type TokenInfo struct {
-	AccessToken string
-	ExternalID  string // Yandex Sprav permalink
-}
+// TokenInfo aliases agentbase.TokenInfo so existing test mocks compile
+// after plan 19-07 migration. ExternalID carries the Yandex Sprav permalink.
+type TokenInfo = agentbase.TokenInfo
 
-// TokenFetcher retrieves an access token (cookies JSON) for a given business/platform combination.
-type TokenFetcher interface {
-	GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error)
-}
+// TokenFetcher aliases agentbase.TokenResolver — kept for D-16 test
+// compatibility (import-path/wiring-only changes in handler_test.go).
+type TokenFetcher = agentbase.TokenResolver
 
 // YandexBrowser abstracts Playwright browser operations for testability.
 type YandexBrowser interface {
@@ -49,97 +44,61 @@ type BrowserPool interface {
 
 // Handler implements a2a.Handler for the Yandex.Business RPA agent.
 type Handler struct {
-	tokens TokenFetcher
-	pool   BrowserPool
-	dedupe *hitldedupe.DedupeClient // optional; nil skips the HITL dedupe gate
+	tokens     TokenFetcher
+	pool       BrowserPool
+	dispatcher agentbase.Dispatcher
 }
 
 // NewHandler creates a Handler with the given TokenFetcher, BrowserPool, and
-// optional dedupe client. Passing nil for dedupe disables the HITL dedupe
-// gate — used by unit tests and dev-local environments without Redis.
-func NewHandler(tokens TokenFetcher, pool BrowserPool, dedupe *hitldedupe.DedupeClient) *Handler {
-	return &Handler{tokens: tokens, pool: pool, dedupe: dedupe}
+// agentbase.Dispatcher. The dispatcher owns the HITL dedupe gate and error
+// classification (see pkg/agentbase). A nil dispatcher disables HITL and
+// applies classification directly — used by unit tests and dev-local envs.
+func NewHandler(tokens TokenFetcher, pool BrowserPool, dispatcher agentbase.Dispatcher) *Handler {
+	return &Handler{tokens: tokens, pool: pool, dispatcher: dispatcher}
 }
 
-// Handle routes ToolRequests to the appropriate Yandex.Business operation.
-// The HITL dedupe gate runs BEFORE Playwright acquires a browser page from the
-// pool — this matters for the RPA agent because a page acquisition is
-// expensive; deduping early avoids spinning up a Chromium tab for a replay.
-// The `withRetry + withPage` pattern inside yandex/pool.go remains unchanged.
+// Handle routes ToolRequests to the appropriate Yandex.Business operation via
+// the agentbase.Dispatcher. The HITL dedupe gate runs BEFORE Playwright
+// acquires a browser page — page acquisition is expensive, so dedupe avoids
+// spinning up a Chromium tab for a replay. The `withRetry + withPage` pattern
+// inside yandex/pool.go remains unchanged.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	if resp, stop := h.dedupeGate(ctx, req); stop {
-		return resp, nil
+	if h.dispatcher == nil {
+		resp, err := h.routeTool(ctx, req)
+		return resp, ClassifyYandexError(err)
 	}
+	return h.dispatcher.Dispatch(ctx, req, h.routeTool)
+}
 
-	var (
-		resp *a2a.ToolResponse
-		err  error
-	)
+// routeTool dispatches a ToolRequest to the per-tool implementation. The
+// dispatcher (in Handle) handles dedupe + classification around this exec.
+func (h *Handler) routeTool(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	switch req.Tool {
 	case tools.YandexBusinessGetInfo:
-		resp, err = h.getInfo(ctx, req)
+		return h.getInfo(ctx, req)
 	case tools.YandexBusinessUpdateHours:
-		resp, err = h.updateHours(ctx, req)
+		return h.updateHours(ctx, req)
 	case tools.YandexBusinessUpdateInfo:
-		resp, err = h.updateInfo(ctx, req)
+		return h.updateInfo(ctx, req)
 	case tools.YandexBusinessGetReviews:
-		resp, err = h.getReviews(ctx, req)
+		return h.getReviews(ctx, req)
 	case tools.YandexBusinessReplyReview:
-		resp, err = h.replyReview(ctx, req)
+		return h.replyReview(ctx, req)
 	case tools.YandexBusinessCreatePost:
-		resp, err = h.createPost(ctx, req)
+		return h.createPost(ctx, req)
 	case tools.YandexBusinessUploadPhoto:
-		resp, err = h.uploadPhoto(ctx, req)
+		return h.uploadPhoto(ctx, req)
 	case tools.YandexBusinessListCompanies:
-		resp, err = h.listCompanies(ctx, req)
+		return h.listCompanies(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
-
-	h.dedupeStore(ctx, req, resp, err)
-	return resp, err
 }
 
-// dedupeGate consults the Redis dedupe cache BEFORE tool dispatch when a HITL
-// approval is in play. Returns (resp, true) when the caller should stop.
-func (h *Handler) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, bool) {
-	if h.dedupe == nil || req.ApprovalID == "" {
-		return nil, false
-	}
-	outcome, cached, err := h.dedupe.Claim(ctx, req.BusinessID, req.ApprovalID)
-	if err != nil {
-		slog.WarnContext(ctx, "hitl dedupe claim failed; proceeding without dedupe",
-			"error", err, "business_id", req.BusinessID, "approval_id", req.ApprovalID)
-		return nil, false
-	}
-	switch outcome {
-	case hitldedupe.ClaimOutcomeInFlight:
-		return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: already in flight"}, true
-	case hitldedupe.ClaimOutcomeDuplicate:
-		var cachedResp a2a.ToolResponse
-		if uerr := json.Unmarshal([]byte(cached), &cachedResp); uerr != nil {
-			slog.WarnContext(ctx, "hitl dedupe cached result malformed; returning generic duplicate",
-				"error", uerr)
-			return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: cached result unavailable"}, true
-		}
-		cachedResp.TaskID = req.TaskID
-		return &cachedResp, true
-	case hitldedupe.ClaimOutcomeClaimed, hitldedupe.ClaimOutcomeSkip:
-		// Proceed with execution — no cached response.
-	}
-	return nil, false
-}
-
-// dedupeStore persists a successful ToolResponse under the HITL dedupe key
-// so replays see ClaimOutcomeDuplicate. Errors/nil responses are not cached.
-func (h *Handler) dedupeStore(ctx context.Context, req a2a.ToolRequest, resp *a2a.ToolResponse, err error) {
-	if h.dedupe == nil || req.ApprovalID == "" || err != nil || resp == nil {
-		return
-	}
-	if serr := h.dedupe.Store(ctx, req.BusinessID, req.ApprovalID, resp); serr != nil {
-		slog.WarnContext(ctx, "hitl dedupe store failed; result returned but not cached",
-			"error", serr, "approval_id", req.ApprovalID)
-	}
+// ClassifyYandexError is the exported entry point used by cmd/main.go to wire
+// the dispatcher's classifier via agentbase.FuncClassifier. Body unchanged.
+func ClassifyYandexError(err error) error {
+	return classifyYandexError(err)
 }
 
 // classifyYandexError wraps permanent Yandex RPA errors as NonRetryableError.
