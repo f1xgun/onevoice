@@ -2,8 +2,8 @@
 
 // Linen rebuild — Phase 4.8.
 // The right-rail companion: an AI-rendered understanding of the business
-// based on what the owner has filled in, plus quiet tips and a short edit
-// history. Read-only — the owner verifies, then keeps editing the form.
+// based on what the owner has filled in, plus quiet tips. Read-only —
+// the owner verifies, then keeps editing the form.
 
 import { MonoLabel } from '@/components/ui/mono-label';
 import type { Business } from '@/types/business';
@@ -71,25 +71,6 @@ export function AISummaryRail({ business, tones }: AISummaryRailProps) {
           <li>В описании оставьте одну деталь, по которой узнают именно вас.</li>
         </ul>
       </section>
-
-      {/* History */}
-      <section className="flex flex-col gap-3 rounded-lg border border-line bg-paper p-5">
-        <MonoLabel>История изменений</MonoLabel>
-        <ul className="flex flex-col gap-2 text-[13px] text-ink-mid">
-          <HistoryItem label="Обновлены часы" when="12 апр" />
-          <HistoryItem label="Изменён адрес" when="2 апр" />
-          <HistoryItem label="Создан профиль" when="14 фев" />
-        </ul>
-      </section>
     </aside>
-  );
-}
-
-function HistoryItem({ label, when }: { label: string; when: string }) {
-  return (
-    <li className="flex items-baseline justify-between gap-3">
-      <span>{label}</span>
-      <MonoLabel className="shrink-0">{when}</MonoLabel>
-    </li>
   );
 }
