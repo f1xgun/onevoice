@@ -64,13 +64,9 @@ export default function LoginPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-baseline justify-between">
-            <Label htmlFor="password" className="text-xs font-medium text-ink-mid">
-              Пароль
-            </Label>
-            {/* TODO(auth): wire forgot-password flow when backend supports it. */}
-            <span className="text-xs text-ink-soft">Забыли?</span>
-          </div>
+          <Label htmlFor="password" className="text-xs font-medium text-ink-mid">
+            Пароль
+          </Label>
           <Input
             id="password"
             type="password"

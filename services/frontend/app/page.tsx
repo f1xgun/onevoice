@@ -596,12 +596,6 @@ function SiteFooter() {
         </span>
         <MonoLabel>© {new Date().getFullYear()} · Все права защищены</MonoLabel>
         <div className="ml-auto flex flex-wrap items-center gap-5">
-          <a href="#" className="transition-colors hover:text-ink">
-            Условия
-          </a>
-          <a href="#" className="transition-colors hover:text-ink">
-            Конфиденциальность
-          </a>
           <a href="mailto:hello@onevoice.app" className="transition-colors hover:text-ink">
             Контакты
           </a>

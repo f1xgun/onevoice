@@ -3,19 +3,15 @@
 // Full-screen "не получается дотянуться" frame. Mirrors the
 // "Полноэкранная: нет связи" panel from
 // design_handoff_onevoice 2/mocks/mock-states.jsx (ErrorStatesPage):
-// calm paper background, big graphite headline, one-line sub, link to
-// the status page placeholder, and a mono error code at the bottom.
+// calm paper background, big graphite headline, one-line sub, optional
+// status-page link, and a mono error code at the bottom.
 //
 // Render this when the API/orchestrator is provably unreachable — not
 // for transient 5xx that one retry would fix. The default is to call
 // `window.location.reload()` on retry; pass `onRetry` to override.
-//
-// TODO(api): there is no orchestrator-level "is the platform alive"
-// probe today. When one lands, hook this component up to it via a
-// thin client-side hook (e.g. useOnlineStatus) and render at the layout
-// level so every authenticated route benefits. Until then, this lives
-// as a manual fallback that pages can mount in their `error.tsx`
-// boundary or in places where a network failure is the expected outcome.
+// The "Открыть статус" button only renders when `statusUrl` is
+// provided — there is no public OneVoice status page yet, so by default
+// we just offer the retry.
 
 'use client';
 
@@ -27,7 +23,10 @@ import { cn } from '@/lib/utils';
 export interface NoConnectionProps {
   /** Override the default "reload the page" behavior. */
   onRetry?: () => void;
-  /** Where the "Открыть статус" button points. Defaults to `/status`. */
+  /**
+   * Where the "Открыть статус" button points. When omitted, the button
+   * is not rendered.
+   */
   statusUrl?: string;
   /**
    * Optional machine-readable error code. Rendered in mono at the
@@ -47,7 +46,7 @@ function formatTime(d: Date) {
 
 export function NoConnection({
   onRetry,
-  statusUrl = '/status',
+  statusUrl,
   code = 'NET_UNREACHABLE',
   timestamp,
   fullscreen,
@@ -92,17 +91,18 @@ export function NoConnection({
             Не получается дотянуться до OneVoice
           </h2>
           <p className="mt-1.5 text-sm leading-relaxed text-ink-mid">
-            Похоже, проблема на нашей стороне. Мы уже знаем — статус-страница обновляется в реальном
-            времени.
+            Похоже, проблема на нашей стороне. Подождите немного и попробуйте снова.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Button variant="primary" size="md" onClick={handleRetry}>
             Попробовать снова
           </Button>
-          <Button asChild variant="secondary" size="md">
-            <a href={statusUrl}>Открыть статус</a>
-          </Button>
+          {statusUrl && (
+            <Button asChild variant="secondary" size="md">
+              <a href={statusUrl}>Открыть статус</a>
+            </Button>
+          )}
         </div>
         <MonoLabel className="mt-1 normal-case tracking-[0.02em]">
           код: <span className="text-ink-mid">{code}</span>
