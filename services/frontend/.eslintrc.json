@@ -61,7 +61,8 @@
       ],
       "rules": {
         "@typescript-eslint/no-magic-numbers": "off",
-        "i18next/no-literal-string": "off"
+        "i18next/no-literal-string": "off",
+        "react/display-name": "off"
       }
     },
     {

@@ -6,6 +6,7 @@ import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import type { TaskStreamEvent } from '@/types/task';
 
 const reconnectDelayMs = 2_000;
+const SSE_DATA_PREFIX = 'data: ';
 
 /**
  * useTasksStream subscribes to the SSE endpoint /api/v1/tasks/stream and
@@ -46,10 +47,10 @@ export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
           const chunks = buffer.split('\n\n');
           buffer = chunks.pop() ?? '';
           for (const chunk of chunks) {
-            const dataLine = chunk.split('\n').find((l) => l.startsWith('data: '));
+            const dataLine = chunk.split('\n').find((l) => l.startsWith(SSE_DATA_PREFIX));
             if (!dataLine) continue; // skip ': ping' heartbeats
             try {
-              const parsed = JSON.parse(dataLine.slice(6)) as TaskStreamEvent;
+              const parsed = JSON.parse(dataLine.slice(SSE_DATA_PREFIX.length)) as TaskStreamEvent;
               onEventRef.current(parsed);
             } catch {
               // malformed event — ignore
