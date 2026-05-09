@@ -1,13 +1,17 @@
 {
   "common": {
+    "cancel": "Отмена",
     "delete": "Удалить",
     "connectionError": "Ошибка соединения",
     "allPlatforms": "Все платформы"
   },
   "chat": {
+    "heading": "Диалоги",
     "newConversation": "Новый диалог",
     "noConversations": "Нет диалогов",
-    "deleteConversationTitle": "Удалить диалог?"
+    "newConversationCta": "Начните новый диалог с AI-ассистентом",
+    "deleteConversationTitle": "Удалить диалог?",
+    "deleteConversationDescription": "Это действие нельзя отменить. Все сообщения будут безвозвратно удалены."
   },
   "posts": {
     "emptyState": "Постов пока нет",
