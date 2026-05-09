@@ -87,6 +87,9 @@ jobs:
         env:
           GOWORK: "off"
 
+      - name: No-inline-URL check (custom analyzer)
+        run: make lint-urls
+
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 

@@ -96,13 +96,23 @@ lint: ## Run Go linters on all modules
 	done
 	@echo "All Go modules lint clean"
 
+lint-urls: ## Reject inline http(s):// URL string literals (custom analyzer)
+	@echo "Building nourl analyzer..."
+	@cd tools/nourl && go build -o /tmp/onevoice-nourl .
+	@echo "Checking for inline URLs..."
+	@for mod in $(GO_MODULES); do \
+		echo "  Scanning $$mod..."; \
+		cd $$mod && /tmp/onevoice-nourl ./... && cd - > /dev/null || exit 1; \
+	done
+	@echo "All Go modules clean of inline URLs"
+
 lint-frontend: ## Run frontend linters (ESLint + Prettier)
 	@echo "Running frontend linters..."
 	@cd services/frontend && pnpm lint
 	@cd services/frontend && pnpm exec prettier --check .
 	@echo "Frontend lint clean"
 
-lint-all: lint lint-frontend docs-check ## Run all linters (Go + frontend + docs)
+lint-all: lint lint-urls lint-frontend docs-check ## Run all linters (Go + URL check + frontend + docs)
 
 docs-check: ## Fail if docs reference tool names absent from Go code
 	@./scripts/check-doc-tool-drift.sh
