@@ -85,11 +85,12 @@ function parsePluralOptions(body: string): Record<string, string> {
   return out;
 }
 
-// ICU-aware placeholder substitution for tests. Supports two shapes:
+// ICU-aware placeholder substitution for tests. Supports three shapes:
 //   - simple `{name}` → params[name]
 //   - `{count, plural, =N {…} one {…} few {…} many {…} other {…}}` (ru rules)
-// Other ICU features (select, number formatters) are NOT covered — none of
-// our keys use them yet. Add support here if/when they appear.
+//   - `{var, select, key {…} other {…}}` — chosen body is recursively
+//     interpolated so nested `{otherVar}` placeholders inside the select
+//     body still resolve. Number formatters are not covered.
 function interpolate(template: string, params?: Record<string, unknown>): string {
   if (!params) return template;
   let out = '';
@@ -108,12 +109,8 @@ function interpolate(template: string, params?: Record<string, unknown>): string
     }
     const expr = inner.body;
     const pluralIdx = expr.indexOf(', plural,');
-    if (pluralIdx === -1) {
-      // Simple `{name}` placeholder.
-      const name = expr.trim();
-      const v = params[name];
-      out += v === undefined || v === null ? `{${name}}` : String(v);
-    } else {
+    const selectIdx = expr.indexOf(', select,');
+    if (pluralIdx !== -1) {
       const name = expr.slice(0, pluralIdx).trim();
       const value = params[name];
       const num = typeof value === 'number' ? value : Number(value);
@@ -121,7 +118,20 @@ function interpolate(template: string, params?: Record<string, unknown>): string
       const exact = opts[`=${num}`];
       const cat = ruPluralCategory(num);
       const chosen = exact ?? opts[cat] ?? opts.other ?? '';
-      out += chosen.replace(/#/g, String(num));
+      // `#` placeholder = the count itself; remaining `{name}` slots are
+      // resolved recursively (real ICU also drops back into normal scope).
+      out += interpolate(chosen.replace(/#/g, String(num)), params);
+    } else if (selectIdx !== -1) {
+      const name = expr.slice(0, selectIdx).trim();
+      const value = params[name];
+      const opts = parsePluralOptions(expr.slice(selectIdx + ', select,'.length));
+      const chosen = opts[String(value)] ?? opts.other ?? '';
+      out += interpolate(chosen, params);
+    } else {
+      // Simple `{name}` placeholder.
+      const name = expr.trim();
+      const v = params[name];
+      out += v === undefined || v === null ? `{${name}}` : String(v);
     }
     i = inner.end + 1;
   }
