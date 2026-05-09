@@ -219,7 +219,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             size="md"
             onClick={handleSend}
             disabled={composerDisabled || !input.trim()}
-            aria-label="Отправить"
+            aria-label={tChat('sendAria')}
           >
             <Send size={16} />
           </Button>

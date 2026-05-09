@@ -2,6 +2,7 @@
 // result row inside the ExpandedPanel right column.
 //
 // Extracted from posts/page.tsx as part of Phase 19 / 19-12.
+import { useTranslations } from 'next-intl';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import type { Post } from '@/types/post';
@@ -15,6 +16,7 @@ export function PlatformResultCard({
   platform: string;
   result: NonNullable<Post['platformResults']>[string];
 }) {
+  const tPosts = useTranslations('posts');
   const ok = !result.error && (result.status === 'published' || result.status === 'ok');
   const display =
     CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
@@ -24,7 +26,7 @@ export function PlatformResultCard({
       <span className="flex-1 truncate text-[13px] text-ink-mid">
         {ok
           ? result.url
-            ? 'Опубликовано'
+            ? tPosts('stats.publishedLabel')
             : (platformShort[platform] ?? display)
           : (result.error ?? result.status)}
       </span>
