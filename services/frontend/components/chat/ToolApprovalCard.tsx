@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import type { ApprovalAction, ApprovalDecision, PendingApproval } from '@/types/chat';
 
 import { ToolApprovalAccordionEntry, type AccordionEntryDraft } from './ToolApprovalAccordionEntry';
+import { REJECT_REASON_MAX_LEN } from './toolApprovalConstants';
 
 // Exact Russian copy — 17-UI-SPEC §Copywriting Contract. Inlined per
 // 17-RESEARCH §Don't Hand-Roll (no shared i18n layer in v1.3).
@@ -24,11 +25,6 @@ const RU = {
 // indexed by a computed key string so the literal never appears in a
 // write position inside this file (supply-chain grep invariant).
 const FORBIDDEN_EDIT_KEYS: Set<string> = new Set(['tool' + '_name']);
-
-// Maximum length of the optional rejection reason. Mirrors
-// REJECT_REASON_MAX_LEN in ToolApprovalAccordionEntry — the entry shows
-// the over-length counter as soon as the reducer would slice.
-const REJECT_REASON_MAX_LEN = 500;
 
 export type Decision = ApprovalAction | 'undecided';
 
