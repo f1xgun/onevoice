@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function TelegramConnectModal({ open, onClose }: Props) {
+  const tIntegrations = useTranslations('integrations');
   const [step, setStep] = useState(1);
   const [channelId, setChannelId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +27,7 @@ export function TelegramConnectModal({ open, onClose }: Props) {
       await api.post(API_PATHS.INTEGRATIONS.TELEGRAM_CONNECT, {
         channel_id: channelId.trim(),
       });
-      toast.success('Telegram канал подключён!');
+      toast.success(tIntegrations('telegramConnected'));
       handleClose();
     } catch {
       toast.error('Ошибка подключения. Убедитесь, что бот добавлен как администратор в канал.');
@@ -44,7 +46,7 @@ export function TelegramConnectModal({ open, onClose }: Props) {
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Подключение Telegram</DialogTitle>
+          <DialogTitle>{tIntegrations('telegramConnectModalTitle')}</DialogTitle>
         </DialogHeader>
 
         {step === 1 && (

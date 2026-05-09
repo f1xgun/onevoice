@@ -6,21 +6,32 @@ import { vi } from 'vitest';
 // shouldn't have to mount NextIntlClientProvider just to render any
 // component that calls useTranslations.
 //
-// The stub returns the (namespaced) key as the rendered string. Tests
-// that assert specific user-visible Russian copy continue to work
-// against the actual rendered messages they don't go through this mock
-// (toasts surfacing server-supplied strings, locked Russian copy from
-// API responses, etc.). For tests that *do* need the literal Russian
-// from messages/ru.json, swap this stub for an explicit
-// NextIntlClientProvider wrapper at the call site.
+// The stub looks the key up in messages/ru.json so tests that assert
+// Russian copy ('Чат', 'Профиль бизнеса', etc.) continue to find what
+// they expect. Missing keys fall back to the namespaced key string so
+// the failure surface is "saw 'nav.foo' instead of 'Чат'" rather than
+// a context-not-found exception.
+import ruMessages from './messages/ru.json';
+
+function lookupTranslation(namespace: string | undefined, key: string): string {
+  const path = namespace ? `${namespace}.${key}`.split('.') : key.split('.');
+  let cursor: unknown = ruMessages;
+  for (const part of path) {
+    if (typeof cursor === 'object' && cursor !== null && part in cursor) {
+      cursor = (cursor as Record<string, unknown>)[part];
+    } else {
+      return namespace ? `${namespace}.${key}` : key;
+    }
+  }
+  return typeof cursor === 'string' ? cursor : namespace ? `${namespace}.${key}` : key;
+}
+
 vi.mock('next-intl', () => {
   const tFactory = (namespace?: string) => {
-    const t = (key: string) => (namespace ? `${namespace}.${key}` : key);
-    // next-intl exposes raw / has on the t-function; provide cheap stubs
-    // so tests that do {t.has('foo')} don't blow up.
+    const t = (key: string) => lookupTranslation(namespace, key);
     (t as unknown as { has: (k: string) => boolean }).has = () => true;
     (t as unknown as { raw: (k: string) => string }).raw = (k: string) =>
-      namespace ? `${namespace}.${k}` : k;
+      lookupTranslation(namespace, k);
     return t;
   };
   return {
