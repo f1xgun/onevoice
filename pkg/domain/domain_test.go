@@ -53,20 +53,20 @@ func TestSentinelErrors_MatchWithIs(t *testing.T) {
 	}
 }
 
-// --- Role ---
+// --- UserRole ---
 
-func TestRole_IsValid(t *testing.T) {
-	assert.True(t, RoleOwner.IsValid())
-	assert.True(t, RoleAdmin.IsValid())
-	assert.True(t, RoleMember.IsValid())
-	assert.False(t, Role("superadmin").IsValid())
-	assert.False(t, Role("").IsValid())
+func TestUserRole_IsValid(t *testing.T) {
+	assert.True(t, UserRoleOwner.IsValid())
+	assert.True(t, UserRoleAdmin.IsValid())
+	assert.True(t, UserRoleMember.IsValid())
+	assert.False(t, UserRole("superadmin").IsValid())
+	assert.False(t, UserRole("").IsValid())
 }
 
-func TestRole_String(t *testing.T) {
-	assert.Equal(t, "owner", RoleOwner.String())
-	assert.Equal(t, "admin", RoleAdmin.String())
-	assert.Equal(t, "member", RoleMember.String())
+func TestUserRole_String(t *testing.T) {
+	assert.Equal(t, "owner", UserRoleOwner.String())
+	assert.Equal(t, "admin", UserRoleAdmin.String())
+	assert.Equal(t, "member", UserRoleMember.String())
 }
 
 // --- User JSON ---
@@ -76,7 +76,7 @@ func TestUser_JSON_OmitsPasswordHash(t *testing.T) {
 		ID:           uuid.New(),
 		Email:        "test@example.com",
 		PasswordHash: "secret_hash_value",
-		Role:         RoleOwner,
+		Role:         UserRoleOwner,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -100,7 +100,7 @@ func TestUser_JSON_RoundTrip(t *testing.T) {
 	original := User{
 		ID:        id,
 		Email:     "user@test.com",
-		Role:      RoleAdmin,
+		Role:      UserRoleAdmin,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

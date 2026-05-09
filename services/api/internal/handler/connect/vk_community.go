@@ -2,7 +2,6 @@ package connect
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -12,8 +11,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -41,9 +40,15 @@ type connectVKRequest struct {
 // — handler refuses up-front so users don't connect a token that will fail
 // silently when they try to send an answer.
 func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ConnectVK: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -55,16 +60,6 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 	req.AccessToken = strings.TrimSpace(req.AccessToken)
 	if req.AccessToken == "" {
 		writeJSONError(w, http.StatusBadRequest, "access_token is required")
-		return
-	}
-
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -97,7 +92,7 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 
 	groupIDStr := strconv.FormatInt(group.ID, 10)
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
-		BusinessID:  business.ID,
+		BusinessID:  bc.BusinessID,
 		Platform:    a2a.AgentVK,
 		ExternalID:  groupIDStr,
 		AccessToken: req.AccessToken,
@@ -116,7 +111,7 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("VK community connected via paste",
-		"business_id", business.ID, "group_id", groupIDStr, "name", group.Name)
+		"business_id", bc.BusinessID, "group_id", groupIDStr, "name", group.Name)
 	writeJSON(w, http.StatusCreated, integration)
 }
 
@@ -127,9 +122,15 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 // VK API call yielded nothing (don't surface transient lookup failures
 // as user-visible errors).
 func (h *ConnectHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "RefreshVKCommunityName: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -140,15 +141,9 @@ func (h *ConnectHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
 	// Find the integration scoped to this business — defends against
 	// cross-tenant id guessing.
-	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, a2a.AgentVK)
+	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), bc.BusinessID, a2a.AgentVK)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
@@ -170,7 +165,7 @@ func (h *ConnectHandler) RefreshVKCommunityName(w http.ResponseWriter, r *http.R
 	// installs and fails closed groups, while the stored token is always
 	// present for a connected VK community.
 	accessToken := ""
-	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), business.ID, a2a.AgentVK, target.ExternalID); tokErr == nil && tok != nil {
+	if tok, tokErr := h.integrationService.GetDecryptedToken(r.Context(), bc.BusinessID, a2a.AgentVK, target.ExternalID); tokErr == nil && tok != nil {
 		accessToken = tok.AccessToken
 	}
 

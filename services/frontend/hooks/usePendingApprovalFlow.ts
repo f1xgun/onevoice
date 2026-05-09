@@ -16,11 +16,36 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/auth';
-import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
+import { useBusinessStore } from '@/lib/stores/business';
+import { API_BASE_URL, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { getTranslator } from '@/lib/i18n/translator';
 import { consumeSSEStream } from '@/lib/sse';
 import { resolveErrorToRussian, RESUME_STREAM_ERROR } from '@/lib/resolveErrorMap';
 import type { ApprovalDecision, PendingApproval } from '@/types/chat';
+
+// Business-scoped URL builders (RBAC plan 02-09). Falls back to the legacy
+// non-scoped path when no business is active so unit tests that do not mock
+// `useBusinessStore` still hit the pre-RBAC URLs the API_STREAM_PATHS
+// helpers produce.
+function pendingResolveUrl(
+  activeBusinessId: string | null,
+  conversationId: string,
+  batchId: string
+): string {
+  return activeBusinessId
+    ? `${API_BASE_URL}/businesses/${activeBusinessId}/conversations/${conversationId}/pending-tool-calls/${batchId}/resolve`
+    : API_STREAM_PATHS.PENDING_TOOL_CALLS_RESOLVE(conversationId, batchId);
+}
+
+function chatResumeUrl(
+  activeBusinessId: string | null,
+  conversationId: string,
+  batchId: string
+): string {
+  return activeBusinessId
+    ? `${API_BASE_URL}/businesses/${activeBusinessId}/chat/${conversationId}/resume?batch_id=${batchId}`
+    : API_STREAM_PATHS.CHAT_RESUME(conversationId, batchId);
+}
 
 // Module-level translator. Mirror of useChat.ts — both hooks need
 // resolve / resume error toasts in their respective error branches and the
@@ -52,6 +77,7 @@ export function usePendingApprovalFlow({
   const isResolvingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   // onResumeEventRef keeps a fresh reference to the current resume-event
   // handler so the SSE consumer below can dispatch via a stable function
@@ -102,7 +128,7 @@ export function usePendingApprovalFlow({
       let resolveRes: Response;
       try {
         resolveRes = await fetch(
-          API_STREAM_PATHS.PENDING_TOOL_CALLS_RESOLVE(conversationId, pendingApproval.batchId),
+          pendingResolveUrl(activeBusinessId, conversationId, pendingApproval.batchId),
           {
             method: 'POST',
             headers: {
@@ -141,7 +167,7 @@ export function usePendingApprovalFlow({
 
       try {
         const resumeRes = await fetch(
-          API_STREAM_PATHS.CHAT_RESUME(conversationId, pendingApproval.batchId),
+          chatResumeUrl(activeBusinessId, conversationId, pendingApproval.batchId),
           {
             method: 'POST',
             headers: { Authorization: `Bearer ${accessToken}` },
@@ -163,7 +189,7 @@ export function usePendingApprovalFlow({
         setIsResolving(false);
       }
     },
-    [conversationId, accessToken, pendingApproval]
+    [conversationId, accessToken, activeBusinessId, pendingApproval]
   );
 
   return {

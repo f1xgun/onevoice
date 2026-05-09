@@ -11,6 +11,7 @@ import { trackEvent } from '@/lib/telemetry';
 import { Sidebar } from '@/components/sidebar';
 import { NavRail } from '@/components/sidebar/NavRail';
 import { ProjectPane } from '@/components/sidebar/ProjectPane';
+import { BusinessRequiredGuard } from '@/components/BusinessRequiredGuard';
 import type { ReactNode } from 'react';
 
 // Module-level event-name singleton: any input/element listening for this
@@ -97,57 +98,59 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
 
   return (
-    <>
-      {/* Mobile: keep the existing Sheet-based drawer (Sidebar) which
-          renders top bar + drawer with the full nav + project tree.
-          The flex-column + h-screen pair gives <main> a real height so
-          h-full layouts inside (chat composer at the bottom, etc.)
-          actually work — without it h-full collapses to 0 and the
-          composer drifts to wherever content ends. */}
-      <div className="flex h-screen flex-col md:hidden">
-        <Sidebar />
-        <main className="min-h-0 flex-1 overflow-y-auto bg-background">{children}</main>
-      </div>
+    <BusinessRequiredGuard>
+      <>
+        {/* Mobile: keep the existing Sheet-based drawer (Sidebar) which
+            renders top bar + drawer with the full nav + project tree.
+            The flex-column + h-screen pair gives <main> a real height so
+            h-full layouts inside (chat composer at the bottom, etc.)
+            actually work — without it h-full collapses to 0 and the
+            composer drifts to wherever content ends. */}
+        <div className="flex h-screen flex-col md:hidden">
+          <Sidebar />
+          <main className="min-h-0 flex-1 overflow-y-auto bg-background">{children}</main>
+        </div>
 
-      {/* Desktop: NavRail (always) + PanelGroup hosting conditional
-          ProjectPane and main content. autoSaveId persists the resized
-          width to localStorage under
-          `react-resizable-panels:onevoice:sidebar-width`. */}
-      <div className="hidden h-screen md:flex">
-        <NavRail />
-        <PanelGroup direction="horizontal" autoSaveId="onevoice:sidebar-width" className="flex-1">
-          {showProjectPane && (
-            <>
-              {/* defaultSize=22 ≈ 280 px on a 1280 px viewport
-                  (default 280 px). minSize=12 / maxSize=35 cover the
-                  locked 200–480 px range without clipping.
-                  Explicit id+order keep the panel registry stable when
-                  showProjectPane toggles between routes — without them
-                  react-resizable-panels v3 re-keys panels on remount and
-                  the resize handle ends up reporting deltas against the
-                  wrong neighbour, inverting the drag direction. */}
-              <Panel
-                id="project-pane"
-                order={1}
-                defaultSize={22}
-                minSize={12}
-                maxSize={35}
-                className="motion-reduce:transition-none"
-              >
-                <ProjectPane />
-              </Panel>
-              <PanelResizeHandle
-                id="project-pane-handle"
-                aria-label={tSidebar('resizeAria')}
-                className="w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
-              />
-            </>
-          )}
-          <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
-            <main className="h-full overflow-y-auto bg-background">{children}</main>
-          </Panel>
-        </PanelGroup>
-      </div>
-    </>
+        {/* Desktop: NavRail (always) + PanelGroup hosting conditional
+            ProjectPane and main content. autoSaveId persists the resized
+            width to localStorage under
+            `react-resizable-panels:onevoice:sidebar-width`. */}
+        <div className="hidden h-screen md:flex">
+          <NavRail />
+          <PanelGroup direction="horizontal" autoSaveId="onevoice:sidebar-width" className="flex-1">
+            {showProjectPane && (
+              <>
+                {/* defaultSize=22 ≈ 280 px on a 1280 px viewport
+                    (default 280 px). minSize=12 / maxSize=35 cover the
+                    locked 200–480 px range without clipping.
+                    Explicit id+order keep the panel registry stable when
+                    showProjectPane toggles between routes — without them
+                    react-resizable-panels v3 re-keys panels on remount and
+                    the resize handle ends up reporting deltas against the
+                    wrong neighbour, inverting the drag direction. */}
+                <Panel
+                  id="project-pane"
+                  order={1}
+                  defaultSize={22}
+                  minSize={12}
+                  maxSize={35}
+                  className="motion-reduce:transition-none"
+                >
+                  <ProjectPane />
+                </Panel>
+                <PanelResizeHandle
+                  id="project-pane-handle"
+                  aria-label={tSidebar('resizeAria')}
+                  className="w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
+                />
+              </>
+            )}
+            <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
+              <main className="h-full overflow-y-auto bg-background">{children}</main>
+            </Panel>
+          </PanelGroup>
+        </div>
+      </>
+    </BusinessRequiredGuard>
   );
 }

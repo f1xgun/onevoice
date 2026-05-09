@@ -11,6 +11,9 @@ const SECONDS_PER_MINUTE = 60;
 const MS_PER_MINUTE = SECONDS_PER_MINUTE * MS_PER_SECOND;
 const FIVE_MINUTES = 5;
 
+/** 1 minute — sensible default for general-purpose React Query staleTime. */
+export const STALE_TIME_1_MIN = MS_PER_MINUTE;
+
 /** 5 minutes — used for slow-changing reference data (platform
  * registry, tool registry, business id partition key). */
 export const STALE_TIME_5_MIN = FIVE_MINUTES * MS_PER_MINUTE;

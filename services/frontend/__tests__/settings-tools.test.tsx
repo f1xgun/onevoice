@@ -11,16 +11,35 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-// The API client is the single seam we mock. Route every call the page
-// makes to a predictable stub so we can watch what PUT body it sends.
+// ToolsPageClient still fetches /business via the bare api client (migrated
+// in Task 4). Keep that mock for the business query.
 const apiGet = vi.fn();
-const apiPut = vi.fn();
 
 vi.mock('@/lib/api', () => ({
   api: {
     get: (...args: unknown[]) => apiGet(...args),
-    put: (...args: unknown[]) => apiPut(...args),
+    put: vi.fn(),
   },
+}));
+
+// tools and tool-approvals are now business-scoped via bizApi.
+const bizApiGet = vi.fn();
+const bizApiPut = vi.fn();
+
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: (bizId: string) => ({
+    get: (path: string, config?: unknown) => bizApiGet(bizId, path, config),
+    post: vi.fn(),
+    put: (path: string, data?: unknown, config?: unknown) => bizApiPut(bizId, path, data, config),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  }),
+}));
+
+// useTools reads activeBusinessId from the store.
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'biz-1' }),
 }));
 
 function makeClient() {
@@ -80,17 +99,24 @@ const GOOGLE_REPLY: Tool = {
 const ALL_TOOLS: Tool[] = [TELEGRAM_POST, TELEGRAM_PHOTO, VK_PUBLISH, YANDEX_REPLY, GOOGLE_REPLY];
 
 function setupDefaultMocks() {
+  // ToolsPageClient fetches /business via the bare api client (pre-Task-4).
   apiGet.mockImplementation((url: string) => {
     if (url === '/business') return Promise.resolve({ data: { id: BUSINESS_ID, name: 'Test' } });
-    if (url === '/tools') return Promise.resolve({ data: ALL_TOOLS });
-    if (url === `/business/${BUSINESS_ID}/tool-approvals`) {
+    return Promise.resolve({ data: null });
+  });
+
+  // tools and tool-approvals come through bizApi now.
+  bizApiGet.mockImplementation((bizId: string, path: string) => {
+    if (path === '/tools') return Promise.resolve({ data: ALL_TOOLS });
+    if (path === '/tool-approvals') {
       return Promise.resolve({
         data: { toolApprovals: { [TELEGRAM_POST.name]: 'manual', [YANDEX_REPLY.name]: 'auto' } },
       });
     }
     return Promise.resolve({ data: null });
   });
-  apiPut.mockResolvedValue({
+
+  bizApiPut.mockResolvedValue({
     data: {
       toolApprovals: { [TELEGRAM_POST.name]: 'auto', [YANDEX_REPLY.name]: 'auto' },
     },
@@ -100,7 +126,8 @@ function setupDefaultMocks() {
 describe('ToolsPageClient — /settings/tools (POLICY-05)', () => {
   beforeEach(() => {
     apiGet.mockReset();
-    apiPut.mockReset();
+    bizApiGet.mockReset();
+    bizApiPut.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
   });
@@ -183,11 +210,12 @@ describe('ToolsPageClient — /settings/tools (POLICY-05)', () => {
     await userEvent.click(screen.getByRole('button', { name: /Сохранить/ }));
 
     await waitFor(() => {
-      expect(apiPut).toHaveBeenCalledTimes(1);
+      expect(bizApiPut).toHaveBeenCalledTimes(1);
     });
 
-    const [url, body] = apiPut.mock.calls[0]!;
-    expect(url).toBe(`/business/${BUSINESS_ID}/tool-approvals`);
+    const [bizId, path, body] = bizApiPut.mock.calls[0]!;
+    expect(bizId).toBe(BUSINESS_ID);
+    expect(path).toBe('/tool-approvals');
     // The body must include EVERY manual-floor tool's current value — the
     // backend replaces the entire map on PUT.
     expect(body).toEqual({

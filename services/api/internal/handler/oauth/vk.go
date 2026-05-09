@@ -2,7 +2,6 @@ package oauth
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,37 +11,31 @@ import (
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/vkapi"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
-// GetVKAuthURL generates a classic VK OAuth authorization URL (JWT required).
+// GetVKAuthURL generates a classic VK OAuth authorization URL (PermIntegrationsConnect required).
 // Uses oauth.vk.com code flow (not VK ID / id.vk.com) — the resulting user
 // token works with groups.get and wall.getComments, which VK ID tokens
 // reject with error 1051 ("method unavailable with current profile type").
 func (h *OAuthHandler) GetVKAuthURL(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GetVKAuthURL: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("failed to get business for VK OAuth", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
-		UserID:     userID,
-		BusinessID: business.ID,
+		UserID:     bc.UserID,
+		BusinessID: bc.BusinessID,
 		Platform:   a2a.AgentVK,
 	})
 	if err != nil {
@@ -142,23 +135,23 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/integrations?vk_step=select_community", http.StatusFound)
 }
 
-// VKCommunities returns communities where the user is an admin (JWT required).
+// VKCommunities returns communities where the user is an admin (PermIntegrationsConnect required).
 // Uses the temporary user token stored in Redis during VK OAuth step 1.
 func (h *OAuthHandler) VKCommunities(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "VKCommunities: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		writeJSONError(w, http.StatusNotFound, "business not found")
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	// Get temp token from Redis
-	redisKey := fmt.Sprintf("vk_temp_token:%s", business.ID.String())
+	redisKey := fmt.Sprintf("vk_temp_token:%s", bc.BusinessID.String())
 	token, err := h.redis.Get(r.Context(), redisKey).Result()
 	if err != nil {
 		slog.Warn("VK temp token not found or expired", "error", err)
@@ -208,24 +201,24 @@ func (h *OAuthHandler) VKCommunities(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, vkResp.Response.Items)
 }
 
-// VKCommunityAuthURL generates the second OAuth URL for community token (JWT required).
+// VKCommunityAuthURL generates the second OAuth URL for community token (PermIntegrationsConnect required).
 // Uses old VK OAuth with group_ids to get a community-scoped token.
 func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "VKCommunityAuthURL: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	groupInput := strings.TrimSpace(r.URL.Query().Get("group_id"))
 	if groupInput == "" {
 		writeJSONError(w, http.StatusBadRequest, "group_id is required")
-		return
-	}
-
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		writeJSONError(w, http.StatusNotFound, "business not found")
 		return
 	}
 
@@ -241,8 +234,8 @@ func (h *OAuthHandler) VKCommunityAuthURL(w http.ResponseWriter, r *http.Request
 	}
 
 	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
-		UserID:     userID,
-		BusinessID: business.ID,
+		UserID:     bc.UserID,
+		BusinessID: bc.BusinessID,
 		Platform:   a2a.AgentVK,
 	})
 	if err != nil {

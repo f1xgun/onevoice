@@ -2,23 +2,25 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { fetchTools } from '@/lib/api/tools';
+import { useBusinessStore } from '@/lib/stores/business';
 import { STALE_TIME_5_MIN } from '@/lib/constants/cacheTTL';
 import { PLATFORM_DISPLAY_ORDER } from '@/lib/platforms';
 import type { Tool } from '@/lib/schemas';
 
-// Live feed of the orchestrator registry (GET /api/v1/tools).
-// Replaces the previously hardcoded tool list. Unscoped: the registry is
-// global (not per-business), so the React Query key is plain ['tools'].
-//
 // staleTime 5 minutes — the registry does not change mid-session and the
 // settings/project-edit pages need not refetch on every mount.
-export const TOOLS_QUERY_KEY = ['tools'] as const;
 export const TOOLS_STALE_TIME_MS = STALE_TIME_5_MIN;
 
+export function toolsQueryKey(activeBusinessId: string | null) {
+  return ['businesses', activeBusinessId, 'tools'] as const;
+}
+
 export function useTools() {
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useQuery<Tool[]>({
-    queryKey: TOOLS_QUERY_KEY,
-    queryFn: fetchTools,
+    queryKey: toolsQueryKey(activeBusinessId),
+    queryFn: () => fetchTools(activeBusinessId!),
+    enabled: !!activeBusinessId,
     staleTime: TOOLS_STALE_TIME_MS,
   });
 }

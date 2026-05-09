@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -32,24 +33,29 @@ func newProbeMock(t *testing.T, profileJSON string, redirectToPassport bool) *ht
 	}))
 }
 
-func TestProbeYandexBusiness_Unauthorized(t *testing.T) {
+func TestProbeYandexBusiness_Forbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/probe", strings.NewReader(`{}`))
+	// seed ctx without PermIntegrationsConnect
+	req = req.WithContext(oauthBizCtx(businessID, userID /* no perms */))
 	rr := httptest.NewRecorder()
 	h.ProbeYandexBusiness(rr, req)
 
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rr.Code)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rr.Code)
 	}
 }
 
 func TestProbeYandexBusiness_InvalidCookies(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/probe", strings.NewReader(`{"cookies":"hello world"}`))
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 	h.ProbeYandexBusiness(rr, req)
 
@@ -69,21 +75,17 @@ func TestProbeYandexBusiness_InvalidCookies(t *testing.T) {
 }
 
 func TestProbeYandexBusiness_ValidSessionLive(t *testing.T) {
-	// Probe is now session-validity-only. The friendly business name is
-	// resolved separately via RefreshYandexBusinessName → agent get_info,
-	// because Yandex's business.yandex.ru SPA doesn't embed user JSON
-	// inline and the yandex_login cookie is the personal account login,
-	// not the Sprav profile name.
 	probe := newProbeMock(t, "", false)
 	defer probe.Close()
 
+	businessID := uuid.New()
 	userID := uuid.New()
 	cfg := OAuthConfig{yandexProbeBaseURL: probe.URL}
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, probe.Client(), nil)
 
 	body := `{"cookies":"Session_id=` + validYandexSession + `; sessionid2=3:abc; yandex_login=testuser"}`
 	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/probe", strings.NewReader(body))
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 	h.ProbeYandexBusiness(rr, req)
 
@@ -107,13 +109,14 @@ func TestProbeYandexBusiness_RedirectToPassport(t *testing.T) {
 	probe := newProbeMock(t, "", true) // redirect to passport
 	defer probe.Close()
 
+	businessID := uuid.New()
 	userID := uuid.New()
 	cfg := OAuthConfig{yandexProbeBaseURL: probe.URL}
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, probe.Client(), nil)
 
 	body := `{"cookies":"Session_id=` + validYandexSession + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/probe", strings.NewReader(body))
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 	h.ProbeYandexBusiness(rr, req)
 
@@ -130,12 +133,13 @@ func TestProbeYandexBusiness_RedirectToPassport(t *testing.T) {
 func TestProbeYandexBusiness_ParseSucceedsButProbeFails(t *testing.T) {
 	// Point probe URL at a closed port; HTTP call errors → SessionValid stays nil.
 	cfg := OAuthConfig{yandexProbeBaseURL: "http://127.0.0.1:1"}
+	businessID := uuid.New()
 	userID := uuid.New()
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, &http.Client{}, nil)
 
 	body := `{"cookies":"Session_id=` + validYandexSession + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/probe", strings.NewReader(body))
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 	h.ProbeYandexBusiness(rr, req)
 
@@ -152,12 +156,13 @@ func TestProbeYandexBusiness_ParseSucceedsButProbeFails(t *testing.T) {
 func TestProbeYandexBusiness_WarnsOnMissingCookies(t *testing.T) {
 	// Only Session_id; sessionid2 and yandex_login missing → both warnings.
 	cfg := OAuthConfig{yandexProbeBaseURL: "http://127.0.0.1:1"}
+	businessID := uuid.New()
 	userID := uuid.New()
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), cfg, &http.Client{}, nil)
 
 	body := `{"cookies":"Session_id=` + validYandexSession + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/probe", strings.NewReader(body))
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 	h.ProbeYandexBusiness(rr, req)
 
@@ -175,9 +180,6 @@ func TestConnectYandexBusiness_Success(t *testing.T) {
 	businessID := uuid.New()
 	integrationID := uuid.New()
 
-	mockBusiness := new(MockBusinessService)
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{ID: businessID, UserID: userID}, nil)
-
 	mockIntegration := new(MockOAuthIntegrationService)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		return p.BusinessID == businessID &&
@@ -187,11 +189,11 @@ func TestConnectYandexBusiness_Success(t *testing.T) {
 			strings.Contains(p.AccessToken, validYandexSession)
 	})).Return(&domain.Integration{ID: integrationID, Platform: "yandex_business"}, nil)
 
-	h := NewOAuthHandler(new(MockOAuthStateService), mockIntegration, mockBusiness, OAuthConfig{}, nil, nil)
+	h := NewOAuthHandler(new(MockOAuthStateService), mockIntegration, new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	body := `{"cookies":"Session_id=` + validYandexSession + `; sessionid2=3:abc"}`
 	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/connect", strings.NewReader(body))
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 	h.ConnectYandexBusiness(rr, req)
 
@@ -202,11 +204,12 @@ func TestConnectYandexBusiness_Success(t *testing.T) {
 }
 
 func TestConnectYandexBusiness_InvalidCookies(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/connect", strings.NewReader(`{"cookies":"garbage"}`))
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 	h.ConnectYandexBusiness(rr, req)
 
@@ -215,12 +218,26 @@ func TestConnectYandexBusiness_InvalidCookies(t *testing.T) {
 	}
 }
 
-func TestConnectYandexBusiness_Unauthorized(t *testing.T) {
+func TestConnectYandexBusiness_NoBusinessContext(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/connect", strings.NewReader(`{"cookies":"Session_id=`+validYandexSession+`"}`))
+	// no BusinessContext seeded
 	rr := httptest.NewRecorder()
 	h.ConnectYandexBusiness(rr, req)
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rr.Code)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rr.Code)
+	}
+}
+
+func TestConnectYandexBusiness_Forbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
+	req := httptest.NewRequest(http.MethodPost, "/integrations/yandex_business/connect", strings.NewReader(`{"cookies":"Session_id=`+validYandexSession+`"}`))
+	req = req.WithContext(oauthBizCtx(businessID, userID /* no perms */))
+	rr := httptest.NewRecorder()
+	h.ConnectYandexBusiness(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rr.Code)
 	}
 }

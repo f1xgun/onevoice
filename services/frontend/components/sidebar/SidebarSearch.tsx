@@ -7,11 +7,10 @@ import * as Popover from '@radix-ui/react-popover';
 import { Loader2, Search } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
-import { STALE_TIME_5_MIN } from '@/lib/constants/cacheTTL';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { useBusinessStore } from '@/lib/stores/business';
 import type { SearchResult } from '@/types/search';
-import type { Business } from '@/types/business';
 import { SearchResultRow } from './SearchResultRow';
 
 // Sidebar inline search.
@@ -40,19 +39,6 @@ function detectPlaceholder(): string {
   return 'Поиск... Ctrl-K';
 }
 
-/** GET /business returns the caller's business — used as the React Query
- * stable key partition so unrelated tenants (during multi-tenant futures)
- * never share a cache entry. NEVER sent in the search request body — the
- * search handler resolves businessID server-side from the bearer's userID. */
-async function fetchBusinessId(): Promise<string | null> {
-  try {
-    const { data } = await api.get<Business>(API_PATHS.BUSINESS.ROOT);
-    return data?.id ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export function SidebarSearch() {
   const tSide = useTranslations('sidebar');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -61,6 +47,7 @@ export function SidebarSearch() {
   const [scopeAllBusiness, setScopeAllBusiness] = useState(false);
   const debounced = useDebouncedValue(query, DEBOUNCE_MS);
   const pathname = usePathname();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   // Route-aware default scope.
   // /chat/projects/{id} → default to project; show «По всему бизнесу» checkbox.
@@ -79,21 +66,14 @@ export function SidebarSearch() {
     setScopeAllBusiness(false);
   }, [projectIdFromRoute]);
 
-  // Cache-key partition only — never sent to /search (handler resolves server-side).
-  const { data: businessId = null } = useQuery<string | null>({
-    queryKey: ['business', 'id'],
-    queryFn: fetchBusinessId,
-    staleTime: STALE_TIME_5_MIN,
-  });
-
-  const enabled = debounced.trim().length >= MIN_QUERY;
+  const enabled = debounced.trim().length >= MIN_QUERY && !!activeBusinessId;
 
   const { data: results = [], isFetching } = useQuery<SearchResult[]>({
-    queryKey: ['search', businessId, effectiveProjectId, debounced],
+    queryKey: ['businesses', activeBusinessId, 'search', effectiveProjectId, debounced],
     enabled,
     queryFn: () =>
-      api
-        .get<SearchResult[]>('/search', {
+      bizApi(activeBusinessId!)
+        .get<SearchResult[]>(BIZ_API_PATHS.SEARCH.ROOT, {
           params: {
             q: debounced,
             ...(effectiveProjectId ? { project_id: effectiveProjectId } : {}),

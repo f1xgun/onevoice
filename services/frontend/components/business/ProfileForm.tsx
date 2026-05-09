@@ -13,9 +13,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { getTranslator } from '@/lib/i18n/translator';
 import { businessSchema, type BusinessInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState(defaultValues?.logoUrl ?? '');
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   const {
     register,
@@ -63,9 +65,12 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   }, [defaultValues, reset]);
 
   const mutation = useMutation({
-    mutationFn: (data: BusinessInput) => api.put(API_PATHS.BUSINESS.ROOT, data),
+    mutationFn: (data: BusinessInput) => {
+      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
+      return bizApi(activeBusinessId).put(BIZ_API_PATHS.BUSINESS.ROOT, data);
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId) });
       toast.success(tProfileForm('saved'));
     },
     onError: () => toast.error(tProfileForm('saveError')),
@@ -73,15 +78,16 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
 
   const logoMutation = useMutation({
     mutationFn: (file: File) => {
+      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
       const formData = new FormData();
       formData.append('logo', file);
-      return api.put<Business>('/business/logo', formData, {
+      return bizApi(activeBusinessId).put<Business>(BIZ_API_PATHS.BUSINESS.LOGO, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
     },
     onSuccess: (res) => {
       setLogoUrl(res.data.logoUrl ?? '');
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId) });
       toast.success(tProfileForm('logoUpdated'));
     },
     onError: () => toast.error(tProfileForm('logoUploadError')),

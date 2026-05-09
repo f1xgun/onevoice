@@ -16,9 +16,10 @@ import { ru } from 'date-fns/locale';
 import { CalendarIcon, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -71,11 +72,15 @@ function useSchedule(initialSchedule?: ScheduleDay[], initialSpecialDates?: Spec
 
 function useScheduleMutation(successMsg: string, errorMsg: string) {
   const queryClient = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation({
-    mutationFn: (data: SchedulePayload) => api.put(API_PATHS.BUSINESS.SCHEDULE, data),
+    mutationFn: (data: SchedulePayload) => {
+      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
+      return bizApi(activeBusinessId).put(BIZ_API_PATHS.BUSINESS.SCHEDULE, data);
+    },
     onSuccess: () => {
       toast.success(successMsg);
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId) });
     },
     onError: () => toast.error(errorMsg),
   });

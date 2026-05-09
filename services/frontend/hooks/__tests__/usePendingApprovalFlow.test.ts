@@ -35,6 +35,16 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+// RBAC (plan 02-09): both useChat and usePendingApprovalFlow read
+// `activeBusinessId` from the business store and use it to build
+// business-scoped URLs (`/businesses/biz-test/...`). The store mock below
+// pins the active business so URL-assertion regexes match the
+// business-scoped shape consistently across all tests in this file.
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'biz-test' }),
+}));
+
 // Mock the axios-based api client used by ChatWindow's `fetchConversation`,
 // `useProjectsQuery`, and `useMoveConversation`. Mirrors the existing
 // ChatWindow.test.tsx idiom so render-based integration tests below can mount
@@ -331,7 +341,7 @@ describe('usePendingApprovalFlow.resolveApproval — happy path', () => {
       }
       if (url.endsWith('/resolve')) {
         expect(url).toMatch(
-          /\/api\/v1\/conversations\/cid-resolve-1\/pending-tool-calls\/batch-single\/resolve$/
+          /\/api\/v1\/businesses\/biz-test\/conversations\/cid-resolve-1\/pending-tool-calls\/batch-single\/resolve$/
         );
         expect(init!.method).toBe('POST');
         // CRITICAL: body must not echo tool_name anywhere.
@@ -348,7 +358,9 @@ describe('usePendingApprovalFlow.resolveApproval — happy path', () => {
         });
       }
       // Resume SSE.
-      expect(url).toMatch(/\/api\/v1\/chat\/cid-resolve-1\/resume\?batch_id=batch-single$/);
+      expect(url).toMatch(
+        /\/api\/v1\/businesses\/biz-test\/chat\/cid-resolve-1\/resume\?batch_id=batch-single$/
+      );
       return mockSSEResponse([
         sseLine({
           type: 'tool_result',

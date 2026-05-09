@@ -5,9 +5,10 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -55,6 +56,7 @@ type Step = 'paste' | 'searching' | 'pick' | 'connecting';
 export function YandexBusinessConnectModal({ open, onClose }: Props) {
   const tYa = useTranslations('integrations.yandexBusiness');
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const [step, setStep] = useState<Step>('paste');
   const [value, setValue] = useState('');
   const [probe, setProbe] = useState<ProbeResponse | null>(null);
@@ -80,8 +82,9 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       probeAbortRef.current = controller;
       setProbing(true);
       try {
-        const { data } = await api.post<ProbeResponse>(
-          '/integrations/yandex_business/probe',
+        if (!activeBusinessId) return;
+        const { data } = await bizApi(activeBusinessId).post<ProbeResponse>(
+          BIZ_API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_PROBE,
           { cookies: trimmed },
           { signal: controller.signal }
         );
@@ -95,7 +98,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
     }, PROBE_DEBOUNCE_MS);
 
     return () => clearTimeout(handle);
-  }, [value, open, step, tYa]);
+  }, [value, open, step, activeBusinessId, tYa]);
 
   function resetState() {
     probeAbortRef.current?.abort();
@@ -118,8 +121,9 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
     if (!probe?.ok) return;
     setStep('searching');
     try {
-      const { data } = await api.post<{ companies: CompanyEntry[] }>(
-        '/integrations/yandex_business/companies',
+      if (!activeBusinessId) return;
+      const { data } = await bizApi(activeBusinessId).post<{ companies: CompanyEntry[] }>(
+        BIZ_API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_COMPANIES,
         { cookies: value.trim() }
       );
       const list = data.companies ?? [];
@@ -149,13 +153,14 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
   async function connectWith(company: CompanyEntry) {
     setStep('connecting');
     try {
-      await api.post(API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_CONNECT, {
+      if (!activeBusinessId) return;
+      await bizApi(activeBusinessId).post(BIZ_API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_CONNECT, {
         cookies: value.trim(),
         permalink: company.permalink,
         business_name: company.name,
       });
       toast.success(tYa('connectedToast', { name: company.name || company.permalink }));
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       handleClose();
     } catch (err: unknown) {
       const msg =

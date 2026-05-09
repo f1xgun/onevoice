@@ -3,9 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as conversationsApi from '@/lib/conversations';
 import type { Conversation } from '@/lib/conversations';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { projectsQueryKey } from '@/hooks/useProjects';
+import { useBusinessStore } from '@/lib/stores/business';
 
-export const conversationsQueryKey = QUERY_KEYS.CONVERSATIONS;
+export const conversationsQueryKey = (activeBusinessId: string | null) =>
+  ['businesses', activeBusinessId, 'conversations'] as const;
 
 // Poll cadence while any chat sits in `auto_pending` — see refetchInterval
 // callback below for context. 2 s lines up with the auto-titler's typical
@@ -14,9 +16,11 @@ export const conversationsQueryKey = QUERY_KEYS.CONVERSATIONS;
 const TITLE_POLL_INTERVAL_MS = 2000;
 
 export function useConversationsQuery() {
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useQuery<Conversation[]>({
-    queryKey: conversationsQueryKey,
-    queryFn: conversationsApi.listConversations,
+    queryKey: conversationsQueryKey(activeBusinessId),
+    queryFn: () => conversationsApi.listConversations(activeBusinessId!),
+    enabled: !!activeBusinessId,
     // The auto-titler is fire-and-forget on the server:
     // POST /conversations/:id/regenerate-title returns 200 immediately and
     // a goroutine writes the title 3-8 s later. Same for the implicit
@@ -36,67 +40,73 @@ export function useConversationsQuery() {
 
 export function useCreateConversation() {
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation<Conversation, Error, { title: string; projectId?: string | null }>({
-    mutationFn: (input) => conversationsApi.createConversation(input),
+    mutationFn: (input) => conversationsApi.createConversation(activeBusinessId!, input),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
       // New chat bumps the per-project count rendered next to the project
-      // row in the sidebar (QUERY_KEYS.PROJECT_CONVERSATION_COUNT(id)).
-      void qc.invalidateQueries({ queryKey: ['projects'] });
+      // row in the sidebar (projectsQueryKey).
+      void qc.invalidateQueries({ queryKey: projectsQueryKey(activeBusinessId) });
     },
   });
 }
 
 export function useMoveConversation() {
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation<
     Conversation,
     Error,
     { id: string; projectId: string | null; previousProjectId: string | null }
   >({
-    mutationFn: ({ id, projectId }) => conversationsApi.moveConversation(id, projectId),
+    mutationFn: ({ id, projectId }) =>
+      conversationsApi.moveConversation(activeBusinessId!, id, projectId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: conversationsQueryKey });
-      // Sidebar project rows show a per-project chat count from
-      // QUERY_KEYS.PROJECT_CONVERSATION_COUNT(id) (and the project list
-      // header re-renders if the project changes). Move shifts the count
-      // on BOTH the source and destination — invalidate the whole
-      // ['projects'] prefix so every dependent count refetches.
-      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
+      // Sidebar project rows show a per-project chat count. Move shifts the
+      // count on BOTH source and destination — invalidate the whole prefix.
+      void qc.invalidateQueries({ queryKey: projectsQueryKey(activeBusinessId) });
     },
   });
 }
 
 // pin / unpin a conversation. Both mutations
-// invalidate the QUERY_KEYS.CONVERSATIONS cache on success, extending the
+// invalidate the conversations cache on success, extending the
 // established invalidation pattern (the sidebar list + the
 // ChatHeader narrow-memo selector both refresh from a single source).
 export function usePinConversation() {
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation<Conversation, Error, string>({
-    mutationFn: (conversationId) => conversationsApi.pinConversation(conversationId),
+    mutationFn: (conversationId) =>
+      conversationsApi.pinConversation(activeBusinessId!, conversationId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
     },
   });
 }
 
 export function useUnpinConversation() {
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation<Conversation, Error, string>({
-    mutationFn: (conversationId) => conversationsApi.unpinConversation(conversationId),
+    mutationFn: (conversationId) =>
+      conversationsApi.unpinConversation(activeBusinessId!, conversationId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
     },
   });
 }
 
 export function useRenameConversation() {
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation<Conversation, Error, { id: string; title: string }>({
-    mutationFn: ({ id, title }) => conversationsApi.renameConversation(id, title),
+    mutationFn: ({ id, title }) =>
+      conversationsApi.renameConversation(activeBusinessId!, id, title),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
     },
   });
 }
@@ -106,24 +116,24 @@ export function useRenameConversation() {
 // callers translate err.response.data.message through their own toast.
 export function useRegenerateConversationTitle() {
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation<Conversation, Error, string>({
-    mutationFn: (id) => conversationsApi.regenerateConversationTitle(id),
+    mutationFn: (id) => conversationsApi.regenerateConversationTitle(activeBusinessId!, id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
     },
   });
 }
 
 export function useDeleteConversation() {
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation<void, Error, string>({
-    mutationFn: (id) => conversationsApi.deleteConversation(id),
+    mutationFn: (id) => conversationsApi.deleteConversation(activeBusinessId!, id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: conversationsQueryKey });
-      // Per-project chat count lives at QUERY_KEYS.PROJECT_CONVERSATION_COUNT(id).
-      // Invalidate the whole ['projects'] prefix so the deleted chat's
-      // project row re-fetches its count.
-      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
+      // Per-project chat count. Invalidate the whole businesses/id/projects prefix.
+      void qc.invalidateQueries({ queryKey: projectsQueryKey(activeBusinessId) });
     },
   });
 }
