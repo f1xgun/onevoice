@@ -48,8 +48,11 @@ type Handlers struct {
 	Platforms     *handler.PlatformsHandler
 }
 
-// Setup creates and configures the Chi router with all routes and middleware
-func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker) *chi.Mux {
+// Setup creates and configures the Chi router with all routes and middleware.
+// allowedOrigins is the CORS whitelist sourced from CORS_ALLOWED_ORIGINS;
+// callers MUST supply at least one entry so the public frontend origin can be
+// configured per-environment without rebuilding the binary.
+func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker, allowedOrigins []string) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -59,7 +62,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Link", "X-Correlation-ID"},

@@ -562,8 +562,11 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	hc.AddCheck("postgres", func(ctx context.Context) error { return pgPool.Ping(ctx) })
 	hc.AddCheck("redis", func(ctx context.Context) error { return redisClient.Ping(ctx).Err() })
 
-	// Setup router
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, hc)
+	// Setup router. CORS allowed origins are sourced from the
+	// CORS_ALLOWED_ORIGINS env var (comma-separated); the dev default is a
+	// single localhost:3000 entry — production deploys MUST set the public
+	// frontend origin explicitly.
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), redisClient, hc, cfg.CORSAllowedOrigins)
 
 	// Start HTTP server
 	addr := ":" + cfg.Port
