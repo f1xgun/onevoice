@@ -45,11 +45,12 @@ func run() error {
 		return fmt.Errorf("failed to connect to NATS (url=%s): %w", natsURL, err)
 	}
 	tc := tokenclient.New(apiURL, nil)
-	tokens := &tokenAdapter{client: tc}
+	tokens := agentbase.NewTokenResolver(tc)
 	dedupe := agentbase.NewDedupeClient(agentbase.GetEnv("REDIS_URL", "redis://redis:6379"))
+	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyTelegramError))
 	handler := agentpkg.NewHandler(tokens, func(botToken string) (agentpkg.Sender, error) {
 		return telegram.New(botToken)
-	}, dedupe)
+	}, dispatcher)
 	transport := a2a.NewNATSTransport(nc)
 	ag := a2a.NewAgent(a2a.AgentTelegram, transport, handler)
 
@@ -91,19 +92,4 @@ func run() error {
 	ag.Stop()         // wait for in-flight handlers
 	slog.Info("telegram agent stopped")
 	return nil
-}
-
-type tokenAdapter struct {
-	client *tokenclient.Client
-}
-
-func (a *tokenAdapter) GetToken(ctx context.Context, businessID, platform, externalID string) (agentpkg.TokenInfo, error) {
-	resp, err := a.client.GetToken(ctx, businessID, platform, externalID)
-	if err != nil {
-		return agentpkg.TokenInfo{}, err
-	}
-	return agentpkg.TokenInfo{
-		AccessToken: resp.AccessToken,
-		ExternalID:  resp.ExternalID,
-	}, nil
 }
