@@ -1,7 +1,6 @@
 package wire
 
 import (
-	"context"
 	"log/slog"
 
 	natslib "github.com/nats-io/nats.go"
@@ -47,11 +46,10 @@ type toolSpec struct {
 // `/health/ready`), and the returned *natslib.Conn is nil — cmd/main.go
 // branches on nil to skip the NATS health check and the deferred Drain().
 //
-// The ctx parameter currently isn't threaded into natslib.Connect (the v1
-// nats.go API does not accept a context for the dial), but is reserved for
-// future use and to keep the signature consistent with wire.Mongo.
-func Tools(ctx context.Context, log *slog.Logger, cfg *config.Config) (*toolregistry.Registry, *natslib.Conn, error) {
-	_ = ctx // reserved for future context-aware dial
+// No ctx parameter: the v1 nats.go API does not accept a context for dial,
+// so threading one through would be ceremonial. Re-add when the dial path
+// becomes context-aware.
+func Tools(log *slog.Logger, cfg *config.Config) (*toolregistry.Registry, *natslib.Conn, error) {
 	reg := toolregistry.NewRegistry()
 
 	nc, err := natslib.Connect(cfg.NATSUrl)
