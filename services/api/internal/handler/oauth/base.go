@@ -26,17 +26,17 @@ import (
 )
 
 // External OAuth/API endpoints used by this handler. VK lives in pkg/vkapi
-// (shared with platform/sync). Yandex / Google / Telegram-bot endpoints stay
-// here because no other package calls them directly today. Names use
-// "default" prefix to avoid colliding with the *OAuthHandler methods that
-// honor cfg overrides on top of these defaults.
+// (shared with platform/sync). Yandex / Google endpoints stay here because no
+// other package calls them directly today. Names use "default" prefix to avoid
+// colliding with the *OAuthHandler methods that honor cfg overrides on top of
+// these defaults. Telegram is intentionally absent — the only Telegram caller
+// is connect.ConnectHandler (paste-flow), so its base lives in connect/.
 const (
 	defaultYandexAuthURL         = "https://oauth.yandex.ru/authorize"
 	defaultYandexTokenURL        = "https://oauth.yandex.ru/token"       //nolint:gosec // G101: OAuth token-exchange endpoint URL, not a credential
 	defaultGoogleTokenURL        = "https://oauth2.googleapis.com/token" //nolint:gosec // G101: OAuth token-exchange endpoint URL, not a credential
 	defaultGoogleAccountsURL     = "https://mybusinessaccountmanagement.googleapis.com"
 	defaultGoogleBusinessInfoURL = "https://mybusinessbusinessinformation.googleapis.com"
-	defaultTelegramBotAPIBase    = "https://api.telegram.org"
 )
 
 // tempOAuthCredsTTL caps how long a freshly-issued OAuth token sits in
