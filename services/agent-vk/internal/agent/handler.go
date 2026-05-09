@@ -2,10 +2,8 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -13,21 +11,19 @@ import (
 	vkapi "github.com/SevereCloud/vksdk/v3/api"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
-// TokenInfo holds the resolved tokens for an integration.
-type TokenInfo struct {
-	AccessToken string // community token (for write operations)
-	UserToken   string // user token (for read operations on private data)
-	ExternalID  string // resolved external ID (group_id)
-}
+// TokenInfo aliases agentbase.TokenInfo so existing tests compile after the
+// plan 19-07 migration. AccessToken is the community token (write operations);
+// UserToken is the user token (read operations on private data); ExternalID is
+// the resolved group_id. agentbase.TokenInfo carries the same three fields.
+type TokenInfo = agentbase.TokenInfo
 
-// TokenFetcher abstracts token retrieval for testability.
-type TokenFetcher interface {
-	GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error)
-}
+// TokenFetcher aliases agentbase.TokenResolver — kept for D-16 test
+// compatibility (import-path/wiring-only changes in handler_test.go).
+type TokenFetcher = agentbase.TokenResolver
 
 // VKClient abstracts VK API operations for testability.
 type VKClient interface {
@@ -49,96 +45,60 @@ type VKClientFactory func(accessToken string) VKClient
 type Handler struct {
 	tokens        TokenFetcher
 	clientFactory VKClientFactory
-	serviceKey    string                   // VK API service key for read-only operations (public data)
-	dedupe        *hitldedupe.DedupeClient // optional; nil skips the HITL dedupe gate
+	serviceKey    string // VK API service key for read-only operations (public data)
+	dispatcher    agentbase.Dispatcher
 }
 
 // NewHandler creates a Handler with per-request token fetching.
-// serviceKey is optional — if provided, read operations use it instead of community token.
-// dedupe is optional — nil disables the HITL dedupe gate (used by unit tests and dev-local envs).
-func NewHandler(tokens TokenFetcher, factory VKClientFactory, serviceKey string, dedupe *hitldedupe.DedupeClient) *Handler {
-	return &Handler{tokens: tokens, clientFactory: factory, serviceKey: serviceKey, dedupe: dedupe}
+// serviceKey is optional — if provided, read operations use it instead of
+// community token. dispatcher is optional — passing nil disables HITL dedupe
+// and applies classification directly (used by unit tests and dev-local envs).
+func NewHandler(tokens TokenFetcher, factory VKClientFactory, serviceKey string, dispatcher agentbase.Dispatcher) *Handler {
+	return &Handler{tokens: tokens, clientFactory: factory, serviceKey: serviceKey, dispatcher: dispatcher}
 }
 
-// Handle routes the ToolRequest to the appropriate VK API operation.
-// Before dispatch, if a dedupe client is configured AND req.ApprovalID is
-// non-empty, the HITL dedupe gate is consulted — see dedupeGate.
+// Handle routes the ToolRequest to the appropriate VK API operation via the
+// agentbase.Dispatcher (HITL dedupe gate + error classifier). When dispatcher
+// is nil we route directly through routeTool and apply ClassifyVKError once.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	if resp, stop := h.dedupeGate(ctx, req); stop {
-		return resp, nil
+	if h.dispatcher == nil {
+		resp, err := h.routeTool(ctx, req)
+		return resp, ClassifyVKError(err)
 	}
+	return h.dispatcher.Dispatch(ctx, req, h.routeTool)
+}
 
-	var (
-		resp *a2a.ToolResponse
-		err  error
-	)
+// routeTool dispatches a ToolRequest to the per-tool implementation; the
+// dispatcher (in Handle) handles dedupe + classification around this exec.
+func (h *Handler) routeTool(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 	switch req.Tool {
 	case tools.VKPublishPost:
-		resp, err = h.publishPost(ctx, req)
+		return h.publishPost(ctx, req)
 	case tools.VKPostPhoto:
-		resp, err = h.postPhoto(ctx, req)
+		return h.postPhoto(ctx, req)
 	case tools.VKUpdateGroupInfo:
-		resp, err = h.updateGroupInfo(ctx, req)
+		return h.updateGroupInfo(ctx, req)
 	case tools.VKSchedulePost:
-		resp, err = h.schedulePost(ctx, req)
+		return h.schedulePost(ctx, req)
 	case tools.VKGetComments:
-		resp, err = h.getComments(ctx, req)
+		return h.getComments(ctx, req)
 	case tools.VKReplyComment:
-		resp, err = h.replyComment(ctx, req)
+		return h.replyComment(ctx, req)
 	case tools.VKDeleteComment:
-		resp, err = h.deleteComment(ctx, req)
+		return h.deleteComment(ctx, req)
 	case tools.VKGetCommunityInfo:
-		resp, err = h.getCommunityInfo(ctx, req)
+		return h.getCommunityInfo(ctx, req)
 	case tools.VKGetWallPosts:
-		resp, err = h.getWallPosts(ctx, req)
+		return h.getWallPosts(ctx, req)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
-
-	h.dedupeStore(ctx, req, resp, err)
-	return resp, err
 }
 
-// dedupeGate consults the Redis dedupe cache BEFORE tool dispatch when a HITL
-// approval is in play. Returns (resp, true) when the caller should stop.
-func (h *Handler) dedupeGate(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, bool) {
-	if h.dedupe == nil || req.ApprovalID == "" {
-		return nil, false
-	}
-	outcome, cached, err := h.dedupe.Claim(ctx, req.BusinessID, req.ApprovalID)
-	if err != nil {
-		slog.WarnContext(ctx, "hitl dedupe claim failed; proceeding without dedupe",
-			"error", err, "business_id", req.BusinessID, "approval_id", req.ApprovalID)
-		return nil, false
-	}
-	switch outcome {
-	case hitldedupe.ClaimOutcomeInFlight:
-		return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: already in flight"}, true
-	case hitldedupe.ClaimOutcomeDuplicate:
-		var cachedResp a2a.ToolResponse
-		if uerr := json.Unmarshal([]byte(cached), &cachedResp); uerr != nil {
-			slog.WarnContext(ctx, "hitl dedupe cached result malformed; returning generic duplicate",
-				"error", uerr)
-			return &a2a.ToolResponse{TaskID: req.TaskID, Error: "duplicate: cached result unavailable"}, true
-		}
-		cachedResp.TaskID = req.TaskID
-		return &cachedResp, true
-	case hitldedupe.ClaimOutcomeClaimed, hitldedupe.ClaimOutcomeSkip:
-		// Proceed with execution — no cached response.
-	}
-	return nil, false
-}
-
-// dedupeStore persists a successful ToolResponse under the HITL dedupe key
-// so replays see ClaimOutcomeDuplicate. Errors/nil responses are not cached.
-func (h *Handler) dedupeStore(ctx context.Context, req a2a.ToolRequest, resp *a2a.ToolResponse, err error) {
-	if h.dedupe == nil || req.ApprovalID == "" || err != nil || resp == nil {
-		return
-	}
-	if serr := h.dedupe.Store(ctx, req.BusinessID, req.ApprovalID, resp); serr != nil {
-		slog.WarnContext(ctx, "hitl dedupe store failed; result returned but not cached",
-			"error", serr, "approval_id", req.ApprovalID)
-	}
+// ClassifyVKError is the exported entry point used by cmd/main.go to wire the
+// dispatcher's classifier via agentbase.FuncClassifier. Body unchanged.
+func ClassifyVKError(err error) error {
+	return classifyVKError(err)
 }
 
 // classifyVKError wraps permanent VK API errors as NonRetryableError.

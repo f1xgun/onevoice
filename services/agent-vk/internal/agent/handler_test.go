@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
 	"github.com/f1xgun/onevoice/services/agent-vk/internal/agent"
 )
@@ -1072,8 +1073,9 @@ func newVKDedupeTestHandler(t *testing.T, vkClient agent.VKClient, publishCalls 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 	dedupe := hitldedupe.New(rdb)
+	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agent.ClassifyVKError))
 	tokens := &mockTokenFetcher{token: "tok", extID: "-123456"}
-	return agent.NewHandler(tokens, newFactory(vkClient), "", dedupe), mr
+	return agent.NewHandler(tokens, newFactory(vkClient), "", dispatcher), mr
 }
 
 func vkPublishReqWithApproval(approvalID string) a2a.ToolRequest {
