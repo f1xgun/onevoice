@@ -12,6 +12,11 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 )
 
+// Phase 19 / 19-MD-02: NewChatProxyHandler now consumes the shared
+// *orchestratorclient.Client built once in BuildServices (svcs.OrchClient).
+// Remove the legacy (orchestratorURL, httpClient) plumbing — it spawned a
+// second client per process.
+
 // Handlers constructs every HTTP handler used by the API service and
 // returns them aggregated in *router.Handlers ready for router.Setup.
 //
@@ -106,9 +111,8 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		repos.Review,
 		repos.AgentTask,
 		svcs.TaskHub,
-		cfg.OrchestratorURL,
-		nil,
-		svcs.Titler, // Phase 18 Plan 05 — optional auto-titler; nil when titling is disabled.
+		svcs.OrchClient, // Phase 19 / 19-MD-02 — single shared orchestrator client.
+		svcs.Titler,     // Phase 18 Plan 05 — optional auto-titler; nil when titling is disabled.
 	)
 
 	hitlHandler, err := handler.NewHITLHandler(svcs.HITL, svcs.Business, repos.Conversation)

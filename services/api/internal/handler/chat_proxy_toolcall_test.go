@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
@@ -102,7 +103,7 @@ func TestChatProxy_ToolCallIDCorrelation(t *testing.T) {
 		},
 		msgRepo,
 		&MockPendingToolCallRepository{},
-		nil, nil, nil, nil, orchServer.URL, nil, nil,
+		nil, nil, nil, nil, orchestratorclient.New(orchServer.URL, nil), nil,
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/conv-1", strings.NewReader(`{"message":"send two"}`))
