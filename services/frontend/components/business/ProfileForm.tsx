@@ -11,6 +11,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -38,6 +39,7 @@ const CATEGORIES = [
 ];
 
 export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Business> }) {
+  const tProfileForm = useTranslations('business.profileForm');
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState(defaultValues?.logoUrl ?? '');
@@ -112,7 +114,9 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
               unoptimized
             />
           ) : (
-            <span className="font-mono text-[11px] uppercase tracking-[0.04em]">лого</span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.04em]">
+              {tProfileForm('logoBadge')}
+            </span>
           )}
           {logoMutation.isPending && (
             <span className="bg-paper/70 absolute inset-0 grid place-items-center font-mono text-[11px] uppercase tracking-[0.04em] text-ink-soft">
@@ -121,10 +125,8 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           )}
         </button>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-ink">Логотип</div>
-          <p className="mt-0.5 text-[13px] text-ink-soft">
-            JPEG, PNG, WebP — до 5 МБ. Квадратный, минимум 256 px.
-          </p>
+          <div className="text-sm font-medium text-ink">{tProfileForm('logoLabel')}</div>
+          <p className="mt-0.5 text-[13px] text-ink-soft">{tProfileForm('logoHint')}</p>
           <div className="mt-3 flex gap-2">
             <Button
               type="button"
@@ -133,7 +135,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
               onClick={() => fileInputRef.current?.click()}
               disabled={logoMutation.isPending}
             >
-              Загрузить
+              {tProfileForm('uploadLogo')}
             </Button>
             {logoUrl && (
               <Button
@@ -143,7 +145,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
                 onClick={() => setLogoUrl('')}
                 disabled={logoMutation.isPending}
               >
-                Удалить
+                {tProfileForm('removeLogo')}
               </Button>
             )}
           </div>

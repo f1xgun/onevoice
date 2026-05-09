@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { RefObject } from 'react';
 import Link from 'next/link';
 import { Bookmark, ChevronDown, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
 import { ProjectChip } from '@/components/chat/ProjectChip';
@@ -44,6 +45,7 @@ export function PinnedSection({
   activeConversationId,
   onNavigate,
 }: Props) {
+  const tSide = useTranslations('sidebar');
   const [collapsed, setCollapsed] = useState(false);
 
   const count = conversations.length;
@@ -76,7 +78,7 @@ export function PinnedSection({
           <ChevronDown size={12} className="shrink-0 text-ink-faint" />
         )}
         <Bookmark size={12} className="shrink-0 text-yellow-400" />
-        <span className="flex-1 truncate text-left">Закреплённые</span>
+        <span className="flex-1 truncate text-left">{tSide('pinned')}</span>
         <span className="text-xs text-ink-faint">· {count}</span>
       </button>
 
@@ -130,7 +132,9 @@ export function PinnedSection({
             );
           })}
           {count > MAX_VISIBLE && (
-            <p className="px-2 py-1 text-xs text-ink-faint">…и ещё {count - MAX_VISIBLE}</p>
+            <p className="px-2 py-1 text-xs text-ink-faint">
+              {tSide('moreCount', { count: count - MAX_VISIBLE })}
+            </p>
           )}
         </div>
       )}

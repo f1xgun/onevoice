@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -19,6 +20,7 @@ import { MonoLabel } from '@/components/ui/mono-label';
 export default function RegisterPage() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
+  const tReg = useTranslations('auth.register');
 
   const {
     register,
@@ -59,7 +61,7 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="name" className="text-xs font-medium text-ink-mid">
-            Как к вам обращаться
+            {tReg('nameLabel')}
           </Label>
           <Input id="name" placeholder="Алина" autoComplete="given-name" {...register('name')} />
           {errors.name && <p className="text-sm text-[var(--ov-danger)]">{errors.name.message}</p>}
@@ -67,7 +69,7 @@ export default function RegisterPage() {
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email" className="text-xs font-medium text-ink-mid">
-            Почта
+            {tReg('emailLabel')}
           </Label>
           <Input
             id="email"
@@ -84,7 +86,7 @@ export default function RegisterPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="password" className="text-xs font-medium text-ink-mid">
-              Пароль
+              {tReg('passwordLabel')}
             </Label>
             <Input
               id="password"
@@ -99,7 +101,7 @@ export default function RegisterPage() {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="confirmPassword" className="text-xs font-medium text-ink-mid">
-              Ещё раз
+              {tReg('confirmPasswordLabel')}
             </Label>
             <Input
               id="confirmPassword"
@@ -119,9 +121,9 @@ export default function RegisterPage() {
         </Button>
 
         <p className="mt-6 text-sm text-ink-soft">
-          Уже зарегистрированы?{' '}
+          {tReg('haveAccount')}{' '}
           <Link href="/login" className="font-medium text-ink hover:underline">
-            Войти
+            {tReg('login')}
           </Link>
         </p>
       </form>
@@ -130,9 +132,10 @@ export default function RegisterPage() {
 }
 
 function RegisterEditorial() {
+  const tReg = useTranslations('auth.register');
   return (
     <>
-      <MonoLabel>Что вы получите</MonoLabel>
+      <MonoLabel>{tReg('benefitsLabel')}</MonoLabel>
 
       <div className="my-auto flex flex-col gap-4">
         {[
@@ -159,7 +162,7 @@ function RegisterEditorial() {
       </div>
 
       <div className="rounded-md border border-line-soft bg-paper-raised p-4 text-sm leading-relaxed text-ink-mid">
-        После регистрации подключим каналы (Telegram, VK, Яндекс…). Можно пройти всё за пару минут.
+        {tReg('benefitsBody')}
       </div>
     </>
   );

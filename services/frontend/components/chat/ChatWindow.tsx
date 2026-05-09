@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import { Send } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ChatHeader } from './ChatHeader';
 import { MessageBubble } from './MessageBubble';
@@ -36,6 +37,7 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindowProps) {
+  const tChat = useTranslations('chat.window');
   const { messages, isLoading, isStreaming, pendingApproval, resolveApproval, sendMessage } =
     useChat(conversationId);
   const [input, setInput] = useState('');
@@ -137,7 +139,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
               value={conversation?.projectId ?? null}
               onChange={handlePickerChange}
             />
-            <p className="text-lg text-ink-soft">Чем могу помочь?</p>
+            <p className="text-lg text-ink-soft">{tChat('helpPrompt')}</p>
             <div className="flex flex-wrap justify-center gap-2">
               {quickActions.map((action) => (
                 <button

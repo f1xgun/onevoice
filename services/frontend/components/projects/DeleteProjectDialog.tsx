@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -29,6 +30,7 @@ export function DeleteProjectDialog({
   chatCount,
   onConfirm,
 }: DeleteProjectDialogProps) {
+  const tCommon = useTranslations('common');
   const [pending, setPending] = useState(false);
 
   const description =
@@ -58,7 +60,7 @@ export function DeleteProjectDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Отмена</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>{tCommon('cancel')}</AlertDialogCancel>
           <AlertDialogAction
             className="hover:bg-destructive/90 bg-destructive text-destructive-foreground"
             disabled={pending}

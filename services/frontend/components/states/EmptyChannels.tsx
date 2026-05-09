@@ -1,3 +1,5 @@
+'use client';
+
 // components/states/EmptyChannels.tsx — first-run state for /integrations.
 //
 // Mock anchor: design_handoff_onevoice 2/mocks/mock-states.jsx
@@ -11,6 +13,7 @@
 // /integrations otherwise stays graphite.
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { EmptyFrame } from './EmptyFrame';
 
@@ -21,6 +24,7 @@ export interface EmptyChannelsProps {
 }
 
 export function EmptyChannels({ onConnect, onViewDemo }: EmptyChannelsProps) {
+  const tStates = useTranslations('states.emptyChannels');
   return (
     <EmptyFrame
       mark="dashed"
@@ -29,11 +33,11 @@ export function EmptyChannels({ onConnect, onViewDemo }: EmptyChannelsProps) {
       action={
         <>
           <Button variant="accent" size="md" onClick={onConnect}>
-            Подключить канал
+            {tStates('connect')}
           </Button>
           {onViewDemo && (
             <Button variant="ghost" size="md" onClick={onViewDemo}>
-              Посмотреть демо
+              {tStates('viewDemo')}
             </Button>
           )}
         </>

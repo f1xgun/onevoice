@@ -7,7 +7,10 @@
 // frequent filter cases (pending only / replied only) so callers can
 // pick a copy preset without reinventing the layout.
 
+'use client';
+
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { EmptyFrame } from './EmptyFrame';
 
@@ -35,6 +38,7 @@ const COPY: Record<ReviewsEmptyMode, { title: string; body: string }> = {
 };
 
 export function EmptyReviews({ mode = 'all', onLookBack }: EmptyReviewsProps) {
+  const tStates = useTranslations('states.emptyReviews');
   const { title, body } = COPY[mode];
   return (
     <EmptyFrame
@@ -44,7 +48,7 @@ export function EmptyReviews({ mode = 'all', onLookBack }: EmptyReviewsProps) {
       action={
         onLookBack && mode === 'all' ? (
           <Button variant="ghost" size="sm" onClick={onLookBack}>
-            Прошлая неделя →
+            {tStates('lookBack')}
           </Button>
         ) : undefined
       }

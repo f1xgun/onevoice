@@ -11,8 +11,11 @@
 //   - 'active'  : ochre ring, "в процессе" mono caption
 //   - 'pending' : empty paper-sunken disc
 
+'use client';
+
 import * as React from 'react';
 import { Check } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { cn } from '@/lib/utils';
 
@@ -55,6 +58,7 @@ export function ChannelConnectProgress({ title, steps, className }: ChannelConne
 }
 
 function Step({ step }: { step: ChannelConnectStep }) {
+  const tStates = useTranslations('states');
   const { state, label } = step;
   return (
     <li className="flex items-center gap-3 text-sm">
@@ -81,7 +85,7 @@ function Step({ step }: { step: ChannelConnectStep }) {
       </span>
       {state === 'active' && (
         <span className="ml-1">
-          <MonoLabel>в процессе</MonoLabel>
+          <MonoLabel>{tStates('channelConnectProgress')}</MonoLabel>
         </span>
       )}
     </li>

@@ -1,6 +1,7 @@
 'use client';
 
 import { Info } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ export function ToolApprovalToggle({
   onChange,
   disabled = false,
 }: ToolApprovalToggleProps) {
+  const t = useTranslations('settings.toolApproval');
   const isForbidden = tool.floor === 'forbidden';
   const label = toolLabel(tool);
   const userDesc = toolUserDescription(tool);
@@ -45,12 +47,12 @@ export function ToolApprovalToggle({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex items-center gap-1">
-                <Badge tone="danger">Запрещено</Badge>
+                <Badge tone="danger">{t('blocked')}</Badge>
                 <Info className="h-3.5 w-3.5 text-ink-soft" aria-hidden="true" />
-                <span className="sr-only">Этот инструмент нельзя разрешить настройками</span>
+                <span className="sr-only">{t('blockedHint')}</span>
               </span>
             </TooltipTrigger>
-            <TooltipContent>Этот инструмент нельзя разрешить настройками</TooltipContent>
+            <TooltipContent>{t('blockedHint')}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       ) : (

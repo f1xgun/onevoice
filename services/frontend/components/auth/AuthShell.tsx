@@ -8,6 +8,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { MonoLabel } from '@/components/ui/mono-label';
 
 export interface AuthShellProps {
@@ -24,6 +25,7 @@ export interface AuthShellProps {
 }
 
 export function AuthShell({ eyebrow, title, description, children, aside }: AuthShellProps) {
+  const tShell = useTranslations('auth.shell');
   return (
     <div className="grid min-h-screen grid-cols-1 bg-background md:grid-cols-2">
       {/* Form column */}
@@ -36,7 +38,9 @@ export function AuthShell({ eyebrow, title, description, children, aside }: Auth
           <span className="flex h-8 w-8 items-center justify-center rounded-md bg-ink text-base font-semibold tracking-tight text-paper">
             O
           </span>
-          <span className="text-base font-semibold tracking-tight text-ink">OneVoice</span>
+          <span className="text-base font-semibold tracking-tight text-ink">
+            {tShell('wordmark')}
+          </span>
         </Link>
 
         <div className="my-auto flex w-full max-w-[420px] flex-col">
@@ -48,7 +52,9 @@ export function AuthShell({ eyebrow, title, description, children, aside }: Auth
           <div className="mt-8">{children}</div>
         </div>
 
-        <MonoLabel className="mt-auto pt-8 text-ink-soft">© 2026 OneVoice</MonoLabel>
+        <MonoLabel className="mt-auto pt-8 text-ink-soft">
+          {tShell('footer', { year: new Date().getFullYear() })}
+        </MonoLabel>
       </div>
 
       {/* Editorial column — hidden below md per spec. paper-sunken backdrop, line border on the inside edge. */}

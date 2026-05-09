@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
   DropdownMenuSub,
@@ -21,6 +22,7 @@ interface Props {
 const UNASSIGNED_LABEL = 'Без проекта';
 
 export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
+  const tMove = useTranslations('chat.moveMenu');
   const { data: projects } = useProjectsQuery();
   const move = useMoveConversation();
 
@@ -69,12 +71,12 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
 
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger>Переместить в…</DropdownMenuSubTrigger>
+      <DropdownMenuSubTrigger>{tMove('trigger')}</DropdownMenuSubTrigger>
       <DropdownMenuPortal>
         <DropdownMenuSubContent>
           {!hasOtherDestinations ? (
             <DropdownMenuItem disabled className="italic text-muted-foreground">
-              Других проектов пока нет.
+              {tMove('noProjects')}
             </DropdownMenuItem>
           ) : (
             <>
