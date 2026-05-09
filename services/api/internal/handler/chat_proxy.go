@@ -26,6 +26,15 @@ import (
 // chat_proxy_test.go) keep using `handler.ResumeBatchHeader`.
 const ResumeBatchHeader = chatproxy.ResumeBatchHeader
 
+// Package-level lint constants kept here so sibling handlers (titler.go,
+// hitl.go) reference one source of truth. Originally introduced in PR #60
+// (lint-hardening); preserved across the chatproxy decomposition.
+const (
+	roleAssistant  = "assistant"
+	roleUser       = "user"
+	sseBufferBytes = 1 << 20 // 1 MiB — matches chatproxy.OrchestrationProxy
+)
+
 // ChatProxyHandler is the thin facade over chatproxy/ collaborators
 // (Phase 19 / D-03 / D-06). The unexported repo fields stay on the struct
 // so chat_proxy_test.go's direct literal `&ChatProxyHandler{messageRepo:

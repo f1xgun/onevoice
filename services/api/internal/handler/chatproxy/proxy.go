@@ -37,6 +37,19 @@ func NewOrchestrationProxy(orch *orchestratorclient.Client) *OrchestrationProxy 
 // finish, tight enough that a stuck agent can't pin the connection forever.
 const streamBudget = 10 * time.Minute
 
+// sseBufferBytes — bufio.Scanner buffer cap for orchestrator SSE frames.
+// Bumped from the 64KB default in Phase 16 (HITL-13) so large tool results
+// and ModelMessages snapshots flow through the proxy without truncation.
+const sseBufferBytes = 1 << 20 // 1 MiB
+
+// logLineMaxBytes truncates malformed-event log lines so a runaway upstream
+// (or attacker) can't flood the log pipeline with megabyte payloads.
+const logLineMaxBytes = 200
+
+// sseEventError is the SSE event-type string used by both the orchestrator
+// and the HITL coordinator inline-error path.
+const sseEventError = "error"
+
 // StreamChat opens POST /chat/{id} on the orchestrator, forwards SSE bytes
 // to w, and invokes onEvent for each parsed `data: {...}` frame. parentCtx
 // supplies the correlation_id and the client-disconnect signal (used for
@@ -82,7 +95,7 @@ func (p *OrchestrationProxy) StreamChat(parentCtx context.Context, w http.Respon
 	// large tool results and ModelMessages snapshots that flow through the
 	// proxy without truncation.
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	scanner.Buffer(make([]byte, sseBufferBytes), sseBufferBytes)
 
 	clientGone := parentCtx.Done()
 
@@ -104,7 +117,7 @@ func (p *OrchestrationProxy) StreamChat(parentCtx context.Context, w http.Respon
 		var ev SSEPayload
 		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
 			slog.WarnContext(parentCtx, "chat proxy: malformed SSE event",
-				"error", err, "line", line[:min(len(line), 200)])
+				"error", err, "line", line[:min(len(line), logLineMaxBytes)])
 			continue
 		}
 		if onEvent != nil {

@@ -39,6 +39,12 @@ const (
 	defaultTelegramBotAPIBase    = "https://api.telegram.org"
 )
 
+// tempOAuthCredsTTL caps how long a freshly-issued OAuth token sits in
+// Redis before the user must complete the connect-business flow. Five
+// minutes balances UX (user has time to click through) against blast
+// radius if a token is stolen pre-binding.
+const tempOAuthCredsTTL = 5 * time.Minute
+
 // OAuthStateService abstracts OAuth state management.
 type OAuthStateService interface {
 	GenerateState(ctx context.Context, data service.OAuthStateData) (string, error)

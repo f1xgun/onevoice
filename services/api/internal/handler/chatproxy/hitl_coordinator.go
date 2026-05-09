@@ -190,7 +190,7 @@ func (c *HITLCoordinator) SSEInlineError(w http.ResponseWriter, reason string) {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
-	payload := map[string]interface{}{"type": "error", "content": reason}
+	payload := map[string]interface{}{"type": sseEventError, "content": reason}
 	data, _ := json.Marshal(payload)
 	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
@@ -248,7 +248,7 @@ func (c *HITLCoordinator) StreamResume(
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	scanner.Buffer(make([]byte, sseBufferBytes), sseBufferBytes)
 
 	// Work on a local copy so we flush the full final state in one Update.
 	// msg.Content is intentionally not cleared — we preserve the Content
@@ -301,7 +301,7 @@ func (c *HITLCoordinator) StreamResume(
 			if idx, ok := callIdx[ev.ToolCallID]; ok {
 				msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
 			}
-		case "error":
+		case sseEventError:
 			// Resume failed mid-stream (LLM error, ctx cancellation,
 			// max-iterations cap). The error event is already forwarded
 			// to the client; here we MUST transition the assistant

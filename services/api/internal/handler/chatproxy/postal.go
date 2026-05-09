@@ -14,6 +14,12 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
+// taskStatusError is the AgentTask / PlatformResult status string written
+// when a tool fan-out reports failure. Distinct from sseEventError (which
+// is the SSE *event-type*) but happens to share the literal "error" — kept
+// separate so goconst doesn't conflate them.
+const taskStatusError = "error"
+
 // postingToolInfo describes how to extract post data from a platform tool call.
 type postingToolInfo struct {
 	platform     string
@@ -125,7 +131,7 @@ func (s *PostalService) OnToolResult(
 		CompletedAt: &now,
 	}
 	if toolErr != "" {
-		update.Status = "error"
+		update.Status = taskStatusError
 		update.Error = toolErr
 		if msg, ok := content["error"].(string); ok && msg != "" {
 			update.Error = msg
@@ -187,8 +193,8 @@ func (s *PostalService) RecordPostsAndReviews(ctx context.Context, businessID st
 			var publishedAt *time.Time
 			platformResult := domain.PlatformResult{Status: status}
 			if tr.IsError {
-				status = "error"
-				platformResult.Status = "error"
+				status = taskStatusError
+				platformResult.Status = taskStatusError
 				if errMsg, ok := tr.Content["error"].(string); ok {
 					platformResult.Error = errMsg
 				}

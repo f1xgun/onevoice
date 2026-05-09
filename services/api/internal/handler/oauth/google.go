@@ -185,7 +185,7 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	tempJSON, _ := json.Marshal(tempData)
 	redisKey := "google_temp:" + stateData.BusinessID.String()
-	if err := h.redis.Set(r.Context(), redisKey, tempJSON, 5*time.Minute).Err(); err != nil {
+	if err := h.redis.Set(r.Context(), redisKey, tempJSON, tempOAuthCredsTTL).Err(); err != nil {
 		slog.ErrorContext(r.Context(), "failed to store Google temp data in Redis", "error", err)
 		http.Redirect(w, r, "/integrations?error=internal_error", http.StatusFound)
 		return
