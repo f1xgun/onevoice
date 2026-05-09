@@ -6,7 +6,13 @@ import * as React from 'react';
 import type { ToastActionElement, ToastProps } from '@/components/ui/toast';
 
 const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+// Delay between a toast being dismissed (open=false, hidden by Radix exit
+// animation) and its entry being purged from `state.toasts`. NOT the
+// auto-dismiss timer — that lives on Radix `<Toast duration>`. Inherited
+// shadcn boilerplate had this at 1_000_000ms (~16 min) which left
+// invisible "ghost" entries in state for that long. 5s comfortably covers
+// the exit animation while keeping state lean.
+const TOAST_REMOVE_DELAY_MS = 5000;
 
 type ToasterToast = ToastProps & {
   id: string;
@@ -66,7 +72,7 @@ const addToRemoveQueue = (toastId: string) => {
       type: 'REMOVE_TOAST',
       toastId: toastId,
     });
-  }, TOAST_REMOVE_DELAY);
+  }, TOAST_REMOVE_DELAY_MS);
 
   toastTimeouts.set(toastId, timeout);
 };
