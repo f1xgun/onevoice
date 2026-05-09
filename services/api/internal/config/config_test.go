@@ -150,6 +150,34 @@ func TestLoad_SelfHostedEndpoints_MissingModel_Skipped(t *testing.T) {
 	assert.Empty(t, cfg.SelfHostedEndpoints)
 }
 
+func TestLoad_RateLimits(t *testing.T) {
+	t.Run("defaults when env unset", func(t *testing.T) {
+		minTestEnv(t)
+
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		assert.Equal(t, 5, cfg.RateLimitRegister)
+		assert.Equal(t, 10, cfg.RateLimitLogin)
+		assert.Equal(t, 10, cfg.RateLimitChat)
+		assert.Equal(t, 10, cfg.RateLimitHITL)
+	})
+
+	t.Run("env override applied", func(t *testing.T) {
+		minTestEnv(t)
+		t.Setenv("RATE_LIMIT_REGISTER", "2")
+		t.Setenv("RATE_LIMIT_LOGIN", "20")
+		t.Setenv("RATE_LIMIT_CHAT", "30")
+		t.Setenv("RATE_LIMIT_HITL", "40")
+
+		cfg, err := config.Load()
+		require.NoError(t, err)
+		assert.Equal(t, 2, cfg.RateLimitRegister)
+		assert.Equal(t, 20, cfg.RateLimitLogin)
+		assert.Equal(t, 30, cfg.RateLimitChat)
+		assert.Equal(t, 40, cfg.RateLimitHITL)
+	})
+}
+
 func TestLoad_HTTPTimeouts(t *testing.T) {
 	t.Run("defaults when env unset", func(t *testing.T) {
 		minTestEnv(t)

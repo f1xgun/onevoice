@@ -102,6 +102,15 @@ type Config struct {
 	HTTPIdleTimeout          time.Duration
 	OrchestratorFetchTimeout time.Duration
 
+	// Per-endpoint per-minute request budgets. Defaults match the values
+	// previously hardcoded in services/api/internal/router/router.go.
+	// Operators tune these via RATE_LIMIT_* env vars when the service sees
+	// abnormal traffic shape (e.g., a customer integration polling /chat).
+	RateLimitRegister int
+	RateLimitLogin    int
+	RateLimitChat     int
+	RateLimitHITL     int
+
 	// Shutdown
 	ShutdownTimeout time.Duration
 
@@ -182,6 +191,11 @@ func Load() (*Config, error) {
 		HTTPReadHeaderTimeout:    getEnvDuration("HTTP_READ_HEADER_TIMEOUT", 10*time.Second),
 		HTTPIdleTimeout:          getEnvDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
 		OrchestratorFetchTimeout: getEnvDuration("ORCHESTRATOR_FETCH_TIMEOUT", 10*time.Second),
+
+		RateLimitRegister: getEnvInt("RATE_LIMIT_REGISTER", 5),
+		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
+		RateLimitChat:     getEnvInt("RATE_LIMIT_CHAT", 10),
+		RateLimitHITL:     getEnvInt("RATE_LIMIT_HITL", 10),
 
 		ShutdownTimeout: shutdownTimeout,
 	}
