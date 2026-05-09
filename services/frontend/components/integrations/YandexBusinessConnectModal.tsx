@@ -88,14 +88,14 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
         setProbe(data);
       } catch (err: unknown) {
         if ((err as { name?: string })?.name === 'CanceledError') return;
-        setProbe({ ok: false, error: 'Не удалось проверить — попробуйте ещё раз' });
+        setProbe({ ok: false, error: tYa('probeFailed') });
       } finally {
         if (!controller.signal.aborted) setProbing(false);
       }
     }, PROBE_DEBOUNCE_MS);
 
     return () => clearTimeout(handle);
-  }, [value, open, step]);
+  }, [value, open, step, tYa]);
 
   function resetState() {
     probeAbortRef.current?.abort();
@@ -124,7 +124,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       );
       const list = data.companies ?? [];
       if (list.length === 0) {
-        toast.error('В аккаунте Яндекса нет ни одной организации.');
+        toast.error(tYa('noOrgs'));
         setStep('paste');
         return;
       }
@@ -139,7 +139,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Не удалось получить список организаций. Попробуйте ещё раз.';
+        tYa('fetchOrgsFailed');
       toast.error(msg);
       setStep('paste');
     }
@@ -154,13 +154,13 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
         permalink: company.permalink,
         business_name: company.name,
       });
-      toast.success(`Подключено: ${company.name || company.permalink}`);
+      toast.success(tYa('connectedToast', { name: company.name || company.permalink }));
       qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       handleClose();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Не удалось подключить';
+        tYa('connectFailed');
       toast.error(msg);
       setStep('pick');
     }

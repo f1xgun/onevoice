@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getTranslator } from '@/lib/i18n/translator';
 
 // Field length limits — kept here to keep all schema-level
 // constraints in one place and to satisfy the
@@ -14,23 +15,30 @@ const BUSINESS_NAME_MAX_LEN = 200;
 const BUSINESS_DESCRIPTION_MAX_LEN = 500;
 const BUSINESS_ADDRESS_MAX_LEN = 500;
 
+// Module-level translator: schemas are declared once at module load, so a
+// React-hook translator wouldn't fit. `getTranslator` reads ru.json
+// directly and is bundle-safe on both server and client.
+const tValidation = getTranslator('validation');
+const minChars = (count: number) => tValidation('minChars', { count });
+const maxChars = (count: number) => tValidation('maxChars', { count });
+
 export const loginSchema = z.object({
-  email: z.string().email('Некорректный email').max(EMAIL_MAX_LEN),
-  password: z.string().min(PASSWORD_MIN_LEN, 'Минимум 6 символов'),
+  email: z.string().email(tValidation('email')).max(EMAIL_MAX_LEN),
+  password: z.string().min(PASSWORD_MIN_LEN, minChars(PASSWORD_MIN_LEN)),
 });
 
 export const registerSchema = z
   .object({
     name: z
       .string()
-      .min(NAME_MIN_LEN, 'Минимум 2 символа')
-      .max(NAME_MAX_LEN, 'Максимум 100 символов'),
-    email: z.string().email('Некорректный email').max(EMAIL_MAX_LEN),
-    password: z.string().min(PASSWORD_MIN_LEN, 'Минимум 6 символов'),
+      .min(NAME_MIN_LEN, minChars(NAME_MIN_LEN))
+      .max(NAME_MAX_LEN, maxChars(NAME_MAX_LEN)),
+    email: z.string().email(tValidation('email')).max(EMAIL_MAX_LEN),
+    password: z.string().min(PASSWORD_MIN_LEN, minChars(PASSWORD_MIN_LEN)),
     confirmPassword: z.string(),
   })
   .refine((d) => d.password === d.confirmPassword, {
-    message: 'Пароли не совпадают',
+    message: tValidation('passwordsMismatch'),
     path: ['confirmPassword'],
   });
 
@@ -40,15 +48,15 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export const businessSchema = z.object({
   name: z
     .string()
-    .min(NAME_MIN_LEN, 'Минимум 2 символа')
-    .max(BUSINESS_NAME_MAX_LEN, 'Максимум 200 символов'),
-  category: z.string().min(1, 'Выберите категорию'),
+    .min(NAME_MIN_LEN, minChars(NAME_MIN_LEN))
+    .max(BUSINESS_NAME_MAX_LEN, maxChars(BUSINESS_NAME_MAX_LEN)),
+  category: z.string().min(1, tValidation('businessCategoryRequired')),
   phone: z
     .string()
-    .regex(/^\+?[0-9]{7,15}$/, 'Некорректный номер телефона')
+    .regex(/^\+?[0-9]{7,15}$/, tValidation('phone'))
     .optional()
     .or(z.literal('')),
-  website: z.string().url('Некорректный URL').optional().or(z.literal('')),
+  website: z.string().url(tValidation('url')).optional().or(z.literal('')),
   description: z.string().max(BUSINESS_DESCRIPTION_MAX_LEN).optional(),
   address: z.string().max(BUSINESS_ADDRESS_MAX_LEN).optional(),
 });

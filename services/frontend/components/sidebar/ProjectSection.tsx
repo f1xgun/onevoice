@@ -41,6 +41,7 @@ export function ProjectSection({
   onNavigate,
 }: Props) {
   const tSide = useTranslations('sidebar');
+  const tProjects = useTranslations('projects');
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const createConversation = useCreateConversation();
@@ -63,7 +64,7 @@ export function ProjectSection({
       onNavigate?.();
       router.push(`/chat/${conv.id}`);
     } catch {
-      toast.error('Не удалось создать чат');
+      toast.error(tProjects('errorCreateChat'));
     }
   }
 

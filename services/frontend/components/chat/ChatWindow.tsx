@@ -97,7 +97,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
           void qc.invalidateQueries({ queryKey: conversationsQueryKey });
         },
         onError: () => {
-          toast.error('Не удалось переместить чат');
+          toast.error(tChat('moveError'));
         },
       }
     );
