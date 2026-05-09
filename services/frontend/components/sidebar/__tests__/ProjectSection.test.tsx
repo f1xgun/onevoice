@@ -19,15 +19,22 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-// Mock axios-based API client. Track project-id passed to POST /conversations.
-const apiPost = vi.fn();
-vi.mock('@/lib/api', () => ({
-  api: {
-    get: vi.fn(() => Promise.resolve({ data: [] })),
-    post: (url: string, body: unknown) => apiPost(url, body),
+// Mock bizApi — conversations.ts now uses bizApi(activeBusinessId).post(...)
+const bizApiPost = vi.fn();
+const bizApiGet = vi.fn();
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: (bizId: string) => ({
+    get: (path: string, config?: unknown) => bizApiGet(bizId, path, config),
+    post: (path: string, body?: unknown) => bizApiPost(bizId, path, body),
     put: vi.fn(),
     delete: vi.fn(),
-  },
+  }),
+}));
+
+// Mock useBusinessStore so hooks get a stable activeBusinessId without localStorage.
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'test-biz-id' }),
 }));
 
 const sampleProject: Project = {
@@ -62,7 +69,6 @@ function makeConv(id: string, title: string): Conversation {
     projectId: sampleProject.id,
     title,
     titleStatus: 'auto',
-    pinned: false,
     createdAt: '2026-04-18T00:00:00Z',
     updatedAt: '2026-04-18T00:00:00Z',
   };
@@ -71,7 +77,8 @@ function makeConv(id: string, title: string): Conversation {
 describe('ProjectSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiPost.mockReset();
+    bizApiPost.mockReset();
+    bizApiGet.mockReset();
     pushMock.mockReset();
   });
 
@@ -102,7 +109,7 @@ describe('ProjectSection', () => {
   });
 
   it('clicking + calls createConversation with the project id and routes to the new chat', async () => {
-    apiPost.mockResolvedValue({
+    bizApiPost.mockResolvedValue({
       data: {
         id: 'new-conv-id',
         userId: 'u-1',
@@ -110,7 +117,6 @@ describe('ProjectSection', () => {
         projectId: sampleProject.id,
         title: 'Новый диалог',
         titleStatus: 'auto_pending',
-        pinned: false,
         createdAt: '2026-04-18T00:00:00Z',
         updatedAt: '2026-04-18T00:00:00Z',
       },
@@ -126,7 +132,7 @@ describe('ProjectSection', () => {
     await user.click(screen.getByRole('button', { name: 'Новый чат в проекте «Отзывы»' }));
 
     await waitFor(() => {
-      expect(apiPost).toHaveBeenCalledWith('/conversations', {
+      expect(bizApiPost).toHaveBeenCalledWith('test-biz-id', '/conversations', {
         title: 'Новый диалог',
         projectId: 'p-1',
       });

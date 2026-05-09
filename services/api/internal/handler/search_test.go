@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -14,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -29,21 +28,6 @@ func captureSearchLogs(t *testing.T) *bytes.Buffer {
 	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 	return buf
-}
-
-// fakeSearchBizLookup implements searchBusinessLookup for handler tests.
-// Lookup returns a domain.Business with a stable ID + the configured
-// error (or nil).
-type fakeSearchBizLookup struct {
-	biz *domain.Business
-	err error
-}
-
-func (f *fakeSearchBizLookup) GetByUserID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.biz, nil
 }
 
 // stubConvRepoSearchHandler — minimal nil-embedded fake for the handler
@@ -63,42 +47,41 @@ func (s *stubMsgRepoSearchHandler) SearchByConversationIDs(_ context.Context, _ 
 	return nil, nil
 }
 
+// searchBizCtx seeds a BusinessContext with PermContentRead for search handler tests.
+func searchBizCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: []authz.Permission{authz.PermContentRead},
+	})
+}
+
 // newSearchHandlerForTest builds a SearchHandler with a real Searcher
 // driven by stub repos. ready=true flips the readiness flag so search
 // requests return 200 instead of 503.
-func newSearchHandlerForTest(t *testing.T, ready bool) (*SearchHandler, *fakeSearchBizLookup) {
+func newSearchHandlerForTest(t *testing.T, ready bool) *SearchHandler {
 	t.Helper()
-	bizID := uuid.New()
-	biz := &domain.Business{ID: bizID, Name: "Test"}
-	lookup := &fakeSearchBizLookup{biz: biz}
 	searcher := service.NewSearcher(&stubConvRepoSearchHandler{}, &stubMsgRepoSearchHandler{})
 	if ready {
 		searcher.MarkIndexesReady()
 	}
-	h, err := NewSearchHandler(searcher, lookup)
+	h, err := NewSearchHandler(searcher)
 	require.NoError(t, err)
-	return h, lookup
+	return h
 }
 
-// requestWithUser injects a userID into the chi-style auth context the
-// real handler reads via middleware.GetUserID.
-func requestWithUser(method, target string, userID uuid.UUID) *http.Request {
+// requestWithBiz builds a request with a BusinessContext already injected.
+func requestWithBiz(method, target string, businessID, userID uuid.UUID) *http.Request {
 	req := httptest.NewRequest(method, target, http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
-	return req.WithContext(ctx)
+	return req.WithContext(searchBizCtx(businessID, userID))
 }
 
 // TestNewSearchHandler_NilGuards — startup-time wiring bugs surface as
 // non-nil error returns from the constructor.
 func TestNewSearchHandler_NilGuards(t *testing.T) {
 	t.Run("nil searcher", func(t *testing.T) {
-		h, err := NewSearchHandler(nil, &fakeSearchBizLookup{})
-		assert.Error(t, err)
-		assert.Nil(t, h)
-	})
-	t.Run("nil businessLookup", func(t *testing.T) {
-		searcher := service.NewSearcher(&stubConvRepoSearchHandler{}, &stubMsgRepoSearchHandler{})
-		h, err := NewSearchHandler(searcher, nil)
+		h, err := NewSearchHandler(nil)
 		assert.Error(t, err)
 		assert.Nil(t, h)
 	})
@@ -106,40 +89,42 @@ func TestNewSearchHandler_NilGuards(t *testing.T) {
 
 // TestSearchHandler_400OnShortQuery — q="" or q="a" must surface as 400.
 func TestSearchHandler_400OnShortQuery(t *testing.T) {
-	h, _ := newSearchHandlerForTest(t, true)
+	h := newSearchHandlerForTest(t, true)
+	businessID := uuid.New()
 	userID := uuid.New()
 
 	t.Run("empty q", func(t *testing.T) {
-		req := requestWithUser(http.MethodGet, "/api/v1/search?q=", userID)
+		req := requestWithBiz(http.MethodGet, "/api/v1/search?q=", businessID, userID)
 		rec := httptest.NewRecorder()
 		h.Search(rec, req)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 	t.Run("single char q", func(t *testing.T) {
-		req := requestWithUser(http.MethodGet, "/api/v1/search?q=a", userID)
+		req := requestWithBiz(http.MethodGet, "/api/v1/search?q=a", businessID, userID)
 		rec := httptest.NewRecorder()
 		h.Search(rec, req)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 }
 
-// TestSearchHandler_401OnMissingBearer — without middleware injecting a
-// userID, GetUserID returns an error and the handler responds 401.
-func TestSearchHandler_401OnMissingBearer(t *testing.T) {
-	h, _ := newSearchHandlerForTest(t, true)
+// TestSearchHandler_500OnMissingBusinessContext — without middleware injecting a
+// BusinessContext, the handler responds 500 (middleware misconfiguration).
+func TestSearchHandler_500OnMissingBusinessContext(t *testing.T) {
+	h := newSearchHandlerForTest(t, true)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=инвойс", http.NoBody)
 	rec := httptest.NewRecorder()
 	h.Search(rec, req)
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
 // TestSearchHandler_503BeforeReady — readiness flag false → 503 +
 // Retry-After: 5 header.
 func TestSearchHandler_503BeforeReady(t *testing.T) {
-	h, _ := newSearchHandlerForTest(t, false /* not ready */)
+	h := newSearchHandlerForTest(t, false /* not ready */)
+	businessID := uuid.New()
 	userID := uuid.New()
 
-	req := requestWithUser(http.MethodGet, "/api/v1/search?q=инвойс", userID)
+	req := requestWithBiz(http.MethodGet, "/api/v1/search?q=инвойс", businessID, userID)
 	rec := httptest.NewRecorder()
 	h.Search(rec, req)
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
@@ -147,13 +132,14 @@ func TestSearchHandler_503BeforeReady(t *testing.T) {
 		"503 must carry Retry-After: 5")
 }
 
-// TestSearchHandler_HappyPath — ready + q ≥ 2 chars + valid bearer →
+// TestSearchHandler_HappyPath — ready + q ≥ 2 chars + valid BusinessContext →
 // 200 OK with a JSON array body (possibly empty).
 func TestSearchHandler_HappyPath(t *testing.T) {
-	h, _ := newSearchHandlerForTest(t, true)
+	h := newSearchHandlerForTest(t, true)
+	businessID := uuid.New()
 	userID := uuid.New()
 
-	req := requestWithUser(http.MethodGet, "/api/v1/search?q=инвойс&limit=10", userID)
+	req := requestWithBiz(http.MethodGet, "/api/v1/search?q=инвойс&limit=10", businessID, userID)
 	rec := httptest.NewRecorder()
 	h.Search(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
@@ -167,10 +153,11 @@ func TestSearchHandler_HappyPath(t *testing.T) {
 // param and passes it through. No assertion on the searcher's behavior;
 // asserts only the 200 path with the param present.
 func TestSearchHandler_ProjectIDQuery(t *testing.T) {
-	h, _ := newSearchHandlerForTest(t, true)
+	h := newSearchHandlerForTest(t, true)
+	businessID := uuid.New()
 	userID := uuid.New()
 
-	req := requestWithUser(http.MethodGet, "/api/v1/search?q=test&project_id=proj-X", userID)
+	req := requestWithBiz(http.MethodGet, "/api/v1/search?q=test&project_id=proj-X", businessID, userID)
 	rec := httptest.NewRecorder()
 	h.Search(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -184,11 +171,12 @@ func TestSearchHandler_ProjectIDQuery(t *testing.T) {
 func TestSearchHandler_LogShape(t *testing.T) {
 	buf := captureSearchLogs(t)
 
-	h, _ := newSearchHandlerForTest(t, true)
+	h := newSearchHandlerForTest(t, true)
+	businessID := uuid.New()
 	userID := uuid.New()
 	const literalQuery = "тайныйзапрос9000"
 
-	req := requestWithUser(http.MethodGet, "/api/v1/search?q="+literalQuery, userID)
+	req := requestWithBiz(http.MethodGet, "/api/v1/search?q="+literalQuery, businessID, userID)
 	rec := httptest.NewRecorder()
 	h.Search(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -199,40 +187,4 @@ func TestSearchHandler_LogShape(t *testing.T) {
 	// covers the positive presence.
 	assert.NotContains(t, logs, literalQuery,
 		"query text leaked into logs")
-}
-
-// TestSearchHandler_BusinessNotFound_401 — domain.ErrBusinessNotFound
-// from the lookup surfaces as 401 «no business» (the user is
-// authenticated but has no business — they cannot search).
-func TestSearchHandler_BusinessNotFound_401(t *testing.T) {
-	searcher := service.NewSearcher(&stubConvRepoSearchHandler{}, &stubMsgRepoSearchHandler{})
-	searcher.MarkIndexesReady()
-	lookup := &fakeSearchBizLookup{err: domain.ErrBusinessNotFound}
-	h, err := NewSearchHandler(searcher, lookup)
-	require.NoError(t, err)
-
-	userID := uuid.New()
-	req := requestWithUser(http.MethodGet, "/api/v1/search?q=инвойс", userID)
-	rec := httptest.NewRecorder()
-	h.Search(rec, req)
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-}
-
-// TestSearchHandler_BusinessLookupError_500 — generic lookup error →
-// 500. Log line metadata-only.
-func TestSearchHandler_BusinessLookupError_500(t *testing.T) {
-	buf := captureSearchLogs(t)
-	searcher := service.NewSearcher(&stubConvRepoSearchHandler{}, &stubMsgRepoSearchHandler{})
-	searcher.MarkIndexesReady()
-	lookup := &fakeSearchBizLookup{err: errors.New("postgres down")}
-	h, err := NewSearchHandler(searcher, lookup)
-	require.NoError(t, err)
-
-	userID := uuid.New()
-	const literalQuery = "тайныйзапрос9001"
-	req := requestWithUser(http.MethodGet, "/api/v1/search?q="+literalQuery, userID)
-	rec := httptest.NewRecorder()
-	h.Search(rec, req)
-	assert.Equal(t, http.StatusInternalServerError, rec.Code)
-	assert.NotContains(t, buf.String(), literalQuery, "query leaked into error log")
 }

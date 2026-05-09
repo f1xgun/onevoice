@@ -4,23 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
-
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
 // --- Minimal no-op mocks for interfaces required by constructors ---
-
-type stubIntegrationService struct{}
-
-func (s *stubIntegrationService) ListByBusinessID(_ context.Context, _ uuid.UUID) ([]domain.Integration, error) {
-	return nil, nil
-}
-func (s *stubIntegrationService) GetByBusinessAndPlatform(_ context.Context, _ uuid.UUID, _ string) (*domain.Integration, error) {
-	return nil, nil
-}
-func (s *stubIntegrationService) Delete(_ context.Context, _ uuid.UUID) error { return nil }
 
 type stubConversationRepo struct{}
 
@@ -81,16 +69,6 @@ func TestNewBusinessHandler_NilService_ReturnsError(t *testing.T) {
 
 func TestNewIntegrationHandler_NilIntegrationService_ReturnsError(t *testing.T) {
 	h, err := NewIntegrationHandler(nil, nil)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if h != nil {
-		t.Fatal("expected nil handler")
-	}
-}
-
-func TestNewIntegrationHandler_NilBusinessService_ReturnsError(t *testing.T) {
-	h, err := NewIntegrationHandler(&stubIntegrationService{}, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

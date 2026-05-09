@@ -11,11 +11,21 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+const BUSINESS_ID = 'biz-1';
+
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string }) => unknown) =>
+    selector({ activeBusinessId: BUSINESS_ID }),
+}));
+
 const apiPost = vi.fn();
-vi.mock('@/lib/api', () => ({
-  api: {
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: () => ({
+    get: vi.fn(),
     post: (...args: unknown[]) => apiPost(...args),
-  },
+    put: vi.fn(),
+    delete: vi.fn(),
+  }),
 }));
 
 function Wrapper({ client, children }: { client: QueryClient; children: ReactNode }) {

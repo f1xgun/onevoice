@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
@@ -88,6 +89,9 @@ type fakeBusinessRepo struct {
 }
 
 func (f *fakeBusinessRepo) Create(context.Context, *domain.Business) error { panic("unused") }
+func (f *fakeBusinessRepo) CreateInTx(context.Context, pgx.Tx, *domain.Business) error {
+	panic("unused")
+}
 func (f *fakeBusinessRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
 	if f.err != nil {
 		return nil, f.err

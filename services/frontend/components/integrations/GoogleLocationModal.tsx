@@ -12,9 +12,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 
 interface GoogleLocation {
   name: string;
@@ -37,25 +38,33 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   const {
     data: locations = [],
     isLoading,
     isError,
   } = useQuery<GoogleLocation[]>({
-    queryKey: ['google-locations'],
+    queryKey: ['businesses', activeBusinessId, 'google-locations'],
     queryFn: () =>
-      api.get(API_PATHS.INTEGRATIONS.GOOGLE_LOCATIONS).then((r) => r.data as GoogleLocation[]),
-    enabled: open,
+      bizApi(activeBusinessId!)
+        .get(BIZ_API_PATHS.INTEGRATIONS.GOOGLE_LOCATIONS)
+        .then((r) => r.data as GoogleLocation[]),
+    enabled: open && !!activeBusinessId,
   });
 
   const tIntegrations = useTranslations('integrations');
   const connectMutation = useMutation({
-    mutationFn: (params: { account_id: string; location_id: string }) =>
-      api.post(API_PATHS.INTEGRATIONS.GOOGLE_SELECT_LOCATION, params),
+    mutationFn: (params: { account_id: string; location_id: string }) => {
+      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
+      return bizApi(activeBusinessId).post(
+        BIZ_API_PATHS.INTEGRATIONS.GOOGLE_SELECT_LOCATION,
+        params
+      );
+    },
     onSuccess: () => {
       toast.success(tIntegrations('googleConnected'));
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       onClose();
     },
     onError: () => {

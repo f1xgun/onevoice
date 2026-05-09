@@ -5,14 +5,19 @@
 // out of inline useState into the sibling hooks; the table block becomes
 // `<DataTable<Post>>` with a Column<Post>[] config.
 //
+// RBAC (plan 02-09): the /posts list is fetched via bizApi(activeBusinessId)
+// so the request hits `/businesses/{id}/posts`. The query key is partitioned
+// by business id to keep the React Query cache scoped per active business
+// (so switching businesses can't surface cross-tenant posts).
+//
 // Layout per design_handoff_onevoice 2/mocks/mock-posts.jsx:
 //   PageHeader → stat strip (4 cards) → filter bar (platform select, status
 //   tabs, ⌘K search) → expandable posts table.
 //
-// Data contract is unchanged: GET /posts?status&platform → { posts: Post[] }.
-// Aggregate counters in the stat strip are derived client-side from the
-// returned list because the API doesn't expose summary endpoints yet — see
-// `TODO(api)` markers below.
+// Data contract is unchanged: GET /businesses/{id}/posts?status&platform →
+// { posts: Post[] }. Aggregate counters in the stat strip are derived
+// client-side from the returned list because the API doesn't expose summary
+// endpoints yet — see `TODO(api)` markers below.
 
 'use client';
 
@@ -23,9 +28,9 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
@@ -70,18 +75,28 @@ const POSTS_MIN_WIDTH = '620px';
 export default function PostsPage() {
   const tPosts = useTranslations('posts');
   const tCommon = useTranslations('common');
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   const { filters, setFilter, queryString } = useDataTableFilters<PostsFilters>({
     defaultValue: { status: 'all', platform: 'all' },
   });
 
   const { data: posts = [], isLoading } = useQuery<Post[]>({
-    queryKey: QUERY_KEYS.POSTS(filters.status, filters.platform),
+    // Inline business-scoped key: ['businesses', bizId, 'posts', status,
+    // platform]. Centralising this in QUERY_KEYS would need a new factory
+    // that takes (bizId, status, platform); inline keeps the change local
+    // to the RBAC migration.
+    queryKey: ['businesses', activeBusinessId, 'posts', filters.status, filters.platform],
     queryFn: () => {
       const qs = queryString();
-      const url = qs ? `${API_PATHS.POSTS}?${qs}` : API_PATHS.POSTS;
-      return api.get(url).then((r) => (r.data.posts ?? []) as Post[]);
+      const url = qs ? `${BIZ_API_PATHS.POSTS.ROOT}?${qs}` : BIZ_API_PATHS.POSTS.ROOT;
+      return bizApi(activeBusinessId!)
+        .get<{ posts?: Post[] }>(url)
+        .then((r) => (r.data.posts ?? []) as Post[]);
     },
+    // Gate the request on activeBusinessId so a null-keyed cache entry
+    // never resolves data; matches the pattern from useConversations.
+    enabled: !!activeBusinessId,
   });
 
   // Client-side text search over the (already server-filtered) list.

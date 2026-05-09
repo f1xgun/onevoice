@@ -83,7 +83,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 
 	// Projects — three-line wiring through the project service already
 	// constructed in wire.Services.
-	projectHandler, err := handler.NewProjectHandler(svcs.Project, svcs.Business)
+	projectHandler, err := handler.NewProjectHandler(svcs.Project)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create project handler: %w", err)
 	}
@@ -130,9 +130,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	titlerHandler := handler.NewTitlerHandler(svcs.Titler, repos.Conversation, repos.Message)
 
 	// Search handler. Constructed with the searcher (built in wire.Services;
-	// readiness flag already flipped) + businessService for resolving the
-	// caller's businessID server-side from the bearer's userID.
-	searchHandler, err := handler.NewSearchHandler(svcs.Searcher, svcs.Business)
+	// readiness flag already flipped). Business scoping comes from the
+	// RequireBusinessAccess middleware via BusinessContext in handler.
+	searchHandler, err := handler.NewSearchHandler(svcs.Searcher)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create search handler: %w", err)
 	}
@@ -146,6 +146,16 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		YandexBusiness: cfg.YandexClientID != "" && cfg.YandexClientSecret != "",
 		GoogleBusiness: cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "",
 	})
+
+	// Phase 2 v2.0 RBAC handlers — members, roles, permissions registry.
+	membersHandler, err := handler.NewMembersHandler(repos.BusinessMembership, repos.Role, repos.User, h.PG, svcs.AuthzCache)
+	if err != nil {
+		return nil, fmt.Errorf("wire: create members handler: %w", err)
+	}
+	rolesHandler, err := handler.NewRolesHandler(repos.Role)
+	if err != nil {
+		return nil, fmt.Errorf("wire: create roles handler: %w", err)
+	}
 
 	return &router.Handlers{
 		Auth:          authHandler,
@@ -164,5 +174,12 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Titler:        titlerHandler,
 		Search:        searchHandler,
 		Platforms:     platformsHandler,
+		// Phase 1 v2.0 RBAC (AUTHZ-01): static permission registry endpoint.
+		Permissions: handler.NewPermissionsHandler(),
+		// Phase 2 v2.0 RBAC: member + role management.
+		Members: membersHandler,
+		Roles:   rolesHandler,
+		// Telemetry handler is zero-dep; constructed inline.
+		Telemetry: &handler.TelemetryHandler{},
 	}, nil
 }

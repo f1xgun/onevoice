@@ -14,28 +14,48 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // mockReviewService implements ReviewService for tests.
 type mockReviewService struct {
-	listFn    func(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
-	getByIDFn func(ctx context.Context, userID uuid.UUID, id string) (*domain.Review, error)
-	replyFn   func(ctx context.Context, userID uuid.UUID, id, replyText string) error
+	listFn    func(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
+	getByIDFn func(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
+	replyFn   func(ctx context.Context, businessID uuid.UUID, id, replyText string) error
 	refreshFn func(ctx context.Context, userID uuid.UUID) error
 }
 
-func (m *mockReviewService) List(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error) {
-	return m.listFn(ctx, userID, filter)
+func (m *mockReviewService) List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error) {
+	return m.listFn(ctx, businessID, filter)
 }
 
-func (m *mockReviewService) GetByID(ctx context.Context, userID uuid.UUID, id string) (*domain.Review, error) {
-	return m.getByIDFn(ctx, userID, id)
+func (m *mockReviewService) GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error) {
+	return m.getByIDFn(ctx, businessID, id)
 }
 
-func (m *mockReviewService) Reply(ctx context.Context, userID uuid.UUID, id, replyText string) error {
-	return m.replyFn(ctx, userID, id, replyText)
+func (m *mockReviewService) Reply(ctx context.Context, businessID uuid.UUID, id, replyText string) error {
+	return m.replyFn(ctx, businessID, id, replyText)
+}
+
+// reviewReadCtx seeds a BusinessContext with PermContentRead for review read tests.
+func reviewReadCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: []authz.Permission{authz.PermContentRead},
+	})
+}
+
+// reviewUpdateCtx seeds a BusinessContext with PermContentUpdate for reply tests.
+func reviewUpdateCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: []authz.Permission{authz.PermContentRead, authz.PermContentUpdate},
+	})
 }
 
 func (m *mockReviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
@@ -51,6 +71,7 @@ func TestNewReviewHandler_NilService(t *testing.T) {
 }
 
 func TestListReviews_Success(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockReviewService{
 		listFn: func(_ context.Context, _ uuid.UUID, f domain.ReviewFilter) ([]domain.Review, int, error) {
@@ -62,7 +83,7 @@ func TestListReviews_Success(t *testing.T) {
 	h, _ := NewReviewHandler(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews?platform=vk&reply_status=pending", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(reviewReadCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.ListReviews(rr, req)
 
@@ -73,15 +94,16 @@ func TestListReviews_Success(t *testing.T) {
 	assert.Equal(t, 5, resp.Reviews[0].Rating)
 }
 
-func TestListReviews_Unauthorized(t *testing.T) {
+func TestListReviews_NoBusinessContext(t *testing.T) {
 	h, _ := NewReviewHandler(&mockReviewService{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.ListReviews(rr, req)
-	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 }
 
 func TestListReviews_LimitClamped(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockReviewService{
 		listFn: func(_ context.Context, _ uuid.UUID, f domain.ReviewFilter) ([]domain.Review, int, error) {
@@ -91,13 +113,14 @@ func TestListReviews_LimitClamped(t *testing.T) {
 	}
 	h, _ := NewReviewHandler(svc)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/reviews?limit=500", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(reviewReadCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.ListReviews(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
 func TestGetReview_Success(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockReviewService{
 		getByIDFn: func(_ context.Context, _ uuid.UUID, id string) (*domain.Review, error) {
@@ -110,7 +133,7 @@ func TestGetReview_Success(t *testing.T) {
 	r.Get("/reviews/{id}", h.GetReview)
 
 	req := httptest.NewRequest(http.MethodGet, "/reviews/rev-1", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(reviewReadCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 
@@ -118,6 +141,7 @@ func TestGetReview_Success(t *testing.T) {
 }
 
 func TestGetReview_NotFound(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockReviewService{
 		getByIDFn: func(_ context.Context, _ uuid.UUID, _ string) (*domain.Review, error) {
@@ -130,7 +154,7 @@ func TestGetReview_NotFound(t *testing.T) {
 	r.Get("/reviews/{id}", h.GetReview)
 
 	req := httptest.NewRequest(http.MethodGet, "/reviews/nonexistent", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(reviewReadCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 
@@ -138,10 +162,11 @@ func TestGetReview_NotFound(t *testing.T) {
 }
 
 func TestReplyToReview_Success(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockReviewService{
-		replyFn: func(_ context.Context, uid uuid.UUID, id, text string) error {
-			assert.Equal(t, userID, uid)
+		replyFn: func(_ context.Context, bid uuid.UUID, id, text string) error {
+			assert.Equal(t, businessID, bid)
 			assert.Equal(t, "rev-1", id)
 			assert.Equal(t, "Thank you!", text)
 			return nil
@@ -155,7 +180,7 @@ func TestReplyToReview_Success(t *testing.T) {
 	body := `{"replyText":"Thank you!"}`
 	req := httptest.NewRequest(http.MethodPut, "/reviews/rev-1/reply", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 
@@ -163,6 +188,7 @@ func TestReplyToReview_Success(t *testing.T) {
 }
 
 func TestReplyToReview_EmptyText(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	h, _ := NewReviewHandler(&mockReviewService{})
 
@@ -172,7 +198,7 @@ func TestReplyToReview_EmptyText(t *testing.T) {
 	body := `{"replyText":""}`
 	req := httptest.NewRequest(http.MethodPut, "/reviews/rev-1/reply", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 
@@ -180,6 +206,7 @@ func TestReplyToReview_EmptyText(t *testing.T) {
 }
 
 func TestReplyToReview_InvalidJSON(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	h, _ := NewReviewHandler(&mockReviewService{})
 
@@ -187,7 +214,7 @@ func TestReplyToReview_InvalidJSON(t *testing.T) {
 	r.Put("/reviews/{id}/reply", h.ReplyToReview)
 
 	req := httptest.NewRequest(http.MethodPut, "/reviews/rev-1/reply", strings.NewReader("not json"))
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 
@@ -195,6 +222,7 @@ func TestReplyToReview_InvalidJSON(t *testing.T) {
 }
 
 func TestReplyToReview_ReviewNotFound(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockReviewService{
 		replyFn: func(_ context.Context, _ uuid.UUID, _, _ string) error {
@@ -209,7 +237,7 @@ func TestReplyToReview_ReviewNotFound(t *testing.T) {
 	body := `{"replyText":"Thanks"}`
 	req := httptest.NewRequest(http.MethodPut, "/reviews/rev-1/reply", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 
@@ -217,6 +245,7 @@ func TestReplyToReview_ReviewNotFound(t *testing.T) {
 }
 
 func TestReplyToReview_ServiceError(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockReviewService{
 		replyFn: func(_ context.Context, _ uuid.UUID, _, _ string) error {
@@ -231,7 +260,7 @@ func TestReplyToReview_ServiceError(t *testing.T) {
 	body := `{"replyText":"Thanks"}`
 	req := httptest.NewRequest(http.MethodPut, "/reviews/rev-1/reply", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(reviewUpdateCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 

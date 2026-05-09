@@ -16,12 +16,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -92,6 +93,9 @@ type fakeBusinessRepoHITL struct {
 }
 
 func (f *fakeBusinessRepoHITL) Create(_ context.Context, _ *domain.Business) error { return nil }
+func (f *fakeBusinessRepoHITL) CreateInTx(_ context.Context, _ pgx.Tx, _ *domain.Business) error {
+	return nil
+}
 func (f *fakeBusinessRepoHITL) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
 	if f.biz == nil {
 		return nil, domain.ErrBusinessNotFound
@@ -162,6 +166,9 @@ func (s *hitlBusinessService) GetToolApprovals(_ context.Context, _, _ uuid.UUID
 }
 func (s *hitlBusinessService) UpdateToolApprovals(_ context.Context, _, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
 	return nil
+}
+func (s *hitlBusinessService) ListMembershipsByUser(_ context.Context, _ uuid.UUID) ([]service.MembershipSummary, error) {
+	return []service.MembershipSummary{}, nil
 }
 
 type hitlConvRepo struct {
@@ -256,15 +263,26 @@ func seedHandlerBatch(pr *fakeHITLPendingRepo, batchID, convID, bizID string, ca
 	}
 }
 
+// hitlBizCtx seeds a BusinessContext with PermContentUpdate (the permission
+// required by ResolvePendingToolCalls). businessID must match the batch owner.
+func hitlBizCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: []authz.Permission{authz.PermContentUpdate, authz.PermContentCreate},
+	})
+}
+
 // hitlRouteRequest wires chi route params and the auth context then invokes
 // ResolvePendingToolCalls. Returns the recorder for assertions.
-func hitlRouteRequest(t *testing.T, h *handler.HITLHandler, userID uuid.UUID, convID, batchID string, body []byte) *httptest.ResponseRecorder {
+// bizID must match the batch.BusinessID so the service-layer ownership check passes.
+func hitlRouteRequest(t *testing.T, h *handler.HITLHandler, bizID uuid.UUID, convID, batchID string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost,
 		fmt.Sprintf("/api/v1/conversations/%s/pending-tool-calls/%s/resolve", convID, batchID),
 		bytes.NewReader(body))
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
-	req = req.WithContext(ctx)
+	req = req.WithContext(hitlBizCtx(bizID, uuid.New()))
 
 	r := chi.NewRouter()
 	r.Post("/api/v1/conversations/{id}/pending-tool-calls/{batch_id}/resolve", h.ResolvePendingToolCalls)
@@ -290,7 +308,7 @@ func TestResolve_Happy_Returns200WithDecisions(t *testing.T) {
 			{"id": "tc_b", "action": "approve"},
 		},
 	})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "b1", body)
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
@@ -311,7 +329,7 @@ func TestResolve_Missing_Returns404(t *testing.T) {
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
 	body, _ := json.Marshal(map[string]interface{}{"decisions": []interface{}{}})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "ghost", body)
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "ghost", body)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
@@ -329,7 +347,8 @@ func TestResolve_CrossTenant_Returns403(t *testing.T) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"decisions": []map[string]interface{}{{"id": "tc_a", "action": "approve"}},
 	})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "b1", body)
+	// attacker.ID != ownerID → service-layer 403
+	rec := hitlRouteRequest(t, h, attacker.ID, "c1", "b1", body)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", rec.Code)
 	}
@@ -351,7 +370,7 @@ func TestResolve_PartialDecisions_Returns400WithMissing(t *testing.T) {
 			{"id": "tc_b", "action": "approve"},
 		},
 	})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "b1", body)
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
@@ -378,7 +397,7 @@ func TestResolve_EditInvalidField_Returns400WithEditable(t *testing.T) {
 			{"id": "tc_a", "action": "edit", "edited_args": map[string]interface{}{"channel_id": "-100"}},
 		},
 	})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "b1", body)
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
 	}
@@ -414,7 +433,7 @@ func TestResolve_EditCaseMismatch_Returns400(t *testing.T) {
 			{"id": "tc_a", "action": "edit", "edited_args": map[string]interface{}{"Text": "x"}},
 		},
 	})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "b1", body)
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
@@ -433,7 +452,7 @@ func TestResolve_EditNestedObject_Returns400(t *testing.T) {
 			{"id": "tc_a", "action": "edit", "edited_args": map[string]interface{}{"text": map[string]interface{}{"nested": 1}}},
 		},
 	})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "b1", body)
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
@@ -452,7 +471,7 @@ func TestResolve_RejectReasonTooLong_Returns400(t *testing.T) {
 			{"id": "tc_a", "action": "reject", "reject_reason": strings.Repeat("x", 501)},
 		},
 	})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "b1", body)
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
@@ -479,11 +498,10 @@ func TestResolve_ConcurrentResolve_ExactlyOneWins_OtherGets409(t *testing.T) {
 	codes := make(chan int, 2)
 	bodies := make(chan string, 2)
 
-	userID := uuid.New()
 	worker := func() {
 		defer wg.Done()
 		<-start
-		rec := hitlRouteRequest(t, h, userID, "c1", "b1", bodyBytes)
+		rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", bodyBytes)
 		codes <- rec.Code
 		bodies <- rec.Body.String()
 	}
@@ -540,7 +558,7 @@ func TestResolve_TOCTOU_PolicyFlipsToForbidden_RewritesToReject(t *testing.T) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"decisions": []map[string]interface{}{{"id": "tc_a", "action": "approve"}},
 	})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "b1", body)
+	rec := hitlRouteRequest(t, h, bizUUID, "c1", "b1", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
@@ -580,7 +598,7 @@ func TestResolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.T) {
 			}},
 		},
 	})
-	rec := hitlRouteRequest(t, h, uuid.New(), "c1", "b1", body)
+	rec := hitlRouteRequest(t, h, biz.ID, "c1", "b1", body)
 	// Expect 400 because "tool_name" is not in EditableFields.
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
@@ -624,8 +642,7 @@ func TestResume_BatchResolving_Allowed(t *testing.T) {
 	h := buildHITLHandler(t, pr, biz, nil, orch.URL)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/c1/resume?batch_id=b1", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, uuid.New())
-	req = req.WithContext(ctx)
+	req = req.WithContext(hitlBizCtx(biz.ID, uuid.New()))
 	r := chi.NewRouter()
 	r.Post("/api/v1/chat/{id}/resume", h.Resume)
 	rec := httptest.NewRecorder()
@@ -654,8 +671,7 @@ func TestResume_BatchResolved_Returns409(t *testing.T) {
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/c1/resume?batch_id=b1", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, uuid.New())
-	req = req.WithContext(ctx)
+	req = req.WithContext(hitlBizCtx(biz.ID, uuid.New()))
 	r := chi.NewRouter()
 	r.Post("/api/v1/chat/{id}/resume", h.Resume)
 	rec := httptest.NewRecorder()
@@ -681,8 +697,7 @@ func TestResume_Expired_Returns410(t *testing.T) {
 	h := buildHITLHandler(t, pr, biz, nil, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/c1/resume?batch_id=b1", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, uuid.New())
-	req = req.WithContext(ctx)
+	req = req.WithContext(hitlBizCtx(biz.ID, uuid.New()))
 	r := chi.NewRouter()
 	r.Post("/api/v1/chat/{id}/resume", h.Resume)
 	rec := httptest.NewRecorder()
@@ -722,8 +737,7 @@ func TestResume_Happy_OpensSSEStream_ForwardingOrchestratorEvents(t *testing.T) 
 	h := buildHITLHandler(t, pr, biz, nil, orch.URL)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/c1/resume?batch_id=b1", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, uuid.New())
-	req = req.WithContext(ctx)
+	req = req.WithContext(hitlBizCtx(biz.ID, uuid.New()))
 	r := chi.NewRouter()
 	r.Post("/api/v1/chat/{id}/resume", h.Resume)
 	rec := httptest.NewRecorder()
@@ -777,8 +791,7 @@ func TestGetTools_ReturnsRegistryProjection(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/tools", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, uuid.New())
-	req = req.WithContext(ctx)
+	req = req.WithContext(hitlBizCtx(biz.ID, uuid.New()))
 	rec := httptest.NewRecorder()
 	h.GetTools(rec, req)
 

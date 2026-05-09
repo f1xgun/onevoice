@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/lib/auth';
-import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
+import { useBusinessStore } from '@/lib/stores/business';
 import type { TaskStreamEvent } from '@/types/task';
 
 const reconnectDelayMs = 2_000;
@@ -16,11 +16,12 @@ const SSE_DATA_PREFIX = 'data: ';
  */
 export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
   useEffect(() => {
-    if (!accessToken) return;
+    if (!accessToken || !activeBusinessId) return;
 
     let cancelled = false;
     let controller: AbortController | null = null;
@@ -30,7 +31,7 @@ export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
       if (cancelled) return;
       controller = new AbortController();
       try {
-        const response = await fetch(API_STREAM_PATHS.TASKS_STREAM, {
+        const response = await fetch(`/api/v1/businesses/${activeBusinessId}/tasks/stream`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           signal: controller.signal,
         });
@@ -72,5 +73,5 @@ export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       controller?.abort();
     };
-  }, [accessToken]);
+  }, [accessToken, activeBusinessId]);
 }

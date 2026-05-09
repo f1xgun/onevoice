@@ -47,35 +47,58 @@ const sampleConv: Conversation = {
   projectId: 'p-1',
   title: 'Первый чат',
   titleStatus: 'auto',
-  pinned: false,
   createdAt: '2026-04-18T00:00:00Z',
   updatedAt: '2026-04-18T00:00:00Z',
 };
 
+// Mock useBusinessStore so hooks read a stable activeBusinessId.
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'biz-1' }),
+}));
+
+// Mock bizApi — all business-scoped lib calls go through bizApi(bizId).verb(path).
+const bizApiGet = vi.fn();
+const bizApiPost = vi.fn();
+const bizApiDelete = vi.fn();
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: (bizId: string) => ({
+    get: (path: string, config?: unknown) => bizApiGet(bizId, path, config),
+    post: (path: string, data?: unknown) => bizApiPost(bizId, path, data),
+    put: vi.fn(),
+    delete: (path: string) => bizApiDelete(bizId, path),
+  }),
+}));
+
+// Mock plain api for non-business-scoped calls (auth, NavRail integrations).
 const apiGet = vi.fn();
-const apiPost = vi.fn();
-const apiDelete = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
     get: (...args: unknown[]) => apiGet(...args),
-    post: (...args: unknown[]) => apiPost(...args),
+    post: vi.fn(),
     put: vi.fn(),
-    delete: (...args: unknown[]) => apiDelete(...args),
+    delete: vi.fn(),
   },
 }));
 
 function setupApi() {
-  apiGet.mockImplementation((url: string) => {
-    if (url === '/business') {
-      return Promise.resolve({ data: { id: 'biz-1', name: 'Business' } });
-    }
-    if (url === '/conversations') {
+  // Business-scoped calls via bizApi
+  bizApiGet.mockImplementation((_bizId: string, path: string) => {
+    if (path === '/conversations' || path.startsWith('/conversations')) {
       return Promise.resolve({ data: [sampleConv] });
     }
-    if (url === '/projects') {
+    if (path === '/projects' || path.startsWith('/projects')) {
       return Promise.resolve({ data: [sampleProject] });
     }
-    if (url === '/search') {
+    if (path === '/search') {
+      return Promise.resolve({ data: [] });
+    }
+    return Promise.resolve({ data: null });
+  });
+
+  // Non-business-scoped calls via plain api (NavRail integration badge)
+  apiGet.mockImplementation((url: string) => {
+    if (url === '/integrations') {
       return Promise.resolve({ data: [] });
     }
     return Promise.resolve({ data: null });
@@ -93,9 +116,10 @@ function Wrapper({ children }: { children: ReactNode }) {
 
 describe('mobile drawer', () => {
   beforeEach(() => {
+    bizApiGet.mockReset();
+    bizApiPost.mockReset();
+    bizApiDelete.mockReset();
     apiGet.mockReset();
-    apiPost.mockReset();
-    apiDelete.mockReset();
     pushMock.mockReset();
     setupApi();
     pathnameValue = '/chat';

@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // MockIntegrationService is a mock implementation of IntegrationService for testing
@@ -43,11 +43,20 @@ func (m *MockIntegrationService) Delete(ctx context.Context, integrationID uuid.
 	return args.Error(0)
 }
 
+// integrationBizCtx seeds a BusinessContext with the given permissions.
+func integrationBizCtx(businessID, userID uuid.UUID, perms ...authz.Permission) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: perms,
+	})
+}
+
 // TestListIntegrations_Success tests successful listing of integrations
 func TestListIntegrations_Success(t *testing.T) {
-	// Setup
-	userID := uuid.New()
 	businessID := uuid.New()
+	userID := uuid.New()
 
 	integrations := []domain.Integration{
 		{
@@ -64,31 +73,20 @@ func TestListIntegrations_Success(t *testing.T) {
 		},
 	}
 
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-		Name:   "Test Business",
-	}, nil)
-
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return(integrations, nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Create request with user ID in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
-	req = req.WithContext(ctx)
+	req = req.WithContext(integrationBizCtx(businessID, userID, authz.PermIntegrationsRead))
 
-	// Execute
 	rr := httptest.NewRecorder()
 	h.ListIntegrations(rr, req)
 
-	// Assert
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
@@ -101,39 +99,29 @@ func TestListIntegrations_Success(t *testing.T) {
 	if len(response) != len(integrations) {
 		t.Errorf("expected %d integrations, got %d", len(integrations), len(response))
 	}
+
+	mockIntegrationService.AssertExpectations(t)
 }
 
 // TestListIntegrations_EmptyList tests listing when no integrations exist
 func TestListIntegrations_EmptyList(t *testing.T) {
-	// Setup
-	userID := uuid.New()
 	businessID := uuid.New()
-
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-		Name:   "Test Business",
-	}, nil)
+	userID := uuid.New()
 
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Create request with user ID in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
-	req = req.WithContext(ctx)
+	req = req.WithContext(integrationBizCtx(businessID, userID, authz.PermIntegrationsRead))
 
-	// Execute
 	rr := httptest.NewRecorder()
 	h.ListIntegrations(rr, req)
 
-	// Assert
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
@@ -152,146 +140,67 @@ func TestListIntegrations_EmptyList(t *testing.T) {
 	}
 }
 
-// TestListIntegrations_MissingUserID tests when user ID is missing from context
-func TestListIntegrations_MissingUserID(t *testing.T) {
-	// Setup
-	mockBusinessService := new(MockBusinessService)
+// TestListIntegrations_NoBusinessContext tests 500 when no BusinessContext in ctx (middleware misconfiguration)
+func TestListIntegrations_NoBusinessContext(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Create request WITHOUT user ID in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
+	// no BusinessContext seeded
 
-	// Execute
 	rr := httptest.NewRecorder()
 	h.ListIntegrations(rr, req)
 
-	// Assert
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401, got %d", rr.Code)
-	}
-
-	var response ErrorResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if response.Error == "" {
-		t.Error("expected error message, got empty string")
-	}
-}
-
-// TestListIntegrations_BusinessNotFound tests when business doesn't exist
-func TestListIntegrations_BusinessNotFound(t *testing.T) {
-	// Setup
-	userID := uuid.New()
-
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(nil, domain.ErrBusinessNotFound)
-
-	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
-	req = req.WithContext(ctx)
-
-	// Execute
-	rr := httptest.NewRecorder()
-	h.ListIntegrations(rr, req)
-
-	// Assert
-	if rr.Code != http.StatusNotFound {
-		t.Errorf("expected status 404, got %d", rr.Code)
-	}
-
-	var response ErrorResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if response.Error == "" {
-		t.Error("expected error message, got empty string")
-	}
-}
-
-// TestListIntegrations_InternalError tests internal server error
-func TestListIntegrations_InternalError(t *testing.T) {
-	// Setup
-	userID := uuid.New()
-
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return((*domain.Business)(nil), errors.New("database connection failed"))
-
-	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
-	req = req.WithContext(ctx)
-
-	// Execute
-	rr := httptest.NewRecorder()
-	h.ListIntegrations(rr, req)
-
-	// Assert
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", rr.Code)
 	}
+}
 
-	var response ErrorResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+// TestListIntegrations_Forbidden tests 403 when missing PermIntegrationsRead
+func TestListIntegrations_Forbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+
+	mockIntegrationService := new(MockIntegrationService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if response.Error == "" {
-		t.Error("expected error message, got empty string")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
+	// seed ctx without PermIntegrationsRead
+	req = req.WithContext(integrationBizCtx(businessID, userID /* no perms */))
+
+	rr := httptest.NewRecorder()
+	h.ListIntegrations(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected status 403, got %d", rr.Code)
 	}
 }
 
-// TestListIntegrations_IntegrationServiceError tests when integration service fails
+// TestListIntegrations_IntegrationServiceError tests internal server error from integration service
 func TestListIntegrations_IntegrationServiceError(t *testing.T) {
-	// Setup
-	userID := uuid.New()
 	businessID := uuid.New()
-	business := &domain.Business{
-		ID:     businessID,
-		UserID: userID,
-		Name:   "Test Business",
-	}
-
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	userID := uuid.New()
 
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration(nil), errors.New("database query failed"))
 
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Create request with user ID in context
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/integrations", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
-	req = req.WithContext(ctx)
+	req = req.WithContext(integrationBizCtx(businessID, userID, authz.PermIntegrationsRead))
 
-	// Execute
 	rr := httptest.NewRecorder()
 	h.ListIntegrations(rr, req)
 
-	// Assert
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", rr.Code)
 	}
@@ -310,23 +219,14 @@ func TestListIntegrations_IntegrationServiceError(t *testing.T) {
 		t.Error("error message should not leak internal details")
 	}
 
-	mockBusinessService.AssertExpectations(t)
 	mockIntegrationService.AssertExpectations(t)
 }
 
 // TestDeleteIntegration_Success tests successful deletion of integration
 func TestDeleteIntegration_Success(t *testing.T) {
-	// Setup
-	userID := uuid.New()
 	businessID := uuid.New()
+	userID := uuid.New()
 	integrationID := uuid.New()
-
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-		Name:   "Test Business",
-	}, nil)
 
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{
@@ -334,229 +234,118 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	}, nil)
 	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Create request with user ID in context and integration ID in URL
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := integrationBizCtx(businessID, userID, authz.PermIntegrationsDisconnect)
 
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", integrationID.String())
+	rctx.URLParams.Add("integrationId", integrationID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
-	// Execute
 	rr := httptest.NewRecorder()
 	h.DeleteIntegration(rr, req)
 
-	// Assert
 	if rr.Code != http.StatusNoContent {
 		t.Errorf("expected status 204, got %d", rr.Code)
 	}
 
-	mockBusinessService.AssertExpectations(t)
 	mockIntegrationService.AssertExpectations(t)
 }
 
-// TestDeleteIntegration_MissingUserID tests deletion without user ID in context
-func TestDeleteIntegration_MissingUserID(t *testing.T) {
-	// Setup
+// TestDeleteIntegration_NoBusinessContext tests 500 when no BusinessContext in ctx
+func TestDeleteIntegration_NoBusinessContext(t *testing.T) {
 	integrationID := uuid.New()
-	mockBusinessService := new(MockBusinessService)
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Create request WITHOUT user ID in context
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
 
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", integrationID.String())
+	rctx.URLParams.Add("integrationId", integrationID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
-	// Execute
 	rr := httptest.NewRecorder()
 	h.DeleteIntegration(rr, req)
 
-	// Assert
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401, got %d", rr.Code)
-	}
-
-	var response ErrorResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if response.Error == "" {
-		t.Error("expected error message, got empty string")
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rr.Code)
 	}
 }
 
-// TestDeleteIntegration_BusinessNotFound tests deletion when business doesn't exist
-func TestDeleteIntegration_BusinessNotFound(t *testing.T) {
-	// Setup
+// TestDeleteIntegration_Forbidden tests 403 when missing PermIntegrationsDisconnect
+func TestDeleteIntegration_Forbidden(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	integrationID := uuid.New()
 
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(nil, domain.ErrBusinessNotFound)
-
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Create request with user ID in context
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := integrationBizCtx(businessID, userID /* no disconnect perm */)
 
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", integrationID.String())
+	rctx.URLParams.Add("integrationId", integrationID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
-	// Execute
 	rr := httptest.NewRecorder()
 	h.DeleteIntegration(rr, req)
 
-	// Assert
-	if rr.Code != http.StatusNotFound {
-		t.Errorf("expected status 404, got %d", rr.Code)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected status 403, got %d", rr.Code)
 	}
-
-	var response ErrorResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if response.Error == "" {
-		t.Error("expected error message, got empty string")
-	}
-
-	mockBusinessService.AssertExpectations(t)
 }
 
 // TestDeleteIntegration_IntegrationNotFound tests deletion when integration doesn't belong to business
 func TestDeleteIntegration_IntegrationNotFound(t *testing.T) {
-	// Setup
-	userID := uuid.New()
 	businessID := uuid.New()
+	userID := uuid.New()
 	integrationID := uuid.New()
-
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-		Name:   "Test Business",
-	}, nil)
 
 	mockIntegrationService := new(MockIntegrationService)
 	// Return empty list — integration not in this business
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Create request with user ID in context
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := integrationBizCtx(businessID, userID, authz.PermIntegrationsDisconnect)
 
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", integrationID.String())
+	rctx.URLParams.Add("integrationId", integrationID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
-	// Execute
 	rr := httptest.NewRecorder()
 	h.DeleteIntegration(rr, req)
 
-	// Assert
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("expected status 404, got %d", rr.Code)
 	}
 
-	var response ErrorResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if response.Error == "" {
-		t.Error("expected error message, got empty string")
-	}
-
-	mockBusinessService.AssertExpectations(t)
 	mockIntegrationService.AssertExpectations(t)
-}
-
-// TestDeleteIntegration_InternalError tests deletion with internal error
-func TestDeleteIntegration_InternalError(t *testing.T) {
-	// Setup
-	userID := uuid.New()
-	integrationID := uuid.New()
-
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return((*domain.Business)(nil), errors.New("database connection failed"))
-
-	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Create request with user ID in context
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
-
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", integrationID.String())
-	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
-	req = req.WithContext(ctx)
-
-	// Execute
-	rr := httptest.NewRecorder()
-	h.DeleteIntegration(rr, req)
-
-	// Assert
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500, got %d", rr.Code)
-	}
-
-	var response ErrorResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if response.Error == "" {
-		t.Error("expected error message, got empty string")
-	}
-
-	mockBusinessService.AssertExpectations(t)
 }
 
 // TestDeleteIntegration_DeleteServiceError tests when Delete method fails
 func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
-	// Setup
-	userID := uuid.New()
 	businessID := uuid.New()
+	userID := uuid.New()
 	integrationID := uuid.New()
-
-	business := &domain.Business{
-		ID:     businessID,
-		UserID: userID,
-		Name:   "Test Business",
-	}
-
-	mockBusinessService := new(MockBusinessService)
-	mockBusinessService.On("GetByUserID", mock.Anything, userID).Return(business, nil)
 
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{
@@ -564,25 +353,22 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 	}, nil)
 	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(errors.New("redis deletion failed"))
 
-	h, err := NewIntegrationHandler(mockIntegrationService, mockBusinessService)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Create request with user ID in context
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/integrations/"+integrationID.String(), http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx := integrationBizCtx(businessID, userID, authz.PermIntegrationsDisconnect)
 
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", integrationID.String())
+	rctx.URLParams.Add("integrationId", integrationID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
-	// Execute
 	rr := httptest.NewRecorder()
 	h.DeleteIntegration(rr, req)
 
-	// Assert
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", rr.Code)
 	}
@@ -601,26 +387,12 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 		t.Error("error message should not leak internal details")
 	}
 
-	mockBusinessService.AssertExpectations(t)
 	mockIntegrationService.AssertExpectations(t)
 }
 
 // TestNewIntegrationHandler_NilIntegrationService tests error when integration service is nil
 func TestNewIntegrationHandler_NilIntegrationService(t *testing.T) {
-	mockBusinessService := new(MockBusinessService)
-	h, err := NewIntegrationHandler(nil, mockBusinessService)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if h != nil {
-		t.Fatal("expected nil handler")
-	}
-}
-
-// TestNewIntegrationHandler_NilBusinessService tests error when business service is nil
-func TestNewIntegrationHandler_NilBusinessService(t *testing.T) {
-	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

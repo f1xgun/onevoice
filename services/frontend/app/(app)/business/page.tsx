@@ -11,10 +11,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { isAxiosError } from 'axios';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { ProfileForm } from '@/components/business/ProfileForm';
 import { HoursForm, SpecialDatesForm } from '@/components/business/ScheduleForm';
 import { VoiceToneSection } from '@/components/business/VoiceToneSection';
@@ -55,9 +56,14 @@ function BusinessSkeleton() {
 export default function BusinessPage() {
   const tBusiness = useTranslations('business');
   const tSections = useTranslations('business.sections');
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const { data, isLoading, isError, error } = useQuery<Business>({
-    queryKey: QUERY_KEYS.BUSINESS,
-    queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
+    queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
+    queryFn: () =>
+      bizApi(activeBusinessId!)
+        .get<Business>(BIZ_API_PATHS.BUSINESS.ROOT)
+        .then((r) => r.data),
+    enabled: !!activeBusinessId,
     retry: false,
   });
 

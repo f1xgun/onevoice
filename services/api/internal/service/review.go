@@ -22,11 +22,16 @@ import (
 // is the slow path) to chase a CAPTCHA / 2FA challenge before we give up.
 const reviewDispatchTimeout = 90 * time.Second
 
-// ReviewService defines the interface for review operations
+// ReviewService defines the interface for review operations.
+//
+// Phase 2 v2.0 RBAC: List/GetByID/Reply take businessID extracted from the
+// /businesses/{id}/... URL path (gated by RequireBusinessAccess middleware).
+// Refresh remains userID-scoped because the manual /reviews/refresh endpoint
+// is not business-scoped — it kicks the cross-business sync.
 type ReviewService interface {
-	List(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
-	GetByID(ctx context.Context, userID uuid.UUID, id string) (*domain.Review, error)
-	Reply(ctx context.Context, userID uuid.UUID, id string, replyText string) error
+	List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
+	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
+	Reply(ctx context.Context, businessID uuid.UUID, id string, replyText string) error
 	// Refresh triggers a synchronous pull from every supported platform
 	// for the user's business. The endpoint exists so the operator can
 	// shortcut the 30-min review-syncer ticker after replying directly
@@ -78,13 +83,8 @@ func NewReviewService(repo domain.ReviewRepository, businessService BusinessServ
 	}
 }
 
-func (s *reviewService) List(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error) {
-	business, err := s.businessService.GetByUserID(ctx, userID)
-	if err != nil {
-		return nil, 0, fmt.Errorf("get business: %w", err)
-	}
-
-	reviews, total, err := s.repo.ListByBusinessID(ctx, business.ID.String(), filter)
+func (s *reviewService) List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error) {
+	reviews, total, err := s.repo.ListByBusinessID(ctx, businessID.String(), filter)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list reviews: %w", err)
 	}
@@ -92,18 +92,13 @@ func (s *reviewService) List(ctx context.Context, userID uuid.UUID, filter domai
 	return reviews, total, nil
 }
 
-func (s *reviewService) GetByID(ctx context.Context, userID uuid.UUID, id string) (*domain.Review, error) {
-	business, err := s.businessService.GetByUserID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("get business: %w", err)
-	}
-
+func (s *reviewService) GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error) {
 	review, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get review: %w", err)
 	}
 
-	if review.BusinessID != business.ID.String() {
+	if review.BusinessID != businessID.String() {
 		return nil, domain.ErrReviewNotFound
 	}
 
@@ -123,14 +118,9 @@ func (s *reviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
 	return s.refresher.SyncForBusiness(ctx, business.ID)
 }
 
-func (s *reviewService) Reply(ctx context.Context, userID uuid.UUID, id, replyText string) error {
+func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, replyText string) error {
 	if replyText == "" {
 		return fmt.Errorf("reply text cannot be empty")
-	}
-
-	business, err := s.businessService.GetByUserID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("get business: %w", err)
 	}
 
 	review, err := s.repo.GetByID(ctx, id)
@@ -138,7 +128,7 @@ func (s *reviewService) Reply(ctx context.Context, userID uuid.UUID, id, replyTe
 		return fmt.Errorf("get review: %w", err)
 	}
 
-	if review.BusinessID != business.ID.String() {
+	if review.BusinessID != businessID.String() {
 		return domain.ErrReviewNotFound
 	}
 

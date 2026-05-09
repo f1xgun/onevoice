@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -83,8 +84,6 @@ func TestConnectVK_Paste_Success(t *testing.T) {
 	mockIntegration := new(MockConnectIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	mockBusiness.On("GetByUserID", mock.Anything, userID).
-		Return(&domain.Business{ID: businessID, UserID: userID}, nil)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		method, _ := p.Metadata["input_method"].(string)
 		gname, _ := p.Metadata["community_name"].(string)
@@ -100,7 +99,7 @@ func TestConnectVK_Paste_Success(t *testing.T) {
 	body := `{"access_token": "vk1.a.PASTED_COMMUNITY_TOKEN"}`
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectVK(rr, req)
@@ -119,10 +118,9 @@ func TestConnectVK_Paste_TokenWithoutWallScope_400(t *testing.T) {
 	})
 	defer vkServer.Close()
 
+	businessID := uuid.New()
 	userID := uuid.New()
 	mockBusiness := new(MockBusinessService)
-	mockBusiness.On("GetByUserID", mock.Anything, userID).
-		Return(&domain.Business{ID: uuid.New(), UserID: userID}, nil)
 	mockIntegration := new(MockConnectIntegrationService) // Connect must NOT be called
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
@@ -131,7 +129,7 @@ func TestConnectVK_Paste_TokenWithoutWallScope_400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "tok"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectVK(rr, req)
@@ -152,10 +150,9 @@ func TestConnectVK_Paste_VKAPIError_400(t *testing.T) {
 	})
 	defer vkServer.Close()
 
+	businessID := uuid.New()
 	userID := uuid.New()
 	mockBusiness := new(MockBusinessService)
-	mockBusiness.On("GetByUserID", mock.Anything, userID).
-		Return(&domain.Business{ID: uuid.New(), UserID: userID}, nil)
 	mockIntegration := new(MockConnectIntegrationService)
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
@@ -164,7 +161,7 @@ func TestConnectVK_Paste_VKAPIError_400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "broken"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectVK(rr, req)
@@ -176,6 +173,7 @@ func TestConnectVK_Paste_VKAPIError_400(t *testing.T) {
 }
 
 func TestConnectVK_Paste_EmptyToken_400(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	mockBusiness := new(MockBusinessService) // GetByUserID must NOT be called — fail-fast on input
 	mockIntegration := new(MockConnectIntegrationService)
@@ -184,7 +182,7 @@ func TestConnectVK_Paste_EmptyToken_400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "  "}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectVK(rr, req)
@@ -201,10 +199,9 @@ func TestConnectVK_Paste_VKReturnsNoCommunity_400(t *testing.T) {
 	vkServer := newVKAPIMock(t, vkMockOpts{scopes: []string{"wall"}})
 	defer vkServer.Close()
 
+	businessID := uuid.New()
 	userID := uuid.New()
 	mockBusiness := new(MockBusinessService)
-	mockBusiness.On("GetByUserID", mock.Anything, userID).
-		Return(&domain.Business{ID: uuid.New(), UserID: userID}, nil)
 	mockIntegration := new(MockConnectIntegrationService)
 
 	cfg := ConnectConfig{vkAPIBaseURL: vkServer.URL}
@@ -213,7 +210,7 @@ func TestConnectVK_Paste_VKReturnsNoCommunity_400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
 		strings.NewReader(`{"access_token": "tok"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectVK(rr, req)
@@ -227,7 +224,10 @@ func TestConnectVK_Paste_VKReturnsNoCommunity_400(t *testing.T) {
 	mockIntegration.AssertNotCalled(t, "Connect", mock.Anything, mock.Anything)
 }
 
-func TestConnectVK_Paste_Unauthorized(t *testing.T) {
+// TestConnectVK_Paste_NoBusinessContext: handler returns 500 when middleware
+// fails to seed BusinessContext. Renamed from _Unauthorized — see
+// TestConnectTelegram_NoBusinessContext for rationale.
+func TestConnectVK_Paste_NoBusinessContext(t *testing.T) {
 	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
@@ -237,7 +237,27 @@ func TestConnectVK_Paste_Unauthorized(t *testing.T) {
 
 	h.ConnectVK(rr, req)
 
-	if rr.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 without user context, got %d", rr.Code)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 without BusinessContext, got %d", rr.Code)
+	}
+}
+
+// TestConnectVK_Paste_Forbidden: BusinessContext present but missing
+// PermIntegrationsConnect → 403 from authz.Can guard.
+func TestConnectVK_Paste_Forbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/integrations/vk/connect",
+		strings.NewReader(`{"access_token": "tok"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(connectBizCtx(businessID, userID /* no perms */))
+	rr := httptest.NewRecorder()
+
+	h.ConnectVK(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
 	}
 }

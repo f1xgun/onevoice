@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // Constants for conversation pagination
@@ -38,8 +38,12 @@ const (
 type ConversationHandler struct {
 	conversationRepo domain.ConversationRepository
 	messageRepo      domain.MessageRepository
-	businessService  BusinessService // resolve caller's business for project scoping
-	projectService   ProjectService  // validate projectId belongs to caller's business
+	// businessService retained for wiring compatibility; not called by handlers
+	// after RBAC refactor — BusinessContext from RequireBusinessAccess
+	// middleware provides businessID + userID directly.
+	businessService BusinessService
+	// projectService validates projectId belongs to caller's business.
+	projectService ProjectService
 	// pendingRepo drives the pendingApprovals array on GET /messages.
 	pendingRepo domain.PendingToolCallRepository
 }
@@ -130,10 +134,14 @@ type CreateConversationRequest struct {
 // exists AND belongs to the caller's business before creating the conversation;
 // cross-business or missing project returns 404.
 func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.Request) {
-	// Get user ID from context (set by auth middleware)
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "CreateConversation: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentCreate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -150,19 +158,6 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Resolve caller's business — needed for scoping AND for validating the
-	// supplied projectId (if any).
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "create conversation: failed to resolve business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
 	// If a projectId was supplied, validate it exists and belongs to the
 	// caller's business. Cross-business or missing project → 404 (per
 	// docs/security.md we do NOT leak existence via 403).
@@ -172,7 +167,7 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 			writeJSONError(w, http.StatusBadRequest, "invalid project id")
 			return
 		}
-		if _, projErr := h.projectService.GetByID(r.Context(), business.ID, projUUID); projErr != nil {
+		if _, projErr := h.projectService.GetByID(r.Context(), bc.BusinessID, projUUID); projErr != nil {
 			if errors.Is(projErr, domain.ErrProjectNotFound) {
 				writeJSONError(w, http.StatusNotFound, "project not found")
 				return
@@ -189,8 +184,8 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 	now := time.Now()
 	conversation := &domain.Conversation{
 		ID:          primitive.NewObjectID().Hex(),
-		UserID:      userID.String(),
-		BusinessID:  business.ID.String(),
+		UserID:      bc.UserID.String(),
+		BusinessID:  bc.BusinessID.String(),
 		ProjectID:   req.ProjectID, // nil → "Без проекта"; both null and absent map here
 		Title:       req.Title,
 		TitleStatus: domain.TitleStatusAutoPending,
@@ -211,10 +206,14 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 
 // ListConversations handles GET /api/v1/conversations
 func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.Request) {
-	// Get user ID from context (set by auth middleware)
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ListConversations: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -239,7 +238,7 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 	}
 
 	// Get conversations from repository
-	conversations, err := h.conversationRepo.ListByUserID(r.Context(), userID.String(), limit, offset)
+	conversations, err := h.conversationRepo.ListByUserID(r.Context(), bc.UserID.String(), limit, offset)
 	if err != nil {
 		slog.Error("failed to list conversations", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -252,10 +251,14 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 
 // GetConversation handles GET /api/v1/conversations/{id}
 func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Request) {
-	// Get user ID from context (set by auth middleware)
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GetConversation: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -285,7 +288,7 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 	}
 
 	// Authorization check: verify conversation belongs to user
-	if conversation.UserID != userID.String() {
+	if conversation.UserID != bc.UserID.String() {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -301,9 +304,14 @@ type UpdateConversationRequest struct {
 
 // UpdateConversation handles PUT /api/v1/conversations/{id}
 func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "UpdateConversation: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -329,7 +337,7 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	if conversation.UserID != userID.String() {
+	if conversation.UserID != bc.UserID.String() {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -347,9 +355,14 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 
 // DeleteConversation handles DELETE /api/v1/conversations/{id}
 func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "DeleteConversation: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentDelete) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -365,7 +378,7 @@ func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	if conversation.UserID != userID.String() {
+	if conversation.UserID != bc.UserID.String() {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -395,9 +408,14 @@ type listMessagesResponse struct {
 // the pending_tool_calls collection so the frontend approval card can
 // reconstruct its state on page reload.
 func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ListMessages: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -414,7 +432,7 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	if conversation.UserID != userID.String() {
+	if conversation.UserID != bc.UserID.String() {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -495,9 +513,14 @@ type MoveConversationRequest struct {
 // itself already landed, so we log and still return success. Rolling back the
 // move on a note-append failure would be more surprising than a missing note.
 func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "MoveConversation: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -519,19 +542,8 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	if conv.UserID != userID.String() {
+	if conv.UserID != bc.UserID.String() {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
-		return
-	}
-
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "move conversation: get business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -544,7 +556,7 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 			writeJSONError(w, http.StatusBadRequest, "invalid project id")
 			return
 		}
-		proj, projErr := h.projectService.GetByID(r.Context(), business.ID, projUUID)
+		proj, projErr := h.projectService.GetByID(r.Context(), bc.BusinessID, projUUID)
 		if projErr != nil {
 			if errors.Is(projErr, domain.ErrProjectNotFound) {
 				writeJSONError(w, http.StatusNotFound, "project not found")
@@ -600,9 +612,14 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 // (NEVER 403 — uniform 404 is the industry-standard guard against existence
 // enumeration).
 func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "Pin: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -616,26 +633,15 @@ func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "pin conversation: failed to resolve business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	if err := h.conversationRepo.Pin(r.Context(), conversationID, business.ID.String(), userID.String()); err != nil {
+	if err := h.conversationRepo.Pin(r.Context(), conversationID, bc.BusinessID.String(), bc.UserID.String()); err != nil {
 		if errors.Is(err, domain.ErrConversationNotFound) {
 			writeJSONError(w, http.StatusNotFound, "conversation not found")
 			return
 		}
 		slog.ErrorContext(r.Context(), "pin conversation failed",
 			"conversation_id", conversationID,
-			"user_id", userID.String(),
-			"business_id", business.ID.String(),
+			"user_id", bc.UserID.String(),
+			"business_id", bc.BusinessID.String(),
 			"error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
@@ -656,9 +662,14 @@ func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
 // pinned_at = nil on the conversation, scoped by (id, business_id, user_id).
 // Cross-tenant attempts surface as a uniform 404.
 func (h *ConversationHandler) Unpin(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "Unpin: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -672,26 +683,15 @@ func (h *ConversationHandler) Unpin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "unpin conversation: failed to resolve business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	if err := h.conversationRepo.Unpin(r.Context(), conversationID, business.ID.String(), userID.String()); err != nil {
+	if err := h.conversationRepo.Unpin(r.Context(), conversationID, bc.BusinessID.String(), bc.UserID.String()); err != nil {
 		if errors.Is(err, domain.ErrConversationNotFound) {
 			writeJSONError(w, http.StatusNotFound, "conversation not found")
 			return
 		}
 		slog.ErrorContext(r.Context(), "unpin conversation failed",
 			"conversation_id", conversationID,
-			"user_id", userID.String(),
-			"business_id", business.ID.String(),
+			"user_id", bc.UserID.String(),
+			"business_id", bc.BusinessID.String(),
 			"error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return

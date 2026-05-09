@@ -2,7 +2,6 @@ package oauth
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,33 +10,27 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
-// GetYandexAuthURL generates a Yandex OAuth authorization URL (JWT required).
+// GetYandexAuthURL generates a Yandex OAuth authorization URL (PermIntegrationsConnect required).
 func (h *OAuthHandler) GetYandexAuthURL(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GetYandexAuthURL: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("failed to get business for Yandex OAuth", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
-		UserID:     userID,
-		BusinessID: business.ID,
+		UserID:     bc.UserID,
+		BusinessID: bc.BusinessID,
 		Platform:   a2a.AgentYandexBusiness,
 	})
 	if err != nil {

@@ -38,6 +38,11 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'biz-test' }),
+}));
+
 // useChat now consumes useQueryClient() so it can invalidate
 // ['conversations'] on chat SSE 'done'. All renderHook calls now wrap a
 // QueryClientProvider — the React Query cache is unused by these test
@@ -67,7 +72,9 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     const fetchMock = vi.fn();
     // 1) GET /messages — empty history, no pending.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
-      expect(String(input)).toMatch(/\/api\/v1\/conversations\/.+\/messages$/);
+      expect(String(input)).toMatch(
+        /\/api\/v1\/businesses\/biz-test\/conversations\/.+\/messages$/
+      );
       return new Response(JSON.stringify({ messages: [], pendingApprovals: [] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -75,7 +82,7 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     });
     // 2) POST /chat/{id} — SSE stream with a partial text then tool_approval_required, then natural close.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
-      expect(String(input)).toMatch(/\/api\/v1\/chat\/cid-1$/);
+      expect(String(input)).toMatch(/\/api\/v1\/businesses\/biz-test\/chat\/cid-1$/);
       return mockSSEResponse([
         sseLine({ type: 'text', content: 'I will post to ' }),
         sseLine({
