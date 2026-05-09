@@ -95,9 +95,13 @@ func NewSearcher(convRepo domain.ConversationRepository, msgRepo domain.MessageR
 }
 
 // MarkIndexesReady flips the readiness flag to true. MUST be called
-// from cmd/main.go AFTER EnsureSearchIndexes returns nil — calling
-// before index creation completes would let queries hit a missing
-// $text index and return MongoServerError (T-19-INDEX-503).
+// from cmd/main.go AFTER EnsureSearchIndexes returns nil.
+//
+// v20.1 note: search no longer uses $text, so a missing index can't
+// surface MongoServerError any more. The flag is kept as a defensive
+// "search service initialized" signal — if a future change reverts
+// to $text, the gate is already wired and tested. Cost is negligible
+// (one atomic load per request); benefit is a stable rollback path.
 func (s *Searcher) MarkIndexesReady() { s.indexReady.Store(true) }
 
 // IsReady reports whether MarkIndexesReady has been called. Used by
@@ -156,8 +160,8 @@ func (s *Searcher) Search(
 		return nil, err
 	}
 
-	stems := QueryStems(query)
-	merged := mergeAndRank(titleHits, msgHits, titleHitWeight, messageHitWeight, limit, stems)
+	prefixes := QueryPrefixes(query)
+	merged := mergeAndRank(titleHits, msgHits, titleHitWeight, messageHitWeight, limit, prefixes)
 	return merged, nil
 }
 
@@ -171,7 +175,7 @@ func mergeAndRank(
 	msgHits []domain.MessageSearchHit,
 	titleW, contentW float64,
 	limit int,
-	stems map[string]struct{},
+	prefixes map[string]struct{},
 ) []SearchResult {
 	byID := make(map[string]*SearchResult)
 	for _, t := range titleHits {
@@ -185,8 +189,8 @@ func mergeAndRank(
 	}
 	for _, m := range msgHits {
 		score := m.TopScore * contentW
-		snippet := BuildSnippet(m.TopContent, stems)
-		marks := HighlightRanges(snippet, stems)
+		snippet := BuildSnippet(m.TopContent, prefixes)
+		marks := HighlightRanges(snippet, prefixes)
 		if existing, ok := byID[m.ConversationID]; ok {
 			// Title and content both hit; keep the stronger score and
 			// fill snippet/marks/match_count from the content side.
@@ -212,7 +216,27 @@ func mergeAndRank(
 	for _, v := range byID {
 		out = append(out, *v)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	// v20.1 ranking: score desc, then last_message_at desc (recency), then
+	// conversation_id asc as a final deterministic tiebreaker. Without
+	// these tertiary keys, equal-scoring rows ride on Go's
+	// non-deterministic map iteration order through sort.Slice — so the
+	// SAME query could return rows in different orders across calls.
+	// SliceStable + a fully ordered comparator removes the wobble.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Score != out[j].Score {
+			return out[i].Score > out[j].Score
+		}
+		ai, aj := out[i].LastMessageAt, out[j].LastMessageAt
+		switch {
+		case ai != nil && aj != nil && !ai.Equal(*aj):
+			return ai.After(*aj)
+		case ai != nil && aj == nil:
+			return true
+		case ai == nil && aj != nil:
+			return false
+		}
+		return out[i].ConversationID < out[j].ConversationID
+	})
 	if len(out) > limit {
 		out = out[:limit]
 	}

@@ -101,27 +101,21 @@ func TestHighlightRanges_EmptyOnNoMatch(t *testing.T) {
 	assert.Empty(t, marks)
 }
 
-// TestQueryStems_DeduplicatesIdenticalStems — Plan 19-03 / Task 3 / D-09.
-// Repeating the SAME word twice must return a single-element set
-// (set semantics: dedup is by stem identity).
-//
-// We deliberately do NOT assert that two different inflections collapse
-// to the same stem — kljensen/snowball produces different stems for
-// some inflected forms (RESEARCH §1 caveat). The Mongo $text stemmer
-// drives retrieval; QueryStems only powers the cosmetic <mark>
-// highlight via HighlightRanges, so divergence is acceptable.
-func TestQueryStems_DeduplicatesIdenticalStems(t *testing.T) {
-	stems := QueryStems("инвойс инвойс инвойс")
+// TestQueryPrefixes_DeduplicatesIdenticalTokens — repeating the SAME
+// word three times must return a single-element set (set semantics:
+// dedup is by lowercased token identity).
+func TestQueryPrefixes_DeduplicatesIdenticalTokens(t *testing.T) {
+	stems := QueryPrefixes("инвойс инвойс инвойс")
 	assert.Len(t, stems, 1, "the same word repeated stems to the same single root")
 	for s := range stems {
 		assert.NotEmpty(t, s)
 	}
 }
 
-// TestQueryStems_HandlesPunctuationAndCase — punctuation, mixed case,
+// TestQueryPrefixes_HandlesPunctuationAndCase — punctuation, mixed case,
 // trailing whitespace must not produce extra stems or empty entries.
-func TestQueryStems_HandlesPunctuationAndCase(t *testing.T) {
-	stems := QueryStems("ЗАПЛАНИРОВАТЬ! пост, в Telegram?")
+func TestQueryPrefixes_HandlesPunctuationAndCase(t *testing.T) {
+	stems := QueryPrefixes("ЗАПЛАНИРОВАТЬ! пост, в Telegram?")
 	assert.GreaterOrEqual(t, len(stems), 2)
 	for s := range stems {
 		assert.NotEmpty(t, s, "stems map must never contain an empty key")
