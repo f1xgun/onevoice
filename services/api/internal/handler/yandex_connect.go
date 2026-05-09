@@ -21,6 +21,11 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/yandexcookies"
 )
 
+// yandexBusinessHomepageURL is the public Sprav landing page used as the
+// production live-probe target. Trailing slash matches the canonical form
+// the Playwright canary uses; do not strip it without updating the canary.
+const yandexBusinessHomepageURL = "https://business.yandex.ru/"
+
 // yandexProbeRequest is the JSON body for both probe and connect.
 type yandexProbeRequest struct {
 	Cookies string `json:"cookies"`
@@ -492,5 +497,5 @@ func (h *OAuthHandler) yandexProbeURL() string {
 	if h.cfg.yandexProbeBaseURL != "" {
 		return h.cfg.yandexProbeBaseURL
 	}
-	return "https://business.yandex.ru/"
+	return yandexBusinessHomepageURL
 }

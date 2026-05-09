@@ -12,6 +12,9 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
+// defaultOpenRouterBaseURL is the OpenRouter OpenAI-compatible API base URL.
+const defaultOpenRouterBaseURL = "https://openrouter.ai/api/v1"
+
 // OpenRouterProvider implements llm.Provider using OpenRouter's OpenAI-compatible API
 type OpenRouterProvider struct {
 	client *openai.Client
@@ -23,7 +26,7 @@ func NewOpenRouter(apiKey string) *OpenRouterProvider {
 		return nil
 	}
 	cfg := openai.DefaultConfig(apiKey)
-	cfg.BaseURL = "https://openrouter.ai/api/v1"
+	cfg.BaseURL = defaultOpenRouterBaseURL
 	return &OpenRouterProvider{client: openai.NewClientWithConfig(cfg)}
 }
 

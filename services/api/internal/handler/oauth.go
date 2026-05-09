@@ -40,7 +40,26 @@ const (
 	defaultGoogleAccountsURL     = "https://mybusinessaccountmanagement.googleapis.com"
 	defaultGoogleBusinessInfoURL = "https://mybusinessbusinessinformation.googleapis.com"
 	defaultTelegramBotAPIBase    = "https://api.telegram.org"
+
+	// googleOAuthAuthURLTemplate is the format string for Google's OAuth 2.0
+	// consent-screen URL. The five %s placeholders are filled with QueryEscape'd
+	// client_id, redirect_uri, scope, and state respectively.
+	googleOAuthAuthURLTemplate = "https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&access_type=offline&prompt=consent&state=%s"
+	// googleBusinessManageScope is the OAuth scope required to manage Google
+	// Business Profile listings via the My Business APIs.
+	googleBusinessManageScope = "https://www.googleapis.com/auth/business.manage"
 )
+
+// vkCommunityURLPrefixes is the set of URL prefixes / shortcuts users
+// commonly paste when supplying a VK community handle. The handler strips
+// any matching prefix to recover the bare screen-name.
+var vkCommunityURLPrefixes = []string{
+	"https://vk.com/",
+	"http://vk.com/",
+	"https://m.vk.com/",
+	"vk.com/",
+	"@",
+}
 
 // OAuth state cache TTLs.
 const (
@@ -828,7 +847,7 @@ type telegramGetChatResponse struct {
 func (h *OAuthHandler) resolveVKGroupID(ctx context.Context, input string) (string, error) {
 	// Strip URL prefix: https://vk.com/mygroup → mygroup
 	input = strings.TrimSpace(input)
-	for _, prefix := range []string{"https://vk.com/", "http://vk.com/", "https://m.vk.com/", "vk.com/", "@"} {
+	for _, prefix := range vkCommunityURLPrefixes {
 		input = strings.TrimPrefix(input, prefix)
 	}
 	input = strings.TrimPrefix(input, "club")
@@ -1394,10 +1413,10 @@ func (h *OAuthHandler) GetGoogleAuthURL(w http.ResponseWriter, r *http.Request) 
 	}
 
 	authURL := fmt.Sprintf(
-		"https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&access_type=offline&prompt=consent&state=%s",
+		googleOAuthAuthURLTemplate,
 		url.QueryEscape(h.cfg.GoogleClientID),
 		url.QueryEscape(h.cfg.GoogleRedirectURI),
-		url.QueryEscape("https://www.googleapis.com/auth/business.manage"),
+		url.QueryEscape(googleBusinessManageScope),
 		url.QueryEscape(state),
 	)
 
