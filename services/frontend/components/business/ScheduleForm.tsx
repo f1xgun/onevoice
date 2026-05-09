@@ -117,7 +117,7 @@ export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormPro
           onClick={() => mutation.mutate({ schedule, specialDates })}
           disabled={mutation.isPending}
         >
-          {mutation.isPending ? 'Сохраняем…' : 'Сохранить часы'}
+          {mutation.isPending ? tSchedule('saving') : tSchedule('saveHours')}
         </Button>
       </div>
     </div>
@@ -133,6 +133,7 @@ function DayRow({
   day: ScheduleDay;
   onChange: (updates: Partial<ScheduleDay>) => void;
 }) {
+  const tSchedule = useTranslations('business.scheduleForm');
   const open = !day.closed;
   return (
     <div className="grid grid-cols-[120px_1fr] items-center gap-4 rounded-md border border-line-soft bg-paper px-4 py-2.5 sm:grid-cols-[120px_140px_1fr]">
@@ -141,9 +142,11 @@ function DayRow({
         <Switch
           checked={open}
           onCheckedChange={(checked) => onChange({ closed: !checked })}
-          aria-label={`${label} — открыто`}
+          aria-label={`${label} — ${tSchedule('open')}`}
         />
-        <span className="text-xs text-ink-mid">{open ? 'открыто' : 'закрыто'}</span>
+        <span className="text-xs text-ink-mid">
+          {open ? tSchedule('open') : tSchedule('closedShort')}
+        </span>
       </div>
       <div
         className={`flex items-center gap-2 transition-opacity ${open ? 'opacity-100' : 'opacity-40'}`}
@@ -261,7 +264,7 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
           onClick={() => mutation.mutate({ schedule, specialDates })}
           disabled={mutation.isPending}
         >
-          {mutation.isPending ? 'Сохраняем…' : 'Сохранить даты'}
+          {mutation.isPending ? tSchedule('saving') : tSchedule('saveDates')}
         </Button>
       </div>
     </div>

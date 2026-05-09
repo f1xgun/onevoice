@@ -370,7 +370,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
 
         <div className="flex flex-wrap items-center gap-3 pt-2">
           <Button type="submit" disabled={submitting}>
-            {isEdit ? 'Сохранить' : 'Создать проект'}
+            {isEdit ? tForm('save') : tForm('create')}
           </Button>
           <Button
             type="button"

@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { usePinConversation, useUnpinConversation } from '@/hooks/useConversations';
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function PinChatMenuItem({ conversationId, pinned }: Props) {
+  const tPin = useTranslations('chat.pinMenu');
   const pinMutation = usePinConversation();
   const unpinMutation = useUnpinConversation();
 
@@ -28,16 +30,16 @@ export function PinChatMenuItem({ conversationId, pinned }: Props) {
         e.preventDefault();
         if (pinned) {
           unpinMutation.mutate(conversationId, {
-            onError: () => toast.error('Не удалось открепить чат'),
+            onError: () => toast.error(tPin('unpinError')),
           });
         } else {
           pinMutation.mutate(conversationId, {
-            onError: () => toast.error('Не удалось закрепить чат'),
+            onError: () => toast.error(tPin('pinError')),
           });
         }
       }}
     >
-      {pinned ? 'Открепить' : 'Закрепить'}
+      {pinned ? tPin('unpin') : tPin('pin')}
     </DropdownMenuItem>
   );
 }

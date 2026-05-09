@@ -38,7 +38,7 @@ export function EmptySearch({ query, onResetFilters, body }: EmptySearchProps) {
           </MonoLabel>
         </>
       }
-      body={body ?? 'Попробуйте короче или поменяйте период.'}
+      body={body ?? tStates('defaultBody')}
       action={
         onResetFilters ? (
           <Button variant="ghost" size="sm" onClick={onResetFilters}>

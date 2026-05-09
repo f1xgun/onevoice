@@ -321,7 +321,7 @@ function ChannelList({
                           onRefreshTelegram(i);
                         }}
                       >
-                        {refreshingID === i.id ? 'Проверяем…' : 'Я добавил бота — проверить'}
+                        {refreshingID === i.id ? tCard('botRechecking') : tCard('botRecheck')}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
