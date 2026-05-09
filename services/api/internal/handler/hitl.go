@@ -30,6 +30,15 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
+// HITL retry / SSE proxy constants.
+const (
+	// hitlBatchResolvingRetryAfterMs is what we hand the client when a 409
+	// Conflict says another goroutine is already resolving the same batch —
+	// "wait this long, then resend". 500 ms balances "don't hammer" against
+	// "feels responsive" for chat-y interactions.
+	hitlBatchResolvingRetryAfterMs = 500
+)
+
 // HITLHandler serves the three new HITL endpoints. Takes the HITLService
 // (business logic), the businessService (for actor → business resolution on
 // the resume path), and the conversationRepo (ownership check on resume).
@@ -190,7 +199,7 @@ func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, er
 	case errors.Is(err, service.ErrHITLBatchAlreadyResolving):
 		writeJSON(w, http.StatusConflict, map[string]interface{}{
 			"error":          "batch resolving",
-			"retry_after_ms": 500,
+			"retry_after_ms": hitlBatchResolvingRetryAfterMs,
 			"reason":         "concurrent resolve in progress",
 		})
 	default:
@@ -342,7 +351,7 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	// 1 MB scanner buffer matching chat_proxy (HITL-13: large tool results must flow through).
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	scanner.Buffer(make([]byte, sseBufferBytes), sseBufferBytes)
 	for scanner.Scan() {
 		_, _ = fmt.Fprintf(w, "%s\n", scanner.Text())
 		flusher.Flush()

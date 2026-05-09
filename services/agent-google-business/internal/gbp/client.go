@@ -52,7 +52,7 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= http.StatusBadRequest {
 		var errResp ErrorResponse
 		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error.Message != "" {
 			return nil, fmt.Errorf("google api error %d: %s", errResp.Error.Code, errResp.Error.Message)

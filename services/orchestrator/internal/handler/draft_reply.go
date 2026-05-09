@@ -14,6 +14,15 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
+// LLM tuning for the review-draft handler. 400 tokens caps a draft reply at
+// roughly 250 Russian words — long enough to cover thank-you / apology +
+// concrete next step, short enough to keep tokens cheap. Temperature 0.4
+// trims the boilerplate-heavy outputs of T=0.7 without sounding robotic.
+const (
+	draftReplyMaxTokens   = 400
+	draftReplyTemperature = 0.4
+)
+
 // DraftChatter is the narrow LLM surface the draft handler needs. *llm.Router
 // satisfies it; tests can pass a fake.
 type DraftChatter interface {
@@ -91,8 +100,8 @@ func (h *DraftReplyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		UserID:      uuid.Nil,
 		Model:       h.model,
 		Messages:    messages,
-		MaxTokens:   400,
-		Temperature: 0.4,
+		MaxTokens:   draftReplyMaxTokens,
+		Temperature: draftReplyTemperature,
 		RequestID:   "draft-reply-" + req.BusinessID,
 	}
 

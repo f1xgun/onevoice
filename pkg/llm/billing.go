@@ -22,30 +22,42 @@ type UsageLog struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+// Default commission rates per tier (fraction of provider cost).
+// These are MVP defaults — override via CommissionConfig at the call site once
+// rates become contractual.
+const (
+	commissionPercentageDefault  = 0.20  // generic % markup when no tier match
+	commissionFlatPerRequestUSD  = 0.001 // flat-mode fee per LLM request
+	commissionTierRateFree       = 0.30
+	commissionTierRateBasic      = 0.20
+	commissionTierRatePro        = 0.10
+	commissionTierRateEnterprise = 0.05
+)
+
 // CalculateCommission calculates commission based on mode and tier
 func CalculateCommission(providerCost float64, mode, tier string) float64 {
 	switch mode {
 	case "percentage":
-		return providerCost * 0.20 // 20% default
+		return providerCost * commissionPercentageDefault
 
 	case "flat":
-		return 0.001 // $0.001 per request
+		return commissionFlatPerRequestUSD
 
 	case "tiered":
 		rates := map[string]float64{
-			"free":       0.30, // 30%
-			"basic":      0.20, // 20%
-			"pro":        0.10, // 10%
-			"enterprise": 0.05, // 5%
+			"free":       commissionTierRateFree,
+			"basic":      commissionTierRateBasic,
+			"pro":        commissionTierRatePro,
+			"enterprise": commissionTierRateEnterprise,
 		}
 		rate, ok := rates[tier]
 		if !ok {
-			rate = 0.20 // Default to 20%
+			rate = commissionPercentageDefault
 		}
 		return providerCost * rate
 
 	default:
-		return providerCost * 0.20 // Default 20%
+		return providerCost * commissionPercentageDefault
 	}
 }
 

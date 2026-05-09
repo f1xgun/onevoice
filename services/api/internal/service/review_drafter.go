@@ -16,6 +16,26 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
+// Drafter tunable defaults / safety limits.
+const (
+	// reviewDrafterHTTPTimeout caps the per-call budget toward
+	// orchestrator /internal/draft-reply. 60s allows a slow LLM round-trip
+	// (cold-start + tokenization on cheap models can spike) without leaving
+	// the sync pass hanging if the provider is hard-down.
+	reviewDrafterHTTPTimeout = 60 * time.Second
+
+	// errorSnippetMaxBytes caps the bytes we read off a non-2xx response body
+	// for inclusion in the wrapped error. Keeps logs tidy and prevents an
+	// unbounded body from a misbehaving orchestrator from filling memory.
+	errorSnippetMaxBytes = 512
+
+	// defaultDraftMaxExamples / defaultDraftPerPassLimit are the fallback
+	// values applied when the constructor receives zero/negative inputs from
+	// config.
+	defaultDraftMaxExamples  = 5
+	defaultDraftPerPassLimit = 10
+)
+
 // DraftHTTPClient is the narrow http.Client surface ReviewDrafter needs.
 // http.Client satisfies it; tests pass a stub that returns canned responses
 // without binding sockets.
@@ -51,13 +71,13 @@ func NewReviewDrafter(
 	maxExamples, perPassLimit int,
 ) *ReviewDrafter {
 	if maxExamples <= 0 {
-		maxExamples = 5
+		maxExamples = defaultDraftMaxExamples
 	}
 	if perPassLimit <= 0 {
-		perPassLimit = 10
+		perPassLimit = defaultDraftPerPassLimit
 	}
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 60 * time.Second}
+		httpClient = &http.Client{Timeout: reviewDrafterHTTPTimeout}
 	}
 	return &ReviewDrafter{
 		reviewRepo:      reviewRepo,
@@ -180,7 +200,7 @@ func (d *ReviewDrafter) callOrchestrator(ctx context.Context, body draftReplyReq
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Cap the body slurp so a misbehaving orchestrator can't OOM us.
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, errorSnippetMaxBytes))
 		return "", fmt.Errorf("orchestrator returned %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}
 

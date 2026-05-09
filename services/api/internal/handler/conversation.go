@@ -23,6 +23,17 @@ const (
 	MaxConversationLimit     = 100
 )
 
+// Mongo / handler-side limits.
+const (
+	// mongoObjectIDHexLen is the length of a hex-encoded Mongo ObjectID.
+	mongoObjectIDHexLen = 24
+
+	// defaultMessageListLimit caps the number of messages returned by
+	// GET /conversations/:id/messages. The frontend chat history view
+	// renders the latest N; older entries require explicit pagination.
+	defaultMessageListLimit = 200
+)
+
 // ConversationHandler handles conversation-related HTTP requests
 type ConversationHandler struct {
 	conversationRepo domain.ConversationRepository
@@ -253,7 +264,7 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 	conversationID := chi.URLParam(r, "id")
 
 	// Validate ObjectID format (MongoDB ObjectID is 24 hex characters)
-	if len(conversationID) != 24 {
+	if len(conversationID) != mongoObjectIDHexLen {
 		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
 		return
 	}
@@ -409,7 +420,7 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	messages, err := h.messageRepo.ListByConversationID(r.Context(), conversationID, 200, 0)
+	messages, err := h.messageRepo.ListByConversationID(r.Context(), conversationID, defaultMessageListLimit, 0)
 	if err != nil {
 		slog.Error("failed to list messages", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -597,7 +608,7 @@ func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conversationID := chi.URLParam(r, "id")
-	if len(conversationID) != 24 {
+	if len(conversationID) != mongoObjectIDHexLen {
 		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
 		return
 	}
@@ -653,7 +664,7 @@ func (h *ConversationHandler) Unpin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conversationID := chi.URLParam(r, "id")
-	if len(conversationID) != 24 {
+	if len(conversationID) != mongoObjectIDHexLen {
 		writeJSONError(w, http.StatusBadRequest, "invalid conversation id")
 		return
 	}

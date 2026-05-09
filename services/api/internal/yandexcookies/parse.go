@@ -26,6 +26,11 @@ import (
 	"strings"
 )
 
+// sessionIDMinLen is a sanity threshold for malformed Yandex Session_id pastes.
+// Real Session_id values run ~80–120 chars; anything under 50 is almost
+// certainly a literal like "Session_id" or "true" mistakenly pasted as a value.
+const sessionIDMinLen = 50
+
 // Cookie is the canonical shape passed to Playwright AddCookies.
 type Cookie struct {
 	Name   string `json:"name"`
@@ -185,7 +190,7 @@ func requireSessionID(cookies []Cookie) error {
 // the inner structure precisely — Yandex changes it — we just guard against
 // obviously wrong pastes (e.g. "ABC123", "true", "Session_id").
 func looksLikeSessionIDValue(s string) bool {
-	if len(s) < 50 {
+	if len(s) < sessionIDMinLen {
 		return false
 	}
 	return strings.HasPrefix(s, "3:")

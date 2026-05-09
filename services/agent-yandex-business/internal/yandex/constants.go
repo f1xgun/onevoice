@@ -1,5 +1,7 @@
 package yandex
 
+import "time"
+
 // External Yandex endpoints — pinned here so DNS / path moves are tracked
 // in one place. spravBaseURL composes yandexSpravEditPathFmt with a
 // permalink at runtime.
@@ -39,3 +41,25 @@ const (
 // stable Chrome on Windows; Yandex.Business serves a downgraded UI to
 // some bot user agents that trips our selectors.
 const defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+// maxBatchLimit caps the per-call batch size for paginated read paths.
+// Yandex.Business doesn't document a hard cap, but 50 keeps a single
+// scroll-collect cycle within the agent's per-tool budget.
+const maxBatchLimit = 50
+
+// Playwright keyboard typing delays (milliseconds). The default is what we
+// use for free-text fields; the fast variant is for already-validated text
+// (e.g. paste-of-known-clean string into a fresh input).
+const (
+	keyboardDelayDefaultMs = 30
+	keyboardDelayFastMs    = 20
+)
+
+// dialogSettleDelay is the post-action sleep used to let a dialog/popup
+// finish its enter animation before we read its DOM. Empirically tuned —
+// 500 ms rides above Yandex.Business's worst-case animation budget.
+const dialogSettleDelay = 500 * time.Millisecond
+
+// tmpFileMode is the standard "owner-only read/write" permission used when
+// staging downloaded media to disk before re-uploading to Yandex.
+const tmpFileMode = 0o600

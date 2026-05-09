@@ -42,6 +42,15 @@ const (
 	defaultTelegramBotAPIBase    = "https://api.telegram.org"
 )
 
+// OAuth state cache TTLs.
+const (
+	// oauthStateTTL is how long an in-flight OAuth state token is valid in
+	// Redis before garbage collection. 5m exceeds the longest realistic
+	// "click-link → consent screen → callback" window without leaving stale
+	// CSRF tokens around forever.
+	oauthStateTTL = 5 * time.Minute
+)
+
 // OAuthStateService abstracts OAuth state management.
 type OAuthStateService interface {
 	GenerateState(ctx context.Context, data service.OAuthStateData) (string, error)
@@ -279,7 +288,7 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 	// mandatory for write operations (post/reply); the user token unlocks
 	// wall.getComments, which VK refuses to serve with group auth.
 	redisKey := fmt.Sprintf("vk_temp_token:%s", stateData.BusinessID.String())
-	if err := h.redis.Set(r.Context(), redisKey, tokenResp.AccessToken, 5*time.Minute).Err(); err != nil {
+	if err := h.redis.Set(r.Context(), redisKey, tokenResp.AccessToken, oauthStateTTL).Err(); err != nil {
 		slog.Error("failed to store temp VK token", "error", err)
 		http.Redirect(w, r, "/integrations?error=internal", http.StatusFound)
 		return
@@ -1520,7 +1529,7 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	tempJSON, _ := json.Marshal(tempData)
 	redisKey := "google_temp:" + stateData.BusinessID.String()
-	if err := h.redis.Set(r.Context(), redisKey, tempJSON, 5*time.Minute).Err(); err != nil {
+	if err := h.redis.Set(r.Context(), redisKey, tempJSON, oauthStateTTL).Err(); err != nil {
 		slog.ErrorContext(r.Context(), "failed to store Google temp data in Redis", "error", err)
 		http.Redirect(w, r, "/integrations?error=internal_error", http.StatusFound)
 		return
