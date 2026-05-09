@@ -1,4 +1,9 @@
-// app/(app)/posts/page.tsx — OneVoice (Linen) Posts page rebuild.
+// app/(app)/posts/page.tsx — OneVoice (Linen) Posts page.
+//
+// Phase 19 / 19-12 — pilot adoption of the <DataTable> + useDataTableFilters
+// + useDataTableSearch composition primitives. Filter / search state moves
+// out of inline useState into the sibling hooks; the table block becomes
+// `<DataTable<Post>>` with a Column<Post>[] config.
 //
 // Layout per design_handoff_onevoice 2/mocks/mock-posts.jsx:
 //   PageHeader → stat strip (4 cards) → filter bar (platform select, status
@@ -8,32 +13,20 @@
 // Aggregate counters in the stat strip are derived client-side from the
 // returned list because the API doesn't expose summary endpoints yet — see
 // `TODO(api)` markers below.
-//
-// Design rules (Brand Voice + Linen):
-//   - Graphite primary for the headline action; ochre is reserved.
-//   - Failure rows never live as a red badge alone — when a row is expanded
-//     the failure surfaces as an explanatory strip inside the expanded panel
-//     with a "Повторить" ghost action (text in danger color).
-//   - Russian copy is calm, no exclamations, verb-first on actions.
 
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { ChevronDown, ChevronRight, FileText, Plus, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
-import { POST_STATUS_LABELS } from '@/lib/constants/statuses';
-import { CHANNEL_NAMES } from '@/lib/platforms';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChannelMark } from '@/components/ui/channel-mark';
-import { Input } from '@/components/ui/input';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
 import {
@@ -43,53 +36,59 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import { EmptySearch, SkeletonMetricStrip } from '@/components/states';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { SkeletonMetricStrip } from '@/components/states';
+import { DataTable, type Column } from '@/components/lists/DataTable';
+import { useDataTableFilters } from '@/hooks/useDataTableFilters';
+import { useDataTableSearch } from '@/hooks/useDataTableSearch';
 import type { Post } from '@/types/post';
+
+import { ChannelChip } from './_components/ChannelChip';
+import { ExpandedPanel } from './_components/ExpandedPanel';
+import { PostsEmpty } from './_components/PostsEmpty';
+import { PostsSkeleton } from './_components/PostsSkeleton';
+import { SearchField } from './_components/SearchField';
+import { StatCard } from './_components/StatCard';
+import { StatusBadge } from './_components/StatusBadge';
+import { collectPlatforms, nextScheduledLabel } from './_helpers';
 
 // ─── Constants ───────────────────────────────────────────────────────
 
 type StatusKey = 'all' | 'published' | 'scheduled' | 'error';
 type PlatformKey = 'all' | 'telegram' | 'vk' | 'yandex_business';
 
-// Backend platform id → user-facing short label. CHANNEL_NAMES from
-// lib/platforms covers Latin technical names for ChannelMark; the short
-// label for the in-line chip uses a localized abbreviation when the full
-// name would crowd the UI (e.g. yandex_business → "Яндекс").
-const platformShort: Record<string, string> = {
-  telegram: 'Telegram',
-  vk: 'VK',
-  yandex_business: 'Яндекс',
-};
+interface PostsFilters extends Record<string, string> {
+  status: StatusKey;
+  platform: PlatformKey;
+}
+
+const POSTS_GRID_TEMPLATE = '24px 1fr 140px 200px 160px 56px';
+const POSTS_MIN_WIDTH = '620px';
 
 // ─── Page ────────────────────────────────────────────────────────────
 
 export default function PostsPage() {
   const tPosts = useTranslations('posts');
   const tCommon = useTranslations('common');
-  const [status, setStatus] = useState<StatusKey>('all');
-  const [platform, setPlatform] = useState<PlatformKey>('all');
-  const [search, setSearch] = useState('');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { filters, setFilter, queryString } = useDataTableFilters<PostsFilters>({
+    defaultValue: { status: 'all', platform: 'all' },
+  });
 
   const { data: posts = [], isLoading } = useQuery<Post[]>({
-    queryKey: QUERY_KEYS.POSTS(status, platform),
+    queryKey: QUERY_KEYS.POSTS(filters.status, filters.platform),
     queryFn: () => {
-      const params = new URLSearchParams();
-      if (status !== 'all') params.set('status', status);
-      if (platform !== 'all') params.set('platform', platform);
-      return api.get(`${API_PATHS.POSTS}?${params}`).then((r) => (r.data.posts ?? []) as Post[]);
+      const qs = queryString();
+      const url = qs ? `${API_PATHS.POSTS}?${qs}` : API_PATHS.POSTS;
+      return api.get(url).then((r) => (r.data.posts ?? []) as Post[]);
     },
   });
 
   // Client-side text search over the (already server-filtered) list.
-  const visiblePosts = useMemo(() => {
-    if (!search.trim()) return posts;
-    const q = search.trim().toLowerCase();
-    return posts.filter((p) => p.content.toLowerCase().includes(q));
-  }, [posts, search]);
+  const { query, setQuery, visibleRows } = useDataTableSearch<Post>({
+    rows: posts,
+    searchableFields: (p) => [p.content],
+  });
 
   // TODO(api): aggregates should come from a /posts/stats endpoint so the
   // counts reflect the full collection, not just the current filter slice.
@@ -104,6 +103,72 @@ export default function PostsPage() {
       error: by('error'),
     };
   }, [posts]);
+
+  const postColumns = useMemo<Column<Post>[]>(
+    () => [
+      {
+        id: 'expand',
+        header: <span aria-hidden />,
+        cell: (_post, ctx) => (
+          <span aria-hidden className="text-ink-soft">
+            {ctx.expanded ? (
+              <ChevronDown className="size-4" />
+            ) : (
+              <ChevronRight className="size-4" />
+            )}
+          </span>
+        ),
+      },
+      {
+        id: 'content',
+        header: tPosts('table.content'),
+        cell: (p) => <span className="truncate text-sm text-ink">{p.content}</span>,
+      },
+      {
+        id: 'status',
+        header: tPosts('table.status'),
+        cell: (p) => <StatusBadge status={p.status} />,
+      },
+      {
+        id: 'platforms',
+        header: tPosts('table.platforms'),
+        cell: (p) => {
+          const platforms = collectPlatforms(p);
+          return (
+            <span className="flex flex-wrap items-center gap-1.5">
+              {platforms.length === 0 ? (
+                <span className="text-xs text-ink-faint">—</span>
+              ) : (
+                platforms.map((id) => <ChannelChip key={id} platform={id} />)
+              )}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'date',
+        header: tPosts('table.date'),
+        cell: (p) => {
+          const dateIso = p.scheduledAt ?? p.publishedAt ?? p.createdAt;
+          return (
+            <MonoLabel tone="mid" className="text-[12px] normal-case tracking-normal">
+              {format(new Date(dateIso), 'd MMM yyyy · HH:mm', { locale: ru })}
+            </MonoLabel>
+          );
+        },
+      },
+      {
+        id: 'more',
+        header: <span aria-hidden />,
+        cell: () => (
+          <span aria-hidden className="text-right text-ink-soft">
+            {tPosts('more')}
+          </span>
+        ),
+      },
+    ],
+    [tPosts],
+  );
 
   return (
     <>
@@ -126,26 +191,20 @@ export default function PostsPage() {
           <SkeletonMetricStrip count={3} />
         ) : (
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <StatCard label="Опубликовано" value={String(counts.published)} hint="за всё время" />
             <StatCard
-              label={tPosts('stats.publishedLabel')}
-              value={String(counts.published)}
-              hint={tPosts('stats.publishedHint')}
-            />
-            <StatCard
-              label={tPosts('stats.scheduledLabel')}
+              label="Запланировано"
               value={String(counts.scheduled)}
               hint={
                 counts.scheduled > 0
-                  ? tPosts('stats.scheduledHintNext', { label: nextScheduledLabel(posts) })
-                  : tPosts('stats.scheduledHintNone')
+                  ? `ближайшая — ${nextScheduledLabel(posts)}`
+                  : 'нет запланированных'
               }
             />
             <StatCard
-              label={tPosts('stats.errorLabel')}
+              label="С ошибкой"
               value={String(counts.error)}
-              hint={
-                counts.error > 0 ? tPosts('stats.errorHintSome') : tPosts('stats.errorHintNone')
-              }
+              hint={counts.error > 0 ? 'требуют внимания' : 'всё чисто'}
               tone={counts.error > 0 ? 'danger' : 'neutral'}
             />
           </section>
@@ -153,7 +212,10 @@ export default function PostsPage() {
 
         {/* Filter bar — stacks on narrow viewports so tabs don't overflow. */}
         <div className="mt-6 flex flex-col gap-3 rounded-md border border-line bg-paper-raised p-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <Select value={platform} onValueChange={(v) => setPlatform(v as PlatformKey)}>
+          <Select
+            value={filters.platform}
+            onValueChange={(v) => setFilter('platform', v as PlatformKey)}
+          >
             <SelectTrigger className="h-8 w-full text-sm sm:w-[180px]">
               <SelectValue placeholder={tCommon('allPlatforms')} />
             </SelectTrigger>
@@ -166,8 +228,8 @@ export default function PostsPage() {
           </Select>
 
           <Tabs
-            value={status}
-            onValueChange={(v) => setStatus(v as StatusKey)}
+            value={filters.status}
+            onValueChange={(v) => setFilter('status', v as StatusKey)}
             className="-mx-1 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0"
           >
             <TabsList className="h-8 bg-paper-sunken">
@@ -188,394 +250,25 @@ export default function PostsPage() {
 
           <span className="hidden flex-1 sm:inline" />
 
-          <SearchField value={search} onChange={setSearch} />
+          <SearchField value={query} onChange={setQuery} />
         </div>
 
         {/* Table — full schema needs ~620 px; on narrow viewports we let
             the row scroll horizontally rather than collapsing columns,
             since each (status / platforms / date) carries information the
             operator scans at a glance. */}
-        <div className="mt-4 overflow-x-auto rounded-md border border-line bg-paper-raised">
-          <div className="grid min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] gap-4 border-b border-line bg-paper-sunken px-5 py-3">
-            <span aria-hidden />
-            <MonoLabel>{tPosts('table.content')}</MonoLabel>
-            <MonoLabel>{tPosts('table.status')}</MonoLabel>
-            <MonoLabel>{tPosts('table.platforms')}</MonoLabel>
-            <MonoLabel>{tPosts('table.date')}</MonoLabel>
-            <span aria-hidden />
-          </div>
-
-          {isLoading && <PostsSkeleton />}
-
-          {!isLoading && visiblePosts.length === 0 && (
-            <PostsEmpty search={search} onResetSearch={() => setSearch('')} />
-          )}
-
-          {!isLoading &&
-            visiblePosts.map((post, i) => (
-              <PostRow
-                key={post.id}
-                post={post}
-                last={i === visiblePosts.length - 1}
-                expanded={expandedId === post.id}
-                onToggle={() => setExpandedId((prev) => (prev === post.id ? null : post.id))}
-              />
-            ))}
-        </div>
+        <DataTable<Post>
+          columns={postColumns}
+          rows={visibleRows}
+          rowKey={(p) => p.id}
+          gridTemplate={POSTS_GRID_TEMPLATE}
+          minWidth={POSTS_MIN_WIDTH}
+          isLoading={isLoading}
+          skeleton={<PostsSkeleton />}
+          empty={<PostsEmpty search={query} onResetSearch={() => setQuery('')} />}
+          expandable={(post) => <ExpandedPanel post={post} />}
+        />
       </div>
     </>
   );
-}
-
-// ─── Sub-components ──────────────────────────────────────────────────
-
-function StatCard({
-  label,
-  value,
-  hint,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  tone?: 'neutral' | 'danger' | 'muted';
-}) {
-  const labelTone = tone === 'danger' ? 'ochre' : 'soft';
-  return (
-    <div className="rounded-md border border-line bg-paper-raised px-5 py-4">
-      <MonoLabel
-        tone={labelTone}
-        className={tone === 'danger' ? 'text-[var(--ov-danger)]' : undefined}
-      >
-        {label}
-      </MonoLabel>
-      <div
-        className={
-          'mt-1 text-[28px] font-medium tracking-[-0.015em] ' +
-          (tone === 'muted' ? 'text-ink-soft' : 'text-ink')
-        }
-      >
-        {value}
-      </div>
-      <div className="mt-0.5 text-xs text-ink-soft">{hint}</div>
-    </div>
-  );
-}
-
-function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const tPosts = useTranslations('posts');
-  return (
-    <label className="relative inline-flex h-8 w-[260px] items-center">
-      <Search aria-hidden className="pointer-events-none absolute left-3 size-3.5 text-ink-soft" />
-      <Input
-        type="search"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={tPosts('searchPlaceholder')}
-        className="h-8 bg-paper-sunken pl-9 pr-12 text-[13px]"
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute right-2 rounded border border-line-soft bg-paper px-1.5 py-0.5 font-mono text-[10px] text-ink-soft"
-      >
-        {tPosts('shortcut')}
-      </span>
-    </label>
-  );
-}
-
-function PostsSkeleton() {
-  return (
-    <div className="divide-y divide-line-soft">
-      {Array.from({ length: 5 }, (_, i) => (
-        <div
-          key={i}
-          className="grid min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] items-center gap-4 px-5 py-4"
-        >
-          <span aria-hidden />
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-5 w-20 rounded-full" />
-          <Skeleton className="h-5 w-24" />
-          <Skeleton className="h-4 w-28" />
-          <span aria-hidden />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function PostsEmpty({ search, onResetSearch }: { search: string; onResetSearch: () => void }) {
-  const tPosts = useTranslations('posts');
-  // Two flavours: "no posts at all" vs "no match for current search".
-  // Search variant uses the shared EmptySearch component so the mono
-  // query rendering matches mock-states.jsx.
-  const hasSearch = search.trim().length > 0;
-  if (hasSearch) {
-    return (
-      <div className="px-5 py-6">
-        <EmptySearch query={search.trim()} onResetFilters={onResetSearch} />
-      </div>
-    );
-  }
-  return (
-    <div className="flex flex-col items-center px-6 py-16 text-center">
-      <FileText aria-hidden className="mb-3 size-9 text-ink-faint" />
-      <p className="text-sm text-ink-mid">{tPosts('emptyState')}</p>
-      <p className="mt-1 max-w-xs text-xs text-ink-soft">{tPosts('emptyHint')}</p>
-    </div>
-  );
-}
-
-function PostRow({
-  post,
-  last,
-  expanded,
-  onToggle,
-}: {
-  post: Post;
-  last: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const tPosts = useTranslations('posts');
-  const platforms = collectPlatforms(post);
-  const dateIso = post.scheduledAt ?? post.publishedAt ?? post.createdAt;
-  const dateLabel = format(new Date(dateIso), 'd MMM yyyy · HH:mm', { locale: ru });
-
-  return (
-    <div className={last ? '' : 'border-b border-line-soft'}>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="hover:bg-paper-sunken/60 grid w-full min-w-[620px] grid-cols-[24px_1fr_140px_200px_160px_56px] items-center gap-4 px-5 py-3.5 text-left transition-colors"
-      >
-        <span aria-hidden className="text-ink-soft">
-          {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-        </span>
-        <span className="truncate text-sm text-ink">{post.content}</span>
-        <span>
-          <StatusBadge status={post.status} />
-        </span>
-        <span className="flex flex-wrap items-center gap-1.5">
-          {platforms.length === 0 ? (
-            <span className="text-xs text-ink-faint">—</span>
-          ) : (
-            platforms.map((id) => <ChannelChip key={id} platform={id} />)
-          )}
-        </span>
-        <MonoLabel tone="mid" className="text-[12px] normal-case tracking-normal">
-          {dateLabel}
-        </MonoLabel>
-        <span aria-hidden className="text-right text-ink-soft">
-          {tPosts('more')}
-        </span>
-      </button>
-
-      {expanded && <ExpandedPanel post={post} />}
-    </div>
-  );
-}
-
-function ExpandedPanel({ post }: { post: Post }) {
-  const tPosts = useTranslations('posts');
-  const results = post.platformResults ? Object.entries(post.platformResults) : [];
-  // Aggregate failure: any platform-level error, or top-level status=error.
-  const firstError = results.find(([, r]) => r.error);
-  const failureMessage = firstError?.[1].error ?? friendlyTopLevelError(post);
-
-  return (
-    <div className="grid grid-cols-1 gap-6 px-[60px] pb-5 lg:grid-cols-[1fr_300px]">
-      <div className="rounded-md border border-line-soft bg-paper p-4">
-        <div className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{post.content}</div>
-
-        {post.mediaUrls && post.mediaUrls.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {post.mediaUrls.map((url, i) => (
-              <MediaThumb key={`${url}-${i}`} url={url} index={i} />
-            ))}
-          </div>
-        )}
-
-        {failureMessage && (
-          <div className="mt-3 flex items-center gap-3 rounded-sm border border-[var(--ov-danger-soft)] bg-[var(--ov-danger-soft)] px-3.5 py-2.5">
-            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--ov-danger)]" />
-            <span className="flex-1 text-sm text-[var(--ov-danger)]">{failureMessage}</span>
-            {/* Disabled until POST /posts/:id/retry exists. Wrapper span
-                is the tooltip trigger because disabled <button>s don't
-                fire pointer events. */}
-            <TooltipProvider delayDuration={150}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span tabIndex={0} className="inline-flex">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled
-                      aria-disabled
-                      className="text-[var(--ov-danger)]"
-                    >
-                      {tPosts('retry')}
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{tPosts('retryUnavailable')}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2.5">
-        <MonoLabel>{tPosts('table.results')}</MonoLabel>
-        {results.length === 0 ? (
-          <div className="rounded-sm border border-line-soft bg-paper px-3 py-2 text-xs text-ink-soft">
-            {tPosts('noStats')}
-          </div>
-        ) : (
-          results.map(([platform, result]) => (
-            <PlatformResultCard key={platform} platform={platform} result={result} />
-          ))
-        )}
-        <div className="mt-1 flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm">
-            {tPosts('duplicate')}
-          </Button>
-          {firstLink(post) && (
-            <Button variant="ghost" size="sm" asChild>
-              <a href={firstLink(post) ?? undefined} target="_blank" rel="noopener noreferrer">
-                {tPosts('openLink')}
-              </a>
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PlatformResultCard({
-  platform,
-  result,
-}: {
-  platform: string;
-  result: NonNullable<Post['platformResults']>[string];
-}) {
-  const tPostStatus = useTranslations('posts.status');
-  const ok = !result.error && (result.status === 'published' || result.status === 'ok');
-  const display =
-    CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
-  return (
-    <div className="flex items-center gap-2.5 rounded-sm border border-line-soft bg-paper px-3 py-2">
-      <ChannelMark name={display} size={20} />
-      <span className="flex-1 truncate text-[13px] text-ink-mid">
-        {ok
-          ? result.url
-            ? tPostStatus('published')
-            : (platformShort[platform] ?? display)
-          : (result.error ?? result.status)}
-      </span>
-      <span
-        aria-hidden
-        className={
-          'size-1.5 shrink-0 rounded-full ' +
-          (ok ? 'bg-[var(--ov-success)]' : 'bg-[var(--ov-ink-faint)]')
-        }
-      />
-    </div>
-  );
-}
-
-function ChannelChip({ platform }: { platform: string }) {
-  const display =
-    CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
-  const short = platformShort[platform] ?? display;
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-line-soft bg-paper px-2 py-0.5 text-[11px] text-ink-mid">
-      <ChannelMark name={display} size={14} />
-      {short}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const label = POST_STATUS_LABELS[status as keyof typeof POST_STATUS_LABELS] ?? status;
-  switch (status) {
-    case 'published':
-      return (
-        <Badge tone="success" dot>
-          {label}
-        </Badge>
-      );
-    case 'scheduled':
-      return (
-        <Badge tone="info" dot>
-          {label}
-        </Badge>
-      );
-    case 'error':
-      return (
-        <Badge tone="danger" dot>
-          {label}
-        </Badge>
-      );
-    case 'draft':
-    default:
-      return (
-        <Badge tone="neutral" dot>
-          {label}
-        </Badge>
-      );
-  }
-}
-
-function MediaThumb({ url, index }: { url: string; index: number }) {
-  const filename = useMemo(() => {
-    try {
-      const parsed = new URL(url, 'http://example.com');
-      return parsed.pathname.split('/').filter(Boolean).pop() ?? `файл ${index + 1}`;
-    } catch {
-      return `файл ${index + 1}`;
-    }
-  }, [url, index]);
-  return (
-    <div className="flex items-center gap-2.5 rounded-sm bg-paper-sunken px-2.5 py-2">
-      <span aria-hidden className="size-8 rounded-sm bg-paper-well" />
-      <MonoLabel tone="mid">{filename}</MonoLabel>
-    </div>
-  );
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────
-
-function collectPlatforms(post: Post): string[] {
-  if (post.platformResults) {
-    const keys = Object.keys(post.platformResults);
-    if (keys.length > 0) return keys;
-  }
-  return [];
-}
-
-function firstLink(post: Post): string | null {
-  if (!post.platformResults) return null;
-  for (const r of Object.values(post.platformResults)) {
-    if (r.url) return r.url;
-  }
-  return null;
-}
-
-function nextScheduledLabel(posts: Post[]): string {
-  const upcoming = posts
-    .filter((p) => p.status === 'scheduled' && p.scheduledAt)
-    .map((p) => new Date(p.scheduledAt as string))
-    .sort((a, b) => a.getTime() - b.getTime());
-  if (upcoming.length === 0) return '—';
-  return format(upcoming[0], 'd MMM', { locale: ru });
-}
-
-function friendlyTopLevelError(post: Post): string | null {
-  if (post.status !== 'error') return null;
-  // Backend doesn't currently return a top-level error string, so we offer a
-  // plain-Russian fallback that points the user at the next step.
-  return 'Не удалось опубликовать. Проверьте подключение каналов и попробуйте ещё раз.';
 }
