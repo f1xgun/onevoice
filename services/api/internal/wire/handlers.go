@@ -2,7 +2,6 @@ package wire
 
 import (
 	"fmt"
-	"net/http"
 
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
@@ -129,10 +128,6 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		YandexBusiness: cfg.YandexClientID != "" && cfg.YandexClientSecret != "",
 		GoogleBusiness: cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "",
 	})
-
-	// Suppress unused-var warning for httpClient pattern: we keep
-	// http.DefaultClient where the legacy code used `nil`-then-default.
-	_ = http.DefaultClient
 
 	return &router.Handlers{
 		Auth:          authHandler,
