@@ -17,6 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-google-business/internal/gbp"
 )
 
@@ -97,7 +98,7 @@ func TestHandler_GetReviews_Success(t *testing.T) {
 	h := newTestHandler(&mockTokenFetcher{}, client)
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "task-1",
-		Tool:       "google_business__get_reviews",
+		Tool:       tools.GoogleBusinessGetReviews,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"limit": float64(10)},
 	})
@@ -124,7 +125,7 @@ func TestHandler_GetReviews_APIError(t *testing.T) {
 	h := newTestHandler(&mockTokenFetcher{}, client)
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "task-1",
-		Tool:       "google_business__get_reviews",
+		Tool:       tools.GoogleBusinessGetReviews,
 		BusinessID: "biz-1",
 	})
 
@@ -137,7 +138,7 @@ func TestHandler_GetReviews_TokenError(t *testing.T) {
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "task-1",
-		Tool:       "google_business__get_reviews",
+		Tool:       tools.GoogleBusinessGetReviews,
 		BusinessID: "biz-1",
 	})
 
@@ -156,7 +157,7 @@ func TestHandler_ReplyReview_Success(t *testing.T) {
 	h := newTestHandler(&mockTokenFetcher{}, client)
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "task-1",
-		Tool:       "google_business__reply_review",
+		Tool:       tools.GoogleBusinessReplyReview,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"review_name": "accounts/1/locations/2/reviews/rev-1",
@@ -177,7 +178,7 @@ func TestHandler_ReplyReview_MissingReviewName(t *testing.T) {
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "task-1",
-		Tool:       "google_business__reply_review",
+		Tool:       tools.GoogleBusinessReplyReview,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "Thanks!"},
 	})
@@ -191,7 +192,7 @@ func TestHandler_ReplyReview_MissingText(t *testing.T) {
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "task-1",
-		Tool:       "google_business__reply_review",
+		Tool:       tools.GoogleBusinessReplyReview,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"review_name": "accounts/1/locations/2/reviews/rev-1"},
 	})
@@ -257,7 +258,7 @@ func newGBPDedupeTestHandler(t *testing.T, client GBPClient) (*Handler, *minired
 func gbpReplyReqWithApproval(approvalID string) a2a.ToolRequest {
 	return a2a.ToolRequest{
 		TaskID:     "task-g",
-		Tool:       "google_business__reply_review",
+		Tool:       tools.GoogleBusinessReplyReview,
 		BusinessID: "biz-1",
 		Args: map[string]interface{}{
 			"review_name": "accounts/1/locations/2/reviews/rev-1",

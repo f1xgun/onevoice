@@ -17,6 +17,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
@@ -133,7 +134,7 @@ func TestChatHandler_with_project_context(t *testing.T) {
 	assert.Equal(t, "Отвечай вежливо", got.ProjectContext.SystemPrompt)
 	assert.Equal(t, domain.WhitelistModeExplicit, got.WhitelistMode)
 	require.Len(t, got.AllowedTools, 1)
-	assert.Equal(t, "telegram__send_channel_post", got.AllowedTools[0])
+	assert.Equal(t, tools.TelegramSendChannelPost, got.AllowedTools[0])
 }
 
 // TestChatHandler_without_project_context verifies the zero-project path:
@@ -200,9 +201,9 @@ func TestChatHandler_ThreadsHITLFields(t *testing.T) {
 		assert.Equal(t, "msg-42", got.MessageID)
 		assert.Equal(t, "pro", got.Tier)
 		require.NotNil(t, got.BusinessApprovals)
-		assert.Equal(t, domain.ToolFloor("manual"), got.BusinessApprovals["telegram__send_channel_post"])
+		assert.Equal(t, domain.ToolFloor("manual"), got.BusinessApprovals[tools.TelegramSendChannelPost])
 		require.NotNil(t, got.ProjectApprovalOverrides)
-		assert.Equal(t, domain.ToolFloor("auto"), got.ProjectApprovalOverrides["vk__publish_post"])
+		assert.Equal(t, domain.ToolFloor("auto"), got.ProjectApprovalOverrides[tools.VKPublishPost])
 	})
 
 	t.Run("empty user_id leaves UserID zero", func(t *testing.T) {

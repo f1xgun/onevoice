@@ -17,6 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/hitldedupe"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/agent"
 )
 
@@ -103,7 +104,7 @@ func TestHandler_UpdateHours_FetchesTokenPerRequest(t *testing.T) {
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t1",
 		BusinessID: "biz-10",
-		Tool:       "yandex_business__update_hours",
+		Tool:       tools.YandexBusinessUpdateHours,
 		Args:       map[string]interface{}{"hours": `{"mon":"09:00-21:00"}`},
 	})
 
@@ -122,7 +123,7 @@ func TestHandler_UpdateInfo(t *testing.T) {
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t2",
 		BusinessID: "biz-11",
-		Tool:       "yandex_business__update_info",
+		Tool:       tools.YandexBusinessUpdateInfo,
 		Args: map[string]interface{}{
 			"phone":       "+7 999 123 45 67",
 			"website":     "https://example.com",
@@ -145,7 +146,7 @@ func TestHandler_GetReviews(t *testing.T) {
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t3",
 		BusinessID: "biz-12",
-		Tool:       "yandex_business__get_reviews",
+		Tool:       tools.YandexBusinessGetReviews,
 		Args:       map[string]interface{}{"limit": float64(10)},
 	})
 
@@ -169,7 +170,7 @@ func TestHandler_GetReviews_DefaultLimit(t *testing.T) {
 	h := newHandler(fetcher, browser)
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "yandex_business__get_reviews",
+		Tool:       tools.YandexBusinessGetReviews,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{},
 	})
@@ -185,7 +186,7 @@ func TestHandler_ReplyReview(t *testing.T) {
 	resp, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t4",
 		BusinessID: "biz-13",
-		Tool:       "yandex_business__reply_review",
+		Tool:       tools.YandexBusinessReplyReview,
 		Args: map[string]interface{}{
 			"review_id": "r1",
 			"text":      "Thanks!",
@@ -208,7 +209,7 @@ func TestHandler_TokenFetchError_ReturnsNonRetryable(t *testing.T) {
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
 		TaskID:     "t5",
 		BusinessID: "biz-14",
-		Tool:       "yandex_business__update_hours",
+		Tool:       tools.YandexBusinessUpdateHours,
 		Args:       map[string]interface{}{"hours": "{}"},
 	})
 
@@ -253,7 +254,7 @@ func newErrHandler(fetcher agent.TokenFetcher, browserErr error) *agent.Handler 
 
 func reviewReq() a2a.ToolRequest {
 	return a2a.ToolRequest{
-		Tool:       "yandex_business__get_reviews",
+		Tool:       tools.YandexBusinessGetReviews,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"limit": float64(10)},
 	}
@@ -302,7 +303,7 @@ func TestClassifyYandexError_ReplyFormUnavailable(t *testing.T) {
 	h := newErrHandler(fetcher, fmt.Errorf("reply form unavailable for review rev-42"))
 
 	_, err := h.Handle(context.Background(), a2a.ToolRequest{
-		Tool:       "yandex_business__reply_review",
+		Tool:       tools.YandexBusinessReplyReview,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"review_id": "rev-42", "text": "Thanks!"},
 	})
@@ -353,7 +354,7 @@ func newYandexDedupeTestHandler(t *testing.T, browser agent.YandexBrowser) (*age
 func yandexCreatePostReqWithApproval(approvalID string) a2a.ToolRequest {
 	return a2a.ToolRequest{
 		TaskID:     "task-y",
-		Tool:       "yandex_business__create_post",
+		Tool:       tools.YandexBusinessCreatePost,
 		BusinessID: "biz-1",
 		Args:       map[string]interface{}{"text": "hi"},
 		ApprovalID: approvalID,

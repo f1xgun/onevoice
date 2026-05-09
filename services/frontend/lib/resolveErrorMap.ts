@@ -1,4 +1,5 @@
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
+import { getTranslator } from '@/lib/i18n/translator';
 
 // Maps a resolve HTTP error to the exact Russian Sonner toast string.
 // Called ONLY for resolve
@@ -15,12 +16,18 @@ import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 //   2. status === 403          → "вне вашей бизнес-области" (scope auth)
 //   3. body.reason === policy_revoked → "запрещён политикой" (TOCTOU)
 //   4. default                 → "Ошибка соединения"        (network / 5xx / unknown)
+//
+// Strings live under `common.errors.*` in messages/ru.json. This module
+// runs outside React (no hook context), so it pulls them via the
+// module-level `getTranslator` helper.
 
-export const RESUME_STREAM_ERROR = 'Ошибка продолжения — перезагрузите страницу';
+const tErrors = getTranslator('common.errors');
+
+export const RESUME_STREAM_ERROR = tErrors('resumeStream');
 
 export function resolveErrorToRussian(status: number, body: unknown): string {
   // 409 → concurrent resolve lost the race.
-  if (status === HTTP_STATUS.CONFLICT) return 'Ошибка: операция уже была обработана';
+  if (status === HTTP_STATUS.CONFLICT) return tErrors('alreadyHandled');
 
   // 403 → resolve handler rejected the request because the requester's
   // business scope does not match `batch.business_id` (auth
@@ -30,12 +37,12 @@ export function resolveErrorToRussian(status: number, body: unknown): string {
   // body.reason='policy_revoked' precedence: a 403 is auth/scope, NOT a
   // policy gate, even if the server happened to attach a policy_revoked
   // body shape.
-  if (status === HTTP_STATUS.FORBIDDEN) return 'Отказано: операция вне вашей бизнес-области';
+  if (status === HTTP_STATUS.FORBIDDEN) return tErrors('outOfScope');
 
   // Policy revocation can surface on any 4xx.
   const reason = (body as { reason?: unknown } | null | undefined)?.reason;
-  if (reason === 'policy_revoked') return 'Отказано: инструмент запрещён текущей политикой';
+  if (reason === 'policy_revoked') return tErrors('policyRevoked');
 
   // Fall-through: 400-with-editable, other 4xx, 5xx, network-thrown → generic.
-  return 'Ошибка соединения — попробуйте ещё раз';
+  return tErrors('connectionRetry');
 }

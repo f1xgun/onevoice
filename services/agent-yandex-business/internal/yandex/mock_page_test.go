@@ -19,17 +19,22 @@ type locatorStub struct {
 // if called on a nil receiver — correct behavior for unexpected test calls).
 type mockLocator struct {
 	locatorStub
-	textContent string
-	textErr     error
-	attributes  map[string]string
-	fillCalls   []string // records Fill() calls
-	fillErr     error
-	clickErr    error
-	waitErr     error
-	isChecked   bool
-	children    map[string]*mockLocator
-	allItems    []*mockLocator
-	firstItem   *mockLocator
+	textContent   string
+	textErr       error
+	attributes    map[string]string
+	fillCalls     []string // records Fill() calls
+	fillErr       error
+	clickErr      error
+	clickCount    int // records number of Click() invocations
+	waitErr       error
+	isChecked     bool
+	inputValue    string
+	inputValueErr error
+	setInputFiles []string // records SetInputFiles paths
+	setInputErr   error
+	children      map[string]*mockLocator
+	allItems      []*mockLocator
+	firstItem     *mockLocator
 }
 
 // newMockLocator creates a mockLocator with initialized maps.
@@ -60,7 +65,22 @@ func (m *mockLocator) Fill(value string, _ ...playwright.LocatorFillOptions) err
 }
 
 func (m *mockLocator) Click(_ ...playwright.LocatorClickOptions) error {
+	m.clickCount++
 	return m.clickErr
+}
+
+func (m *mockLocator) InputValue(_ ...playwright.LocatorInputValueOptions) (string, error) {
+	return m.inputValue, m.inputValueErr
+}
+
+func (m *mockLocator) SetInputFiles(files interface{}, _ ...playwright.LocatorSetInputFilesOptions) error {
+	switch v := files.(type) {
+	case string:
+		m.setInputFiles = append(m.setInputFiles, v)
+	case []string:
+		m.setInputFiles = append(m.setInputFiles, v...)
+	}
+	return m.setInputErr
 }
 
 func (m *mockLocator) WaitFor(_ ...playwright.LocatorWaitForOptions) error {
@@ -110,15 +130,29 @@ type mockPage struct {
 	playwright.Page // embed for unused methods
 	currentURL      string
 	gotoErr         error
+	gotoCalls       []string
 	locators        map[string]*mockLocator
 	closeCalled     bool
 	screenshotData  []byte
+
+	// evaluateResult is returned by Evaluate (and unmarshalable to anything
+	// the production code marshals via json). Tests set this to control what
+	// page.Evaluate(script) returns for free-form DOM scrapes.
+	evaluateResult interface{}
+	evaluateErr    error
+	evaluateCalls  []string // records script bodies passed
+
+	// keyboard, when non-nil, is returned by page.Keyboard() and lets tests
+	// observe keystrokes. We embed playwright.Keyboard to satisfy the full
+	// interface; only Type is overridden because that's all production uses.
+	keyboard *mockKeyboard
 }
 
 func newMockPage(url string) *mockPage {
 	return &mockPage{
 		currentURL: url,
 		locators:   make(map[string]*mockLocator),
+		keyboard:   &mockKeyboard{},
 	}
 }
 
@@ -127,6 +161,7 @@ func (m *mockPage) URL() string {
 }
 
 func (m *mockPage) Goto(url string, _ ...playwright.PageGotoOptions) (playwright.Response, error) {
+	m.gotoCalls = append(m.gotoCalls, url)
 	if m.gotoErr != nil {
 		return nil, m.gotoErr
 	}
@@ -150,4 +185,31 @@ func (m *mockPage) Close(_ ...playwright.PageCloseOptions) error {
 
 func (m *mockPage) Screenshot(_ ...playwright.PageScreenshotOptions) ([]byte, error) {
 	return m.screenshotData, nil
+}
+
+func (m *mockPage) Evaluate(expression string, _ ...interface{}) (interface{}, error) {
+	m.evaluateCalls = append(m.evaluateCalls, expression)
+	return m.evaluateResult, m.evaluateErr
+}
+
+func (m *mockPage) Keyboard() playwright.Keyboard {
+	return m.keyboard
+}
+
+// keyboardStub embeds playwright.Keyboard so any unhandled method panics rather
+// than silently returning zero values from the test.
+type keyboardStub struct {
+	playwright.Keyboard
+}
+
+// mockKeyboard records Type calls so RPA-method tests can assert payloads.
+type mockKeyboard struct {
+	keyboardStub
+	typeCalls []string
+	typeErr   error
+}
+
+func (k *mockKeyboard) Type(text string, _ ...playwright.KeyboardTypeOptions) error {
+	k.typeCalls = append(k.typeCalls, text)
+	return k.typeErr
 }

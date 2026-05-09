@@ -64,7 +64,7 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:   "call_1",
-				Type: "function",
+				Type: llm.ToolCallTypeFunction,
 				Function: llm.FunctionCall{
 					Name:      "get_business_info",
 					Arguments: string(toolCallArgs),
@@ -76,7 +76,7 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "get info", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"name": "Кофейня Уют"}, nil
@@ -127,7 +127,7 @@ func TestRun_MaxIterations_Stops(t *testing.T) {
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:       "call_loop",
-				Type:     "function",
+				Type:     llm.ToolCallTypeFunction,
 				Function: llm.FunctionCall{Name: "get_business_info", Arguments: string(args)},
 			}},
 		})
@@ -135,7 +135,7 @@ func TestRun_MaxIterations_Stops(t *testing.T) {
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil

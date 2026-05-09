@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // --- mock domain.ProjectRepository ----------------------------------------
@@ -159,10 +160,10 @@ func TestProjectService_Create(t *testing.T) {
 		got, err := svc.Create(ctx, businessID, CreateProjectInput{
 			Name:          "X",
 			WhitelistMode: domain.WhitelistModeExplicit,
-			AllowedTools:  []string{"telegram__send_channel_post"},
+			AllowedTools:  []string{tools.TelegramSendChannelPost},
 		})
 		require.NoError(t, err)
-		assert.Equal(t, []string{"telegram__send_channel_post"}, got.AllowedTools)
+		assert.Equal(t, []string{tools.TelegramSendChannelPost}, got.AllowedTools)
 	})
 }
 
@@ -263,7 +264,7 @@ func TestProjectService_Update(t *testing.T) {
 		got, err := svc.Update(ctx, ownBusinessID, projectID, UpdateProjectInput{
 			Name:          "New",
 			WhitelistMode: domain.WhitelistModeExplicit,
-			AllowedTools:  []string{"vk__publish_post"},
+			AllowedTools:  []string{tools.VKPublishPost},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "New", got.Name)

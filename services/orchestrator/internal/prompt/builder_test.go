@@ -10,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 )
 
@@ -176,7 +177,7 @@ func TestAppendProjectBlock_ExplicitMode_AppendsAllowedToolsHint(t *testing.T) {
 		Name:          "Отзывы",
 		SystemPrompt:  "Отвечай вежливо",
 		WhitelistMode: domain.WhitelistModeExplicit,
-		AllowedTools:  []string{"telegram__send_channel_post", "telegram__send_channel_photo"},
+		AllowedTools:  []string{tools.TelegramSendChannelPost, tools.TelegramSendChannelPhoto},
 	}
 	got := buildWithProj(t, proj)
 
@@ -202,7 +203,7 @@ func TestAppendProjectBlock_AllMode_NoHint(t *testing.T) {
 	proj := &prompt.ProjectContext{
 		Name:          "Всё разрешено",
 		WhitelistMode: domain.WhitelistModeAll,
-		AllowedTools:  []string{"telegram__send_channel_post"}, // should be ignored for `all`
+		AllowedTools:  []string{tools.TelegramSendChannelPost}, // should be ignored for `all`
 	}
 	got := buildWithProj(t, proj)
 
@@ -255,7 +256,7 @@ func TestAppendProjectBlock_ExplicitMode_InstructsAgainstSubstitution(t *testing
 	proj := &prompt.ProjectContext{
 		Name:          "Регрессия",
 		WhitelistMode: domain.WhitelistModeExplicit,
-		AllowedTools:  []string{"telegram__send_channel_post"},
+		AllowedTools:  []string{tools.TelegramSendChannelPost},
 	}
 	got := buildWithProj(t, proj)
 

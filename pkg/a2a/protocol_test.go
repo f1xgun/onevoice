@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 func TestToolRequest_RoundTrip(t *testing.T) {
@@ -78,7 +79,7 @@ func TestSubject(t *testing.T) {
 func TestToolRequest_JSONRoundTrip_WithApprovalID(t *testing.T) {
 	req := a2a.ToolRequest{
 		TaskID:     "task-abc",
-		Tool:       "telegram__send_channel_post",
+		Tool:       tools.TelegramSendChannelPost,
 		Args:       map[string]interface{}{"text": "hi"},
 		BusinessID: "biz-1",
 		RequestID:  "req-1",
@@ -99,7 +100,7 @@ func TestToolRequest_JSONRoundTrip_WithoutApprovalID_IsOmitted(t *testing.T) {
 	// This protects backward compatibility for auto-floor tool calls which never have an approval_id.
 	req := a2a.ToolRequest{
 		TaskID:     "task-xyz",
-		Tool:       "telegram__send_channel_post",
+		Tool:       tools.TelegramSendChannelPost,
 		Args:       map[string]interface{}{"text": "hi"},
 		BusinessID: "biz-1",
 	}
