@@ -3,6 +3,7 @@
 import { memo, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bookmark, MoreHorizontal } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
@@ -49,6 +50,8 @@ interface ChatHeaderProps {
  *   toHaveBeenCalledTimes(1) after mutating an unrelated field.
  */
 function useConversationTitle(conversationId: string): string {
+  const tChat = useTranslations('chat');
+  const fallback = tChat('newConversation');
   const { data } = useQuery<Conversation[], Error, string>({
     queryKey: QUERY_KEYS.CONVERSATIONS,
     queryFn: () => api.get(API_PATHS.CONVERSATIONS.ROOT).then((r) => r.data),
@@ -57,7 +60,7 @@ function useConversationTitle(conversationId: string): string {
       if (!conv) return '';
       // Fallback encapsulated here so the header and the sidebar share
       // exactly one definition of "what should the title look like right now?"
-      return conv.title === '' || conv.titleStatus === 'auto_pending' ? 'Новый диалог' : conv.title;
+      return conv.title === '' || conv.titleStatus === 'auto_pending' ? fallback : conv.title;
     },
     enabled: !!conversationId,
   });
@@ -93,6 +96,7 @@ function ChatHeaderImpl({
   const pinned = useConversationPinned(conversationId);
   const pinMutation = usePinConversation();
   const unpinMutation = useUnpinConversation();
+  const tHeader = useTranslations('chat.header');
   const showMenu = menuTitle !== undefined && menuProjectId !== undefined;
 
   return (
@@ -105,8 +109,8 @@ function ChatHeaderImpl({
             if (pinned) unpinMutation.mutate(conversationId);
             else pinMutation.mutate(conversationId);
           }}
-          aria-label={pinned ? 'Открепить чат' : 'Закрепить чат'}
-          title={pinned ? 'Открепить чат' : 'Закрепить чат'}
+          aria-label={pinned ? tHeader('unpinAria') : tHeader('pinAria')}
+          title={pinned ? tHeader('unpinAria') : tHeader('pinAria')}
           className="flex h-8 w-8 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
           disabled={pinMutation.isPending || unpinMutation.isPending}
         >
@@ -125,8 +129,8 @@ function ChatHeaderImpl({
             trigger={
               <button
                 type="button"
-                aria-label="Меню чата"
-                title="Действия"
+                aria-label={tHeader('menuAria')}
+                title={tHeader('menuTitle')}
                 className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900"
               >
                 <MoreHorizontal size={16} />
