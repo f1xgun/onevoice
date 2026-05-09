@@ -7,6 +7,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { Loader2, Search } from 'lucide-react';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
 import type { SearchResult } from '@/types/search';
 import type { Business } from '@/types/business';
 import { SearchResultRow } from './SearchResultRow';
@@ -44,7 +45,7 @@ function detectPlaceholder(): string {
  * search handler resolves businessID server-side from the bearer's userID. */
 async function fetchBusinessId(): Promise<string | null> {
   try {
-    const { data } = await api.get<Business>('/business');
+    const { data } = await api.get<Business>(API_PATHS.BUSINESS.ROOT);
     return data?.id ?? null;
   } catch {
     return null;

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,7 +49,7 @@ export function VKCommunityModal({ open, onClose }: Props) {
         { access_token: trimmed }
       );
       toast.success('Сообщество VK подключено');
-      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
       // Reset local state then call parent close to keep the modal logic clean.
       setToken('');
       setSubmitting(false);

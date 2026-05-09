@@ -13,7 +13,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { REVIEW_STATUS_BADGES, type ReviewStatus } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
+
+// Manual refresh fan-out budget. The backend caps total work at 90s; the
+// extra headroom absorbs network slack so the request doesn't surface as
+// a fake timeout in the UI before the agent actually finishes.
+const REVIEWS_REFRESH_TIMEOUT_MS = 120_000;
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
@@ -70,18 +78,9 @@ function platformHasRating(id: string): boolean {
   return platformsWithRating.has(id);
 }
 
-// Reply status → tone-mapped badge config. Per brand voice the labels
-// are matter-of-fact, not celebratory.
-type StatusKey = 'pending' | 'replied' | 'error' | 'read';
-const statusBadge: Record<
-  StatusKey,
-  { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }
-> = {
-  pending: { label: 'Ждёт ответа', tone: 'warning' },
-  replied: { label: 'Ответ отправлен', tone: 'success' },
-  error: { label: 'Ошибка отправки', tone: 'danger' },
-  read: { label: 'Прочитано', tone: 'neutral' },
-};
+// Reply status → tone-mapped badge config — see lib/constants/statuses.
+type StatusKey = ReviewStatus;
+const statusBadge = REVIEW_STATUS_BADGES;
 
 function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
   return (
@@ -138,12 +137,12 @@ export default function ReviewsPage() {
   const [replyText, setReplyText] = useState('');
 
   const { data: reviews = [], isLoading } = useQuery<Review[]>({
-    queryKey: ['reviews', platform, replyStatus],
+    queryKey: QUERY_KEYS.REVIEWS_FILTERED(platform, replyStatus),
     queryFn: () => {
       const params = new URLSearchParams();
       if (platform !== 'all') params.set('platform', platform);
       if (replyStatus !== 'all') params.set('reply_status', replyStatus);
-      return api.get(`/reviews?${params}`).then((r) => {
+      return api.get(`${API_PATHS.REVIEWS.ROOT}?${params}`).then((r) => {
         // API shape: { reviews: Review[], total: number }. Older
         // callers expected a bare array — accept both for safety.
         const data = r.data as unknown;
@@ -156,9 +155,9 @@ export default function ReviewsPage() {
 
   const replyMutation = useMutation({
     mutationFn: ({ id, text }: { id: string; text: string }) =>
-      api.put(`/reviews/${id}/reply`, { replyText: text }),
+      api.put(API_PATHS.REVIEWS.REPLY(id), { replyText: text }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reviews'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.REVIEWS });
       toast.success('Ответ отправлен');
       setReplyDialog(null);
       setReplyText('');
@@ -171,9 +170,10 @@ export default function ReviewsPage() {
   // The 120s timeout accommodates Yandex.Business RPA scraping, which can
   // take up to ~60s; the backend caps total work at 90s per call.
   const refreshMutation = useMutation({
-    mutationFn: () => api.post('/reviews/refresh', undefined, { timeout: 120_000 }),
+    mutationFn: () =>
+      api.post(API_PATHS.REVIEWS.REFRESH, undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reviews'] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.REVIEWS });
       toast.success('Отзывы обновлены');
     },
     onError: () => toast.error('Не удалось обновить отзывы'),

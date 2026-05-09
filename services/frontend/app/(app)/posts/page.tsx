@@ -25,9 +25,13 @@ import { ru } from 'date-fns/locale';
 import { ChevronDown, ChevronRight, FileText, Plus, Search } from 'lucide-react';
 
 import { api } from '@/lib/api';
+import { API_PATHS } from '@/lib/constants/apiPaths';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { POST_STATUS_LABELS } from '@/lib/constants/statuses';
+import { CHANNEL_NAMES } from '@/lib/platforms';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChannelMark, type ChannelName } from '@/components/ui/channel-mark';
+import { ChannelMark } from '@/components/ui/channel-mark';
 import { Input } from '@/components/ui/input';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
@@ -48,20 +52,10 @@ import type { Post } from '@/types/post';
 type StatusKey = 'all' | 'published' | 'scheduled' | 'error';
 type PlatformKey = 'all' | 'telegram' | 'vk' | 'yandex_business';
 
-const statusLabel: Record<string, string> = {
-  draft: 'Черновик',
-  scheduled: 'Запланирован',
-  published: 'Опубликован',
-  error: 'Ошибка',
-};
-
-// Backend platform id → display name used by ChannelMark / labels.
-const platformDisplay: Record<string, ChannelName> = {
-  telegram: 'Telegram',
-  vk: 'VK',
-  yandex_business: 'Yandex.Business',
-};
-
+// Backend platform id → user-facing short label. CHANNEL_NAMES from
+// lib/platforms covers Latin technical names for ChannelMark; the short
+// label for the in-line chip uses a localized abbreviation when the full
+// name would crowd the UI (e.g. yandex_business → "Яндекс").
 const platformShort: Record<string, string> = {
   telegram: 'Telegram',
   vk: 'VK',
@@ -77,12 +71,12 @@ export default function PostsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: posts = [], isLoading } = useQuery<Post[]>({
-    queryKey: ['posts', status, platform],
+    queryKey: QUERY_KEYS.POSTS(status, platform),
     queryFn: () => {
       const params = new URLSearchParams();
       if (status !== 'all') params.set('status', status);
       if (platform !== 'all') params.set('platform', platform);
-      return api.get(`/posts?${params}`).then((r) => (r.data.posts ?? []) as Post[]);
+      return api.get(`${API_PATHS.POSTS}?${params}`).then((r) => (r.data.posts ?? []) as Post[]);
     },
   });
 
@@ -451,7 +445,8 @@ function PlatformResultCard({
   result: NonNullable<Post['platformResults']>[string];
 }) {
   const ok = !result.error && (result.status === 'published' || result.status === 'ok');
-  const display = platformDisplay[platform] ?? platformShort[platform] ?? platform;
+  const display =
+    CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
   return (
     <div className="flex items-center gap-2.5 rounded-sm border border-line-soft bg-paper px-3 py-2">
       <ChannelMark name={display} size={20} />
@@ -474,7 +469,8 @@ function PlatformResultCard({
 }
 
 function ChannelChip({ platform }: { platform: string }) {
-  const display = platformDisplay[platform] ?? platformShort[platform] ?? platform;
+  const display =
+    CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
   const short = platformShort[platform] ?? display;
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-line-soft bg-paper px-2 py-0.5 text-[11px] text-ink-mid">
@@ -485,7 +481,7 @@ function ChannelChip({ platform }: { platform: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const label = statusLabel[status] ?? status;
+  const label = POST_STATUS_LABELS[status as keyof typeof POST_STATUS_LABELS] ?? status;
   switch (status) {
     case 'published':
       return (
