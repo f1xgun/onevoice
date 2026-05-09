@@ -12,6 +12,12 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
+// googleTokenEndpoint is the Google OAuth2 token-exchange endpoint URL.
+// Duplicated locally because the equivalent const in handler/oauth.go lives
+// in a different package and we don't want to widen handler's API surface
+// just for this one wire helper.
+const googleTokenEndpoint = "https://oauth2.googleapis.com/token" //nolint:gosec // G101: token endpoint URL, not a credential
+
 // googleTokenRefresher implements service.TokenRefresher for Google OAuth2.
 type googleTokenRefresher struct {
 	clientID     string
@@ -41,7 +47,7 @@ func (r *googleTokenRefresher) RefreshToken(ctx context.Context, refreshToken st
 		"refresh_token": {refreshToken},
 		"grant_type":    {"refresh_token"},
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://oauth2.googleapis.com/token", strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", googleTokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", "", 0, fmt.Errorf("build refresh request: %w", err)
 	}
