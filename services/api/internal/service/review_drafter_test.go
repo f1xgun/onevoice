@@ -1,20 +1,16 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 )
 
 // fakeReviewRepo is a minimal in-memory ReviewRepository for drafter tests.
@@ -106,40 +102,29 @@ func (f *fakeBusinessRepo) UpdateToolApprovals(context.Context, uuid.UUID, map[s
 	panic("unused")
 }
 
-// fakeHTTPClient lets a test return canned responses without binding sockets.
-type fakeHTTPClient struct {
+// fakeDraftClient lets a test return canned responses without binding sockets.
+// It satisfies DraftReplyClient — the narrow interface ReviewDrafter consumes
+// after 19-MD-01.
+type fakeDraftClient struct {
 	mu       sync.Mutex
-	requests []*http.Request
-	resp     *http.Response
+	requests []orchestratorclient.DraftReplyRequest
+	resp     *orchestratorclient.DraftReplyResponse
 	err      error
-	respFn   func(*http.Request) (*http.Response, error)
+	respFn   func(orchestratorclient.DraftReplyRequest) (*orchestratorclient.DraftReplyResponse, error)
 }
 
-func (f *fakeHTTPClient) Do(req *http.Request) (*http.Response, error) {
+func (f *fakeDraftClient) DraftReply(_ context.Context, in orchestratorclient.DraftReplyRequest) (*orchestratorclient.DraftReplyResponse, error) {
 	f.mu.Lock()
-	f.requests = append(f.requests, req)
+	f.requests = append(f.requests, in)
 	f.mu.Unlock()
 	if f.respFn != nil {
-		return f.respFn(req)
+		return f.respFn(in)
 	}
 	return f.resp, f.err
 }
 
-func newJSONResp(t *testing.T, status int, body any) *http.Response {
-	t.Helper()
-	buf, err := json.Marshal(body)
-	if err != nil {
-		t.Fatalf("marshal canned response: %v", err)
-	}
-	return &http.Response{
-		StatusCode: status,
-		Body:       io.NopCloser(bytes.NewReader(buf)),
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-	}
-}
-
-func newDrafter(repo *fakeReviewRepo, biz *fakeBusinessRepo, httpC *fakeHTTPClient) *ReviewDrafter {
-	return NewReviewDrafter(repo, biz, httpC, "http://orchestrator:8090", 5, 10)
+func newDrafter(repo *fakeReviewRepo, biz *fakeBusinessRepo, orchC *fakeDraftClient) *ReviewDrafter {
+	return NewReviewDrafter(repo, biz, orchC, 5, 10)
 }
 
 func TestReviewDrafter_GenerateForBusiness_HappyPath(t *testing.T) {
@@ -158,14 +143,14 @@ func TestReviewDrafter_GenerateForBusiness_HappyPath(t *testing.T) {
 	biz := &fakeBusinessRepo{business: &domain.Business{
 		Name: "Кофейня", Category: "Кафе", Description: "Уютное место",
 	}}
-	httpC := &fakeHTTPClient{
-		respFn: func(req *http.Request) (*http.Response, error) {
-			return newJSONResp(t, 200, draftReplyResponse{
+	orchC := &fakeDraftClient{
+		respFn: func(_ orchestratorclient.DraftReplyRequest) (*orchestratorclient.DraftReplyResponse, error) {
+			return &orchestratorclient.DraftReplyResponse{
 				DraftReply: "Спасибо вам за такие слова!", Provider: "openrouter",
-			}), nil
+			}, nil
 		},
 	}
-	d := newDrafter(repo, biz, httpC)
+	d := newDrafter(repo, biz, orchC)
 
 	if err := d.GenerateForBusiness(context.Background(), uuid.MustParse("00000000-0000-0000-0000-0000000000b1"), "yandex_business"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -186,14 +171,10 @@ func TestReviewDrafter_GenerateForBusiness_HappyPath(t *testing.T) {
 	}
 
 	// Verify the orchestrator request contained the example.
-	if len(httpC.requests) != 1 {
-		t.Fatalf("HTTP calls = %d, want 1", len(httpC.requests))
+	if len(orchC.requests) != 1 {
+		t.Fatalf("orch calls = %d, want 1", len(orchC.requests))
 	}
-	body, _ := io.ReadAll(httpC.requests[0].Body)
-	var sent draftReplyRequest
-	if err := json.Unmarshal(body, &sent); err != nil {
-		t.Fatalf("decode sent body: %v", err)
-	}
+	sent := orchC.requests[0]
 	if len(sent.Examples) != 1 || sent.Examples[0].ReviewText != "Хороший сервис" {
 		t.Errorf("examples not forwarded correctly: %+v", sent.Examples)
 	}
@@ -208,12 +189,12 @@ func TestReviewDrafter_GenerateForBusiness_NoExamples(t *testing.T) {
 		// examples: nil
 	}
 	biz := &fakeBusinessRepo{business: &domain.Business{Name: "X"}}
-	httpC := &fakeHTTPClient{
-		respFn: func(req *http.Request) (*http.Response, error) {
-			return newJSONResp(t, 200, draftReplyResponse{DraftReply: "Спасибо!"}), nil
+	orchC := &fakeDraftClient{
+		respFn: func(_ orchestratorclient.DraftReplyRequest) (*orchestratorclient.DraftReplyResponse, error) {
+			return &orchestratorclient.DraftReplyResponse{DraftReply: "Спасибо!"}, nil
 		},
 	}
-	d := newDrafter(repo, biz, httpC)
+	d := newDrafter(repo, biz, orchC)
 
 	if err := d.GenerateForBusiness(context.Background(), uuid.New(), "yandex_business"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -228,15 +209,12 @@ func TestReviewDrafter_GenerateForBusiness_LLMError(t *testing.T) {
 		pending: []domain.Review{{ID: "r1", Text: "X", BusinessID: "b1", Platform: "vk"}},
 	}
 	biz := &fakeBusinessRepo{business: &domain.Business{Name: "X"}}
-	httpC := &fakeHTTPClient{
-		respFn: func(req *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: 502,
-				Body:       io.NopCloser(strings.NewReader("upstream provider down")),
-			}, nil
-		},
+	// Simulate an orchestrator non-2xx error of the same shape that
+	// pkg/orchestratorclient.DraftReply emits on a 502 response.
+	orchC := &fakeDraftClient{
+		err: errors.New("orchestratorclient: draft-reply: status 502: upstream provider down"),
 	}
-	d := newDrafter(repo, biz, httpC)
+	d := newDrafter(repo, biz, orchC)
 
 	// GenerateForBusiness logs + continues — it doesn't surface per-review errors.
 	if err := d.GenerateForBusiness(context.Background(), uuid.New(), "vk"); err != nil {
@@ -261,12 +239,12 @@ func TestReviewDrafter_GenerateForBusiness_EmptyDraftIsFailure(t *testing.T) {
 		pending: []domain.Review{{ID: "r1", Text: "X", BusinessID: "b1"}},
 	}
 	biz := &fakeBusinessRepo{business: &domain.Business{Name: "X"}}
-	httpC := &fakeHTTPClient{
-		respFn: func(req *http.Request) (*http.Response, error) {
-			return newJSONResp(t, 200, draftReplyResponse{DraftReply: "   "}), nil
+	orchC := &fakeDraftClient{
+		respFn: func(_ orchestratorclient.DraftReplyRequest) (*orchestratorclient.DraftReplyResponse, error) {
+			return &orchestratorclient.DraftReplyResponse{DraftReply: "   "}, nil
 		},
 	}
-	d := newDrafter(repo, biz, httpC)
+	d := newDrafter(repo, biz, orchC)
 
 	if err := d.GenerateForBusiness(context.Background(), uuid.New(), ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -279,16 +257,16 @@ func TestReviewDrafter_GenerateForBusiness_EmptyDraftIsFailure(t *testing.T) {
 func TestReviewDrafter_GenerateForBusiness_NoPendingShortCircuits(t *testing.T) {
 	repo := &fakeReviewRepo{pending: nil}
 	biz := &fakeBusinessRepo{business: &domain.Business{}}
-	httpC := &fakeHTTPClient{}
+	orchC := &fakeDraftClient{}
 
-	d := newDrafter(repo, biz, httpC)
+	d := newDrafter(repo, biz, orchC)
 	if err := d.GenerateForBusiness(context.Background(), uuid.New(), ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(repo.updateDraftCalls) != 0 {
 		t.Errorf("should not write drafts when nothing pending: %+v", repo.updateDraftCalls)
 	}
-	if len(httpC.requests) != 0 {
+	if len(orchC.requests) != 0 {
 		t.Errorf("should not call orchestrator when nothing pending")
 	}
 }
@@ -298,14 +276,14 @@ func TestReviewDrafter_GenerateForBusiness_BusinessLookupErrorAborts(t *testing.
 		pending: []domain.Review{{ID: "r1", Text: "X"}},
 	}
 	biz := &fakeBusinessRepo{err: errors.New("boom")}
-	httpC := &fakeHTTPClient{}
+	orchC := &fakeDraftClient{}
 
-	d := newDrafter(repo, biz, httpC)
+	d := newDrafter(repo, biz, orchC)
 	err := d.GenerateForBusiness(context.Background(), uuid.New(), "")
 	if err == nil {
 		t.Fatal("expected error when business lookup fails")
 	}
-	if len(httpC.requests) != 0 {
+	if len(orchC.requests) != 0 {
 		t.Errorf("should not call orchestrator without business context")
 	}
 }
@@ -334,9 +312,9 @@ func TestReviewDrafter_NetworkErrorPersistsFailed(t *testing.T) {
 		pending: []domain.Review{{ID: "r1", Text: "X", BusinessID: "b1"}},
 	}
 	biz := &fakeBusinessRepo{business: &domain.Business{Name: "X"}}
-	httpC := &fakeHTTPClient{err: errors.New("dial refused")}
+	orchC := &fakeDraftClient{err: errors.New("dial refused")}
 
-	d := newDrafter(repo, biz, httpC)
+	d := newDrafter(repo, biz, orchC)
 	if err := d.GenerateForBusiness(context.Background(), uuid.New(), ""); err != nil {
 		t.Fatalf("per-review errors must not bubble up: %v", err)
 	}
@@ -347,71 +325,25 @@ func TestReviewDrafter_NetworkErrorPersistsFailed(t *testing.T) {
 	}
 }
 
-// Ensure orchestrator URL trimming works (no double-slash).
-func TestReviewDrafter_OrchestratorURLNoTrailingSlash(t *testing.T) {
-	repo := &fakeReviewRepo{
-		pending: []domain.Review{{ID: "r1", Text: "X"}},
-	}
-	biz := &fakeBusinessRepo{business: &domain.Business{Name: "X"}}
-	var captured string
-	httpC := &fakeHTTPClient{
-		respFn: func(req *http.Request) (*http.Response, error) {
-			captured = req.URL.String()
-			return newJSONResp(t, 200, draftReplyResponse{DraftReply: "ok"}), nil
-		},
-	}
-
-	d := NewReviewDrafter(repo, biz, httpC, "http://orchestrator:8090/", 5, 10)
-	if err := d.GenerateForBusiness(context.Background(), uuid.New(), ""); err != nil {
-		t.Fatalf("unexpected: %v", err)
-	}
-	if captured != "http://orchestrator:8090/internal/draft-reply" {
-		t.Errorf("URL = %q, expected exactly one slash before /internal", captured)
-	}
-}
-
 // Sanity: drafter constructor clamps zero/negative knobs to defaults so a
 // misconfigured caller doesn't end up with limit=0 (which would skip work).
 func TestNewReviewDrafter_ClampsZero(t *testing.T) {
-	d := NewReviewDrafter(&fakeReviewRepo{}, &fakeBusinessRepo{}, &fakeHTTPClient{}, "x", 0, -1)
+	d := NewReviewDrafter(&fakeReviewRepo{}, &fakeBusinessRepo{}, &fakeDraftClient{}, 0, -1)
 	if d.maxExamples <= 0 || d.perPassLimit <= 0 {
 		t.Errorf("zero/neg knobs not clamped: maxExamples=%d perPassLimit=%d", d.maxExamples, d.perPassLimit)
 	}
 }
 
-// Drafter must default to net/http.Client when caller passes nil — guards
-// against a wiring bug where the syncer accidentally passes a typed nil.
-func TestNewReviewDrafter_NilHTTPClientFallback(t *testing.T) {
-	d := NewReviewDrafter(&fakeReviewRepo{}, &fakeBusinessRepo{}, nil, "x", 5, 10)
-	if d.httpClient == nil {
-		t.Fatal("httpClient should default to *http.Client")
-	}
-	// Light type assertion — we don't care about the timeout value, only that
-	// it's a working client (not the typed-nil interface trap).
-	if _, ok := d.httpClient.(*http.Client); !ok {
-		t.Errorf("default httpClient is not *http.Client: %T", d.httpClient)
-	}
+// Constructor must panic on nil orchestrator client — wiring regressions
+// must surface at boot, not on the first sync tick.
+func TestNewReviewDrafter_NilOrchPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on nil DraftReplyClient, got none")
+		}
+	}()
+	_ = NewReviewDrafter(&fakeReviewRepo{}, &fakeBusinessRepo{}, nil, 5, 10)
 }
 
-// Quick guard so a future refactor doesn't drop the Content-Type header (the
-// orchestrator's json.Decode would otherwise still work, but the cluster's
-// reverse proxy may rely on it).
-func TestReviewDrafter_SendsJSONContentType(t *testing.T) {
-	repo := &fakeReviewRepo{pending: []domain.Review{{ID: "r1", Text: "X"}}}
-	biz := &fakeBusinessRepo{business: &domain.Business{Name: "X"}}
-	httpC := &fakeHTTPClient{
-		respFn: func(req *http.Request) (*http.Response, error) {
-			if got := req.Header.Get("Content-Type"); got != "application/json" {
-				t.Errorf("Content-Type = %q, want application/json", got)
-			}
-			return newJSONResp(t, 200, draftReplyResponse{DraftReply: "ok"}), nil
-		},
-	}
-	d := newDrafter(repo, biz, httpC)
-	_ = d.GenerateForBusiness(context.Background(), uuid.New(), "")
-}
-
-// Compile-time guard: fakeHTTPClient implements DraftHTTPClient and our deadline
-// fixture does not drift on parallel execution.
-var _ DraftHTTPClient = (*fakeHTTPClient)(nil)
-var _ time.Duration = 0 // keep "time" import explicit for future timeout tests
+// Compile-time guard: fakeDraftClient implements DraftReplyClient.
+var _ DraftReplyClient = (*fakeDraftClient)(nil)

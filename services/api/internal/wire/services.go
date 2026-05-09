@@ -17,12 +17,6 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
-// Per-call HTTP timeout for service-to-API integration calls. The
-// orchestrator-fetch budget is env-tunable per cfg.OrchestratorFetchTimeout
-// (ORCHESTRATOR_FETCH_TIMEOUT). integrationFetchTimeout stays a const because
-// it has not (yet) been promoted to env-driven configuration.
-const integrationFetchTimeout = 60 * time.Second
-
 // Services aggregates every business-logic service the API consumes.
 //
 // Optional services (Titler, Searcher, ReviewSyncer, PlatformSync) are
@@ -202,11 +196,13 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	if h.NATS != nil {
 		var drafter service.DraftPassRunner
 		if cfg.ReviewDraftEnabled {
+			// Phase 19 / 19-MD-01: drafter consumes the shared orchestrator
+			// client so its calls reuse the same Transport pool as everything
+			// else (HITL, chatproxy, tools cache).
 			drafter = service.NewReviewDrafter(
 				repos.Review,
 				repos.Business,
-				&http.Client{Timeout: integrationFetchTimeout},
-				cfg.OrchestratorURL,
+				orchClient,
 				cfg.ReviewDraftMaxExamples,
 				cfg.ReviewDraftBatchLimit,
 			)
