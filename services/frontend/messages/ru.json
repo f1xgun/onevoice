@@ -26,7 +26,14 @@
       "policyRevoked": "Отказано: инструмент запрещён текущей политикой"
     },
     "approvalSwitch": {
-      "recommendedTitle": "рекомендуемый режим"
+      "recommendedTitle": "рекомендуемый режим",
+      "defaultAriaLabel": "Режим разрешения",
+      "modes": {
+        "off": "Никогда",
+        "manual": "С вашего согласия",
+        "auto-with-review": "Сам, но покажет",
+        "auto": "Полностью сам"
+      }
     }
   },
   "validation": {
@@ -200,6 +207,8 @@
     "platformPlaceholder": "Платформа",
     "replyPlaceholder": "Напишите ответ клиенту…",
     "refreshTitle": "Запросить свежие отзывы у подключённых платформ",
+    "refresh": "Обновить",
+    "refreshing": "Обновляем…",
     "aiSample": {
       "label": "Образец ответа AI",
       "hint": "Можно отправить или отредактировать",

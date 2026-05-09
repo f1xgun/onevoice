@@ -265,7 +265,7 @@ function SearchField({ value, onChange }: { value: string; onChange: (v: string)
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Поиск по содержимому…"
+        placeholder={tPosts('searchPlaceholder')}
         className="h-8 bg-paper-sunken pl-9 pr-12 text-[13px]"
       />
       <span
