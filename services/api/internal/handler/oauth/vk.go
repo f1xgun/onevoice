@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -128,7 +127,7 @@ func (h *OAuthHandler) VKCallback(w http.ResponseWriter, r *http.Request) {
 	// mandatory for write operations (post/reply); the user token unlocks
 	// wall.getComments, which VK refuses to serve with group auth.
 	redisKey := fmt.Sprintf("vk_temp_token:%s", stateData.BusinessID.String())
-	if err := h.redis.Set(r.Context(), redisKey, tokenResp.AccessToken, 5*time.Minute).Err(); err != nil {
+	if err := h.redis.Set(r.Context(), redisKey, tokenResp.AccessToken, tempOAuthCredsTTL).Err(); err != nil {
 		slog.Error("failed to store temp VK token", "error", err)
 		http.Redirect(w, r, "/integrations?error=internal", http.StatusFound)
 		return
