@@ -51,7 +51,7 @@ export function ProjectChip({ projectId, projectName, size = 'sm' }: Props) {
 
   return (
     <Link
-      href={`/projects/${projectId}`}
+      href={`/projects/${projectId}/chats`}
       aria-label={`Открыть проект «${projectName ?? ''}»`}
       className={cn(
         chipBase,
