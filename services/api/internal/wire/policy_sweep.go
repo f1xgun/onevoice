@@ -31,8 +31,11 @@ const pendingSweepLoopInterval = 5 * time.Second
 // silently on sustained failure so a slow/dead orchestrator cannot block API
 // boot. The sweep is advisory — production alerts should watch for
 // `tool_approval_whitelist_unknown` events in Loki/Grafana.
-func RunToolApprovalStartupValidation(_ context.Context, pgPool *pgxpool.Pool, orchestratorURL string) {
-	sweepCtx, cancel := context.WithTimeout(context.Background(), startupTimeout)
+func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Pool, orchestratorURL string) {
+	// Thread the parent (signal-derived) context so SIGTERM cancels the
+	// sweep early instead of waiting up to startupTimeout for a slow or
+	// dead orchestrator on the second retry. (LOW-02 fix.)
+	sweepCtx, cancel := context.WithTimeout(parent, startupTimeout)
 	defer cancel()
 
 	registered, err := fetchOrchestratorToolNames(sweepCtx, orchestratorURL)
