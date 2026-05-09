@@ -9,7 +9,13 @@ import { useTranslations } from 'next-intl';
 
 import { EmptySearch } from '@/components/states';
 
-export function PostsEmpty({ search, onResetSearch }: { search: string; onResetSearch: () => void }) {
+export function PostsEmpty({
+  search,
+  onResetSearch,
+}: {
+  search: string;
+  onResetSearch: () => void;
+}) {
   const tPosts = useTranslations('posts');
   const hasSearch = search.trim().length > 0;
   if (hasSearch) {

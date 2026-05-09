@@ -13,14 +13,14 @@ const DEFAULT_FILTERS: Filters = { status: 'all', platform: 'all' };
 describe('useDataTableFilters', () => {
   it('defaultValue is the initial state', () => {
     const { result } = renderHook(() =>
-      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS }),
+      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS })
     );
     expect(result.current.filters).toEqual({ status: 'all', platform: 'all' });
   });
 
   it('setFilter updates one key without affecting others', () => {
     const { result } = renderHook(() =>
-      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS }),
+      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS })
     );
 
     act(() => {
@@ -33,7 +33,7 @@ describe('useDataTableFilters', () => {
 
   it('queryString skips entries with value === "all"', () => {
     const { result } = renderHook(() =>
-      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS }),
+      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS })
     );
 
     // Both filters at 'all' — empty query string.
@@ -48,7 +48,7 @@ describe('useDataTableFilters', () => {
 
   it('queryString skips entries with empty string', () => {
     const { result } = renderHook(() =>
-      useDataTableFilters<Filters>({ defaultValue: { status: '', platform: '' } }),
+      useDataTableFilters<Filters>({ defaultValue: { status: '', platform: '' } })
     );
     expect(result.current.queryString()).toBe('');
 
@@ -60,7 +60,7 @@ describe('useDataTableFilters', () => {
 
   it('queryString URL-encodes values', () => {
     const { result } = renderHook(() =>
-      useDataTableFilters<Filters>({ defaultValue: { status: 'all', platform: 'all' } }),
+      useDataTableFilters<Filters>({ defaultValue: { status: 'all', platform: 'all' } })
     );
 
     act(() => {
@@ -74,7 +74,7 @@ describe('useDataTableFilters', () => {
 
   it('setFilter is stable across renders (useCallback)', () => {
     const { result, rerender } = renderHook(() =>
-      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS }),
+      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS })
     );
     const firstSetFilter = result.current.setFilter;
     rerender();
@@ -83,7 +83,7 @@ describe('useDataTableFilters', () => {
 
   it('queryString reflects multiple non-default filters', () => {
     const { result } = renderHook(() =>
-      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS }),
+      useDataTableFilters<Filters>({ defaultValue: DEFAULT_FILTERS })
     );
 
     act(() => {

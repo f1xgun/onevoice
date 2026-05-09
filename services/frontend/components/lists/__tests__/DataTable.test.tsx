@@ -29,7 +29,7 @@ describe('DataTable', () => {
         rows={sampleRows}
         rowKey={(r) => r.id}
         gridTemplate="1fr 140px"
-      />,
+      />
     );
     expect(screen.getByText('Контент')).toBeInTheDocument();
     expect(screen.getByText('Статус')).toBeInTheDocument();
@@ -42,7 +42,7 @@ describe('DataTable', () => {
         rows={sampleRows}
         rowKey={(r) => r.id}
         gridTemplate="1fr 140px"
-      />,
+      />
     );
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByText('Bravo')).toBeInTheDocument();
@@ -61,7 +61,7 @@ describe('DataTable', () => {
         rowKey={(r) => r.id}
         gridTemplate="1fr 140px"
         isLoading
-      />,
+      />
     );
     // Skeleton uses data-state="static" (per components/ui/skeleton.tsx).
     const skeletons = container.querySelectorAll('[data-state="static"]');
@@ -77,7 +77,7 @@ describe('DataTable', () => {
         gridTemplate="1fr 140px"
         isLoading
         skeleton={<div>custom-skel</div>}
-      />,
+      />
     );
     expect(screen.getByText('custom-skel')).toBeInTheDocument();
   });
@@ -90,7 +90,7 @@ describe('DataTable', () => {
         rowKey={(r) => r.id}
         gridTemplate="1fr 140px"
         empty={<div>No rows!</div>}
-      />,
+      />
     );
     expect(screen.getByText('No rows!')).toBeInTheDocument();
   });
@@ -103,7 +103,7 @@ describe('DataTable', () => {
         rowKey={(r) => r.id}
         gridTemplate="1fr 140px"
         empty={<div>No rows!</div>}
-      />,
+      />
     );
     expect(screen.queryByText('No rows!')).not.toBeInTheDocument();
   });
@@ -117,7 +117,7 @@ describe('DataTable', () => {
         rowKey={(r) => r.id}
         gridTemplate="1fr 140px"
         expandable={(r) => <div>Expanded for {r.title}</div>}
-      />,
+      />
     );
 
     // Initially collapsed — expanded body not rendered.
@@ -139,7 +139,7 @@ describe('DataTable', () => {
         rows={sampleRows.slice(0, 1)}
         rowKey={(r) => r.id}
         gridTemplate="1fr 140px"
-      />,
+      />
     );
     // No buttons exist in this rendering — the row is a plain div.
     expect(screen.queryAllByRole('button')).toHaveLength(0);
@@ -152,7 +152,7 @@ describe('DataTable', () => {
         rows={sampleRows}
         rowKey={(r) => r.id}
         gridTemplate="1fr 140px"
-      />,
+      />
     );
     // Re-render with the same rowKey output and same data — content remains.
     rerender(
@@ -161,7 +161,7 @@ describe('DataTable', () => {
         rows={sampleRows}
         rowKey={(r) => r.id}
         gridTemplate="1fr 140px"
-      />,
+      />
     );
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByText('Charlie')).toBeInTheDocument();

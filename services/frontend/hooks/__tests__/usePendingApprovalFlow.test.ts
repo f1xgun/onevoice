@@ -28,10 +28,7 @@ import { usePendingApprovalFlow } from '../usePendingApprovalFlow';
 import { useAuthStore } from '@/lib/auth';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { mockSSEResponse, sseLine } from '@/test-utils/sse-mock';
-import {
-  singleCallBatch,
-  expiredBatch,
-} from '@/test-utils/pending-approval-fixtures';
+import { singleCallBatch, expiredBatch } from '@/test-utils/pending-approval-fixtures';
 import type { PendingApproval } from '@/types/chat';
 
 vi.mock('sonner', () => ({
@@ -513,10 +510,10 @@ describe('usePendingApprovalFlow.resolveApproval — error branches', () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/messages')) {
-        return new Response(
-          JSON.stringify({ messages: [], pendingApprovals: [singleCallBatch] }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        );
+        return new Response(JSON.stringify({ messages: [], pendingApprovals: [singleCallBatch] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
       if (url.endsWith('/resolve')) {
         return new Response(JSON.stringify({ ok: true }), {
@@ -642,8 +639,7 @@ describe('usePendingApprovalFlow — sanitization & contracts', () => {
 
     const onResume = vi.fn();
     const { result } = renderHook(
-      () =>
-        usePendingApprovalFlow({ conversationId: 'cid-forward', onResumeEvent: onResume }),
+      () => usePendingApprovalFlow({ conversationId: 'cid-forward', onResumeEvent: onResume }),
       { wrapper: makeQCWrapper() }
     );
     await act(async () => {

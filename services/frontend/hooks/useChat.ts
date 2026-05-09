@@ -12,12 +12,7 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { getTranslator } from '@/lib/i18n/translator';
 import { applySSEEvent, consumeSSEStream } from '@/lib/sse';
 import { trackEvent } from '@/lib/telemetry';
-import type {
-  Message,
-  PendingApproval,
-  PendingApprovalCall,
-  ToolCall,
-} from '@/types/chat';
+import type { Message, PendingApproval, PendingApprovalCall, ToolCall } from '@/types/chat';
 
 // Typed cast + defensive defaults. Preserves status === 'expired' so the
 // UI layer owns the render decision (`ExpiredApprovalBanner`). Lives here
@@ -92,8 +87,9 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
 
   // Stable ref for the parent's onApprovalRequired so the SSE-handler
   // closure stays cheap to recreate.
-  const onApprovalRequiredRef =
-    useRef<((approval: PendingApproval) => void) | undefined>(onApprovalRequired);
+  const onApprovalRequiredRef = useRef<((approval: PendingApproval) => void) | undefined>(
+    onApprovalRequired
+  );
   useEffect(() => {
     onApprovalRequiredRef.current = onApprovalRequired;
   });

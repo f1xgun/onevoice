@@ -55,9 +55,9 @@ export interface DataTableProps<T> {
   containerClassName?: string;
 }
 
-const DEFAULT_CONTAINER_CLASS = 'mt-4 overflow-x-auto rounded-md border border-line bg-paper-raised';
-const DEFAULT_HEADER_CLASS =
-  'grid gap-4 border-b border-line bg-paper-sunken px-5 py-3';
+const DEFAULT_CONTAINER_CLASS =
+  'mt-4 overflow-x-auto rounded-md border border-line bg-paper-raised';
+const DEFAULT_HEADER_CLASS = 'grid gap-4 border-b border-line bg-paper-sunken px-5 py-3';
 
 export function DataTable<T>({
   columns,
@@ -87,24 +87,24 @@ export function DataTable<T>({
         ))}
       </div>
 
-      {isLoading ? (
-        (skeleton ?? <DefaultSkeleton columns={columns} gridTemplate={gridTemplate} minWidth={minWidth} />)
-      ) : rows.length === 0 ? (
-        (empty ?? null)
-      ) : (
-        rows.map((row, i) => (
-          <DataTableRow
-            key={rowKey(row)}
-            row={row}
-            columns={columns}
-            expandable={expandable}
-            gridTemplate={gridTemplate}
-            minWidth={minWidth}
-            isLast={i === rows.length - 1}
-            rowClassName={rowClassName}
-          />
-        ))
-      )}
+      {isLoading
+        ? (skeleton ?? (
+            <DefaultSkeleton columns={columns} gridTemplate={gridTemplate} minWidth={minWidth} />
+          ))
+        : rows.length === 0
+          ? (empty ?? null)
+          : rows.map((row, i) => (
+              <DataTableRow
+                key={rowKey(row)}
+                row={row}
+                columns={columns}
+                expandable={expandable}
+                gridTemplate={gridTemplate}
+                minWidth={minWidth}
+                isLast={i === rows.length - 1}
+                rowClassName={rowClassName}
+              />
+            ))}
     </div>
   );
 }
@@ -181,12 +181,7 @@ function DefaultSkeleton<T>({ columns, gridTemplate, minWidth }: DefaultSkeleton
   return (
     <div className="divide-y divide-line-soft">
       {Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => (
-        <div
-          key={i}
-          className="grid items-center gap-4 px-5 py-4"
-          style={rowStyle}
-          aria-hidden
-        >
+        <div key={i} className="grid items-center gap-4 px-5 py-4" style={rowStyle} aria-hidden>
           {columns.map((col) => (
             <Skeleton key={col.id} className="h-4 w-3/4" />
           ))}

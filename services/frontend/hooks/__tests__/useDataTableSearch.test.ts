@@ -22,14 +22,14 @@ afterEach(() => {
 describe('useDataTableSearch', () => {
   it('returns all rows when query is empty', () => {
     const { result } = renderHook(() =>
-      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] }),
+      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] })
     );
     expect(result.current.visibleRows).toEqual(ROWS);
   });
 
   it('filters rows by searchableFields output', () => {
     const { result } = renderHook(() =>
-      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] }),
+      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] })
     );
 
     act(() => {
@@ -42,7 +42,7 @@ describe('useDataTableSearch', () => {
 
   it('matches case-insensitively', () => {
     const { result } = renderHook(() =>
-      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] }),
+      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] })
     );
 
     act(() => {
@@ -57,7 +57,7 @@ describe('useDataTableSearch', () => {
       useDataTableSearch<Row>({
         rows: ROWS,
         searchableFields: (r) => [r.content, r.author ?? ''],
-      }),
+      })
     );
 
     // 'bob' only appears in author — not in content.
@@ -70,7 +70,7 @@ describe('useDataTableSearch', () => {
 
   it('trims whitespace before matching', () => {
     const { result } = renderHook(() =>
-      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] }),
+      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] })
     );
 
     // Whitespace-only string matches as if empty.
@@ -88,7 +88,7 @@ describe('useDataTableSearch', () => {
         rows: ROWS,
         searchableFields: (r) => [r.content],
         debounceMs: 250,
-      }),
+      })
     );
 
     act(() => {
@@ -110,7 +110,7 @@ describe('useDataTableSearch', () => {
 
   it('returns empty array when no row matches', () => {
     const { result } = renderHook(() =>
-      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] }),
+      useDataTableSearch<Row>({ rows: ROWS, searchableFields: (r) => [r.content] })
     );
 
     act(() => {

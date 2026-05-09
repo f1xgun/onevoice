@@ -167,7 +167,7 @@ export default function PostsPage() {
         ),
       },
     ],
-    [tPosts],
+    [tPosts]
   );
 
   return (
