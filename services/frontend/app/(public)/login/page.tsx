@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
@@ -95,39 +96,16 @@ export default function LoginPage() {
 }
 
 function LoginEditorial() {
+  const t = useTranslations('auth.login.illustration');
   return (
     <>
-      <MonoLabel>Что нового — апрель</MonoLabel>
+      <MonoLabel>{t('label')}</MonoLabel>
 
-      <blockquote className="my-auto">
-        <p className="m-0 text-[34px] font-medium leading-[1.2] tracking-[-0.02em] text-ink">
-          «Раньше я открывала пять вкладок. Теперь — одну. И посплю наконец.»
-        </p>
-        <footer className="mt-6 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-paper-raised text-sm font-semibold text-ink-mid">
-            МК
-          </span>
-          <div>
-            <div className="text-sm font-medium text-ink">Мария К.</div>
-            <MonoLabel>Салон красоты «Лён» · Санкт-Петербург</MonoLabel>
-          </div>
-        </footer>
-      </blockquote>
+      <p className="m-0 my-auto text-[34px] font-medium leading-[1.2] tracking-[-0.02em] text-ink">
+        {t('body')}
+      </p>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {[
-          { k: 'Среднее время ответа', v: '11 мин', d: 'было 38 мин' },
-          { k: 'Каналов в одном ящике', v: '5', d: 'TG, VK, Я.Бизнес' },
-        ].map(({ k, v, d }) => (
-          <div key={k} className="rounded-lg border border-line bg-paper-raised p-4">
-            <MonoLabel>{k}</MonoLabel>
-            <div className="mt-1 text-[28px] font-medium leading-tight tracking-[-0.02em] text-ink">
-              {v}
-            </div>
-            <div className="mt-1 text-xs text-ink-soft">{d}</div>
-          </div>
-        ))}
-      </div>
+      <p className="text-sm leading-relaxed text-ink-soft">{t('note')}</p>
     </>
   );
 }
