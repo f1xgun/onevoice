@@ -34,7 +34,7 @@ func TestMessage_JSON(t *testing.T) {
 			ToolCalls: []ToolCall{
 				{
 					ID:   "call_123",
-					Type: "function",
+					Type: ToolCallTypeFunction,
 					Function: FunctionCall{
 						Name:      "get_weather",
 						Arguments: `{"location":"San Francisco"}`,
@@ -137,7 +137,7 @@ func TestStrategy_Values(t *testing.T) {
 func TestToolDefinition_JSON(t *testing.T) {
 	t.Run("marshals and unmarshals correctly", func(t *testing.T) {
 		tool := ToolDefinition{
-			Type: "function",
+			Type: ToolCallTypeFunction,
 			Function: FunctionDefinition{
 				Name:        "get_weather",
 				Description: "Get current weather",
@@ -172,7 +172,7 @@ func TestChatResponse_Fields(t *testing.T) {
 		usage := TokenUsage{InputTokens: 100, OutputTokens: 50, TotalTokens: 150}
 		resp := ChatResponse{
 			Content:      "Hello",
-			ToolCalls:    []ToolCall{{ID: "call_1", Type: "function"}},
+			ToolCalls:    []ToolCall{{ID: "call_1", Type: ToolCallTypeFunction}},
 			FinishReason: "stop",
 			Usage:        usage,
 			Latency:      100 * 1000 * 1000, // 100ms in nanoseconds
@@ -190,7 +190,7 @@ func TestChatResponse_Fields(t *testing.T) {
 
 func TestStreamChunk_Fields(t *testing.T) {
 	t.Run("stores all required fields", func(t *testing.T) {
-		toolCall := &ToolCall{ID: "call_1", Type: "function"}
+		toolCall := &ToolCall{ID: "call_1", Type: ToolCallTypeFunction}
 		usage := &TokenUsage{InputTokens: 100, OutputTokens: 50, TotalTokens: 150}
 		chunk := StreamChunk{
 			Delta:         "Hello",

@@ -5,6 +5,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 func TestBuildPlatformReply_VK(t *testing.T) {
@@ -13,7 +14,7 @@ func TestBuildPlatformReply_VK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if tool != "vk__reply_comment" {
+	if tool != tools.VKReplyComment {
 		t.Errorf("tool = %q", tool)
 	}
 	if args["post_id"].(float64) != 11 || args["comment_id"].(float64) != 42 || args["text"].(string) != "Спасибо!" {
@@ -44,7 +45,7 @@ func TestBuildPlatformReply_Telegram(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if tool != "telegram__reply_to_comment" {
+	if tool != tools.TelegramReplyToComment {
 		t.Errorf("tool = %q", tool)
 	}
 	if args["chat_id"].(string) != "-1003615540583" {
@@ -80,7 +81,7 @@ func TestBuildPlatformReply_Yandex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if tool != "yandex_business__reply_review" {
+	if tool != tools.YandexBusinessReplyReview {
 		t.Errorf("tool = %q", tool)
 	}
 	if args["review_id"].(string) != "yreview-77" || args["text"].(string) != "thx" {
@@ -101,7 +102,7 @@ func TestBuildPlatformReply_Google(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if tool != "google_business__reply_review" {
+	if tool != tools.GoogleBusinessReplyReview {
 		t.Errorf("tool = %q", tool)
 	}
 	if args["review_name"].(string) != "accounts/1/locations/2/reviews/3" {

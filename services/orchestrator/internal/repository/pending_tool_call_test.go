@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // setupOrchestratorPendingDB mirrors the API-side helper: connect to Mongo
@@ -65,7 +66,7 @@ func TestOrchestratorPendingRepo_InsertPreparing_DoesNotSetExpiresAt(t *testing.
 		UserID:         "user-1",
 		MessageID:      "msg-1",
 		Calls: []domain.PendingCall{
-			{CallID: "c1", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+			{CallID: "c1", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 		},
 	}
 	require.NoError(t, repo.InsertPreparing(ctx, batch))

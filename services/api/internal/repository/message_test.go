@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 func TestMessageRepository_Create(t *testing.T) {
@@ -355,7 +356,7 @@ func TestMessageRepository_Update(t *testing.T) {
 			Role:           "assistant",
 			Content:        "original",
 			ToolCalls: []domain.ToolCall{
-				{ID: "call-1", Name: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}, Status: domain.ToolCallStatusPending},
+				{ID: "call-1", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}, Status: domain.ToolCallStatusPending},
 			},
 			Status: domain.MessageStatusPendingApproval,
 		}

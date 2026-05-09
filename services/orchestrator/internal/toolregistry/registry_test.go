@@ -12,12 +12,13 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 func makeDef(name string) llm.ToolDefinition {
 	return llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: name, Description: "test", Parameters: map[string]interface{}{}},
 	}
 }
@@ -38,7 +39,7 @@ func newCaptureLogger(t *testing.T) *bytes.Buffer {
 func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	reg.Register(makeDef("telegram__send_post"), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef(tools.VKPublishPost), "", nil, domain.ToolFloorAuto, nil)
 	reg.Register(makeDef("google_business__update_hours"), "", nil, domain.ToolFloorAuto, nil)
 	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil) // internal tool, always available
 
@@ -51,7 +52,7 @@ func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 	}
 	assert.Contains(t, names, "telegram__send_post")
 	assert.Contains(t, names, "get_business_info")
-	assert.NotContains(t, names, "vk__publish_post")
+	assert.NotContains(t, names, tools.VKPublishPost)
 	assert.NotContains(t, names, "google_business__update_hours")
 }
 
@@ -104,15 +105,15 @@ func toolNames(defs []llm.ToolDefinition) []string {
 func fixtureRegistry() *toolregistry.Registry {
 	reg := toolregistry.NewRegistry()
 	// Write tools — Manual floor, fully gated by whitelist + HITL.
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, nil)
-	reg.Register(makeDef("telegram__send_notification"), "", nil, domain.ToolFloorManual, nil)
-	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorManual, nil)
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, nil)
+	reg.Register(makeDef(tools.TelegramSendNotification), "", nil, domain.ToolFloorManual, nil)
+	reg.Register(makeDef(tools.VKPublishPost), "", nil, domain.ToolFloorManual, nil)
 	// Read tools — Auto floor, always available under ModeExplicit so the
 	// LLM can fetch context (Pitfall: clicking "Проверить отзывы" with only
 	// a write tool in whitelist made the LLM publish posts ABOUT checking
 	// reviews instead of fetching them).
-	reg.Register(makeDef("telegram__get_reviews"), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("vk__get_comments"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef(tools.TelegramGetReviews), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef(tools.VKGetComments), "", nil, domain.ToolFloorAuto, nil)
 	// Internal — no platform prefix, always available.
 	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
 	return reg
@@ -152,7 +153,7 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_Intersection(t *testing.T) 
 		context.Background(),
 		[]string{"telegram", "vk"},
 		domain.WhitelistModeExplicit,
-		[]string{"telegram__send_channel_post"},
+		[]string{tools.TelegramSendChannelPost},
 	)
 	names := toolNames(got)
 	// Explicit allowlist returns the named Manual-floor write tool PLUS
@@ -160,9 +161,9 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_Intersection(t *testing.T) 
 	// exemption — see AvailableForWhitelist docstring).
 	assert.ElementsMatch(t,
 		[]string{
-			"telegram__send_channel_post", // explicitly allowed
-			"telegram__get_reviews",       // Auto floor, telegram active
-			"vk__get_comments",            // Auto floor, vk active
+			tools.TelegramSendChannelPost, // explicitly allowed
+			tools.TelegramGetReviews,      // Auto floor, telegram active
+			tools.VKGetComments,           // Auto floor, vk active
 			"get_business_info",           // Auto floor, internal (no platform prefix)
 		},
 		names,
@@ -177,16 +178,16 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_FiltersOutInactivePlatform(
 		context.Background(),
 		[]string{"telegram"},
 		domain.WhitelistModeExplicit,
-		[]string{"vk__publish_post"},
+		[]string{tools.VKPublishPost},
 	)
 	names := toolNames(got)
-	assert.NotContains(t, names, "vk__publish_post", "VK platform inactive")
-	assert.NotContains(t, names, "vk__get_comments", "VK platform inactive")
-	assert.NotContains(t, names, "telegram__send_channel_post", "Manual write tool not in allowlist")
+	assert.NotContains(t, names, tools.VKPublishPost, "VK platform inactive")
+	assert.NotContains(t, names, tools.VKGetComments, "VK platform inactive")
+	assert.NotContains(t, names, tools.TelegramSendChannelPost, "Manual write tool not in allowlist")
 	assert.ElementsMatch(t,
 		[]string{
-			"telegram__get_reviews", // Auto, telegram active
-			"get_business_info",     // Auto, internal
+			tools.TelegramGetReviews, // Auto, telegram active
+			"get_business_info",      // Auto, internal
 		},
 		names,
 	)
@@ -205,11 +206,11 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_UnknownTool_LogsAndDrops(t 
 	// Unknown tool dropped; no Manual-floor write tools come through;
 	// Auto-floor read tools for active platform still available.
 	assert.NotContains(t, names, "unknown__tool")
-	assert.NotContains(t, names, "telegram__send_channel_post")
-	assert.NotContains(t, names, "telegram__send_notification")
+	assert.NotContains(t, names, tools.TelegramSendChannelPost)
+	assert.NotContains(t, names, tools.TelegramSendNotification)
 	assert.ElementsMatch(t,
 		[]string{
-			"telegram__get_reviews",
+			tools.TelegramGetReviews,
 			"get_business_info",
 		},
 		names,
@@ -240,15 +241,15 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_MixedKnownAndUnknown(t *tes
 		context.Background(),
 		[]string{"telegram", "vk"},
 		domain.WhitelistModeExplicit,
-		[]string{"telegram__send_channel_post", "bogus__tool"},
+		[]string{tools.TelegramSendChannelPost, "bogus__tool"},
 	)
 	names := toolNames(got)
 	// Known tool + auto-floor exemptions; unknown dropped + logged.
 	assert.ElementsMatch(t,
 		[]string{
-			"telegram__send_channel_post",
-			"telegram__get_reviews",
-			"vk__get_comments",
+			tools.TelegramSendChannelPost,
+			tools.TelegramGetReviews,
+			tools.VKGetComments,
 			"get_business_info",
 		},
 		names,
@@ -272,13 +273,13 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_AutoFloorAlwaysIncluded(t *
 		nil, // empty allowlist — only auto-floor tools should come through
 	)
 	names := toolNames(got)
-	assert.NotContains(t, names, "telegram__send_channel_post", "Manual floor must require explicit whitelist")
-	assert.NotContains(t, names, "telegram__send_notification", "Manual floor must require explicit whitelist")
-	assert.NotContains(t, names, "vk__publish_post", "Manual floor must require explicit whitelist")
+	assert.NotContains(t, names, tools.TelegramSendChannelPost, "Manual floor must require explicit whitelist")
+	assert.NotContains(t, names, tools.TelegramSendNotification, "Manual floor must require explicit whitelist")
+	assert.NotContains(t, names, tools.VKPublishPost, "Manual floor must require explicit whitelist")
 	assert.ElementsMatch(t,
 		[]string{
-			"telegram__get_reviews",
-			"vk__get_comments",
+			tools.TelegramGetReviews,
+			tools.VKGetComments,
 			"get_business_info",
 		},
 		names,
@@ -296,7 +297,7 @@ func TestRegistry_AvailableForWhitelist_ModeNone_BlocksEverythingIncludingAuto(t
 		context.Background(),
 		[]string{"telegram", "vk"},
 		domain.WhitelistModeNone,
-		[]string{"telegram__get_reviews"}, // even allowlisting an auto tool doesn't matter
+		[]string{tools.TelegramGetReviews}, // even allowlisting an auto tool doesn't matter
 	)
 	assert.Empty(t, got)
 }
@@ -305,11 +306,11 @@ func TestRegistry_AvailableForWhitelist_ModeNone_BlocksEverythingIncludingAuto(t
 
 func TestRegistry_Floor_RegisteredReturnsFloor(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("telegram__get_reviews"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef(tools.TelegramGetReviews), "", nil, domain.ToolFloorAuto, nil)
 
-	assert.Equal(t, domain.ToolFloorManual, reg.Floor("telegram__send_channel_post"))
-	assert.Equal(t, domain.ToolFloorAuto, reg.Floor("telegram__get_reviews"))
+	assert.Equal(t, domain.ToolFloorManual, reg.Floor(tools.TelegramSendChannelPost))
+	assert.Equal(t, domain.ToolFloorAuto, reg.Floor(tools.TelegramGetReviews))
 }
 
 // TestRegistry_Floor_UnknownReturnsForbidden locks POLICY-07's safe-default:
@@ -318,7 +319,7 @@ func TestRegistry_Floor_RegisteredReturnsFloor(t *testing.T) {
 // approval of tools that no longer exist.
 func TestRegistry_Floor_UnknownReturnsForbidden(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorAuto, nil)
 
 	assert.Equal(t, domain.ToolFloorForbidden, reg.Floor("ghost__missing"))
 	assert.Equal(t, domain.ToolFloorForbidden, reg.Floor(""))
@@ -327,13 +328,13 @@ func TestRegistry_Floor_UnknownReturnsForbidden(t *testing.T) {
 func TestRegistry_EditableFields_RegisteredReturnsList(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	reg.Register(
-		makeDef("telegram__send_channel_post"),
+		makeDef(tools.TelegramSendChannelPost),
 		"",
 		nil,
 		domain.ToolFloorManual,
 		[]string{"text", "parse_mode"},
 	)
-	got := reg.EditableFields("telegram__send_channel_post")
+	got := reg.EditableFields(tools.TelegramSendChannelPost)
 	assert.ElementsMatch(t, []string{"text", "parse_mode"}, got)
 }
 
@@ -349,37 +350,37 @@ func TestRegistry_EditableFields_UnknownReturnsNil(t *testing.T) {
 func TestRegistry_EditableFields_Defensive(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	original := []string{"text", "parse_mode"}
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, original)
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, original)
 
 	// Mutate the caller's slice after Register — registry should not observe the change.
 	original[0] = "channel_id"
-	got := reg.EditableFields("telegram__send_channel_post")
+	got := reg.EditableFields(tools.TelegramSendChannelPost)
 	assert.ElementsMatch(t, []string{"text", "parse_mode"}, got)
 
 	// Mutate the returned slice — registry should not observe the change.
 	got[0] = "tampered"
-	fresh := reg.EditableFields("telegram__send_channel_post")
+	fresh := reg.EditableFields(tools.TelegramSendChannelPost)
 	assert.ElementsMatch(t, []string{"text", "parse_mode"}, fresh)
 }
 
 func TestRegistry_Has(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, nil)
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, nil)
 
-	assert.True(t, reg.Has("telegram__send_channel_post"))
+	assert.True(t, reg.Has(tools.TelegramSendChannelPost))
 	assert.False(t, reg.Has("ghost__missing"))
 	assert.False(t, reg.Has(""))
 }
 
 func TestRegistry_AllFloors(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("telegram__get_reviews"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef(tools.TelegramGetReviews), "", nil, domain.ToolFloorAuto, nil)
 	reg.Register(makeDef("dangerous__delete"), "", nil, domain.ToolFloorForbidden, nil)
 
 	got := reg.AllFloors()
-	assert.Equal(t, domain.ToolFloorManual, got["telegram__send_channel_post"])
-	assert.Equal(t, domain.ToolFloorAuto, got["telegram__get_reviews"])
+	assert.Equal(t, domain.ToolFloorManual, got[tools.TelegramSendChannelPost])
+	assert.Equal(t, domain.ToolFloorAuto, got[tools.TelegramGetReviews])
 	assert.Equal(t, domain.ToolFloorForbidden, got["dangerous__delete"])
 	assert.Len(t, got, 3)
 }
@@ -392,7 +393,7 @@ func TestRegistry_AllFloors(t *testing.T) {
 //   - "__weird"                     → "" (leading separator = no platform)
 func TestRegistry_AllEntries_SplitsPlatform(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
 	reg.Register(makeDef("bare_internal"), "", nil, domain.ToolFloorAuto, nil)
 	reg.Register(makeDef("__weird"), "", nil, domain.ToolFloorForbidden, nil)
 
@@ -401,9 +402,9 @@ func TestRegistry_AllEntries_SplitsPlatform(t *testing.T) {
 		byName[e.Name] = e
 	}
 	assert.Len(t, byName, 3)
-	assert.Equal(t, "telegram", byName["telegram__send_channel_post"].Platform)
-	assert.Equal(t, domain.ToolFloorManual, byName["telegram__send_channel_post"].Floor)
-	assert.ElementsMatch(t, []string{"text"}, byName["telegram__send_channel_post"].EditableFields)
+	assert.Equal(t, "telegram", byName[tools.TelegramSendChannelPost].Platform)
+	assert.Equal(t, domain.ToolFloorManual, byName[tools.TelegramSendChannelPost].Floor)
+	assert.ElementsMatch(t, []string{"text"}, byName[tools.TelegramSendChannelPost].EditableFields)
 
 	assert.Equal(t, "", byName["bare_internal"].Platform)
 	assert.Equal(t, domain.ToolFloorAuto, byName["bare_internal"].Floor)
@@ -417,7 +418,7 @@ func TestRegistry_AllEntries_SplitsPlatform(t *testing.T) {
 // registered allowlist by mutating the slice they received from AllEntries().
 func TestRegistry_AllEntries_EditableFieldsCopy(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
 
 	entries := reg.AllEntries()
 	if len(entries) != 1 {

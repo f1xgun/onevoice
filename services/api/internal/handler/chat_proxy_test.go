@@ -20,6 +20,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -406,9 +407,9 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 	assert.Equal(t, "", captured["project_system_prompt"])
 	assert.Equal(t, "", captured["project_whitelist_mode"])
 	// Empty (not nil) so the JSON wire shape is `[]`, not `null`.
-	tools, ok := captured["project_allowed_tools"].([]interface{})
+	allowedTools, ok := captured["project_allowed_tools"].([]interface{})
 	require.True(t, ok, "project_allowed_tools must be a JSON array; got: %T", captured["project_allowed_tools"])
-	assert.Empty(t, tools)
+	assert.Empty(t, allowedTools)
 }
 
 // TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist covers Behavior 2:
@@ -453,7 +454,7 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 				Name:          "Отзывы",
 				SystemPrompt:  "Отвечай вежливо",
 				WhitelistMode: domain.WhitelistModeExplicit,
-				AllowedTools:  []string{"telegram__send_channel_post"},
+				AllowedTools:  []string{tools.TelegramSendChannelPost},
 			}, nil
 		},
 	}
@@ -478,10 +479,10 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 	assert.Equal(t, "Отзывы", captured["project_name"])
 	assert.Equal(t, "Отвечай вежливо", captured["project_system_prompt"])
 	assert.Equal(t, "explicit", captured["project_whitelist_mode"])
-	tools, ok := captured["project_allowed_tools"].([]interface{})
+	allowedTools, ok := captured["project_allowed_tools"].([]interface{})
 	require.True(t, ok)
-	require.Len(t, tools, 1)
-	assert.Equal(t, "telegram__send_channel_post", tools[0])
+	require.Len(t, allowedTools, 1)
+	assert.Equal(t, tools.TelegramSendChannelPost, allowedTools[0])
 }
 
 // TestChatProxy_ScannerBuffer_HandlesLargeToolResult documents HITL-13: the
@@ -503,7 +504,7 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		// One tool_call, one giant tool_result, one done.
 		_, _ = w.Write([]byte(`data: {"type":"tool_call","tool_call_id":"toolu_big","tool_name":"telegram__send_channel_post","tool_args":{"text":"x"}}` + "\n\n"))
-		payload := map[string]interface{}{"type": "tool_result", "tool_call_id": "toolu_big", "tool_name": "telegram__send_channel_post", "result": map[string]interface{}{"echo": bigText}}
+		payload := map[string]interface{}{"type": "tool_result", "tool_call_id": "toolu_big", "tool_name": tools.TelegramSendChannelPost, "result": map[string]interface{}{"echo": bigText}}
 		b, _ := json.Marshal(payload)
 		_, _ = w.Write([]byte("data: "))
 		_, _ = w.Write(b)
@@ -681,8 +682,8 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 		Role:           "assistant",
 		Content:        "Here I'll post:",
 		ToolCalls: []domain.ToolCall{
-			{ID: "call-a", Name: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "x"}, Status: domain.ToolCallStatusPending},
-			{ID: "call-b", Name: "vk__publish_post", Arguments: map[string]interface{}{"text": "x"}, Status: domain.ToolCallStatusPending},
+			{ID: "call-a", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "x"}, Status: domain.ToolCallStatusPending},
+			{ID: "call-b", Name: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "x"}, Status: domain.ToolCallStatusPending},
 		},
 		Status: domain.MessageStatusPendingApproval,
 	}
@@ -845,7 +846,7 @@ func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T)
 		Role:           "assistant",
 		Content:        "",
 		ToolCalls: []domain.ToolCall{
-			{ID: "call-a", Name: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "x"}, Status: domain.ToolCallStatusPending},
+			{ID: "call-a", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "x"}, Status: domain.ToolCallStatusPending},
 		},
 		Status: domain.MessageStatusPendingApproval,
 	}
@@ -936,7 +937,7 @@ func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t
 		ConversationID: convID,
 		Role:           "assistant",
 		ToolCalls: []domain.ToolCall{
-			{ID: "call-a", Name: "telegram__send_channel_post", Arguments: map[string]interface{}{}, Status: domain.ToolCallStatusPending},
+			{ID: "call-a", Name: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{}, Status: domain.ToolCallStatusPending},
 		},
 		Status: domain.MessageStatusPendingApproval,
 	}
@@ -1013,7 +1014,7 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 		ID: "msg-2", ConversationID: convID, Role: "assistant",
 		Status: domain.MessageStatusInProgress,
 		ToolCalls: []domain.ToolCall{
-			{ID: "call-x", Name: "telegram__send_channel_post", Status: domain.ToolCallStatusPending},
+			{ID: "call-x", Name: tools.TelegramSendChannelPost, Status: domain.ToolCallStatusPending},
 		},
 	}
 
@@ -1120,7 +1121,7 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 				{
 					ID: "batch-pending", ConversationID: convID, MessageID: "msg-3", Status: "pending",
 					Calls: []domain.PendingCall{
-						{CallID: "call-p", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+						{CallID: "call-p", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 					},
 				},
 			}, nil
@@ -1340,7 +1341,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 			Name:   "Biz",
 			Settings: map[string]interface{}{
 				"tool_approvals": map[string]interface{}{
-					"telegram__send_channel_post": "manual",
+					tools.TelegramSendChannelPost: "manual",
 				},
 			},
 		}
@@ -1386,7 +1387,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 					BusinessID: businessID,
 					Name:       "Отзывы",
 					ApprovalOverrides: map[string]domain.ToolFloor{
-						"vk__publish_post": "auto",
+						tools.VKPublishPost: "auto",
 					},
 				}, nil
 			},
@@ -1431,12 +1432,12 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		// business_approvals: non-nil map echoing Business.ToolApprovals().
 		ba, ok := captured["business_approvals"].(map[string]interface{})
 		require.True(t, ok, "business_approvals must be a JSON object, got %T", captured["business_approvals"])
-		assert.Equal(t, "manual", ba["telegram__send_channel_post"])
+		assert.Equal(t, "manual", ba[tools.TelegramSendChannelPost])
 
 		// project_approval_overrides: non-nil map echoing project.ApprovalOverrides.
 		po, ok := captured["project_approval_overrides"].(map[string]interface{})
 		require.True(t, ok, "project_approval_overrides must be a JSON object, got %T", captured["project_approval_overrides"])
-		assert.Equal(t, "auto", po["vk__publish_post"])
+		assert.Equal(t, "auto", po[tools.VKPublishPost])
 	})
 
 	t.Run("without project — project_approval_overrides marshals as {} not null", func(t *testing.T) {

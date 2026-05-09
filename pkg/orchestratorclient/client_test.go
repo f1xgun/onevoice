@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 func TestStreamChat_PostsToConversationURL(t *testing.T) {
@@ -99,10 +101,10 @@ func TestListTools_ParsesEntries(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("len(got) = %d, want 2", len(got))
 	}
-	if got[0].Name != "telegram__send_channel_post" || got[0].Platform != "telegram" || got[0].Floor != "manual" {
+	if got[0].Name != tools.TelegramSendChannelPost || got[0].Platform != "telegram" || got[0].Floor != "manual" {
 		t.Errorf("got[0] = %+v, want telegram entry", got[0])
 	}
-	if got[1].Name != "vk__publish_post" {
+	if got[1].Name != tools.VKPublishPost {
 		t.Errorf("got[1].Name = %q, want vk__publish_post", got[1].Name)
 	}
 }
@@ -114,7 +116,7 @@ func TestListToolNames_ReturnsSet(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"names": []string{"telegram__send_channel_post", "vk__publish_post"},
+			"names": []string{tools.TelegramSendChannelPost, tools.VKPublishPost},
 		})
 	}))
 	defer srv.Close()
@@ -127,10 +129,10 @@ func TestListToolNames_ReturnsSet(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("len(got) = %d, want 2", len(got))
 	}
-	if _, ok := got["telegram__send_channel_post"]; !ok {
+	if _, ok := got[tools.TelegramSendChannelPost]; !ok {
 		t.Error("missing telegram__send_channel_post in set")
 	}
-	if _, ok := got["vk__publish_post"]; !ok {
+	if _, ok := got[tools.VKPublishPost]; !ok {
 		t.Error("missing vk__publish_post in set")
 	}
 }
