@@ -14,6 +14,9 @@ Shared code imported by all services. Everything here is a Go library, not a sta
 | `health/` | Liveness/readiness probe helpers shared across services |
 | `metrics/` | Prometheus counters/histograms (LLM, tool dispatch, HTTP middleware) |
 | `tokenclient/` | HTTP client that fetches decrypted integration tokens from the API internal endpoint (used by platform agents) |
+| `orchestratorclient/` | HTTP client for the orchestrator's cluster-internal endpoints (chat stream, HITL resume, tool registry, draft-reply) — consumed by `services/api`. See [`orchestratorclient/AGENTS.md`](orchestratorclient/AGENTS.md). |
+| `agentbase/` | Shared `TokenResolver` / `Dispatcher` / `ErrorClassifier` / Redis-dedupe / env helpers consumed by all four platform agents (extracted from previous 4× duplications). See [`agentbase/AGENTS.md`](agentbase/AGENTS.md). |
+| `hitldedupe/` | Redis-backed dedupe client for HITL approvals (consumed by `agentbase.Dispatcher`) |
 
 ## Rules
 
