@@ -16,6 +16,7 @@
 'use client';
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { cn } from '@/lib/utils';
@@ -52,6 +53,7 @@ export function NoConnection({
   fullscreen,
   className,
 }: NoConnectionProps) {
+  const t = useTranslations('noConnection');
   const handleRetry = React.useCallback(() => {
     if (onRetry) {
       onRetry();
@@ -88,24 +90,22 @@ export function NoConnection({
         </span>
         <div>
           <h2 className="text-[19px] font-medium leading-snug tracking-[-0.005em] text-ink">
-            Не получается дотянуться до OneVoice
+            {t('heading')}
           </h2>
-          <p className="mt-1.5 text-sm leading-relaxed text-ink-mid">
-            Похоже, проблема на нашей стороне. Подождите немного и попробуйте снова.
-          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-ink-mid">{t('body')}</p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Button variant="primary" size="md" onClick={handleRetry}>
-            Попробовать снова
+            {t('retry')}
           </Button>
           {statusUrl && (
             <Button asChild variant="secondary" size="md">
-              <a href={statusUrl}>Открыть статус</a>
+              <a href={statusUrl}>{t('openStatus')}</a>
             </Button>
           )}
         </div>
         <MonoLabel className="mt-1 normal-case tracking-[0.02em]">
-          код: <span className="text-ink-mid">{code}</span>
+          {t('codeLabel')} <span className="text-ink-mid">{code}</span>
           {now && <span className="text-ink-mid"> · {now}</span>}
         </MonoLabel>
       </div>
