@@ -1,34 +1,19 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 )
 
 // Drafter tunable defaults / safety limits.
 const (
-	// reviewDrafterHTTPTimeout caps the per-call budget toward
-	// orchestrator /internal/draft-reply. 60s allows a slow LLM round-trip
-	// (cold-start + tokenization on cheap models can spike) without leaving
-	// the sync pass hanging if the provider is hard-down.
-	reviewDrafterHTTPTimeout = 60 * time.Second
-
-	// errorSnippetMaxBytes caps the bytes we read off a non-2xx response body
-	// for inclusion in the wrapped error. Keeps logs tidy and prevents an
-	// unbounded body from a misbehaving orchestrator from filling memory.
-	errorSnippetMaxBytes = 512
-
 	// defaultDraftMaxExamples / defaultDraftPerPassLimit are the fallback
 	// values applied when the constructor receives zero/negative inputs from
 	// config.
@@ -36,11 +21,11 @@ const (
 	defaultDraftPerPassLimit = 10
 )
 
-// DraftHTTPClient is the narrow http.Client surface ReviewDrafter needs.
-// http.Client satisfies it; tests pass a stub that returns canned responses
-// without binding sockets.
-type DraftHTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
+// DraftReplyClient is the narrow surface of *orchestratorclient.Client that
+// ReviewDrafter consumes. *orchestratorclient.Client satisfies it; tests pass
+// a stub that returns canned responses without binding sockets.
+type DraftReplyClient interface {
+	DraftReply(ctx context.Context, in orchestratorclient.DraftReplyRequest) (*orchestratorclient.DraftReplyResponse, error)
 }
 
 // ReviewDrafter generates AI reply drafts for pending reviews. It is wired
@@ -51,41 +36,43 @@ type DraftHTTPClient interface {
 // the api service intentionally does not import pkg/llm, keeping the
 // orchestrator as the single source of truth for provider routing, rate
 // limiting, and billing.
+//
+// Phase 19 / 19-MD-01: HTTP plumbing moved into pkg/orchestratorclient so
+// every api→orchestrator call shares a single Client + Transport pool.
 type ReviewDrafter struct {
-	reviewRepo      domain.ReviewRepository
-	businessRepo    domain.BusinessRepository
-	httpClient      DraftHTTPClient
-	orchestratorURL string
-	maxExamples     int
-	perPassLimit    int
+	reviewRepo   domain.ReviewRepository
+	businessRepo domain.BusinessRepository
+	orch         DraftReplyClient
+	maxExamples  int
+	perPassLimit int
 }
 
-// NewReviewDrafter constructs a drafter. orchestratorURL must NOT include
-// the path; the drafter appends "/internal/draft-reply". maxExamples and
-// perPassLimit are clamped to sensible defaults when ≤0.
+// NewReviewDrafter constructs a drafter. The supplied client must already be
+// bound to the orchestrator base URL — typically svcs.OrchClient (D-11
+// shared client). maxExamples and perPassLimit are clamped to sensible
+// defaults when ≤0. orch must be non-nil; passing nil panics so a wiring
+// regression surfaces at boot, not on the first sync tick.
 func NewReviewDrafter(
 	reviewRepo domain.ReviewRepository,
 	businessRepo domain.BusinessRepository,
-	httpClient DraftHTTPClient,
-	orchestratorURL string,
+	orch DraftReplyClient,
 	maxExamples, perPassLimit int,
 ) *ReviewDrafter {
+	if orch == nil {
+		panic("NewReviewDrafter: orch DraftReplyClient cannot be nil")
+	}
 	if maxExamples <= 0 {
 		maxExamples = defaultDraftMaxExamples
 	}
 	if perPassLimit <= 0 {
 		perPassLimit = defaultDraftPerPassLimit
 	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: reviewDrafterHTTPTimeout}
-	}
 	return &ReviewDrafter{
-		reviewRepo:      reviewRepo,
-		businessRepo:    businessRepo,
-		httpClient:      httpClient,
-		orchestratorURL: strings.TrimRight(orchestratorURL, "/"),
-		maxExamples:     maxExamples,
-		perPassLimit:    perPassLimit,
+		reviewRepo:   reviewRepo,
+		businessRepo: businessRepo,
+		orch:         orch,
+		maxExamples:  maxExamples,
+		perPassLimit: perPassLimit,
 	}
 }
 
@@ -147,7 +134,7 @@ func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Busine
 
 	// Build the request to the orchestrator. Examples are filtered to drop
 	// any that match the current review (stale data shouldn't loop back).
-	reqBody := draftReplyRequest{
+	reqBody := orchestratorclient.DraftReplyRequest{
 		BusinessID:          business.ID.String(),
 		BusinessName:        business.Name,
 		BusinessCategory:    business.Category,
@@ -178,35 +165,12 @@ func (d *ReviewDrafter) generateOne(ctx context.Context, business *domain.Busine
 	return nil
 }
 
-// callOrchestrator POSTs to /internal/draft-reply and returns the draft text.
-func (d *ReviewDrafter) callOrchestrator(ctx context.Context, body draftReplyRequest) (string, error) {
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
-	}
-
-	url := d.orchestratorURL + "/internal/draft-reply"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
-	if err != nil {
-		return "", fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := d.httpClient.Do(req)
+// callOrchestrator POSTs to /internal/draft-reply via the shared
+// orchestratorclient.Client and returns the draft text.
+func (d *ReviewDrafter) callOrchestrator(ctx context.Context, body orchestratorclient.DraftReplyRequest) (string, error) {
+	out, err := d.orch.DraftReply(ctx, body)
 	if err != nil {
 		return "", fmt.Errorf("post draft-reply: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Cap the body slurp so a misbehaving orchestrator can't OOM us.
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, errorSnippetMaxBytes))
-		return "", fmt.Errorf("orchestrator returned %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
-	}
-
-	var out draftReplyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
 	}
 	draft := strings.TrimSpace(out.DraftReply)
 	if draft == "" {
@@ -215,39 +179,11 @@ func (d *ReviewDrafter) callOrchestrator(ctx context.Context, body draftReplyReq
 	return draft, nil
 }
 
-// draftReplyRequest mirrors handler.DraftReplyRequest in services/orchestrator.
-// Duplicated to keep the api free of the orchestrator import (otherwise a
-// cyclic dep would form once the orchestrator imports pkg/domain types that
-// transitively reference api repository helpers).
-type draftReplyRequest struct {
-	BusinessID          string                `json:"businessId"`
-	BusinessName        string                `json:"businessName"`
-	BusinessCategory    string                `json:"businessCategory,omitempty"`
-	BusinessDescription string                `json:"businessDescription,omitempty"`
-	Platform            string                `json:"platform"`
-	ReviewText          string                `json:"reviewText"`
-	Rating              int                   `json:"rating"`
-	AuthorName          string                `json:"authorName,omitempty"`
-	Examples            []draftReplyExamplePB `json:"examples,omitempty"`
-}
-
-type draftReplyExamplePB struct {
-	ReviewText string `json:"reviewText"`
-	ReplyText  string `json:"replyText"`
-	Rating     int    `json:"rating,omitempty"`
-}
-
-type draftReplyResponse struct {
-	DraftReply string `json:"draftReply"`
-	Provider   string `json:"provider,omitempty"`
-	Model      string `json:"model,omitempty"`
-}
-
 // buildExamples projects domain.Review records into the wire shape and drops
 // the row matching skipID (so a row that just transitioned reply_status the
 // other way doesn't feed itself back as an example).
-func buildExamples(src []domain.Review, skipID string) []draftReplyExamplePB {
-	out := make([]draftReplyExamplePB, 0, len(src))
+func buildExamples(src []domain.Review, skipID string) []orchestratorclient.DraftReplyExample {
+	out := make([]orchestratorclient.DraftReplyExample, 0, len(src))
 	for i := range src {
 		ex := src[i]
 		if ex.ID == skipID {
@@ -256,7 +192,7 @@ func buildExamples(src []domain.Review, skipID string) []draftReplyExamplePB {
 		if strings.TrimSpace(ex.Text) == "" || strings.TrimSpace(ex.ReplyText) == "" {
 			continue
 		}
-		out = append(out, draftReplyExamplePB{
+		out = append(out, orchestratorclient.DraftReplyExample{
 			ReviewText: ex.Text,
 			ReplyText:  ex.ReplyText,
 			Rating:     ex.Rating,
