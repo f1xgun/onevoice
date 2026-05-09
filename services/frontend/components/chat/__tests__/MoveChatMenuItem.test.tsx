@@ -17,19 +17,22 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-// Mock axios-based API: listProjects + moveConversation.
-const listProjects = vi.fn<[], Promise<Project[]>>();
-const postMock = vi.fn<[string, unknown], Promise<{ data: unknown }>>();
-vi.mock('@/lib/api', () => ({
-  api: {
-    get: (url: string) => {
-      if (url === '/projects') return listProjects().then((data) => ({ data }));
-      return Promise.resolve({ data: null });
-    },
-    post: (url: string, body: unknown) => postMock(url, body),
+// Mock useBusinessStore so hooks get a stable activeBusinessId.
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'test-biz-id' }),
+}));
+
+// Mock bizApi — projects.ts and conversations.ts now use bizApi(bizId).verb(path).
+const bizApiGet = vi.fn();
+const bizApiPost = vi.fn();
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: (bizId: string) => ({
+    get: (path: string, config?: unknown) => bizApiGet(bizId, path, config),
+    post: (path: string, body?: unknown) => bizApiPost(bizId, path, body),
     put: vi.fn(),
     delete: vi.fn(),
-  },
+  }),
 }));
 
 const projectA: Project = {
@@ -82,13 +85,19 @@ async function openMenu(user: ReturnType<typeof userEvent.setup>) {
 describe('MoveChatMenuItem', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    listProjects.mockReset();
-    postMock.mockReset();
-    listProjects.mockResolvedValue([projectB, projectA]);
+    bizApiGet.mockReset();
+    bizApiPost.mockReset();
+    // Default: listProjects returns two projects.
+    bizApiGet.mockImplementation((_bizId: string, path: string) => {
+      if (path === '/projects') {
+        return Promise.resolve({ data: [projectB, projectA] });
+      }
+      return Promise.resolve({ data: null });
+    });
   });
 
   it('moves to «Без проекта» and shows a 5s success toast', async () => {
-    postMock.mockResolvedValue({
+    bizApiPost.mockResolvedValue({
       data: {
         id: 'c-1',
         userId: 'u-1',
@@ -96,7 +105,6 @@ describe('MoveChatMenuItem', () => {
         projectId: null,
         title: 'Chat',
         titleStatus: 'auto',
-        pinned: false,
         createdAt: '2026-04-18T00:00:00Z',
         updatedAt: '2026-04-18T00:00:00Z',
       },
@@ -110,7 +118,7 @@ describe('MoveChatMenuItem', () => {
     await user.click(unassigned);
 
     await waitFor(() => {
-      expect(postMock).toHaveBeenCalledWith('/conversations/c-1/move', {
+      expect(bizApiPost).toHaveBeenCalledWith('test-biz-id', '/conversations/c-1/move', {
         projectId: null,
       });
     });
@@ -127,7 +135,7 @@ describe('MoveChatMenuItem', () => {
   });
 
   it('moves to the chosen project with its id and sorts entries by name', async () => {
-    postMock.mockResolvedValue({
+    bizApiPost.mockResolvedValue({
       data: {
         id: 'c-1',
         userId: 'u-1',
@@ -135,7 +143,6 @@ describe('MoveChatMenuItem', () => {
         projectId: 'p-alpha',
         title: 'Chat',
         titleStatus: 'auto',
-        pinned: false,
         createdAt: '2026-04-18T00:00:00Z',
         updatedAt: '2026-04-18T00:00:00Z',
       },
@@ -150,7 +157,7 @@ describe('MoveChatMenuItem', () => {
     await user.click(alpha);
 
     await waitFor(() => {
-      expect(postMock).toHaveBeenCalledWith('/conversations/c-1/move', {
+      expect(bizApiPost).toHaveBeenCalledWith('test-biz-id', '/conversations/c-1/move', {
         projectId: 'p-alpha',
       });
     });
@@ -164,7 +171,7 @@ describe('MoveChatMenuItem', () => {
   });
 
   it('Undo button calls move with the previousProjectId', async () => {
-    postMock.mockResolvedValue({
+    bizApiPost.mockResolvedValue({
       data: {
         id: 'c-1',
         userId: 'u-1',
@@ -172,7 +179,6 @@ describe('MoveChatMenuItem', () => {
         projectId: 'p-beta',
         title: 'Chat',
         titleStatus: 'auto',
-        pinned: false,
         createdAt: '2026-04-18T00:00:00Z',
         updatedAt: '2026-04-18T00:00:00Z',
       },
@@ -196,7 +202,7 @@ describe('MoveChatMenuItem', () => {
     options.action.onClick();
 
     await waitFor(() => {
-      expect(postMock).toHaveBeenNthCalledWith(2, '/conversations/c-1/move', {
+      expect(bizApiPost).toHaveBeenNthCalledWith(2, 'test-biz-id', '/conversations/c-1/move', {
         projectId: 'p-alpha',
       });
     });

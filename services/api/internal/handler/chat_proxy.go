@@ -13,11 +13,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/chatproxy"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -145,9 +145,14 @@ type streamState struct {
 // persist → SSE stream → post-stream persist. HITL flow preserved
 // verbatim — see chatproxy/hitl_coordinator.go GateAction* doc.
 func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "Chat: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentCreate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	conversationID := chi.URLParam(r, "conversationID")
@@ -196,7 +201,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "message is required")
 		return
 	}
-	enriched, err := h.enricher.Enrich(r.Context(), userID, conversationID, req)
+	enriched, err := h.enricher.Enrich(r.Context(), bc.UserID, conversationID, req)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
@@ -221,7 +226,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cancelTaskOps()
 
-	orchBody, _ := json.Marshal(h.buildOrchRequest(userID, enriched, req))
+	orchBody, _ := json.Marshal(h.buildOrchRequest(bc.UserID, enriched, req))
 	streamErr := h.proxy.StreamChat(r.Context(), w, conversationID, orchBody, nil, func(ev chatproxy.SSEPayload) {
 		h.dispatchSSEEvent(taskOpsCtx, enriched.Business.ID.String(), state, idMap, ev)
 	})

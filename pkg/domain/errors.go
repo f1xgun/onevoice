@@ -65,6 +65,33 @@ var (
 	ErrProjectWhitelistMode       = errors.New("invalid whitelist mode")
 )
 
+// Membership errors — RBAC. Returned by BusinessMembershipRepository
+// implementations; map pgx.ErrNoRows → ErrMembershipNotFound, duplicate-key →
+// ErrMembershipExists.
+var (
+	ErrMembershipNotFound = errors.New("business membership not found")
+	ErrMembershipExists   = errors.New("business membership already exists")
+)
+
+// Role errors — RBAC. ErrSystemRoleImmutable is enforced by
+// handlers (PATCH/DELETE on a row with is_system=true returns
+// HTTP 422 system_role_immutable).
+var (
+	ErrRoleNotFound        = errors.New("role not found")
+	ErrSystemRoleImmutable = errors.New("system role is immutable")
+)
+
+// Invitation errors — RBAC. Handler maps states to HTTP codes:
+// ErrInvitationExpired/Revoked/Accepted → 410, ErrAlreadyMember → 409,
+// ErrInvitationNotFound → 404 (or treated as 410 via aliasing in handler).
+var (
+	ErrInvitationNotFound = errors.New("invitation not found")
+	ErrInvitationExpired  = errors.New("invitation expired")
+	ErrInvitationRevoked  = errors.New("invitation revoked")
+	ErrInvitationAccepted = errors.New("invitation already accepted")
+	ErrAlreadyMember      = errors.New("user is already a member of this business")
+)
+
 // Search sentinels.
 //
 // ErrInvalidScope is returned by SearchService.Search and the underlying

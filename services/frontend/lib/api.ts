@@ -3,6 +3,9 @@ import { API_BASE_URL, API_PATHS, API_STREAM_PATHS } from '@/lib/constants/apiPa
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { useAuthStore } from './auth';
 import type { User } from './auth';
+import { useBusinessStore } from '@/lib/stores/business';
+import { queryClient } from '@/lib/queryClient';
+import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -111,5 +114,28 @@ api.interceptors.response.use(
     } finally {
       refreshing = false;
     }
+  }
+);
+
+// 404 interceptor (D-16): on /businesses/{id}/... 404, the active business
+// is stale (server-side membership removed). Clear the store + re-fetch
+// the list. Phase 4 layers a switcher-redirect UX on top of this.
+api.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    const url = error.config?.url ?? '';
+    const status = error.response?.status;
+    const skipBusinessNotFound = error.config?.metadata?.skipBusinessNotFound === true;
+
+    if (
+      status === HTTP_STATUS.NOT_FOUND &&
+      url.startsWith('/businesses/') &&
+      !skipBusinessNotFound
+    ) {
+      useBusinessStore.getState().clear();
+      queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
+    }
+
+    return Promise.reject(error);
   }
 );

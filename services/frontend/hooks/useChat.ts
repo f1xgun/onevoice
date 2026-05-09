@@ -3,12 +3,18 @@
 // sibling `usePendingApprovalFlow`; SSE `tool_approval_required` and GET
 // /messages hydration both flow out through the `onApprovalRequired`
 // callback. Resume frames flow back via the public `appendSSEEvent`.
+//
+// RBAC (plan 02-09): all fetch URLs are business-scoped via the active
+// business id from `useBusinessStore`. The conversation list invalidation
+// uses `conversationsQueryKey(activeBusinessId)` so per-business cache
+// partitioning stays intact across SSE 'done' events.
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/auth';
-import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
+import { conversationsQueryKey } from '@/hooks/useConversations';
+import { API_BASE_URL } from '@/lib/constants/apiPaths';
 import { getTranslator } from '@/lib/i18n/translator';
 import { applySSEEvent, consumeSSEStream } from '@/lib/sse';
 import { trackEvent } from '@/lib/telemetry';
@@ -47,6 +53,23 @@ function normalizePendingApproval(raw: unknown): PendingApproval | null {
 // (D-AM-01: `usePendingApprovalFlow` keeps its own copy.)
 const tCommon = getTranslator('common');
 
+// Business-scoped URL builders. Kept inline here (rather than centralised
+// in API_STREAM_PATHS) because every call site needs to forward the
+// nullable activeBusinessId from the store and gracefully fall back to the
+// legacy non-scoped path when no business is active — moving the fallback
+// into the constants module would require duplicating both shapes there.
+function messagesUrl(activeBusinessId: string | null, conversationId: string): string {
+  return activeBusinessId
+    ? `${API_BASE_URL}/businesses/${activeBusinessId}/conversations/${conversationId}/messages`
+    : `${API_BASE_URL}/conversations/${conversationId}/messages`;
+}
+
+function chatUrl(activeBusinessId: string | null, conversationId: string): string {
+  return activeBusinessId
+    ? `${API_BASE_URL}/businesses/${activeBusinessId}/chat/${conversationId}`
+    : `${API_BASE_URL}/chat/${conversationId}`;
+}
+
 interface ApiToolCall {
   id: string;
   name: string;
@@ -80,9 +103,10 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
   const [isStreaming, setIsStreaming] = useState(false);
   const isStreamingRef = useRef(false);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const abortRef = useRef<AbortController | null>(null);
-  // SSE 'done' invalidates QUERY_KEYS.CONVERSATIONS for out-of-band
-  // auto-title pickup. NEVER mux titles into chat SSE.
+  // SSE 'done' invalidates conversationsQueryKey(activeBusinessId) for
+  // out-of-band auto-title pickup. NEVER mux titles into chat SSE.
   const queryClient = useQueryClient();
 
   // Stable ref for the parent's onApprovalRequired so the SSE-handler
@@ -98,7 +122,7 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
   // Sole /messages round trip; envelope's first batch fires onApprovalRequired.
   useEffect(() => {
     setIsLoading(true);
-    fetch(API_STREAM_PATHS.CONVERSATION_MESSAGES(conversationId), {
+    fetch(messagesUrl(activeBusinessId, conversationId), {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then((r) => {
@@ -160,7 +184,7 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, [conversationId, accessToken]);
+  }, [conversationId, accessToken, activeBusinessId]);
 
   // Stable ref for the SSE-event handler shared by sendMessage.
   const onEventRef = useRef<(event: Record<string, unknown>) => void>(() => {});
@@ -168,7 +192,11 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
   const handleSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
       if (event.type === 'done') {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
+        // Invalidate using the business-scoped key prefix so React Query
+        // refetches whichever conversation list is active (Plan 02-09).
+        queryClient.invalidateQueries({
+          queryKey: conversationsQueryKey(activeBusinessId),
+        });
       }
       if (event.type === 'tool_approval_required') {
         const rawCalls = (event.calls as Array<Record<string, unknown>>) ?? [];
@@ -195,7 +223,7 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
         return [...prev.slice(0, -1), applySSEEvent(last, event)];
       });
     },
-    [queryClient]
+    [queryClient, activeBusinessId]
   );
 
   // Rebind on every render so any captured handler picks up the latest closure.
@@ -234,7 +262,7 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
       abortRef.current = controller;
 
       try {
-        const response = await fetch(API_STREAM_PATHS.CHAT(conversationId), {
+        const response = await fetch(chatUrl(activeBusinessId, conversationId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -260,7 +288,7 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
         isStreamingRef.current = false;
       }
     },
-    [conversationId, accessToken]
+    [conversationId, accessToken, activeBusinessId]
   );
 
   // appendSSEEvent — public for the sibling `usePendingApprovalFlow` to
@@ -270,7 +298,9 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
   const appendSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
       if (event.type === 'done') {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
+        queryClient.invalidateQueries({
+          queryKey: conversationsQueryKey(activeBusinessId),
+        });
       }
       setMessages((prev) => {
         const last = prev[prev.length - 1];
@@ -278,7 +308,7 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
         return [...prev.slice(0, -1), applySSEEvent(last, event)];
       });
     },
-    [queryClient]
+    [queryClient, activeBusinessId]
   );
 
   const stop = useCallback(() => {

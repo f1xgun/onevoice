@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,21 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/uuid"
-
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
-
-// searchBusinessLookup is the narrow interface SearchHandler needs from
-// the business service. Lives here (not in business.go's wider
-// BusinessService) so the search handler is decoupled from the
-// tool-approvals path. Implemented by *service.BusinessService through
-// Go's structural typing.
-type searchBusinessLookup interface {
-	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
-}
 
 // SearchHandler implements
 // GET /api/v1/search?q=&project_id=&limit=20.
@@ -40,21 +28,17 @@ type searchBusinessLookup interface {
 // {user_id, business_id, query_length}. NEVER the literal query text.
 // NO `"query"` slog field key.
 type SearchHandler struct {
-	searcher       *service.Searcher
-	businessLookup searchBusinessLookup
+	searcher *service.Searcher
 }
 
-// NewSearchHandler — both deps are mandatory. Pattern parallels
-// NewConversationHandler (returns *Handler, error). Nil deps return a
+// NewSearchHandler — searcher dep is mandatory. Pattern parallels
+// NewConversationHandler (returns *Handler, error). Nil dep returns a
 // nil handler + descriptive error so cmd/main.go fails at boot.
-func NewSearchHandler(searcher *service.Searcher, biz searchBusinessLookup) (*SearchHandler, error) {
+func NewSearchHandler(searcher *service.Searcher) (*SearchHandler, error) {
 	if searcher == nil {
 		return nil, fmt.Errorf("NewSearchHandler: searcher cannot be nil")
 	}
-	if biz == nil {
-		return nil, fmt.Errorf("NewSearchHandler: businessLookup cannot be nil")
-	}
-	return &SearchHandler{searcher: searcher, businessLookup: biz}, nil
+	return &SearchHandler{searcher: searcher}, nil
 }
 
 // Search handles GET /api/v1/search.
@@ -67,7 +51,8 @@ func NewSearchHandler(searcher *service.Searcher, biz searchBusinessLookup) (*Se
 // Response:
 //   - 200 OK + JSON [SearchResult ...] on success
 //   - 400 on missing/short q
-//   - 401 on missing/invalid bearer
+//   - 403 on missing permission
+//   - 500 on missing BusinessContext (middleware misconfiguration)
 //   - 503 + Retry-After: 5 on cold-boot before indexes are ready
 //   - 500 on unexpected error or scope-guard surfacing (server-side bug)
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
@@ -77,23 +62,14 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "Search: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
-
-	biz, err := h.businessLookup.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusUnauthorized, "no business")
-			return
-		}
-		slog.ErrorContext(r.Context(), "search: failed to resolve business",
-			"user_id", userID.String(),
-			"query_length", len(q),
-			"error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -109,7 +85,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	results, err := h.searcher.Search(r.Context(), biz.ID.String(), userID.String(), q, projectID, limit)
+	results, err := h.searcher.Search(r.Context(), bc.BusinessID.String(), bc.UserID.String(), q, projectID, limit)
 	if errors.Is(err, domain.ErrSearchIndexNotReady) {
 		// The atomic.Bool flag
 		// in service.Searcher flips to true after EnsureSearchIndexes
@@ -125,8 +101,8 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		// must have introduced an empty-scope path — log loudly with
 		// metadata-only fields.
 		slog.ErrorContext(r.Context(), "search: invalid scope reached handler",
-			"user_id", userID.String(),
-			"business_id", biz.ID.String(),
+			"user_id", bc.UserID.String(),
+			"business_id", bc.BusinessID.String(),
 			"query_length", len(q))
 		writeJSONError(w, http.StatusInternalServerError, "scope error")
 		return
@@ -134,8 +110,8 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Metadata-only log — NEVER the query text.
 		slog.ErrorContext(r.Context(), "search failed",
-			"user_id", userID.String(),
-			"business_id", biz.ID.String(),
+			"user_id", bc.UserID.String(),
+			"business_id", bc.BusinessID.String(),
 			"query_length", len(q),
 			"error", err)
 		writeJSONError(w, http.StatusInternalServerError, "search failed")

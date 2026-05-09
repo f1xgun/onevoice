@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
@@ -22,11 +23,14 @@ const (
 	MaxReviewLimit     = 100
 )
 
-// ReviewService defines the interface for review operations used by handler
+// ReviewService defines the interface for review operations used by handler.
+// Phase 2 v2.0 RBAC: List/GetByID/Reply receive businessID (extracted from
+// /businesses/{id} URL by RequireBusinessAccess middleware); Refresh remains
+// userID-scoped because /reviews/refresh is auth-only (not business-scoped).
 type ReviewService interface {
-	List(ctx context.Context, userID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
-	GetByID(ctx context.Context, userID uuid.UUID, id string) (*domain.Review, error)
-	Reply(ctx context.Context, userID uuid.UUID, id string, replyText string) error
+	List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
+	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
+	Reply(ctx context.Context, businessID uuid.UUID, id string, replyText string) error
 	Refresh(ctx context.Context, userID uuid.UUID) error
 }
 
@@ -58,9 +62,14 @@ type ReplyToReviewRequest struct {
 
 // ListReviews handles GET /api/v1/reviews
 func (h *ReviewHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ListReviews: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -87,7 +96,7 @@ func (h *ReviewHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	reviews, total, err := h.reviewService.List(r.Context(), userID, filter)
+	reviews, total, err := h.reviewService.List(r.Context(), bc.BusinessID, filter)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
@@ -106,15 +115,20 @@ func (h *ReviewHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
 
 // GetReview handles GET /api/v1/reviews/{id}
 func (h *ReviewHandler) GetReview(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GetReview: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	id := chi.URLParam(r, "id")
 
-	review, err := h.reviewService.GetByID(r.Context(), userID, id)
+	review, err := h.reviewService.GetByID(r.Context(), bc.BusinessID, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrReviewNotFound) {
 			writeJSONError(w, http.StatusNotFound, "review not found")
@@ -134,9 +148,14 @@ func (h *ReviewHandler) GetReview(w http.ResponseWriter, r *http.Request) {
 
 // ReplyToReview handles PUT /api/v1/reviews/{id}/reply
 func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ReplyToReview: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -153,7 +172,7 @@ func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.reviewService.Reply(r.Context(), userID, id, req.ReplyText); err != nil {
+	if err := h.reviewService.Reply(r.Context(), bc.BusinessID, id, req.ReplyText); err != nil {
 		if errors.Is(err, domain.ErrReviewNotFound) {
 			writeJSONError(w, http.StatusNotFound, "review not found")
 			return

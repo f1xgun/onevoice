@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -25,10 +26,6 @@ func TestGetYandexAuthURL_ReturnsURL(t *testing.T) {
 	mockIntegration := new(MockOAuthIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-	}, nil)
 	mockOAuth.On("GenerateState", mock.Anything, service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: businessID,
@@ -42,7 +39,7 @@ func TestGetYandexAuthURL_ReturnsURL(t *testing.T) {
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", http.NoBody)
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.GetYandexAuthURL(rr, req)
@@ -71,19 +68,37 @@ func TestGetYandexAuthURL_ReturnsURL(t *testing.T) {
 		t.Errorf("expected state in URL, got: %s", authURL)
 	}
 
-	mockBusiness.AssertExpectations(t)
 	mockOAuth.AssertExpectations(t)
 }
 
-func TestGetYandexAuthURL_Unauthorized(t *testing.T) {
+// TestGetYandexAuthURL_NoBusinessContext: handler returns 500 when middleware
+// fails to seed BusinessContext (renamed from _Unauthorized).
+func TestGetYandexAuthURL_NoBusinessContext(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.GetYandexAuthURL(rr, req)
 
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rr.Code)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rr.Code)
+	}
+}
+
+// TestGetYandexAuthURL_Forbidden: BusinessContext present but missing
+// PermIntegrationsConnect → 403.
+func TestGetYandexAuthURL_Forbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth/yandex", http.NoBody)
+	req = req.WithContext(oauthBizCtx(businessID, userID /* no perms */))
+	rr := httptest.NewRecorder()
+	h.GetYandexAuthURL(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rr.Code)
 	}
 }
 

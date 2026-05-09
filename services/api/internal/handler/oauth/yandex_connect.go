@@ -14,9 +14,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/yandexcookies"
 )
@@ -51,8 +51,8 @@ type yandexProbeResponse struct {
 // user pastes. Always returns 200 (the "ok" field carries the verdict);
 // HTTP errors here would be misread by the UI as network failures.
 func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Request) {
-	if _, err := middleware.GetUserID(r.Context()); err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -106,9 +106,15 @@ type connectYandexRequest struct {
 // ConnectYandexBusiness persists pasted Yandex cookies as a new active
 // integration. Mirrors ConnectTelegram / VK community connect.
 func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ConnectYandexBusiness: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -121,17 +127,6 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 	parsed, err := yandexcookies.Parse(req.Cookies)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("failed to get business for Yandex connect", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -152,7 +147,7 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 	}
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
-		BusinessID:  business.ID,
+		BusinessID:  bc.BusinessID,
 		Platform:    a2a.AgentYandexBusiness,
 		ExternalID:  externalID,
 		AccessToken: parsed.JSON(),
@@ -184,11 +179,18 @@ type yandexCompanyEntry struct {
 // for the duration of the Playwright run (~25–45s). Drives the connect
 // modal's company picker.
 func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ListYandexCompanies: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
 	if h.taskPublisher == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "agent task publisher not configured")
 		return
@@ -205,25 +207,15 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
 	toolReq := a2a.ToolRequest{
 		TaskID:     uuid.NewString(),
 		Tool:       tools.YandexBusinessListCompanies,
 		Args:       map[string]any{"cookies": parsed.JSON()},
-		BusinessID: business.ID.String(),
+		BusinessID: bc.BusinessID.String(),
 	}
 	resp, callErr := h.taskPublisher.RequestTool(r.Context(), a2a.Subject(a2a.AgentYandexBusiness), toolReq, yandexListCompaniesTimeout)
 	if callErr != nil {
-		slog.Info("yandex list companies: agent call failed", "business_id", business.ID, "error", callErr)
+		slog.Info("yandex list companies: agent call failed", "business_id", bc.BusinessID, "error", callErr)
 		writeJSONError(w, http.StatusBadGateway, "не удалось получить список организаций — попробуйте ещё раз")
 		return
 	}
@@ -262,11 +254,18 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 //
 // Lookup failures are non-fatal: logged, integration left untouched.
 func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "RefreshYandexBusinessName: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
 	if h.taskPublisher == nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "agent task publisher not configured")
 		return
@@ -279,13 +278,7 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, a2a.AgentYandexBusiness)
+	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), bc.BusinessID, a2a.AgentYandexBusiness)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
@@ -306,7 +299,7 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 	// takes 20–40s, easily longer than axios's idle timeout, and the work
 	// must complete even if the user navigates away mid-flight.
 	bgCtx, bgCancel := context.WithTimeout(context.Background(), yandexListCompaniesTimeout+15*time.Second)
-	go h.runYandexListCompaniesRefresh(bgCtx, bgCancel, integrationID, *target, business.ID)
+	go h.runYandexListCompaniesRefresh(bgCtx, bgCancel, integrationID, *target, bc.BusinessID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)

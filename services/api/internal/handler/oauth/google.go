@@ -3,7 +3,6 @@ package oauth
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,35 +11,29 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // --- Google Business Profile OAuth ---
 
-// GetGoogleAuthURL generates a Google OAuth2 authorization URL (JWT required).
+// GetGoogleAuthURL generates a Google OAuth2 authorization URL (PermIntegrationsConnect required).
 func (h *OAuthHandler) GetGoogleAuthURL(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GetGoogleAuthURL: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "failed to get business for Google OAuth", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	state, err := h.oauthService.GenerateState(r.Context(), service.OAuthStateData{
-		UserID:     userID,
-		BusinessID: business.ID,
+		UserID:     bc.UserID,
+		BusinessID: bc.BusinessID,
 		Platform:   a2a.AgentGoogleBusiness,
 	})
 	if err != nil {
@@ -244,26 +237,21 @@ func (h *OAuthHandler) googleDiscoverLocations(ctx context.Context, accessToken,
 	return result.Locations, nil
 }
 
-// GoogleLocations returns discovered locations from temp token data in Redis (JWT required).
+// GoogleLocations returns discovered locations from temp token data in Redis (PermIntegrationsConnect required).
 func (h *OAuthHandler) GoogleLocations(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GoogleLocations: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "failed to get business for Google locations", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
-	redisKey := "google_temp:" + business.ID.String()
+	redisKey := "google_temp:" + bc.BusinessID.String()
 	val, err := h.redis.Get(r.Context(), redisKey).Result()
 	if err != nil {
 		writeJSONError(w, http.StatusGone, "Google session expired, please reconnect")
@@ -287,11 +275,17 @@ type googleSelectLocationRequest struct {
 	LocationID string `json:"location_id"`
 }
 
-// GoogleSelectLocation connects the selected Google Business location (JWT required, POST).
+// GoogleSelectLocation connects the selected Google Business location (PermIntegrationsConnect required, POST).
 func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GoogleSelectLocation: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -306,18 +300,7 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "failed to get business for Google select location", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	redisKey := "google_temp:" + business.ID.String()
+	redisKey := "google_temp:" + bc.BusinessID.String()
 	val, err := h.redis.Get(r.Context(), redisKey).Result()
 	if err != nil {
 		writeJSONError(w, http.StatusGone, "Google session expired, please reconnect")
@@ -347,7 +330,7 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 
 	expiresAt := time.Now().Add(time.Duration(tempData.ExpiresIn) * time.Second)
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
-		BusinessID:   business.ID,
+		BusinessID:   bc.BusinessID,
 		Platform:     a2a.AgentGoogleBusiness,
 		ExternalID:   req.LocationID,
 		AccessToken:  tempData.AccessToken,

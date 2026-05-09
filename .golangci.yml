@@ -1,5 +1,9 @@
 version: "2"
 
+# NOTE: lint-rbac runs as a standalone CLI via `make lint-rbac` (tools/lint-rbac/).
+# A custom golangci-lint plugin entry (linters-settings.custom.rbac) is reserved
+# for v2.1 once Go's plugin loading stabilises across macOS arm64.
+
 run:
   timeout: 5m
 

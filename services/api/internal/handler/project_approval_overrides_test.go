@@ -13,10 +13,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -57,39 +57,26 @@ func (s *stubProjectSvc) CountConversations(_ context.Context, _, _ uuid.UUID) (
 	return 0, nil
 }
 
-// stubBusinessSvcProj implements handler.BusinessService for project-test
-// dependencies; returns a Business for any userID.
-type stubBusinessSvcProj struct {
-	biz *domain.Business
+// projBizCtx seeds a BusinessContext with full content permissions for
+// project approval-overrides tests.
+func projBizCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID: businessID,
+		UserID:     userID,
+		RoleID:     uuid.New(),
+		Permissions: []authz.Permission{
+			authz.PermContentRead,
+			authz.PermContentCreate,
+			authz.PermContentUpdate,
+			authz.PermContentDelete,
+		},
+	})
 }
 
-func (s *stubBusinessSvcProj) Create(_ context.Context, _ *domain.Business) (*domain.Business, error) {
-	return nil, nil
-}
-func (s *stubBusinessSvcProj) GetByUserID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-	if s.biz == nil {
-		return nil, domain.ErrBusinessNotFound
-	}
-	return s.biz, nil
-}
-func (s *stubBusinessSvcProj) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-	return nil, domain.ErrBusinessNotFound
-}
-func (s *stubBusinessSvcProj) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
-	return nil, nil
-}
-func (s *stubBusinessSvcProj) GetToolApprovals(_ context.Context, _, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
-	return map[string]domain.ToolFloor{}, nil
-}
-func (s *stubBusinessSvcProj) UpdateToolApprovals(_ context.Context, _, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
-	return nil
-}
-
-func servePUTProject(t *testing.T, h *handler.ProjectHandler, projectID, userID uuid.UUID, body []byte) *httptest.ResponseRecorder {
+func servePUTProject(t *testing.T, h *handler.ProjectHandler, projectID, businessID, userID uuid.UUID, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/projects/"+projectID.String(), bytes.NewReader(body))
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
-	req = req.WithContext(ctx)
+	req = req.WithContext(projBizCtx(businessID, userID))
 	r := chi.NewRouter()
 	r.Put("/api/v1/projects/{id}", h.Update)
 	rec := httptest.NewRecorder()
@@ -105,8 +92,7 @@ func TestUpdateProject_WithApprovalOverrides_Persists(t *testing.T) {
 	userID := uuid.New()
 	projID := uuid.New()
 	svc := &stubProjectSvc{}
-	bizSvc := &stubBusinessSvcProj{biz: &domain.Business{ID: bizID, UserID: userID}}
-	h, err := handler.NewProjectHandler(svc, bizSvc)
+	h, err := handler.NewProjectHandler(svc)
 	require.NoError(t, err)
 	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost, tools.VKPublishPost))
 
@@ -118,7 +104,7 @@ func TestUpdateProject_WithApprovalOverrides_Persists(t *testing.T) {
 			tools.VKPublishPost:           "auto",
 		},
 	})
-	rec := servePUTProject(t, h, projID, userID, body)
+	rec := servePUTProject(t, h, projID, bizID, userID, body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
@@ -140,8 +126,7 @@ func TestUpdateProject_ApprovalOverridesUnknownTool_Returns400(t *testing.T) {
 	userID := uuid.New()
 	projID := uuid.New()
 	svc := &stubProjectSvc{}
-	bizSvc := &stubBusinessSvcProj{biz: &domain.Business{ID: bizID, UserID: userID}}
-	h, err := handler.NewProjectHandler(svc, bizSvc)
+	h, err := handler.NewProjectHandler(svc)
 	require.NoError(t, err)
 	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
@@ -150,7 +135,7 @@ func TestUpdateProject_ApprovalOverridesUnknownTool_Returns400(t *testing.T) {
 		"whitelistMode":     "all",
 		"approvalOverrides": map[string]string{"ghost_tool": "manual"},
 	})
-	rec := servePUTProject(t, h, projID, userID, body)
+	rec := servePUTProject(t, h, projID, bizID, userID, body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
@@ -170,8 +155,7 @@ func TestUpdateProject_ApprovalOverridesInheritValue_EncodedAsAbsence(t *testing
 	userID := uuid.New()
 	projID := uuid.New()
 	svc := &stubProjectSvc{}
-	bizSvc := &stubBusinessSvcProj{biz: &domain.Business{ID: bizID, UserID: userID}}
-	h, err := handler.NewProjectHandler(svc, bizSvc)
+	h, err := handler.NewProjectHandler(svc)
 	require.NoError(t, err)
 	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost, tools.VKPublishPost))
 
@@ -183,7 +167,7 @@ func TestUpdateProject_ApprovalOverridesInheritValue_EncodedAsAbsence(t *testing
 			tools.VKPublishPost:           "inherit",
 		},
 	})
-	rec := servePUTProject(t, h, projID, userID, body)
+	rec := servePUTProject(t, h, projID, bizID, userID, body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
@@ -204,8 +188,7 @@ func TestUpdateProject_ApprovalOverridesInvalidValue_Returns400(t *testing.T) {
 	userID := uuid.New()
 	projID := uuid.New()
 	svc := &stubProjectSvc{}
-	bizSvc := &stubBusinessSvcProj{biz: &domain.Business{ID: bizID, UserID: userID}}
-	h, err := handler.NewProjectHandler(svc, bizSvc)
+	h, err := handler.NewProjectHandler(svc)
 	require.NoError(t, err)
 	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
@@ -214,7 +197,7 @@ func TestUpdateProject_ApprovalOverridesInvalidValue_Returns400(t *testing.T) {
 		"whitelistMode":     "all",
 		"approvalOverrides": map[string]string{tools.TelegramSendChannelPost: "forbidden"},
 	})
-	rec := servePUTProject(t, h, projID, userID, body)
+	rec := servePUTProject(t, h, projID, bizID, userID, body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}

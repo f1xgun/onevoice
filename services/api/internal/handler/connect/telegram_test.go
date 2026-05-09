@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -156,7 +157,6 @@ func TestConnectTelegram_LinkedGroupOK(t *testing.T) {
 	mockIntegration := new(MockConnectIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{ID: businessID, UserID: userID}, nil)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		status, _ := p.Metadata["linked_group_status"].(string)
 		linkedID, _ := p.Metadata["linked_chat_id"].(int64)
@@ -169,7 +169,7 @@ func TestConnectTelegram_LinkedGroupOK(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
 		strings.NewReader(`{"channel_id":"@mychannel"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectTelegram(rr, req)
@@ -191,7 +191,6 @@ func TestRefreshTelegramLinkedGroup_Success(t *testing.T) {
 	mockIntegration := new(MockConnectIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{ID: businessID, UserID: userID}, nil)
 	mockIntegration.On("ListByBusinessAndPlatform", mock.Anything, businessID, "telegram").Return([]domain.Integration{
 		{
 			ID:         integrationID,
@@ -219,7 +218,7 @@ func TestRefreshTelegramLinkedGroup_Success(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/integrations/telegram/refresh",
 		strings.NewReader(`{"channel_id":"@mychannel"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.RefreshTelegramLinkedGroup(rr, req)
@@ -245,7 +244,6 @@ func TestRefreshTelegramLinkedGroup_IntegrationNotFound(t *testing.T) {
 	mockIntegration := new(MockConnectIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{ID: businessID, UserID: userID}, nil)
 	mockIntegration.On("ListByBusinessAndPlatform", mock.Anything, businessID, "telegram").Return([]domain.Integration{
 		{ID: uuid.New(), BusinessID: businessID, Platform: "telegram", ExternalID: "@someone_else"},
 	}, nil)
@@ -255,7 +253,7 @@ func TestRefreshTelegramLinkedGroup_IntegrationNotFound(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/integrations/telegram/refresh",
 		strings.NewReader(`{"channel_id":"@mychannel"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.RefreshTelegramLinkedGroup(rr, req)
@@ -275,7 +273,6 @@ func TestConnectTelegram_LinkedGroupBotNotMember(t *testing.T) {
 	mockIntegration := new(MockConnectIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{ID: businessID, UserID: userID}, nil)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		status, _ := p.Metadata["linked_group_status"].(string)
 		return status == "bot_not_member"
@@ -287,7 +284,7 @@ func TestConnectTelegram_LinkedGroupBotNotMember(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect",
 		strings.NewReader(`{"channel_id":"@mychannel"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectTelegram(rr, req)
@@ -309,10 +306,6 @@ func TestConnectTelegram_Success(t *testing.T) {
 	mockIntegration := new(MockConnectIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-	}, nil)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
 		title, _ := p.Metadata["channel_title"].(string)
 		linkedStatus, _ := p.Metadata["linked_group_status"].(string)
@@ -335,7 +328,7 @@ func TestConnectTelegram_Success(t *testing.T) {
 	reqBody := `{"channel_id":"@mychannel","telegram_user_id":"12345"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectTelegram(rr, req)
@@ -344,7 +337,6 @@ func TestConnectTelegram_Success(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	mockBusiness.AssertExpectations(t)
 	mockIntegration.AssertExpectations(t)
 }
 
@@ -356,10 +348,6 @@ func TestConnectTelegram_BotNoAccess(t *testing.T) {
 	businessID := uuid.New()
 
 	mockBusiness := new(MockBusinessService)
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-	}, nil)
 
 	cfg := ConnectConfig{
 		TelegramBotToken:   "bot_token_123",
@@ -370,7 +358,7 @@ func TestConnectTelegram_BotNoAccess(t *testing.T) {
 	reqBody := `{"channel_id":"-1001234567890"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectTelegram(rr, req)
@@ -393,17 +381,13 @@ func TestConnectTelegram_MissingChannelID(t *testing.T) {
 	businessID := uuid.New()
 
 	mockBusiness := new(MockBusinessService)
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-	}, nil)
 
 	h := NewConnectHandler(new(MockConnectIntegrationService), mockBusiness, ConnectConfig{}, nil)
 
 	reqBody := `{"telegram_user_id":"12345"}`
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(connectBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.ConnectTelegram(rr, req)
@@ -413,15 +397,38 @@ func TestConnectTelegram_MissingChannelID(t *testing.T) {
 	}
 }
 
-func TestConnectTelegram_Unauthorized(t *testing.T) {
+// TestConnectTelegram_NoBusinessContext: handler returns 500 when middleware
+// fails to seed BusinessContext. Renamed from _Unauthorized: under the
+// post-PR-#76 v2.0 RBAC contract, JWT presence is enforced by middleware
+// (which also seeds BusinessContext). When tests bypass middleware and call
+// the handler directly without BusinessContext, the handler treats this as a
+// middleware misconfiguration (500), not as an unauthenticated user (401).
+func TestConnectTelegram_NoBusinessContext(t *testing.T) {
 	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(`{"channel_id":"@ch"}`))
-	// no user in context
+	// no BusinessContext seeded
 	rr := httptest.NewRecorder()
 	h.ConnectTelegram(rr, req)
 
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rr.Code)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rr.Code)
+	}
+}
+
+// TestConnectTelegram_Forbidden: BusinessContext present but missing
+// PermIntegrationsConnect → 403 from authz.Can guard.
+func TestConnectTelegram_Forbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	h := NewConnectHandler(new(MockConnectIntegrationService), new(MockBusinessService), ConnectConfig{}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/oauth/telegram/connect", strings.NewReader(`{"channel_id":"@ch"}`))
+	req = req.WithContext(connectBizCtx(businessID, userID /* no perms */))
+	rr := httptest.NewRecorder()
+	h.ConnectTelegram(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rr.Code)
 	}
 }

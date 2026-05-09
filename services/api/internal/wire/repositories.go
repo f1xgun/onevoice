@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
@@ -10,15 +11,22 @@ import (
 // Fields use the domain interface types (not concrete repository pointers)
 // so handlers and services stay decoupled from the postgres/mongo split.
 type Repos struct {
-	User         domain.UserRepository
-	Business     domain.BusinessRepository
-	Integration  domain.IntegrationRepository
-	Conversation domain.ConversationRepository
-	Message      domain.MessageRepository
-	Review       domain.ReviewRepository
-	Post         domain.PostRepository
-	AgentTask    domain.AgentTaskRepository
-	Project      domain.ProjectRepository
+	User               domain.UserRepository
+	Business           domain.BusinessRepository
+	BusinessMembership domain.BusinessMembershipRepository
+	Role               domain.RoleRepository
+	Integration        domain.IntegrationRepository
+	Conversation       domain.ConversationRepository
+	Message            domain.MessageRepository
+	Review             domain.ReviewRepository
+	Post               domain.PostRepository
+	AgentTask          domain.AgentTaskRepository
+	Project            domain.ProjectRepository
+
+	// MembershipLoader backs the authz cache (Phase 2 v2.0 RBAC). Same
+	// query surface as BusinessMembership but exposed as the typed
+	// authz.MembershipLoader interface to keep the cache decoupled.
+	MembershipLoader authz.MembershipLoader
 }
 
 // Repositories constructs every domain repository against the connections
@@ -27,14 +35,17 @@ type Repos struct {
 // without failure modes (Mongo-backed repos).
 func Repositories(h *DBHandles) *Repos {
 	return &Repos{
-		User:         repository.NewUserRepository(h.PG),
-		Business:     repository.NewBusinessRepository(h.PG),
-		Integration:  repository.NewIntegrationRepository(h.PG),
-		Conversation: repository.NewConversationRepository(h.Mongo),
-		Message:      repository.NewMessageRepository(h.Mongo),
-		Review:       repository.NewReviewRepository(h.Mongo),
-		Post:         repository.NewPostRepository(h.Mongo),
-		AgentTask:    repository.NewAgentTaskRepository(h.Mongo),
-		Project:      repository.NewProjectRepository(h.PG, h.Mongo),
+		User:               repository.NewUserRepository(h.PG),
+		Business:           repository.NewBusinessRepository(h.PG),
+		BusinessMembership: repository.NewBusinessMembershipRepository(h.PG),
+		Role:               repository.NewRoleRepository(h.PG),
+		Integration:        repository.NewIntegrationRepository(h.PG),
+		Conversation:       repository.NewConversationRepository(h.Mongo),
+		Message:            repository.NewMessageRepository(h.Mongo),
+		Review:             repository.NewReviewRepository(h.Mongo),
+		Post:               repository.NewPostRepository(h.Mongo),
+		AgentTask:          repository.NewAgentTaskRepository(h.Mongo),
+		Project:            repository.NewProjectRepository(h.PG, h.Mongo),
+		MembershipLoader:   repository.NewMembershipLoader(h.PG),
 	}
 }

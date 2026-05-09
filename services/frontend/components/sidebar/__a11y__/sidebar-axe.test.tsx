@@ -10,7 +10,6 @@ import { SidebarSearch } from '@/components/sidebar/SidebarSearch';
 import { ProjectSection } from '@/components/sidebar/ProjectSection';
 import type { Project } from '@/types/project';
 import type { Conversation } from '@/lib/conversations';
-import { API_PATHS } from '@/lib/constants/apiPaths';
 
 // axe-core a11y audit.
 //
@@ -51,30 +50,37 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
-const apiGet = vi.fn();
-const apiPost = vi.fn();
-vi.mock('@/lib/api', () => ({
-  api: {
-    get: (...args: unknown[]) => apiGet(...args),
-    post: (...args: unknown[]) => apiPost(...args),
-    put: vi.fn(),
-    delete: vi.fn(),
-  },
+const BUSINESS_ID = 'biz-1';
+
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string }) => unknown) =>
+    selector({ activeBusinessId: BUSINESS_ID }),
 }));
 
-// useConversations / useProjects rely on api.get; default to safe values.
+const bizApiGet = vi.fn();
+const bizApiPost = vi.fn();
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: () => ({
+    get: (...args: unknown[]) => bizApiGet(...args),
+    post: (...args: unknown[]) => bizApiPost(...args),
+    put: vi.fn(),
+    delete: vi.fn(),
+  }),
+}));
+
+// useConversations / useProjects / SidebarSearch rely on bizApi.get; default to safe values.
 function setupDefaultApi() {
-  apiGet.mockImplementation((url: string) => {
-    if (url === API_PATHS.BUSINESS.ROOT) {
-      return Promise.resolve({ data: { id: 'biz-1', name: 'Business' } });
-    }
-    if (url === API_PATHS.CONVERSATIONS.ROOT) {
+  bizApiGet.mockImplementation((url: string) => {
+    if (url === '/conversations') {
       return Promise.resolve({ data: [] });
     }
     if (url === '/projects') {
       return Promise.resolve({ data: [] });
     }
     if (url === '/search') {
+      return Promise.resolve({ data: [] });
+    }
+    if (url === '/integrations') {
       return Promise.resolve({ data: [] });
     }
     return Promise.resolve({ data: null });
@@ -152,8 +158,8 @@ function makeConv(id: string, title: string): Conversation {
 
 describe('a11y audit — sidebar surfaces (BLOCKING — critical+serious only)', () => {
   beforeEach(() => {
-    apiGet.mockReset();
-    apiPost.mockReset();
+    bizApiGet.mockReset();
+    bizApiPost.mockReset();
     setupDefaultApi();
     pathnameValue = '/chat';
   });

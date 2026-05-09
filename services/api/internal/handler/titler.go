@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -73,9 +73,14 @@ func NewTitlerHandler(
 //     it's canceled at HTTP response close, the cheap-LLM call takes 3-8s).
 //  8. respond 200 (empty body) — fire-and-forget.
 func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "RegenerateTitle: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -90,7 +95,7 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	if conv.UserID != userID.String() {
+	if conv.UserID != bc.UserID.String() {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}

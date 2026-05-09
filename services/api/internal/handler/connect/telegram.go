@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,8 +16,8 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -157,28 +156,23 @@ func (h *ConnectHandler) probeTelegramLinkedGroup(botToken string, linkedChatID 
 	return "ok"
 }
 
-// ConnectTelegram stores a Telegram channel integration using the system bot token (JWT required).
+// ConnectTelegram stores a Telegram channel integration using the system bot token (PermIntegrationsConnect required).
 func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ConnectTelegram: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	var req connectTelegramRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("failed to get business for Telegram connect", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -209,7 +203,7 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 	}
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
-		BusinessID:  business.ID,
+		BusinessID:  bc.BusinessID,
 		Platform:    a2a.AgentTelegram,
 		ExternalID:  req.ChannelID,
 		AccessToken: h.cfg.TelegramBotToken,
@@ -230,9 +224,15 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 // the bot into the discussion group and wants the UI warning to clear
 // without a full disconnect/reconnect cycle.
 func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "RefreshTelegramLinkedGroup: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -246,19 +246,8 @@ func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *ht
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("failed to get business for Telegram refresh", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
 	// Find the specific integration by external_id.
-	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), business.ID, a2a.AgentTelegram)
+	integrations, err := h.integrationService.ListByBusinessAndPlatform(r.Context(), bc.BusinessID, a2a.AgentTelegram)
 	if err != nil {
 		slog.Error("failed to list telegram integrations for refresh", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
