@@ -20,9 +20,11 @@ flowchart TB
         review2["Проверка отзывов<br/>2ГИС"]
         review3["Проверка сообщений<br/>VK"]
         review4["Проверка сообщений<br/>Telegram"]
+
+        fragment["Фрагментированный цикл<br/>на каждой площадке"]
     end
 
-    subgraph problems["Выявленные недостатки"]
+    subgraph problems["Общие недостатки процесса<br/>(характерны для модели в целом)"]
         direction LR
         p1["Нет эталонного<br/>источника данных"]
         p2["Риск рассогласования<br/>между площадками"]
@@ -31,20 +33,21 @@ flowchart TB
     end
 
     owner --> change
-    change --> login1 --> update1 --> review1
-    change --> login2 --> update2 --> review2
-    change --> login3 --> update3 --> review3
-    change --> login4 --> update4 --> review4
+    change --> login1 --> update1 --> review1 --> fragment
+    change --> login2 --> update2 --> review2 --> fragment
+    change --> login3 --> update3 --> review3 --> fragment
+    change --> login4 --> update4 --> review4 --> fragment
 
-    review1 -.-> p1
-    review2 -.-> p2
-    review3 -.-> p3
-    review4 -.-> p4
+    fragment -.-> p1
+    fragment -.-> p2
+    fragment -.-> p3
+    fragment -.-> p4
 
     style owner fill:#e0e0e0,stroke:#333,color:#000,stroke-width:2px
     style change fill:#d0d0d0,stroke:#333,color:#000,stroke-width:2px
     style manual fill:#fafafa,stroke:#666,stroke-width:1px
     style problems fill:#f5f5f5,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+    style fragment fill:#ececec,stroke:#333,color:#000,stroke-width:2px
 
     style login1 fill:#fff,stroke:#666
     style login2 fill:#fff,stroke:#666
