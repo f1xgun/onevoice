@@ -8,7 +8,7 @@
 // word in the content that starts with "отзыв" (case-insensitive),
 // covering "отзыв", "отзывы", "отзыва", "отзывов", … in one rule.
 // We deliberately do NOT use Russian Snowball — its asymmetric stem
-// behaviour ("отзыв" vs "отзывы") was the bug that motivated v20.
+// behavior ("отзыв" vs "отзывы") was the bug that motivated v20.
 // Prefix matching gives morphological recall over inflectional suffixes
 // (which is most of Russian noun/verb morphology) without the asymmetry.
 package service

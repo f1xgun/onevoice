@@ -51,4 +51,3 @@ func EnsureSearchIndexes(ctx context.Context, db *mongo.Database) error {
 	dropLegacy(msgs, "messages_content_text_v20")
 	return nil
 }
-
