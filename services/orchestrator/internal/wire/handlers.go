@@ -32,7 +32,7 @@ type HandlerSet struct {
 // Handlers builds every HTTP handler the orchestrator serves and returns them
 // in a HandlerSet. Mirrors the historical block at services/orchestrator/cmd/
 // main.go:131-155 — same constructor calls, same dependency wiring, no
-// behaviour change.
+// behavior change.
 func Handlers(orch *orchestrator.Orchestrator, registry *toolregistry.Registry, router *llm.Router, cfg *config.Config) *HandlerSet {
 	return &HandlerSet{
 		Chat:       handler.NewChatHandler(orch, cfg.LLMModel),
