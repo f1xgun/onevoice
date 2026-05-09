@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
@@ -37,14 +38,17 @@ const DEFAULT_SCHEDULE: ScheduleDay[] = [
   { day: 'sun', open: '10:00', close: '20:00', closed: true },
 ];
 
+// Day-of-week labels for the weekly hours grid. Resolved once at module
+// load via the module-level translator — same pattern as lib/tones.ts.
+const tDays = getTranslator('business.daysOfWeek');
 const DAY_LABELS: Record<ScheduleDay['day'], string> = {
-  mon: 'Понедельник',
-  tue: 'Вторник',
-  wed: 'Среда',
-  thu: 'Четверг',
-  fri: 'Пятница',
-  sat: 'Суббота',
-  sun: 'Воскресенье',
+  mon: tDays('mon'),
+  tue: tDays('tue'),
+  wed: tDays('wed'),
+  thu: tDays('thu'),
+  fri: tDays('fri'),
+  sat: tDays('sat'),
+  sun: tDays('sun'),
 };
 
 interface SchedulePayload {
