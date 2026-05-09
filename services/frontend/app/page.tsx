@@ -10,6 +10,7 @@
 
 import Link from 'next/link';
 import { ArrowRight, Calendar } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -497,25 +498,18 @@ function Platforms() {
 // ─── Quote ────────────────────────────────────────────────────────────
 
 function Quote() {
+  const t = useTranslations('landing.quote');
   return (
     <section className="border-b border-line-soft">
       <div className="mx-auto w-full max-w-[880px] px-6 py-28 sm:px-12">
-        <MonoLabel>Из писем</MonoLabel>
-        <blockquote
+        <MonoLabel>{t('label')}</MonoLabel>
+        <p
           className="mt-6 text-pretty text-[26px] font-normal leading-snug tracking-[-0.015em] text-ink sm:text-[32px]"
           style={{ fontFamily: SERIF, fontStyle: 'italic' }}
         >
-          «Раньше я открывала пять вкладок, чтобы понять, где у меня сегодня пожар. Теперь смотрю в
-          один ящик — и вижу, что OneVoice уже ответил на половину, а с другой половиной просит мою
-          подпись.»
-        </blockquote>
-        <div className="mt-7 flex items-center gap-3">
-          <ChannelMark name="You" size={36} />
-          <div>
-            <div className="text-[14px] font-medium">Татьяна Б.</div>
-            <MonoLabel>Кофейня «Мята», Москва · с нами 6 месяцев</MonoLabel>
-          </div>
-        </div>
+          {t('body')}
+        </p>
+        <p className="mt-7 text-[13px] text-ink-soft">{t('note')}</p>
       </div>
     </section>
   );
