@@ -4,11 +4,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/pkg/toolvalidation"
 )
 
 func TestValidateEditArgs_HappyPath(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs("telegram__send_channel_post",
+	err := toolvalidation.ValidateEditArgs(tools.TelegramSendChannelPost,
 		map[string]interface{}{"text": "hello"},
 		[]string{"text", "parse_mode"},
 	)
@@ -18,7 +19,7 @@ func TestValidateEditArgs_HappyPath(t *testing.T) {
 }
 
 func TestValidateEditArgs_UnknownField_ReturnsErrFieldNotEditable(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs("telegram__send_channel_post",
+	err := toolvalidation.ValidateEditArgs(tools.TelegramSendChannelPost,
 		map[string]interface{}{"channel_id": "-100"},
 		[]string{"text", "parse_mode"},
 	)
@@ -29,7 +30,7 @@ func TestValidateEditArgs_UnknownField_ReturnsErrFieldNotEditable(t *testing.T) 
 	if e.Field != "channel_id" {
 		t.Errorf("field = %q, want channel_id", e.Field)
 	}
-	if e.Tool != "telegram__send_channel_post" {
+	if e.Tool != tools.TelegramSendChannelPost {
 		t.Errorf("tool = %q", e.Tool)
 	}
 	if len(e.Editable) != 2 || e.Editable[0] != "text" || e.Editable[1] != "parse_mode" {
@@ -39,7 +40,7 @@ func TestValidateEditArgs_UnknownField_ReturnsErrFieldNotEditable(t *testing.T) 
 
 func TestValidateEditArgs_CaseMismatch_ReturnsErrFieldNotEditable(t *testing.T) {
 	// Pitfall 8: case-sensitive matching. "Text" != "text".
-	err := toolvalidation.ValidateEditArgs("telegram__send_channel_post",
+	err := toolvalidation.ValidateEditArgs(tools.TelegramSendChannelPost,
 		map[string]interface{}{"Text": "hello"},
 		[]string{"text"},
 	)
@@ -135,8 +136,8 @@ func TestValidateEditArgs_EmptyArgs_NoError(t *testing.T) {
 // attempted tool swap), it must be rejected because "tool_name" never appears
 // in any tool's EditableFields allowlist.
 func TestValidateEditArgs_ToolNameFieldAttempt_Rejected(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs("telegram__send_channel_post",
-		map[string]interface{}{"tool_name": "telegram__send_channel_photo"},
+	err := toolvalidation.ValidateEditArgs(tools.TelegramSendChannelPost,
+		map[string]interface{}{"tool_name": tools.TelegramSendChannelPhoto},
 		[]string{"text"},
 	)
 	var e *toolvalidation.ErrFieldNotEditable

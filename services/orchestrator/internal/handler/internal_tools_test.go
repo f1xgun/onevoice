@@ -8,13 +8,14 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 func makeDef(name string) llm.ToolDefinition {
 	return llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: name, Description: "test", Parameters: map[string]interface{}{}},
 	}
 }
@@ -25,8 +26,8 @@ func makeDef(name string) llm.ToolDefinition {
 // map iteration is non-deterministic.
 func TestInternalToolsNames_ReturnsRegistrySnapshot(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef(tools.VKPublishPost), "", nil, domain.ToolFloorManual, []string{"text"})
 	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
 
 	h := handler.NewInternalToolsHandler(reg)
@@ -53,7 +54,7 @@ func TestInternalToolsNames_ReturnsRegistrySnapshot(t *testing.T) {
 	for _, n := range body.Names {
 		got[n] = struct{}{}
 	}
-	for _, want := range []string{"telegram__send_channel_post", "vk__publish_post", "get_business_info"} {
+	for _, want := range []string{tools.TelegramSendChannelPost, tools.VKPublishPost, "get_business_info"} {
 		if _, ok := got[want]; !ok {
 			t.Fatalf("names missing %q; got %v", want, body.Names)
 		}

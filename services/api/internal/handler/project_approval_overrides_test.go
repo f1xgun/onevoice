@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -107,14 +108,14 @@ func TestUpdateProject_WithApprovalOverrides_Persists(t *testing.T) {
 	bizSvc := &stubBusinessSvcProj{biz: &domain.Business{ID: bizID, UserID: userID}}
 	h, err := handler.NewProjectHandler(svc, bizSvc)
 	require.NoError(t, err)
-	h.SetToolsCache(newStubToolsCache("telegram__send_channel_post", "vk__publish_post"))
+	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost, tools.VKPublishPost))
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":          "X",
 		"whitelistMode": "all",
 		"approvalOverrides": map[string]string{
-			"telegram__send_channel_post": "manual",
-			"vk__publish_post":            "auto",
+			tools.TelegramSendChannelPost: "manual",
+			tools.VKPublishPost:           "auto",
 		},
 	})
 	rec := servePUTProject(t, h, projID, userID, body)
@@ -124,10 +125,10 @@ func TestUpdateProject_WithApprovalOverrides_Persists(t *testing.T) {
 	if svc.UpdateInput == nil {
 		t.Fatal("service.Update not called")
 	}
-	if svc.UpdateInput.ApprovalOverrides["telegram__send_channel_post"] != domain.ToolFloorManual {
+	if svc.UpdateInput.ApprovalOverrides[tools.TelegramSendChannelPost] != domain.ToolFloorManual {
 		t.Errorf("telegram missing: %v", svc.UpdateInput.ApprovalOverrides)
 	}
-	if svc.UpdateInput.ApprovalOverrides["vk__publish_post"] != domain.ToolFloorAuto {
+	if svc.UpdateInput.ApprovalOverrides[tools.VKPublishPost] != domain.ToolFloorAuto {
 		t.Errorf("vk missing: %v", svc.UpdateInput.ApprovalOverrides)
 	}
 }
@@ -142,7 +143,7 @@ func TestUpdateProject_ApprovalOverridesUnknownTool_Returns400(t *testing.T) {
 	bizSvc := &stubBusinessSvcProj{biz: &domain.Business{ID: bizID, UserID: userID}}
 	h, err := handler.NewProjectHandler(svc, bizSvc)
 	require.NoError(t, err)
-	h.SetToolsCache(newStubToolsCache("telegram__send_channel_post"))
+	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":              "X",
@@ -172,14 +173,14 @@ func TestUpdateProject_ApprovalOverridesInheritValue_EncodedAsAbsence(t *testing
 	bizSvc := &stubBusinessSvcProj{biz: &domain.Business{ID: bizID, UserID: userID}}
 	h, err := handler.NewProjectHandler(svc, bizSvc)
 	require.NoError(t, err)
-	h.SetToolsCache(newStubToolsCache("telegram__send_channel_post", "vk__publish_post"))
+	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost, tools.VKPublishPost))
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":          "X",
 		"whitelistMode": "all",
 		"approvalOverrides": map[string]string{
-			"telegram__send_channel_post": "manual",
-			"vk__publish_post":            "inherit",
+			tools.TelegramSendChannelPost: "manual",
+			tools.VKPublishPost:           "inherit",
 		},
 	})
 	rec := servePUTProject(t, h, projID, userID, body)
@@ -188,10 +189,10 @@ func TestUpdateProject_ApprovalOverridesInheritValue_EncodedAsAbsence(t *testing
 	}
 	require.NotNil(t, svc.UpdateInput)
 	// vk__publish_post key MUST be absent — inherit == key-absence.
-	if _, has := svc.UpdateInput.ApprovalOverrides["vk__publish_post"]; has {
+	if _, has := svc.UpdateInput.ApprovalOverrides[tools.VKPublishPost]; has {
 		t.Errorf("vk__publish_post should be absent (inherit), got: %v", svc.UpdateInput.ApprovalOverrides)
 	}
-	if svc.UpdateInput.ApprovalOverrides["telegram__send_channel_post"] != domain.ToolFloorManual {
+	if svc.UpdateInput.ApprovalOverrides[tools.TelegramSendChannelPost] != domain.ToolFloorManual {
 		t.Errorf("telegram should be manual, got: %v", svc.UpdateInput.ApprovalOverrides)
 	}
 }
@@ -206,12 +207,12 @@ func TestUpdateProject_ApprovalOverridesInvalidValue_Returns400(t *testing.T) {
 	bizSvc := &stubBusinessSvcProj{biz: &domain.Business{ID: bizID, UserID: userID}}
 	h, err := handler.NewProjectHandler(svc, bizSvc)
 	require.NoError(t, err)
-	h.SetToolsCache(newStubToolsCache("telegram__send_channel_post"))
+	h.SetToolsCache(newStubToolsCache(tools.TelegramSendChannelPost))
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":              "X",
 		"whitelistMode":     "all",
-		"approvalOverrides": map[string]string{"telegram__send_channel_post": "forbidden"},
+		"approvalOverrides": map[string]string{tools.TelegramSendChannelPost: "forbidden"},
 	})
 	rec := servePUTProject(t, h, projID, userID, body)
 	if rec.Code != http.StatusBadRequest {

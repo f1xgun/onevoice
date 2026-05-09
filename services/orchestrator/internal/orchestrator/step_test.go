@@ -123,7 +123,7 @@ var _ domain.PendingToolCallRepository = (*mockPendingRepo)(nil)
 func newRegistryWithFloor(name string, floor domain.ToolFloor, exec toolregistry.Executor) *toolregistry.Registry {
 	reg := toolregistry.NewRegistry()
 	def := llm.ToolDefinition{
-		Type: "function",
+		Type: llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{
 			Name:        name,
 			Description: "d",
@@ -189,7 +189,7 @@ func TestStepRun_AutoFloorTool_DispatchesInline(t *testing.T) {
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:       "call_a",
-				Type:     "function",
+				Type:     llm.ToolCallTypeFunction,
 				Function: llm.FunctionCall{Name: "auto_tool", Arguments: string(toolCallArgs)},
 			}},
 		},
@@ -224,7 +224,7 @@ func TestStepRun_ManualFloorTool_PersistsBatchAndReturnsPaused(t *testing.T) {
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:       "call_m",
-				Type:     "function",
+				Type:     llm.ToolCallTypeFunction,
 				Function: llm.FunctionCall{Name: "manual_tool", Arguments: string(toolCallArgs)},
 			}},
 		},
@@ -289,7 +289,7 @@ func TestStepRun_ManualFloor_PersistFails_EmitsErrorAndDoesNotEmitPauseEvent(t *
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:       "call_m",
-				Type:     "function",
+				Type:     llm.ToolCallTypeFunction,
 				Function: llm.FunctionCall{Name: "manual_tool", Arguments: string(toolCallArgs)},
 			}},
 		},
@@ -321,7 +321,7 @@ func TestStepRun_BusinessRaisesAutoToManual_PausesCorrectly(t *testing.T) {
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:       "call_r",
-				Type:     "function",
+				Type:     llm.ToolCallTypeFunction,
 				Function: llm.FunctionCall{Name: "raisable_tool", Arguments: string(toolCallArgs)},
 			}},
 		},
@@ -354,8 +354,8 @@ func TestStepRun_ForbiddenTool_SynthesizesRejection_AndContinues(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "call_f", Type: "function", Function: llm.FunctionCall{Name: "forbidden_tool", Arguments: string(forbiddenArgs)}},
-				{ID: "call_a", Type: "function", Function: llm.FunctionCall{Name: "auto_tool", Arguments: string(autoArgs)}},
+				{ID: "call_f", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "forbidden_tool", Arguments: string(forbiddenArgs)}},
+				{ID: "call_a", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "auto_tool", Arguments: string(autoArgs)}},
 			},
 		},
 		{Content: "Ok done.", FinishReason: "stop"},
@@ -363,13 +363,13 @@ func TestStepRun_ForbiddenTool_SynthesizesRejection_AndContinues(t *testing.T) {
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "forbidden_tool", Description: "x", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, errors.New("must not be called")
 	}), domain.ToolFloorForbidden, nil)
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "auto_tool", Description: "x", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
@@ -405,21 +405,21 @@ func TestStepRun_MixedAutoAndManual_PausesAfterAutoComplete(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "call_a", Type: "function", Function: llm.FunctionCall{Name: "auto_t", Arguments: string(autoArgs)}},
-				{ID: "call_m", Type: "function", Function: llm.FunctionCall{Name: "manual_t", Arguments: string(manualArgs)}},
+				{ID: "call_a", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "auto_t", Arguments: string(autoArgs)}},
+				{ID: "call_m", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "manual_t", Arguments: string(manualArgs)}},
 			},
 		},
 	}}
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "auto_t", Description: "x", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "manual_t", Description: "x", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
@@ -461,7 +461,7 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{{
 				ID:       "call_m",
-				Type:     "function",
+				Type:     llm.ToolCallTypeFunction,
 				Function: llm.FunctionCall{Name: "manual_tool", Arguments: string(toolCallArgs)},
 			}},
 		},
@@ -498,21 +498,21 @@ func TestBuildPendingBatch_PopulatesFloorAtPauseManual(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "tc-1", Type: "function", Function: llm.FunctionCall{Name: "telegram_post", Arguments: string(manualArgs1)}},
-				{ID: "tc-2", Type: "function", Function: llm.FunctionCall{Name: "vk_post", Arguments: string(manualArgs2)}},
+				{ID: "tc-1", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "telegram_post", Arguments: string(manualArgs1)}},
+				{ID: "tc-2", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "vk_post", Arguments: string(manualArgs2)}},
 			},
 		},
 	}}
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "telegram_post", Description: "x", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
 	}), domain.ToolFloorManual, []string{"text"})
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "vk_post", Description: "x", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
