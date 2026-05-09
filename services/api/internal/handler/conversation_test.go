@@ -35,7 +35,7 @@ type MockConversationRepository struct {
 	UpdateProjectAssignmentFunc func(ctx context.Context, id string, projectID *string) error
 	UpdateTitleIfPendingFunc    func(ctx context.Context, id, title string) error
 	TransitionToAutoPendingFunc func(ctx context.Context, id string) error
-	// Phase 19 / D-02 atomic Pin/Unpin (Plan 19-02 Task 1).
+	// atomic Pin/Unpin.
 	PinFunc   func(ctx context.Context, id, businessID, userID string) error
 	UnpinFunc func(ctx context.Context, id, businessID, userID string) error
 }
@@ -96,7 +96,7 @@ func (m *MockConversationRepository) TransitionToAutoPending(ctx context.Context
 	return nil
 }
 
-// Pin / Unpin — Phase 19 / D-02 atomic conditional updates (Plan 19-02 Task 1).
+// Pin / Unpin atomic conditional updates.
 // Default returns nil so unrelated tests stay green; real Pin/Unpin tests
 // install per-call PinFunc / UnpinFunc.
 func (m *MockConversationRepository) Pin(ctx context.Context, id, businessID, userID string) error {
@@ -113,12 +113,12 @@ func (m *MockConversationRepository) Unpin(ctx context.Context, id, businessID, 
 	return nil
 }
 
-// SearchTitles / ScopedConversationIDs — Phase 19 / Plan 19-03 / SEARCH-02
-// stubs. The conversation handler under test never calls these (search is
-// owned by SearchHandler, Plan 19-03 Task 4); the methods exist solely so
-// MockConversationRepository continues to satisfy domain.ConversationRepository
-// after the Phase 19 interface extension. Test files exercising the search
-// path use a dedicated fake in services/api/internal/service/search_test.go.
+// SearchTitles / ScopedConversationIDs stubs. The conversation handler
+// under test never calls these (search is owned by SearchHandler);
+// the methods exist solely so MockConversationRepository continues to
+// satisfy domain.ConversationRepository after the interface extension.
+// Test files exercising the search path use a dedicated fake in
+// services/api/internal/service/search_test.go.
 func (m *MockConversationRepository) SearchTitles(_ context.Context, _, _, _ string, _ *string, _ int) ([]domain.ConversationTitleHit, []string, error) {
 	return nil, nil, nil
 }
@@ -127,7 +127,7 @@ func (m *MockConversationRepository) ScopedConversationIDs(_ context.Context, _,
 	return nil, nil
 }
 
-// MockPendingToolCallRepository is a minimal test double for Phase 16's
+// MockPendingToolCallRepository is a minimal test double for the
 // PendingToolCallRepository. Only the methods actually called by the handler
 // under test need a *Func field; others return nil / empty slices.
 type MockPendingToolCallRepository struct {
@@ -168,8 +168,8 @@ func (m *MockPendingToolCallRepository) ReconcileOrphanPreparing(_ context.Conte
 	return 0, nil
 }
 
-// MockMessageRepository is a minimal mock for MessageRepository. Phase 16
-// extends the interface with Update + FindByConversationActive; tests that
+// MockMessageRepository is a minimal mock for MessageRepository.
+// The interface includes Update + FindByConversationActive; tests that
 // don't exercise those paths leave the *Func fields nil and the mock returns
 // safe defaults (nil / ErrMessageNotFound).
 type MockMessageRepository struct {
@@ -207,11 +207,10 @@ func (m *MockMessageRepository) FindByConversationActive(ctx context.Context, co
 	return nil, domain.ErrMessageNotFound
 }
 
-// SearchByConversationIDs — Phase 19 / Plan 19-03 / SEARCH-03 stub. The
-// conversation handler under test never calls this (search is owned by
-// SearchHandler, Plan 19-03 Task 4); the method exists solely so
-// MockMessageRepository continues to satisfy domain.MessageRepository
-// after the Phase 19 interface extension.
+// SearchByConversationIDs stub. The conversation handler under test never
+// calls this (search is owned by SearchHandler); the method exists solely
+// so MockMessageRepository continues to satisfy domain.MessageRepository
+// after the interface extension.
 func (m *MockMessageRepository) SearchByConversationIDs(_ context.Context, _ string, _ []string, _ int) ([]domain.MessageSearchHit, error) {
 	return nil, nil
 }
@@ -276,8 +275,8 @@ func (s *noopProjectService) CountConversations(_ context.Context, _, _ uuid.UUI
 // business service that always returns a valid business (so create/move do not
 // 404 on the lookup) and a stub project service that returns ErrProjectNotFound
 // by default. Tests that need custom behavior call NewConversationHandler
-// directly with their own services. Phase 16 injects an empty
-// PendingToolCallRepository mock so the HITL-11 pendingApprovals array is
+// directly with their own services. Injects an empty
+// PendingToolCallRepository mock so the pendingApprovals array is
 // always serialized as [] for legacy tests.
 func newTestConversationHandler(convRepo domain.ConversationRepository, msgRepo domain.MessageRepository) *ConversationHandler {
 	biz := &noopBusinessService{
@@ -461,7 +460,7 @@ func TestNewConversationHandler_NilRepository(t *testing.T) {
 	assert.Nil(t, h)
 }
 
-// TestNewConversationHandler_NilBusinessService ensures the Phase 15 new dep
+// TestNewConversationHandler_NilBusinessService ensures the new dep
 // is checked.
 func TestNewConversationHandler_NilBusinessService(t *testing.T) {
 	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, nil, &noopProjectService{}, &MockPendingToolCallRepository{})
@@ -469,7 +468,7 @@ func TestNewConversationHandler_NilBusinessService(t *testing.T) {
 	assert.Nil(t, h)
 }
 
-// TestNewConversationHandler_NilProjectService ensures the Phase 15 new dep
+// TestNewConversationHandler_NilProjectService ensures the new dep
 // is checked.
 func TestNewConversationHandler_NilProjectService(t *testing.T) {
 	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, nil, &MockPendingToolCallRepository{})
@@ -477,7 +476,7 @@ func TestNewConversationHandler_NilProjectService(t *testing.T) {
 	assert.Nil(t, h)
 }
 
-// TestNewConversationHandler_NilPendingRepo ensures the Phase 16 new dep is
+// TestNewConversationHandler_NilPendingRepo ensures the new dep is
 // checked (chat_proxy and GET /messages both rely on it).
 func TestNewConversationHandler_NilPendingRepo(t *testing.T) {
 	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, nil)
@@ -904,9 +903,9 @@ func TestGetConversation_RepositoryError(t *testing.T) {
 }
 
 // TestConversation_JSONShape_PopulatedFields asserts that json.Marshal of a
-// fully populated domain.Conversation produces the camelCase keys the Phase 15
-// frontend (Plan 06 sidebar) relies on for grouping, pinning, and empty-state
-// filtering. Phase 19 D-02 swaps `pinned` → `pinnedAt` (single source of truth).
+// fully populated domain.Conversation produces the camelCase keys the
+// frontend (sidebar) relies on for grouping, pinning, and empty-state
+// filtering. `pinned` was swapped for `pinnedAt` (single source of truth).
 func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	lastMsg := time.Now().UTC()
 	pinnedAt := time.Now().UTC()
@@ -917,7 +916,7 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 		ProjectID:     ptr("p1"),
 		Title:         "Ошибки после обновления",
 		TitleStatus:   domain.TitleStatusAutoPending,
-		PinnedAt:      &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
+		PinnedAt:      &pinnedAt, // replaces legacy `Pinned bool`
 		LastMessageAt: &lastMsg,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -928,7 +927,7 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(raw, &m))
 
-	// The five keys the sidebar relies on (Phase 19 D-02 swaps `pinned` → `pinnedAt`).
+	// The five keys the sidebar relies on (`pinned` was swapped for `pinnedAt`).
 	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
 		_, ok := m[key]
 		assert.Truef(t, ok, "expected key %q in JSON shape; got keys: %v", key, keysOf(m))
@@ -936,15 +935,15 @@ func TestConversation_JSONShape_PopulatedFields(t *testing.T) {
 	assert.Equal(t, "p1", m["projectId"])
 	assert.Equal(t, "b1", m["businessId"])
 	assert.Equal(t, string(domain.TitleStatusAutoPending), m["titleStatus"])
-	// Legacy `pinned` bool MUST NOT appear in the JSON output (D-02 single source of truth).
+	// Legacy `pinned` bool MUST NOT appear in the JSON output (single source of truth).
 	_, hasLegacy := m["pinned"]
-	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed in Phase 19")
+	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed")
 }
 
 // TestConversation_JSONShape_NilProjectIDElided documents that when ProjectID
 // is nil, the `json:"projectId,omitempty"` tag elides the key. The frontend
-// must treat "missing projectId" as "null / Без проекта" per Plan 15-04.
-// Phase 19 D-02: `pinnedAt` is also omitempty so unpinned chats elide that key.
+// must treat "missing projectId" as "null / Без проекта".
+// `pinnedAt` is also omitempty so unpinned chats elide that key.
 func TestConversation_JSONShape_NilProjectIDElided(t *testing.T) {
 	conv := domain.Conversation{
 		ID:          "c2",
@@ -967,13 +966,13 @@ func TestConversation_JSONShape_NilProjectIDElided(t *testing.T) {
 	assert.True(t, ok)
 	_, ok = m["titleStatus"]
 	assert.True(t, ok)
-	// Phase 19 D-02 — pinnedAt is omitempty; nil PinnedAt elides the key.
+	// pinnedAt is omitempty; nil PinnedAt elides the key.
 	_, hasPinned := m["pinnedAt"]
 	assert.False(t, hasPinned, "pinnedAt must be elided when PinnedAt is nil (omitempty)")
 }
 
 // TestListConversations_JSONShape verifies that GET /api/v1/conversations
-// serializes every list item with the five Phase 15 keys the sidebar depends
+// serializes every list item with the five keys the sidebar depends
 // on. Nil LastMessageAt is elided (documented as expected).
 func TestListConversations_JSONShape(t *testing.T) {
 	userID := uuid.New()
@@ -989,7 +988,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 			ProjectID:     &projID,
 			Title:         "Pinned",
 			TitleStatus:   domain.TitleStatusAuto,
-			PinnedAt:      &pinnedAt, // Phase 19 D-02 — replaces legacy `Pinned bool`
+			PinnedAt:      &pinnedAt, // replaces legacy `Pinned bool`
 			LastMessageAt: &lastMsg,
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
@@ -1017,7 +1016,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 	require.Len(t, items, 1)
 
 	item := items[0]
-	// Phase 19 D-02 swaps `pinned` → `pinnedAt` (single source of truth).
+	// `pinned` was swapped for `pinnedAt` (single source of truth).
 	for _, key := range []string{"projectId", "businessId", "pinnedAt", "titleStatus", "lastMessageAt"} {
 		_, ok := item[key]
 		assert.Truef(t, ok, "GET /api/v1/conversations item must carry key %q; got: %v", key, keysOf(item))
@@ -1033,7 +1032,7 @@ func TestListConversations_JSONShape(t *testing.T) {
 	assert.Equal(t, string(domain.TitleStatusAuto), item["titleStatus"])
 	// Legacy `pinned` JSON key MUST be absent.
 	_, hasLegacy := item["pinned"]
-	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed in Phase 19 D-02")
+	assert.False(t, hasLegacy, "legacy `pinned` JSON key must be removed")
 }
 
 // keysOf returns the keys of m (used only in test failure messages).
@@ -1066,7 +1065,7 @@ func makeAuthedReq(t *testing.T, method, path string, body []byte, userID uuid.U
 	return r.WithContext(ctx)
 }
 
-// TestCreateConversation_WithProjectID covers Behavior 1 from Plan 15-04 Task 2.
+// TestCreateConversation_WithProjectID covers Behavior 1.
 func TestCreateConversation_WithProjectID(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
@@ -1107,7 +1106,7 @@ func TestCreateConversation_WithProjectID(t *testing.T) {
 	assert.Equal(t, pid, *capturedConv.ProjectID)
 	assert.Equal(t, businessID.String(), capturedConv.BusinessID)
 	assert.Equal(t, domain.TitleStatusAutoPending, capturedConv.TitleStatus)
-	// Phase 19 D-02 — newly created chats are unpinned (PinnedAt == nil is the
+	// Newly created chats are unpinned (PinnedAt == nil is the
 	// single source of truth; legacy `Pinned bool` removed).
 	assert.Nil(t, capturedConv.PinnedAt)
 }
@@ -1167,7 +1166,7 @@ func TestCreateConversation_ProjectCrossBusiness(t *testing.T) {
 		},
 	}
 	// Project belongs to a different business → service returns
-	// ErrProjectNotFound (Plan 15-03 anti-enumeration).
+	// ErrProjectNotFound (anti-enumeration).
 	proj := &noopProjectService{
 		GetByIDFunc: func(_ context.Context, _, _ uuid.UUID) (*domain.Project, error) {
 			return nil, domain.ErrProjectNotFound
@@ -1256,7 +1255,7 @@ func TestMoveConversation_ToProject(t *testing.T) {
 	require.NotNil(t, capturedMsg, "system note must be appended")
 	assert.Equal(t, convID, capturedMsg.ConversationID)
 	assert.Equal(t, "system", capturedMsg.Role)
-	// Byte-exact Russian copy per 15-UI-SPEC line 194.
+	// Byte-exact Russian copy.
 	assert.Equal(t, "[Чат перемещён в «Отзывы» — с этого момента применяется новая политика]", capturedMsg.Content)
 
 	// Response body carries the re-fetched conversation.
@@ -1407,7 +1406,7 @@ func TestMoveConversation_InvalidBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// --- Phase 16 Plan 06 Task 2: GET /messages pendingApprovals (HITL-11) ------
+// --- GET /messages pendingApprovals tests ------
 
 // newConversationHandlerWithPending wires a ConversationHandler with a custom
 // pending-tool-call repo mock so tests can drive ListPendingByConversation.
@@ -1425,7 +1424,7 @@ func newConversationHandlerWithPending(t *testing.T, convRepo domain.Conversatio
 
 // TestGetMessages_NoPendingApprovals_ReturnsEmptyArray covers the default case:
 // no active batches → the response serializes `pendingApprovals: []`
-// (non-null, empty) so the frontend can iterate unconditionally (HITL-11).
+// (non-null, empty) so the frontend can iterate unconditionally.
 func TestGetMessages_NoPendingApprovals_ReturnsEmptyArray(t *testing.T) {
 	userID := uuid.New()
 	convID := "507f1f77bcf86cd799439101"
@@ -1511,14 +1510,14 @@ func TestGetMessages_WithPendingApprovals_ReturnsPopulatedArray(t *testing.T) {
 	require.Len(t, body.PendingApprovals[0].Calls, 1)
 	assert.Equal(t, "toolu_1", body.PendingApprovals[0].Calls[0].CallID)
 	assert.Equal(t, tools.TelegramSendChannelPost, body.PendingApprovals[0].Calls[0].ToolName)
-	// EditableFields is intentionally empty — Plan 16-06 defers population to
-	// the frontend's `['tools']` React Query (Plan 16-08 ships the live map).
+	// EditableFields is intentionally empty — population is deferred to
+	// the frontend's `['tools']` React Query (live map).
 	assert.NotNil(t, body.PendingApprovals[0].Calls[0].EditableFields, "EditableFields must be [] not null for stable contract")
 }
 
 // TestGetMessages_ExpiredBatch_ReportsExpiredStatus documents the
 // lazy-expiration pass: a batch whose expires_at is in the past is reported
-// with status="expired" so the UI can render the "Истекло" badge (D-19).
+// with status="expired" so the UI can render the "Истекло" badge.
 func TestGetMessages_ExpiredBatch_ReportsExpiredStatus(t *testing.T) {
 	userID := uuid.New()
 	convID := "507f1f77bcf86cd799439103"
@@ -1592,7 +1591,7 @@ func TestGetMessages_MultiplePendingBatches_AllReturned(t *testing.T) {
 	assert.Equal(t, "resolving", body.PendingApprovals[1].Status)
 }
 
-// TestUpdateConversation_TitleStatusManual is the Plan 18-05 D-06 plumbing
+// TestUpdateConversation_TitleStatusManual is the plumbing
 // regression test (Landmine 7): a successful PUT /conversations/{id} with a
 // title field MUST flip TitleStatus to "manual" and the repo's Update method
 // MUST receive a Conversation whose TitleStatus is "manual" — anything less
@@ -1601,7 +1600,7 @@ func TestGetMessages_MultiplePendingBatches_AllReturned(t *testing.T) {
 //
 // The handler's Update assignment is the load-bearing line; this test
 // asserts the assignment survives the request roundtrip and reaches the
-// repository layer. Plan 03's repo Update writes title_status into the $set
+// repository layer. The repo Update writes title_status into the $set
 // block so the flag persists; this test guards the handler half.
 func TestUpdateConversation_TitleStatusManual(t *testing.T) {
 	userID := uuid.New()
@@ -1639,7 +1638,7 @@ func TestUpdateConversation_TitleStatusManual(t *testing.T) {
 
 	// Trust-critical assertion: TitleStatus is now "manual".
 	assert.Equal(t, domain.TitleStatusManual, updated.TitleStatus,
-		"D-06: PUT /conversations/{id} must unconditionally flip TitleStatus to manual")
+		"PUT /conversations/{id} must unconditionally flip TitleStatus to manual")
 	assert.Equal(t, "Новый ручной заголовок", updated.Title,
 		"new title must be persisted alongside the manual flag")
 
@@ -1654,7 +1653,7 @@ func TestUpdateConversation_TitleStatusManual(t *testing.T) {
 // TestUpdateConversation_TitleStatusManual_FromAutoPending is a stricter
 // regression: even when the conversation is currently auto_pending (a titler
 // goroutine is mid-flight), PUT /conversations/{id} MUST flip to manual.
-// D-06 is unconditional — there's no "only flip if status was auto" branch.
+// The flip is unconditional — there's no "only flip if status was auto" branch.
 func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 	userID := uuid.New()
 	convID := "507f1f77bcf86cd799439041"
@@ -1689,10 +1688,10 @@ func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.NotNil(t, updated)
 	assert.Equal(t, domain.TitleStatusManual, updated.TitleStatus,
-		"D-06: PUT must flip auto_pending → manual; the repo's atomic UpdateTitleIfPending will then no-op when the titler returns")
+		"PUT must flip auto_pending → manual; the repo's atomic UpdateTitleIfPending will then no-op when the titler returns")
 }
 
-// --- Phase 19 / Plan 19-02 — Pin / Unpin handler tests ---------------------
+// --- Pin / Unpin handler tests ---------------------
 
 // pinTestHandler builds a ConversationHandler wired with a businessService
 // that returns a fixed business ID so Pin/Unpin handler tests can assert

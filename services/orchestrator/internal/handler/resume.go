@@ -25,7 +25,7 @@ type Resumer interface {
 // clients reach it only via chat_proxy's streamResume path. The body carries
 // the FRESH business/project approval maps the API re-fetched from Postgres
 // at resolve time so the orchestrator's dispatchApprovedCalls can re-run
-// hitl.Resolve against them (HITL-06 TOCTOU safety).
+// hitl.Resolve against them (TOCTOU safety).
 //
 // The response is text/event-stream — same wire shape as POST /chat/{id}
 // (text / tool_call / tool_result / tool_rejected / done / error events).
@@ -46,8 +46,8 @@ func NewResumeHandler(resumer Resumer) *ResumeHandler {
 // is acceptable and produces a Resume with zero-value maps (safe defaults:
 // nothing flips to forbidden, nothing upgrades from auto).
 //
-// Plan 16-06's chat_proxy currently sends an empty body (http.NoBody); Plan
-// 16-07's resolve-endpoint follow-up path sends the full body with fresh
+// chat_proxy currently sends an empty body (http.NoBody); the
+// resolve-endpoint follow-up path sends the full body with fresh
 // approval maps. Both paths are supported simultaneously.
 type resumeRequest struct {
 	BusinessApprovals        map[string]domain.ToolFloor `json:"business_approvals"`

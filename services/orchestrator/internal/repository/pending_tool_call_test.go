@@ -37,7 +37,7 @@ func setupOrchestratorPendingDB(t *testing.T, name string) *mongo.Database {
 		t.Skipf("MongoDB not reachable: %v", pingErr)
 	}
 
-	db := client.Database("test_phase16_orch_pending_" + name)
+	db := client.Database("test_orch_pending_" + name)
 	t.Cleanup(func() {
 		if err := db.Drop(ctx); err != nil {
 			t.Logf("warning: drop test database: %v", err)
@@ -48,10 +48,10 @@ func setupOrchestratorPendingDB(t *testing.T, name string) *mongo.Database {
 }
 
 // TestOrchestratorPendingRepo_InsertPreparing_DoesNotSetExpiresAt proves
-// Research §Pitfall 6 prevention: if InsertPreparing set expires_at = now+
+// the TTL guard: if InsertPreparing set expires_at = now+
 // 24h immediately, a crash-before-PromoteToPending followed by a delayed
 // reconciliation sweep could still leave the row ticking toward TTL
-// deletion. The plan's crash-recovery path (ReconcileOrphanPreparing)
+// deletion. The crash-recovery path (ReconcileOrphanPreparing)
 // requires that preparing rows do NOT carry expires_at so the TTL index
 // ignores them, and the sweep (not the TTL) is the single reaper.
 func TestOrchestratorPendingRepo_InsertPreparing_DoesNotSetExpiresAt(t *testing.T) {
@@ -116,11 +116,11 @@ func TestOrchestratorPendingRepo_PromoteToPending_SetsExpiresAt24h(t *testing.T)
 }
 
 // TestInsertPreparing_RejectsEmptyConversationID is the regression guard for
-// Plan 17-07 GAP-03. Pre-fix, the orchestrator HTTP handler defaulted
+// the empty-ID bug. Pre-fix, the orchestrator HTTP handler defaulted
 // RunRequest.ConversationID = "" because chi.URLParam was never read, and
 // the API proxy omitted the message_id / user_id forwards entirely. Every
 // pending_tool_calls Mongo row then carried "" for all four identity fields,
-// breaking HITL-11 hydration (filter is {conversation_id, status:"pending"})
+// breaking pending-batch hydration (filter is {conversation_id, status:"pending"})
 // and the resolve-time business-scoped auth check (always compared "" == X).
 //
 // This test asserts the repository fails LOUD at insert time so any future
@@ -154,8 +154,7 @@ func TestInsertPreparing_RejectsEmptyConversationID(t *testing.T) {
 // TestInsertPreparing_RejectsEmptyBusinessID covers the other half of the
 // structural floor. Without a non-empty business_id, the resolve-time auth
 // check (`batch.BusinessID == requesterBusinessID`) is a no-op and any user
-// could resolve any batch — a security regression flagged in
-// VERIFICATION.md §GAP-03.
+// could resolve any batch — a security regression.
 func TestInsertPreparing_RejectsEmptyBusinessID(t *testing.T) {
 	db := setupOrchestratorPendingDB(t, "reject_empty_biz")
 	ctx := context.Background()

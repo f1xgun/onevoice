@@ -20,7 +20,7 @@ const mongoConnectTimeout = 10 * time.Second
 
 // Mongo dials the orchestrator's MongoDB, pings to confirm reachability, and
 // returns the database handle plus the pending-tool-call repository wired
-// against it. The orchestrator owns its own Mongo connection (Plan 16-02) to
+// against it. The orchestrator owns its own Mongo connection to
 // avoid a circular dependency with the API service — both services write to
 // the same database but cannot call each other.
 //
@@ -39,7 +39,7 @@ func Mongo(ctx context.Context, log *slog.Logger, cfg *config.Config) (*mongo.Da
 	}
 	if pingErr := client.Ping(dialCtx, nil); pingErr != nil {
 		// Disconnect the half-open client so a ping failure doesn't leak the
-		// underlying socket pool. (LOW-04 fix.) Use a fresh background ctx
+		// underlying socket pool. Use a fresh background ctx
 		// because dialCtx may already be expired or carry the same timeout
 		// that just tripped.
 		_ = client.Disconnect(context.Background())

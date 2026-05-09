@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestPhase19SearchErrors — Plan 19-03 / Wave 0. Asserts the new search
-// sentinels exist and behave as identity-comparable error values (the
-// canonical way every callsite distinguishes them via errors.Is).
-func TestPhase19SearchErrors(t *testing.T) {
+// TestSearchErrors asserts the search sentinels exist and behave as
+// identity-comparable error values (the canonical way every callsite
+// distinguishes them via errors.Is).
+func TestSearchErrors(t *testing.T) {
 	t.Run("ErrInvalidScope is a non-nil error value", func(t *testing.T) {
 		require.NotNil(t, ErrInvalidScope)
 		assert.True(t, errors.Is(ErrInvalidScope, ErrInvalidScope))

@@ -43,24 +43,24 @@ type RunState struct {
 	// AvailableTools is the whitelist-filtered tool set for this turn.
 	AvailableTools []llm.ToolDefinition
 
-	// BusinessApprovals is the businesses.settings.tool_approvals snapshot
-	// (POLICY-02). Nil maps are tolerated by hitl.Resolve.
+	// BusinessApprovals is the businesses.settings.tool_approvals snapshot.
+	// Nil maps are tolerated by hitl.Resolve.
 	BusinessApprovals map[string]domain.ToolFloor
 
-	// ProjectApprovalOverrides is the projects.approval_overrides snapshot
-	// (POLICY-03). Nil maps are tolerated by hitl.Resolve.
+	// ProjectApprovalOverrides is the projects.approval_overrides snapshot.
+	// Nil maps are tolerated by hitl.Resolve.
 	ProjectApprovalOverrides map[string]domain.ToolFloor
 
 	// ConversationID / BusinessID / UserID / MessageID are the identity
 	// fields persisted on PendingToolCallBatch so that the resolve
-	// handler (Plan 16-07) can enforce business-scoped access control.
+	// handler can enforce business-scoped access control.
 	ConversationID string
 	BusinessID     string
 
 	// ProjectID is nullable — empty when a conversation has no project
-	// ("Без проекта"). Threaded into batch.ProjectID so Plan 16-07's
+	// ("Без проекта"). Threaded into batch.ProjectID so the
 	// TOCTOU re-check can load the project's approval_overrides at
-	// resolve time (POLICY-03 + HITL-06).
+	// resolve time.
 	ProjectID string
 	UserID    string
 	MessageID string
@@ -85,11 +85,9 @@ type RunState struct {
 // Resume (post-approval continuation). It MUST NOT block waiting for
 // approval — when a manual-floor tool is classified, it persists the
 // batch, emits the tool_approval_required event, and returns
-// OutcomePaused so the caller's goroutine exits cleanly (HITL-03).
+// OutcomePaused so the caller's goroutine exits cleanly.
 //
-// Signature is anti-footgun #3 — see 16-OVERVIEW.md. Any deviation blocks
-// the phase: the wave-2 grep gate confirms the literal substring. The
-// StepOutcome return is currently unused by Run (it just calls close(ch)) but
+// The StepOutcome return is currently unused by Run (it just calls close(ch)) but
 // IS consumed by Resume's dispatchApprovedCalls path — suppressing unparam
 // because the return value is load-bearing downstream.
 //
@@ -139,8 +137,8 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		// 4. Classify every LLM-proposed tool call through hitl.Resolve,
 		//    bucketing into auto / manual / forbidden. This is the single
 		//    point where policy resolution happens at pause time
-		//    (Plan 16-07 re-runs the same function at resolve time for
-		//    TOCTOU safety — HITL-06).
+		//    (the resolve path re-runs the same function at resolve time for
+		//    TOCTOU safety).
 		var autoCalls []llm.ToolCall
 		var manualCalls []llm.ToolCall
 		var forbiddenCalls []llm.ToolCall
@@ -164,7 +162,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 
 		// 5. Forbidden calls → synthesize rejection message, emit
 		//    tool_rejected event, DO NOT dispatch. The LLM sees the
-		//    outcome on the next iteration (HITL-09).
+		//    outcome on the next iteration.
 		for _, tc := range forbiddenCalls {
 			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
 			state.Messages = append(state.Messages, llm.Message{
@@ -196,9 +194,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		}
 
 		// 7. Manual calls — two-phase persist, emit pause event, return.
-		//    Order invariant (Pitfall 1/3): persist succeeds BEFORE
+		//    Order invariant: persist succeeds BEFORE
 		//    emitting the pause event — on crash the orphan-reconcile
-		//    sweep (Plan 16-02) cleans stuck preparing rows.
+		//    sweep cleans stuck preparing rows.
 		if len(manualCalls) > 0 {
 			if o.pendingRepo == nil {
 				err := fmt.Errorf("HITL not configured: manual-floor tool classified but pendingRepo is nil")
@@ -228,7 +226,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			}
 
 			// Single tool_approval_required event per turn covering every
-			// manual call in this iteration (HITL-02: one card per batch).
+			// manual call in this iteration (one card per batch).
 			select {
 			case out <- Event{
 				Type:    EventToolApprovalRequired,
@@ -254,9 +252,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 }
 
 // buildPendingBatch assembles the PendingToolCallBatch that will be persisted
-// at pause time. ProjectID is threaded through from RunState so Plan 16-07's
-// TOCTOU re-check can load the project's approval_overrides at resolve time
-// (POLICY-03 + HITL-06). ModelMessages is the full state.Messages snapshot
+// at pause time. ProjectID is threaded through from RunState so the
+// TOCTOU re-check can load the project's approval_overrides at resolve time.
+// ModelMessages is the full state.Messages snapshot
 // as JSON so Resume can rebuild RunState after a process restart.
 func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCall) *domain.PendingToolCallBatch {
 	msgSnapshot, err := json.Marshal(state.Messages)
@@ -279,7 +277,7 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 			CallID:    tc.ID,
 			ToolName:  tc.Function.Name,
 			Arguments: args,
-			// Plan 17-11 / GAP-04: persist the pause-time floor on every
+			// Persist the pause-time floor on every
 			// PendingCall so the resolve-time TOCTOU re-check consults the
 			// same registry the orchestrator used at pause. Only manual-
 			// floor calls reach the manualCalls bucket (bucketing in
@@ -288,7 +286,7 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 			// resume.go remains the load-bearing TOCTOU primitive.
 			FloorAtPause: domain.ToolFloorManual,
 			// Verdict/EditedArgs/Dispatched left zero — populated by
-			// Plan 16-07's resolve handler.
+			// the resolve handler.
 		})
 	}
 	return &domain.PendingToolCallBatch{
@@ -303,13 +301,13 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 		IterationIdx:   state.Iter,
 		// Status / CreatedAt / UpdatedAt / ExpiresAt set by the repo
 		// (InsertPreparing sets status=preparing; PromoteToPending
-		// sets status=pending + expires_at=now+24h per Plan 16-02).
+		// sets status=pending + expires_at=now+24h).
 	}
 }
 
 // summarizeManualCalls projects the LLM's raw tool_call list into the shape
 // emitted on the tool_approval_required SSE event. EditableFields comes from
-// the tool registry (Plan 16-03); Floor is always ToolFloorManual because
+// the tool registry; Floor is always ToolFloorManual because
 // these are the calls that triggered the pause.
 func summarizeManualCalls(reg *toolregistry.Registry, calls []llm.ToolCall) []ApprovalCallSummary {
 	out := make([]ApprovalCallSummary, 0, len(calls))

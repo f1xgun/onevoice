@@ -5,10 +5,9 @@ import type { ReactNode } from 'react';
 
 import { ConversationItem } from '@/components/chat/ConversationItem';
 
-// Phase 18 / TITLE-01 / D-09:
 // Sidebar / chat-list rows render the verbatim Russian placeholder
 // "Новый диалог" whenever conv.title === '' OR titleStatus === 'auto_pending'.
-// NO shimmer / skeleton / animation — CONTEXT.md "Sidebar Pending UX".
+// NO shimmer / skeleton / animation — "Sidebar Pending UX".
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -66,7 +65,7 @@ function renderItem(conv: TestConv) {
   );
 }
 
-describe('ConversationItem placeholder (D-09)', () => {
+describe('ConversationItem placeholder', () => {
   it("renders 'Новый диалог' when title is empty (auto_pending status)", () => {
     renderItem({ ...baseConv, title: '', titleStatus: 'auto_pending' });
     expect(screen.getByText('Новый диалог')).toBeInTheDocument();
@@ -78,7 +77,7 @@ describe('ConversationItem placeholder (D-09)', () => {
   });
 
   it("renders 'Новый диалог' when titleStatus is 'auto_pending' EVEN WITH a non-empty title", () => {
-    // D-09 invariant: status='auto_pending' wins over a stale stored title.
+    // status='auto_pending' wins over a stale stored title.
     renderItem({
       ...baseConv,
       title: 'Stale title leaking from a previous render',

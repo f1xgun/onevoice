@@ -2,8 +2,8 @@ package domain
 
 // ToolFloor is the minimum approval level assigned to a tool at registration.
 // It is the baseline applied by the orchestrator BEFORE per-business and
-// per-project overrides are layered on top (see POLICY-01..04 and the
-// strictest-wins resolver in services/orchestrator/internal/hitl.Resolve).
+// per-project overrides are layered on top (see the strictest-wins resolver
+// in services/orchestrator/internal/hitl.Resolve).
 //
 // Strictness order (low → high): ToolFloorAuto < ToolFloorManual < ToolFloorForbidden.
 // Overrides may only RAISE strictness; no map entry can lower strictness below

@@ -20,7 +20,7 @@ import (
 type ProjectHandler struct {
 	projectService  ProjectService
 	businessService BusinessService
-	// toolsCache is optional — required only for POLICY-06 approval-overrides
+	// toolsCache is optional — required only for approval-overrides
 	// validation on PUT /projects/{id}. When nil, approvalOverrides in the
 	// request body are rejected with a 503.
 	toolsCache ToolsCache
@@ -43,16 +43,16 @@ func NewProjectHandler(ps ProjectService, bs BusinessService) (*ProjectHandler, 
 }
 
 // SetToolsCache wires a tools-registry cache so PUT /projects/{id} can
-// validate approvalOverrides keys against the live orchestrator registry
-// (POLICY-06). Safe to call with nil to disable the field.
+// validate approvalOverrides keys against the live orchestrator registry.
+// Safe to call with nil to disable the field.
 func (h *ProjectHandler) SetToolsCache(c ToolsCache) {
 	h.toolsCache = c
 }
 
 // projectRequest is the JSON shape consumed by both Create and Update —
-// Plan 15-CONTEXT D-02 says the same form handles both operations.
+// the same form handles both operations.
 //
-// Phase 16 (POLICY-06) — ApprovalOverrides is a map of tool names to floor
+// ApprovalOverrides is a map of tool names to floor
 // strings. Valid values are "auto" | "manual" | "inherit". "inherit" is
 // stripped from the map before persistence — key-absence is the canonical
 // encoding of inherit (Overview invariant #8). The handler does this
@@ -263,7 +263,7 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 // Delete handles DELETE /api/v1/projects/{id}. Hard-deletes the project plus
-// every Mongo conversation/message assigned to it (D-05), returning the
+// every Mongo conversation/message assigned to it, returning the
 // counts so the frontend can show "deleted N chats" feedback.
 func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	businessID, ok := h.resolveBusinessID(w, r)
@@ -287,7 +287,7 @@ func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ConversationCount handles GET /api/v1/projects/{id}/conversation-count.
-// Feeds the frontend delete-confirmation dialog (D-06) so the user sees how
+// Feeds the frontend delete-confirmation dialog so the user sees how
 // many chats will be destroyed before confirming.
 func (h *ProjectHandler) ConversationCount(w http.ResponseWriter, r *http.Request) {
 	businessID, ok := h.resolveBusinessID(w, r)

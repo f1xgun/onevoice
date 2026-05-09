@@ -49,9 +49,9 @@ func (r *capturingMessageRepo) FindByConversationActive(_ context.Context, _ str
 	return nil, nil
 }
 
-// SearchByConversationIDs — Phase 19 / Plan 19-03 stub. The chat-proxy
+// SearchByConversationIDs stub. The chat-proxy
 // test never calls this; method exists to satisfy domain.MessageRepository
-// after the Phase 19 interface extension.
+// after the interface extension.
 func (r *capturingMessageRepo) SearchByConversationIDs(_ context.Context, _ string, _ []string, _ int) ([]domain.MessageSearchHit, error) {
 	return nil, nil
 }

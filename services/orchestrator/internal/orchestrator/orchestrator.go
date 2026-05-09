@@ -28,27 +28,27 @@ const (
 	EventDone       EventType = "done"
 
 	// EventToolApprovalRequired is emitted once per paused LLM turn, carrying
-	// the batch_id + summarized calls that need human approval (HITL-02).
+	// the batch_id + summarized calls that need human approval.
 	// Emitted AFTER the PendingToolCallBatch is persisted (InsertPreparing →
 	// PromoteToPending succeed); never emitted on a partial-persist crash.
-	// The goroutine exits immediately after (HITL-03).
+	// The goroutine exits immediately after.
 	EventToolApprovalRequired EventType = "tool_approval_required"
 
 	// EventToolRejected is emitted for each tool call that the policy
 	// resolver marks ToolFloorForbidden at pause time (synthetic
-	// rejection, HITL-09) OR that the resolve-time TOCTOU re-check marks
-	// policy_revoked (HITL-06). Content carries the reason.
+	// rejection) OR that the resolve-time TOCTOU re-check marks
+	// policy_revoked. Content carries the reason.
 	EventToolRejected EventType = "tool_rejected"
 )
 
 // Event is emitted on the output channel during agent execution.
 //
 // The Type/Content/ToolName/ToolArgs/ToolResult/ToolError fields are the
-// legacy shape (pre-Phase-16). BatchID + Calls are Phase 16 additions for
-// HITL — both are omitempty in JSON so legacy events remain byte-identical
-// on the wire. ToolCallID is also added for Phase 16 so chat_proxy can
+// legacy shape. BatchID + Calls are HITL additions —
+// both are omitempty in JSON so legacy events remain byte-identical
+// on the wire. ToolCallID is also present so chat_proxy can
 // persist tool_call events with the LLM's real call ID on the assistant
-// Message.ToolCalls (HITL-13).
+// Message.ToolCalls.
 type Event struct {
 	Type            EventType
 	Content         string
@@ -69,7 +69,7 @@ type Event struct {
 
 // ApprovalCallSummary is the per-call projection the frontend receives on a
 // tool_approval_required event. EditableFields drives the UI's per-field
-// read-only enforcement (HITL-L4 / HITL-07); Floor is always ToolFloorManual
+// read-only enforcement; Floor is always ToolFloorManual
 // for batched calls (forbidden calls never appear in a batch — they get
 // synthetic rejections instead).
 type ApprovalCallSummary struct {
@@ -87,25 +87,24 @@ type LLMClient interface {
 
 // RunRequest holds everything needed to start an agent run.
 //
-// Phase 16 additions (all optional to preserve backward-compat with the
-// existing test suite that predates HITL):
+// HITL fields (all optional to preserve backward-compat with legacy callers):
 //   - ConversationID / BusinessID / ProjectID / UserID / MessageID: identity
-//     fields persisted on the PendingToolCallBatch at pause time so Plan
-//     16-07's resolve handler can enforce business-scoped access control
+//     fields persisted on the PendingToolCallBatch at pause time so the
+//     resolve handler can enforce business-scoped access control
 //     and run the TOCTOU re-check against projects.approval_overrides.
-//   - BusinessApprovals / ProjectApprovalOverrides: the POLICY-02/03 maps
+//   - BusinessApprovals / ProjectApprovalOverrides: the policy maps
 //     that hitl.Resolve consults to classify each LLM-proposed tool call
-//     at pause time. chat_proxy.go (Plan 16-06) forwards these from the
+//     at pause time. chat_proxy.go forwards these from the
 //     business/project documents it loads to enrich the chat request.
 type RunRequest struct {
 	UserID          uuid.UUID
 	Model           string
 	BusinessContext prompt.BusinessContext
-	// ProjectContext is the optional project prompt layer (Phase 15).
-	// nil means "Без проекта" — legacy pre-Phase-15 behavior.
+	// ProjectContext is the optional project prompt layer.
+	// nil means "Без проекта" — legacy behavior with no project scoping.
 	ProjectContext *prompt.ProjectContext
-	// WhitelistMode is the project's typed tool-whitelist mode (Phase 15).
-	// "" = inherit (v1.3 baseline per 15-CONTEXT.md D-18).
+	// WhitelistMode is the project's typed tool-whitelist mode.
+	// "" = inherit (v1.3 baseline).
 	WhitelistMode domain.WhitelistMode
 	// AllowedTools is consulted only when WhitelistMode == explicit.
 	AllowedTools       []string
@@ -113,17 +112,17 @@ type RunRequest struct {
 	ActiveIntegrations []string
 	Tier               string
 
-	// Phase 16 HITL identity fields — threaded into RunState → batch.* at
+	// HITL identity fields — threaded into RunState → batch.* at
 	// pause time. Empty strings are tolerated: the repo stores them
 	// verbatim and the resolve handler will 403/404 on missing context
-	// when it needs business-scoped auth (Plan 16-07).
+	// when it needs business-scoped auth.
 	ConversationID string
 	BusinessID     string
 	ProjectID      string
 	UserIDString   string
 	MessageID      string
 
-	// Phase 16 HITL policy inputs — consulted by hitl.Resolve at pause
+	// HITL policy inputs — consulted by hitl.Resolve at pause
 	// time to classify each LLM-proposed tool call. nil maps are tolerated
 	// (treated as empty maps — the registry floor wins).
 	BusinessApprovals        map[string]domain.ToolFloor
@@ -157,7 +156,7 @@ func New(llmClient LLMClient, toolRegistry *toolregistry.Registry) *Orchestrator
 
 // NewWithOptions creates an Orchestrator with custom options. pendingRepo is
 // nil by default; use NewWithHITL to inject one. Backward-compatible with
-// every pre-Phase-16 caller that used NewWithOptions(llm, reg, opts).
+// every legacy caller that used NewWithOptions(llm, reg, opts).
 func NewWithOptions(llmClient LLMClient, toolRegistry *toolregistry.Registry, opts Options) *Orchestrator {
 	if opts.MaxIterations <= 0 {
 		opts.MaxIterations = 10
@@ -168,7 +167,7 @@ func NewWithOptions(llmClient LLMClient, toolRegistry *toolregistry.Registry, op
 // NewWithHITL constructs an Orchestrator with HITL wired in — pendingRepo
 // receives the InsertPreparing + PromoteToPending + MarkDispatched +
 // MarkResolved calls from stepRun / Resume. Use this constructor in
-// cmd/main.go once Plan 16-02's repository is threaded through.
+// cmd/main.go.
 func NewWithHITL(
 	llmClient LLMClient,
 	toolRegistry *toolregistry.Registry,
@@ -193,7 +192,7 @@ func NewWithHITL(
 // RunRequest and spawns the goroutine. Resume (in resume.go) is the
 // companion wrapper that rebuilds RunState from a persisted batch
 // snapshot; both call into stepRun. This is the Run→Resume→stepRun
-// shape mandated by HITL-03 — no blocked goroutines on approval channels.
+// shape — no blocked goroutines on approval channels.
 func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, error) {
 	ch := make(chan Event, 32)
 

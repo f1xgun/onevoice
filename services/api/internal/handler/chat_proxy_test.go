@@ -29,8 +29,8 @@ import (
 // projectService that returns ErrProjectNotFound and a stub conversation repo
 // that returns a conversation with ProjectID = nil. Used by legacy tests that
 // do not exercise project enrichment. The conversationID URL param is bound
-// via chi.RouteCtxKey in each test. Phase 16 also injects an empty
-// pendingRepo (no active batches) so the D-04 gate is a pass-through.
+// via chi.RouteCtxKey in each test. Also injects an empty
+// pendingRepo (no active batches) so the gate is a pass-through.
 func newChatProxyNoProject(
 	biz BusinessService,
 	integ IntegrationService,
@@ -347,8 +347,8 @@ func TestChatProxy_OrchestratorDown(t *testing.T) {
 	assert.Contains(t, errResp["error"], "orchestrator unavailable")
 }
 
-// TestChatProxy_ProjectEnrichment_WithoutProject covers Plan 15-04 Task 3
-// Behavior 1: when conversation.project_id is null, orchestrator request
+// TestChatProxy_ProjectEnrichment_WithoutProject — Behavior 1: when
+// conversation.project_id is null, orchestrator request
 // contains empty project_* fields and an empty allowed_tools slice.
 func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 	userID := uuid.New()
@@ -485,7 +485,7 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 	assert.Equal(t, tools.TelegramSendChannelPost, allowedTools[0])
 }
 
-// TestChatProxy_ScannerBuffer_HandlesLargeToolResult documents HITL-13: the
+// TestChatProxy_ScannerBuffer_HandlesLargeToolResult: the
 // SSE scanner buffer was bumped from 64KB to 1MB so large tool_result / pending
 // batch payloads do not trigger a bufio.ErrTooLong during streaming.
 // We stream a ~512KB tool_result event and assert the handler consumes it
@@ -548,7 +548,7 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 	assert.Equal(t, 500_000, len(inner), "payload must round-trip the full 500K chars")
 }
 
-// TestChatProxy_NoSyntheticToolCallID documents HITL-13 anti-footgun #4: the
+// TestChatProxy_NoSyntheticToolCallID — anti-footgun #4: the
 // synthetic "tc-N" ID generator was removed; chat_proxy propagates the LLM's
 // real tool_call.id verbatim from the orchestrator's SSE event.
 func TestChatProxy_NoSyntheticToolCallID(t *testing.T) {
@@ -601,7 +601,7 @@ func TestChatProxy_NoSyntheticToolCallID(t *testing.T) {
 }
 
 // TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage covers the
-// HITL-01 pause-time persistence branch: on tool_approval_required, chat_proxy
+// pause-time persistence branch: on tool_approval_required, chat_proxy
 // persists an assistant Message with Status=pending_approval, ToolCalls marked
 // Status=pending_approval and ApprovalID=<batchID>-<callID>, and forwards the
 // SSE event to the client before closing the stream.
@@ -662,13 +662,13 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 	assert.Empty(t, persistedMsg.ToolResults, "no tool results yet at pause time")
 }
 
-// --- Phase 16 Plan 06 Task 2: D-04 implicit-resume + explicit-resume tests ---
+// --- implicit-resume + explicit-resume tests ---
 
 // TestChatProxy_Resume_AppendsToExistingMessage covers the happy path for
 // explicit resume: client POSTs /chat/{id} with X-Onevoice-Resume-Batch-Id;
 // the proxy forwards to /chat/{id}/resume?batch_id=..., the orchestrator
 // emits tool_result events and done, the SAME assistant Message is updated
-// (not a new one — D-17), and Status transitions to complete.
+// (not a new one), and Status transitions to complete.
 func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
@@ -754,7 +754,7 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 	// The final Update carries the terminal state.
 	require.NotEmpty(t, persistedUpdates)
 	final := persistedUpdates[len(persistedUpdates)-1]
-	assert.Equal(t, "msg-1", final.ID, "same message ID preserved (D-17)")
+	assert.Equal(t, "msg-1", final.ID, "same message ID preserved")
 	assert.Equal(t, domain.MessageStatusComplete, final.Status)
 	require.Len(t, final.ToolResults, 2)
 	require.Len(t, final.ToolCalls, 2)
@@ -829,7 +829,7 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 // resume-path bug where an LLM error / ctx cancellation / max-iterations cap
 // during the post-resolve agent loop emitted SSE `error` and closed the stream
 // without ever sending `done`. Pre-fix the assistant Message stayed in
-// pending_approval forever, so the next POST /chat hit the D-04 gate's
+// pending_approval forever, so the next POST /chat hit the gate's
 // "turn_already_in_progress" branch and the conversation was permanently stuck
 // behind a hanging loader. After the fix: the error event flips Status to
 // complete (Content / ToolCall statuses preserved) so the chat unblocks.
@@ -910,11 +910,11 @@ func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T)
 	assert.Contains(t, rr.Body.String(), `"type":"error"`)
 
 	// The persistResumeDone path triggered by the error event must have run,
-	// transitioning Status off pending_approval. Without this, the D-04 gate
+	// transitioning Status off pending_approval. Without this, the gate
 	// keeps blocking new turns.
 	require.NotEmpty(t, persistedUpdates, "Update must be called when error event fires")
 	final := persistedUpdates[len(persistedUpdates)-1]
-	assert.Equal(t, "msg-stuck", final.ID, "same message ID preserved (D-17)")
+	assert.Equal(t, "msg-stuck", final.ID, "same message ID preserved")
 	assert.Equal(t, domain.MessageStatusComplete, final.Status, "error must clear pending_approval")
 	require.Len(t, final.ToolCalls, 1)
 	assert.Equal(t, domain.ToolCallStatusRejected, final.ToolCalls[0].Status, "tool_rejected status preserved")
@@ -1000,7 +1000,7 @@ func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t
 	assert.Equal(t, domain.ToolCallStatusRejected, final.ToolCalls[0].Status, "tool_rejected status preserved on fall-through")
 }
 
-// TestChatProxy_ImplicitResume_InProgressMessage_Rejoins covers D-04 case (b):
+// TestChatProxy_ImplicitResume_InProgressMessage_Rejoins case (b):
 // no resume header, but the conversation has an in_progress message AND a
 // resolving batch → implicit rejoin via the orchestrator's resume endpoint.
 func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
@@ -1082,7 +1082,7 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 	assert.GreaterOrEqual(t, updateCalls, 1, "Update should be called at least once on done")
 }
 
-// TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent covers D-04 case (c):
+// TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent case (c):
 // no resume header, an active pending_approval message, and a batch still in
 // status="pending" → re-emit the stored tool_approval_required event from the
 // batch document so the UI re-hydrates. Orchestrator is NOT invoked.
@@ -1152,7 +1152,7 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), `"call_id":"call-p"`)
 }
 
-// TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress covers D-04
+// TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress
 // case (d): active in_progress Message with NO batch (shouldn't happen in
 // healthy flow) → inline error "turn_already_in_progress".
 func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testing.T) {
@@ -1321,13 +1321,12 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 	assert.Equal(t, "", captured["project_whitelist_mode"])
 }
 
-// TestChatProxy_ForwardsPhase16Fields covers Plan 17-07 GAP-03 closure on the
-// API side: the proxy MUST forward five Phase-16 keys to the orchestrator on
-// every fresh-turn request — user_id (JWT subject), message_id (the just-
-// saved userMsg.ID), tier, business_approvals (from Business.ToolApprovals()),
-// project_approval_overrides (from project.ApprovalOverrides). Without these,
-// the orchestrator persists PendingToolCallBatch with empty IDs and HITL-11
-// hydration is impossible. See VERIFICATION.md §GAP-03.
+// TestChatProxy_ForwardsPhase16Fields — the proxy MUST forward five keys
+// to the orchestrator on every fresh-turn request — user_id (JWT subject),
+// message_id (the just-saved userMsg.ID), tier, business_approvals (from
+// Business.ToolApprovals()), project_approval_overrides (from
+// project.ApprovalOverrides). Without these, the orchestrator persists
+// PendingToolCallBatch with empty IDs and approval-card hydration is impossible.
 func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 	t.Run("with project — all five keys present and populated", func(t *testing.T) {
 		userID := uuid.New()
@@ -1409,7 +1408,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		require.NotNil(t, captured, "orchestrator request body should be captured")
 
-		// All five Phase-16 keys MUST be present.
+		// All five keys MUST be present.
 		assert.Contains(t, captured, "user_id")
 		assert.Contains(t, captured, "message_id")
 		assert.Contains(t, captured, "tier")
@@ -1425,7 +1424,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		assert.NotEmpty(t, mid, "message_id must be non-empty")
 		assert.Equal(t, capturedUserMsgID, mid, "message_id must equal the just-saved userMsg.ID")
 
-		// tier — string (empty acceptable per Plan 17-07; v1.3 has no tier model).
+		// tier — string (empty acceptable; v1.3 has no tier model).
 		_, ok = captured["tier"].(string)
 		assert.True(t, ok, "tier must be a string, got %T", captured["tier"])
 
@@ -1507,13 +1506,13 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 // TestFireAutoTitleIfPending exercises the gate predicate of
 // fireAutoTitleIfPending directly — bypasses the SSE machinery so the test
 // is fast and deterministic. Covers the full branch matrix that drives
-// Plan 18-05's trust contract:
+// the trust contract:
 //
 //   - status=auto_pending → fires (FakeChatCaller.Calls() ≥ 1)
-//   - status=manual       → no-op (D-01 / D-02: manual is sovereign)
-//   - status=auto         → no-op (D-01: only auto_pending fires)
+//   - status=manual       → no-op (manual is sovereign)
+//   - status=auto         → no-op (only auto_pending fires)
 //   - GetByID error       → no-op + warn log (graceful degradation)
-//   - h.titler == nil     → no-op (graceful disable per A6 / Pitfall 1)
+//   - h.titler == nil     → no-op (graceful disable, Pitfall 1)
 //
 // Each subcase constructs its own ChatProxyHandler so the test stays
 // isolated from the others' fakes. The persistCtx closure mirrors the
@@ -1590,7 +1589,7 @@ func TestFireAutoTitleIfPending(t *testing.T) {
 
 		h.fireAutoTitleIfPending(persistCtx, convID, bizID, userText, assistantText)
 
-		// Negative settle: ensure NO fire even after settle window. D-01 / D-02.
+		// Negative settle: ensure NO fire even after settle window.
 		require.True(t, waitForFire(fc, false), "manual must not fire titler; calls=%d", fc.Calls())
 		assert.Equal(t, 0, fc.Calls())
 	})

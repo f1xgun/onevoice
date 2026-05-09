@@ -8,9 +8,9 @@ import (
 )
 
 // InternalToolsHandler serves the cluster-internal registry snapshot consumed
-// by the API service's POLICY-07 startup sweep.
+// by the API service's startup sweep.
 //
-// Access considerations (threat model T-16-03-04): this endpoint leaks tool
+// Access considerations: this endpoint leaks tool
 // NAMES and FLOORS only — no secrets, no schemas, no parameters. The
 // information disclosure risk was accepted in planning because:
 //
@@ -52,7 +52,7 @@ func (h *InternalToolsHandler) Names(w http.ResponseWriter, r *http.Request) {
 }
 
 // InternalToolsAllHandler serves GET /internal/tools — the full registry
-// projection consumed by the API's GET /api/v1/tools passthrough (Plan 16-07).
+// projection consumed by the API's GET /api/v1/tools passthrough.
 // Emits `{name, platform, floor, editable_fields, description}` per tool.
 //
 // Same cluster-internal visibility rules apply as for Names: this port is not
@@ -70,7 +70,7 @@ func NewInternalToolsAllHandler(reg *toolregistry.Registry) *InternalToolsAllHan
 // ServeHTTP responds with `[{name, platform, floor, editable_fields, description}, ...]`
 // for every registered tool. EditableFields is always a non-null array
 // (possibly empty) so downstream consumers (React Query cache, Go JSON
-// decoders) never see null — matches the Phase 16 convention applied to
+// decoders) never see null — matches the convention applied to
 // project.allowed_tools and similar list fields.
 func (h *InternalToolsAllHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	entries := h.Registry.AllEntries()

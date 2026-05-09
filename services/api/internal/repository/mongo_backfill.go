@@ -15,16 +15,16 @@ import (
 )
 
 // SchemaMigrationPhase15 is the marker row written to `schema_migrations`
-// once the Phase 15 backfill has run to completion.
+// once the V15 backfill has run to completion.
 const SchemaMigrationPhase15 = "phase-15-projects-foundation"
 
-// BackfillConversationsV15 extends every pre-Phase-15 Conversation with:
+// BackfillConversationsV15 extends every pre-V15 Conversation with:
 //
-//	project_id        = null          (virtual "Без проекта" bucket; UI-11)
+//	project_id        = null          (virtual "Без проекта" bucket)
 //	title_status      = "auto_pending"
 //	pinned            = false
-//	last_message_at   = updated_at    (approximation — Phase 19 replaces with real last-msg timestamp)
-//	business_id       = ""            (denormalized field — populated properly when Phase 19 search lands)
+//	last_message_at   = updated_at    (approximation — replaced later with real last-msg timestamp)
+//	business_id       = ""            (denormalized field — populated when search lands)
 //
 // Each $set is guarded by {$exists: false} so the migration is idempotent:
 // rerunning yields the same state with zero matched documents. Writes a
@@ -112,32 +112,31 @@ func backfillField(ctx context.Context, coll *mongo.Collection, field string, fi
 }
 
 // SchemaMigrationPhase19 is the marker row written to `schema_migrations`
-// once the Phase 19 / Plan 19-02 backfill has run to completion.
+// once the V19 backfill has run to completion.
 const SchemaMigrationPhase19 = "phase-19-search-sidebar-pinned-at"
 
-// BackfillConversationsV19 — Phase 19 / Plan 19-02 / D-02.
-//
-// Migrates every conversation document from the post-Phase-15 shape (with
-// `pinned: <bool>`) to the Phase-19 shape (with `pinned_at: *time.Time` and
-// NO `pinned` field). Three steps in strict order:
+// BackfillConversationsV19 migrates every conversation document from the
+// pre-V19 shape (with `pinned: <bool>`) to the V19 shape (with
+// `pinned_at: *time.Time` and NO `pinned` field). Three steps in strict
+// order:
 //
 //  1. pinned_at = nil when the field is missing. After this step every
 //     document has the `pinned_at` field present, so the BSON omitempty
 //     decoding stays predictable.
 //  2. Migrate legacy `pinned: true` rows: set pinned_at = updated_at via an
-//     aggregation-pipeline update. Approximation per RESEARCH §12 — we have
-//     no record of when the row was originally pinned, so updated_at is the
-//     closest available proxy. (Sort by pinned_at desc per D-03 still works:
-//     re-pinning a row stamps a fresh now-UTC timestamp via repo.Pin, so all
-//     legacy rows simply land at the bottom of the pinned list ordered by
-//     last update.)
+//     aggregation-pipeline update. Approximation — we have no record of
+//     when the row was originally pinned, so updated_at is the closest
+//     available proxy. (Sort by pinned_at desc still works: re-pinning a
+//     row stamps a fresh now-UTC timestamp via repo.Pin, so all legacy
+//     rows simply land at the bottom of the pinned list ordered by last
+//     update.)
 //  3. $unset the legacy `pinned` bool field on every doc that still has it.
-//     PinnedAt != nil becomes the SINGLE SOURCE OF TRUTH (D-02).
+//     PinnedAt != nil becomes the SINGLE SOURCE OF TRUTH.
 //
 // Marker fast-path: if the schema_migrations row for SchemaMigrationPhase19
 // already exists, this function is a no-op. Idempotent on every API restart.
 //
-// Pattern: mirrors BackfillConversationsV15 above (Phase 15 backfill template).
+// Pattern: mirrors BackfillConversationsV15 above.
 func BackfillConversationsV19(ctx context.Context, db *mongo.Database) error {
 	conversations := db.Collection("conversations")
 	marker := db.Collection("schema_migrations")
@@ -155,8 +154,8 @@ func BackfillConversationsV19(ctx context.Context, db *mongo.Database) error {
 
 	// Step 1: pinned_at = nil when the field is missing.
 	// Note: backfillField logs under "phase 15 backfill field" — log key is
-	// shared so the operational pattern stays uniform across phases (the
-	// `field` value tells operators which migration ran).
+	// shared so the operational pattern stays uniform across migrations
+	// (the `field` value tells operators which migration ran).
 	if err := backfillField(ctx, conversations, "pinned_at",
 		bson.M{"pinned_at": bson.M{"$exists": false}},
 		bson.M{"$set": bson.M{"pinned_at": nil}}); err != nil {
@@ -178,7 +177,7 @@ func BackfillConversationsV19(ctx context.Context, db *mongo.Database) error {
 		"matched", res.MatchedCount, "modified", res.ModifiedCount)
 
 	// Step 3: drop the legacy `pinned` field. Single source of truth becomes
-	// PinnedAt != nil (D-02).
+	// PinnedAt != nil.
 	dropRes, err := conversations.UpdateMany(ctx,
 		bson.M{"pinned": bson.M{"$exists": true}},
 		bson.M{"$unset": bson.M{"pinned": ""}})

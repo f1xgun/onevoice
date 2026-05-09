@@ -12,7 +12,7 @@ import type { Project } from '@/types/project';
 import type { Conversation } from '@/lib/conversations';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 
-// Phase 19 / Plan 19-05 — axe-core a11y audit (RESEARCH §3 + threat T-19-05-01).
+// axe-core a11y audit.
 //
 // CI gate (BLOCKING per directive): fails on `critical` AND `serious`
 // findings. `moderate` and `minor` violations are logged only — they
@@ -22,20 +22,18 @@ import { API_PATHS } from '@/lib/constants/apiPaths';
 //
 // We import axe-core's `run()` directly because @chialab/vitest-axe is
 // matchers-only (its `expect.extend(matchers)` registration lives in
-// vitest.setup.ts, plan 19-05 / Wave 0). axe-core 4.x provides
-// `axe.run(context, options)` returning AxeResults. We expose a thin
-// `axe(container, opts)` alias below so call sites read identically to
-// the planning docs (`axe(container, ...)`).
+// vitest.setup.ts). axe-core 4.x provides `axe.run(context, options)`
+// returning AxeResults. We expose a thin `axe(container, opts)` alias
+// below so call sites read identically (`axe(container, ...)`).
 
 /**
  * `axe(container)` — thin alias over `axeCore.run(container, {...})`.
  *
- * Phase 19's plan (and RESEARCH §3) cites the call shape `axe(container, ...)`
- * because `@chialab/vitest-axe` was originally documented to re-export that
- * helper. The actual `@chialab/vitest-axe@0.19.1` package exposes ONLY the
- * matcher (`toHaveNoViolations`). The runner has to come from `axe-core`
- * directly. The alias keeps the call site phrasing identical to the
- * planning docs and the plan's grep checks (`axe(container` substring).
+ * The call shape `axe(container, ...)` is used because `@chialab/vitest-axe`
+ * was originally documented to re-export that helper. The actual
+ * `@chialab/vitest-axe@0.19.1` package exposes ONLY the matcher
+ * (`toHaveNoViolations`). The runner has to come from `axe-core` directly.
+ * The alias keeps the call site phrasing identical (`axe(container` substring).
  */
 function axe(container: ElementContext, options?: RunOptions): Promise<AxeResults> {
   return axeCore.run(container, options ?? {});
@@ -98,7 +96,7 @@ const FAIL_IMPACTS = new Set<string>(['critical', 'serious']);
 
 async function expectNoBlockingViolations(container: ElementContext) {
   // axe-core run options. resultTypes=['violations'] skips the heavy
-  // passes/inapplicable lists (RESEARCH §3 line 237).
+  // passes/inapplicable lists.
   const results = await axe(container, { resultTypes: ['violations'] });
   const blocking = results.violations.filter((v) =>
     v.impact ? FAIL_IMPACTS.has(v.impact) : false
@@ -152,7 +150,7 @@ function makeConv(id: string, title: string): Conversation {
   };
 }
 
-describe('Phase 19 a11y audit — sidebar surfaces (BLOCKING — critical+serious only)', () => {
+describe('a11y audit — sidebar surfaces (BLOCKING — critical+serious only)', () => {
   beforeEach(() => {
     apiGet.mockReset();
     apiPost.mockReset();
@@ -165,7 +163,7 @@ describe('Phase 19 a11y audit — sidebar surfaces (BLOCKING — critical+seriou
     render(<Sidebar />, { wrapper: Wrapper });
     // Sidebar is mobile-only and starts closed; open the drawer first so
     // the audit covers the OPEN drawer per directive (3 scenarios — one is
-    // the open mobile drawer, RESEARCH §3 line 234).
+    // the open mobile drawer).
     await user.click(screen.getByRole('button', { name: 'Открыть боковое меню' }));
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();

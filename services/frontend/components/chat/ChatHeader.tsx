@@ -21,7 +21,7 @@ interface ChatHeaderProps {
   onConversationDeleted?: () => void;
   // Menu data passed in as primitive props from ChatWindow (which already
   // owns the per-conversation query). ChatHeader does NOT add a third
-  // useQuery subscription here — D-11 isolation tests assert exact commit
+  // useQuery subscription here — isolation tests assert exact commit
   // counts that scale with the number of useQuery hooks. Render the menu
   // only when these primitives are present.
   menuTitle?: string;
@@ -30,7 +30,7 @@ interface ChatHeaderProps {
 }
 
 /**
- * D-11 USER OVERRIDE structural mitigation (Landmine 1).
+ * USER OVERRIDE structural mitigation.
  *
  *   1. useQuery `select` projection returns a primitive `string`. React Query
  *      runs `select` on every cache change, but consumers (this hook) receive
@@ -55,7 +55,7 @@ function useConversationTitle(conversationId: string): string {
     select: (list) => {
       const conv = list.find((c) => c.id === conversationId);
       if (!conv) return '';
-      // D-09 fallback encapsulated here so the header and the sidebar share
+      // Fallback encapsulated here so the header and the sidebar share
       // exactly one definition of "what should the title look like right now?"
       return conv.title === '' || conv.titleStatus === 'auto_pending' ? 'Новый диалог' : conv.title;
     },
@@ -65,11 +65,11 @@ function useConversationTitle(conversationId: string): string {
 }
 
 /**
- * Phase 19 / Plan 19-02 / D-11 mitigation — narrow-memo selector for the
- * pinned state. The `select` projection returns a primitive `boolean`, so a
- * cache mutation that changes any UNRELATED field (title of a different
- * chat, lastMessageAt of this chat, etc.) does not re-render the bookmark
- * button. Same isolation contract as useConversationTitle above.
+ * Narrow-memo selector for the pinned state. The `select` projection returns
+ * a primitive `boolean`, so a cache mutation that changes any UNRELATED field
+ * (title of a different chat, lastMessageAt of this chat, etc.) does not
+ * re-render the bookmark button. Same isolation contract as
+ * useConversationTitle above.
  */
 function useConversationPinned(conversationId: string): boolean {
   const { data } = useQuery<Conversation[], Error, boolean>({

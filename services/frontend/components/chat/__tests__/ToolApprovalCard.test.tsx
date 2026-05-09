@@ -104,14 +104,13 @@ describe('ToolApprovalCard — card structure and gates', () => {
     expect(screen.getByText('Выберите действие для каждой задачи')).toBeInTheDocument();
   });
 
-  // ---------- Plan 17-09 / VERIFICATION item 4: Submit hint persistence ----------
+  // ---------- Submit hint persistence ----------
   // Regression: the visually-hidden helper span at the bottom of the footer
   // was rendered unconditionally (only the TooltipContent was gated on
   // `!allDecided`). Once a decision was picked and Submit became enabled,
   // `screen.getByText('Выберите действие для каждой задачи')` still found the
   // sr-only copy → operators saw a stale hint contradicting the enabled
-  // button. Plan 17-09 gates the sr-only span on the same `!allDecided`
-  // predicate.
+  // button. Fix: gate the sr-only span on the same `!allDecided` predicate.
 
   it('GG) keeps the Submit helper hint in the DOM while any call is undecided', () => {
     render(<ToolApprovalCard batch={threeCallBatch} onSubmit={vi.fn()} />);
@@ -139,13 +138,13 @@ describe('ToolApprovalCard — card structure and gates', () => {
     expect(submit).not.toHaveAttribute('aria-disabled', 'true');
 
     // 2. The helper copy must be ABSENT from the DOM — neither the tooltip
-    //    nor the sr-only span renders. Plan 17-09 fix: gate the sr-only
-    //    span on `!allDecided`.
+    //    nor the sr-only span renders. Fix: gate the sr-only span on
+    //    `!allDecided`.
     expect(screen.queryByText('Выберите действие для каждой задачи')).toBeNull();
 
     // 3. With the helper span gone, the Button's aria-describedby points
-    //    nowhere. Plan 17-09 also drops the attribute when allDecided so
-    //    SR output stays clean.
+    //    nowhere. The attribute is also dropped when allDecided so SR
+    //    output stays clean.
     expect(submit).not.toHaveAttribute('aria-describedby');
   });
 

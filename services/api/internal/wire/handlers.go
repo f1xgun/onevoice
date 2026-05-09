@@ -12,10 +12,9 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 )
 
-// Phase 19 / 19-MD-02: NewChatProxyHandler now consumes the shared
-// *orchestratorclient.Client built once in BuildServices (svcs.OrchClient).
-// Remove the legacy (orchestratorURL, httpClient) plumbing — it spawned a
-// second client per process.
+// NewChatProxyHandler consumes the shared *orchestratorclient.Client built
+// once in BuildServices (svcs.OrchClient) — there is no separate
+// (orchestratorURL, httpClient) plumbing.
 
 // Handlers constructs every HTTP handler used by the API service and
 // returns them aggregated in *router.Handlers ready for router.Setup.
@@ -23,9 +22,8 @@ import (
 // Each handler constructor signature is locked by the existing handler
 // package — this function is wiring only, no business logic.
 //
-// Phase 19 / Plan 19-04 split: OAuthHandler (true OAuth code-flow) lives
-// in handler/oauth; ConnectHandler (paste-flow) lives in handler/connect.
-// Both are constructed here.
+// OAuthHandler (true OAuth code-flow) lives in handler/oauth; ConnectHandler
+// (paste-flow) lives in handler/connect. Both are constructed here.
 func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*router.Handlers, error) {
 	oauthHandler := oauth.NewOAuthHandler(svcs.OAuth, svcs.Integration, svcs.Business, oauth.OAuthConfig{
 		VKClientID:         cfg.VKClientID,
@@ -43,9 +41,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		oauthHandler.WithAgentTaskPublisher(svcs.AgentTaskPublisher)
 	}
 
-	// Plan 19-04: paste-flow handler (Telegram + VK community access token).
-	// Narrow ConnectConfig per RESEARCH §16 Q3 — paste-flow doesn't need
-	// the OAuth client credentials.
+	// Paste-flow handler (Telegram + VK community access token).
+	// Narrow ConnectConfig — paste-flow doesn't need the OAuth client
+	// credentials.
 	connectHandler := connect.NewConnectHandler(
 		svcs.Integration,
 		svcs.Business,
@@ -83,14 +81,14 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create agent task handler: %w", err)
 	}
 
-	// Phase 15 Projects — three-line wiring through the project service
-	// already constructed in wire.Services.
+	// Projects — three-line wiring through the project service already
+	// constructed in wire.Services.
 	projectHandler, err := handler.NewProjectHandler(svcs.Project, svcs.Business)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create project handler: %w", err)
 	}
 
-	// Conversation handler depends on business + project services for Phase 15
+	// Conversation handler depends on business + project services for
 	// create-conversation scoping and the /move endpoint system-note append.
 	conversationHandler, err := handler.NewConversationHandler(repos.Conversation, repos.Message, svcs.Business, svcs.Project, h.PendingToolCallRepo)
 	if err != nil {
@@ -98,8 +96,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	}
 
 	// Chat proxy enriches each /chat/{id} request with the conversation's
-	// project_* fields (PROJ-09 layering) — requires projectService and
-	// conversationRepo per Plan 15-04 Task 3.
+	// project_* fields — requires projectService and conversationRepo.
 	chatProxyHandler := handler.NewChatProxyHandler(
 		svcs.Business,
 		svcs.Integration,
@@ -111,8 +108,8 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		repos.Review,
 		repos.AgentTask,
 		svcs.TaskHub,
-		svcs.OrchClient, // Phase 19 / 19-MD-02 — single shared orchestrator client.
-		svcs.Titler,     // Phase 18 Plan 05 — optional auto-titler; nil when titling is disabled.
+		svcs.OrchClient, // single shared orchestrator client.
+		svcs.Titler,     // optional auto-titler; nil when titling is disabled.
 	)
 
 	hitlHandler, err := handler.NewHITLHandler(svcs.HITL, svcs.Business, repos.Conversation)
@@ -123,19 +120,18 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	// Wire the shared ToolsRegistryCache into the business + project
 	// handlers so PUT /business/{id}/tool-approvals and
 	// PUT /projects/{id} can validate approval-overrides keys against the
-	// live orchestrator registry before persisting (POLICY-05, POLICY-06).
+	// live orchestrator registry before persisting.
 	businessHandler.SetToolsCache(svcs.ToolsCache)
 	projectHandler.SetToolsCache(svcs.ToolsCache)
 
-	// Phase 18 Plan 05 — TitlerHandler for POST /conversations/{id}/regenerate-title.
-	// titler may be nil here (graceful disable per A6); the handler returns 503
+	// TitlerHandler for POST /conversations/{id}/regenerate-title.
+	// titler may be nil here (graceful disable); the handler returns 503
 	// in that case. conversationRepo + messageRepo are required (panic-on-nil).
 	titlerHandler := handler.NewTitlerHandler(svcs.Titler, repos.Conversation, repos.Message)
 
-	// Phase 19 Plan 19-03 — search handler. Constructed with the searcher
-	// (built in wire.Services; readiness flag already flipped) +
-	// businessService for resolving the caller's businessID server-side
-	// from the bearer's userID.
+	// Search handler. Constructed with the searcher (built in wire.Services;
+	// readiness flag already flipped) + businessService for resolving the
+	// caller's businessID server-side from the bearer's userID.
 	searchHandler, err := handler.NewSearchHandler(svcs.Searcher, svcs.Business)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create search handler: %w", err)

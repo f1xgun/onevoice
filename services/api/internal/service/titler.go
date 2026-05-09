@@ -16,12 +16,11 @@ import (
 	"github.com/f1xgun/onevoice/pkg/security"
 )
 
-// Tunables locked per .planning/phases/18-auto-title/18-CONTEXT.md
-// "Claude's Discretion" and 18-RESEARCH.md Pattern 1.
+// Tunables for title generation.
 const (
 	// titleMaxChars caps the cleaned title length in RUNES (not bytes — Russian
-	// runes are multi-byte, see Pitfall 6). Discretionary 60–80; chose the upper
-	// bound so titles can include a parenthetical clarifier where useful.
+	// runes are multi-byte). Discretionary 60–80; chose the upper bound so
+	// titles can include a parenthetical clarifier where useful.
 	titleMaxChars = 80
 
 	// titleMaxOutputTokens — research recommends 20–30; chose 30 so the cheap
@@ -34,10 +33,10 @@ const (
 	// producing varied wording for diverse chats).
 	titleTemperature = 0.3
 
-	// titleSystemPrompt is the locked Russian instruction (D-discretion in
-	// 18-CONTEXT.md). Cheap-model target audience: business owners chatting
-	// in Russian. "Без кавычек и точек в конце" pre-empts most of what
-	// sanitizeTitle would otherwise have to strip.
+	// titleSystemPrompt is the locked Russian instruction. Cheap-model target
+	// audience: business owners chatting in Russian. "Без кавычек и точек в
+	// конце" pre-empts most of what sanitizeTitle would otherwise have to
+	// strip.
 	titleSystemPrompt = "Сформулируй короткий заголовок (3–6 слов) для этого диалога. Без кавычек и точек в конце."
 )
 
@@ -52,18 +51,18 @@ const (
 //  2. Tests use a fakeRouter that records the ChatRequest and returns canned
 //     responses, without spinning up real LLM provider stubs.
 //
-// This is the SINGLE SOURCE OF TRUTH for the LLM-call seam in Phase 18
-// (B-02 resolution). Plan 05 references *service.Titler concretely and does
-// NOT introduce a parallel titlerCaller interface.
+// This is the SINGLE SOURCE OF TRUTH for the LLM-call seam.
+// Callers reference *service.Titler concretely; there is no parallel
+// titlerCaller interface.
 type chatCaller interface {
 	Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error)
 }
 
 // Titler generates short titles for chats via the cheap TITLER_MODEL and
 // writes them atomically via the conditional UpdateTitleIfPending repo path.
-// All operations are best-effort fire-and-forget; failures degrade silently
-// (D-04 / TITLE-05). The service composes pkg/security/pii so PII never
-// reaches the cheap LLM endpoint (D-14) and the post-hoc title check (D-13).
+// All operations are best-effort fire-and-forget; failures degrade silently.
+// The service composes pkg/security/pii so PII never reaches the cheap LLM
+// endpoint and gates the post-hoc title check.
 type Titler struct {
 	router chatCaller
 	repo   domain.ConversationRepository
@@ -92,28 +91,27 @@ func NewTitler(router chatCaller, repo domain.ConversationRepository, model stri
 
 // GenerateAndSave runs the full auto-title pipeline:
 //
-//  1. Pre-redact userMsg + assistantMsg via security.RedactPII (D-14).
+//  1. Pre-redact userMsg + assistantMsg via security.RedactPII.
 //  2. Build a llm.ChatRequest with Model = t.model, Tier = "background", and
 //     NO Tools (titler MUST NOT tool-call).
 //  3. Call t.router.Chat. On error → log + recordAttempt + return; status
-//     stays auto_pending so the next complete turn re-fires (D-04).
+//     stays auto_pending so the next complete turn re-fires.
 //  4. sanitizeTitle the response. If empty → log + recordAttempt + return.
 //  5. security.ContainsPIIClass on the cleaned title. On match → write the
 //     terminal "Untitled chat <day> <month>" Russian short form via
 //     UpdateTitleIfPending under the SAME atomic guard so a manual rename
-//     mid-flight still wins (D-05 + D-13).
+//     mid-flight still wins.
 //  6. Otherwise call UpdateTitleIfPending with the cleaned title.
 //     ErrConversationNotFound → manual rename won the race (INFO-level).
 //
 // Caller MUST pass a long-lived ctx. The request ctx from chat_proxy.go is
 // unsafe — see chat_proxy.go's persistCtx pattern. All log lines are
-// strictly metadata-only per D-16 / TITLE-07 / Pitfall 8 — never the prompt
-// body, the assistant text, the redacted text, the LLM response, or the
-// generated title.
+// strictly metadata-only — never the prompt body, the assistant text, the
+// redacted text, the LLM response, or the generated title.
 func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID, userMsg, assistantMsg string) {
 	metricStart := time.Now()
 
-	// D-14: Pre-redact. The cheap LLM never sees raw PII.
+	// Pre-redact. The cheap LLM never sees raw PII.
 	redactedUser := security.RedactPII(userMsg)
 	redactedAssistant := security.RedactPII(assistantMsg)
 	promptLen := len(redactedUser) + len(redactedAssistant)
@@ -142,7 +140,7 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 			"error", err,
 		)
 		recordAttempt("failure", "llm_error")
-		return // D-04: title_status stays auto_pending; next complete turn re-fires.
+		return // title_status stays auto_pending; next complete turn re-fires.
 	}
 
 	respLen := len(resp.Content)
@@ -160,7 +158,7 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 		return
 	}
 
-	// D-13: post-hoc PII gate. Match → terminal fallback (D-05).
+	// post-hoc PII gate. Match → terminal fallback.
 	if class, hit := security.ContainsPIIClass(title); hit {
 		terminalTitle := untitledChatRussian(time.Now())
 		slog.WarnContext(ctx, "auto-title: pii rejected",
@@ -173,7 +171,7 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 			"duration_ms", time.Since(metricStart).Milliseconds(),
 		)
 		// Write the fallback under the SAME atomic guard so a concurrent
-		// manual rename still wins (D-05 + Landmine 8).
+		// manual rename still wins.
 		if writeErr := t.repo.UpdateTitleIfPending(ctx, conversationID, terminalTitle); writeErr != nil {
 			if errors.Is(writeErr, domain.ErrConversationNotFound) {
 				// Manual rename won the race even on the terminal path;
@@ -208,7 +206,7 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 		if errors.Is(writeErr, domain.ErrConversationNotFound) {
 			// MatchedCount=0 → user renamed (manual_won_race) or doc deleted.
 			// INFO level: this is a feature, not a bug. Manual rename is
-			// sovereign per D-02 / D-08 / TITLE-04.
+			// sovereign.
 			slog.InfoContext(ctx, "auto-title: no-op (manual rename or deleted)",
 				"conversation_id", conversationID,
 				"business_id", businessID,
@@ -260,7 +258,7 @@ func sanitizeTitle(raw string) string {
 	return s
 }
 
-// untitledChatRussian returns the D-05 terminal-fallback title in Russian
+// untitledChatRussian returns the terminal-fallback title in Russian
 // short form, e.g. "Untitled chat 26 апреля". Go's time.Format is English-only
 // for month names; we look up the Russian genitive month name from a fixed
 // 12-element table.

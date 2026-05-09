@@ -16,13 +16,13 @@ type HandlerSet struct {
 	// Chat serves POST /chat/{conversationID} — the main SSE entry point.
 	Chat *handler.ChatHandler
 	// Resume serves POST /chat/{conversationID}/resume — HITL post-approval
-	// continuation (Plan 16-07).
+	// continuation.
 	Resume *handler.ResumeHandler
 	// Tools serves GET /internal/tools/names — cluster-internal endpoint
-	// (POLICY-07) the API hits to validate tool_approval whitelist entries.
+	// the API hits to validate tool_approval whitelist entries.
 	Tools *handler.InternalToolsHandler
 	// ToolsAll serves GET /internal/tools — full registry snapshot consumed
-	// by the API's GET /api/v1/tools passthrough (Plan 16-07).
+	// by the API's GET /api/v1/tools passthrough.
 	ToolsAll *handler.InternalToolsAllHandler
 	// DraftReply serves POST /internal/draft-reply — review_sync's AI draft
 	// hook; single source of truth for LLM access in the orchestrator.

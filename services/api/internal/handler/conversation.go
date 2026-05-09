@@ -38,17 +38,16 @@ const (
 type ConversationHandler struct {
 	conversationRepo domain.ConversationRepository
 	messageRepo      domain.MessageRepository
-	businessService  BusinessService // Phase 15 — resolve caller's business for project scoping
-	projectService   ProjectService  // Phase 15 — validate projectId belongs to caller's business
-	// pendingRepo drives HITL-11's pendingApprovals array on GET /messages.
-	// Phase 16 dep.
+	businessService  BusinessService // resolve caller's business for project scoping
+	projectService   ProjectService  // validate projectId belongs to caller's business
+	// pendingRepo drives the pendingApprovals array on GET /messages.
 	pendingRepo domain.PendingToolCallRepository
 }
 
 // NewConversationHandler creates a new conversation handler instance.
-// businessService and projectService are required (Phase 15) — create-conversation
+// businessService and projectService are required — create-conversation
 // and move-conversation must validate that the supplied projectId belongs to the
-// caller's business. pendingRepo is required (Phase 16) — GET /messages joins
+// caller's business. pendingRepo is required — GET /messages joins
 // the pending_tool_calls collection to hydrate the approval card. Passing nil
 // for any dep is a programmer error.
 func NewConversationHandler(
@@ -84,12 +83,12 @@ func NewConversationHandler(
 
 // PendingApprovalSummary is the per-batch projection returned by
 // GET /conversations/{id}/messages in the `pendingApprovals` array. Each
-// field name matches the JSON contract the Phase 17 frontend consumes to
-// render the approval card on page reload (HITL-11).
+// field name matches the JSON contract the frontend consumes to
+// render the approval card on page reload.
 //
 // EditableFields is intentionally left empty in this response: the frontend
 // already has the live tool registry via the `['tools']` React Query
-// (Plan 16-08 / GET /api/v1/tools), which is the single source of truth for
+// (GET /api/v1/tools), which is the single source of truth for
 // per-tool editable-field whitelists. The field is still emitted as [] (not
 // omitted) so the JSON schema stays stable for downstream consumers.
 type PendingApprovalSummary struct {
@@ -124,7 +123,7 @@ type CreateConversationRequest struct {
 
 // CreateConversation handles POST /api/v1/conversations.
 //
-// Phase 15 (PROJ-05, D-07..D-10): accepts an optional `projectId` in the body.
+// Accepts an optional `projectId` in the body.
 // Both an explicit JSON `null` and an absent `projectId` key deserialize to
 // Go's `*string = nil` — both cases persist `project_id: null` (the "Без проекта"
 // bucket). When projectId is non-empty, the handler validates that the project
@@ -184,7 +183,7 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		}
 	}
 
-	// Create conversation. Phase 19 D-02 — newly created chats start unpinned;
+	// Create conversation. Newly created chats start unpinned;
 	// PinnedAt stays nil (the single source of truth for the unpinned state).
 	// The legacy `Pinned bool` field was removed; do not re-introduce it.
 	now := time.Now()
@@ -336,7 +335,7 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 	}
 
 	conversation.Title = req.Title
-	conversation.TitleStatus = domain.TitleStatusManual // Phase 18 / D-06: PUT title is unconditional manual rename. Plan 03's repo Update persists this in $set block.
+	conversation.TitleStatus = domain.TitleStatusManual // PUT title is unconditional manual rename. The repo Update persists this in $set block.
 	if err := h.conversationRepo.Update(r.Context(), conversation); err != nil {
 		slog.Error("failed to update conversation", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -381,8 +380,8 @@ func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.
 }
 
 // listMessagesResponse is the JSON shape returned by GET /messages. Messages
-// retains the v1.2 wire format; pendingApprovals is the Phase 16 HITL-11
-// addition that lets the approval card rehydrate on page reload.
+// retains the v1.2 wire format; pendingApprovals lets the approval card
+// rehydrate on page reload.
 //
 // `pendingApprovals` is ALWAYS serialized (even as []) so the frontend can
 // iterate unconditionally — never omit or emit null.
@@ -392,9 +391,9 @@ type listMessagesResponse struct {
 }
 
 // ListMessages handles GET /api/v1/conversations/{id}/messages.
-// Phase 16 extends the response with a pendingApprovals array hydrated from
-// the pending_tool_calls collection so the frontend approval card (HITL-11)
-// can reconstruct its state on page reload.
+// Extends the response with a pendingApprovals array hydrated from
+// the pending_tool_calls collection so the frontend approval card can
+// reconstruct its state on page reload.
 func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -430,7 +429,7 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 		messages = []domain.Message{}
 	}
 
-	// HITL-11: hydrate the approval card from pending_tool_calls. Failure here
+	// Hydrate the approval card from pending_tool_calls. Failure here
 	// is non-fatal — the messages list is still useful. The repo performs the
 	// lazy-expiration virtualization so any batch past its TTL surfaces as
 	// status="expired".
@@ -455,7 +454,7 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 					ToolName: c.ToolName,
 					Args:     c.Arguments,
 					// EditableFields intentionally empty — frontend gets the
-					// live whitelist from GET /api/v1/tools (Plan 16-08).
+					// live whitelist from GET /api/v1/tools.
 					EditableFields: []string{},
 				})
 			}
@@ -472,21 +471,21 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 // MoveConversationRequest is the body for POST /api/v1/conversations/{id}/move.
 // ProjectID may be an explicit JSON null — the two are treated identically
 // (standard encoding/json semantics). Null / empty / absent all move the chat
-// into the virtual "Без проекта" bucket (D-10).
+// into the virtual "Без проекта" bucket.
 type MoveConversationRequest struct {
 	ProjectID *string `json:"projectId"`
 }
 
 // MoveConversation handles POST /api/v1/conversations/{id}/move.
 //
-// Phase 15 (PROJ-06, D-11..D-13). The endpoint:
+// The endpoint:
 //  1. Validates the caller owns the conversation.
 //  2. If a destination projectId is supplied, validates it belongs to the
 //     caller's business (cross-business → 404 to avoid enumeration).
 //  3. Atomically updates `project_id` via UpdateProjectAssignment.
 //  4. Appends a visible system-role message to the chat documenting the move
 //     so the LLM sees the transition on the NEXT turn (PITFALLS §11, Option A).
-//     Copy is byte-exact per 15-UI-SPEC line 194:
+//     Copy is byte-exact:
 //     "[Чат перемещён в «{destination}» — с этого момента применяется новая политика]"
 //     where {destination} is the new project's name or the literal string
 //     "Без проекта" for null moves.
@@ -568,8 +567,8 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Append the visible system note (D-13; byte-exact Russian copy per
-	// 15-UI-SPEC line 194). The LLM sees this on the NEXT turn of the chat
+	// Append the visible system note (byte-exact Russian copy).
+	// The LLM sees this on the NEXT turn of the chat
 	// so the prompt-layering transition is explicit (PITFALLS §11 Option A).
 	note := &domain.Message{
 		ConversationID: conversationID,
@@ -594,12 +593,12 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 
 // Pin handles POST /api/v1/conversations/{id}/pin.
 //
-// Phase 19 / Plan 19-02 / D-02. Atomically sets pinned_at = now (UTC) on the
+// Atomically sets pinned_at = now (UTC) on the
 // conversation, scoped by (id, business_id, user_id) at the repository layer
-// for defense-in-depth (Pitfalls §19; threat T-19-02-01). On success returns
+// for defense-in-depth (Pitfalls §19). On success returns
 // the refreshed conversation; cross-tenant attempts surface as a uniform 404
 // (NEVER 403 — uniform 404 is the industry-standard guard against existence
-// enumeration; threat T-19-02-02).
+// enumeration).
 func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -653,7 +652,7 @@ func (h *ConversationHandler) Pin(w http.ResponseWriter, r *http.Request) {
 
 // Unpin handles POST /api/v1/conversations/{id}/unpin.
 //
-// Phase 19 / Plan 19-02 / D-02. Symmetric to Pin: atomically sets
+// Symmetric to Pin: atomically sets
 // pinned_at = nil on the conversation, scoped by (id, business_id, user_id).
 // Cross-tenant attempts surface as a uniform 404.
 func (h *ConversationHandler) Unpin(w http.ResponseWriter, r *http.Request) {

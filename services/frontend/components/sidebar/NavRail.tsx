@@ -28,7 +28,7 @@ interface Integration {
   last_sync_at?: string;
 }
 
-// Permanent icon-only nav-rail (D-14): width 56–64 px, vertical icon column,
+// Permanent icon-only nav-rail: width 56–64 px, vertical icon column,
 // rendered on every authenticated route. Project tree, search, and pinned
 // rows live in <ProjectPane> — NOT here.
 //

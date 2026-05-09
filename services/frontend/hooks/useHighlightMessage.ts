@@ -3,15 +3,14 @@
 import { useEffect } from 'react';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 
-const HIGHLIGHT_FLASH_MS = 1750; // CONTEXT.md D-08: 1.5–2 s range; 1750 ms midpoint.
+const HIGHLIGHT_FLASH_MS = 1750; // 1.5–2 s range; 1750 ms midpoint.
 const HIGHLIGHT_DATA_ATTR = 'data-highlight';
 
 /**
- * Phase 19 / Plan 19-04 / D-08 / SEARCH-04 — when /chat/{id}?highlight={msgId}
- * is loaded (typically navigated to from the search dropdown), find the matched
- * message in the DOM, scroll it into center view, apply a flash class for
- * 1.75 s, then remove the class AND strip the query param so a manual refresh
- * doesn't re-fire.
+ * When /chat/{id}?highlight={msgId} is loaded (typically navigated to from the
+ * search dropdown), find the matched message in the DOM, scroll it into center
+ * view, apply a flash class for 1.75 s, then remove the class AND strip the
+ * query param so a manual refresh doesn't re-fire.
  *
  * Depends on `MessageBubble` rendering each message with a `data-message-id`
  * attribute. Re-runs when `messagesReady` flips so the effect waits for
@@ -19,7 +18,7 @@ const HIGHLIGHT_DATA_ATTR = 'data-highlight';
  * after mount).
  *
  * Selector uses `CSS.escape(target)` to guard against arbitrary characters in
- * a Mongo ObjectID hex / UUID (T-19-04-01 mitigation).
+ * a Mongo ObjectID hex / UUID.
  */
 export function useHighlightMessage(messagesReady: boolean) {
   const params = useSearchParams();

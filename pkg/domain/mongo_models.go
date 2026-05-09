@@ -2,8 +2,8 @@ package domain
 
 import "time"
 
-// TitleStatus values carried by Conversation.TitleStatus. Phase 18 flips
-// "auto_pending" → "auto" when the auto-titler succeeds; user overrides
+// TitleStatus values carried by Conversation.TitleStatus. The auto-titler
+// flips "auto_pending" → "auto" when it succeeds; user overrides
 // set the value to "manual".
 const (
 	TitleStatusAutoPending = "auto_pending"
@@ -11,16 +11,16 @@ const (
 	TitleStatusManual      = "manual"
 )
 
-// Message.Status values (POLICY / HITL — Phase 16). An empty string is
+// Message.Status values (POLICY / HITL). An empty string is
 // semantically equivalent to MessageStatusComplete for backward compatibility
-// with pre-Phase-16 messages; see the docstring on Message.Status.
+// with legacy messages; see the docstring on Message.Status.
 const (
 	MessageStatusComplete        = "complete"
 	MessageStatusPendingApproval = "pending_approval"
 	MessageStatusInProgress      = "in_progress"
 )
 
-// ToolCall.Status values (Phase 16 HITL). Empty string means "no approval
+// ToolCall.Status values (HITL). Empty string means "no approval
 // required" (auto-floor tool) — the same zero-value-is-default pattern as
 // Message.Status. Non-empty values track the approval lifecycle.
 const (
@@ -45,14 +45,13 @@ const (
 	ReviewReplyStatusError   = "error"
 )
 
-// Conversation is a chat thread stored in MongoDB. Phase 15 adds
-// BusinessID, ProjectID, TitleStatus, and LastMessageAt.
+// Conversation is a chat thread stored in MongoDB.
 // ProjectID intentionally omits bson `omitempty` so nil serializes as
-// explicit `null` (the virtual "Без проекта" bucket in UI-11) rather
-// than as a missing field — matters for the move-chat endpoint in
-// Plan 04 which must be able to clear the field.
+// explicit `null` (the virtual "Без проекта" bucket) rather
+// than as a missing field — matters for the move-chat endpoint
+// which must be able to clear the field.
 //
-// Pinned bool removed Phase 19 D-02 — single source of truth is
+// Pinned bool removed — single source of truth is
 // PinnedAt != nil. See repository/mongo_backfill.go:BackfillConversationsV19
 // for the migration that drops the legacy bool via $unset and migrates
 // any pinned:true rows to pinned_at = updated_at.
@@ -78,11 +77,11 @@ type Message struct {
 	ToolCalls      []ToolCall             `json:"toolCalls,omitempty" bson:"tool_calls,omitempty"`
 	ToolResults    []ToolResult           `json:"toolResults,omitempty" bson:"tool_results,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
-	// Status is the Phase 16 HITL message lifecycle marker. Valid non-empty
+	// Status is the HITL message lifecycle marker. Valid non-empty
 	// values: "complete", "pending_approval", "in_progress" (see
 	// MessageStatus* constants above).
 	//
-	// Empty string == "complete" for backward compatibility with pre-Phase-16
+	// Empty string == "complete" for backward compatibility with legacy
 	// messages (no backfill write needed). Any reader that branches on Status
 	// MUST treat "" and "complete" identically.
 	Status    string    `json:"status,omitempty" bson:"status,omitempty"`
@@ -101,7 +100,7 @@ type ToolCall struct {
 	Name      string                 `json:"name" bson:"name"`
 	Arguments map[string]interface{} `json:"arguments" bson:"arguments"`
 	// ApprovalID correlates a persisted tool call with a pending-approval
-	// batch (Phase 16 HITL). Stamped on the tool call at pause time
+	// batch (HITL). Stamped on the tool call at pause time
 	// (chat_proxy.go), persisted in the approval_id header of the NATS
 	// dispatch, and keyed into Redis at each platform agent for dedupe.
 	// Format: "<batch_id>-<call_id>". Empty for auto-floor tools.

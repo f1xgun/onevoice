@@ -16,12 +16,12 @@ import (
 )
 
 // TokenInfo aliases agentbase.TokenInfo so existing tests compile after the
-// plan 19-07 migration. AccessToken is the community token (write operations);
+// agentbase migration. AccessToken is the community token (write operations);
 // UserToken is the user token (read operations on private data); ExternalID is
 // the resolved group_id. agentbase.TokenInfo carries the same three fields.
 type TokenInfo = agentbase.TokenInfo
 
-// TokenFetcher aliases agentbase.TokenResolver — kept for D-16 test
+// TokenFetcher aliases agentbase.TokenResolver — kept for test
 // compatibility (import-path/wiring-only changes in handler_test.go).
 type TokenFetcher = agentbase.TokenResolver
 
@@ -96,7 +96,7 @@ func (h *Handler) routeTool(ctx context.Context, req a2a.ToolRequest) (*a2a.Tool
 }
 
 // ClassifyVKError is the exported entry point used by cmd/main.go to wire the
-// dispatcher's classifier via agentbase.FuncClassifier. Body unchanged.
+// dispatcher's classifier via agentbase.FuncClassifier.
 func ClassifyVKError(err error) error {
 	return classifyVKError(err)
 }

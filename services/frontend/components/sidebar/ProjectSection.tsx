@@ -49,10 +49,10 @@ export function ProjectSection({
   const count = conversations.length;
   const visible = conversations.slice(0, MAX_VISIBLE);
 
-  // Phase 19 / Plan 19-05 / D-17 — roving-tabindex on the chat-list portion.
+  // roving-tabindex on the chat-list portion.
   // Tab enters the list once (lands on the first row), ↑/↓/Home/End navigate.
   // The project header (chevron / link / +) sits OUTSIDE the container — it
-  // remains a separate Tab stop, which D-17 explicitly requires.
+  // remains a separate Tab stop.
   const { containerRef, onKeyDown } = useRovingTabIndex(visible.length);
 
   async function handleCreate() {
@@ -134,7 +134,7 @@ export function ProjectSection({
                       : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                   )}
                 >
-                  {/* Phase 19 / Plan 19-02 / D-05 — pinned chats render the
+                  {/* pinned chats render the
                         same bookmark indicator under their own project, so the
                         duplication of the pinned row is visually obvious. */}
                   {pinned && (

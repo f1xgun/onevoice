@@ -45,7 +45,7 @@ func setupBackfillTestDB(t *testing.T, name string) *mongo.Database {
 }
 
 // insertLegacyConversation inserts a minimal "old-shape" conversation
-// (pre-Phase-15: no project_id / title_status / pinned / business_id /
+// (legacy: no project_id / title_status / pinned / business_id /
 // last_message_at). We use bson.M directly so the insert is not validated
 // against the Conversation struct — simulating what exists on disk today.
 func insertLegacyConversation(t *testing.T, db *mongo.Database, id, userID, title string, updatedAt time.Time) {
@@ -167,9 +167,9 @@ func TestBackfillConversationsV15_PreservesExistingFields(t *testing.T) {
 		"user-set title_status must not be overwritten")
 }
 
-// --- Phase 19 / Plan 19-02 — V19 backfill tests ----------------------------
+// --- V19 backfill tests ----------------------------
 
-// insertPhase15Conversation inserts a document in the post-Phase-15 shape
+// insertPhase15Conversation inserts a document in the older shape
 // (legacy `pinned: <bool>` field present, no `pinned_at`). This is the
 // realistic on-disk shape V19 must migrate.
 func insertPhase15Conversation(t *testing.T, db *mongo.Database, id string, pinned bool, updatedAt time.Time) {

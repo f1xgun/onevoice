@@ -7,9 +7,9 @@ import { Sidebar } from '@/components/sidebar';
 import type { Project } from '@/types/project';
 import type { Conversation } from '@/lib/conversations';
 
-// Phase 19 / Plan 19-05 / D-16 — mobile drawer auto-close behavior.
+// mobile drawer auto-close behavior.
 //
-// LOCKED CONTRACT (19-CONTEXT.md):
+// LOCKED CONTRACT:
 //   - Drawer auto-closes on chat-row select.
 //   - Drawer STAYS OPEN on project-header expand/collapse.
 //   - Drawer STAYS OPEN on pin/rename/delete context-menu actions.
@@ -91,7 +91,7 @@ function Wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-describe('mobile drawer — Phase 19 / Plan 19-05 / D-16', () => {
+describe('mobile drawer', () => {
   beforeEach(() => {
     apiGet.mockReset();
     apiPost.mockReset();
@@ -116,7 +116,7 @@ describe('mobile drawer — Phase 19 / Plan 19-05 / D-16', () => {
     });
 
     // Click the chat-row Link → onNavigate → setOpen(false).
-    // Note: chat-row links carry role="option" (Phase 19 / D-17 listbox
+    // Note: chat-row links carry role="option" (listbox
     // pattern), so we query by `option`, not `link`.
     await user.click(screen.getByRole('option', { name: /Первый чат/ }));
 

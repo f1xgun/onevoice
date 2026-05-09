@@ -8,19 +8,18 @@ import { useTranslations } from 'next-intl';
 import { ProjectChip } from '@/components/chat/ProjectChip';
 import type { SearchResult } from '@/types/search';
 
-// Phase 19 / Plan 19-04 / D-07 — search result row.
+// search result row.
 //
-// Layout per CONTEXT.md / D-07:
+// Layout:
 //   [title — flex-1 truncate] [<ProjectChip size="xs"> when projectId != null] [date]
 //   [snippet truncated, with backend-supplied <mark> ranges] [+N совпадений badge if matchCount>1]
 //
 // Click → /chat/{conversationId}?highlight={topMessageId} (the hook in
-// app/(app)/chat/[id]/page.tsx scrolls to + flashes the matched message
-// per D-08).
+// app/(app)/chat/[id]/page.tsx scrolls to + flashes the matched message).
 //
 // The chat-row Link and the ProjectChip Link are SIBLINGS (not nested) to
 // avoid the React `<a> in <a>` hydration warning — same pattern as
-// PinnedSection (Plan 19-02). This means the row visually looks unified but
+// PinnedSection. This means the row visually looks unified but
 // the chip is a separate keyboard target navigating to /projects/{id}.
 
 /**
@@ -85,7 +84,7 @@ export function SearchResultRow({ result, onSelect }: Props) {
     ? format(parseISO(result.lastMessageAt), 'd MMM', { locale: ru })
     : '';
 
-  // Phase 19 / Plan 19-05 — the parent Popover.Content carries role="listbox"
+  // The parent Popover.Content carries role="listbox"
   // when results.length > 0; ARIA requires its direct children to be option.
   return (
     <div role="option" aria-selected={false} className="rounded-md hover:bg-paper-sunken">
@@ -93,7 +92,7 @@ export function SearchResultRow({ result, onSelect }: Props) {
         <Link
           href={href}
           onClick={onSelect}
-          // Phase 19 / Plan 19-05 will install useRovingTabIndex; this attribute
+          // useRovingTabIndex; this attribute
           // is the contract anchor.
           data-roving-item="true"
           className="flex flex-1 items-center gap-2 truncate text-sm text-ink"

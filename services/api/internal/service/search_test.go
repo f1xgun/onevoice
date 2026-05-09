@@ -17,7 +17,7 @@ import (
 
 // captureLogsHere mirrors titler_test.go's captureLogs — local copy so
 // search_test.go is self-contained when callers want to assert on the
-// SEARCH-07 log shape.
+// log shape.
 func captureLogsHere(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	buf := &bytes.Buffer{}
@@ -106,9 +106,8 @@ func TestNewSearcher_NilGuards(t *testing.T) {
 	})
 }
 
-// TestSearcher_RejectsEmptyScope — defense-in-depth (Pitfalls §19,
-// T-19-CROSS-TENANT mitigation). Empty businessID OR userID returns
-// ErrInvalidScope WITHOUT invoking either repo.
+// TestSearcher_RejectsEmptyScope — defense-in-depth. Empty businessID OR
+// userID returns ErrInvalidScope WITHOUT invoking either repo.
 func TestSearcher_RejectsEmptyScope(t *testing.T) {
 	cr := &fakeConvRepoSearch{}
 	mr := &fakeMsgRepoSearch{}
@@ -128,10 +127,9 @@ func TestSearcher_RejectsEmptyScope(t *testing.T) {
 	})
 }
 
-// TestSearcher_RejectsBeforeIndexReady — readiness gate
-// (T-19-INDEX-503 mitigation). Without MarkIndexesReady the search
-// returns ErrSearchIndexNotReady; the handler maps that to 503 +
-// Retry-After: 5.
+// TestSearcher_RejectsBeforeIndexReady — readiness gate.
+// Without MarkIndexesReady the search returns ErrSearchIndexNotReady;
+// the handler maps that to 503 + Retry-After: 5.
 func TestSearcher_RejectsBeforeIndexReady(t *testing.T) {
 	cr := &fakeConvRepoSearch{}
 	mr := &fakeMsgRepoSearch{}
@@ -242,7 +240,7 @@ func TestSearcher_PropagatesRepoError(t *testing.T) {
 	assert.ErrorIs(t, err, wantErr)
 }
 
-// TestSearcher_StableTieBreak_RecencyThenID — v20.1 ranking: when two
+// TestSearcher_StableTieBreak_RecencyThenID — ranking: when two
 // rows have equal Score (very common now that title hits all carry
 // Score=1.0), the secondary sort key is LastMessageAt desc, then
 // ConversationID asc as a final deterministic tiebreaker. Without this,
@@ -296,10 +294,10 @@ func TestSearcher_StableTieBreak_RecencyThenID(t *testing.T) {
 	}
 }
 
-// TestSearcher_LogShape_NoQueryText — SEARCH-07 / T-19-LOG-LEAK
-// mitigation. The captured log buffer MUST contain `query_length` AND
-// MUST NOT contain the literal query text bytes. This is the
-// load-bearing test for the metadata-only contract.
+// TestSearcher_LogShape_NoQueryText — log-leak mitigation.
+// The captured log buffer MUST contain `query_length` AND MUST NOT
+// contain the literal query text bytes. This is the load-bearing
+// test for the metadata-only contract.
 func TestSearcher_LogShape_NoQueryText(t *testing.T) {
 	buf := captureLogsHere(t)
 
@@ -317,7 +315,7 @@ func TestSearcher_LogShape_NoQueryText(t *testing.T) {
 	logs := buf.String()
 	assert.Contains(t, logs, "query_length", "metadata field present")
 	assert.NotContains(t, logs, literalQuery,
-		"query text leaked into logs (T-19-LOG-LEAK / SEARCH-07 violation)")
+		"query text leaked into logs")
 	assert.NotContains(t, logs, `"query"=`,
 		"NO 'query' slog key allowed (only 'query_length')")
 	assert.NotContains(t, logs, "query=конфиденциальныйпоиск42",

@@ -14,15 +14,15 @@ import { ToolApprovalJsonEditor } from './ToolApprovalJsonEditor';
 import { ToolApprovalToggleGroup } from './ToolApprovalToggleGroup';
 import { REJECT_REASON_MAX_LEN } from './toolApprovalConstants';
 
-// Exact Russian copy — 17-UI-SPEC §Copywriting Contract. Inlined per
-// 17-RESEARCH §Don't Hand-Roll (no shared i18n layer in v1.3).
+// Exact Russian copy — UI-SPEC §Copywriting Contract. Inlined
+// (no shared i18n layer in v1.3).
 const RU = {
   argsHeading: 'Аргументы',
   editableFieldsHint: 'Можно изменять',
-  // Plan 17-08 GAP-02: discoverability hint for the inline JSON editor's
+  // discoverability hint for the inline JSON editor's
   // double-click-to-edit interaction model. Library-agnostic phrasing so
-  // a future swap to a labeled-input form (per VERIFICATION §GAP-02
-  // suggested fix B) does not require a copy revision.
+  // a future swap to a labeled-input form does not require a copy
+  // revision.
   editAffordanceHint: 'Дважды нажмите на значение, чтобы изменить',
   rejectPlaceholder: 'Причина (необязательно)',
   rejectAriaLabel: 'Причина отказа',
@@ -32,8 +32,8 @@ const RU = {
 
 // Bridge `@uiw/react-json-view` (root, read-only) to the shadcn neutral palette.
 // Mirrors `jsonEditorTheme` from `ToolApprovalJsonEditor.tsx` so the editable
-// vs. read-only swap is visually identical. Kept local per Plan 17-08 to
-// avoid cross-modifying the editor file in this minimal-diff plan.
+// vs. read-only swap is visually identical. Kept local to
+// avoid cross-modifying the editor file in this minimal-diff change.
 const jsonViewTheme = {
   '--w-rjv-color': 'hsl(var(--foreground))',
   '--w-rjv-background-color': 'hsl(var(--muted))',
@@ -127,12 +127,12 @@ export function ToolApprovalAccordionEntry({
 
         <CollapsibleContent>
           {/*
-            Plan 17-08 GAP-01 fix: the Аргументы block + editable-fields hint
+            The Аргументы block + editable-fields hint
             now render whenever the entry is expanded — gated only by
             <CollapsibleContent>, NOT by `decision`. In Edit mode the editable
             JSON view replaces the read-only one and the affordance chip
-            (GAP-02) appears above it. Previously this whole block was hidden
-            unless `decision === 'edit'`, blocking UI-08 (inspect-before-approve).
+            appears above it. Previously this whole block was hidden
+            unless `decision === 'edit'`, blocking inspect-before-approve.
           */}
           <div className="space-y-2 px-3 pb-3">
             <p className="text-sm font-semibold">{RU.argsHeading}</p>
@@ -178,7 +178,7 @@ export function ToolApprovalAccordionEntry({
                   counterOver ? 'text-destructive' : 'text-muted-foreground'
                 )}
               >
-                {/* eslint-disable-next-line i18next/no-literal-string -- pure numeric counter "<n> / <max>", no localizable copy. File opts out of i18n per 17-RESEARCH §Don't Hand-Roll. */}
+                {/* eslint-disable-next-line i18next/no-literal-string -- pure numeric counter "<n> / <max>", no localizable copy. File opts out of i18n. */}
                 {draft.rejectReason.length} / {REJECT_REASON_MAX_LEN}
               </p>
             </div>
