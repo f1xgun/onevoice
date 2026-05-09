@@ -11,6 +11,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 )
 
@@ -39,7 +40,7 @@ func TestNATSExecutor_SuccessfulExecution(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 	result, err := exec.Execute(context.Background(), map[string]interface{}{
 		"text": "Hello World",
 	})
@@ -59,7 +60,7 @@ func TestNATSExecutor_AgentReturnsError(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 	_, err := exec.Execute(context.Background(), map[string]interface{}{})
 
 	require.Error(t, err)
@@ -68,7 +69,7 @@ func TestNATSExecutor_AgentReturnsError(t *testing.T) {
 
 func TestNATSExecutor_TransportError(t *testing.T) {
 	fake := &fakeRequester{err: context.DeadlineExceeded}
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 
 	_, err := exec.Execute(context.Background(), nil)
 	require.Error(t, err)
@@ -83,13 +84,13 @@ func TestExecute_SetsToolNameInRequest(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 	_, err := exec.Execute(context.Background(), map[string]interface{}{"text": "hi"})
 	require.NoError(t, err)
 
 	var toolReq a2a.ToolRequest
 	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
-	assert.Equal(t, a2a.AgentID("telegram__send_channel_post"), toolReq.Tool)
+	assert.Equal(t, a2a.AgentID(tools.TelegramSendChannelPost), toolReq.Tool)
 }
 
 func TestNATSExecutor_ContextTimeout(t *testing.T) {
@@ -98,7 +99,7 @@ func TestNATSExecutor_ContextTimeout(t *testing.T) {
 		response: &a2a.ToolResponse{TaskID: "t-slow", Success: true, Result: map[string]interface{}{}},
 	}
 	// Override Request to add a delay
-	exec := natsexec.New(a2a.AgentVK, "vk__publish_post", &delayedRequester{delay: 5 * time.Second})
+	exec := natsexec.New(a2a.AgentVK, tools.VKPublishPost, &delayedRequester{delay: 5 * time.Second})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -132,7 +133,7 @@ func TestExecute_SetsBusinessIDFromContext(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 
 	ctx := a2a.WithBusinessID(context.Background(), "biz-uuid-123")
 	_, err := exec.Execute(ctx, map[string]interface{}{"text": "hello"})
@@ -152,7 +153,7 @@ func TestExecute_SetsRequestIDFromCorrelationID(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 
 	ctx := logger.WithCorrelationID(context.Background(), "corr-abc-789")
 	_, err := exec.Execute(ctx, map[string]interface{}{"text": "hello"})
@@ -172,7 +173,7 @@ func TestNATSExecutor_ExecuteWithApproval_SetsApprovalIDInPayload(t *testing.T) 
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 	_, err := exec.ExecuteWithApproval(context.Background(), map[string]interface{}{"text": "hi"}, "appr-123")
 	require.NoError(t, err)
 
@@ -190,7 +191,7 @@ func TestNATSExecutor_ExecuteWithApproval_EmptyApproval_DoesNotSetField(t *testi
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 	_, err := exec.ExecuteWithApproval(context.Background(), map[string]interface{}{}, "")
 	require.NoError(t, err)
 
@@ -209,7 +210,7 @@ func TestNATSExecutor_Execute_IsBackwardCompatibleShim(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 	_, err := exec.Execute(context.Background(), map[string]interface{}{"text": "hi"})
 	require.NoError(t, err)
 
@@ -220,7 +221,7 @@ func TestNATSExecutor_Execute_IsBackwardCompatibleShim(t *testing.T) {
 	// Sanity: the rest of the payload is well-formed
 	var toolReq a2a.ToolRequest
 	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
-	assert.Equal(t, a2a.AgentID("telegram__send_channel_post"), toolReq.Tool)
+	assert.Equal(t, a2a.AgentID(tools.TelegramSendChannelPost), toolReq.Tool)
 	assert.Empty(t, toolReq.ApprovalID)
 }
 
@@ -233,7 +234,7 @@ func TestExecute_EmptyCorrelationID(t *testing.T) {
 		},
 	}
 
-	exec := natsexec.New(a2a.AgentTelegram, "telegram__send_channel_post", fake)
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
 
 	// No correlation ID in context
 	_, err := exec.Execute(context.Background(), map[string]interface{}{"text": "hello"})

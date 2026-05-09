@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 func TestResolve(t *testing.T) {
@@ -20,21 +21,21 @@ func TestResolve(t *testing.T) {
 	}{
 		{
 			name: "auto floor with empty maps stays auto",
-			in:   args{floor: domain.ToolFloorAuto, biz: nil, proj: nil, toolKey: "telegram__send_channel_post"},
+			in:   args{floor: domain.ToolFloorAuto, biz: nil, proj: nil, toolKey: tools.TelegramSendChannelPost},
 			want: domain.ToolFloorAuto,
 		},
 		{
 			name: "manual floor with empty maps stays manual",
-			in:   args{floor: domain.ToolFloorManual, biz: nil, proj: nil, toolKey: "telegram__send_channel_post"},
+			in:   args{floor: domain.ToolFloorManual, biz: nil, proj: nil, toolKey: tools.TelegramSendChannelPost},
 			want: domain.ToolFloorManual,
 		},
 		{
 			name: "forbidden floor cannot be lowered by anything",
 			in: args{
 				floor:   domain.ToolFloorForbidden,
-				biz:     map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorAuto},
-				proj:    map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorAuto},
-				toolKey: "telegram__send_channel_post",
+				biz:     map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorAuto},
+				proj:    map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorAuto},
+				toolKey: tools.TelegramSendChannelPost,
 			},
 			want: domain.ToolFloorForbidden,
 		},
@@ -42,9 +43,9 @@ func TestResolve(t *testing.T) {
 			name: "business cannot lower below floor (manual floor, biz=auto stays manual)",
 			in: args{
 				floor:   domain.ToolFloorManual,
-				biz:     map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorAuto},
+				biz:     map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorAuto},
 				proj:    nil,
-				toolKey: "telegram__send_channel_post",
+				toolKey: tools.TelegramSendChannelPost,
 			},
 			want: domain.ToolFloorManual,
 		},
@@ -52,9 +53,9 @@ func TestResolve(t *testing.T) {
 			name: "business raises auto to manual",
 			in: args{
 				floor:   domain.ToolFloorAuto,
-				biz:     map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorManual},
+				biz:     map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorManual},
 				proj:    nil,
-				toolKey: "telegram__send_channel_post",
+				toolKey: tools.TelegramSendChannelPost,
 			},
 			want: domain.ToolFloorManual,
 		},
@@ -62,9 +63,9 @@ func TestResolve(t *testing.T) {
 			name: "project raises above business (biz auto + proj manual)",
 			in: args{
 				floor:   domain.ToolFloorAuto,
-				biz:     map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorAuto},
-				proj:    map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorManual},
-				toolKey: "telegram__send_channel_post",
+				biz:     map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorAuto},
+				proj:    map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorManual},
+				toolKey: tools.TelegramSendChannelPost,
 			},
 			want: domain.ToolFloorManual,
 		},
@@ -72,9 +73,9 @@ func TestResolve(t *testing.T) {
 			name: "project cannot lower below business (biz manual + proj auto)",
 			in: args{
 				floor:   domain.ToolFloorAuto,
-				biz:     map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorManual},
-				proj:    map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorAuto},
-				toolKey: "telegram__send_channel_post",
+				biz:     map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorManual},
+				proj:    map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorAuto},
+				toolKey: tools.TelegramSendChannelPost,
 			},
 			want: domain.ToolFloorManual,
 		},
@@ -82,9 +83,9 @@ func TestResolve(t *testing.T) {
 			name: "project raises to forbidden over biz manual",
 			in: args{
 				floor:   domain.ToolFloorAuto,
-				biz:     map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorManual},
-				proj:    map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorForbidden},
-				toolKey: "telegram__send_channel_post",
+				biz:     map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorManual},
+				proj:    map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorForbidden},
+				toolKey: tools.TelegramSendChannelPost,
 			},
 			want: domain.ToolFloorForbidden,
 		},
@@ -94,7 +95,7 @@ func TestResolve(t *testing.T) {
 				floor:   domain.ToolFloorManual,
 				biz:     map[string]domain.ToolFloor{"vk__send_post": domain.ToolFloorForbidden},
 				proj:    map[string]domain.ToolFloor{"other__tool": domain.ToolFloorForbidden},
-				toolKey: "telegram__send_channel_post",
+				toolKey: tools.TelegramSendChannelPost,
 			},
 			want: domain.ToolFloorManual,
 		},
@@ -117,9 +118,9 @@ func TestResolve(t *testing.T) {
 			name: "biz only — manual applied when key matches",
 			in: args{
 				floor:   domain.ToolFloorAuto,
-				biz:     map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorManual},
+				biz:     map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorManual},
 				proj:    map[string]domain.ToolFloor{}, // empty non-nil
-				toolKey: "telegram__send_channel_post",
+				toolKey: tools.TelegramSendChannelPost,
 			},
 			want: domain.ToolFloorManual,
 		},
@@ -128,14 +129,14 @@ func TestResolve(t *testing.T) {
 			in: args{
 				floor:   domain.ToolFloorAuto,
 				biz:     map[string]domain.ToolFloor{},
-				proj:    map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorManual},
-				toolKey: "telegram__send_channel_post",
+				proj:    map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorManual},
+				toolKey: tools.TelegramSendChannelPost,
 			},
 			want: domain.ToolFloorManual,
 		},
 		{
 			name: "forbidden floor + no overrides stays forbidden",
-			in:   args{floor: domain.ToolFloorForbidden, biz: nil, proj: nil, toolKey: "telegram__send_channel_post"},
+			in:   args{floor: domain.ToolFloorForbidden, biz: nil, proj: nil, toolKey: tools.TelegramSendChannelPost},
 			want: domain.ToolFloorForbidden,
 		},
 	}

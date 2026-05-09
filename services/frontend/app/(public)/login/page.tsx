@@ -37,7 +37,7 @@ export default function LoginPage() {
     } catch (err) {
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data
         ?.message;
-      toast.error(message ?? 'Неверный email или пароль');
+      toast.error(message ?? tLogin('invalidCredentials'));
     }
   };
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // fakeIntegrations implements integrationProvider for sync tests.
@@ -143,7 +144,7 @@ func TestSyncBusiness_PublishesYandexHours(t *testing.T) {
 	require.Len(t, pub.calls, 1, "yandex_business integration must trigger one ToolRequest")
 	got := pub.calls[0]
 	assert.Equal(t, "tasks.yandex_business", pub.subject)
-	assert.Equal(t, "yandex_business__update_hours", got.Tool)
+	assert.Equal(t, tools.YandexBusinessUpdateHours, got.Tool)
 	assert.Equal(t, businessID.String(), got.BusinessID)
 	hoursArg, ok := got.Args["hours"].(string)
 	require.True(t, ok, "args.hours must be a string")

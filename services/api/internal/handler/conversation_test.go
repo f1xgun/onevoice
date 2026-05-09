@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -1482,7 +1483,7 @@ func TestGetMessages_WithPendingApprovals_ReturnsPopulatedArray(t *testing.T) {
 					MessageID:      "msg-42",
 					Status:         "pending",
 					Calls: []domain.PendingCall{
-						{CallID: "toolu_1", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+						{CallID: "toolu_1", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
 					},
 					CreatedAt: created,
 					ExpiresAt: expires,
@@ -1508,7 +1509,7 @@ func TestGetMessages_WithPendingApprovals_ReturnsPopulatedArray(t *testing.T) {
 	assert.Equal(t, "pending", body.PendingApprovals[0].Status)
 	require.Len(t, body.PendingApprovals[0].Calls, 1)
 	assert.Equal(t, "toolu_1", body.PendingApprovals[0].Calls[0].CallID)
-	assert.Equal(t, "telegram__send_channel_post", body.PendingApprovals[0].Calls[0].ToolName)
+	assert.Equal(t, tools.TelegramSendChannelPost, body.PendingApprovals[0].Calls[0].ToolName)
 	// EditableFields is intentionally empty — population is deferred to
 	// the frontend's `['tools']` React Query (live map).
 	assert.NotNil(t, body.PendingApprovals[0].Calls[0].EditableFields, "EditableFields must be [] not null for stable contract")

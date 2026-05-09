@@ -12,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
@@ -27,8 +28,8 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "call_tg", Type: "function", Function: llm.FunctionCall{Name: "telegram__send_channel_post", Arguments: string(tgArgs)}},
-				{ID: "call_vk", Type: "function", Function: llm.FunctionCall{Name: "vk__publish_post", Arguments: string(vkArgs)}},
+				{ID: "call_tg", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: tools.TelegramSendChannelPost, Arguments: string(tgArgs)}},
+				{ID: "call_vk", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: tools.VKPublishPost, Arguments: string(vkArgs)}},
 			},
 		},
 		{Content: "Оба поста опубликованы!", FinishReason: "stop"},
@@ -36,14 +37,14 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
-		Function: llm.FunctionDefinition{Name: "telegram__send_channel_post", Description: "d", Parameters: map[string]interface{}{}},
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "d", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"message_id": "tg_42", "platform": "telegram"}, nil
 	}), domain.ToolFloorAuto, nil)
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
-		Function: llm.FunctionDefinition{Name: "vk__publish_post", Description: "d", Parameters: map[string]interface{}{}},
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.VKPublishPost, Description: "d", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"post_id": "vk_99", "platform": "vk"}, nil
 	}), domain.ToolFloorAuto, nil)
@@ -73,8 +74,8 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 
 	// tool_call events fire before goroutines start — preserve original order.
 	require.Len(t, toolCalls, 2)
-	assert.Equal(t, "telegram__send_channel_post", toolCalls[0].ToolName)
-	assert.Equal(t, "vk__publish_post", toolCalls[1].ToolName)
+	assert.Equal(t, tools.TelegramSendChannelPost, toolCalls[0].ToolName)
+	assert.Equal(t, tools.VKPublishPost, toolCalls[1].ToolName)
 
 	// tool_result events arrive in completion order — correlate by ID.
 	require.Len(t, toolResults, 2)
@@ -102,7 +103,7 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 		{
 			FinishReason: "tool_calls",
 			ToolCalls: []llm.ToolCall{
-				{ID: "call_fail", Type: "function", Function: llm.FunctionCall{Name: "failing_tool", Arguments: string(args)}},
+				{ID: "call_fail", Type: llm.ToolCallTypeFunction, Function: llm.FunctionCall{Name: "failing_tool", Arguments: string(args)}},
 			},
 		},
 		{Content: "Инструмент не сработал, извините.", FinishReason: "stop"},
@@ -110,7 +111,7 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "failing_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, context.DeadlineExceeded

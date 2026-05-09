@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // --- WhitelistMode ---
@@ -57,7 +59,7 @@ func TestProject_JSON_CamelCaseKeys(t *testing.T) {
 		Description:   "handle reviews",
 		SystemPrompt:  "Reply formally",
 		WhitelistMode: WhitelistModeExplicit,
-		AllowedTools:  []string{"telegram__send_channel_post"},
+		AllowedTools:  []string{tools.TelegramSendChannelPost},
 		QuickActions:  []string{"Опубликовать", "Ответить на отзыв"},
 		CreatedAt:     time.Now().Truncate(time.Second),
 		UpdatedAt:     time.Now().Truncate(time.Second),

@@ -104,7 +104,7 @@ func registryWithRecording(t *testing.T, toolName string, floor domain.ToolFloor
 	rec := &recordingExecutor{}
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: toolName, Description: "d", Parameters: map[string]interface{}{}},
 	}, "", rec, floor, []string{"text"})
 	return reg, rec
@@ -157,7 +157,7 @@ func TestResume_AllApproved_DispatchesInParallel(t *testing.T) {
 	}
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "parallel_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
@@ -202,7 +202,7 @@ func TestResume_RejectedCall_SynthesizesToolMessage_SkipsDispatch(t *testing.T) 
 	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatched, 1) }}
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "rej_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
@@ -236,7 +236,7 @@ func TestResume_TOCTOU_PolicyRevoked_DropsCallWithSyntheticMessage(t *testing.T)
 	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatched, 1) }}
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "toctou_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
@@ -274,7 +274,7 @@ func TestResume_AlreadyDispatched_SkipsReDispatch(t *testing.T) {
 	rec := &instrumentedExecutor{onDispatch: func() { atomic.AddInt32(&dispatched, 1) }}
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "done_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
@@ -312,7 +312,7 @@ func TestResume_EditedArgs_PassesMergedArgsToExecutor(t *testing.T) {
 	rec := &recordingExecutor{}
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "edit_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
@@ -352,7 +352,7 @@ func TestResume_ApprovalID_IsBatchIDDashCallID(t *testing.T) {
 	rec := &recordingExecutor{}
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "appr_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
@@ -384,7 +384,7 @@ func TestResume_CompletesAndContinuesStepRun_ToDone(t *testing.T) {
 	rec := &recordingExecutor{}
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "cont_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", rec, domain.ToolFloorManual, []string{"text"})
 
@@ -415,7 +415,7 @@ func TestResume_MixedRejectAndApprove_BothProcessed(t *testing.T) {
 	rec := &recordingExecutor{}
 	reg := toolregistry.NewRegistry()
 	reg.Register(llm.ToolDefinition{
-		Type:     "function",
+		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "mix_tool", Description: "d", Parameters: map[string]interface{}{}},
 	}, "", rec, domain.ToolFloorManual, []string{"text"})
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitlvalidation"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // newCaptureLogger replaces slog's default logger with one backed by a buffer
@@ -28,7 +29,7 @@ func TestValidateApprovalSettings_UnknownBusinessTool_LogsWarning(t *testing.T) 
 	buf := newCaptureLogger(t)
 
 	registered := map[string]struct{}{
-		"telegram__send_channel_post": {},
+		tools.TelegramSendChannelPost: {},
 	}
 	businesses := []hitlvalidation.ApprovalSource{{
 		ID: "biz-123",
@@ -54,7 +55,7 @@ func TestValidateApprovalSettings_UnknownProjectTool_LogsWarning(t *testing.T) {
 	buf := newCaptureLogger(t)
 
 	registered := map[string]struct{}{
-		"telegram__send_channel_post": {},
+		tools.TelegramSendChannelPost: {},
 	}
 	projects := []hitlvalidation.ApprovalSource{{
 		ID: "proj-abc",
@@ -82,19 +83,19 @@ func TestValidateApprovalSettings_AllKnown_NoWarnings(t *testing.T) {
 	buf := newCaptureLogger(t)
 
 	registered := map[string]struct{}{
-		"telegram__send_channel_post": {},
-		"vk__publish_post":            {},
+		tools.TelegramSendChannelPost: {},
+		tools.VKPublishPost:           {},
 	}
 	businesses := []hitlvalidation.ApprovalSource{{
 		ID: "biz-1",
 		Overrides: map[string]domain.ToolFloor{
-			"telegram__send_channel_post": domain.ToolFloorManual,
+			tools.TelegramSendChannelPost: domain.ToolFloorManual,
 		},
 	}}
 	projects := []hitlvalidation.ApprovalSource{{
 		ID: "proj-1",
 		Overrides: map[string]domain.ToolFloor{
-			"vk__publish_post": domain.ToolFloorManual,
+			tools.VKPublishPost: domain.ToolFloorManual,
 		},
 	}}
 
@@ -114,20 +115,20 @@ func TestValidateApprovalSettings_MixedKnownUnknown_CountsUnknownOnly(t *testing
 	buf := newCaptureLogger(t)
 
 	registered := map[string]struct{}{
-		"telegram__send_channel_post": {},
-		"vk__publish_post":            {},
+		tools.TelegramSendChannelPost: {},
+		tools.VKPublishPost:           {},
 	}
 	businesses := []hitlvalidation.ApprovalSource{{
 		ID: "biz-1",
 		Overrides: map[string]domain.ToolFloor{
-			"telegram__send_channel_post": domain.ToolFloorManual,
+			tools.TelegramSendChannelPost: domain.ToolFloorManual,
 			"bogus_biz__tool":             domain.ToolFloorAuto,
 		},
 	}}
 	projects := []hitlvalidation.ApprovalSource{{
 		ID: "proj-1",
 		Overrides: map[string]domain.ToolFloor{
-			"vk__publish_post":    domain.ToolFloorManual,
+			tools.VKPublishPost:   domain.ToolFloorManual,
 			"bogus_proj__missing": domain.ToolFloorManual,
 		},
 	}}
@@ -163,10 +164,10 @@ func TestValidateApprovalSettings_MultipleSourcesSameScope(t *testing.T) {
 	newCaptureLogger(t)
 
 	registered := map[string]struct{}{
-		"telegram__send_channel_post": {},
+		tools.TelegramSendChannelPost: {},
 	}
 	businesses := []hitlvalidation.ApprovalSource{
-		{ID: "biz-1", Overrides: map[string]domain.ToolFloor{"telegram__send_channel_post": domain.ToolFloorManual}},
+		{ID: "biz-1", Overrides: map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorManual}},
 		{ID: "biz-2", Overrides: map[string]domain.ToolFloor{"deprecated__thing": domain.ToolFloorManual}},
 		{ID: "biz-3", Overrides: map[string]domain.ToolFloor{"another__ghost": domain.ToolFloorAuto}},
 	}

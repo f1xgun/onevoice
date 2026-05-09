@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
@@ -56,7 +57,7 @@ func TestResumeHandler_StreamsEventsAsSSE(t *testing.T) {
 		ch <- orchestrator.Event{
 			Type:       orchestrator.EventToolResult,
 			ToolCallID: "toolu_abc",
-			ToolName:   "telegram__send_channel_post",
+			ToolName:   tools.TelegramSendChannelPost,
 			ToolResult: map[string]interface{}{"ok": true},
 		}
 		ch <- orchestrator.Event{Type: orchestrator.EventDone}
@@ -120,10 +121,10 @@ func TestResumeHandler_ForwardsFreshApprovalMaps(t *testing.T) {
 	if got.BatchID != "b1" {
 		t.Errorf("BatchID = %q, want b1", got.BatchID)
 	}
-	if got.BusinessApprovals["telegram__send_channel_post"] != domain.ToolFloorManual {
+	if got.BusinessApprovals[tools.TelegramSendChannelPost] != domain.ToolFloorManual {
 		t.Errorf("business approvals not forwarded: %v", got.BusinessApprovals)
 	}
-	if got.ProjectApprovalOverrides["vk__publish_post"] != domain.ToolFloorForbidden {
+	if got.ProjectApprovalOverrides[tools.VKPublishPost] != domain.ToolFloorForbidden {
 		t.Errorf("project overrides not forwarded: %v", got.ProjectApprovalOverrides)
 	}
 	if got.Model != "gpt-5" {
@@ -161,8 +162,8 @@ func TestResumeHandler_EmptyBody_UsesZeroValues(t *testing.T) {
 // the endpoint the API's GET /api/v1/tools passthrough consumes.
 func TestInternalToolsAll_ReturnsFullProjection(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_channel_post"), "", nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("vk__publish_post"), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(makeDef(tools.VKPublishPost), "", nil, domain.ToolFloorManual, []string{"text"})
 	reg.Register(makeDef("get_reviews"), "", nil, domain.ToolFloorAuto, nil)
 
 	h := handler.NewInternalToolsAllHandler(reg)

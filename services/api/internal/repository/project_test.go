@@ -17,6 +17,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // --- Postgres-only unit tests (pgxmock, no env required) -----------------
@@ -116,7 +117,7 @@ func TestProjectRepository_GetByID(t *testing.T) {
 			"id", "business_id", "name", "description", "system_prompt",
 			"whitelist_mode", "allowed_tools", "approval_overrides", "quick_actions", "created_at", "updated_at",
 		}).AddRow(projectID, businessID, "Reviews", "desc", "you reply to reviews",
-			"explicit", []string{"telegram__send_channel_post"}, "{}", []string{"Reply nicely"},
+			"explicit", []string{tools.TelegramSendChannelPost}, "{}", []string{"Reply nicely"},
 			now, now)
 
 		// squirrel/pgx convert uuid.UUID to string via Stringer — match with AnyArg.
@@ -129,7 +130,7 @@ func TestProjectRepository_GetByID(t *testing.T) {
 		require.NotNil(t, got)
 		assert.Equal(t, projectID, got.ID)
 		assert.Equal(t, domain.WhitelistModeExplicit, got.WhitelistMode)
-		assert.Equal(t, []string{"telegram__send_channel_post"}, got.AllowedTools)
+		assert.Equal(t, []string{tools.TelegramSendChannelPost}, got.AllowedTools)
 		require.NoError(t, mockPool.ExpectationsWereMet())
 	})
 

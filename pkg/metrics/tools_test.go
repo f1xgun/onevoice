@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 func TestRecordToolDispatch_IncrementsCounter(t *testing.T) {
@@ -13,13 +15,13 @@ func TestRecordToolDispatch_IncrementsCounter(t *testing.T) {
 	var baseLine float64
 	if mfBefore != nil {
 		if s := findSample(mfBefore, map[string]string{
-			"tool": "vk__publish_post", "agent": "vk", "status": "success",
+			"tool": tools.VKPublishPost, "agent": "vk", "status": "success",
 		}); s != nil {
 			baseLine = s.GetCounter().GetValue()
 		}
 	}
 
-	RecordToolDispatch("vk__publish_post", "vk", "success", 300*time.Millisecond)
+	RecordToolDispatch(tools.VKPublishPost, "vk", "success", 300*time.Millisecond)
 
 	families, err := prometheus.DefaultGatherer.Gather()
 	if err != nil {
@@ -32,7 +34,7 @@ func TestRecordToolDispatch_IncrementsCounter(t *testing.T) {
 	}
 
 	sample := findSample(mf, map[string]string{
-		"tool": "vk__publish_post", "agent": "vk", "status": "success",
+		"tool": tools.VKPublishPost, "agent": "vk", "status": "success",
 	})
 	if sample == nil {
 		t.Fatal("sample not found")
@@ -43,7 +45,7 @@ func TestRecordToolDispatch_IncrementsCounter(t *testing.T) {
 }
 
 func TestRecordToolDispatch_RecordsDuration(t *testing.T) {
-	RecordToolDispatch("telegram__send_channel_post", "telegram", "success", 1500*time.Millisecond)
+	RecordToolDispatch(tools.TelegramSendChannelPost, "telegram", "success", 1500*time.Millisecond)
 
 	families, err := prometheus.DefaultGatherer.Gather()
 	if err != nil {
@@ -56,7 +58,7 @@ func TestRecordToolDispatch_RecordsDuration(t *testing.T) {
 	}
 
 	sample := findSample(mf, map[string]string{
-		"tool": "telegram__send_channel_post", "agent": "telegram",
+		"tool": tools.TelegramSendChannelPost, "agent": "telegram",
 	})
 	if sample == nil {
 		t.Fatal("duration sample not found")
@@ -70,7 +72,7 @@ func TestRecordToolDispatch_RecordsDuration(t *testing.T) {
 }
 
 func TestRecordToolDispatch_ErrorStatus(t *testing.T) {
-	RecordToolDispatch("yandex_business__get_reviews", "yandex_business", "error", 5*time.Second)
+	RecordToolDispatch(tools.YandexBusinessGetReviews, "yandex_business", "error", 5*time.Second)
 
 	families, _ := prometheus.DefaultGatherer.Gather()
 	mf := findMetric(families, "tool_dispatch_total")
@@ -79,7 +81,7 @@ func TestRecordToolDispatch_ErrorStatus(t *testing.T) {
 	}
 
 	sample := findSample(mf, map[string]string{
-		"tool": "yandex_business__get_reviews", "agent": "yandex_business", "status": "error",
+		"tool": tools.YandexBusinessGetReviews, "agent": "yandex_business", "status": "error",
 	})
 	if sample == nil {
 		t.Fatal("error sample not found")

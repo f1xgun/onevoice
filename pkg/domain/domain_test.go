@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // --- Sentinel errors ---
@@ -197,7 +199,7 @@ func TestMessage_JSON_ToolCallsRoundTrip(t *testing.T) {
 		Role:           "assistant",
 		Content:        "I'll post that for you",
 		ToolCalls: []ToolCall{
-			{ID: "call_1", Name: "vk__publish_post", Arguments: map[string]interface{}{"text": "hello"}},
+			{ID: "call_1", Name: tools.VKPublishPost, Arguments: map[string]interface{}{"text": "hello"}},
 		},
 		ToolResults: []ToolResult{
 			{ToolCallID: "call_1", Content: map[string]interface{}{"post_id": "42"}, IsError: false},
@@ -213,7 +215,7 @@ func TestMessage_JSON_ToolCallsRoundTrip(t *testing.T) {
 
 	assert.Equal(t, msg.ID, decoded.ID)
 	assert.Len(t, decoded.ToolCalls, 1)
-	assert.Equal(t, "vk__publish_post", decoded.ToolCalls[0].Name)
+	assert.Equal(t, tools.VKPublishPost, decoded.ToolCalls[0].Name)
 	assert.Len(t, decoded.ToolResults, 1)
 	assert.Equal(t, "call_1", decoded.ToolResults[0].ToolCallID)
 	assert.False(t, decoded.ToolResults[0].IsError)
@@ -284,14 +286,14 @@ func TestBusiness_ToolApprovals(t *testing.T) {
 	t.Run("happy path parses all valid entries", func(t *testing.T) {
 		b := Business{Settings: map[string]interface{}{
 			"tool_approvals": map[string]interface{}{
-				"telegram__send_channel_post": "manual",
+				tools.TelegramSendChannelPost: "manual",
 				"vk__send_post":               "auto",
 				"google_business__update":     "forbidden",
 			},
 		}}
 		got := b.ToolApprovals()
 		want := map[string]ToolFloor{
-			"telegram__send_channel_post": ToolFloorManual,
+			tools.TelegramSendChannelPost: ToolFloorManual,
 			"vk__send_post":               ToolFloorAuto,
 			"google_business__update":     ToolFloorForbidden,
 		}
