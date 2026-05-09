@@ -24,13 +24,10 @@ const (
 )
 
 // User credential validation thresholds.
+//
+// JWT secret length lives in the auth package (auth.JWTSecretMinLen) so
+// config.go and this service share a single source of truth.
 const (
-	// jwtSecretMinLen is the minimum acceptable JWT signing secret length.
-	// HS256 mandates ≥32 bytes (256 bits) of entropy; rejecting shorter
-	// secrets at construction time fails the service hard rather than
-	// shipping with a weak signing key.
-	jwtSecretMinLen = 32
-
 	// passwordMinLen / passwordMaxLen bound the user-supplied password length.
 	// 72 is the bcrypt silent-truncation boundary (longer passwords lose the
 	// suffix without an error); 8 is the conventional lower bound.
@@ -59,8 +56,8 @@ var _ UserService = (*userService)(nil)
 
 // NewUserService creates a new user service instance
 func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSecret string) (UserService, error) {
-	if len(jwtSecret) < jwtSecretMinLen {
-		return nil, fmt.Errorf("NewUserService: jwt secret must be at least %d bytes (got %d)", jwtSecretMinLen, len(jwtSecret))
+	if len(jwtSecret) < auth.JWTSecretMinLen {
+		return nil, fmt.Errorf("NewUserService: jwt secret must be at least %d bytes (got %d)", auth.JWTSecretMinLen, len(jwtSecret))
 	}
 	return &userService{
 		repo:      repo,

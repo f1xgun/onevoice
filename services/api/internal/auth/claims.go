@@ -8,6 +8,12 @@ import (
 const (
 	TokenIssuer   = "onevoice-api"
 	TokenAudience = "onevoice"
+
+	// JWTSecretMinLen is the minimum acceptable JWT signing-secret length in
+	// bytes. HS256 requires at least 256-bit secret strength to resist
+	// brute-force, so we enforce 32 bytes everywhere we validate the secret
+	// (config load, service constructor).
+	JWTSecretMinLen = 32
 )
 
 // AccessTokenClaims represents JWT claims for access tokens.
