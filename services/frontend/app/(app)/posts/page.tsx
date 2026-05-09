@@ -191,20 +191,26 @@ export default function PostsPage() {
           <SkeletonMetricStrip count={3} />
         ) : (
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <StatCard label="Опубликовано" value={String(counts.published)} hint="за всё время" />
             <StatCard
-              label="Запланировано"
+              label={tPosts('stats.publishedLabel')}
+              value={String(counts.published)}
+              hint={tPosts('stats.publishedHint')}
+            />
+            <StatCard
+              label={tPosts('stats.scheduledLabel')}
               value={String(counts.scheduled)}
               hint={
                 counts.scheduled > 0
-                  ? `ближайшая — ${nextScheduledLabel(posts)}`
-                  : 'нет запланированных'
+                  ? tPosts('stats.scheduledHintNext', { label: nextScheduledLabel(posts) })
+                  : tPosts('stats.scheduledHintNone')
               }
             />
             <StatCard
-              label="С ошибкой"
+              label={tPosts('stats.errorLabel')}
               value={String(counts.error)}
-              hint={counts.error > 0 ? 'требуют внимания' : 'всё чисто'}
+              hint={
+                counts.error > 0 ? tPosts('stats.errorHintSome') : tPosts('stats.errorHintNone')
+              }
               tone={counts.error > 0 ? 'danger' : 'neutral'}
             />
           </section>
