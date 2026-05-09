@@ -1,0 +1,89 @@
+package oauth
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
+)
+
+// MockOAuthStateService mocks OAuthStateService.
+type MockOAuthStateService struct {
+	mock.Mock
+}
+
+func (m *MockOAuthStateService) GenerateState(ctx context.Context, data service.OAuthStateData) (string, error) {
+	args := m.Called(ctx, data)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockOAuthStateService) ValidateState(ctx context.Context, state string) (*service.OAuthStateData, error) {
+	args := m.Called(ctx, state)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*service.OAuthStateData), args.Error(1)
+}
+
+// MockOAuthIntegrationService mocks OAuthIntegrationService.
+type MockOAuthIntegrationService struct {
+	mock.Mock
+}
+
+func (m *MockOAuthIntegrationService) Connect(ctx context.Context, params service.ConnectParams) (*domain.Integration, error) {
+	args := m.Called(ctx, params)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Integration), args.Error(1)
+}
+
+func (m *MockOAuthIntegrationService) ListByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) ([]domain.Integration, error) {
+	args := m.Called(ctx, businessID, platform)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.Integration), args.Error(1)
+}
+
+func (m *MockOAuthIntegrationService) UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error {
+	args := m.Called(ctx, integrationID, metadata)
+	return args.Error(0)
+}
+
+func (m *MockOAuthIntegrationService) UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error {
+	args := m.Called(ctx, integrationID, externalID)
+	return args.Error(0)
+}
+
+func (m *MockOAuthIntegrationService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error) {
+	args := m.Called(ctx, businessID, platform, externalID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*service.TokenResponse), args.Error(1)
+}
+
+// MockBusinessService is a mock implementation of the BusinessService
+// interface (handler/oauth.BusinessService — narrower than
+// handler.BusinessService).
+type MockBusinessService struct {
+	mock.Mock
+}
+
+func (m *MockBusinessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Business), args.Error(1)
+}
+
+// ctxWithUser creates a context with the given user ID.
+func ctxWithUser(userID uuid.UUID) context.Context {
+	return context.WithValue(context.Background(), middleware.UserIDKey, userID)
+}
