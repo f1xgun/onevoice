@@ -93,6 +93,12 @@
     "retry": "Повторить",
     "retryUnavailable": "Скоро — пока недоступно",
     "createPost": "Создать пост",
+    "status": {
+      "draft": "Черновик",
+      "scheduled": "Запланирован",
+      "published": "Опубликован",
+      "error": "Ошибка"
+    },
     "platforms": {
       "telegram": "Telegram",
       "yandexBusiness": "Яндекс.Бизнес"
@@ -120,6 +126,12 @@
   "tasks": {
     "title": "Что сделано",
     "subtitle": "Здесь видно всё, что OneVoice делал от вашего имени. Можно ничего не нажимать — мы сами повторим, если что-то не получилось.",
+    "status": {
+      "pending": "Запланировано",
+      "running": "В работе",
+      "done": "Готово",
+      "error": "Нужна помощь"
+    },
     "stats": {
       "done": "Сделано",
       "inProgress": "Сейчас в работе",
@@ -213,8 +225,62 @@
     },
     "voiceTone": {
       "saved": "Голос сохранён",
-      "saveError": "Не получилось сохранить"
+      "saveError": "Не получилось сохранить",
+      "options": {
+        "warm": "Тёплый",
+        "calm": "Спокойный",
+        "friendly": "Дружеский",
+        "professional": "Профессиональный",
+        "playful": "Игривый",
+        "businesslike": "Деловой"
+      }
+    },
+    "categories": {
+      "cafe": "Кафе / Ресторан",
+      "retail": "Розничная торговля",
+      "service": "Услуги",
+      "beauty": "Красота и здоровье",
+      "education": "Образование",
+      "other": "Другое"
+    },
+    "categoriesShort": {
+      "cafe": "кофейня",
+      "retail": "магазин",
+      "service": "студия услуг",
+      "beauty": "студия красоты",
+      "education": "учебный центр",
+      "other": "локальный бизнес"
+    },
+    "daysOfWeek": {
+      "mon": "Понедельник",
+      "tue": "Вторник",
+      "wed": "Среда",
+      "thu": "Четверг",
+      "fri": "Пятница",
+      "sat": "Суббота",
+      "sun": "Воскресенье"
+    },
+    "aiSummaryRail": {
+      "placeholder": "Заполните основное и OneVoice опишет ваш бизнес здесь — так вы увидите, как это прозвучит для клиентов.",
+      "nameFallback": "Ваш бизнес",
+      "describes": "OneVoice описывает вас как {kind}{hasName, select, true { «{name}»} other {}}{hasWhere, select, true { — {where}} other {}}.",
+      "toneLine": "Тон — {list}."
     }
+  },
+  "platforms": {
+    "fullLabel": {
+      "telegram": "Telegram",
+      "vk": "ВКонтакте",
+      "yandex_business": "Яндекс.Бизнес",
+      "google_business": "Google Business",
+      "2gis": "2ГИС",
+      "avito": "Авито",
+      "whatsapp": "WhatsApp"
+    },
+    "comingSoonWhen": "оценивается"
+  },
+  "quickActions": {
+    "defaults": ["Проверить отзывы", "Обновить часы работы", "Опубликовать пост"]
   },
   "integrations": {
     "title": "Интеграции",
@@ -571,7 +637,19 @@
       "openArchive": "Открыть архив"
     },
     "emptyReviews": {
-      "lookBack": "Прошлая неделя →"
+      "lookBack": "Прошлая неделя →",
+      "all": {
+        "title": "За эту неделю отзывов не было",
+        "body": "Новые отзывы появятся, когда клиенты их оставят."
+      },
+      "pending": {
+        "title": "Открытых отзывов нет",
+        "body": "Все обращения обработаны. OneVoice сообщит, как только придёт новый."
+      },
+      "replied": {
+        "title": "Пока нечего показать",
+        "body": "Отвеченных отзывов в выборке нет. Снимите фильтр, чтобы увидеть остальные."
+      }
     },
     "emptySearch": {
       "noResultsPrefix": "Ничего не нашлось по запросу ",
