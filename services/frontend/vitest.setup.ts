@@ -48,6 +48,11 @@ vi.mock('next-intl', () => {
   };
   return {
     useTranslations: tFactory,
+    // Module-level translator (lib/i18n/translator.ts → lib/schemas.ts,
+    // lib/resolveErrorMap.ts). Real next-intl returns a strictly-typed
+    // function; the test stub mirrors `useTranslations` so callers get
+    // the same key/params behavior.
+    createTranslator: ({ namespace }: { namespace?: string } = {}) => tFactory(namespace),
     useLocale: () => 'ru',
     useFormatter: () => ({
       dateTime: (d: Date) => d.toISOString(),
