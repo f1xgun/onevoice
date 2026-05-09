@@ -406,8 +406,8 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 	if limit <= 0 {
 		limit = 20
 	}
-	if limit > 50 {
-		limit = 50
+	if limit > maxBatchLimit {
+		limit = maxBatchLimit
 	}
 
 	var reviews []map[string]interface{}
@@ -903,7 +903,7 @@ func (bb *BusinessBrowser) UpdateInfo(ctx context.Context, info map[string]strin
 				if err := input.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
 					return fmt.Errorf("click %q input: %w", key, err)
 				}
-				if err := page.Keyboard().Type(value, playwright.KeyboardTypeOptions{Delay: playwright.Float(30)}); err != nil {
+				if err := page.Keyboard().Type(value, playwright.KeyboardTypeOptions{Delay: playwright.Float(keyboardDelayDefaultMs)}); err != nil {
 					return fmt.Errorf("type %q: %w", key, err)
 				}
 				// Blur to trigger validation
@@ -956,7 +956,7 @@ func (bb *BusinessBrowser) UpdateHours(ctx context.Context, hoursJSON string) er
 			if err := hoursInput.Click(playwright.LocatorClickOptions{ClickCount: playwright.Int(3)}); err != nil {
 				return fmt.Errorf("click hours input: %w", err)
 			}
-			if err := page.Keyboard().Type(hoursText, playwright.KeyboardTypeOptions{Delay: playwright.Float(30)}); err != nil {
+			if err := page.Keyboard().Type(hoursText, playwright.KeyboardTypeOptions{Delay: playwright.Float(keyboardDelayDefaultMs)}); err != nil {
 				return fmt.Errorf("type hours: %w", err)
 			}
 			// Blur to trigger Yandex auto-format and show save button
@@ -986,7 +986,7 @@ func closePopups(page playwright.Page) {
 	for _, sel := range closeBtnSelectors {
 		btn := page.Locator(sel).First()
 		if err := btn.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(clickAwayTimeoutMs)}); err == nil {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(dialogSettleDelay)
 		}
 	}
 }
@@ -1130,7 +1130,7 @@ func (bb *BusinessBrowser) CreatePost(ctx context.Context, text string) error {
 			if err := textarea.Click(); err != nil {
 				return fmt.Errorf("click textarea: %w", err)
 			}
-			if err := page.Keyboard().Type(text, playwright.KeyboardTypeOptions{Delay: playwright.Float(20)}); err != nil {
+			if err := page.Keyboard().Type(text, playwright.KeyboardTypeOptions{Delay: playwright.Float(keyboardDelayFastMs)}); err != nil {
 				return fmt.Errorf("type post text: %w", err)
 			}
 			debugScreenshot(page, "post_after_type")
@@ -1210,7 +1210,7 @@ func (bb *BusinessBrowser) UploadPhoto(ctx context.Context, photoURL, category s
 			}
 
 			tmpFile := fmt.Sprintf("/tmp/upload_%d.jpg", time.Now().UnixMilli())
-			if err := os.WriteFile(tmpFile, body, 0o600); err != nil {
+			if err := os.WriteFile(tmpFile, body, tmpFileMode); err != nil {
 				return fmt.Errorf("write temp file: %w", err)
 			}
 			defer func() { _ = os.Remove(tmpFile) }()

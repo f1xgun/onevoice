@@ -15,6 +15,10 @@ var (
 	ErrRateLimitExceeded = errors.New("rate limit exceeded")
 )
 
+// tokensPerMillion is the divisor used when converting per-1M-token list prices
+// (the unit billing providers publish) into a per-token cost.
+const tokensPerMillion = 1_000_000
+
 // RateLimitChecker is a testable interface for rate limit enforcement.
 type RateLimitChecker interface {
 	CheckLimit(ctx context.Context, userID uuid.UUID, tier string, tokens int) (bool, error)
@@ -129,7 +133,8 @@ func (r *Router) pickProvider(model string, strategy Strategy) (*ModelProviderEn
 
 // avgCost returns the average of input and output cost per 1M tokens.
 func avgCost(e *ModelProviderEntry) float64 {
-	return (e.InputCostPer1MTok + e.OutputCostPer1MTok) / 2.0
+	const ioPair = 2.0
+	return (e.InputCostPer1MTok + e.OutputCostPer1MTok) / ioPair
 }
 
 // betterLatency returns true if candidate has a lower non-zero latency than current.
@@ -224,8 +229,8 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 
 // logBilling calculates costs and logs a UsageLog entry.
 func (r *Router) logBilling(ctx context.Context, req ChatRequest, entry *ModelProviderEntry, resp *ChatResponse) {
-	inputCostUSD := float64(resp.Usage.InputTokens) * entry.InputCostPer1MTok / 1_000_000
-	outputCostUSD := float64(resp.Usage.OutputTokens) * entry.OutputCostPer1MTok / 1_000_000
+	inputCostUSD := float64(resp.Usage.InputTokens) * entry.InputCostPer1MTok / tokensPerMillion
+	outputCostUSD := float64(resp.Usage.OutputTokens) * entry.OutputCostPer1MTok / tokensPerMillion
 	providerCost := inputCostUSD + outputCostUSD
 
 	tier := tierFromRequest(req)

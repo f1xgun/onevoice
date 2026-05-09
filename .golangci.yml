@@ -29,6 +29,8 @@ linters:
 
     # Quality
     - gocritic
+    - goconst
+    - mnd
     - nolintlint
     - prealloc
     - unparam
@@ -64,6 +66,26 @@ linters:
       require-explanation: true
       require-specific: true
 
+    goconst:
+      min-len: 4
+      min-occurrences: 3
+
+    mnd:
+      ignored-numbers:
+        - "0"
+        - "1"
+        - "2"
+        - "3"
+        - "10"
+        - "100"
+        - "1000"
+      ignored-functions:
+        - "strconv.*"
+        - "strings.SplitN"
+        - "make"
+        - "context.WithTimeout"
+        - "time.Date"
+
     gosec:
       excludes:
         - G104
@@ -82,6 +104,8 @@ linters:
           - gosec
           - unparam
           - bodyclose
+          - goconst
+          - mnd
     paths:
       - vendor
       - node_modules

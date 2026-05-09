@@ -20,6 +20,10 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
+// pendingToolCallTTL mirrors the API-side TTL — 24h gives users a full
+// business day to act on an approval card before lazy expiration.
+const pendingToolCallTTL = 24 * time.Hour
+
 // pendingToolCallRepo is the orchestrator-side implementation of
 // domain.PendingToolCallRepository. Writes are the hot path here
 // (InsertPreparing + PromoteToPending before emitting the pause SSE in
@@ -103,7 +107,7 @@ func (r *pendingToolCallRepo) PromoteToPending(ctx context.Context, batchID stri
 		bson.M{"_id": batchID, "status": "preparing"},
 		bson.M{"$set": bson.M{
 			"status":     "pending",
-			"expires_at": now.Add(24 * time.Hour),
+			"expires_at": now.Add(pendingToolCallTTL),
 			"updated_at": now,
 		}},
 	)

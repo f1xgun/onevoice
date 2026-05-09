@@ -8,6 +8,27 @@ import (
 	"time"
 )
 
+// Configuration constants. These back default values for environment-driven
+// knobs and validation thresholds. Named here (rather than inlined) so the
+// linter doesn't flag them as magic numbers and so callers see semantic intent.
+const (
+	// Validation thresholds.
+	jwtSecretMinLen  = 32 // bytes — JWT HS256 minimum recommended secret length
+	encryptionKeyLen = 32 // bytes — AES-256 key length
+
+	// HTTP server timeout defaults.
+	defaultHTTPReadTimeout       = 15 * time.Second
+	defaultHTTPReadHeaderTimeout = 10 * time.Second
+	defaultHTTPIdleTimeout       = 60 * time.Second
+	defaultOrchestratorFetchTO   = 10 * time.Second
+
+	// Lifecycle.
+	defaultShutdownTimeout = 30 * time.Second
+
+	// String literal used for env-var "true" comparisons.
+	envBoolTrue = "true"
+)
+
 // SelfHostedEndpoint holds configuration for one self-hosted LLM inference
 // endpoint. Lifted verbatim from
 // services/orchestrator/internal/config/config.go so the API-side titler
@@ -135,7 +156,7 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	shutdownTimeout := 30 * time.Second
+	shutdownTimeout := defaultShutdownTimeout
 	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			shutdownTimeout = d
@@ -155,7 +176,7 @@ func Load() (*Config, error) {
 		RedisPort:     getEnv("REDIS_PORT", "6379"),
 		JWTSecret:     getEnv("JWT_SECRET", ""),
 		EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
-		SecureCookies: getEnv("SECURE_COOKIES", "true") == "true",
+		SecureCookies: getEnv("SECURE_COOKIES", envBoolTrue) == envBoolTrue,
 
 		VKClientID:         os.Getenv("VK_CLIENT_ID"),
 		VKClientSecret:     os.Getenv("VK_CLIENT_SECRET"),
@@ -171,28 +192,28 @@ func Load() (*Config, error) {
 		InternalPort:       getEnv("INTERNAL_PORT", "8443"),
 		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", "http://localhost:8090"),
 		NATSUrl:            os.Getenv("NATS_URL"),
-		ReviewSyncInterval: getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30),
+		ReviewSyncInterval: getEnvInt("REVIEW_SYNC_INTERVAL_MINUTES", 30), //nolint:mnd // env-driven default
 
-		ReviewDraftEnabled:     getEnv("REVIEW_DRAFT_ENABLED", "false") == "true",
-		ReviewDraftMaxExamples: getEnvInt("REVIEW_DRAFT_MAX_EXAMPLES", 5),
+		ReviewDraftEnabled:     getEnv("REVIEW_DRAFT_ENABLED", "false") == envBoolTrue,
+		ReviewDraftMaxExamples: getEnvInt("REVIEW_DRAFT_MAX_EXAMPLES", 5), //nolint:mnd // env-driven default
 		ReviewDraftBatchLimit:  getEnvInt("REVIEW_DRAFT_BATCH_LIMIT", 10),
 
 		S3Endpoint:        getEnv("S3_ENDPOINT", "minio:9000"),
 		S3AccessKey:       getEnv("S3_ACCESS_KEY", "minioadmin"),
 		S3SecretKey:       getEnv("S3_SECRET_KEY", "minioadmin"),
 		S3Bucket:          getEnv("S3_BUCKET", "onevoice"),
-		S3UseSSL:          getEnv("S3_USE_SSL", "false") == "true",
+		S3UseSSL:          getEnv("S3_USE_SSL", "false") == envBoolTrue,
 		S3PublicURLPrefix: getEnv("S3_PUBLIC_URL_PREFIX", "/media"),
 
 		PublicURL:          getEnv("PUBLIC_URL", "http://localhost:8080"),
 		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
 
-		HTTPReadTimeout:          getEnvDuration("HTTP_READ_TIMEOUT", 15*time.Second),
-		HTTPReadHeaderTimeout:    getEnvDuration("HTTP_READ_HEADER_TIMEOUT", 10*time.Second),
-		HTTPIdleTimeout:          getEnvDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
-		OrchestratorFetchTimeout: getEnvDuration("ORCHESTRATOR_FETCH_TIMEOUT", 10*time.Second),
+		HTTPReadTimeout:          getEnvDuration("HTTP_READ_TIMEOUT", defaultHTTPReadTimeout),
+		HTTPReadHeaderTimeout:    getEnvDuration("HTTP_READ_HEADER_TIMEOUT", defaultHTTPReadHeaderTimeout),
+		HTTPIdleTimeout:          getEnvDuration("HTTP_IDLE_TIMEOUT", defaultHTTPIdleTimeout),
+		OrchestratorFetchTimeout: getEnvDuration("ORCHESTRATOR_FETCH_TIMEOUT", defaultOrchestratorFetchTO),
 
-		RateLimitRegister: getEnvInt("RATE_LIMIT_REGISTER", 5),
+		RateLimitRegister: getEnvInt("RATE_LIMIT_REGISTER", 5), //nolint:mnd // env-driven default
 		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
 		RateLimitChat:     getEnvInt("RATE_LIMIT_CHAT", 10),
 		RateLimitHITL:     getEnvInt("RATE_LIMIT_HITL", 10),
@@ -223,14 +244,14 @@ func Load() (*Config, error) {
 	if cfg.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required")
 	}
-	if len(cfg.JWTSecret) < 32 {
-		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	if len(cfg.JWTSecret) < jwtSecretMinLen {
+		return nil, fmt.Errorf("JWT_SECRET must be at least %d characters", jwtSecretMinLen)
 	}
 	if cfg.EncryptionKey == "" {
 		return nil, fmt.Errorf("ENCRYPTION_KEY is required")
 	}
-	if len(cfg.EncryptionKey) != 32 {
-		return nil, fmt.Errorf("ENCRYPTION_KEY must be exactly 32 bytes")
+	if len(cfg.EncryptionKey) != encryptionKeyLen {
+		return nil, fmt.Errorf("ENCRYPTION_KEY must be exactly %d bytes", encryptionKeyLen)
 	}
 
 	return cfg, nil

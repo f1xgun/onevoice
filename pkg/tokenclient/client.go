@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// defaultCacheTTL is how long a fetched token is reused before a fresh lookup.
+const defaultCacheTTL = 5 * time.Minute
+
 type TokenResponse struct {
 	IntegrationID    string                 `json:"integration_id"`
 	Platform         string                 `json:"platform"`
@@ -42,7 +45,7 @@ func New(baseURL string, httpClient *http.Client) *Client {
 	return &Client{
 		baseURL:    baseURL,
 		httpClient: httpClient,
-		cacheTTL:   5 * time.Minute,
+		cacheTTL:   defaultCacheTTL,
 		cache:      make(map[string]cacheEntry),
 	}
 }

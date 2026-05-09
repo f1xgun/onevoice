@@ -24,6 +24,36 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
+// SSE proxy buffer / log limits.
+const (
+	// sseBufferBytes is the bufio.Scanner buffer cap used when reading orchestrator
+	// SSE frames. Bumped from the 64 KB default to fit large tool results and
+	// ModelMessages snapshots without truncation (Phase 16 / HITL-13).
+	sseBufferBytes = 1 << 20 // 1 MiB
+
+	// logLineMaxBytes truncates malformed-event log lines so an attacker (or a
+	// runaway upstream) can't flood the log pipeline with megabyte payloads.
+	logLineMaxBytes = 200
+)
+
+// SSE event-type strings emitted by the orchestrator. Centralized so the case
+// arms below match a single source of truth (goconst).
+const (
+	sseEventError = "error"
+)
+
+// Post / platform-result status string used when a tool fan-out reports an
+// error. Distinct semantic from sseEventError but happens to share the same
+// literal — kept as a separate const so goconst doesn't conflate them.
+const errStatus = "error"
+
+// Message role tags. These are the OpenAI-format role identifiers we persist
+// on domain.Message.Role and match against in the chat proxy / titler paths.
+const (
+	roleAssistant = "assistant"
+	roleUser      = "user"
+)
+
 // ssePayload is the shape of the JSON we decode from orchestrator SSE `data:`
 // frames. Phase 16 extends this with ToolCallID / BatchID / Calls to carry
 // HITL events without synthetic IDs (HITL-13) and with the approval-batch
@@ -300,7 +330,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	userMsg := &domain.Message{
 		ID:             uuid.NewString(),
 		ConversationID: conversationID,
-		Role:           "user",
+		Role:           roleUser,
 		Content:        req.Message,
 	}
 	if err := h.messageRepo.Create(r.Context(), userMsg); err != nil {
@@ -454,7 +484,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// 1 MB — bumped from 64KB in Phase 16 (HITL-13) to support large tool results
 	// and ModelMessages snapshots that flow through the proxy without truncation.
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	scanner.Buffer(make([]byte, sseBufferBytes), sseBufferBytes)
 
 	var assistantText strings.Builder
 	var toolCalls []domain.ToolCall
@@ -511,7 +541,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 		var ev ssePayload
 		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
-			slog.WarnContext(r.Context(), "chat proxy: malformed SSE event", "error", err, "line", line[:min(len(line), 200)])
+			slog.WarnContext(r.Context(), "chat proxy: malformed SSE event", "error", err, "line", line[:min(len(line), logLineMaxBytes)])
 			continue
 		}
 		switch ev.Type {
@@ -550,7 +580,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			// policy_revoked / user_rejected). Forward-only — no
 			// persistence change here; any paired assistant Message is
 			// persisted by the pause or done path.
-		case "error":
+		case sseEventError:
 			// Upstream LLM / orchestrator failure. Forwarded to the client
 			// already; capture for persistence so the assistant Message
 			// records SOMETHING. Without this, an empty assistant + the
@@ -586,7 +616,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		assistantMsg := &domain.Message{
 			ID:             streamStartMessageID,
 			ConversationID: conversationID,
-			Role:           "assistant",
+			Role:           roleAssistant,
 			Content:        assistantText.String(),
 			ToolCalls:      pendingToolCalls,
 			Status:         domain.MessageStatusPendingApproval,
@@ -617,7 +647,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		assistantMsg := &domain.Message{
 			ID:             streamStartMessageID,
 			ConversationID: conversationID,
-			Role:           "assistant",
+			Role:           roleAssistant,
 			Content:        content,
 			ToolCalls:      toolCalls,
 			ToolResults:    toolResults,
@@ -673,9 +703,9 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			var publishedAt *time.Time
 			platformResult := domain.PlatformResult{Status: status}
 			if tr.IsError {
-				status = "error"
-				platformResult.Status = "error"
-				if errMsg, ok := tr.Content["error"].(string); ok {
+				status = errStatus
+				platformResult.Status = errStatus
+				if errMsg, ok := tr.Content[errStatus].(string); ok {
 					platformResult.Error = errMsg
 				}
 			} else {
@@ -906,7 +936,7 @@ func (h *ChatProxyHandler) streamResume(
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	scanner.Buffer(make([]byte, sseBufferBytes), sseBufferBytes)
 
 	// Work on a local copy so we flush the full final state in one Update.
 	// msg.Content is intentionally not cleared — we preserve the Content
@@ -959,7 +989,7 @@ func (h *ChatProxyHandler) streamResume(
 			if idx, ok := callIdx[ev.ToolCallID]; ok {
 				msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
 			}
-		case "error":
+		case sseEventError:
 			// Resume failed mid-stream (LLM error, ctx cancellation,
 			// max-iterations cap). The error event is already forwarded
 			// to the client; here we MUST transition the assistant
@@ -1094,7 +1124,7 @@ func (h *ChatProxyHandler) fireAutoTitleIfPendingResume(
 	}
 	var userText string
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == "user" {
+		if msgs[i].Role == roleUser {
 			userText = msgs[i].Content
 			break
 		}
@@ -1222,13 +1252,13 @@ func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID strin
 	history := make([]map[string]string, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
-		case "user":
-			history = append(history, map[string]string{"role": "user", "content": m.Content})
-		case "assistant":
+		case roleUser:
+			history = append(history, map[string]string{"role": roleUser, "content": m.Content})
+		case roleAssistant:
 			if m.Content == "" && len(m.ToolCalls) == 0 {
 				continue
 			}
-			history = append(history, map[string]string{"role": "assistant", "content": m.Content})
+			history = append(history, map[string]string{"role": roleAssistant, "content": m.Content})
 		}
 	}
 	return history

@@ -17,6 +17,11 @@ import (
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
+// reviewSyncBatchSize is the per-call review/comment fetch limit. 50 matches
+// the upper bound that platform agents accept and gives the syncer headroom
+// to ingest a backlog after a long disconnect without paging.
+const reviewSyncBatchSize = 50
+
 // reviewToolByPlatform maps a platform ID to the tool name that returns
 // review/comment-like entries. Not every platform follows the __get_reviews
 // suffix — VK uses __get_comments because wall.getComments is the native VK
@@ -186,7 +191,7 @@ func (s *ReviewSyncer) syncOne(ctx context.Context, businessID uuid.UUID, platfo
 	req := a2a.ToolRequest{
 		TaskID:     uuid.NewString(),
 		Tool:       toolName,
-		Args:       map[string]interface{}{"limit": float64(50)},
+		Args:       map[string]interface{}{"limit": float64(reviewSyncBatchSize)},
 		BusinessID: businessID.String(),
 	}
 	data, err := json.Marshal(req)

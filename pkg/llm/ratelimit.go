@@ -28,7 +28,12 @@ func (l Limits) IsUnlimited() bool {
 // TierLimits maps subscription tier to limits
 type TierLimits map[string]Limits
 
-// DefaultTierLimits defines standard subscription tiers
+// DefaultTierLimits defines standard subscription tier rate limits.
+// The literal numbers below are MVP product defaults — they're documented in
+// .env.example and tracked product-side, so listing each as a named constant
+// would just duplicate the table. Override via NewRateLimiter for tests.
+//
+//nolint:mnd // tier defaults table — values are product config, not magic numbers
 var DefaultTierLimits = TierLimits{
 	"free": {
 		RequestsPerMin: 10,
