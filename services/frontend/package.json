@@ -9,7 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint --dir app --dir components --dir lib --dir hooks",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:a11y": "vitest run components/sidebar/__a11y__"
