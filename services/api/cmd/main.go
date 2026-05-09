@@ -17,17 +17,13 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/wire"
 )
 
-// HTTP server lifecycle timeouts. WriteTimeout=0 because /api/v1/chat/{id}
-// proxies the orchestrator SSE stream, which may run for minutes while RPA
-// tool calls complete; per-request deadlines are enforced inside handlers
-// that need them. ReadHeaderTimeout on the internal listener guards against
-// slow-loris on the metrics endpoint.
-const (
-	httpReadTimeout       = 15 * time.Second
-	httpReadHeaderTimeout = 10 * time.Second
-	httpIdleTimeout       = 60 * time.Second
-	shutdownTimeout       = 30 * time.Second
-)
+// shutdownTimeout bounds the graceful HTTP shutdown deadline. The HTTP
+// read/idle/header timeouts are env-tunable (HTTP_READ_TIMEOUT etc.) per
+// the env-config initiative — read off cfg.HTTPReadTimeout / etc. below.
+// WriteTimeout=0 because /api/v1/chat/{id} proxies the orchestrator SSE
+// stream, which may run for minutes while RPA tool calls complete;
+// per-request deadlines are enforced inside handlers that need them.
+const shutdownTimeout = 30 * time.Second
 
 func main() {
 	log := logger.New("api")
@@ -61,7 +57,7 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// tool-approval entry stored in Postgres against the live orchestrator
 	// registry and logs tool_approval_whitelist_unknown for stale entries.
 	// Best-effort: one retry after 5s, skipped silently on sustained failure.
-	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, cfg.OrchestratorURL)
+	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, cfg.OrchestratorURL, cfg.OrchestratorFetchTimeout)
 
 	repos := wire.Repositories(handles)
 	svcs, err := wire.BuildServices(ctx, log, cfg, repos, handles)
@@ -98,10 +94,10 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	srv := &http.Server{
 		Addr:        addr,
 		Handler:     r,
-		ReadTimeout: httpReadTimeout,
+		ReadTimeout: cfg.HTTPReadTimeout,
 		// WriteTimeout=0: SSE requires long-lived connections.
 		WriteTimeout: 0,
-		IdleTimeout:  httpIdleTimeout,
+		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
 
 	errCh := make(chan error, 1)
@@ -117,7 +113,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	internalSrv := &http.Server{
 		Addr:              internalAddr,
 		Handler:           internalRouter,
-		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
 	}
 	go func() {
 		log.Info("internal server listening", "addr", internalAddr)

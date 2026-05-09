@@ -31,14 +31,17 @@ const pendingSweepLoopInterval = 5 * time.Second
 // silently on sustained failure so a slow/dead orchestrator cannot block API
 // boot. The sweep is advisory — production alerts should watch for
 // `tool_approval_whitelist_unknown` events in Loki/Grafana.
-func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Pool, orchestratorURL string) {
+func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Pool, orchestratorURL string, fetchTimeout time.Duration) {
 	// Thread the parent (signal-derived) context so SIGTERM cancels the
 	// sweep early instead of waiting up to startupTimeout for a slow or
 	// dead orchestrator on the second retry. (LOW-02 fix.)
+	// fetchTimeout is env-tunable per cfg.OrchestratorFetchTimeout
+	// (ORCHESTRATOR_FETCH_TIMEOUT) and bounds each individual orchestrator
+	// HTTP call; the outer startupTimeout caps the whole sweep.
 	sweepCtx, cancel := context.WithTimeout(parent, startupTimeout)
 	defer cancel()
 
-	registered, err := fetchOrchestratorToolNames(sweepCtx, orchestratorURL)
+	registered, err := fetchOrchestratorToolNames(sweepCtx, orchestratorURL, fetchTimeout)
 	if err != nil {
 		slog.WarnContext(sweepCtx, "tool_approval_whitelist_sweep: fetch registry failed, retrying",
 			"orchestrator", orchestratorURL, "error", err,
@@ -48,7 +51,7 @@ func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Po
 		case <-sweepCtx.Done():
 			return
 		}
-		registered, err = fetchOrchestratorToolNames(sweepCtx, orchestratorURL)
+		registered, err = fetchOrchestratorToolNames(sweepCtx, orchestratorURL, fetchTimeout)
 		if err != nil {
 			slog.WarnContext(sweepCtx, "tool_approval_whitelist_sweep: skipped (orchestrator unreachable)",
 				"orchestrator", orchestratorURL, "error", err,
@@ -78,10 +81,10 @@ func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Po
 
 // fetchOrchestratorToolNames calls GET {orchestratorURL}/internal/tools/names
 // and decodes the `{names: [...]}` response into a map usable by
-// hitlvalidation.ValidateApprovalSettings. A 10s timeout protects against
-// a hung orchestrator; the caller handles retry.
-func fetchOrchestratorToolNames(ctx context.Context, orchestratorURL string) (map[string]struct{}, error) {
-	reqCtx, cancel := context.WithTimeout(ctx, orchestratorFetchTimeout)
+// hitlvalidation.ValidateApprovalSettings. fetchTimeout is the env-tunable
+// per-call budget; the caller handles retry.
+func fetchOrchestratorToolNames(ctx context.Context, orchestratorURL string, fetchTimeout time.Duration) (map[string]struct{}, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 
 	u := strings.TrimRight(orchestratorURL, "/") + "/internal/tools/names"
