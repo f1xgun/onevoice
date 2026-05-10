@@ -75,6 +75,42 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
     return { ...msg, toolCalls: updated };
   }
 
+  if (type === 'tool_rejected') {
+    // Emitted by the orchestrator on the resume stream for every call the
+    // user rejected AND for any call the server reclassified to
+    // ToolFloorForbidden at TOCTOU re-check time (policy_revoked). The
+    // user-rejection path usually pre-projects the entry in
+    // `resolveApproval`, so we try to update an existing match first; only
+    // when no match exists (TOCTOU or any other server-initiated reject)
+    // do we synthesize a card so the operator still sees something was
+    // refused.
+    const callID = event.tool_call_id as string | undefined;
+    const toolName = (event.tool_name as string) ?? '';
+    const reason = (event.content as string) ?? '';
+    const calls = msg.toolCalls ?? [];
+    const matchIdx = callID ? calls.findIndex((t) => t.id === callID) : -1;
+    if (matchIdx !== -1) {
+      const updated = calls.map((tc, i) =>
+        i === matchIdx
+          ? {
+              ...tc,
+              status: 'rejected' as const,
+              rejectReason: tc.rejectReason || reason,
+            }
+          : tc
+      );
+      return { ...msg, toolCalls: updated };
+    }
+    const synthesized: ToolCall = {
+      id: callID || crypto.randomUUID(),
+      name: toolName,
+      args: {},
+      status: 'rejected',
+      rejectReason: reason,
+    };
+    return { ...msg, toolCalls: [...calls, synthesized] };
+  }
+
   if (type === 'done') {
     return { ...msg, status: 'done' };
   }
@@ -428,6 +464,48 @@ export function useChat(conversationId: string) {
         }
         toast.error(resolveErrorToRussian(resolveRes.status, errBody));
         return; // card stays open; ToolApprovalCard re-enables Submit.
+      }
+
+      // Project the user's rejection decisions onto the assistant
+      // message's toolCalls so a rejected call leaves a visible trail
+      // (red-bordered card with the "Отклонено пользователем" badge and
+      // the operator's reason). Without this the rejected call would
+      // live only in pendingApproval and vanish on clear — leaving an
+      // empty bubble or, after our suppression, no record at all that a
+      // tool was invoked and refused.
+      //
+      // Only `reject` decisions are projected here; approve/edit calls
+      // produce their own `tool_call` + `tool_result` events on the
+      // resume stream and flow through applySSEEvent normally.
+      const rejectedProjections: ToolCall[] = pendingApproval.calls
+        .filter((c) => {
+          const dec = sanitizedDecisions.find((d) => d.id === c.callId);
+          return dec?.action === 'reject';
+        })
+        .map((c) => {
+          const dec = sanitizedDecisions.find((d) => d.id === c.callId);
+          return {
+            id: c.callId,
+            name: c.toolName,
+            args: c.args,
+            status: 'rejected' as const,
+            rejectReason: dec?.reject_reason,
+          };
+        });
+      if (rejectedProjections.length > 0) {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (!last || last.role !== 'assistant') return prev;
+          // Dedupe by callId — defensive against a re-render or a
+          // future code path that already pushed an entry.
+          const existing = new Set((last.toolCalls ?? []).map((tc) => tc.id));
+          const toAppend = rejectedProjections.filter((tc) => !existing.has(tc.id));
+          if (toAppend.length === 0) return prev;
+          return [
+            ...prev.slice(0, -1),
+            { ...last, toolCalls: [...(last.toolCalls ?? []), ...toAppend] },
+          ];
+        });
       }
 
       // 2) Open the resume SSE — extends the existing assistant message
