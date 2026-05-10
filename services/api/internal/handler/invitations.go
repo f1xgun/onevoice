@@ -392,24 +392,189 @@ func (h *InvitationsHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent) // CONTEXT D-10
 }
 
-// Preview handles GET /api/v1/invitations/{token} — PUBLIC.
+// Preview handles GET /api/v1/invitations/{token} — PUBLIC. CONTEXT D-04..D-07.
+//
+// The token IS the auth (matches OAuth callback model). Refusal matrix
+// mirrors Accept (CONTEXT D-19) — uniform 410 for unknown/expired/revoked/
+// accepted to defend against token-existence enumeration. NO 409 here
+// because the preview doesn't know who's calling.
+//
+// Information-minimization (D-06): no created_by/inviter identity, no token,
+// no token_hash.
 func (h *InvitationsHandler) Preview(w http.ResponseWriter, r *http.Request) {
-	writeJSONError(w, http.StatusNotImplemented, "not_implemented")
+	rawToken := chi.URLParam(r, "token")
+	if rawToken == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed")
+		return
+	}
+	hash := computeTokenHash(rawToken)
+
+	inv, err := h.invitationRepo.GetByTokenHash(r.Context(), hash)
+	if err != nil {
+		writeInvitationStateError(w, err)
+		return
+	}
+	if inv.AcceptedAt != nil {
+		writeInvitationStateError(w, domain.ErrInvitationAccepted)
+		return
+	}
+	if inv.RevokedAt != nil {
+		writeInvitationStateError(w, domain.ErrInvitationRevoked)
+		return
+	}
+	if !inv.ExpiresAt.After(h.now()) {
+		writeInvitationStateError(w, domain.ErrInvitationExpired)
+		return
+	}
+
+	role, err := h.roleRepo.GetByID(r.Context(), inv.RoleID)
+	if err != nil {
+		writeAuthzInvariantError(r.Context(), w, "preview.role_lookup", err)
+		return
+	}
+	biz, err := h.businessRepo.GetByID(r.Context(), inv.BusinessID)
+	if err != nil {
+		writeAuthzInvariantError(r.Context(), w, "preview.business_lookup", err)
+		return
+	}
+
+	// SECURITY (T-03-02): no token/hash in the slog line.
+	slog.InfoContext(r.Context(), "invitation preview",
+		"business_id", inv.BusinessID,
+		"invitation_id", inv.ID,
+	)
+
+	writeJSON(w, http.StatusOK, previewResponse{
+		BusinessID:   inv.BusinessID,
+		BusinessName: biz.Name,
+		RoleID:       inv.RoleID,
+		RoleName:     role.Name,
+		ExpiresAt:    inv.ExpiresAt.Format(time.RFC3339),
+	})
 }
 
 // Accept handles POST /api/v1/invitations/{token}/accept — auth-required.
+// INVITE-07..11; CONTEXT D-15 7-step ordering; RESEARCH §"Accept-Flow Concurrency".
+//
+// Order (D-15):
+//  1. BeginTx(RepeatableRead)
+//  2. invitationRepo.GetByTokenHash → 410 on miss/non-pending
+//  3. membershipRepo.GetByBusinessUser → 409 already_member, NO consume (INVITE-09)
+//  4. membershipRepo.Insert(tx) → PK collision → 409 already_member
+//  5. invitationRepo.MarkAcceptedInTx → RowsAffected=0 → 410 with discriminator
+//  6. tx.Commit()
+//  7. invalidator.InvalidateMember (AFTER commit, NEVER before — INVITE-11)
 func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
-	writeJSONError(w, http.StatusNotImplemented, "not_implemented")
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	rawToken := chi.URLParam(r, "token")
+	if rawToken == "" {
+		writeJSONError(w, http.StatusBadRequest, "validation_failed")
+		return
+	}
+	hash := computeTokenHash(rawToken)
+
+	tx, err := h.pool.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if err != nil {
+		writeAuthzInvariantError(r.Context(), w, "accept.begin", err)
+		return
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(context.Background())
+		}
+	}()
+
+	// Step 2: GetByTokenHash. Pool-based is fine — token_hash is immutable
+	// post-write; the conditional UPDATE in step 5 is the race-safe primitive.
+	inv, err := h.invitationRepo.GetByTokenHash(r.Context(), hash)
+	if err != nil {
+		writeInvitationStateError(w, err)
+		return
+	}
+	// Pre-classify terminal states (cold-fail before touching membership).
+	if inv.AcceptedAt != nil {
+		writeInvitationStateError(w, domain.ErrInvitationAccepted)
+		return
+	}
+	if inv.RevokedAt != nil {
+		writeInvitationStateError(w, domain.ErrInvitationRevoked)
+		return
+	}
+	if !inv.ExpiresAt.After(h.now()) {
+		writeInvitationStateError(w, domain.ErrInvitationExpired)
+		return
+	}
+
+	// Step 3: already-a-member? 409 + rollback (token NOT consumed — INVITE-09).
+	// CONTEXT D-15 step 2 / RESEARCH OQ-05: drop the != "deleted" clause. The
+	// status enum is 'active' | 'suspended'; soft-delete is by row removal.
+	existing, err := h.membershipRepo.GetByBusinessUser(r.Context(), inv.BusinessID, userID)
+	if err != nil && !errors.Is(err, domain.ErrMembershipNotFound) {
+		writeAuthzInvariantError(r.Context(), w, "accept.membership_check", err)
+		return
+	}
+	if existing != nil {
+		// 409 already_member; tx rolls back via defer; MarkAcceptedInTx
+		// is NEVER called → token NOT consumed. INVITE-09 acceptance.
+		writeInvitationStateError(w, domain.ErrAlreadyMember)
+		return
+	}
+
+	// Step 4: insert business_members row inside tx. PK collision → 409.
+	now := h.now().UTC()
+	createdAt := inv.CreatedAt
+	createdBy := inv.CreatedBy
+	member := &domain.BusinessMember{
+		BusinessID: inv.BusinessID,
+		UserID:     userID,
+		RoleID:     inv.RoleID,
+		Status:     "active",
+		InvitedBy:  &createdBy,
+		InvitedAt:  &createdAt,
+		JoinedAt:   now,
+	}
+	if err := h.membershipRepo.Insert(r.Context(), tx, member); err != nil {
+		if errors.Is(err, domain.ErrMembershipExists) {
+			writeInvitationStateError(w, domain.ErrAlreadyMember)
+			return
+		}
+		writeAuthzInvariantError(r.Context(), w, "accept.insert_member", err)
+		return
+	}
+
+	// Step 5: race-safe single-use guarantee (INVITE-08).
+	// On RowsAffected=0 the repo classifies the terminal state and returns
+	// the right sentinel; writeInvitationStateError maps to 410 with reason.
+	if err := h.invitationRepo.MarkAcceptedInTx(r.Context(), tx, inv.ID, userID); err != nil {
+		writeInvitationStateError(w, err)
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeAuthzInvariantError(r.Context(), w, "accept.commit", err)
+		return
+	}
+	committed = true
+
+	// Step 7: AFTER commit, NEVER before — INVITE-11 / CONTEXT D-15 step 7.
+	h.invalidator.InvalidateMember(inv.BusinessID, userID)
+
+	// SECURITY (T-03-02): no token/hash in the slog line.
+	slog.InfoContext(r.Context(), "invitation accepted",
+		"business_id", inv.BusinessID,
+		"user_id", userID,
+		"invitation_id", inv.ID,
+	)
+
+	writeJSON(w, http.StatusOK, acceptResponse{
+		BusinessID: inv.BusinessID,
+		RoleID:     inv.RoleID,
+	})
 }
 
-// --- Compile-time guards: tasks 2/3 will use these symbols ---
-var (
-	_ = repository.GenerateInvitationToken
-	_ = json.NewDecoder
-	_ = errors.Is
-	_ = slog.Default
-	_ = context.Background
-	_ = pgx.Serializable
-	_ = middleware.GetUserID
-	_ = authz.PermMembersInvite
-)
