@@ -109,6 +109,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		// Returns only non-sensitive metadata (name, description, status).
 		r.Get("/platforms", handlers.Platforms.List)
 
+		// Phase 3: public invitation preview — token IS the auth (CONTEXT D-04).
+		// Rate-limited per-IP with the Login budget — same threat model as login
+		// (automated abuse with no auth state). T-03-09 mitigation.
+		if handlers.Invitations != nil {
+			r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).
+				Get("/invitations/{token}", handlers.Invitations.Preview)
+		}
+
 		// Protected routes (require auth)
 		r.Group(func(r chi.Router) {
 			// Auth middleware
@@ -134,6 +142,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Post("/reviews/refresh", handlers.Review.RefreshReviews)
 
 			r.Post("/telemetry", handlers.Telemetry.Ingest)
+
+			// Phase 3: invitation accept — auth-required, NOT business-scoped
+			// (the {token} URL param targets a specific business inside the
+			// invitation row). Rate-limited per-user with Login budget for
+			// defense-in-depth (RESEARCH OQ-06). T-03-09 / T-03-10 mitigation.
+			if handlers.Invitations != nil {
+				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Login, time.Minute)).
+					Post("/invitations/{token}/accept", handlers.Invitations.Accept)
+			}
 
 			// Business-scoped subtree — single chokepoint via RequireBusinessAccess.
 			// Every route under /businesses/{id}/... is gated by this middleware, which:
@@ -242,6 +259,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				}
 				if handlers.Roles != nil {
 					r.Get("/roles", handlers.Roles.List)
+				}
+
+				// Phase 3: invitations CRUD — business-scoped under
+				// PermMembersInvite. Mirrors Members/Roles registration.
+				if handlers.Invitations != nil {
+					r.Post("/invitations", handlers.Invitations.Create)
+					r.Get("/invitations", handlers.Invitations.ListPending)
+					r.Delete("/invitations/{inviteId}", handlers.Invitations.Revoke)
 				}
 			})
 		})
