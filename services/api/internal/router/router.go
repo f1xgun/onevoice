@@ -60,6 +60,7 @@ type Handlers struct {
 	Permissions   *handler.PermissionsHandler // RBAC: static permission registry
 	Members       *handler.MembersHandler     // RBAC: member management
 	Roles         *handler.RolesHandler       // RBAC: role listing
+	Invitations   *handler.InvitationsHandler // RBAC: invitation lifecycle (Phase 3)
 }
 
 // Setup creates and configures the Chi router with all routes and middleware.
