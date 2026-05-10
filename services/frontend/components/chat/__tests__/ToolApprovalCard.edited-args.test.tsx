@@ -3,13 +3,12 @@ import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ToolApprovalCard, draftReducer, type CallDraft } from '../ToolApprovalCard';
-import { evaluateEditGate } from '../ToolApprovalJsonEditor';
+import { evaluateEditGate } from '../toolApprovalGate';
 import { singleCallBatch, nestedArgsBatch } from '@/test-utils/pending-approval-fixtures';
 
-// Helper: apply an edit through the exact pipeline the real JsonViewEditor
-// uses at runtime: evaluateEditGate → (accepted) → reducer.editArg. This
-// mirrors the component's onEdit closure without requiring the library's
-// double-click + keydown mount chain (which is fragile under jsdom).
+// Helper: apply an edit through the same pipeline the form uses at runtime:
+// evaluateEditGate → (accepted) → reducer.editArg. This mirrors the
+// component's onEdit closure without simulating the full DOM event chain.
 function applyEdit(
   drafts: CallDraft[],
   callId: string,
@@ -78,14 +77,17 @@ describe('ToolApprovalCard.edited_args — Invariant 3: only top-level scalar ch
   it('mounting ToolApprovalCard with a nested-args batch and picking Edit does not mount any nested-editable controls beyond what the whitelist allows', async () => {
     const user = userEvent.setup();
     render(<ToolApprovalCard batch={nestedArgsBatch} onSubmit={vi.fn()} />);
-    // Pick Edit — this expands the accordion and mounts the JsonViewEditor.
+    // Pick Edit — this expands the accordion and mounts the form.
     await user.click(screen.getByRole('button', { name: /Изменить tool_with_nested_args/ }));
-    // The editable-fields hint lists exactly `text`.
-    expect(screen.getByText(/Можно изменять:\s*text/)).toBeInTheDocument();
-    // Sanity check — the hint does NOT list any nested path (author / meta).
-    const hint = screen.getByText(/Можно изменять:/);
-    expect(hint.textContent).not.toContain('author');
-    expect(hint.textContent).not.toContain('meta');
+    // Exactly one editable control exists: the top-level "Текст". The nested
+    // `meta.text` and `meta.author` must NOT mount any input — confirmed by
+    // looking up controls by their (would-be) labels and finding none.
+    expect(screen.getByLabelText('Текст')).toBeInTheDocument();
+    // `meta` is a structured value — it lives in the locked section as a
+    // labelled <dd>, never as an editable input.
+    expect(screen.queryByLabelText(/meta/i)).not.toBeInTheDocument();
+    // `author` is a nested field; there is no label for it, editable or not.
+    expect(screen.queryByLabelText(/author/i)).not.toBeInTheDocument();
   });
 
   it('an empty editedArgs map produces a payload entry without an edited_args key', async () => {

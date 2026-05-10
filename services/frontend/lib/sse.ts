@@ -62,6 +62,46 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
     return { ...msg, toolCalls: updated };
   }
 
+  if (type === 'tool_rejected') {
+    // Emitted by the orchestrator on the resume stream for every call the
+    // user rejected AND for any call the server reclassified to
+    // ToolFloorForbidden at TOCTOU re-check time (policy_revoked). The
+    // user-rejection path projects a synthetic frame from
+    // `usePendingApprovalFlow.resolveApproval` so the entry already exists
+    // when the real server frame arrives — try update first; only when no
+    // match exists (TOCTOU or other server-initiated reject) do we
+    // synthesize a card so the operator still sees something was refused.
+    const callID = event.tool_call_id as string | undefined;
+    const toolName = (event.tool_name as string) ?? '';
+    const reason = (event.content as string) ?? '';
+    const calls = msg.toolCalls ?? [];
+    const matchIdx = callID ? calls.findIndex((t) => t.id === callID) : -1;
+    if (matchIdx !== -1) {
+      const updated = calls.map((tc, i) =>
+        i === matchIdx
+          ? {
+              ...tc,
+              status: 'rejected' as const,
+              rejectReason: tc.rejectReason || reason,
+            }
+          : tc
+      );
+      return { ...msg, toolCalls: updated };
+    }
+    const synthesized: ToolCall = {
+      id: callID || crypto.randomUUID(),
+      name: toolName,
+      // The synthetic projection from the resume flow carries args so the
+      // rejected card still shows what was about to be sent; pure
+      // server-initiated rejections (TOCTOU) have no args field — fall
+      // back to an empty record.
+      args: (event.args as Record<string, unknown>) ?? {},
+      status: 'rejected',
+      rejectReason: reason,
+    };
+    return { ...msg, toolCalls: [...calls, synthesized] };
+  }
+
   if (type === 'done') {
     return { ...msg, status: 'done' };
   }
