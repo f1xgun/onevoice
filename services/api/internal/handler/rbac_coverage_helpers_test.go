@@ -253,6 +253,82 @@ func setupTestEnvWithTTL(t *testing.T, ttl time.Duration) *testEnv {
 	}
 }
 
+// setupTestEnvWithLoginRateLimit is a variant of setupTestEnv that constrains
+// the Login rate-limit budget so TestInvitations_Preview_RateLimited (plan
+// 03-06 Task 2) can exercise the per-IP rate-limit path without needing 60+
+// requests. Mirrors setupTestEnvWithTTL's shape: full wire/ build + custom
+// router.Setup invocation with router.RateLimits{Login: limit, ...}.
+//
+// T-03-09 mitigation requires the rate-limit test to ACTUALLY run (the plan
+// forbids t.Skip in the integration test); this helper makes it cheap enough
+// to pass within the per-test budget by lowering Login from the default 100
+// to whatever the caller passes.
+func setupTestEnvWithLoginRateLimit(t *testing.T, limit int) *testEnv {
+	t.Helper()
+	env := setupTestEnv(t)
+
+	mongoURL := os.Getenv("TEST_MONGO_URL")
+	mongoDBName := os.Getenv("TEST_MONGO_DB")
+	if mongoDBName == "" {
+		mongoDBName = "onevoice_test"
+	}
+	mongoClient, err := mongo.Connect(options.Client().ApplyURI(mongoURL))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = mongoClient.Disconnect(context.Background()) })
+	mongodb := mongoClient.Database(mongoDBName)
+
+	mr := miniredis.RunT(t)
+	redisClient2 := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = redisClient2.Close() })
+
+	const jwtSecret = "test-secret-do-not-use-in-production-at-all"
+	const encKey = "12345678901234567890123456789012"
+	cfg := &config.Config{
+		JWTSecret:          jwtSecret,
+		EncryptionKey:      encKey,
+		CORSAllowedOrigins: []string{"http://localhost:3000"},
+		RateLimitRegister:  100,
+		RateLimitLogin:     limit, // <-- the override that makes this helper distinct
+		RateLimitChat:      100,
+		RateLimitHITL:      100,
+	}
+
+	enc, err := buildTestEncryptor(t, encKey)
+	require.NoError(t, err)
+	pendingRepo2 := repository.NewPendingToolCallRepository(mongodb)
+	handles2 := &wire.DBHandles{
+		PG:                  env.pool,
+		Mongo:               mongodb,
+		Redis:               redisClient2,
+		Enc:                 enc,
+		PendingToolCallRepo: pendingRepo2,
+	}
+	repos2 := wire.Repositories(handles2)
+	svcs2, err := wire.BuildServices(context.Background(), slogTestLogger(), cfg, repos2, handles2)
+	require.NoError(t, err)
+	t.Cleanup(svcs2.Close)
+	handlers2, err := wire.Handlers(cfg, svcs2, repos2, handles2)
+	require.NoError(t, err)
+
+	testMux := router.Setup(handlers2, []byte(jwtSecret), redisClient2, health.New(),
+		cfg.CORSAllowedOrigins,
+		router.RateLimits{
+			Register: cfg.RateLimitRegister,
+			Login:    cfg.RateLimitLogin,
+			Chat:     cfg.RateLimitChat,
+			HITL:     cfg.RateLimitHITL,
+		},
+		svcs2.AuthzCache,
+	)
+
+	return &testEnv{
+		pool:      env.pool,
+		cache:     svcs2.AuthzCache,
+		router:    testMux,
+		jwtSecret: []byte(jwtSecret),
+	}
+}
+
 // mintJWT signs a JWT token claiming the given userID using the test secret.
 // Role is hardcoded to "user" (the system-role field is not part of the RBAC
 // business-membership check — only the JWT sub claim is used).
