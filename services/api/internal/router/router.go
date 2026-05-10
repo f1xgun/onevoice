@@ -148,7 +148,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// invitation row). Rate-limited per-user with Login budget for
 			// defense-in-depth (RESEARCH OQ-06). T-03-09 / T-03-10 mitigation.
 			if handlers.Invitations != nil {
-				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Login, time.Minute)).
+				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Login, time.Minute, "invite_accept")).
 					Post("/invitations/{token}/accept", handlers.Invitations.Accept)
 			}
 
@@ -199,10 +199,10 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Post("/integrations/telegram/refresh", handlers.Connect.RefreshTelegramLinkedGroup)
 
 				// Chat (rate-limited via env-tunable RateLimits.Chat).
-				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Chat, time.Minute)).
+				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Chat, time.Minute, "chat")).
 					Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
 				if handlers.HITL != nil {
-					r.With(middleware.RateLimitByUser(redisClient, rateLimits.HITL, time.Minute)).
+					r.With(middleware.RateLimitByUser(redisClient, rateLimits.HITL, time.Minute, "chat")).
 						Post("/chat/{id}/resume", handlers.HITL.Resume)
 					r.Post("/conversations/{id}/pending-tool-calls/{batch_id}/resolve", handlers.HITL.ResolvePendingToolCalls)
 					r.Get("/tools", handlers.HITL.GetTools)
