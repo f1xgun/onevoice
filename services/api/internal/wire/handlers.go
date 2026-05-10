@@ -157,6 +157,21 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create roles handler: %w", err)
 	}
 
+	// Phase 3 v2.0 RBAC: invitations handler — 5 endpoints (3 business-scoped,
+	// 1 auth-only token, 1 public token). See plan 03-04 / 03-05.
+	invitationsHandler, err := handler.NewInvitationsHandler(
+		repos.Invitation,
+		repos.BusinessMembership,
+		repos.Role,
+		repos.User,
+		repos.Business,
+		h.PG,
+		svcs.AuthzCache,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("wire: create invitations handler: %w", err)
+	}
+
 	return &router.Handlers{
 		Auth:          authHandler,
 		Business:      businessHandler,
@@ -179,6 +194,8 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		// Phase 2 v2.0 RBAC: member + role management.
 		Members: membersHandler,
 		Roles:   rolesHandler,
+		// Phase 3 v2.0 RBAC: invitation lifecycle (Create/ListPending/Revoke/Preview/Accept).
+		Invitations: invitationsHandler,
 		// Telemetry handler is zero-dep; constructed inline.
 		Telemetry: &handler.TelemetryHandler{},
 	}, nil
