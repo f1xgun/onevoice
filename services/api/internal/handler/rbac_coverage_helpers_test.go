@@ -328,6 +328,26 @@ func seedSuspendedMembership(t *testing.T, pool *pgxpool.Pool, bizID, userID, ro
 	require.NoError(t, err)
 }
 
+// seedInvitation inserts a pending invitation row for (businessID, roleID)
+// returning the new invitation's ID. Used by substituteURLParams to make
+// {inviteId} routes (DELETE /invitations/{inviteId}) reachable in the
+// authz walker — the row exists so UUID parse + repo lookup succeed and
+// the authz gates (401 / 403 / 404) fire as expected.
+//
+// Plan 03-06 Task 1 helper. token_hash is unique-per-row so concurrent
+// walker iterations don't collide on the UNIQUE constraint.
+func seedInvitation(t *testing.T, pool *pgxpool.Pool, businessID, roleID, createdByUserID uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	hash := fmt.Sprintf("seed-hash-%s", id.String()) // unique per row
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO invitations (id, business_id, role_id, token_hash, expires_at, created_by, created_at)
+		 VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 hour', $5, NOW())`,
+		id, businessID, roleID, hash, createdByUserID)
+	require.NoError(t, err)
+	return id
+}
+
 // doAuthedRequest runs a single HTTP request through env.router and returns
 // the recorded response. The optional jwtToken is attached as a Bearer token.
 // An empty body slice is treated as no body (uses http.NoBody).

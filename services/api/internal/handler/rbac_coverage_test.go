@@ -121,9 +121,10 @@ func TestRBACCoverage_AllBusinessRoutes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// AUTHZ-10 acceptance: walker must find at least 30 business-scoped routes.
-	require.GreaterOrEqual(t, walked, 30,
-		"AUTHZ-10: expected >=30 business-scoped routes, chi.Walk found %d", walked)
+	// AUTHZ-10 acceptance: walker must find at least 33 business-scoped routes.
+	// Phase 2 baseline ~30 + Phase 3 invitations × 3 (POST/GET/DELETE) = 33.
+	require.GreaterOrEqual(t, walked, 33,
+		"AUTHZ-10: expected >=33 business-scoped routes (Phase 2 baseline 30 + Phase 3 invitations × 3), chi.Walk found %d", walked)
 
 	// LOW #9 — AUTHZ-11 integration assertion: the allow counter must have
 	// incremented at least once during the viewer GET checks above.
@@ -315,6 +316,19 @@ func substituteURLParams(t *testing.T, env *testEnv, bizID uuid.UUID, route stri
 		viewerRoleID := uuid.MustParse(domain.SystemRoleViewerID)
 		seedMembership(t, env.pool, bizID, memberID, viewerRoleID)
 		url = strings.ReplaceAll(url, "{userId}", memberID.String())
+	}
+	if strings.Contains(url, "{inviteId}") {
+		// Plan 03-06 Task 1: Seed a real pending invitation so DELETE
+		// /invitations/{inviteId} validates the UUID parse + reaches the repo
+		// layer (where the authz gates 401 / 404 still fire as expected). The
+		// viewer JWT used by the walker is a non-creator so DELETE attempts
+		// will hit the PermMembersInvite Can() gate before they hit the repo,
+		// which is exactly what the 4-case authz trio asserts.
+		ownerRoleID := uuid.MustParse(domain.SystemRoleOwnerID)
+		// Need a non-Nil createdByUserID — seed a fresh user as the creator.
+		creatorID := seedUser(t, env.pool)
+		invID := seedInvitation(t, env.pool, bizID, ownerRoleID, creatorID)
+		url = strings.ReplaceAll(url, "{inviteId}", invID.String())
 	}
 	return url
 }
