@@ -130,13 +130,28 @@ type RoleRepository interface {
 }
 
 // InvitationRepository — Phase 1 declares the surface; Phase 3 implements.
+//
+// Phase 3 extension (per 03-RESEARCH §"Domain Interface Update"):
+//   - CreateInTx + CountPendingByBusinessInTx: needed by the create handler
+//     under Serializable isolation so the 20-pending cap holds under
+//     concurrent creates (research P-09 / OQ-01).
+//   - MarkAcceptedInTx: needed by the accept handler so the conditional
+//     UPDATE (race-safe single-use guarantee) runs inside the same
+//     RepeatableRead tx as the membership INSERT.
+//   - Revoke takes businessID for defense-in-depth cross-tenant scoping
+//     (CONTEXT D-11: 404 not_found on cross-tenant revoke; OQ-02 picks
+//     interface-level scoping over handler-level pre-check, matching the
+//     ConversationRepository.Pin/Unpin convention at lines 170-175).
 type InvitationRepository interface {
 	Create(ctx context.Context, inv *Invitation) error
+	CreateInTx(ctx context.Context, tx pgx.Tx, inv *Invitation) error
 	GetByTokenHash(ctx context.Context, tokenHash string) (*Invitation, error)
 	ListPendingByBusiness(ctx context.Context, businessID uuid.UUID) ([]Invitation, error)
 	CountPendingByBusiness(ctx context.Context, businessID uuid.UUID) (int, error)
-	Revoke(ctx context.Context, id uuid.UUID) error
+	CountPendingByBusinessInTx(ctx context.Context, tx pgx.Tx, businessID uuid.UUID) (int, error)
+	Revoke(ctx context.Context, id, businessID uuid.UUID) error
 	MarkAccepted(ctx context.Context, id, accepterUserID uuid.UUID) error
+	MarkAcceptedInTx(ctx context.Context, tx pgx.Tx, id, accepterUserID uuid.UUID) error
 }
 
 // MongoDB repositories
