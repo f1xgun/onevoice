@@ -1,88 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { toast } from 'sonner';
-import { z } from 'zod';
-import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
-import { MAX_QUICK_ACTIONS } from '@/lib/quick-actions';
-import {
-  useCreateProject,
-  useProjectConversationCount,
-  useUpdateProject,
-  useDeleteProject,
-} from '@/hooks/useProjects';
-import { WhitelistRadio } from './WhitelistRadio';
-import { ToolCheckboxGrid } from './ToolCheckboxGrid';
-import { ProjectApprovalOverrides } from './ProjectApprovalOverrides';
-import { QuickActionsEditor } from './QuickActionsEditor';
+import { Form } from '@/components/ui/form';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { BasicsTab } from './BasicsTab';
+import { CreateProjectFields } from './CreateProjectFields';
 import { DeleteProjectDialog } from './DeleteProjectDialog';
-import { useTools } from '@/lib/hooks/useTools';
-import { useBusinessToolApprovals } from '@/lib/hooks/useBusinessToolApprovals';
-import type {
-  Project,
-  ProjectApprovalOverrides as ProjectApprovalOverridesMap,
-} from '@/types/project';
-
-const MAX_SYSTEM_PROMPT_CHARS = 4000;
-const PROJECT_NAME_MAX_LEN = 200;
-const PROJECT_DESCRIPTION_MAX_LEN = 2000;
-
-// Schema-time messages — module-level translator (no React context at
-// declaration time). Same pattern as `lib/schemas.ts`.
-const tValidation = getTranslator('validation');
-
-const schema = z
-  .object({
-    name: z.string().trim().min(1, tValidation('projectNameRequired')).max(PROJECT_NAME_MAX_LEN),
-    description: z.string().max(PROJECT_DESCRIPTION_MAX_LEN),
-    systemPrompt: z
-      .string()
-      .max(
-        MAX_SYSTEM_PROMPT_CHARS,
-        tValidation('projectSystemPromptMax', { max: MAX_SYSTEM_PROMPT_CHARS })
-      ),
-    whitelistMode: z.enum(['inherit', 'all', 'explicit', 'none']),
-    allowedTools: z.array(z.string()),
-    // approvalOverrides. Zod-typed as a map of
-    // tool-name → "auto"|"manual". Absence = inherit (Overview invariant
-    // #8); the UI never produces a key whose value is the string
-    // "inherit".
-    approvalOverrides: z.record(z.string(), z.enum(['auto', 'manual'])),
-    quickActions: z.array(z.string().trim().min(1)).max(MAX_QUICK_ACTIONS),
-  })
-  .refine((d) => d.whitelistMode !== 'explicit' || d.allowedTools.length > 0, {
-    path: ['allowedTools'],
-    message: tValidation('projectAllowedToolsRequired'),
-  });
-
-type FormValues = z.infer<typeof schema>;
-
-interface Integration {
-  platform: string;
-  status: string;
-}
+import { PromptTab } from './PromptTab';
+import { QuickActionsTab } from './QuickActionsTab';
+import { ToolsTab } from './ToolsTab';
+import { useProjectForm } from './useProjectForm';
+import type { Project } from '@/types/project';
 
 interface ProjectFormProps {
   project?: Project;
@@ -93,78 +23,27 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
   const router = useRouter();
   const tForm = useTranslations('projects.form');
   const tCommon = useTranslations('common');
-  const isEdit = !!project;
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      name: project?.name ?? '',
-      description: project?.description ?? '',
-      systemPrompt: project?.systemPrompt ?? '',
-      whitelistMode: project?.whitelistMode ?? 'inherit',
-      allowedTools: project?.allowedTools ?? [],
-      approvalOverrides: (project?.approvalOverrides ?? {}) as ProjectApprovalOverridesMap,
-      quickActions: project?.quickActions ?? [],
-    },
-  });
-
-  const whitelistMode = form.watch('whitelistMode');
-  const systemPromptLen = form.watch('systemPrompt').length;
-
-  const { data: integrations = [] } = useQuery<Integration[]>({
-    queryKey: QUERY_KEYS.INTEGRATIONS,
-    queryFn: () =>
-      api.get(API_PATHS.INTEGRATIONS.ROOT).then((r) => (Array.isArray(r.data) ? r.data : [])),
-  });
-  const activePlatforms = integrations.filter((i) => i.status === 'active').map((i) => i.platform);
-
-  // live registry (overrides section). Business
-  // approvals drive the inherit chip; both are loaded in the background
-  // and the form renders a loading note in the overrides section until
-  // they resolve.
-  const { data: tools } = useTools();
-  const { data: businessApprovals = {} } = useBusinessToolApprovals(project?.businessId ?? '');
-
-  const createMutation = useCreateProject();
-  const updateMutation = useUpdateProject(project?.id ?? '');
-  const deleteMutation = useDeleteProject();
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const { data: chatCount = 0 } = useProjectConversationCount(project?.id ?? '', deleteOpen);
-
-  const onSubmit = async (values: FormValues) => {
-    try {
-      if (isEdit && project) {
-        const saved = await updateMutation.mutateAsync(values);
-        onSaved(saved);
-      } else {
-        const saved = await createMutation.mutateAsync(values);
-        onSaved(saved);
-      }
-    } catch (err) {
-      const msg =
-        err instanceof Error && 'response' in err
-          ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? '')
-          : '';
-      toast.error(tForm('saveError'), {
-        description: tForm('saveErrorRetry', { detail: msg }).trim(),
-      });
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!project) return;
-    await deleteMutation.mutateAsync(project.id);
-    toast.success(tForm('deletedSuccess'));
-    router.push('/chat');
-  };
-
-  const overCap = systemPromptLen > MAX_SYSTEM_PROMPT_CHARS;
-  const submitting = form.formState.isSubmitting;
+  const {
+    form,
+    isEdit,
+    submitting,
+    systemPromptLen,
+    overCap,
+    whitelistMode,
+    activePlatforms,
+    tools,
+    businessApprovals,
+    chatCount,
+    deleteOpen,
+    setDeleteOpen,
+    isDeletePending,
+    onSubmit,
+    handleDelete,
+  } = useProjectForm(project, onSaved);
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={onSubmit} className="space-y-6">
         {isEdit ? (
           <Tabs defaultValue="basics" className="w-full">
             {/* Tabs scroll horizontally on narrow viewports — «Быстрые
@@ -178,207 +57,24 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
               </TabsList>
             </div>
 
-            <TabsContent value="basics" className="space-y-6 pt-4">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{tForm('name')}</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Например: Отзывы" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      {tForm('description')}{' '}
-                      <span className="text-muted-foreground">{tForm('optional')}</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Textarea
-                        rows={3}
-                        placeholder="Короткое описание — для кого этот проект."
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </TabsContent>
-
-            <TabsContent value="prompt" className="space-y-6 pt-4">
-              <FormField
-                control={form.control}
-                name="systemPrompt"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{tForm('systemPrompt')}</FormLabel>
-                    <FormDescription>{tForm('systemPromptDescription')}</FormDescription>
-                    <FormControl>
-                      <Textarea
-                        rows={10}
-                        placeholder="Ты — помощник по отзывам. Отвечай вежливо, по существу…"
-                        {...field}
-                      />
-                    </FormControl>
-                    <div className="flex justify-end">
-                      <span
-                        className={cn(
-                          'text-xs tabular-nums',
-                          overCap ? 'text-destructive' : 'text-muted-foreground'
-                        )}
-                        aria-live="polite"
-                      >
-                        {tForm('promptCounter', {
-                          current: systemPromptLen,
-                          max: MAX_SYSTEM_PROMPT_CHARS,
-                        })}
-                      </span>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </TabsContent>
-
-            <TabsContent value="tools" className="space-y-6 pt-4">
-              <FormField
-                control={form.control}
-                name="whitelistMode"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{tForm('tools')}</FormLabel>
-                    <FormDescription>{tForm('toolsDescription')}</FormDescription>
-                    <FormControl>
-                      <WhitelistRadio
-                        value={field.value}
-                        onChange={field.onChange}
-                        name={field.name}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {whitelistMode === 'explicit' && (
-                <FormField
-                  control={form.control}
-                  name="allowedTools"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="sr-only">{tForm('toolsList')}</FormLabel>
-                      <FormControl>
-                        <ToolCheckboxGrid
-                          activeIntegrations={activePlatforms}
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-
-              <FormField
-                control={form.control}
-                name="approvalOverrides"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{tForm('approval')}</FormLabel>
-                    <FormDescription>{tForm('approvalDescription')}</FormDescription>
-                    <FormControl>
-                      {tools ? (
-                        <ProjectApprovalOverrides
-                          tools={tools}
-                          businessApprovals={businessApprovals}
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
-                      ) : (
-                        <p className="text-sm text-muted-foreground">{tForm('loadingTools')}</p>
-                      )}
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </TabsContent>
-
-            <TabsContent value="quick-actions" className="space-y-6 pt-4">
-              <FormField
-                control={form.control}
-                name="quickActions"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{tForm('quickActions')}</FormLabel>
-                    <FormDescription>{tForm('quickActionsDescription')}</FormDescription>
-                    <FormControl>
-                      <QuickActionsEditor value={field.value} onChange={field.onChange} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </TabsContent>
+            <BasicsTab form={form} />
+            <PromptTab form={form} systemPromptLen={systemPromptLen} overCap={overCap} />
+            <ToolsTab
+              form={form}
+              whitelistMode={whitelistMode}
+              activePlatforms={activePlatforms}
+              tools={tools}
+              businessApprovals={businessApprovals}
+            />
+            <QuickActionsTab form={form} />
           </Tabs>
         ) : (
-          // Create flow — only name + description. Остальное настраивается после создания.
-          <>
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{tForm('name')}</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Например: Отзывы" autoFocus {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {tForm('description')}{' '}
-                    <span className="text-muted-foreground">{tForm('optional')}</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      rows={3}
-                      placeholder="Короткое описание — для кого этот проект."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <p className="bg-muted/30 rounded-md border px-4 py-3 text-xs text-muted-foreground">
-              {tForm('creationFooter')}
-            </p>
-          </>
+          <CreateProjectFields form={form} />
         )}
 
         <div className="flex flex-wrap items-center gap-3 pt-2">
           <Button type="submit" disabled={submitting}>
-            {isEdit ? 'Сохранить' : 'Создать проект'}
+            {isEdit ? tForm('save') : tForm('create')}
           </Button>
           <Button
             type="button"
@@ -394,7 +90,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
               variant="outline"
               className="hover:bg-destructive/10 ml-auto text-destructive hover:text-destructive"
               onClick={() => setDeleteOpen(true)}
-              disabled={submitting || deleteMutation.isPending}
+              disabled={submitting || isDeletePending}
             >
               {tForm('deleteProject')}
             </Button>

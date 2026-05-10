@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,8 +9,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // IntegrationService defines the interface for integration operations
@@ -24,46 +23,34 @@ type IntegrationService interface {
 // IntegrationHandler handles integration endpoints
 type IntegrationHandler struct {
 	integrationService IntegrationService
-	businessService    BusinessService
 }
 
 // NewIntegrationHandler creates a new integration handler instance
-func NewIntegrationHandler(integrationService IntegrationService, businessService BusinessService) (*IntegrationHandler, error) {
+func NewIntegrationHandler(integrationService IntegrationService, _ BusinessService) (*IntegrationHandler, error) {
 	if integrationService == nil {
 		return nil, fmt.Errorf("NewIntegrationHandler: integrationService cannot be nil")
 	}
-	if businessService == nil {
-		return nil, fmt.Errorf("NewIntegrationHandler: businessService cannot be nil")
-	}
 	return &IntegrationHandler{
 		integrationService: integrationService,
-		businessService:    businessService,
 	}, nil
 }
 
-// ListIntegrations returns all integrations for the authenticated user's business
+// ListIntegrations returns all integrations for the business from the request context.
 func (h *IntegrationHandler) ListIntegrations(w http.ResponseWriter, r *http.Request) {
-	// Get user ID from context
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ListIntegrations: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	// Get business for user
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("failed to get business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermIntegrationsRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	// Get integrations for business
-	integrations, err := h.integrationService.ListByBusinessID(r.Context(), business.ID)
+	integrations, err := h.integrationService.ListByBusinessID(r.Context(), bc.BusinessID)
 	if err != nil {
 		slog.Error("failed to list integrations", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -76,35 +63,28 @@ func (h *IntegrationHandler) ListIntegrations(w http.ResponseWriter, r *http.Req
 
 // DeleteIntegration deletes an integration by ID
 func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Request) {
-	// Get user ID from context
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "DeleteIntegration: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermIntegrationsDisconnect) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
 	// Parse integration ID from URL
-	idStr := chi.URLParam(r, "id")
+	idStr := chi.URLParam(r, "integrationId")
 	integrationID, err := uuid.Parse(idStr)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid integration ID")
 		return
 	}
 
-	// Get business for user
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("failed to get business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
 	// Verify integration belongs to this business
-	integrations, err := h.integrationService.ListByBusinessID(r.Context(), business.ID)
+	integrations, err := h.integrationService.ListByBusinessID(r.Context(), bc.BusinessID)
 	if err != nil {
 		slog.Error("failed to list integrations", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")

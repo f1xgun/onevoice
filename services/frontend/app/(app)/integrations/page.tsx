@@ -5,9 +5,11 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
+import { bizApi } from '@/lib/api/business-api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { trackClick } from '@/lib/telemetry';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
@@ -40,7 +42,9 @@ interface LastRegistered {
 export default function IntegrationsPage() {
   const qc = useQueryClient();
   const tIntegrations = useTranslations('integrations');
+  const tPlatforms = useTranslations('platforms');
   const searchParams = useSearchParams();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
   const [googleLocationOpen, setGoogleLocationOpen] = useState(false);
@@ -63,12 +67,12 @@ export default function IntegrationsPage() {
 
     if (connected === 'vk') {
       toast.success(tIntegrations('vkConnected'));
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
     if (connected === 'google_business') {
       toast.success(tIntegrations('googleConnected'));
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
@@ -100,19 +104,24 @@ export default function IntegrationsPage() {
       toast.error(message);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
-  }, [searchParams, qc, tIntegrations]);
+  }, [searchParams, qc, activeBusinessId, tIntegrations]);
 
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
-    queryKey: QUERY_KEYS.INTEGRATIONS,
+    queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
     queryFn: () =>
-      api
-        .get(API_PATHS.INTEGRATIONS.ROOT)
+      bizApi(activeBusinessId!)
+        .get(BIZ_API_PATHS.INTEGRATIONS.ROOT)
         .then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
+    enabled: !!activeBusinessId,
   });
 
   const { data: business } = useQuery<Business>({
-    queryKey: QUERY_KEYS.BUSINESS,
-    queryFn: () => api.get(API_PATHS.BUSINESS.ROOT).then((r) => r.data as Business),
+    queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId),
+    queryFn: () =>
+      bizApi(activeBusinessId!)
+        .get<Business>(BIZ_API_PATHS.BUSINESS.ROOT)
+        .then((r) => r.data),
+    enabled: !!activeBusinessId,
   });
 
   // Detect newly-registered integrations to show the post-connect banner
@@ -139,10 +148,13 @@ export default function IntegrationsPage() {
   }, [integrations, business?.id]);
 
   const disconnectMutation = useMutation({
-    mutationFn: (integrationId: string) => api.delete(`/integrations/${integrationId}`),
+    mutationFn: (integrationId: string) => {
+      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
+      return bizApi(activeBusinessId).delete(BIZ_API_PATHS.INTEGRATIONS.BY_ID(integrationId));
+    },
     onSuccess: () => {
       trackClick('disconnect_integration');
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
       toast.success('Канал отключён');
     },
     onError: () => toast.error('Не получилось отключить'),
@@ -163,7 +175,10 @@ export default function IntegrationsPage() {
     }
     if (platformId === 'google_business') {
       try {
-        const { data } = await api.get(API_PATHS.INTEGRATIONS.GOOGLE_AUTH_URL);
+        if (!activeBusinessId) return;
+        const { data } = await bizApi(activeBusinessId).get<{ url: string }>(
+          BIZ_API_PATHS.INTEGRATIONS.GOOGLE_AUTH_URL
+        );
         window.location.href = data.url;
       } catch {
         toast.error('Не получилось открыть авторизацию Google');
@@ -234,7 +249,11 @@ export default function IntegrationsPage() {
             <SectionLabel className="mt-12">{tIntegrations('page.comingSoon')}</SectionLabel>
             <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
               {comingSoonPlatforms.map((p) => (
-                <SoonCard key={p.id} label={p.fullLabel} when={p.comingSoonWhen ?? 'скоро'} />
+                <SoonCard
+                  key={p.id}
+                  label={p.fullLabel}
+                  when={p.comingSoonWhen ?? tPlatforms('comingSoonFallback')}
+                />
               ))}
             </div>
           </>
@@ -263,7 +282,7 @@ export default function IntegrationsPage() {
         open={telegramOpen}
         onClose={() => {
           setTelegramOpen(false);
-          qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+          qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
         }}
       />
 
@@ -271,7 +290,7 @@ export default function IntegrationsPage() {
         open={vkCommunityOpen}
         onClose={() => {
           setVkCommunityOpen(false);
-          qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+          qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
         }}
       />
 
@@ -279,7 +298,7 @@ export default function IntegrationsPage() {
         open={googleLocationOpen}
         onClose={() => {
           setGoogleLocationOpen(false);
-          qc.invalidateQueries({ queryKey: QUERY_KEYS.INTEGRATIONS });
+          qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
         }}
       />
 

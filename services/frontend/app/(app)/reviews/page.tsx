@@ -13,9 +13,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
+import { bizApi } from '@/lib/api/business-api';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { REVIEW_STATUS_BADGES, type ReviewStatus } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
 
@@ -132,6 +135,7 @@ function formatReviewDate(iso: string): string {
 
 export default function ReviewsPage() {
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const tReviews = useTranslations('reviews');
   const tCommon = useTranslations('common');
   const [platform, setPlatform] = useState<string>('all');
@@ -140,27 +144,32 @@ export default function ReviewsPage() {
   const [replyText, setReplyText] = useState('');
 
   const { data: reviews = [], isLoading } = useQuery<Review[]>({
-    queryKey: QUERY_KEYS.REVIEWS_FILTERED(platform, replyStatus),
+    queryKey: ['businesses', activeBusinessId, 'reviews', platform, replyStatus],
     queryFn: () => {
       const params = new URLSearchParams();
       if (platform !== 'all') params.set('platform', platform);
       if (replyStatus !== 'all') params.set('reply_status', replyStatus);
-      return api.get(`${API_PATHS.REVIEWS.ROOT}?${params}`).then((r) => {
-        // API shape: { reviews: Review[], total: number }. Older
-        // callers expected a bare array — accept both for safety.
-        const data = r.data as unknown;
-        if (Array.isArray(data)) return data as Review[];
-        const reviews = (data as { reviews?: Review[] } | null)?.reviews;
-        return Array.isArray(reviews) ? reviews : [];
-      });
+      return bizApi(activeBusinessId!)
+        .get(`${BIZ_API_PATHS.REVIEWS.ROOT}?${params}`)
+        .then((r) => {
+          // API shape: { reviews: Review[], total: number }. Older
+          // callers expected a bare array — accept both for safety.
+          const data = r.data as unknown;
+          if (Array.isArray(data)) return data as Review[];
+          const reviews = (data as { reviews?: Review[] } | null)?.reviews;
+          return Array.isArray(reviews) ? reviews : [];
+        });
     },
+    enabled: !!activeBusinessId,
   });
 
   const replyMutation = useMutation({
-    mutationFn: ({ id, text }: { id: string; text: string }) =>
-      api.put(API_PATHS.REVIEWS.REPLY(id), { replyText: text }),
+    mutationFn: ({ id, text }: { id: string; text: string }) => {
+      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
+      return bizApi(activeBusinessId).put(BIZ_API_PATHS.REVIEWS.REPLY(id), { replyText: text });
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.REVIEWS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
       toast.success(tReviews('replyToast'));
       setReplyDialog(null);
       setReplyText('');
@@ -176,7 +185,7 @@ export default function ReviewsPage() {
     mutationFn: () =>
       api.post(API_PATHS.REVIEWS.REFRESH, undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.REVIEWS });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
       toast.success('Отзывы обновлены');
     },
     onError: () => toast.error('Не удалось обновить отзывы'),
@@ -220,15 +229,25 @@ export default function ReviewsPage() {
         {/* Stat strip — three quiet metrics. No celebratory tone. */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatCell
-            label="Ждут ответа"
+            label={tReviews('stats.pendingLabel')}
             value={stats.pending}
-            hint={stats.pending === 0 ? 'нет открытых' : 'требуют решения'}
+            hint={
+              stats.pending === 0
+                ? tReviews('stats.pendingHintNone')
+                : tReviews('stats.pendingHintSome')
+            }
           />
-          <StatCell label="Всего в выборке" value={stats.total} hint="по выбранным фильтрам" />
           <StatCell
-            label="Средняя оценка"
-            value={stats.avg == null ? '—' : stats.avg.toFixed(1)}
-            hint={stats.avg == null ? 'нет данных' : 'из 5'}
+            label={tReviews('stats.totalLabel')}
+            value={stats.total}
+            hint={tReviews('stats.totalHint')}
+          />
+          <StatCell
+            label={tReviews('stats.avgLabel')}
+            value={stats.avg == null ? tReviews('stats.avgEmpty') : stats.avg.toFixed(1)}
+            hint={
+              stats.avg == null ? tReviews('stats.avgHintEmpty') : tReviews('stats.avgHintOutOf')
+            }
           />
         </div>
 
@@ -236,7 +255,7 @@ export default function ReviewsPage() {
         <div className="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-line bg-paper-raised px-4 py-3">
           <Select value={platform} onValueChange={setPlatform}>
             <SelectTrigger className="h-9 w-[200px]">
-              <SelectValue placeholder="Платформа" />
+              <SelectValue placeholder={tReviews('platformPlaceholder')} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{tReviews('platformOptions.all')}</SelectItem>
@@ -265,14 +284,14 @@ export default function ReviewsPage() {
             className="ml-auto gap-1.5"
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
-            title="Запросить свежие отзывы у подключённых платформ"
+            title={tReviews('refreshTitle')}
           >
             {refreshMutation.isPending ? (
               <Loader2 className="size-3.5 animate-spin" />
             ) : (
               <RefreshCw className="size-3.5" />
             )}
-            {refreshMutation.isPending ? 'Обновляем…' : 'Обновить'}
+            {refreshMutation.isPending ? tReviews('refreshing') : tReviews('refresh')}
           </Button>
         </div>
 
@@ -324,7 +343,7 @@ export default function ReviewsPage() {
                 <Textarea
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Напишите ответ клиенту…"
+                  placeholder={tReviews('replyPlaceholder')}
                   rows={5}
                   className="resize-none"
                 />
@@ -342,7 +361,7 @@ export default function ReviewsPage() {
               }
               disabled={!replyText.trim() || replyMutation.isPending}
             >
-              {replyMutation.isPending ? 'Отправляем…' : 'Отправить'}
+              {replyMutation.isPending ? tReviews('sending') : tReviews('send')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -445,7 +464,7 @@ function ReviewCard({
           <p className="mt-2 text-sm leading-relaxed text-ink">{review.draftReply}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button variant="primary" size="sm" onClick={onSendDraft} disabled={isSending}>
-              {isSending ? 'Отправляем…' : 'Отправить'}
+              {isSending ? tReviews('sending') : tReviews('send')}
             </Button>
             <Button variant="ghost" size="sm" onClick={onEdit} disabled={isSending}>
               {tReviews('aiSample.edit')}
@@ -470,8 +489,8 @@ function ReviewCard({
         <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
           <span className="text-sm text-ink-mid">
             {review.draftStatus === 'failed'
-              ? 'Не получилось подготовить образец. Можно ответить вручную.'
-              : 'Образец ещё не подготовлен. Можно ответить вручную.'}
+              ? tReviews('aiSample.draftFailed')
+              : tReviews('aiSample.draftPending')}
           </span>
           <Button variant="secondary" size="sm" onClick={onWriteOwn}>
             {tReviews('aiSample.writeOwn')}

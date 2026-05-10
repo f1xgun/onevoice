@@ -1,4 +1,9 @@
-// Single source of truth for API endpoint paths used by the frontend.
+// Single source of truth for non-business-scoped API endpoint paths used
+// by the frontend.
+//
+// For business-scoped endpoints (`/businesses/{id}/...`) see BIZ_API_PATHS
+// in bizApiPaths.ts — those are consumed via the bizApi() helper which
+// prepends `/businesses/{id}` automatically.
 //
 // Two flavours of paths live here:
 //
@@ -17,10 +22,14 @@
 // NEXT_PUBLIC_API_URL=https://api.example.com/api/v1 to bypass the rewrite.
 //
 // Functions vs strings:
-//   - Static endpoints are exported as plain strings (`'/business'`).
+//   - Static endpoints are exported as plain strings (`'/auth/login'`).
 //   - Endpoints that take an id (or other path param) are exported as
-//     functions (`CONVERSATION_BY_ID(id)`) so call sites can't forget to
-//     interpolate.
+//     functions so call sites can't forget to interpolate.
+//
+// Some entries below double as frontend Next.js route hrefs (e.g.
+// BUSINESS.ROOT, INTEGRATIONS.ROOT, TASKS) because the URL slugs match
+// the API paths one-to-one. Splitting them into a FRONTEND_ROUTES module
+// is out of scope for the RBAC migration — see PR backlog.
 
 export const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
@@ -31,34 +40,27 @@ export const API_PATHS = {
     PASSWORD: '/auth/password',
     ME: '/auth/me',
   },
+  // BUSINESS.ROOT also doubles as the frontend route href for the
+  // business profile page. The /business API endpoint itself moved under
+  // BIZ_API_PATHS.BUSINESS — see bizApiPaths.ts.
   BUSINESS: {
     ROOT: '/business',
-    SCHEDULE: '/business/schedule',
-    VOICE_TONE: '/business/voice-tone',
   },
-  CONVERSATIONS: {
-    ROOT: '/conversations',
-    BY_ID: (id: string) => `/conversations/${id}`,
-    MOVE: (id: string) => `/conversations/${id}/move`,
-    PIN: (id: string) => `/conversations/${id}/pin`,
-    UNPIN: (id: string) => `/conversations/${id}/unpin`,
-    REGENERATE_TITLE: (id: string) => `/conversations/${id}/regenerate-title`,
-  },
+  // INTEGRATIONS.ROOT also doubles as the frontend route href. All API
+  // calls under /integrations migrated to BIZ_API_PATHS.INTEGRATIONS.
   INTEGRATIONS: {
     ROOT: '/integrations',
-    TELEGRAM_CONNECT: '/integrations/telegram/connect',
-    YANDEX_BUSINESS_CONNECT: '/integrations/yandex_business/connect',
-    GOOGLE_AUTH_URL: '/integrations/google_business/auth-url',
-    GOOGLE_LOCATIONS: '/integrations/google_business/locations',
-    GOOGLE_SELECT_LOCATION: '/integrations/google_business/select-location',
   },
-  POSTS: '/posts',
+  // TASKS doubles as the frontend route href. Backend list/stream moved
+  // to BIZ_API_PATHS.TASKS.
   TASKS: '/tasks',
   TELEMETRY: '/telemetry',
+  // POST /reviews/refresh is INTENTIONALLY NOT business-scoped — it
+  // synchronously fans out a sync request to every connected agent for
+  // the caller's businesses. Per-business calls live under
+  // BIZ_API_PATHS.REVIEWS.
   REVIEWS: {
-    ROOT: '/reviews',
     REFRESH: '/reviews/refresh',
-    REPLY: (id: string) => `/reviews/${id}/reply`,
   },
 } as const;
 

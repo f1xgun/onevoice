@@ -89,7 +89,7 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 		ID:           uuid.New(),
 		Email:        email,
 		PasswordHash: string(passwordHash),
-		Role:         domain.RoleOwner, // Default role for new registrations
+		Role:         domain.UserRoleOwner, // Default role for new registrations
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}

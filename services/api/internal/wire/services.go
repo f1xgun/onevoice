@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
@@ -50,6 +51,11 @@ type Services struct {
 	// can call WithAgentTaskPublisher when NATS is available. nil when NATS
 	// is unreachable.
 	AgentTaskPublisher *platform.NATSTaskPublisher
+
+	// AuthzCache backs the RequireBusinessAccess middleware
+	// (Phase 2 v2.0 RBAC). Non-nil — the middleware panics on a nil cache
+	// at request time.
+	AuthzCache *authz.Cache
 
 	// reviewSyncerCancel is captured so Close() can stop the background
 	// ticker goroutine. nil when ReviewSyncer is nil.
@@ -154,7 +160,16 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		return nil, fmt.Errorf("wire: create user service: %w", err)
 	}
 	s.User = userService
-	s.Business = service.NewBusinessService(repos.Business)
+	// Phase 1 v2.0 RBAC (DATA-06): BusinessService dual-writes
+	// businesses + business_members(role_id=owner) inside a single tx.
+	s.Business = service.NewBusinessService(repos.Business, repos.BusinessMembership, repos.Role, h.PG)
+
+	// Phase 2 v2.0 RBAC: authz cache backs the RequireBusinessAccess
+	// middleware. The MembershipLoader queries (user_id, business_id) →
+	// (role_id, permissions) in one round-trip; the cache memoizes results
+	// keyed by (user_id, business_id) with explicit invalidation on member
+	// add/remove/role-change.
+	s.AuthzCache = authz.NewCache(repos.MembershipLoader)
 
 	// Build Google token refresher if credentials are configured. The
 	// refresher is wired into IntegrationService below so token refresh

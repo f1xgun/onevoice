@@ -7,6 +7,11 @@ import { useChat } from '../useChat';
 import { useAuthStore } from '@/lib/auth';
 import { mockSSEResponse, sseLine } from '@/test-utils/sse-mock';
 
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'biz-test' }),
+}));
+
 // useChat invalidates ['conversations'] EXACTLY ONCE on chat SSE 'done'.
 // Title arrival is OUT-OF-BAND from the chat stream — never muxed into
 // the chat SSE event types.
@@ -40,7 +45,9 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
 
     // 1) GET /messages — empty hydration.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
-      expect(String(input)).toMatch(/\/api\/v1\/conversations\/.+\/messages$/);
+      expect(String(input)).toMatch(
+        /\/api\/v1\/businesses\/biz-test\/conversations\/.+\/messages$/
+      );
       return new Response(JSON.stringify({ messages: [], pendingApprovals: [] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -49,7 +56,7 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
 
     // 2) POST /chat/{id} — SSE stream emits a partial text and then `done`.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
-      expect(String(input)).toMatch(/\/api\/v1\/chat\/cid-d10$/);
+      expect(String(input)).toMatch(/\/api\/v1\/businesses\/biz-test\/chat\/cid-d10$/);
       return mockSSEResponse([
         sseLine({ type: 'text', content: 'Hi ' }),
         sseLine({ type: 'done' }),
@@ -67,7 +74,7 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client: queryClient }, children);
 
-    const { result } = renderHook(() => useChat('cid-d10'), { wrapper });
+    const { result } = renderHook(() => useChat({ conversationId: 'cid-d10' }), { wrapper });
 
     // Wait for the hydration fetch to finish.
     await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -77,13 +84,19 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
       await result.current.sendMessage('hello');
     });
 
-    // Exactly one invalidation against ['conversations'].
+    // Exactly one invalidation against the business-scoped conversations key.
     const conversationsCalls = invalidateSpy.mock.calls.filter((c) => {
       const arg = c[0] as { queryKey?: unknown[] } | undefined;
-      return Array.isArray(arg?.queryKey) && arg!.queryKey![0] === 'conversations';
+      return (
+        Array.isArray(arg?.queryKey) &&
+        arg!.queryKey![0] === 'businesses' &&
+        arg!.queryKey![2] === 'conversations'
+      );
     });
     expect(conversationsCalls).toHaveLength(1);
-    expect(conversationsCalls[0][0]).toEqual({ queryKey: ['conversations'] });
+    expect(conversationsCalls[0][0]).toEqual({
+      queryKey: ['businesses', 'biz-test', 'conversations'],
+    });
   });
 
   it("does NOT invalidate ['conversations'] when SSE stream lacks a 'done' event (e.g., aborted stream)", async () => {
@@ -107,7 +120,7 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client: queryClient }, children);
 
-    const { result } = renderHook(() => useChat('cid-no-done'), { wrapper });
+    const { result } = renderHook(() => useChat({ conversationId: 'cid-no-done' }), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
@@ -116,7 +129,11 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
 
     const conversationsCalls = invalidateSpy.mock.calls.filter((c) => {
       const arg = c[0] as { queryKey?: unknown[] } | undefined;
-      return Array.isArray(arg?.queryKey) && arg!.queryKey![0] === 'conversations';
+      return (
+        Array.isArray(arg?.queryKey) &&
+        arg!.queryKey![0] === 'businesses' &&
+        arg!.queryKey![2] === 'conversations'
+      );
     });
     expect(conversationsCalls).toHaveLength(0);
   });

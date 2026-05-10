@@ -23,10 +23,27 @@ import type { Conversation } from '@/lib/conversations';
 //   confirms the harness is sensitive enough to detect re-renders, so the
 //   "1 commit" assertion is genuine isolation rather than a broken test.
 
-vi.mock('@/lib/api', () => ({
-  api: {
+const BUSINESS_ID = 'biz-test';
+
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string }) => unknown) =>
+    selector({ activeBusinessId: BUSINESS_ID }),
+}));
+
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: () => ({
     get: () => Promise.resolve({ data: [] }),
-  },
+  }),
+}));
+
+// Pin/unpin hooks use useConversations which uses bizApi internally;
+// stub them so the isolation test does not need a real NATS/fetch.
+// conversationsQueryKey is a pure helper consumed by ChatHeader; re-export
+// the real implementation so the cache lookup matches what setup() seeded.
+vi.mock('@/hooks/useConversations', () => ({
+  usePinConversation: () => ({ mutate: vi.fn(), isPending: false }),
+  useUnpinConversation: () => ({ mutate: vi.fn(), isPending: false }),
+  conversationsQueryKey: (bizId: string | null) => ['businesses', bizId, 'conversations'] as const,
 }));
 
 type TestConv = Pick<Conversation, 'id' | 'title' | 'titleStatus'> & {
@@ -37,7 +54,7 @@ function setup(initialConvs: TestConv[]) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  qc.setQueryData(['conversations'], initialConvs);
+  qc.setQueryData(['businesses', BUSINESS_ID, 'conversations'], initialConvs);
   const wrapper = ({ children }: { children: ReactNode }) =>
     React.createElement(QueryClientProvider, { client: qc }, children);
   return { qc, wrapper };
@@ -90,7 +107,7 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
     // commit because props are unchanged.
     act(() => {
       qc.setQueryData(
-        ['conversations'],
+        ['businesses', BUSINESS_ID, 'conversations'],
         [
           {
             id: 'c1',
@@ -122,7 +139,7 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
 
     await act(async () => {
       qc.setQueryData(
-        ['conversations'],
+        ['businesses', BUSINESS_ID, 'conversations'],
         [{ id: 'c1', title: 'Запланировать пост', titleStatus: 'auto' }]
       );
       // Yield a microtask so React Query's observer flushes the new data
@@ -166,7 +183,7 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
 
     await act(async () => {
       qc.setQueryData(
-        ['conversations'],
+        ['businesses', BUSINESS_ID, 'conversations'],
         [{ id: 'c1', title: 'Backend-supplied title', titleStatus: 'auto' }]
       );
       await Promise.resolve();

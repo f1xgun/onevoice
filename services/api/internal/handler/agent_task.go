@@ -12,8 +12,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -29,8 +29,7 @@ const streamHeartbeatInterval = 20 * time.Second
 
 // AgentTaskService defines the interface for agent task operations used by handler
 type AgentTaskService interface {
-	List(ctx context.Context, userID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
-	ResolveBusinessID(ctx context.Context, userID uuid.UUID) (string, error)
+	List(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
 }
 
 // AgentTaskHandler handles agent task-related HTTP requests
@@ -61,9 +60,14 @@ type TaskListResponse struct {
 
 // ListTasks handles GET /api/v1/tasks
 func (h *AgentTaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ListTasks: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -91,7 +95,7 @@ func (h *AgentTaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tasks, total, err := h.agentTaskService.List(r.Context(), userID, filter)
+	tasks, total, err := h.agentTaskService.List(r.Context(), bc.BusinessID, filter)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
@@ -112,20 +116,14 @@ func (h *AgentTaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 // task lifecycle events (task.created, task.updated) for the authenticated
 // user's business.
 func (h *AgentTaskHandler) StreamTasks(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "StreamTasks: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
-
-	businessID, err := h.agentTaskService.ResolveBusinessID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("resolve business for task stream", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermContentRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -141,7 +139,7 @@ func (h *AgentTaskHandler) StreamTasks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
-	events, unsub := h.hub.Subscribe(businessID)
+	events, unsub := h.hub.Subscribe(bc.BusinessID.String())
 	defer unsub()
 
 	// Immediately flush headers so the browser commits the connection.

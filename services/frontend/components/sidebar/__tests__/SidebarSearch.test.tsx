@@ -12,22 +12,26 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
 }));
 
-// API client. apiGet's responses are configured per-test.
-const apiGet = vi.fn();
-vi.mock('@/lib/api', () => ({
-  api: {
-    get: (...args: unknown[]) => apiGet(...args),
+const BUSINESS_ID = 'biz-1';
+
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string }) => unknown) =>
+    selector({ activeBusinessId: BUSINESS_ID }),
+}));
+
+// bizApi mock — bizApiGet's responses are configured per-test.
+const bizApiGet = vi.fn();
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: () => ({
+    get: (...args: unknown[]) => bizApiGet(...args),
     post: vi.fn(),
     put: vi.fn(),
     delete: vi.fn(),
-  },
+  }),
 }));
 
-function setupBusinessAndDefaultSearch() {
-  apiGet.mockImplementation((url: string) => {
-    if (url === '/business') {
-      return Promise.resolve({ data: { id: 'biz-1', name: 'Test Business' } });
-    }
+function setupDefaultSearch() {
+  bizApiGet.mockImplementation((url: string) => {
     if (url === '/search') {
       return Promise.resolve({ data: [] });
     }
@@ -64,8 +68,8 @@ function setLinuxUA() {
 
 describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
   beforeEach(() => {
-    apiGet.mockReset();
-    setupBusinessAndDefaultSearch();
+    bizApiGet.mockReset();
+    setupDefaultSearch();
     pathnameValue = '/chat';
   });
 
@@ -107,7 +111,7 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
     // Wait long enough that any debounce would have fired.
     await new Promise((r) => setTimeout(r, 500));
 
-    const searchCalls = apiGet.mock.calls.filter((c) => c[0] === '/search');
+    const searchCalls = bizApiGet.mock.calls.filter((c) => c[0] === '/search');
     expect(searchCalls).toHaveLength(0);
   });
 
@@ -124,14 +128,14 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
     // Allow debounce + tanstack-query fetch to land.
     await waitFor(
       () => {
-        const calls = apiGet.mock.calls.filter((c) => c[0] === '/search');
+        const calls = bizApiGet.mock.calls.filter((c) => c[0] === '/search');
         expect(calls.length).toBeGreaterThanOrEqual(1);
       },
       { timeout: 2000 }
     );
 
     // Last call should carry q='тест' and limit=20 (no project_id at /chat root).
-    const last = apiGet.mock.calls.filter((c) => c[0] === '/search').slice(-1)[0];
+    const last = bizApiGet.mock.calls.filter((c) => c[0] === '/search').slice(-1)[0];
     const params = last?.[1]?.params as Record<string, unknown> | undefined;
     expect(params?.q).toBe('тест');
     expect(params?.limit).toBe(20);
@@ -189,7 +193,7 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
 
     // Default scope sends project_id=p-42.
     await waitFor(() => {
-      const last = apiGet.mock.calls.filter((c) => c[0] === '/search').slice(-1)[0];
+      const last = bizApiGet.mock.calls.filter((c) => c[0] === '/search').slice(-1)[0];
       expect(last?.[1]?.params?.project_id).toBe('p-42');
     });
   });
@@ -212,7 +216,7 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
     await user.click(checkbox);
 
     await waitFor(() => {
-      const last = apiGet.mock.calls.filter((c) => c[0] === '/search').slice(-1)[0];
+      const last = bizApiGet.mock.calls.filter((c) => c[0] === '/search').slice(-1)[0];
       expect(last?.[1]?.params?.project_id).toBeUndefined();
     });
   });
@@ -266,7 +270,7 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
     await user.type(input, sensitive);
 
     await waitFor(() => {
-      const calls = apiGet.mock.calls.filter((c) => c[0] === '/search');
+      const calls = bizApiGet.mock.calls.filter((c) => c[0] === '/search');
       expect(calls.length).toBeGreaterThanOrEqual(1);
     });
 

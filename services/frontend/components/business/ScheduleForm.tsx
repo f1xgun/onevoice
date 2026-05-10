@@ -16,9 +16,10 @@ import { ru } from 'date-fns/locale';
 import { CalendarIcon, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -71,11 +72,15 @@ function useSchedule(initialSchedule?: ScheduleDay[], initialSpecialDates?: Spec
 
 function useScheduleMutation(successMsg: string, errorMsg: string) {
   const queryClient = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   return useMutation({
-    mutationFn: (data: SchedulePayload) => api.put(API_PATHS.BUSINESS.SCHEDULE, data),
+    mutationFn: (data: SchedulePayload) => {
+      if (!activeBusinessId) return Promise.reject(new Error('No active business'));
+      return bizApi(activeBusinessId).put(BIZ_API_PATHS.BUSINESS.SCHEDULE, data);
+    },
     onSuccess: () => {
       toast.success(successMsg);
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_PROFILE(activeBusinessId) });
     },
     onError: () => toast.error(errorMsg),
   });
@@ -117,7 +122,7 @@ export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormPro
           onClick={() => mutation.mutate({ schedule, specialDates })}
           disabled={mutation.isPending}
         >
-          {mutation.isPending ? 'Сохраняем…' : 'Сохранить часы'}
+          {mutation.isPending ? tSchedule('saving') : tSchedule('saveHours')}
         </Button>
       </div>
     </div>
@@ -133,6 +138,7 @@ function DayRow({
   day: ScheduleDay;
   onChange: (updates: Partial<ScheduleDay>) => void;
 }) {
+  const tSchedule = useTranslations('business.scheduleForm');
   const open = !day.closed;
   return (
     <div className="grid grid-cols-[120px_1fr] items-center gap-4 rounded-md border border-line-soft bg-paper px-4 py-2.5 sm:grid-cols-[120px_140px_1fr]">
@@ -141,9 +147,11 @@ function DayRow({
         <Switch
           checked={open}
           onCheckedChange={(checked) => onChange({ closed: !checked })}
-          aria-label={`${label} — открыто`}
+          aria-label={`${label} — ${tSchedule('open')}`}
         />
-        <span className="text-xs text-ink-mid">{open ? 'открыто' : 'закрыто'}</span>
+        <span className="text-xs text-ink-mid">
+          {open ? tSchedule('open') : tSchedule('closedShort')}
+        </span>
       </div>
       <div
         className={`flex items-center gap-2 transition-opacity ${open ? 'opacity-100' : 'opacity-40'}`}
@@ -261,7 +269,7 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
           onClick={() => mutation.mutate({ schedule, specialDates })}
           disabled={mutation.isPending}
         >
-          {mutation.isPending ? 'Сохраняем…' : 'Сохранить даты'}
+          {mutation.isPending ? tSchedule('saving') : tSchedule('saveDates')}
         </Button>
       </div>
     </div>

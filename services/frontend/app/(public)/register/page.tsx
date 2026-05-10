@@ -53,9 +53,9 @@ export default function RegisterPage() {
 
   return (
     <AuthShell
-      eyebrow="Создание аккаунта"
-      title="Начнём знакомство."
-      description="Минута на регистрацию — потом подключим каналы и поговорим о голосе бизнеса."
+      eyebrow={tReg('eyebrow')}
+      title={tReg('title')}
+      description={tReg('description')}
       aside={<RegisterEditorial />}
     >
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
@@ -63,7 +63,12 @@ export default function RegisterPage() {
           <Label htmlFor="name" className="text-xs font-medium text-ink-mid">
             {tReg('nameLabel')}
           </Label>
-          <Input id="name" placeholder="Алина" autoComplete="given-name" {...register('name')} />
+          <Input
+            id="name"
+            placeholder={tReg('namePlaceholder')}
+            autoComplete="given-name"
+            {...register('name')}
+          />
           {errors.name && <p className="text-sm text-[var(--ov-danger)]">{errors.name.message}</p>}
         </div>
 
@@ -117,7 +122,7 @@ export default function RegisterPage() {
         </div>
 
         <Button type="submit" size="lg" className="mt-2 w-full" disabled={isSubmitting}>
-          {isSubmitting ? 'Создаём аккаунт…' : 'Создать аккаунт'}
+          {isSubmitting ? tReg('submitting') : tReg('submit')}
         </Button>
 
         <p className="mt-6 text-sm text-ink-soft">
@@ -133,25 +138,18 @@ export default function RegisterPage() {
 
 function RegisterEditorial() {
   const tReg = useTranslations('auth.register');
+  const tBenefits = useTranslations('auth.register.benefits');
+  const benefits = [
+    { title: tBenefits('channelsTitle'), body: tBenefits('channelsBody') },
+    { title: tBenefits('voiceTitle'), body: tBenefits('voiceBody') },
+    { title: tBenefits('calmTitle'), body: tBenefits('calmBody') },
+  ];
   return (
     <>
       <MonoLabel>{tReg('benefitsLabel')}</MonoLabel>
 
       <div className="my-auto flex flex-col gap-4">
-        {[
-          {
-            title: 'Один разговор — все каналы',
-            body: 'Telegram, ВКонтакте, Яндекс.Бизнес отвечают по одной команде, без переключения между вкладками.',
-          },
-          {
-            title: 'AI говорит вашим голосом',
-            body: 'Опишете тон один раз — на «Здравствуйте, у нас тихо в среду» он не ответит «Хей! 👋».',
-          },
-          {
-            title: 'Спокойнее по утрам',
-            body: 'Ничего не пропустите: AI готовит черновики, вы пьёте кофе и подтверждаете в один клик.',
-          },
-        ].map(({ title, body }) => (
+        {benefits.map(({ title, body }) => (
           <div key={title} className="rounded-lg border border-line bg-paper-raised p-4">
             <div className="text-base font-medium leading-tight tracking-[-0.005em] text-ink">
               {title}

@@ -7,16 +7,28 @@ Listens on NATS subject `tasks.yandex_business`, automates Yandex.Business via P
 ## Architecture
 
 ```
-cmd/main.go                  → wiring (NATS, Playwright browser, A2A handler)
+cmd/main.go                       → wiring (NATS, Playwright browser, A2A handler;
+                                     consumes pkg/agentbase for token/dispatch/dedupe)
 internal/
-├── agent/handler.go         → A2A handler: dispatches tool calls to BusinessBrowser
+├── agent/handler.go              → A2A handler: routes tool calls (switch) and
+│                                   delegates HITL dedupe to agentbase.Dispatcher
 └── yandex/
-    ├── browser.go           → Playwright browser lifecycle
-    ├── pool.go              → Page pool + all tool implementations
-                              (GetReviews, ReplyReview, GetInfo, UpdateInfo,
-                               UpdateHours, CreatePost, UploadPhoto)
-    ├── canary.go            → Session-validity check before actions
-    └── *_test.go            → Unit tests
+    ├── browser.go                → Playwright browser lifecycle
+    ├── pool.go                   → BrowserPool lifecycle ONLY (page acquire/release)
+    ├── session.go                → Cookie + Yandex OAuth session exchange / injection
+    ├── business_browser.go       → BusinessBrowser struct + ForBusiness factory
+    ├── tool_get_reviews.go       → RPA: list reviews
+    ├── tool_reply_review.go      → RPA: post owner reply
+    ├── tool_get_info.go          → RPA: read business info
+    ├── tool_update_info.go       → RPA: update business info
+    ├── tool_update_hours.go      → RPA: update opening hours
+    ├── tool_create_post.go       → RPA: publish a post
+    ├── tool_upload_photo.go      → RPA: upload a photo
+    ├── tool_list_companies.go    → RPA: enumerate accessible companies
+    ├── helpers.go                → Shared free functions (withRetry, withPage, humanDelay)
+    ├── canary.go                 → Session-validity check before actions
+    ├── constants.go              → Selectors, timeouts, URL constants
+    └── *_test.go                 → Unit tests (Playwright-mocked)
 ```
 
 ## Environment Variables

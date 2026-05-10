@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -24,7 +24,20 @@ import { ConversationItem } from '@/components/chat/ConversationItem';
 // findByText the verbatim Russian string. (msw is not in package.json — the
 // vi.spyOn fallback is fully equivalent for the locked-copy contract.)
 
-import { api } from '@/lib/api';
+const BUSINESS_ID = 'biz-test';
+
+// Controls for per-test override of bizApi responses.
+const bizApiGet = vi.fn();
+const bizApiPost = vi.fn();
+
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string }) => unknown) =>
+    selector({ activeBusinessId: BUSINESS_ID }),
+}));
+
+vi.mock('@/lib/api/business-api', () => ({
+  bizApi: () => ({ get: bizApiGet, post: bizApiPost }),
+}));
 
 // Stub MoveChatMenuItem's projects fetch so dropdown rendering does not
 // throw when the kebab is opened.
@@ -34,7 +47,7 @@ vi.mock('@/hooks/useProjects', () => ({
 
 vi.mock('@/hooks/useConversations', () => ({
   useMoveConversation: () => ({ mutate: vi.fn() }),
-  conversationsQueryKey: ['conversations'] as const,
+  conversationsQueryKey: (bizId: string) => ['businesses', bizId, 'conversations'] as const,
 }));
 
 vi.mock('@/lib/telemetry', () => ({
@@ -151,29 +164,12 @@ describe('"Обновить заголовок" menu item visibility', () => {
 // ----------------------------------------------------------------------
 describe('regenerateTitle 409 → verbatim Russian toast', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
+    vi.resetAllMocks();
   });
 
   it('toasts the verbatim Russian body when server returns 409 title_is_manual', async () => {
-    // Stub api.post → rejects with the locked Russian body.
-    vi.spyOn(api, 'post').mockRejectedValueOnce({
-      isAxiosError: true,
-      response: {
-        status: 409,
-        data: {
-          error: 'title_is_manual',
-          message: 'Нельзя регенерировать — вы уже переименовали чат вручную',
-        },
-      },
-    });
-
-    // Mount the parent ChatListPage so the full mutation pipeline (mutationFn
-    // → onError → toast.error) runs. The page fetches /conversations on mount;
-    // we shadow that via api.get spy.
-    vi.spyOn(api, 'get').mockResolvedValue({
+    // bizApi().get → returns the conversations list on mount.
+    bizApiGet.mockResolvedValue({
       data: [
         {
           id: 'c-conflict',
@@ -183,6 +179,19 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
           projectId: null,
         },
       ],
+    });
+
+    // bizApi().post → rejects with the locked Russian body for the
+    // regenerate-title call; resolves successfully for any create-conversation call.
+    bizApiPost.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 409,
+        data: {
+          error: 'title_is_manual',
+          message: 'Нельзя регенерировать — вы уже переименовали чат вручную',
+        },
+      },
     });
 
     const ChatListPage = (await import('../page')).default;
@@ -219,18 +228,7 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
   });
 
   it('toasts the verbatim Russian body when server returns 409 title_in_flight', async () => {
-    vi.spyOn(api, 'post').mockRejectedValueOnce({
-      isAxiosError: true,
-      response: {
-        status: 409,
-        data: {
-          error: 'title_in_flight',
-          message: 'Заголовок уже генерируется',
-        },
-      },
-    });
-
-    vi.spyOn(api, 'get').mockResolvedValue({
+    bizApiGet.mockResolvedValue({
       data: [
         {
           id: 'c-inflight',
@@ -240,6 +238,17 @@ describe('regenerateTitle 409 → verbatim Russian toast', () => {
           projectId: null,
         },
       ],
+    });
+
+    bizApiPost.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 409,
+        data: {
+          error: 'title_in_flight',
+          message: 'Заголовок уже генерируется',
+        },
+      },
     });
 
     const ChatListPage = (await import('../page')).default;

@@ -5,6 +5,7 @@
 // real card: square mark + title + description + CTA strip.
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -15,10 +16,11 @@ export interface SkeletonChannelsProps {
 }
 
 export function SkeletonChannels({ count = 3, className }: SkeletonChannelsProps) {
+  const tSkeleton = useTranslations('states.skeleton');
   return (
     <div
       role="status"
-      aria-label="Загружаем подключённые каналы"
+      aria-label={tSkeleton('channels')}
       aria-busy="true"
       className={cn('grid grid-cols-1 gap-4 md:grid-cols-2', className)}
     >

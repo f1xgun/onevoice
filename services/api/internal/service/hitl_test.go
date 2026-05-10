@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
@@ -101,6 +102,9 @@ type stubBusinessRepo struct {
 }
 
 func (s *stubBusinessRepo) Create(_ context.Context, _ *domain.Business) error { return nil }
+func (s *stubBusinessRepo) CreateInTx(_ context.Context, _ pgx.Tx, _ *domain.Business) error {
+	return nil
+}
 func (s *stubBusinessRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

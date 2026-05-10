@@ -2,10 +2,11 @@
 
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/lib/auth';
-import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
+import { useBusinessStore } from '@/lib/stores/business';
 import type { TaskStreamEvent } from '@/types/task';
 
 const reconnectDelayMs = 2_000;
+const SSE_DATA_PREFIX = 'data: ';
 
 /**
  * useTasksStream subscribes to the SSE endpoint /api/v1/tasks/stream and
@@ -15,11 +16,12 @@ const reconnectDelayMs = 2_000;
  */
 export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
   useEffect(() => {
-    if (!accessToken) return;
+    if (!accessToken || !activeBusinessId) return;
 
     let cancelled = false;
     let controller: AbortController | null = null;
@@ -29,7 +31,7 @@ export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
       if (cancelled) return;
       controller = new AbortController();
       try {
-        const response = await fetch(API_STREAM_PATHS.TASKS_STREAM, {
+        const response = await fetch(`/api/v1/businesses/${activeBusinessId}/tasks/stream`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           signal: controller.signal,
         });
@@ -46,10 +48,10 @@ export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
           const chunks = buffer.split('\n\n');
           buffer = chunks.pop() ?? '';
           for (const chunk of chunks) {
-            const dataLine = chunk.split('\n').find((l) => l.startsWith('data: '));
+            const dataLine = chunk.split('\n').find((l) => l.startsWith(SSE_DATA_PREFIX));
             if (!dataLine) continue; // skip ': ping' heartbeats
             try {
-              const parsed = JSON.parse(dataLine.slice(6)) as TaskStreamEvent;
+              const parsed = JSON.parse(dataLine.slice(SSE_DATA_PREFIX.length)) as TaskStreamEvent;
               onEventRef.current(parsed);
             } catch {
               // malformed event — ignore
@@ -71,5 +73,5 @@ export function useTasksStream(onEvent: (ev: TaskStreamEvent) => void) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       controller?.abort();
     };
-  }, [accessToken]);
+  }, [accessToken, activeBusinessId]);
 }

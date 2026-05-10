@@ -54,6 +54,39 @@ vi.mock('@/lib/telemetry', () => ({
   trackEvent: vi.fn(),
 }));
 
+// BusinessRequiredGuard dependencies — provide a valid active business so
+// the guard renders children instead of returning null.
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector?: (s: unknown) => unknown) => {
+    const state = {
+      activeBusinessId: 'test-biz-id',
+      setActive: vi.fn(),
+      clear: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  },
+}));
+
+vi.mock('@/lib/hooks/useBusinessList', () => ({
+  useBusinessList: () => ({
+    data: [
+      {
+        id: 'test-biz-id',
+        name: 'Test',
+        role: { id: 'r1', name: 'owner' },
+        status: 'active',
+        joined_at: '2024-01-01',
+      },
+    ],
+    isLoading: false,
+  }),
+  BUSINESS_LIST_QUERY_KEY: ['businesses'],
+}));
+
+vi.mock('@/lib/queryClient', () => ({
+  queryClient: { invalidateQueries: vi.fn() },
+}));
+
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));

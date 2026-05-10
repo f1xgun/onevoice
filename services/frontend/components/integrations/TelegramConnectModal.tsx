@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -20,12 +21,13 @@ export function TelegramConnectModal({ open, onClose }: Props) {
   const [step, setStep] = useState(1);
   const [channelId, setChannelId] = useState('');
   const [loading, setLoading] = useState(false);
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   const handleConnect = async () => {
-    if (!channelId.trim()) return;
+    if (!channelId.trim() || !activeBusinessId) return;
     setLoading(true);
     try {
-      await api.post(API_PATHS.INTEGRATIONS.TELEGRAM_CONNECT, {
+      await bizApi(activeBusinessId).post(BIZ_API_PATHS.INTEGRATIONS.TELEGRAM_CONNECT, {
         channel_id: channelId.trim(),
       });
       toast.success(tIntegrations('telegramConnected'));

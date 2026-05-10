@@ -10,12 +10,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
 )
 
@@ -34,6 +35,8 @@ type BusinessService interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
+	// ListMembershipsByUser powers GET /api/v1/businesses.
+	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]service.MembershipSummary, error)
 	// Tool-approval methods:
 	GetToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
 	UpdateToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
@@ -81,6 +84,16 @@ type UpdateBusinessRequest struct {
 	Description string  `json:"description"`
 }
 
+// createBusinessRequest mirrors UpdateBusinessRequest exactly (BIZ-03 body shape).
+type createBusinessRequest struct {
+	Name        string  `json:"name" validate:"required"`
+	Category    string  `json:"category"`
+	Address     string  `json:"address"`
+	Phone       string  `json:"phone"`
+	Website     *string `json:"website"`
+	Description string  `json:"description"`
+}
+
 // NewBusinessHandler creates a new business handler instance.
 // syncer may be nil; if provided, it is called asynchronously after each successful update.
 // objectStorage may be nil in tests that do not exercise UploadLogo.
@@ -96,91 +109,168 @@ func NewBusinessHandler(businessService BusinessService, syncer BusinessSyncer, 
 	}, nil
 }
 
-// GetBusiness returns the business profile for the authenticated user
-func (h *BusinessHandler) GetBusiness(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from context (set by auth middleware)
+// listUserBusinessesResponse is the per-item shape for GET /api/v1/businesses.
+type listUserBusinessesResponse struct {
+	ID       uuid.UUID              `json:"id"`
+	Name     string                 `json:"name"`
+	Role     listUserBusinessesRole `json:"role"`
+	Status   string                 `json:"status"`
+	JoinedAt time.Time              `json:"joined_at"`
+}
+
+type listUserBusinessesRole struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// ListUserBusinesses handles GET /api/v1/businesses (BIZ-02).
+// Returns the businesses the authenticated user is a member of, hydrated
+// with business name + role. Auth-only (no BusinessContext needed — the
+// user is not yet in a business scope).
+func (h *BusinessHandler) ListUserBusinesses(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	// Get business from service
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	memberships, err := h.businessService.ListMembershipsByUser(r.Context(), userID)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "list user businesses failed", "error", err, "user_id", userID)
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	out := make([]listUserBusinessesResponse, 0, len(memberships))
+	for _, m := range memberships {
+		out = append(out, listUserBusinessesResponse{
+			ID:   m.BusinessID,
+			Name: m.BusinessName,
+			Role: listUserBusinessesRole{
+				ID:   m.RoleID,
+				Name: m.RoleName,
+			},
+			Status:   m.Status,
+			JoinedAt: m.JoinedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// CreateBusiness handles POST /api/v1/businesses (BIZ-03).
+// Creates a new business and owner membership for the authenticated user.
+func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req createBusinessRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, err)
+		return
+	}
+
+	newBusiness := &domain.Business{
+		ID:          uuid.New(),
+		UserID:      userID,
+		Name:        req.Name,
+		Category:    req.Category,
+		Address:     req.Address,
+		Phone:       req.Phone,
+		Website:     req.Website,
+		Description: req.Description,
+		Settings:    map[string]interface{}{},
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	created, err := h.businessService.Create(r.Context(), newBusiness)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessExists) {
+			writeJSONError(w, http.StatusConflict, "business_already_exists")
+			return
+		}
+		slog.ErrorContext(r.Context(), "create business failed", "error", err, "user_id", userID)
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, created)
+}
+
+// GetBusiness returns the business profile for the request's BusinessContext.
+// Requires PermBusinessRead.
+func (h *BusinessHandler) GetBusiness(w http.ResponseWriter, r *http.Request) {
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GetBusiness: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermBusinessRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return
 		}
-		slog.Error("failed to get business", "error", err)
+		slog.ErrorContext(r.Context(), "failed to get business", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	// Return business
 	writeJSON(w, http.StatusOK, business)
 }
 
-// UpdateBusiness updates the business profile for the authenticated user
+// UpdateBusiness updates the business profile for the request's BusinessContext.
+// Requires PermBusinessUpdate.
 func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from context (set by auth middleware)
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "UpdateBusiness: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	// Parse request body
+	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
 	var req UpdateBusinessRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	// Validate request
 	if err := h.validate.Struct(req); err != nil {
 		writeValidationError(w, err)
 		return
 	}
 
-	// Get existing business (if exists)
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-
-	if err != nil && !errors.Is(err, domain.ErrBusinessNotFound) {
-		slog.Error("failed to get business for update", "error", err)
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to get business for update", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	// Create new business if doesn't exist
-	if errors.Is(err, domain.ErrBusinessNotFound) {
-		newBusiness := &domain.Business{
-			ID:          uuid.New(),
-			UserID:      userID,
-			Name:        req.Name,
-			Category:    req.Category,
-			Address:     req.Address,
-			Phone:       req.Phone,
-			Website:     req.Website,
-			Description: req.Description,
-			Settings:    map[string]interface{}{}, // Initialize empty settings
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		}
-
-		createdBusiness, err := h.businessService.Create(r.Context(), newBusiness)
-		if err != nil {
-			slog.Error("failed to create business", "error", err)
-			writeJSONError(w, http.StatusInternalServerError, "internal server error")
-			return
-		}
-
-		// Return created business
-		writeJSON(w, http.StatusCreated, createdBusiness)
-		return
-	}
-
-	// Update existing business fields from request
 	business.Name = req.Name
 	business.Category = req.Category
 	business.Address = req.Address
@@ -189,39 +279,32 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 	business.Description = req.Description
 	business.UpdatedAt = time.Now()
 
-	// Update business
 	updatedBusiness, err := h.businessService.Update(r.Context(), business)
 	if err != nil {
-		slog.Error("failed to update business", "error", err)
+		slog.ErrorContext(r.Context(), "failed to update business", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	// Sync business info to connected platforms asynchronously
 	if h.syncer != nil {
 		go h.syncer.SyncBusiness(updatedBusiness)
 	}
 
-	// Return updated business
 	writeJSON(w, http.StatusOK, updatedBusiness)
 }
 
-// UpdateSchedule updates the business schedule (stored in settings)
+// UpdateSchedule updates the business schedule (stored in settings).
+// Requires PermBusinessUpdate.
 func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "UpdateSchedule: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("failed to get business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -231,6 +314,17 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to get business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -245,7 +339,7 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 
 	updated, err := h.businessService.Update(r.Context(), business)
 	if err != nil {
-		slog.Error("failed to update schedule", "error", err)
+		slog.ErrorContext(r.Context(), "failed to update schedule", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -259,23 +353,17 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 
 // UpdateVoiceTone updates the business voice/tone tags (stored in settings).
 // Body: {"tones": ["Тёплый", "Дружеский"]}.
-// Mirrors UpdateSchedule — settings entries live alongside other settings
-// keys so reads of /business return the full dict.
+// Requires PermBusinessUpdate.
 func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "UpdateVoiceTone: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.Error("failed to get business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -287,6 +375,17 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
+	if err != nil {
+		if errors.Is(err, domain.ErrBusinessNotFound) {
+			writeJSONError(w, http.StatusNotFound, "business not found")
+			return
+		}
+		slog.ErrorContext(r.Context(), "failed to get business", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
 	if business.Settings == nil {
 		business.Settings = make(map[string]interface{})
 	}
@@ -295,7 +394,7 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 
 	updated, err := h.businessService.Update(r.Context(), business)
 	if err != nil {
-		slog.Error("failed to update voice tone", "error", err)
+		slog.ErrorContext(r.Context(), "failed to update voice tone", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -303,26 +402,26 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, updated)
 }
 
-// GetBusinessToolApprovals handles GET /api/v1/business/{id}/tool-approvals.
+// GetBusinessToolApprovals handles GET /business/{id}/tool-approvals.
 // Response shape: `{"toolApprovals": {"tool_name": "auto"|"manual", ...}}`.
 // Absence from the map means the registry floor applies.
+// Requires PermBusinessRead.
 func (h *BusinessHandler) GetBusinessToolApprovals(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	idStr := chi.URLParam(r, "id")
-	businessID, err := uuid.Parse(idStr)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid business id")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "GetBusinessToolApprovals: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
 
-	approvals, err := h.businessService.GetToolApprovals(r.Context(), userID, businessID)
+	if !authz.Can(r.Context(), authz.PermBusinessRead) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	approvals, err := h.businessService.GetToolApprovals(r.Context(), bc.UserID, bc.BusinessID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
-			// 404 even when cross-tenant — avoid enumeration per docs/security.md.
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return
 		}
@@ -331,8 +430,6 @@ func (h *BusinessHandler) GetBusinessToolApprovals(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Serialize as `{"toolApprovals": {...}}` — stable field name so the
-	// frontend can bind directly.
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"toolApprovals": approvals,
 	})
@@ -344,24 +441,18 @@ type updateToolApprovalsRequest struct {
 	ToolApprovals map[string]string `json:"toolApprovals"`
 }
 
-// UpdateBusinessToolApprovals handles PUT /api/v1/business/{id}/tool-approvals.
-// Validation layers:
-//  1. JSON shape
-//  2. Every key must exist in the live orchestrator registry (via toolsCache).
-//     Unknown key → 400 {"error":"unknown tool: X"}
-//  3. Every value must be "auto" or "manual" (NOT "forbidden" — that's a
-//     registration-time property, not a user setting).
-//  4. Ownership: actor's userID matches business.UserID.
+// UpdateBusinessToolApprovals handles PUT /business/{id}/tool-approvals.
+// Requires PermBusinessUpdate.
 func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "UpdateBusinessToolApprovals: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
-	idStr := chi.URLParam(r, "id")
-	businessID, err := uuid.Parse(idStr)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid business id")
+
+	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -385,10 +476,6 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 			return
 		}
 		floor := domain.ToolFloor(floorStr)
-		// Only Auto and Manual are user-settable. Forbidden is a
-		// registration-time property — allowing it here would let a user
-		// escalate a tool's floor, which matches the registry's floor
-		// invariant but would surprise operators and invite confusion.
 		if floor != domain.ToolFloorAuto && floor != domain.ToolFloorManual {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": "invalid floor for tool " + toolName + ": must be auto or manual",
@@ -398,7 +485,7 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 		approvals[toolName] = floor
 	}
 
-	if err := h.businessService.UpdateToolApprovals(r.Context(), userID, businessID, approvals); err != nil {
+	if err := h.businessService.UpdateToolApprovals(r.Context(), bc.UserID, bc.BusinessID, approvals); err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return
@@ -415,10 +502,17 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 
 // UploadLogo handles multipart logo upload, stores the file in object storage,
 // and updates the business logo_url to the public URL.
+// Requires PermBusinessUpdate.
 func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "UploadLogo: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+
+	if !authz.Can(r.Context(), authz.PermBusinessUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -449,8 +543,8 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mimeType := http.DetectContentType(buf[:n])
-	ext, ok := allowedMimeTypes[mimeType]
-	if !ok {
+	ext, ok2 := allowedMimeTypes[mimeType]
+	if !ok2 {
 		writeJSONError(w, http.StatusBadRequest, "unsupported file type: "+mimeType)
 		return
 	}
@@ -459,13 +553,13 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return
 		}
-		slog.Error("upload logo: get business failed", "error", err)
+		slog.ErrorContext(r.Context(), "upload logo: get business failed", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -473,7 +567,7 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 	// Cache-bust on re-upload by including UpdatedAt nanos in the key.
 	key := fmt.Sprintf("businesses/%s/logo-%d%s", business.ID, time.Now().UnixNano(), ext)
 	if err := h.storage.Upload(r.Context(), key, file, header.Size, mimeType); err != nil {
-		slog.Error("upload logo: storage upload failed", "key", key, "error", err)
+		slog.ErrorContext(r.Context(), "upload logo: storage upload failed", "key", key, "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -482,7 +576,7 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 	business.UpdatedAt = time.Now()
 	updatedBusiness, err := h.businessService.Update(r.Context(), business)
 	if err != nil {
-		slog.Error("upload logo: update business failed", "error", err)
+		slog.ErrorContext(r.Context(), "upload logo: update business failed", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

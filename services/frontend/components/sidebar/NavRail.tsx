@@ -17,9 +17,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/auth';
-import { api } from '@/lib/api';
+import { bizApi } from '@/lib/api/business-api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
 
 interface Integration {
@@ -61,13 +63,15 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   const router = useRouter();
   const tNav = useTranslations('nav');
   const logout = useAuthStore((s) => s.logout);
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   const { data: integrations } = useQuery<Integration[]>({
-    queryKey: QUERY_KEYS.INTEGRATIONS,
+    queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId),
     queryFn: () =>
-      api
-        .get(API_PATHS.INTEGRATIONS.ROOT)
+      bizApi(activeBusinessId!)
+        .get(BIZ_API_PATHS.INTEGRATIONS.ROOT)
         .then((r) => (Array.isArray(r.data) ? r.data : []) as Integration[]),
+    enabled: !!activeBusinessId,
     retry: false,
     placeholderData: [],
   });

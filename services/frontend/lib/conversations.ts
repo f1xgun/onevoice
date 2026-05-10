@@ -1,5 +1,5 @@
-import { api } from './api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 
 // titleStatus drives placeholder fallback
 // and Regenerate-menu visibility. The shape is a union literal
@@ -29,26 +29,41 @@ export interface Conversation {
 // formerly-page-2 chat take the freed slot, and the per-bucket counts appear
 // frozen. Request the server-side max (100) so the sidebar reflects reality
 // for typical users. Heavy users (>100 chats) will need real pagination.
-export async function listConversations(): Promise<Conversation[]> {
-  const { data } = await api.get<Conversation[]>(API_PATHS.CONVERSATIONS.ROOT, {
-    params: { limit: 100 },
-  });
+export async function listConversations(activeBusinessId: string): Promise<Conversation[]> {
+  const { data } = await bizApi(activeBusinessId).get<Conversation[]>(
+    BIZ_API_PATHS.CONVERSATIONS.ROOT,
+    {
+      params: { limit: 100 },
+    }
+  );
   return Array.isArray(data) ? data : [];
 }
 
-export async function createConversation(input: {
-  title: string;
-  projectId?: string | null;
-}): Promise<Conversation> {
-  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.ROOT, input);
+export async function createConversation(
+  activeBusinessId: string,
+  input: {
+    title: string;
+    projectId?: string | null;
+  }
+): Promise<Conversation> {
+  const { data } = await bizApi(activeBusinessId).post<Conversation>(
+    BIZ_API_PATHS.CONVERSATIONS.ROOT,
+    input
+  );
   return data;
 }
 
 export async function moveConversation(
+  activeBusinessId: string,
   id: string,
   projectId: string | null
 ): Promise<Conversation> {
-  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.MOVE(id), { projectId });
+  const { data } = await bizApi(activeBusinessId).post<Conversation>(
+    BIZ_API_PATHS.CONVERSATIONS.MOVE(id),
+    {
+      projectId,
+    }
+  );
   return data;
 }
 
@@ -56,26 +71,47 @@ export async function moveConversation(
 // Both endpoints are scoped server-side by (id, business_id, user_id);
 // cross-tenant attempts return 404 (uniform). Frontend just propagates
 // the axios error.
-export async function pinConversation(id: string): Promise<Conversation> {
-  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.PIN(id));
+export async function pinConversation(activeBusinessId: string, id: string): Promise<Conversation> {
+  const { data } = await bizApi(activeBusinessId).post<Conversation>(
+    BIZ_API_PATHS.CONVERSATIONS.PIN(id)
+  );
   return data;
 }
 
-export async function unpinConversation(id: string): Promise<Conversation> {
-  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.UNPIN(id));
+export async function unpinConversation(
+  activeBusinessId: string,
+  id: string
+): Promise<Conversation> {
+  const { data } = await bizApi(activeBusinessId).post<Conversation>(
+    BIZ_API_PATHS.CONVERSATIONS.UNPIN(id)
+  );
   return data;
 }
 
-export async function renameConversation(id: string, title: string): Promise<Conversation> {
-  const { data } = await api.put<Conversation>(API_PATHS.CONVERSATIONS.BY_ID(id), { title });
+export async function renameConversation(
+  activeBusinessId: string,
+  id: string,
+  title: string
+): Promise<Conversation> {
+  const { data } = await bizApi(activeBusinessId).put<Conversation>(
+    BIZ_API_PATHS.CONVERSATIONS.BY_ID(id),
+    {
+      title,
+    }
+  );
   return data;
 }
 
-export async function regenerateConversationTitle(id: string): Promise<Conversation> {
-  const { data } = await api.post<Conversation>(API_PATHS.CONVERSATIONS.REGENERATE_TITLE(id));
+export async function regenerateConversationTitle(
+  activeBusinessId: string,
+  id: string
+): Promise<Conversation> {
+  const { data } = await bizApi(activeBusinessId).post<Conversation>(
+    BIZ_API_PATHS.CONVERSATIONS.REGENERATE_TITLE(id)
+  );
   return data;
 }
 
-export async function deleteConversation(id: string): Promise<void> {
-  await api.delete(API_PATHS.CONVERSATIONS.BY_ID(id));
+export async function deleteConversation(activeBusinessId: string, id: string): Promise<void> {
+  await bizApi(activeBusinessId).delete(BIZ_API_PATHS.CONVERSATIONS.BY_ID(id));
 }
