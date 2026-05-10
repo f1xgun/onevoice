@@ -1,6 +1,6 @@
 // Package repository — invitation_token.go
 //
-// generateInvitationToken produces the raw URL-safe invitation token
+// GenerateInvitationToken produces the raw URL-safe invitation token
 // (returned to the inviter ONCE at create time, per CONTEXT D-08 / INVITE-01)
 // and the hex-encoded sha256 hash that gets persisted in
 // invitations.token_hash. The 32 random bytes give 256 bits of entropy
@@ -26,11 +26,11 @@ import (
 	"fmt"
 )
 
-// generateInvitationToken returns (raw, hash, err).
+// GenerateInvitationToken returns (raw, hash, err).
 //   - raw: 43-char base64-RawURL string suitable for embedding in an /invite/<token> URL.
 //   - hash: 64-char lowercase hex sha256 of raw — persisted in invitations.token_hash.
 //   - err: only on crypto/rand.Read failure (essentially never; OS entropy starvation).
-func generateInvitationToken() (raw, hash string, err error) {
+func GenerateInvitationToken() (raw, hash string, err error) {
 	var buf [32]byte
 	if _, err := rand.Read(buf[:]); err != nil {
 		return "", "", fmt.Errorf("crypto/rand: %w", err)

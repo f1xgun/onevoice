@@ -10,14 +10,14 @@ import (
 )
 
 func TestGenerateInvitationToken_Length(t *testing.T) {
-	raw, hash, err := generateInvitationToken()
+	raw, hash, err := GenerateInvitationToken()
 	require.NoError(t, err)
 	require.Len(t, raw, 43, "32-byte source under base64.RawURLEncoding (no padding) yields exactly 43 chars")
 	require.Len(t, hash, 64, "sha256 hex-encoded yields exactly 64 chars")
 }
 
 func TestGenerateInvitationToken_Charset(t *testing.T) {
-	raw, hash, err := generateInvitationToken()
+	raw, hash, err := GenerateInvitationToken()
 	require.NoError(t, err)
 
 	rawAlphabet := regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -32,7 +32,7 @@ func TestGenerateInvitationToken_Distinct(t *testing.T) {
 	rawSeen := make(map[string]struct{}, N)
 	hashSeen := make(map[string]struct{}, N)
 	for i := 0; i < N; i++ {
-		raw, hash, err := generateInvitationToken()
+		raw, hash, err := GenerateInvitationToken()
 		require.NoError(t, err)
 		_, dupRaw := rawSeen[raw]
 		_, dupHash := hashSeen[hash]
@@ -46,7 +46,7 @@ func TestGenerateInvitationToken_Distinct(t *testing.T) {
 }
 
 func TestGenerateInvitationToken_HashConsistency(t *testing.T) {
-	raw, hash, err := generateInvitationToken()
+	raw, hash, err := GenerateInvitationToken()
 	require.NoError(t, err)
 
 	// External recompute of sha256(raw) — must equal the helper's hash.
