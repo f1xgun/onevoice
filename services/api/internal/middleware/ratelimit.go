@@ -95,7 +95,12 @@ func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(
 
 // RateLimitByUser creates a rate limiting middleware keyed on authenticated user ID.
 // Must be placed after Auth middleware in the chain.
-func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration) func(http.Handler) http.Handler {
+//
+// The scope parameter is appended to the Redis key to keep separate buckets per
+// route family (e.g. "chat", "invite_accept"). Without this, every consumer of
+// this middleware would share a single user-scoped bucket — see WR-01 in
+// .planning/phases/03-invitations-api-accept-flow/03-REVIEW.md for the rationale.
+func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration, scope string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Extract user ID from context (set by Auth middleware)
@@ -113,9 +118,9 @@ func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration)
 			// Build rate limit key
 			var key string
 			if userID != uuid.Nil {
-				key = fmt.Sprintf("ratelimit:user:%s:chat", userID.String())
+				key = fmt.Sprintf("ratelimit:user:%s:%s", userID.String(), scope)
 			} else {
-				key = fmt.Sprintf("ratelimit:ip:%s:chat", getClientIP(r))
+				key = fmt.Sprintf("ratelimit:ip:%s:%s", getClientIP(r), scope)
 			}
 
 			// Note: ctx is derived from r.Context() to preserve request cancellation and correlation_id (BLG-06).

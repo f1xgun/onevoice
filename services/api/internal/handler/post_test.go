@@ -13,22 +13,32 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
 // mockPostService implements PostService for tests.
 type mockPostService struct {
-	listFn    func(ctx context.Context, userID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
-	getByIDFn func(ctx context.Context, userID uuid.UUID, id string) (*domain.Post, error)
+	listFn    func(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
+	getByIDFn func(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
 }
 
-func (m *mockPostService) List(ctx context.Context, userID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error) {
-	return m.listFn(ctx, userID, filter)
+func (m *mockPostService) List(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error) {
+	return m.listFn(ctx, businessID, filter)
 }
 
-func (m *mockPostService) GetByID(ctx context.Context, userID uuid.UUID, id string) (*domain.Post, error) {
-	return m.getByIDFn(ctx, userID, id)
+func (m *mockPostService) GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error) {
+	return m.getByIDFn(ctx, businessID, id)
+}
+
+// postBizCtx seeds a BusinessContext with PermContentRead for post handler tests.
+func postBizCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: []authz.Permission{authz.PermContentRead},
+	})
 }
 
 func TestNewPostHandler_NilService(t *testing.T) {
@@ -37,10 +47,11 @@ func TestNewPostHandler_NilService(t *testing.T) {
 }
 
 func TestListPosts_Success(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockPostService{
-		listFn: func(_ context.Context, uid uuid.UUID, f domain.PostFilter) ([]domain.Post, int, error) {
-			assert.Equal(t, userID, uid)
+		listFn: func(_ context.Context, bid uuid.UUID, f domain.PostFilter) ([]domain.Post, int, error) {
+			assert.Equal(t, businessID, bid)
 			assert.Equal(t, 20, f.Limit) // default
 			return []domain.Post{{ID: "p1", Content: "test", Status: "published"}}, 1, nil
 		},
@@ -48,7 +59,7 @@ func TestListPosts_Success(t *testing.T) {
 	h, _ := NewPostHandler(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(postBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 
 	h.ListPosts(rr, req)
@@ -62,6 +73,7 @@ func TestListPosts_Success(t *testing.T) {
 }
 
 func TestListPosts_WithFilters(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockPostService{
 		listFn: func(_ context.Context, _ uuid.UUID, f domain.PostFilter) ([]domain.Post, int, error) {
@@ -75,7 +87,7 @@ func TestListPosts_WithFilters(t *testing.T) {
 	h, _ := NewPostHandler(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts?platform=telegram&status=published&limit=50&offset=10", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(postBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 
 	h.ListPosts(rr, req)
@@ -84,6 +96,7 @@ func TestListPosts_WithFilters(t *testing.T) {
 }
 
 func TestListPosts_LimitClamped(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockPostService{
 		listFn: func(_ context.Context, _ uuid.UUID, f domain.PostFilter) ([]domain.Post, int, error) {
@@ -94,24 +107,25 @@ func TestListPosts_LimitClamped(t *testing.T) {
 	h, _ := NewPostHandler(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts?limit=999", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(postBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 
 	h.ListPosts(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
-func TestListPosts_Unauthorized(t *testing.T) {
+func TestListPosts_NoBusinessContext(t *testing.T) {
 	h, _ := NewPostHandler(&mockPostService{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.ListPosts(rr, req)
 
-	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 }
 
 func TestListPosts_BusinessNotFound(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockPostService{
 		listFn: func(_ context.Context, _ uuid.UUID, _ domain.PostFilter) ([]domain.Post, int, error) {
@@ -121,7 +135,7 @@ func TestListPosts_BusinessNotFound(t *testing.T) {
 	h, _ := NewPostHandler(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(postBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.ListPosts(rr, req)
 
@@ -129,9 +143,10 @@ func TestListPosts_BusinessNotFound(t *testing.T) {
 }
 
 func TestGetPost_Success(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockPostService{
-		getByIDFn: func(_ context.Context, uid uuid.UUID, id string) (*domain.Post, error) {
+		getByIDFn: func(_ context.Context, _ uuid.UUID, id string) (*domain.Post, error) {
 			assert.Equal(t, "post-123", id)
 			return &domain.Post{ID: "post-123", Content: "test post"}, nil
 		},
@@ -142,7 +157,7 @@ func TestGetPost_Success(t *testing.T) {
 	r.Get("/posts/{id}", h.GetPost)
 
 	req := httptest.NewRequest(http.MethodGet, "/posts/post-123", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(postBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 
@@ -150,6 +165,7 @@ func TestGetPost_Success(t *testing.T) {
 }
 
 func TestGetPost_NotFound(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockPostService{
 		getByIDFn: func(_ context.Context, _ uuid.UUID, _ string) (*domain.Post, error) {
@@ -162,7 +178,7 @@ func TestGetPost_NotFound(t *testing.T) {
 	r.Get("/posts/{id}", h.GetPost)
 
 	req := httptest.NewRequest(http.MethodGet, "/posts/nonexistent", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(postBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 
@@ -170,6 +186,7 @@ func TestGetPost_NotFound(t *testing.T) {
 }
 
 func TestGetPost_ServiceError(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockPostService{
 		getByIDFn: func(_ context.Context, _ uuid.UUID, _ string) (*domain.Post, error) {
@@ -182,7 +199,7 @@ func TestGetPost_ServiceError(t *testing.T) {
 	r.Get("/posts/{id}", h.GetPost)
 
 	req := httptest.NewRequest(http.MethodGet, "/posts/post-1", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(postBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 

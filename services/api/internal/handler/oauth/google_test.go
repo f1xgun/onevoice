@@ -14,6 +14,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -45,10 +46,6 @@ func TestGetGoogleAuthURL_ReturnsURL(t *testing.T) {
 	mockIntegration := new(MockOAuthIntegrationService)
 	mockBusiness := new(MockBusinessService)
 
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-	}, nil)
 	mockOAuth.On("GenerateState", mock.Anything, service.OAuthStateData{
 		UserID:     userID,
 		BusinessID: businessID,
@@ -62,7 +59,7 @@ func TestGetGoogleAuthURL_ReturnsURL(t *testing.T) {
 	h := NewOAuthHandler(mockOAuth, mockIntegration, mockBusiness, cfg, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/google", http.NoBody)
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.GetGoogleAuthURL(rr, req)
@@ -100,19 +97,37 @@ func TestGetGoogleAuthURL_ReturnsURL(t *testing.T) {
 		t.Errorf("expected state in URL, got: %s", authURL)
 	}
 
-	mockBusiness.AssertExpectations(t)
 	mockOAuth.AssertExpectations(t)
 }
 
-func TestGetGoogleAuthURL_Unauthorized(t *testing.T) {
+// TestGetGoogleAuthURL_NoBusinessContext: handler returns 500 when middleware
+// fails to seed BusinessContext (renamed from _Unauthorized).
+func TestGetGoogleAuthURL_NoBusinessContext(t *testing.T) {
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/oauth/google", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.GetGoogleAuthURL(rr, req)
 
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rr.Code)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rr.Code)
+	}
+}
+
+// TestGetGoogleAuthURL_Forbidden: BusinessContext present but missing
+// PermIntegrationsConnect → 403.
+func TestGetGoogleAuthURL_Forbidden(t *testing.T) {
+	businessID := uuid.New()
+	userID := uuid.New()
+	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), new(MockBusinessService), OAuthConfig{}, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth/google", http.NoBody)
+	req = req.WithContext(oauthBizCtx(businessID, userID /* no perms */))
+	rr := httptest.NewRecorder()
+	h.GetGoogleAuthURL(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rr.Code)
 	}
 }
 
@@ -359,15 +374,11 @@ func TestGoogleLocations_ReturnsTempData(t *testing.T) {
 	_ = mr.Set("google_temp:"+businessID.String(), tempData)
 
 	mockBusiness := new(MockBusinessService)
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-	}, nil)
 
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), mockBusiness, OAuthConfig{}, nil, redisClient)
 
 	req := httptest.NewRequest(http.MethodGet, "/integrations/google_business/locations", http.NoBody)
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.GoogleLocations(rr, req)
@@ -401,15 +412,11 @@ func TestGoogleLocations_Expired(t *testing.T) {
 	// No temp data stored — simulates expired/missing
 
 	mockBusiness := new(MockBusinessService)
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-	}, nil)
 
 	h := NewOAuthHandler(new(MockOAuthStateService), new(MockOAuthIntegrationService), mockBusiness, OAuthConfig{}, nil, redisClient)
 
 	req := httptest.NewRequest(http.MethodGet, "/integrations/google_business/locations", http.NoBody)
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.GoogleLocations(rr, req)
@@ -432,10 +439,6 @@ func TestGoogleSelectLocation_ConnectsAndCleansUp(t *testing.T) {
 	_ = mr.Set("google_temp:"+businessID.String(), tempData)
 
 	mockBusiness := new(MockBusinessService)
-	mockBusiness.On("GetByUserID", mock.Anything, userID).Return(&domain.Business{
-		ID:     businessID,
-		UserID: userID,
-	}, nil)
 
 	mockIntegration := new(MockOAuthIntegrationService)
 	mockIntegration.On("Connect", mock.Anything, mock.MatchedBy(func(p service.ConnectParams) bool {
@@ -460,7 +463,7 @@ func TestGoogleSelectLocation_ConnectsAndCleansUp(t *testing.T) {
 	reqBody := `{"account_id":"accounts/1","location_id":"locations/2"}`
 	req := httptest.NewRequest(http.MethodPost, "/integrations/google_business/select-location", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(ctxWithUser(userID))
+	req = req.WithContext(oauthBizCtx(businessID, userID, authz.PermIntegrationsConnect))
 	rr := httptest.NewRecorder()
 
 	h.GoogleSelectLocation(rr, req)
@@ -475,6 +478,5 @@ func TestGoogleSelectLocation_ConnectsAndCleansUp(t *testing.T) {
 		t.Error("expected Redis temp key to be deleted after select-location")
 	}
 
-	mockBusiness.AssertExpectations(t)
 	mockIntegration.AssertExpectations(t)
 }

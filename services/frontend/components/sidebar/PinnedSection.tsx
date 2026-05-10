@@ -46,6 +46,7 @@ export function PinnedSection({
   onNavigate,
 }: Props) {
   const tSide = useTranslations('sidebar');
+  const tChat = useTranslations('chat');
   const [collapsed, setCollapsed] = useState(false);
 
   const count = conversations.length;
@@ -69,7 +70,7 @@ export function PinnedSection({
         type="button"
         onClick={() => setCollapsed((v) => !v)}
         aria-expanded={!collapsed}
-        aria-label={collapsed ? 'Развернуть «Закреплённые»' : 'Свернуть «Закреплённые»'}
+        aria-label={collapsed ? tSide('expandPinned') : tSide('collapsePinned')}
         className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-sm text-ink-mid hover:bg-paper-sunken"
       >
         {collapsed ? (
@@ -87,7 +88,7 @@ export function PinnedSection({
           ref={containerRef as RefObject<HTMLDivElement>}
           onKeyDown={onKeyDown}
           role="listbox"
-          aria-label="Закреплённые чаты"
+          aria-label={tSide('pinnedSectionAria')}
           className="ml-5 mt-0.5 space-y-0.5"
         >
           {visible.map((conv, i) => {
@@ -108,7 +109,7 @@ export function PinnedSection({
                       : 'text-ink-soft hover:bg-paper-sunken hover:text-ink'
                   )}
                 >
-                  <span className="flex-1 truncate">{conv.title || 'Новый диалог'}</span>
+                  <span className="flex-1 truncate">{conv.title || tChat('newConversation')}</span>
                 </Link>
                 {/* Only chats with a real project get the mini chip.
                     Sibling of the row Link (not nested) to avoid <a in a>. */}
@@ -121,7 +122,9 @@ export function PinnedSection({
                   trigger={
                     <button
                       type="button"
-                      aria-label={`Меню чата «${conv.title || 'Новый диалог'}»`}
+                      aria-label={tSide('chatRowMenuAria', {
+                        title: conv.title || tChat('newConversation'),
+                      })}
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 opacity-0 transition-opacity hover:bg-gray-700 hover:text-white focus-visible:opacity-100 group-hover/row:opacity-100"
                     >
                       <MoreHorizontal size={12} />

@@ -11,26 +11,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
 // mockAgentTaskService implements AgentTaskService for tests.
 type mockAgentTaskService struct {
-	listFn    func(ctx context.Context, userID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
-	resolveFn func(ctx context.Context, userID uuid.UUID) (string, error)
+	listFn func(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
 }
 
-func (m *mockAgentTaskService) List(ctx context.Context, userID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
-	return m.listFn(ctx, userID, filter)
+func (m *mockAgentTaskService) List(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error) {
+	return m.listFn(ctx, businessID, filter)
 }
 
-func (m *mockAgentTaskService) ResolveBusinessID(ctx context.Context, userID uuid.UUID) (string, error) {
-	if m.resolveFn == nil {
-		return "biz-test", nil
-	}
-	return m.resolveFn(ctx, userID)
+// agentTaskBizCtx seeds a BusinessContext with PermContentRead for agent task handler tests.
+func agentTaskBizCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: []authz.Permission{authz.PermContentRead},
+	})
 }
 
 func TestNewAgentTaskHandler_NilService(t *testing.T) {
@@ -39,10 +41,11 @@ func TestNewAgentTaskHandler_NilService(t *testing.T) {
 }
 
 func TestListTasks_Success(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockAgentTaskService{
-		listFn: func(_ context.Context, uid uuid.UUID, f domain.TaskFilter) ([]domain.AgentTask, int, error) {
-			assert.Equal(t, userID, uid)
+		listFn: func(_ context.Context, bid uuid.UUID, f domain.TaskFilter) ([]domain.AgentTask, int, error) {
+			assert.Equal(t, businessID, bid)
 			return []domain.AgentTask{
 				{ID: "t1", Type: "send_post", Status: "completed", Platform: "telegram"},
 				{ID: "t2", Type: "send_post", Status: "pending", Platform: "vk"},
@@ -52,7 +55,7 @@ func TestListTasks_Success(t *testing.T) {
 	h, _ := NewAgentTaskHandler(svc, taskhub.New())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(agentTaskBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.ListTasks(rr, req)
 
@@ -64,6 +67,7 @@ func TestListTasks_Success(t *testing.T) {
 }
 
 func TestListTasks_WithFilters(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockAgentTaskService{
 		listFn: func(_ context.Context, _ uuid.UUID, f domain.TaskFilter) ([]domain.AgentTask, int, error) {
@@ -78,7 +82,7 @@ func TestListTasks_WithFilters(t *testing.T) {
 	h, _ := NewAgentTaskHandler(svc, taskhub.New())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks?platform=telegram&status=completed&type=send_post&limit=30&offset=5", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(agentTaskBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.ListTasks(rr, req)
 
@@ -86,6 +90,7 @@ func TestListTasks_WithFilters(t *testing.T) {
 }
 
 func TestListTasks_LimitClamped(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockAgentTaskService{
 		listFn: func(_ context.Context, _ uuid.UUID, f domain.TaskFilter) ([]domain.AgentTask, int, error) {
@@ -96,22 +101,23 @@ func TestListTasks_LimitClamped(t *testing.T) {
 	h, _ := NewAgentTaskHandler(svc, taskhub.New())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks?limit=999", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(agentTaskBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.ListTasks(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
-func TestListTasks_Unauthorized(t *testing.T) {
+func TestListTasks_NoBusinessContext(t *testing.T) {
 	h, _ := NewAgentTaskHandler(&mockAgentTaskService{}, taskhub.New())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", http.NoBody)
 	rr := httptest.NewRecorder()
 	h.ListTasks(rr, req)
-	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 }
 
 func TestListTasks_BusinessNotFound(t *testing.T) {
+	businessID := uuid.New()
 	userID := uuid.New()
 	svc := &mockAgentTaskService{
 		listFn: func(_ context.Context, _ uuid.UUID, _ domain.TaskFilter) ([]domain.AgentTask, int, error) {
@@ -121,7 +127,7 @@ func TestListTasks_BusinessNotFound(t *testing.T) {
 	h, _ := NewAgentTaskHandler(svc, taskhub.New())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", http.NoBody)
-	req = req.WithContext(context.WithValue(req.Context(), middleware.UserIDKey, userID))
+	req = req.WithContext(agentTaskBizCtx(businessID, userID))
 	rr := httptest.NewRecorder()
 	h.ListTasks(rr, req)
 

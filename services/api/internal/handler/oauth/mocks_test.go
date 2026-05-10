@@ -6,8 +6,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -83,7 +83,14 @@ func (m *MockBusinessService) GetByUserID(ctx context.Context, userID uuid.UUID)
 	return args.Get(0).(*domain.Business), args.Error(1)
 }
 
-// ctxWithUser creates a context with the given user ID.
-func ctxWithUser(userID uuid.UUID) context.Context {
-	return context.WithValue(context.Background(), middleware.UserIDKey, userID)
+// oauthBizCtx seeds an authz.BusinessContext with the given perms. Used by
+// handlers under PermIntegrationsConnect (Phase 2 v2.0 RBAC). Migrated from
+// the deleted handler/oauth_test.go after the modular decomposition (PR #76).
+func oauthBizCtx(businessID, userID uuid.UUID, perms ...authz.Permission) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: perms,
+	})
 }

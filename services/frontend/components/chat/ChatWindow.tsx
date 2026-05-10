@@ -15,18 +15,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SkeletonChat } from '@/components/states';
 import { useChat } from '@/hooks/useChat';
+import { usePendingApprovalFlow } from '@/hooks/usePendingApprovalFlow';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
 import { DEFAULT_QUICK_ACTIONS } from '@/lib/quick-actions';
-import { api } from '@/lib/api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { bizApi } from '@/lib/api/business-api';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { useBusinessStore } from '@/lib/stores/business';
 import type { Conversation } from '@/lib/conversations';
-
-async function fetchConversation(id: string): Promise<Conversation> {
-  const { data } = await api.get<Conversation>(API_PATHS.CONVERSATIONS.BY_ID(id));
-  return data;
-}
+import type { PendingApproval } from '@/types/chat';
 
 interface ChatWindowProps {
   conversationId: string;
@@ -38,11 +35,31 @@ interface ChatWindowProps {
 
 export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindowProps) {
   const tChat = useTranslations('chat.window');
-  const { messages, isLoading, isStreaming, pendingApproval, resolveApproval, sendMessage } =
-    useChat(conversationId);
+  // Sibling hooks (Phase 19, plan 19-10, decision D-19): `useChat` owns
+  // messages + streaming, `usePendingApprovalFlow` owns the approval slice.
+  // Wiring forms a tight loop:
+  //   chat.onApprovalRequired → approvalFlow.setPending      (SSE arrival)
+  //   approvalFlow.onResumeEvent → chat.appendSSEEvent       (resume frames)
+  // Both directions are read at dispatch time via internal refs, so the
+  // forward-reference between the two hook calls is safe in practice.
+  const approvalFlowRef = useRef<{ setPending: (a: PendingApproval) => void } | null>(null);
+  const chat = useChat({
+    conversationId,
+    onApprovalRequired: (approval) => approvalFlowRef.current?.setPending(approval),
+  });
+  const approvalFlow = usePendingApprovalFlow({
+    conversationId,
+    onResumeEvent: chat.appendSSEEvent,
+  });
+  useEffect(() => {
+    approvalFlowRef.current = approvalFlow;
+  });
+  const { messages, isLoading, isStreaming, sendMessage } = chat;
+  const { pendingApproval, resolveApproval } = approvalFlow;
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   // Invariant 9: the composer is disabled whenever a batch is awaiting
   // the user's decision OR while a message is streaming. Both conditions
@@ -51,9 +68,12 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   const composerDisabled = isStreaming || pendingApproval !== null;
 
   const { data: conversation } = useQuery<Conversation>({
-    queryKey: QUERY_KEYS.CONVERSATION_BY_ID(conversationId),
-    queryFn: () => fetchConversation(conversationId),
-    enabled: !!conversationId,
+    queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
+    queryFn: () =>
+      bizApi(activeBusinessId!)
+        .get<Conversation>(BIZ_API_PATHS.CONVERSATIONS.BY_ID(conversationId))
+        .then((r) => r.data),
+    enabled: !!conversationId && !!activeBusinessId,
   });
 
   const { data: projects } = useProjectsQuery();
@@ -93,8 +113,10 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       },
       {
         onSuccess: () => {
-          void qc.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATION_BY_ID(conversationId) });
-          void qc.invalidateQueries({ queryKey: conversationsQueryKey });
+          void qc.invalidateQueries({
+            queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
+          });
+          void qc.invalidateQueries({ queryKey: conversationsQueryKey(activeBusinessId) });
         },
         onError: () => {
           toast.error(tChat('moveError'));
@@ -198,7 +220,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
             size="md"
             onClick={handleSend}
             disabled={composerDisabled || !input.trim()}
-            aria-label="Отправить"
+            aria-label={tChat('sendAria')}
           >
             <Send size={16} />
           </Button>

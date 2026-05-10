@@ -22,10 +22,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/toolvalidation"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -98,21 +98,14 @@ type resolveRequest struct {
 // Any edit on a "tool_name" field is rejected by ValidateEditArgs because
 // "tool_name" is not in any tool's EditableFields allowlist.
 func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "ResolvePendingToolCalls: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
-
-	// Resolve actor's business so we can compare against batch.BusinessID.
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "resolve: failed to resolve business", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+	if !authz.Can(r.Context(), authz.PermContentUpdate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -132,8 +125,8 @@ func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Req
 	in := service.ResolveInput{
 		ConversationID:  conversationID,
 		BatchID:         batchID,
-		ActorUserID:     userID.String(),
-		ActorBusinessID: business.ID.String(),
+		ActorUserID:     bc.UserID.String(),
+		ActorBusinessID: bc.BusinessID.String(),
 		Decisions:       req.Decisions,
 	}
 
@@ -229,9 +222,14 @@ func nilToEmptyStringArr(s []string) []string {
 //  5. Forwards to the orchestrator's POST /chat/{id}/resume?batch_id=X with
 //     the fresh maps in the JSON body and streams the SSE response back.
 func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
-	userID, err := middleware.GetUserID(r.Context())
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	bc, ok := authz.BusinessContextFromCtx(r.Context())
+	if !ok {
+		slog.ErrorContext(r.Context(), "Resume: no BusinessContext in ctx — middleware misconfiguration")
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+		return
+	}
+	if !authz.Can(r.Context(), authz.PermContentCreate) {
+		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -242,7 +240,7 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	business, err := h.businessService.GetByUserID(r.Context(), userID)
+	business, err := h.businessService.GetByID(r.Context(), bc.BusinessID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")

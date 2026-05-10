@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { FolderOpen } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 
 // Size variants. The `xs` size is used by PinnedSection rows as a mini
@@ -28,15 +29,15 @@ interface Props {
   size?: Size;
 }
 
-const UNASSIGNED_LABEL = 'Без проекта';
-
 const chipBase = 'inline-flex items-center rounded-md border transition-colors';
 
 export function ProjectChip({ projectId, projectName, size = 'sm' }: Props) {
+  const tSide = useTranslations('sidebar');
+  const tChip = useTranslations('chat.projectChip');
   if (projectId == null) {
     return (
       <span
-        aria-label="Чат не привязан к проекту"
+        aria-label={tChip('unlinkedAria')}
         className={cn(
           chipBase,
           sizeClasses[size],
@@ -44,7 +45,7 @@ export function ProjectChip({ projectId, projectName, size = 'sm' }: Props) {
         )}
       >
         <FolderOpen size={iconSize[size]} />
-        <span className="truncate">{UNASSIGNED_LABEL}</span>
+        <span className="truncate">{tSide('unassigned')}</span>
       </span>
     );
   }
@@ -52,7 +53,7 @@ export function ProjectChip({ projectId, projectName, size = 'sm' }: Props) {
   return (
     <Link
       href={`/projects/${projectId}/chats`}
-      aria-label={`Открыть проект «${projectName ?? ''}»`}
+      aria-label={tChip('openProjectAria', { name: projectName ?? '' })}
       className={cn(
         chipBase,
         sizeClasses[size],

@@ -5,6 +5,7 @@
 // /posts (and similar) compute aggregate counters.
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -20,10 +21,11 @@ export interface SkeletonMetricStripProps {
 }
 
 export function SkeletonMetricStrip({ count = 4, className }: SkeletonMetricStripProps) {
+  const tSkeleton = useTranslations('states.skeleton');
   return (
     <div
       role="status"
-      aria-label="Загружаем метрики"
+      aria-label={tSkeleton('metricStrip')}
       aria-busy="true"
       className={cn(
         // Mirrors mock-posts.jsx StatCard grid (2 cols on mobile, 4 on md).

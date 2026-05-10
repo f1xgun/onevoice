@@ -28,8 +28,8 @@ export function EmptyChannels({ onConnect, onViewDemo }: EmptyChannelsProps) {
   return (
     <EmptyFrame
       mark="dashed"
-      title="Подключите первый канал"
-      body="Telegram, ВКонтакте или Яндекс.Бизнес — на ваш выбор. Сообщения и отзывы соберутся в общий ящик."
+      title={tStates('title')}
+      body={tStates('body')}
       action={
         <>
           <Button variant="accent" size="md" onClick={onConnect}>

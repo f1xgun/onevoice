@@ -1,177 +1,28 @@
+// useChat — owns Message[] + isLoading + isStreaming + sendMessage + stop
+// (Phase 19, plan 19-10, D-19). The pendingApproval slice lives in the
+// sibling `usePendingApprovalFlow`; SSE `tool_approval_required` and GET
+// /messages hydration both flow out through the `onApprovalRequired`
+// callback. Resume frames flow back via the public `appendSSEEvent`.
+//
+// RBAC (plan 02-09): all fetch URLs are business-scoped via the active
+// business id from `useBusinessStore`. The conversation list invalidation
+// uses `conversationsQueryKey(activeBusinessId)` so per-business cache
+// partitioning stays intact across SSE 'done' events.
+
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/lib/auth';
-import { API_STREAM_PATHS } from '@/lib/constants/apiPaths';
-import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
+import { conversationsQueryKey } from '@/hooks/useConversations';
+import { API_BASE_URL } from '@/lib/constants/apiPaths';
 import { getTranslator } from '@/lib/i18n/translator';
+import { applySSEEvent, consumeSSEStream } from '@/lib/sse';
 import { trackEvent } from '@/lib/telemetry';
-import { resolveErrorToRussian, RESUME_STREAM_ERROR } from '@/lib/resolveErrorMap';
-import type {
-  ApprovalDecision,
-  Message,
-  PendingApproval,
-  PendingApprovalCall,
-  ToolCall,
-} from '@/types/chat';
+import type { Message, PendingApproval, PendingApprovalCall, ToolCall } from '@/types/chat';
 
-// Module-level translator for the SSE-stream and resolve-API failure
-// branches below. The hook re-renders too often to lean on
-// `useTranslations` here — strings are static, so a once-per-module
-// lookup matches what the rest of the lib does.
-const tCommon = getTranslator('common');
-const tCommonErrors = getTranslator('common.errors');
-
-// Exported for unit testing
-export function parseSSELine(line: string): Record<string, unknown> | null {
-  if (!line.startsWith('data: ')) return null;
-  try {
-    return JSON.parse(line.slice(6));
-  } catch {
-    return null;
-  }
-}
-
-export function applySSEEvent(msg: Message, event: Record<string, unknown>): Message {
-  const type = event.type as string;
-
-  if (type === 'text') {
-    return { ...msg, content: msg.content + (event.content as string) };
-  }
-
-  if (type === 'tool_call') {
-    const toolCall: ToolCall = {
-      id: (event.tool_call_id as string) || crypto.randomUUID(),
-      name: event.tool_name as string,
-      args: (event.tool_args as Record<string, unknown>) ?? {},
-      status: 'pending',
-    };
-    return { ...msg, toolCalls: [...(msg.toolCalls ?? []), toolCall] };
-  }
-
-  if (type === 'tool_result') {
-    // Correlate by orchestrator-issued tool_call_id — duplicate tool names
-    // in a single batch (e.g., two send_channel_post calls) would collapse
-    // under a name-based match.
-    const callID = event.tool_call_id as string | undefined;
-    const toolName = event.tool_name as string;
-    const calls = msg.toolCalls ?? [];
-    let matchIdx = callID ? calls.findIndex((t) => t.id === callID) : -1;
-    if (matchIdx === -1) {
-      // Fallback: oldest pending with that name.
-      matchIdx = calls.findIndex((t) => t.name === toolName && t.status === 'pending');
-    }
-    if (matchIdx === -1) return msg;
-    const updated = calls.map((tc, i) =>
-      i === matchIdx
-        ? {
-            ...tc,
-            result: event.result as Record<string, unknown>,
-            error: event.error as string | undefined,
-            status: (event.error ? 'error' : 'done') as ToolCall['status'],
-          }
-        : tc
-    );
-    return { ...msg, toolCalls: updated };
-  }
-
-  if (type === 'tool_rejected') {
-    // Emitted by the orchestrator on the resume stream for every call the
-    // user rejected AND for any call the server reclassified to
-    // ToolFloorForbidden at TOCTOU re-check time (policy_revoked). The
-    // user-rejection path usually pre-projects the entry in
-    // `resolveApproval`, so we try to update an existing match first; only
-    // when no match exists (TOCTOU or any other server-initiated reject)
-    // do we synthesize a card so the operator still sees something was
-    // refused.
-    const callID = event.tool_call_id as string | undefined;
-    const toolName = (event.tool_name as string) ?? '';
-    const reason = (event.content as string) ?? '';
-    const calls = msg.toolCalls ?? [];
-    const matchIdx = callID ? calls.findIndex((t) => t.id === callID) : -1;
-    if (matchIdx !== -1) {
-      const updated = calls.map((tc, i) =>
-        i === matchIdx
-          ? {
-              ...tc,
-              status: 'rejected' as const,
-              rejectReason: tc.rejectReason || reason,
-            }
-          : tc
-      );
-      return { ...msg, toolCalls: updated };
-    }
-    const synthesized: ToolCall = {
-      id: callID || crypto.randomUUID(),
-      name: toolName,
-      args: {},
-      status: 'rejected',
-      rejectReason: reason,
-    };
-    return { ...msg, toolCalls: [...calls, synthesized] };
-  }
-
-  if (type === 'done') {
-    return { ...msg, status: 'done' };
-  }
-
-  return msg;
-}
-
-// consumeSSEStream is the ONE implementation of "read a fetch Response body
-// as SSE and feed parsed events to onEvent" shared by both sendMessage and
-// resolveApproval (the resume path). Keeping two copies caused divergence in
-// error handling and abort semantics.
-async function consumeSSEStream(
-  response: Response,
-  signal: AbortSignal,
-  onEvent: (event: Record<string, unknown>) => void
-): Promise<void> {
-  if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (!signal.aborted) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      const event = parseSSELine(line.trim());
-      if (event) onEvent(event);
-    }
-  }
-  if (buffer.trim()) {
-    const event = parseSSELine(buffer.trim());
-    if (event) onEvent(event);
-  }
-}
-
-interface ApiToolCall {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-}
-
-interface ApiToolResult {
-  toolCallId: string;
-  content: Record<string, unknown>;
-  isError: boolean;
-}
-
-interface ApiMessage {
-  id: string;
-  role: string;
-  content: string;
-  toolCalls?: ApiToolCall[];
-  toolResults?: ApiToolResult[];
-}
-
-// GET /messages returns pendingApprovals already in camelCase, so
-// this normalizer is effectively a typed cast + defensive defaults. It
-// preserves status === 'expired' so the UI layer owns the render decision
-// (`ExpiredApprovalBanner`).
+// Typed cast + defensive defaults. Preserves status === 'expired' so the
+// UI layer owns the render decision (`ExpiredApprovalBanner`). Lives here
+// because useChat is the sole fetcher of GET /messages.
 function normalizePendingApproval(raw: unknown): PendingApproval | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -197,26 +48,81 @@ function normalizePendingApproval(raw: unknown): PendingApproval | null {
   };
 }
 
-export function useChat(conversationId: string) {
+// Module-level translator for the SSE-stream failure branch below. Strings
+// are static, so a once-per-module lookup matches the rest of `lib/`.
+// (D-AM-01: `usePendingApprovalFlow` keeps its own copy.)
+const tCommon = getTranslator('common');
+
+// Business-scoped URL builders. Kept inline here (rather than centralised
+// in API_STREAM_PATHS) because every call site needs to forward the
+// nullable activeBusinessId from the store and gracefully fall back to the
+// legacy non-scoped path when no business is active — moving the fallback
+// into the constants module would require duplicating both shapes there.
+function messagesUrl(activeBusinessId: string | null, conversationId: string): string {
+  return activeBusinessId
+    ? `${API_BASE_URL}/businesses/${activeBusinessId}/conversations/${conversationId}/messages`
+    : `${API_BASE_URL}/conversations/${conversationId}/messages`;
+}
+
+function chatUrl(activeBusinessId: string | null, conversationId: string): string {
+  return activeBusinessId
+    ? `${API_BASE_URL}/businesses/${activeBusinessId}/chat/${conversationId}`
+    : `${API_BASE_URL}/chat/${conversationId}`;
+}
+
+interface ApiToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+interface ApiToolResult {
+  toolCallId: string;
+  content: Record<string, unknown>;
+  isError: boolean;
+}
+
+interface ApiMessage {
+  id: string;
+  role: string;
+  content: string;
+  toolCalls?: ApiToolCall[];
+  toolResults?: ApiToolResult[];
+}
+
+interface UseChatOptions {
+  conversationId: string;
+  // Wired by the parent component to `usePendingApprovalFlow.setPending`.
+  // Fired when a chat SSE stream emits `tool_approval_required`.
+  onApprovalRequired?: (approval: PendingApproval) => void;
+}
+
+export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const isStreamingRef = useRef(false);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const abortRef = useRef<AbortController | null>(null);
-  // handleSSEEvent invalidates QUERY_KEYS.CONVERSATIONS when SSE 'done'
-  // arrives so an auto-titled chat picks up its new title out-of-band.
-  // NEVER mux titles into chat SSE.
+  // SSE 'done' invalidates conversationsQueryKey(activeBusinessId) for
+  // out-of-band auto-title pickup. NEVER mux titles into chat SSE.
   const queryClient = useQueryClient();
 
-  // Load existing messages on mount — accepts both legacy `ApiMessage[]` and
-  // the `{messages, pendingApprovals}` envelope. When the envelope
-  // carries a non-empty pendingApprovals array, hydrate the first batch so a
-  // reloaded tab immediately shows the approval card.
+  // Stable ref for the parent's onApprovalRequired so the SSE-handler
+  // closure stays cheap to recreate.
+  const onApprovalRequiredRef = useRef<((approval: PendingApproval) => void) | undefined>(
+    onApprovalRequired
+  );
+  useEffect(() => {
+    onApprovalRequiredRef.current = onApprovalRequired;
+  });
+
+  // Mount-load: legacy ApiMessage[] or {messages, pendingApprovals} envelope.
+  // Sole /messages round trip; envelope's first batch fires onApprovalRequired.
   useEffect(() => {
     setIsLoading(true);
-    fetch(API_STREAM_PATHS.CONVERSATION_MESSAGES(conversationId), {
+    fetch(messagesUrl(activeBusinessId, conversationId), {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then((r) => {
@@ -238,10 +144,8 @@ export function useChat(conversationId: string) {
                 m.toolCalls && m.toolCalls.length > 0
                   ? m.toolCalls.map((tc) => {
                       const result = m.toolResults?.find((r) => r.toolCallId === tc.id);
-                      // No matching tool_result → the run was interrupted
-                      // before this tool produced one. Surface it as
-                      // 'aborted' so the UI doesn't mislead with a green
-                      // checkmark.
+                      // No tool_result → run was interrupted; mark 'aborted'
+                      // so the UI doesn't show a green checkmark.
                       const status: ToolCall['status'] = result
                         ? result.isError
                           ? 'error'
@@ -269,41 +173,38 @@ export function useChat(conversationId: string) {
             })
           );
         }
-        // Hydration: surface the first persisted batch.
+        // Hydration: surface the first persisted batch to the sibling hook.
         if (payload && !Array.isArray(payload)) {
           const pendings = (payload as { pendingApprovals?: unknown[] }).pendingApprovals;
           if (Array.isArray(pendings) && pendings.length > 0) {
             const normalized = normalizePendingApproval(pendings[0]);
-            if (normalized) setPendingApproval(normalized);
+            if (normalized) onApprovalRequiredRef.current?.(normalized);
           }
         }
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, [conversationId, accessToken]);
+  }, [conversationId, accessToken, activeBusinessId]);
 
-  // onEventRef keeps a fresh reference to the current SSE-event handler so
-  // both sendMessage and resolveApproval can share one handler via
-  // consumeSSEStream without recreating closures per call.
+  // Stable ref for the SSE-event handler shared by sendMessage.
   const onEventRef = useRef<(event: Record<string, unknown>) => void>(() => {});
 
   const handleSSEEvent = useCallback(
     (event: Record<string, unknown>) => {
-      // Out-of-band auto-title propagation. The titler goroutine on the API
-      // side races chat 'done'; invalidating QUERY_KEYS.CONVERSATIONS picks
-      // up whatever title has landed. Hard rule — NEVER mux titles into
-      // chat SSE.
       if (event.type === 'done') {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONVERSATIONS });
+        // Invalidate using the business-scoped key prefix so React Query
+        // refetches whichever conversation list is active (Plan 02-09).
+        queryClient.invalidateQueries({
+          queryKey: conversationsQueryKey(activeBusinessId),
+        });
       }
-
       if (event.type === 'tool_approval_required') {
         const rawCalls = (event.calls as Array<Record<string, unknown>>) ?? [];
-        setPendingApproval({
+        const approval: PendingApproval = {
           batchId: event.batch_id as string,
           status: 'pending',
           createdAt: new Date().toISOString(),
-          // expiresAt intentionally undefined — hydration path (GET /messages) carries it.
+          // expiresAt set by GET /messages hydration path, not SSE.
           calls: rawCalls.map((c) => ({
             callId: c.call_id as string,
             toolName: c.tool_name as string,
@@ -311,10 +212,9 @@ export function useChat(conversationId: string) {
             editableFields: (c.editable_fields as string[]) ?? [],
             floor: c.floor as string,
           })),
-        });
-        // Do NOT abort the controller here. The orchestrator closes the
-        // response naturally after emitting the event; aborting races with
-        // natural close and masks errors.
+        };
+        onApprovalRequiredRef.current?.(approval);
+        // Do NOT abort — orchestrator closes naturally; aborting masks errors.
         return;
       }
       setMessages((prev) => {
@@ -323,20 +223,21 @@ export function useChat(conversationId: string) {
         return [...prev.slice(0, -1), applySSEEvent(last, event)];
       });
     },
-    [queryClient]
+    [queryClient, activeBusinessId]
   );
 
-  // Rebind on every render so the resume stream picks up the latest closure.
+  // Rebind on every render so any captured handler picks up the latest closure.
   useEffect(() => {
     onEventRef.current = handleSSEEvent;
   });
 
   // Force the last assistant message (if still in `streaming` state) into
-  // `done`. Shared by sendMessage + resolveApproval finally-blocks so a
-  // stream that closes without an explicit `done` event (e.g., HITL pause
-  // path on tool_approval_required, server crash, hung provider) still
-  // clears the typing indicator. No-op when the last message is the user
-  // turn or already done.
+  // `done`. Shared by sendMessage's finally-block (and re-used via the
+  // synthetic `done` event the sibling resume flow fires through
+  // appendSSEEvent) so a stream that closes without an explicit `done`
+  // event — e.g., the HITL pause path on `tool_approval_required` or a
+  // hung provider — still clears the typing indicator. No-op when the
+  // last message is the user turn or already done.
   const finalizeStreamingAssistant = useCallback(() => {
     setMessages((prev) => {
       const last = prev[prev.length - 1];
@@ -376,7 +277,7 @@ export function useChat(conversationId: string) {
       abortRef.current = controller;
 
       try {
-        const response = await fetch(API_STREAM_PATHS.CHAT(conversationId), {
+        const response = await fetch(chatUrl(activeBusinessId, conversationId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -400,8 +301,8 @@ export function useChat(conversationId: string) {
       } finally {
         // Server-side closes the stream without a `done` event in two
         // legitimate cases: when emitting `tool_approval_required` (the
-        // pause) and when an upstream provider drops the connection mid-
-        // run. Without forcing the message to `done` here the bubble
+        // HITL pause) and when an upstream provider drops the connection
+        // mid-run. Without forcing the message to `done` here the bubble
         // would show the typing indicator forever — flip it now and let
         // the resume stream re-flip back to streaming if it reopens.
         finalizeStreamingAssistant();
@@ -409,139 +310,27 @@ export function useChat(conversationId: string) {
         isStreamingRef.current = false;
       }
     },
-    [conversationId, accessToken, finalizeStreamingAssistant]
+    [conversationId, accessToken, activeBusinessId, finalizeStreamingAssistant]
   );
 
-  const resolveApproval = useCallback(
-    async (decisions: ApprovalDecision[]) => {
-      if (!pendingApproval) return;
-      if (isStreamingRef.current) return; // composer disabled should prevent this
-
-      // Defensive sanitization at the trust boundary. The toolName is pinned
-      // server-side; echoing the `tool_name` key signals misuse. We strip it
-      // from edited_args and clamp reject_reason to 500 chars.
-      const sanitizedDecisions: ApprovalDecision[] = decisions.map((d) => {
-        const copy: ApprovalDecision = { id: d.id, action: d.action };
-        if (d.action === 'edit' && d.edited_args) {
-          const filtered: Record<string, string | number | boolean> = {};
-          for (const [k, v] of Object.entries(d.edited_args)) {
-            if (k === 'tool_name') continue; // NEVER echo
-            filtered[k] = v;
-          }
-          copy.edited_args = filtered;
-        }
-        if (d.action === 'reject' && d.reject_reason !== undefined) {
-          copy.reject_reason = d.reject_reason.slice(0, 500);
-        }
-        return copy;
+  // appendSSEEvent — public for the sibling `usePendingApprovalFlow` to
+  // forward resume-stream frames into the existing assistant message. The
+  // resume stream's terminal 'done' replays the conversations invalidation;
+  // 'tool_approval_required' is NOT replayed (resume never re-emits it).
+  const appendSSEEvent = useCallback(
+    (event: Record<string, unknown>) => {
+      if (event.type === 'done') {
+        queryClient.invalidateQueries({
+          queryKey: conversationsQueryKey(activeBusinessId),
+        });
+      }
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (!last || last.role !== 'assistant') return prev;
+        return [...prev.slice(0, -1), applySSEEvent(last, event)];
       });
-
-      // 1) POST resolve — plain JSON.
-      let resolveRes: Response;
-      try {
-        resolveRes = await fetch(
-          API_STREAM_PATHS.PENDING_TOOL_CALLS_RESOLVE(conversationId, pendingApproval.batchId),
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ decisions: sanitizedDecisions }),
-          }
-        );
-      } catch {
-        toast.error(tCommonErrors('connectionRetry'));
-        return;
-      }
-
-      if (!resolveRes.ok) {
-        let errBody: unknown = null;
-        try {
-          errBody = await resolveRes.json();
-        } catch {
-          // ignore parse failure — resolveErrorToRussian handles null body
-        }
-        toast.error(resolveErrorToRussian(resolveRes.status, errBody));
-        return; // card stays open; ToolApprovalCard re-enables Submit.
-      }
-
-      // Project the user's rejection decisions onto the assistant
-      // message's toolCalls so a rejected call leaves a visible trail
-      // (red-bordered card with the "Отклонено пользователем" badge and
-      // the operator's reason). Without this the rejected call would
-      // live only in pendingApproval and vanish on clear — leaving an
-      // empty bubble or, after our suppression, no record at all that a
-      // tool was invoked and refused.
-      //
-      // Only `reject` decisions are projected here; approve/edit calls
-      // produce their own `tool_call` + `tool_result` events on the
-      // resume stream and flow through applySSEEvent normally.
-      const rejectedProjections: ToolCall[] = pendingApproval.calls
-        .filter((c) => {
-          const dec = sanitizedDecisions.find((d) => d.id === c.callId);
-          return dec?.action === 'reject';
-        })
-        .map((c) => {
-          const dec = sanitizedDecisions.find((d) => d.id === c.callId);
-          return {
-            id: c.callId,
-            name: c.toolName,
-            args: c.args,
-            status: 'rejected' as const,
-            rejectReason: dec?.reject_reason,
-          };
-        });
-      if (rejectedProjections.length > 0) {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (!last || last.role !== 'assistant') return prev;
-          // Dedupe by callId — defensive against a re-render or a
-          // future code path that already pushed an entry.
-          const existing = new Set((last.toolCalls ?? []).map((tc) => tc.id));
-          const toAppend = rejectedProjections.filter((tc) => !existing.has(tc.id));
-          if (toAppend.length === 0) return prev;
-          return [
-            ...prev.slice(0, -1),
-            { ...last, toolCalls: [...(last.toolCalls ?? []), ...toAppend] },
-          ];
-        });
-      }
-
-      // 2) Open the resume SSE — extends the existing assistant message
-      //    (same message id).
-      setIsStreaming(true);
-      isStreamingRef.current = true;
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      try {
-        const resumeRes = await fetch(
-          API_STREAM_PATHS.CHAT_RESUME(conversationId, pendingApproval.batchId),
-          {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${accessToken}` },
-            signal: controller.signal,
-          }
-        );
-        await consumeSSEStream(resumeRes, controller.signal, onEventRef.current);
-      } catch (err: unknown) {
-        if ((err as Error).name === 'AbortError') return;
-        toast.error(RESUME_STREAM_ERROR);
-      } finally {
-        // Clear pendingApproval whether resume completed or errored. The
-        // persisted batch on the server is the source of truth; a reload
-        // re-hydrates from GET /messages.
-        setPendingApproval(null);
-        // Same fallback as the initial /chat path — flip the bubble out of
-        // `streaming` so an interrupted resume (no `done` event after
-        // tool_rejected) doesn't leave the typing indicator stuck.
-        finalizeStreamingAssistant();
-        setIsStreaming(false);
-        isStreamingRef.current = false;
-      }
     },
-    [conversationId, accessToken, pendingApproval, finalizeStreamingAssistant]
+    [queryClient, activeBusinessId]
   );
 
   const stop = useCallback(() => {
@@ -552,9 +341,8 @@ export function useChat(conversationId: string) {
     messages,
     isLoading,
     isStreaming,
-    pendingApproval,
-    resolveApproval,
     sendMessage,
     stop,
+    appendSSEEvent,
   };
 }

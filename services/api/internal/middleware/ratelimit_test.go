@@ -282,7 +282,7 @@ func TestRateLimitByUser_WithinLimit(t *testing.T) {
 	window := time.Minute
 	userID := uuid.New()
 
-	handler := RateLimitByUser(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RateLimitByUser(redisClient, limit, window, "chat")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("success"))
 	}))
@@ -313,7 +313,7 @@ func TestRateLimitByUser_ExceedsLimit(t *testing.T) {
 	window := time.Minute
 	userID := uuid.New()
 
-	handler := RateLimitByUser(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RateLimitByUser(redisClient, limit, window, "chat")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("success"))
 	}))
@@ -355,7 +355,7 @@ func TestRateLimitByUser_FallbackToIP(t *testing.T) {
 	limit := 2
 	window := time.Minute
 
-	handler := RateLimitByUser(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RateLimitByUser(redisClient, limit, window, "chat")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("success"))
 	}))
@@ -388,7 +388,7 @@ func TestRateLimitByUser_DifferentUsers(t *testing.T) {
 	user1 := uuid.New()
 	user2 := uuid.New()
 
-	handler := RateLimitByUser(redisClient, limit, window)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RateLimitByUser(redisClient, limit, window, "chat")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("success"))
 	}))

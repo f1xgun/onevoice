@@ -20,6 +20,10 @@ type businessRepository struct {
 	sb   squirrel.StatementBuilderType
 }
 
+// Compile-time check that businessRepository satisfies domain.BusinessRepository.
+// Ensures CreateInTx (Phase 1 v2.0 RBAC) is wired through the interface.
+var _ domain.BusinessRepository = (*businessRepository)(nil)
+
 func NewBusinessRepository(pool *pgxpool.Pool) domain.BusinessRepository {
 	return &businessRepository{
 		pool: pool,
@@ -55,46 +59,47 @@ func (r *businessRepository) Create(ctx context.Context, business *domain.Busine
 	return nil
 }
 
+// CreateInTx inserts the business using a caller-supplied transaction.
+// Phase 1 v2.0 RBAC (DATA-06): service.business.Create wraps this and the
+// business_members insert in a single pgx.Tx so both rows commit or
+// neither does.
+//
+// The body mirrors Create above with two differences: (1) executes against
+// the caller-supplied tx instead of r.pool, (2) does not allocate a new
+// pool connection. The original Create remains for callers that don't
+// need transactional dual-write (e.g. legacy code paths and tests).
+func (r *businessRepository) CreateInTx(ctx context.Context, tx pgx.Tx, business *domain.Business) error {
+	if business.ID == uuid.Nil {
+		business.ID = uuid.New()
+	}
+	now := time.Now()
+	business.CreatedAt = now
+	business.UpdatedAt = now
+
+	sql, args, err := r.sb.
+		Insert("businesses").
+		Columns("id", "user_id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
+		Values(business.ID, business.UserID, business.Name, business.Category, business.Address, business.Phone, business.Website, business.Description, business.LogoURL, business.Settings, business.CreatedAt, business.UpdatedAt).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build insert: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, sql, args...)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") {
+			return domain.ErrBusinessExists
+		}
+		return fmt.Errorf("insert business: %w", err)
+	}
+	return nil
+}
+
 func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
 	sql, args, err := r.sb.
 		Select("id", "user_id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
 		From("businesses").
 		Where(squirrel.Eq{"id": id}).
-		ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("build select: %w", err)
-	}
-
-	var business domain.Business
-	err = r.pool.QueryRow(ctx, sql, args...).Scan(
-		&business.ID,
-		&business.UserID,
-		&business.Name,
-		&business.Category,
-		&business.Address,
-		&business.Phone,
-		&business.Website,
-		&business.Description,
-		&business.LogoURL,
-		&business.Settings,
-		&business.CreatedAt,
-		&business.UpdatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrBusinessNotFound
-		}
-		return nil, fmt.Errorf("query business: %w", err)
-	}
-
-	return &business, nil
-}
-
-func (r *businessRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
-	sql, args, err := r.sb.
-		Select("id", "user_id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
-		From("businesses").
-		Where(squirrel.Eq{"user_id": userID}).
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)

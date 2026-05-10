@@ -16,21 +16,33 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
-// titlerRoute wires the chi URL param `id` and the user ID context the way
+// titlerBizCtx seeds a BusinessContext with PermContentUpdate (required by
+// RegenerateTitle). userID must match the conversation's UserID so the
+// ownership check passes.
+func titlerBizCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID:  businessID,
+		UserID:      userID,
+		RoleID:      uuid.New(),
+		Permissions: []authz.Permission{authz.PermContentUpdate},
+	})
+}
+
+// titlerRoute wires the chi URL param `id` and the BusinessContext the way
 // the production router does, then invokes RegenerateTitle.
+// businessID is used for the BusinessContext; userID must match conv.UserID.
 func titlerRoute(t *testing.T, h *TitlerHandler, userID uuid.UUID, conversationID string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost,
 		"/api/v1/conversations/"+conversationID+"/regenerate-title", http.NoBody)
-	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", conversationID)
-	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	ctx := context.WithValue(titlerBizCtx(uuid.New(), userID), chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
@@ -372,9 +384,10 @@ func TestRegenerateTitle_409_TransitionRace(t *testing.T) {
 	assert.Equal(t, 0, fc.Calls())
 }
 
-// TestRegenerateTitle_Unauthorized asserts that a request with no userID in
-// the auth context is rejected with 401 before any repo lookup.
-func TestRegenerateTitle_Unauthorized(t *testing.T) {
+// TestRegenerateTitle_NoBusinessContext asserts that a request with no
+// BusinessContext in the context (middleware misconfiguration) is rejected
+// with 500 before any repo lookup.
+func TestRegenerateTitle_NoBusinessContext(t *testing.T) {
 	convID := "507f1f77bcf86cd799439026"
 	convRepo := &titlerConvRepo{}
 	msgRepo := &titlerMsgRepo{}
@@ -389,8 +402,8 @@ func TestRegenerateTitle_Unauthorized(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.RegenerateTitle(rec, req)
 
-	require.Equal(t, http.StatusUnauthorized, rec.Code)
-	assert.Contains(t, rec.Body.String(), "unauthorized")
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Contains(t, rec.Body.String(), "internal_server_error")
 }
 
 // TestRegenerateTitle_BodyVerbatimRussianCopy is a separate guard test that

@@ -21,9 +21,11 @@ import { useTranslations } from 'next-intl';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { bizApi } from '@/lib/api/business-api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { useBusinessStore } from '@/lib/stores/business';
 import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import {
   TASK_STATUS_DOT_CLASSES,
@@ -103,26 +105,30 @@ function explainError(task: AgentTask): HumanError {
 
 export default function TasksPage() {
   const queryClient = useQueryClient();
+  const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const tHeader = useTranslations('tasks');
   const tStats = useTranslations('tasks.stats');
 
   const { data: tasks = [], isLoading } = useQuery<AgentTask[]>({
-    queryKey: QUERY_KEYS.TASKS,
+    queryKey: QUERY_KEYS.BUSINESS_TASKS(activeBusinessId),
     queryFn: () =>
-      api.get(API_PATHS.TASKS).then((r) => {
-        const data = r.data as unknown;
-        if (Array.isArray(data)) return data as AgentTask[];
-        const list = (data as { tasks?: AgentTask[] } | null)?.tasks;
-        return Array.isArray(list) ? list : [];
-      }),
+      bizApi(activeBusinessId!)
+        .get(BIZ_API_PATHS.TASKS.ROOT)
+        .then((r) => {
+          const data = r.data as unknown;
+          if (Array.isArray(data)) return data as AgentTask[];
+          const list = (data as { tasks?: AgentTask[] } | null)?.tasks;
+          return Array.isArray(list) ? list : [];
+        }),
+    enabled: !!activeBusinessId,
     refetchInterval: POLL_INTERVAL_MS,
   });
 
   const onStreamEvent = useCallback(
     (_: TaskStreamEvent) => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TASKS });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_TASKS(activeBusinessId) });
     },
-    [queryClient]
+    [queryClient, activeBusinessId]
   );
   useTasksStream(onStreamEvent);
 
@@ -150,21 +156,25 @@ export default function TasksPage() {
           value={doneToday}
           hint={
             doneToday === 0
-              ? 'пока ничего'
-              : `из них ${doneToday} успешно, ${needsHelp} ${needsHelpPlural(needsHelp)} вашего внимания`
+              ? tStats('doneEmptyHint')
+              : tStats('doneSummary', {
+                  success: doneToday,
+                  needsHelp,
+                  needsHelpWord: needsHelpPlural(needsHelp),
+                })
           }
           tone="default"
         />
         <BigStat
           label={tStats('inProgress')}
           value={inFlight}
-          hint={inFlight === 0 ? 'нет активных задач' : 'идёт прямо сейчас'}
+          hint={inFlight === 0 ? tStats('inProgressNone') : tStats('inProgressSome')}
           tone={inFlight > 0 ? 'accent' : 'default'}
         />
         <BigStat
           label={tStats('awaitingUser')}
           value={needsHelp}
-          hint={needsHelp === 0 ? 'всё в порядке' : 'требуется ваше внимание'}
+          hint={needsHelp === 0 ? tStats('awaitingNone') : tStats('awaitingSome')}
           tone={needsHelp > 0 ? 'warning' : 'default'}
         />
       </div>

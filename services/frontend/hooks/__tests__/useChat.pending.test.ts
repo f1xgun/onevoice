@@ -1,14 +1,46 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useChat } from '../useChat';
+import { usePendingApprovalFlow } from '../usePendingApprovalFlow';
 import { useAuthStore } from '@/lib/auth';
 import { mockSSEResponse, sseLine } from '@/test-utils/sse-mock';
+import type { PendingApproval } from '@/types/chat';
+
+// Phase 19 split (plan 19-10, D-19): pendingApproval state moved out of
+// useChat into the sibling `usePendingApprovalFlow` hook. This test wraps
+// both hooks with the canonical ChatWindow wiring so the original
+// "useChat — SSE tool_approval_required arrival" assertions can stay
+// byte-identical (D-16: wiring-only test changes).
+function useChatWithApprovalFlow(conversationId: string) {
+  const approvalFlowRef = useRef<{ setPending: (a: PendingApproval) => void } | null>(null);
+  const chat = useChat({
+    conversationId,
+    onApprovalRequired: (approval) => approvalFlowRef.current?.setPending(approval),
+  });
+  const approvalFlow = usePendingApprovalFlow({
+    conversationId,
+    onResumeEvent: chat.appendSSEEvent,
+  });
+  useEffect(() => {
+    approvalFlowRef.current = approvalFlow;
+  });
+  return {
+    ...chat,
+    pendingApproval: approvalFlow.pendingApproval,
+    resolveApproval: approvalFlow.resolveApproval,
+  };
+}
 
 // Mock sonner so we can assert on toast-free pending arrival.
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: 'biz-test' }),
 }));
 
 // useChat now consumes useQueryClient() so it can invalidate
@@ -40,7 +72,9 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     const fetchMock = vi.fn();
     // 1) GET /messages — empty history, no pending.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
-      expect(String(input)).toMatch(/\/api\/v1\/conversations\/.+\/messages$/);
+      expect(String(input)).toMatch(
+        /\/api\/v1\/businesses\/biz-test\/conversations\/.+\/messages$/
+      );
       return new Response(JSON.stringify({ messages: [], pendingApprovals: [] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -48,7 +82,7 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     });
     // 2) POST /chat/{id} — SSE stream with a partial text then tool_approval_required, then natural close.
     fetchMock.mockImplementationOnce(async (input: RequestInfo | URL) => {
-      expect(String(input)).toMatch(/\/api\/v1\/chat\/cid-1$/);
+      expect(String(input)).toMatch(/\/api\/v1\/businesses\/biz-test\/chat\/cid-1$/);
       return mockSSEResponse([
         sseLine({ type: 'text', content: 'I will post to ' }),
         sseLine({
@@ -68,7 +102,9 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-1'), { wrapper: makeQCWrapper() });
+    const { result } = renderHook(() => useChatWithApprovalFlow('cid-1'), {
+      wrapper: makeQCWrapper(),
+    });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
@@ -124,7 +160,9 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChat('cid-2'), { wrapper: makeQCWrapper() });
+    const { result } = renderHook(() => useChatWithApprovalFlow('cid-2'), {
+      wrapper: makeQCWrapper(),
+    });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     await act(async () => {
       await result.current.sendMessage('anything');

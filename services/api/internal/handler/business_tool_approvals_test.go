@@ -13,10 +13,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
 )
 
@@ -82,11 +84,39 @@ func (s *stubBusinessServiceForApprovals) UpdateToolApprovals(ctx context.Contex
 	}
 	return nil
 }
+func (s *stubBusinessServiceForApprovals) ListMembershipsByUser(_ context.Context, _ uuid.UUID) ([]service.MembershipSummary, error) {
+	return []service.MembershipSummary{}, nil
+}
 
-// routeAndServe wires chi URL params then serves the handler.
+// routeAndServe wires chi URL params, JWT context, and a full-permission
+// BusinessContext then serves the handler. The businessID is parsed from
+// the {id} segment of urlPath so callers don't need to pass it separately.
 func routeAndServe(h *handler.BusinessHandler, method, urlPath, pattern string, body []byte, userID uuid.UUID, serve func(http.ResponseWriter, *http.Request)) *httptest.ResponseRecorder {
+	// Extract businessID from the URL so we can build a matching BusinessContext.
+	// urlPath is always of the form ".../businesses/<uuid>/..." or ".../business/<uuid>/...".
+	var bizID uuid.UUID
+	parts := strings.Split(urlPath, "/")
+	for i, p := range parts {
+		if (p == "businesses" || p == "business") && i+1 < len(parts) {
+			if id, err := uuid.Parse(parts[i+1]); err == nil {
+				bizID = id
+				break
+			}
+		}
+	}
+
 	req := httptest.NewRequest(method, urlPath, bytes.NewReader(body))
+	bc := authz.BusinessContext{
+		BusinessID: bizID,
+		UserID:     userID,
+		RoleID:     uuid.New(),
+		Permissions: []authz.Permission{
+			authz.PermBusinessRead,
+			authz.PermBusinessUpdate,
+		},
+	}
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+	ctx = authz.WithBusinessContext(ctx, bc)
 	req = req.WithContext(ctx)
 	r := chi.NewRouter()
 	r.Method(method, pattern, http.HandlerFunc(serve))

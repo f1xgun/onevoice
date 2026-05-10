@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -69,68 +69,45 @@ func (m *mockProjectService) CountConversations(ctx context.Context, businessID,
 
 var _ ProjectService = (*mockProjectService)(nil)
 
-// mockProjectBusinessService is a minimal BusinessService used by the handler
-// only to resolve userID → businessID. The other methods return zero values.
-type mockProjectBusinessService struct {
-	getByUserIDFunc func(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
-}
-
-func (m *mockProjectBusinessService) Create(_ context.Context, _ *domain.Business) (*domain.Business, error) {
-	return nil, nil
-}
-func (m *mockProjectBusinessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
-	if m.getByUserIDFunc != nil {
-		return m.getByUserIDFunc(ctx, userID)
-	}
-	return nil, domain.ErrBusinessNotFound
-}
-func (m *mockProjectBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-	return nil, nil
-}
-func (m *mockProjectBusinessService) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
-	return nil, nil
-}
-func (m *mockProjectBusinessService) GetToolApprovals(_ context.Context, _, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
-	return map[string]domain.ToolFloor{}, nil
-}
-func (m *mockProjectBusinessService) UpdateToolApprovals(_ context.Context, _, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
-	return nil
-}
-
-var _ BusinessService = (*mockProjectBusinessService)(nil)
-
 // --- helpers ---------------------------------------------------------------
 
-// withAuthedUser builds a request with a userID in the auth context and a
-// businessService stub that resolves it to the given businessID.
-func withAuthedUser(method, path string, body []byte, userID, businessID uuid.UUID) (*http.Request, *mockProjectBusinessService) {
+// projectBizCtx seeds a BusinessContext with full content permissions so
+// project handler tests don't need to wire a businessService at all.
+func projectBizCtx(businessID, userID uuid.UUID) context.Context {
+	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
+		BusinessID: businessID,
+		UserID:     userID,
+		RoleID:     uuid.New(),
+		Permissions: []authz.Permission{
+			authz.PermContentRead,
+			authz.PermContentCreate,
+			authz.PermContentUpdate,
+			authz.PermContentDelete,
+		},
+	})
+}
+
+// withBizContext builds a request with BusinessContext already in ctx.
+func withBizContext(method, path string, body []byte, businessID, userID uuid.UUID) *http.Request {
 	var r *http.Request
 	if body != nil {
 		r = httptest.NewRequest(method, path, bytes.NewReader(body))
 	} else {
 		r = httptest.NewRequest(method, path, http.NoBody)
 	}
-	ctx := context.WithValue(r.Context(), middleware.UserIDKey, userID)
-	r = r.WithContext(ctx)
-
-	bs := &mockProjectBusinessService{
-		getByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-			return &domain.Business{ID: businessID}, nil
-		},
-	}
-	return r, bs
+	return r.WithContext(projectBizCtx(businessID, userID))
 }
 
 // chiRouteRequest wraps the handler in a chi.Router so URLParam("id")
 // resolves against the URL template. httptest.NewRequest alone does not
 // populate chi's route context.
-func chiRouteRequest(pattern, method, url string, body []byte, h http.HandlerFunc, userID, businessID uuid.UUID) (*httptest.ResponseRecorder, *mockProjectBusinessService) {
-	req, bs := withAuthedUser(method, url, body, userID, businessID)
+func chiRouteRequest(pattern, method, url string, body []byte, h http.HandlerFunc, businessID, userID uuid.UUID) *httptest.ResponseRecorder {
+	req := withBizContext(method, url, body, businessID, userID)
 	router := chi.NewRouter()
 	router.Method(method, pattern, h)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	return rec, bs
+	return rec
 }
 
 // --- tests -----------------------------------------------------------------
@@ -160,8 +137,8 @@ func TestProjectHandler_Create_Success(t *testing.T) {
 		"name":          "Reviews",
 		"whitelistMode": "all",
 	})
-	req, bs := withAuthedUser(http.MethodPost, "/api/v1/projects", body, userID, businessID)
-	h, err := NewProjectHandler(ps, bs)
+	req := withBizContext(http.MethodPost, "/api/v1/projects", body, businessID, userID)
+	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -225,8 +202,8 @@ func TestProjectHandler_Create_ValidationErrors(t *testing.T) {
 			}
 
 			body, _ := json.Marshal(tt.body)
-			req, bs := withAuthedUser(http.MethodPost, "/api/v1/projects", body, userID, businessID)
-			h, err := NewProjectHandler(ps, bs)
+			req := withBizContext(http.MethodPost, "/api/v1/projects", body, businessID, userID)
+			h, err := NewProjectHandler(ps)
 			require.NoError(t, err)
 
 			rec := httptest.NewRecorder()
@@ -254,8 +231,8 @@ func TestProjectHandler_List_Success(t *testing.T) {
 		},
 	}
 
-	req, bs := withAuthedUser(http.MethodGet, "/api/v1/projects", nil, userID, businessID)
-	h, err := NewProjectHandler(ps, bs)
+	req := withBizContext(http.MethodGet, "/api/v1/projects", nil, businessID, userID)
+	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -280,14 +257,10 @@ func TestProjectHandler_Get_CrossBusinessReturns404(t *testing.T) {
 	}
 
 	path := "/api/v1/projects/" + projectID.String()
-	h, err := NewProjectHandler(ps, &mockProjectBusinessService{
-		getByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-			return &domain.Business{ID: businessID}, nil
-		},
-	})
+	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
 
-	rec, _ := chiRouteRequest("/api/v1/projects/{id}", http.MethodGet, path, nil, h.Get, userID, businessID)
+	rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodGet, path, nil, h.Get, businessID, userID)
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 	var resp ErrorResponse
@@ -314,14 +287,10 @@ func TestProjectHandler_Update_Success(t *testing.T) {
 		"whitelistMode": "all",
 	})
 	path := "/api/v1/projects/" + projectID.String()
-	h, err := NewProjectHandler(ps, &mockProjectBusinessService{
-		getByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-			return &domain.Business{ID: businessID}, nil
-		},
-	})
+	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
 
-	rec, _ := chiRouteRequest("/api/v1/projects/{id}", http.MethodPut, path, body, h.Update, userID, businessID)
+	rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodPut, path, body, h.Update, businessID, userID)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	var got domain.Project
@@ -341,14 +310,10 @@ func TestProjectHandler_Delete_ReturnsCounts(t *testing.T) {
 	}
 
 	path := "/api/v1/projects/" + projectID.String()
-	h, err := NewProjectHandler(ps, &mockProjectBusinessService{
-		getByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-			return &domain.Business{ID: businessID}, nil
-		},
-	})
+	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
 
-	rec, _ := chiRouteRequest("/api/v1/projects/{id}", http.MethodDelete, path, nil, h.Delete, userID, businessID)
+	rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodDelete, path, nil, h.Delete, businessID, userID)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	var resp map[string]int
@@ -369,14 +334,10 @@ func TestProjectHandler_ConversationCount(t *testing.T) {
 	}
 
 	path := "/api/v1/projects/" + projectID.String() + "/conversation-count"
-	h, err := NewProjectHandler(ps, &mockProjectBusinessService{
-		getByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-			return &domain.Business{ID: businessID}, nil
-		},
-	})
+	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
 
-	rec, _ := chiRouteRequest("/api/v1/projects/{id}/conversation-count", http.MethodGet, path, nil, h.ConversationCount, userID, businessID)
+	rec := chiRouteRequest("/api/v1/projects/{id}/conversation-count", http.MethodGet, path, nil, h.ConversationCount, businessID, userID)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	var resp map[string]int
@@ -384,11 +345,10 @@ func TestProjectHandler_ConversationCount(t *testing.T) {
 	assert.Equal(t, 7, resp["count"])
 }
 
-func TestProjectHandler_Endpoints_Require401WhenJWTMissing(t *testing.T) {
-	// No userID in context -> 401 from middleware.GetUserID path.
+func TestProjectHandler_Endpoints_Require500WhenNoBusinessContext(t *testing.T) {
+	// No BusinessContext in context → 500 from misconfiguration guard.
 	ps := &mockProjectService{}
-	bs := &mockProjectBusinessService{}
-	h, err := NewProjectHandler(ps, bs)
+	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
 
 	endpoints := []struct {
@@ -418,14 +378,14 @@ func TestProjectHandler_Endpoints_Require401WhenJWTMissing(t *testing.T) {
 			} else {
 				req = httptest.NewRequest(ep.method, ep.path, http.NoBody)
 			}
-			// No userID in context intentionally.
+			// No BusinessContext in context intentionally.
 
 			router := chi.NewRouter()
 			router.Method(ep.method, ep.pattern, ep.handler)
 			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, req)
 
-			assert.Equal(t, http.StatusUnauthorized, rec.Code, "endpoint %s should require auth", ep.name)
+			assert.Equal(t, http.StatusInternalServerError, rec.Code, "endpoint %s should return 500 when no BusinessContext", ep.name)
 		})
 	}
 }
@@ -435,15 +395,11 @@ func TestProjectHandler_InvalidUUID_Returns400(t *testing.T) {
 	businessID := uuid.New()
 
 	ps := &mockProjectService{}
-	h, err := NewProjectHandler(ps, &mockProjectBusinessService{
-		getByUserIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-			return &domain.Business{ID: businessID}, nil
-		},
-	})
+	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
 
 	path := "/api/v1/projects/not-a-uuid"
-	rec, _ := chiRouteRequest("/api/v1/projects/{id}", http.MethodGet, path, nil, h.Get, userID, businessID)
+	rec := chiRouteRequest("/api/v1/projects/{id}", http.MethodGet, path, nil, h.Get, businessID, userID)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	var resp ErrorResponse
@@ -456,8 +412,8 @@ func TestProjectHandler_Create_InvalidBody_Returns400(t *testing.T) {
 	businessID := uuid.New()
 
 	ps := &mockProjectService{}
-	req, bs := withAuthedUser(http.MethodPost, "/api/v1/projects", []byte("not-json"), userID, businessID)
-	h, err := NewProjectHandler(ps, bs)
+	req := withBizContext(http.MethodPost, "/api/v1/projects", []byte("not-json"), businessID, userID)
+	h, err := NewProjectHandler(ps)
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -470,11 +426,7 @@ func TestProjectHandler_Create_InvalidBody_Returns400(t *testing.T) {
 }
 
 func TestNewProjectHandler_NilArgs(t *testing.T) {
-	_, err := NewProjectHandler(nil, &mockProjectBusinessService{})
+	_, err := NewProjectHandler(nil)
 	assert.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "projectService"))
-
-	_, err = NewProjectHandler(&mockProjectService{}, nil)
-	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "businessService"))
 }

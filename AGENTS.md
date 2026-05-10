@@ -31,7 +31,7 @@ Each module below has its own `AGENTS.md` with directory layout and scope-specif
 
 | Module | Path | Purpose | Port |
 |--------|------|---------|------|
-| Shared | [`pkg/`](pkg/AGENTS.md) | Domain, auth, LLM router, A2A, health, metrics, tokenclient | — |
+| Shared | [`pkg/`](pkg/AGENTS.md) | Domain, auth, LLM router, A2A, health, metrics, tokenclient, orchestratorclient, agentbase | — |
 | API | [`services/api/`](services/api/AGENTS.md) | REST API, auth, business CRUD | 8080 |
 | Orchestrator | [`services/orchestrator/`](services/orchestrator/AGENTS.md) | LLM agent loop, tool dispatch via NATS | 8090 |
 | Frontend | [`services/frontend/`](services/frontend/AGENTS.md) | Next.js dashboard | 3000 |

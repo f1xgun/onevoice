@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSSELine, applySSEEvent } from '../useChat';
+import { parseSSELine, applySSEEvent } from '../sse';
 import type { Message } from '@/types/chat';
 
 describe('parseSSELine', () => {
@@ -133,6 +133,22 @@ describe('applySSEEvent', () => {
     expect(result.toolCalls![0].name).toBe('vk__publish_post');
     expect(result.toolCalls![0].status).toBe('rejected');
     expect(result.toolCalls![0].rejectReason).toBe('policy_revoked');
+    // No args on TOCTOU-server-initiated rejections.
+    expect(result.toolCalls![0].args).toEqual({});
+  });
+
+  it('synthesized rejection carries args when provided (usePendingApprovalFlow projection)', () => {
+    // The resume-flow projects a synthetic frame that mirrors the SSE
+    // shape but adds `args` so the rejected card still shows what was
+    // about to be sent (the operator's context after the fact).
+    const result = applySSEEvent(baseMessage, {
+      type: 'tool_rejected',
+      tool_call_id: 'call_p',
+      tool_name: 'telegram__send_channel_post',
+      content: 'no thanks',
+      args: { text: 'preview', chat_id: 1 },
+    });
+    expect(result.toolCalls![0].args).toEqual({ text: 'preview', chat_id: 1 });
   });
 
   it('correlates duplicate tool names by tool_call_id', () => {

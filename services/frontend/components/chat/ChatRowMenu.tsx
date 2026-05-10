@@ -175,7 +175,7 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
           <Input
             value={renameDraft}
             onChange={(e) => setRenameDraft(e.target.value)}
-            placeholder="Название чата"
+            placeholder={tRow('renamePlaceholder')}
             maxLength={200}
             autoFocus
             onKeyDown={(e) => {

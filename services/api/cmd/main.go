@@ -90,7 +90,10 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		Chat:     cfg.RateLimitChat,
 		HITL:     cfg.RateLimitHITL,
 	}
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits)
+	// Phase 2 v2.0 RBAC: authzCache is owned by wire.Services and gates the
+	// /businesses/{id}/... subtree via authz.RequireBusinessAccess inside
+	// router.Setup.
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache)
 
 	addr := ":" + cfg.Port
 	srv := &http.Server{
