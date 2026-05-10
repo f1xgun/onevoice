@@ -57,7 +57,8 @@
     },
     "window": {
       "helpPrompt": "Чем могу помочь?",
-      "moveError": "Не удалось переместить чат"
+      "moveError": "Не удалось переместить чат",
+      "typing": "OneVoice печатает"
     },
     "moveMenu": {
       "trigger": "Переместить в…",
