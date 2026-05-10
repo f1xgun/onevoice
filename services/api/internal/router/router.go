@@ -60,6 +60,7 @@ type Handlers struct {
 	Permissions   *handler.PermissionsHandler // RBAC: static permission registry
 	Members       *handler.MembersHandler     // RBAC: member management
 	Roles         *handler.RolesHandler       // RBAC: role listing
+	Invitations   *handler.InvitationsHandler // RBAC: invitation lifecycle (Phase 3)
 }
 
 // Setup creates and configures the Chi router with all routes and middleware.
@@ -108,6 +109,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		// Returns only non-sensitive metadata (name, description, status).
 		r.Get("/platforms", handlers.Platforms.List)
 
+		// Phase 3: public invitation preview — token IS the auth (CONTEXT D-04).
+		// Rate-limited per-IP with the Login budget — same threat model as login
+		// (automated abuse with no auth state). T-03-09 mitigation.
+		if handlers.Invitations != nil {
+			r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).
+				Get("/invitations/{token}", handlers.Invitations.Preview)
+		}
+
 		// Protected routes (require auth)
 		r.Group(func(r chi.Router) {
 			// Auth middleware
@@ -133,6 +142,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Post("/reviews/refresh", handlers.Review.RefreshReviews)
 
 			r.Post("/telemetry", handlers.Telemetry.Ingest)
+
+			// Phase 3: invitation accept — auth-required, NOT business-scoped
+			// (the {token} URL param targets a specific business inside the
+			// invitation row). Rate-limited per-user with Login budget for
+			// defense-in-depth (RESEARCH OQ-06). T-03-09 / T-03-10 mitigation.
+			if handlers.Invitations != nil {
+				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Login, time.Minute, "invite_accept")).
+					Post("/invitations/{token}/accept", handlers.Invitations.Accept)
+			}
 
 			// Business-scoped subtree — single chokepoint via RequireBusinessAccess.
 			// Every route under /businesses/{id}/... is gated by this middleware, which:
@@ -181,10 +199,10 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Post("/integrations/telegram/refresh", handlers.Connect.RefreshTelegramLinkedGroup)
 
 				// Chat (rate-limited via env-tunable RateLimits.Chat).
-				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Chat, time.Minute)).
+				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Chat, time.Minute, "chat")).
 					Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
 				if handlers.HITL != nil {
-					r.With(middleware.RateLimitByUser(redisClient, rateLimits.HITL, time.Minute)).
+					r.With(middleware.RateLimitByUser(redisClient, rateLimits.HITL, time.Minute, "chat")).
 						Post("/chat/{id}/resume", handlers.HITL.Resume)
 					r.Post("/conversations/{id}/pending-tool-calls/{batch_id}/resolve", handlers.HITL.ResolvePendingToolCalls)
 					r.Get("/tools", handlers.HITL.GetTools)
@@ -241,6 +259,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				}
 				if handlers.Roles != nil {
 					r.Get("/roles", handlers.Roles.List)
+				}
+
+				// Phase 3: invitations CRUD — business-scoped under
+				// PermMembersInvite. Mirrors Members/Roles registration.
+				if handlers.Invitations != nil {
+					r.Post("/invitations", handlers.Invitations.Create)
+					r.Get("/invitations", handlers.Invitations.ListPending)
+					r.Delete("/invitations/{inviteId}", handlers.Invitations.Revoke)
 				}
 			})
 		})
