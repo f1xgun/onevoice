@@ -577,4 +577,3 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		RoleID:     inv.RoleID,
 	})
 }
-

@@ -188,7 +188,7 @@ func TestInvitationsHandler_Create_HappyPath(t *testing.T) {
 	f.invRepo.On("CreateInTx", mock.Anything, mock.Anything, mock.AnythingOfType("*domain.Invitation")).Return(nil)
 	f.mockPool.ExpectCommit()
 
-	body := fmt.Sprintf(`{"role_id":"%s","expires_in":3600}`, roleID)
+	body := fmt.Sprintf(`{"role_id":%q,"expires_in":3600}`, roleID)
 	req := requestWithBC(http.MethodPost, "/api/v1/businesses/"+bizID.String()+"/invitations", body, ownerBC(bizID, userID))
 	w := httptest.NewRecorder()
 
@@ -229,7 +229,7 @@ func TestInvitationsHandler_Create_CrossTenantRoleID_400(t *testing.T) {
 		ID: roleID, BusinessID: &otherBizID, Name: "custom", Permissions: []string{},
 	}, nil)
 
-	body := fmt.Sprintf(`{"role_id":"%s"}`, roleID)
+	body := fmt.Sprintf(`{"role_id":%q}`, roleID)
 	req := requestWithBC(http.MethodPost, "/x", body, ownerBC(bizID, userID))
 	w := httptest.NewRecorder()
 	f.handler.Create(w, req)
@@ -258,7 +258,7 @@ func TestInvitationsHandler_Create_EscalationSubset_403(t *testing.T) {
 		Permissions: []string{string(authz.PermMembersInvite), "members.update_role"},
 	}, nil)
 
-	body := fmt.Sprintf(`{"role_id":"%s"}`, roleID)
+	body := fmt.Sprintf(`{"role_id":%q}`, roleID)
 	req := requestWithBC(http.MethodPost, "/x", body, bc)
 	w := httptest.NewRecorder()
 	f.handler.Create(w, req)
@@ -282,7 +282,7 @@ func TestInvitationsHandler_Create_PendingCap_429(t *testing.T) {
 	f.invRepo.On("CountPendingByBusinessInTx", mock.Anything, mock.Anything, bizID).Return(20, nil)
 	f.mockPool.ExpectRollback()
 
-	body := fmt.Sprintf(`{"role_id":"%s"}`, roleID)
+	body := fmt.Sprintf(`{"role_id":%q}`, roleID)
 	req := requestWithBC(http.MethodPost, "/x", body, ownerBC(bizID, userID))
 	w := httptest.NewRecorder()
 	f.handler.Create(w, req)
@@ -295,7 +295,7 @@ func TestInvitationsHandler_Create_PendingCap_429(t *testing.T) {
 func TestInvitationsHandler_Create_ExpiresInTooSmall_400(t *testing.T) {
 	f := newInvitationFixture(t)
 	bizID := uuid.New()
-	body := fmt.Sprintf(`{"role_id":"%s","expires_in":3599}`, uuid.New())
+	body := fmt.Sprintf(`{"role_id":%q,"expires_in":3599}`, uuid.New())
 	req := requestWithBC(http.MethodPost, "/x", body, ownerBC(bizID, uuid.New()))
 	w := httptest.NewRecorder()
 	f.handler.Create(w, req)
@@ -306,7 +306,7 @@ func TestInvitationsHandler_Create_ExpiresInTooSmall_400(t *testing.T) {
 func TestInvitationsHandler_Create_ExpiresInTooLarge_400(t *testing.T) {
 	f := newInvitationFixture(t)
 	bizID := uuid.New()
-	body := fmt.Sprintf(`{"role_id":"%s","expires_in":2592001}`, uuid.New())
+	body := fmt.Sprintf(`{"role_id":%q,"expires_in":2592001}`, uuid.New())
 	req := requestWithBC(http.MethodPost, "/x", body, ownerBC(bizID, uuid.New()))
 	w := httptest.NewRecorder()
 	f.handler.Create(w, req)
@@ -333,7 +333,7 @@ func TestInvitationsHandler_Create_ExpiresInDefault_7Days(t *testing.T) {
 	})).Return(nil)
 	f.mockPool.ExpectCommit()
 
-	body := fmt.Sprintf(`{"role_id":"%s"}`, roleID) // no expires_in → default 7d
+	body := fmt.Sprintf(`{"role_id":%q}`, roleID) // no expires_in → default 7d
 	req := requestWithBC(http.MethodPost, "/x", body, ownerBC(bizID, userID))
 	w := httptest.NewRecorder()
 	f.handler.Create(w, req)
@@ -549,7 +549,7 @@ func TestInvitationsHandler_Accept_RefusalMatrix(t *testing.T) {
 			f := newInvitationFixture(t)
 			userID, rawToken := c.seed(t, f)
 
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/invitations/"+rawToken+"/accept", nil)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/invitations/"+rawToken+"/accept", http.NoBody)
 			ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 			req = req.WithContext(ctx)
 			req = withChiParams(req, map[string]string{"token": rawToken})
@@ -580,7 +580,7 @@ func TestInvitationsHandler_Accept_RefusalMatrix(t *testing.T) {
 
 func TestInvitationsHandler_Accept_NoJWT_401(t *testing.T) {
 	f := newInvitationFixture(t)
-	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req := httptest.NewRequest(http.MethodPost, "/x", http.NoBody)
 	req = withChiParams(req, map[string]string{"token": "raw"})
 	w := httptest.NewRecorder()
 	f.handler.Accept(w, req)
@@ -611,7 +611,7 @@ func TestInvitationsHandler_Accept_HappyPath_InvalidateAfterCommit(t *testing.T)
 	f.mockPool.ExpectCommit()
 	f.inv.On("InvalidateMember", bizID, userID).Return()
 
-	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req := httptest.NewRequest(http.MethodPost, "/x", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	req = req.WithContext(ctx)
 	req = withChiParams(req, map[string]string{"token": "happy"})
@@ -642,7 +642,7 @@ func TestInvitationsHandler_Accept_CommitFails_NoInvalidate(t *testing.T) {
 	f.mockPool.ExpectCommit().WillReturnError(errors.New("commit failed"))
 	f.mockPool.ExpectRollback()
 
-	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req := httptest.NewRequest(http.MethodPost, "/x", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	req = req.WithContext(ctx)
 	req = withChiParams(req, map[string]string{"token": "raw"})
@@ -680,7 +680,7 @@ func TestInvitationsHandler_Accept_TokenNotLogged(t *testing.T) {
 	f.inv.On("InvalidateMember", bizID, userID).Return()
 
 	rawToken := "very-secret-token-x9z"
-	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req := httptest.NewRequest(http.MethodPost, "/x", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
 	req = req.WithContext(ctx)
 	req = withChiParams(req, map[string]string{"token": rawToken})
@@ -711,7 +711,7 @@ func TestInvitationsHandler_Preview_PublicNoAuth(t *testing.T) {
 	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{ID: roleID, Name: "editor"}, nil)
 	f.bizRepo.On("GetByID", mock.Anything, bizID).Return(&domain.Business{ID: bizID, Name: "Acme"}, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/x", nil) // NO BC, NO JWT
+	req := httptest.NewRequest(http.MethodGet, "/x", http.NoBody) // NO BC, NO JWT
 	req = withChiParams(req, map[string]string{"token": "any-raw"})
 	w := httptest.NewRecorder()
 
@@ -729,7 +729,7 @@ func TestInvitationsHandler_Preview_PublicNoAuth(t *testing.T) {
 func TestInvitationsHandler_Preview_UnknownToken_410(t *testing.T) {
 	f := newInvitationFixture(t)
 	f.invRepo.On("GetByTokenHash", mock.Anything, mock.Anything).Return(nil, domain.ErrInvitationNotFound)
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req := httptest.NewRequest(http.MethodGet, "/x", http.NoBody)
 	req = withChiParams(req, map[string]string{"token": "nope"})
 	w := httptest.NewRecorder()
 	f.handler.Preview(w, req)
@@ -742,7 +742,7 @@ func TestInvitationsHandler_Preview_Expired_410(t *testing.T) {
 	f.invRepo.On("GetByTokenHash", mock.Anything, mock.Anything).Return(&domain.Invitation{
 		ID: uuid.New(), BusinessID: uuid.New(), RoleID: uuid.New(), ExpiresAt: f.now.Add(-time.Hour),
 	}, nil)
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req := httptest.NewRequest(http.MethodGet, "/x", http.NoBody)
 	req = withChiParams(req, map[string]string{"token": "raw"})
 	w := httptest.NewRecorder()
 	f.handler.Preview(w, req)

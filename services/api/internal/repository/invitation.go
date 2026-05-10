@@ -79,14 +79,14 @@ func (r *invitationRepository) CreateInTx(ctx context.Context, tx pgx.Tx, inv *d
 	return nil
 }
 
-func (r *invitationRepository) buildInsertSQL(inv *domain.Invitation) (string, []any, error) {
+func (r *invitationRepository) buildInsertSQL(inv *domain.Invitation) (sql string, args []any, err error) {
 	if inv.ID == uuid.Nil {
 		inv.ID = uuid.New()
 	}
 	if inv.CreatedAt.IsZero() {
 		inv.CreatedAt = time.Now().UTC()
 	}
-	sql, args, err := r.sb.
+	sql, args, err = r.sb.
 		Insert("invitations").
 		Columns("id", "business_id", "role_id", "token_hash", "expires_at",
 			"accepted_at", "accepted_by", "revoked_at", "created_by", "created_at").
@@ -220,8 +220,8 @@ func (r *invitationRepository) CountPendingByBusinessInTx(ctx context.Context, t
 	return count, nil
 }
 
-func (r *invitationRepository) buildPendingCountSQL(businessID uuid.UUID) (string, []any, error) {
-	sql, args, err := r.sb.
+func (r *invitationRepository) buildPendingCountSQL(businessID uuid.UUID) (sql string, args []any, err error) {
+	sql, args, err = r.sb.
 		Select("COUNT(*)").
 		From("invitations").
 		Where(squirrel.Eq{"business_id": businessID}).
@@ -313,8 +313,8 @@ func (r *invitationRepository) MarkAcceptedInTx(ctx context.Context, tx pgx.Tx, 
 	return nil
 }
 
-func (r *invitationRepository) buildMarkAcceptedSQL(id, accepterUserID uuid.UUID, now time.Time) (string, []any, error) {
-	sql, args, err := r.sb.
+func (r *invitationRepository) buildMarkAcceptedSQL(id, accepterUserID uuid.UUID, now time.Time) (sql string, args []any, err error) {
+	sql, args, err = r.sb.
 		Update("invitations").
 		Set("accepted_at", now).
 		Set("accepted_by", accepterUserID).
