@@ -7,7 +7,11 @@ import {
   type AccordionEntryDraft,
   type ToolApprovalAccordionEntryProps,
 } from '../ToolApprovalAccordionEntry';
-import { singleCallBatch, threeCallBatch } from '@/test-utils/pending-approval-fixtures';
+import {
+  noEditableFieldsBatch,
+  singleCallBatch,
+  threeCallBatch,
+} from '@/test-utils/pending-approval-fixtures';
 
 function makeDraft(overrides: Partial<AccordionEntryDraft> = {}): AccordionEntryDraft {
   return {
@@ -36,16 +40,14 @@ function renderEntry(overrides: Partial<ToolApprovalAccordionEntryProps> = {}) {
   return { ...utils, onSelectDecision, onEditArg, onSetRejectReason };
 }
 
-describe('ToolApprovalAccordionEntry', () => {
-  it('HH) renders the platform badge (TG) and the monospaced tool name', () => {
-    renderEntry({
-      call: singleCallBatch.calls[0]!, // telegram__send_channel_post
-    });
+describe('ToolApprovalAccordionEntry — header + decision toggle', () => {
+  it('renders the platform badge (TG) and the monospaced tool name', () => {
+    renderEntry({ call: singleCallBatch.calls[0]! });
     expect(screen.getByText('TG')).toBeInTheDocument();
     expect(screen.getByText('telegram__send_channel_post')).toBeInTheDocument();
   });
 
-  it('JJ) each toggle button aria-label includes the tool name', () => {
+  it('each toggle button aria-label includes the tool name', () => {
     renderEntry({ call: singleCallBatch.calls[0]! });
     expect(
       screen.getByRole('button', { name: /Одобрить telegram__send_channel_post/ })
@@ -58,31 +60,49 @@ describe('ToolApprovalAccordionEntry', () => {
     ).toBeInTheDocument();
   });
 
-  it('GG) Space on the collapsible trigger reveals the body when the trigger is focusable', async () => {
+  it('Space on the collapsible trigger reveals the body when the trigger is focusable', async () => {
     const user = userEvent.setup();
-    // Start with `undecided` so the body is collapsed by default; press
-    // Space on the trigger to open it manually (Radix Collapsible keyboard
-    // contract). The toggle group is always visible so the trigger IS
-    // focusable via Tab through the header-row aria-label region.
-    renderEntry({
-      call: singleCallBatch.calls[0]!,
-    });
+    renderEntry({ call: singleCallBatch.calls[0]! });
     const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
     trigger.focus();
     await user.keyboard(' ');
-    // After opening, the aria-label flips to "свернуть" — proof the
-    // collapsible toggled under keyboard control.
     expect(screen.getByLabelText(/telegram__send_channel_post — свернуть/)).toBeInTheDocument();
   });
 
-  it('auto-expands when user picks Edit (decision set by parent)', () => {
+  it('platform badge renders VK for a vk__ tool', () => {
+    const vkCall = threeCallBatch.calls[1]!;
+    renderEntry({ call: vkCall });
+    expect(screen.getByText('VK')).toBeInTheDocument();
+    expect(screen.getByText('vk__create_post')).toBeInTheDocument();
+  });
+
+  it('clicking Approve fires onSelectDecision with "approve"', async () => {
+    const user = userEvent.setup();
+    const onSelectDecision = vi.fn();
+    renderEntry({ call: singleCallBatch.calls[0]!, onSelectDecision });
+    await user.click(screen.getByRole('button', { name: /Одобрить/ }));
+    expect(onSelectDecision).toHaveBeenCalledWith('approve');
+  });
+
+  it('applies ring-amber-400 when amberHighlighted is true', () => {
+    const { container } = renderEntry({
+      call: singleCallBatch.calls[0]!,
+      amberHighlighted: true,
+    });
+    const wrapper = container.firstChild as HTMLElement;
+    expect(wrapper.className).toContain('ring-amber-400');
+  });
+
+  it('when a decision is selected, the collapsible trigger aria-label switches to "свернуть"', () => {
     renderEntry({
       call: singleCallBatch.calls[0]!,
       draft: makeDraft({ decision: 'edit' }),
     });
-    expect(screen.getByText('Аргументы')).toBeInTheDocument();
+    expect(screen.getByLabelText(/telegram__send_channel_post — свернуть/)).toBeInTheDocument();
   });
+});
 
+describe('ToolApprovalAccordionEntry — reject textarea + counter', () => {
   it('auto-expands when user picks Reject and renders the textarea with the placeholder', () => {
     renderEntry({
       call: singleCallBatch.calls[0]!,
@@ -98,7 +118,6 @@ describe('ToolApprovalAccordionEntry', () => {
       draft: makeDraft({ decision: 'reject', rejectReason: '' }),
     });
     expect(screen.getByText('0 / 500')).toBeInTheDocument();
-    // Re-render with a populated reason (parent-controlled).
     rerender(
       <ToolApprovalAccordionEntry
         call={singleCallBatch.calls[0]!}
@@ -113,10 +132,7 @@ describe('ToolApprovalAccordionEntry', () => {
     expect(screen.getByText('5 / 500')).toBeInTheDocument();
   });
 
-  it('II) counter gets text-destructive class once the reject reason crosses 500 chars', () => {
-    // The parent reducer slices to 500, so the counter is expected to show
-    // exactly 500 in practice. This test constructs the worst-case visual
-    // guarantee (if the reducer were bypassed, the counter flags overflow).
+  it('counter gets text-destructive class once the reject reason crosses 500 chars', () => {
     const overflowing = 'a'.repeat(501);
     renderEntry({
       call: singleCallBatch.calls[0]!,
@@ -125,156 +141,100 @@ describe('ToolApprovalAccordionEntry', () => {
     const counter = screen.getByText('501 / 500');
     expect(counter.className).toContain('text-destructive');
   });
+});
 
-  it('applies ring-amber-400 when amberHighlighted is true', () => {
-    const { container } = renderEntry({
-      call: singleCallBatch.calls[0]!,
-      amberHighlighted: true,
-    });
-    const wrapper = container.firstChild as HTMLElement;
-    expect(wrapper.className).toContain('ring-amber-400');
-  });
+describe('ToolApprovalAccordionEntry — args form (read-only modes)', () => {
+  // In undecided/approve modes the args form is a labelled context list. The
+  // value should be rendered as plain text (not a JSON tree) so non-technical
+  // operators can read it without parsing JSON.
 
-  it('platform badge renders VK for a vk__ tool', () => {
-    const vkCall = threeCallBatch.calls[1]!; // vk__create_post
-    renderEntry({ call: vkCall });
-    expect(screen.getByText('VK')).toBeInTheDocument();
-    expect(screen.getByText('vk__create_post')).toBeInTheDocument();
-  });
-
-  it('clicking Approve fires onSelectDecision with "approve"', async () => {
-    const user = userEvent.setup();
-    const onSelectDecision = vi.fn();
-    renderEntry({
-      call: singleCallBatch.calls[0]!,
-      onSelectDecision,
-    });
-    await user.click(screen.getByRole('button', { name: /Одобрить/ }));
-    expect(onSelectDecision).toHaveBeenCalledWith('approve');
-  });
-
-  it('editable-fields hint lists the allowlist when non-empty (Edit expansion)', () => {
-    renderEntry({
-      call: singleCallBatch.calls[0]!, // editableFields: ['text', 'parse_mode']
-      draft: makeDraft({ decision: 'edit' }),
-    });
-    expect(screen.getByText(/Можно изменять:\s*text,\s*parse_mode/)).toBeInTheDocument();
-  });
-
-  it('when a decision is selected, the collapsible trigger aria-label switches to "свернуть"', () => {
-    renderEntry({
-      call: singleCallBatch.calls[0]!,
-      draft: makeDraft({ decision: 'edit' }),
-    });
-    const trigger = screen.getByLabelText(/telegram__send_channel_post — свернуть/);
-    expect(trigger).toBeInTheDocument();
-  });
-
-  // ── Read-only args + edit affordance hint ────────────────────────────────
-  //
-  // Operators must be able to read tool args BEFORE selecting a decision.
-  // Pre-fix the `Аргументы` heading + JsonView only rendered when
-  // `decision === 'edit'`, so Approve / undecided modes hid the args.
-  //
-  // In Edit mode, `@uiw/react-json-view/editor` requires double-click on a
-  // value to invoke the inline editor — this is not discoverable. A visible
-  // hint chip tells first-time operators how to edit.
-
-  it('GAP-01: read-only Аргументы block + value visible when decision is undecided and entry is expanded', async () => {
+  it('reveals the Аргументы heading and a labelled row for each arg when expanded (undecided)', async () => {
     const user = userEvent.setup();
     renderEntry({
       call: singleCallBatch.calls[0]!, // args: { chat_id: 123, text: 'hello' }
       draft: makeDraft({ decision: 'undecided' }),
     });
-    // Expand the entry (it is collapsed by default in 'undecided' mode).
-    const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
-    await user.click(trigger);
+    await user.click(screen.getByLabelText(/telegram__send_channel_post — развернуть/));
     expect(screen.getByText('Аргументы')).toBeInTheDocument();
-    // The args value (`hello`) must be present somewhere in the rendered
-    // JSON tree. JsonView renders strings inside spans; queryAllByText with a
-    // regex tolerant of surrounding quotes survives library escaping.
-    expect(screen.getAllByText(/hello/i).length).toBeGreaterThan(0);
+    // Localized labels for both args.
+    expect(screen.getByText('Текст')).toBeInTheDocument();
+    expect(screen.getByText('ID чата')).toBeInTheDocument();
+    // Values rendered inline as text (NOT inside <input>s).
+    expect(screen.getByText('hello')).toBeInTheDocument();
+    expect(screen.getByText('123')).toBeInTheDocument();
   });
 
-  it('GAP-01: read-only Аргументы block + value visible when decision is approve and entry is expanded', async () => {
+  it('still renders args read-only when decision is approve', async () => {
     const user = userEvent.setup();
     renderEntry({
       call: singleCallBatch.calls[0]!,
       draft: makeDraft({ decision: 'approve' }),
-    });
-    // Approve does not auto-expand (only Edit / Reject do); user must click.
-    const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
-    await user.click(trigger);
-    expect(screen.getByText('Аргументы')).toBeInTheDocument();
-    expect(screen.getAllByText(/hello/i).length).toBeGreaterThan(0);
-  });
-
-  it('GAP-01 regression: Аргументы block stays visible in edit mode (existing behaviour preserved)', () => {
-    renderEntry({
-      call: singleCallBatch.calls[0]!,
-      draft: makeDraft({ decision: 'edit' }),
-    });
-    expect(screen.getByText('Аргументы')).toBeInTheDocument();
-  });
-
-  it('GAP-02: edit-affordance hint chip renders in edit mode with the exact RU copy', () => {
-    renderEntry({
-      call: singleCallBatch.calls[0]!,
-      draft: makeDraft({ decision: 'edit' }),
-    });
-    const hint = screen.getByTestId('edit-affordance-hint');
-    expect(hint).toBeInTheDocument();
-    expect(hint).toHaveTextContent('Дважды нажмите на значение, чтобы изменить');
-  });
-
-  it('GAP-02 negative: edit-affordance hint chip is NOT rendered in undecided mode', async () => {
-    const user = userEvent.setup();
-    renderEntry({
-      call: singleCallBatch.calls[0]!,
-      draft: makeDraft({ decision: 'undecided' }),
-    });
-    // Expand so the body is in the DOM — the chip must still be absent.
-    const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
-    await user.click(trigger);
-    expect(screen.queryByTestId('edit-affordance-hint')).not.toBeInTheDocument();
-  });
-
-  it('GAP-02 negative: edit-affordance hint chip is NOT rendered in approve mode', async () => {
-    const user = userEvent.setup();
-    renderEntry({
-      call: singleCallBatch.calls[0]!,
-      draft: makeDraft({ decision: 'approve' }),
-    });
-    const trigger = screen.getByLabelText(/telegram__send_channel_post — развернуть/);
-    await user.click(trigger);
-    expect(screen.queryByTestId('edit-affordance-hint')).not.toBeInTheDocument();
-  });
-
-  it('GAP-02 negative: edit-affordance hint chip is NOT rendered in reject mode (only the textarea)', () => {
-    renderEntry({
-      call: singleCallBatch.calls[0]!,
-      draft: makeDraft({ decision: 'reject' }),
-    });
-    expect(screen.queryByTestId('edit-affordance-hint')).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Причина (необязательно)')).toBeInTheDocument();
-  });
-
-  it('"Можно изменять" hint renders in BOTH read-only (undecided) and edit modes', async () => {
-    const user = userEvent.setup();
-    // Pass 1: undecided, must expand manually.
-    const { unmount } = renderEntry({
-      call: singleCallBatch.calls[0]!, // editableFields: ['text', 'parse_mode']
-      draft: makeDraft({ decision: 'undecided' }),
     });
     await user.click(screen.getByLabelText(/telegram__send_channel_post — развернуть/));
-    expect(screen.getByText(/Можно изменять:\s*text,\s*parse_mode/)).toBeInTheDocument();
-    unmount();
+    expect(screen.getByText('Текст')).toBeInTheDocument();
+    expect(screen.getByText('hello')).toBeInTheDocument();
+    // In approve mode there are no editable form controls.
+    expect(screen.queryByRole('textbox', { name: 'Текст' })).not.toBeInTheDocument();
+  });
+});
 
-    // Pass 2: edit (auto-expanded by useEffect).
+describe('ToolApprovalAccordionEntry — args form (edit mode)', () => {
+  it('renders a textarea pre-filled with the current text value for an editable string field', () => {
+    renderEntry({
+      call: singleCallBatch.calls[0]!, // editableFields: ['text', 'parse_mode']
+      draft: makeDraft({ decision: 'edit' }),
+    });
+    expect(screen.getByText('Аргументы')).toBeInTheDocument();
+    // The editable "Текст" field is reachable by its associated <label>.
+    const textarea = screen.getByLabelText('Текст') as HTMLTextAreaElement;
+    expect(textarea).toBeInTheDocument();
+    expect(textarea.value).toBe('hello');
+  });
+
+  it('non-editable args render in the locked section with a heading + Lock icon hint', () => {
     renderEntry({
       call: singleCallBatch.calls[0]!,
       draft: makeDraft({ decision: 'edit' }),
     });
-    expect(screen.getByText(/Можно изменять:\s*text,\s*parse_mode/)).toBeInTheDocument();
+    // The editable section is "Можно изменить"; the locked section is
+    // "Зафиксировано" and carries the lockedHint copy.
+    expect(screen.getByText('Можно изменить')).toBeInTheDocument();
+    expect(screen.getByText('Зафиксировано')).toBeInTheDocument();
+    expect(screen.getByText(/Эти значения нельзя редактировать/)).toBeInTheDocument();
+    // chat_id should appear in the locked area as a labelled <dd>, never as
+    // an editable control.
+    expect(screen.getByText('ID чата')).toBeInTheDocument();
+    expect(screen.queryByLabelText('ID чата')).not.toBeInTheDocument();
+  });
+
+  it('typing into the editable textarea fires onEditArg with the new value', async () => {
+    const user = userEvent.setup();
+    const onEditArg = vi.fn();
+    renderEntry({
+      call: singleCallBatch.calls[0]!,
+      draft: makeDraft({ decision: 'edit' }),
+      onEditArg,
+    });
+    const textarea = screen.getByLabelText('Текст') as HTMLTextAreaElement;
+    // Append a single character — userEvent fires one onChange per keystroke,
+    // so the last call carries the full new value.
+    await user.type(textarea, '!');
+    expect(onEditArg).toHaveBeenCalled();
+    const lastCall = onEditArg.mock.calls.at(-1);
+    expect(lastCall?.[0]).toBe('text');
+    expect(String(lastCall?.[1])).toContain('hello!');
+  });
+
+  it('renders the "no editable fields" hint when the whitelist is empty', () => {
+    renderEntry({
+      call: noEditableFieldsBatch.calls[0]!,
+      draft: makeDraft({ decision: 'edit' }),
+    });
+    expect(screen.getByText('У этого действия нет редактируемых параметров.')).toBeInTheDocument();
+    // The locked section must still be visible so the operator can see the
+    // pinned ids before approving / rejecting.
+    expect(screen.getByText('Зафиксировано')).toBeInTheDocument();
+    expect(screen.getByText('ID чата')).toBeInTheDocument();
+    expect(screen.getByText('ID сообщения')).toBeInTheDocument();
   });
 });

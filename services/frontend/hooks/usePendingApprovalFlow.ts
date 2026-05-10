@@ -159,11 +159,42 @@ export function usePendingApprovalFlow({
         return;
       }
 
+      // Project the user's rejection decisions into the assistant message
+      // before the resume SSE opens so a rejected call leaves a visible
+      // trail (red-bordered card with the "Отклонено пользователем" badge
+      // and the operator's reason). Without this the rejected call would
+      // live only in pendingApproval and vanish on clear — the empty
+      // bubble would then be suppressed entirely, leaving no record at
+      // all that a tool was invoked and refused.
+      //
+      // Synthetic frames are routed through the same `onResumeEvent`
+      // callback the real SSE stream uses; `applySSEEvent` then dedupes
+      // by tool_call_id when the server emits its own `tool_rejected`
+      // event during resume. Only `reject` decisions are projected —
+      // approve/edit calls produce their own real frames on the stream.
+      for (const c of pendingApproval.calls) {
+        const dec = sanitizedDecisions.find((d) => d.id === c.callId);
+        if (dec?.action !== 'reject') continue;
+        onResumeEventRef.current({
+          type: 'tool_rejected',
+          tool_call_id: c.callId,
+          tool_name: c.toolName,
+          content: dec.reject_reason ?? '',
+          args: c.args,
+        });
+      }
+
       // 2) Open the resume SSE — extends the existing assistant message
       //    (owned by useChat). Each frame goes via onResumeEventRef →
       //    chat.appendSSEEvent.
       const controller = new AbortController();
       abortRef.current = controller;
+      // Track whether the server emitted a real `done` so the finally
+      // block doesn't double-fire one. The synthetic frame is a fallback
+      // for the case where the resume stream closes after tool_rejected
+      // without a terminal `done` event — without it the bubble keeps
+      // showing the typing indicator forever.
+      let sawDone = false;
 
       try {
         const resumeRes = await fetch(
@@ -174,9 +205,10 @@ export function usePendingApprovalFlow({
             signal: controller.signal,
           }
         );
-        await consumeSSEStream(resumeRes, controller.signal, (event) =>
-          onResumeEventRef.current(event)
-        );
+        await consumeSSEStream(resumeRes, controller.signal, (event) => {
+          if (event.type === 'done') sawDone = true;
+          onResumeEventRef.current(event);
+        });
       } catch (err: unknown) {
         if ((err as Error).name === 'AbortError') return;
         toast.error(RESUME_STREAM_ERROR);
@@ -185,6 +217,12 @@ export function usePendingApprovalFlow({
         // persisted batch on the server is the source of truth; a reload
         // re-hydrates from GET /messages.
         setPendingApproval(null);
+        if (!sawDone) {
+          // Fallback: server closed the stream without a terminal `done`
+          // (legitimate after a synthetic tool_rejected). Flip the bubble
+          // out of `streaming` so the typing indicator clears.
+          onResumeEventRef.current({ type: 'done' });
+        }
         isResolvingRef.current = false;
         setIsResolving(false);
       }

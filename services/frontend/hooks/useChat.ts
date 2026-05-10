@@ -231,6 +231,21 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
     onEventRef.current = handleSSEEvent;
   });
 
+  // Force the last assistant message (if still in `streaming` state) into
+  // `done`. Shared by sendMessage's finally-block (and re-used via the
+  // synthetic `done` event the sibling resume flow fires through
+  // appendSSEEvent) so a stream that closes without an explicit `done`
+  // event — e.g., the HITL pause path on `tool_approval_required` or a
+  // hung provider — still clears the typing indicator. No-op when the
+  // last message is the user turn or already done.
+  const finalizeStreamingAssistant = useCallback(() => {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (!last || last.role !== 'assistant' || last.status !== 'streaming') return prev;
+      return [...prev.slice(0, -1), { ...last, status: 'done' as const }];
+    });
+  }, []);
+
   const sendMessage = useCallback(
     async (text: string) => {
       if (isStreamingRef.current) return;
@@ -284,11 +299,18 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
           ];
         });
       } finally {
+        // Server-side closes the stream without a `done` event in two
+        // legitimate cases: when emitting `tool_approval_required` (the
+        // HITL pause) and when an upstream provider drops the connection
+        // mid-run. Without forcing the message to `done` here the bubble
+        // would show the typing indicator forever — flip it now and let
+        // the resume stream re-flip back to streaming if it reopens.
+        finalizeStreamingAssistant();
         setIsStreaming(false);
         isStreamingRef.current = false;
       }
     },
-    [conversationId, accessToken, activeBusinessId]
+    [conversationId, accessToken, activeBusinessId, finalizeStreamingAssistant]
   );
 
   // appendSSEEvent — public for the sibling `usePendingApprovalFlow` to

@@ -1,18 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
-import {
-  evaluateEditGate,
-  ToolApprovalJsonEditor,
-  type JsonEditOption,
-} from '../ToolApprovalJsonEditor';
-import {
-  singleCallBatch,
-  threeCallBatch,
-  nestedArgsBatch,
-  noEditableFieldsBatch,
-} from '@/test-utils/pending-approval-fixtures';
+import { describe, it, expect } from 'vitest';
 
-// Helper — build a `value`-type edit option with sensible defaults.
+import { evaluateEditGate, type JsonEditOption } from '../toolApprovalGate';
+
+// Helper — build a `value`-type edit option with sensible defaults so each
+// test only states what it actually overrides.
 function valueOption(overrides: Partial<JsonEditOption> = {}): JsonEditOption {
   return {
     value: 'new',
@@ -56,29 +47,35 @@ describe('evaluateEditGate — whitelist / scalar / root acceptance', () => {
   });
 });
 
-describe('ToolApprovalJsonEditor — mounts with every canonical fixture', () => {
-  // L) The component must render without crashing for each PendingApproval
-  // fixture — proves the `@uiw/react-json-view/editor` subpath resolves at
-  // runtime and the component wiring accepts the fixture shape.
-  const fixtures = [
-    { name: 'singleCallBatch', batch: singleCallBatch },
-    { name: 'threeCallBatch', batch: threeCallBatch },
-    { name: 'nestedArgsBatch', batch: nestedArgsBatch },
-    { name: 'noEditableFieldsBatch', batch: noEditableFieldsBatch },
-  ];
+describe('evaluateEditGate — nested / type / rename rejection', () => {
+  it('C) rejects a nested edit even when keyName is in editableFields', () => {
+    expect(
+      evaluateEditGate(valueOption({ keyName: 'text', value: 'edited', parentName: 'meta' }), [
+        'text',
+      ])
+    ).toBe(false);
+  });
 
-  for (const { name, batch } of fixtures) {
-    it(`L) mounts with ${name}`, () => {
-      const call = batch.calls[0];
-      const { container } = render(
-        <ToolApprovalJsonEditor
-          args={call.args}
-          editedArgs={{}}
-          editableFields={call.editableFields}
-          onEdit={vi.fn()}
-        />
-      );
-      expect(container.querySelector('div')).not.toBeNull();
-    });
-  }
+  it('D) rejects key renames unconditionally (type === "key")', () => {
+    expect(
+      evaluateEditGate(
+        { value: 'newKey', oldValue: 'text', keyName: 'text', parentName: undefined, type: 'key' },
+        ['text']
+      )
+    ).toBe(false);
+  });
+
+  it('E) rejects a non-scalar object value', () => {
+    expect(
+      evaluateEditGate(valueOption({ keyName: 'text', value: { nested: 'x' } }), ['text'])
+    ).toBe(false);
+  });
+
+  it('F) rejects a null value (typeof null === "object" — must be denied)', () => {
+    expect(evaluateEditGate(valueOption({ keyName: 'text', value: null }), ['text'])).toBe(false);
+  });
+
+  it('G) rejects an array value', () => {
+    expect(evaluateEditGate(valueOption({ keyName: 'text', value: [1, 2] }), ['text'])).toBe(false);
+  });
 });

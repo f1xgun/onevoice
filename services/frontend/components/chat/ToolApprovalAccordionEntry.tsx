@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import JsonView from '@uiw/react-json-view';
+import { useTranslations } from 'next-intl';
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,34 +10,9 @@ import { cn } from '@/lib/utils';
 import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
 import type { ApprovalAction, PendingApprovalCall } from '@/types/chat';
 
-import { ToolApprovalJsonEditor } from './ToolApprovalJsonEditor';
+import { ToolApprovalArgsForm } from './ToolApprovalArgsForm';
 import { ToolApprovalToggleGroup } from './ToolApprovalToggleGroup';
 import { REJECT_REASON_MAX_LEN } from './toolApprovalConstants';
-
-// Exact Russian copy — UI-SPEC §Copywriting Contract. Inlined
-// (no shared i18n layer in v1.3).
-const RU = {
-  argsHeading: 'Аргументы',
-  editableFieldsHint: 'Можно изменять',
-  // discoverability hint for the inline JSON editor's
-  // double-click-to-edit interaction model. Library-agnostic phrasing so
-  // a future swap to a labeled-input form does not require a copy
-  // revision.
-  editAffordanceHint: 'Дважды нажмите на значение, чтобы изменить',
-  rejectPlaceholder: 'Причина (необязательно)',
-  rejectAriaLabel: 'Причина отказа',
-  triggerExpand: 'развернуть',
-  triggerCollapse: 'свернуть',
-} as const;
-
-// Bridge `@uiw/react-json-view` (root, read-only) to the shadcn neutral palette.
-// Mirrors `jsonEditorTheme` from `ToolApprovalJsonEditor.tsx` so the editable
-// vs. read-only swap is visually identical. Kept local to
-// avoid cross-modifying the editor file in this minimal-diff change.
-const jsonViewTheme = {
-  '--w-rjv-color': 'hsl(var(--foreground))',
-  '--w-rjv-background-color': 'hsl(var(--muted))',
-} as React.CSSProperties;
 
 type Decision = ApprovalAction | 'undecided';
 
@@ -73,12 +48,13 @@ export function ToolApprovalAccordionEntry({
   onEditArg,
   onSetRejectReason,
 }: ToolApprovalAccordionEntryProps) {
+  const t = useTranslations('chat.toolApproval');
   const [open, setOpen] = useState(false);
 
   // Auto-expand when the user picks Edit or Reject — per UI-SPEC the
-  // relevant body (JSON editor or textarea) must reveal itself the moment
-  // the decision is selected. Switching back to Approve does NOT force
-  // close; the user may have other context they want to keep visible.
+  // relevant body (form or textarea) must reveal itself the moment the
+  // decision is selected. Switching back to Approve does NOT force close;
+  // the user may have other context they want to keep visible.
   useEffect(() => {
     if (draft.decision === 'edit' || draft.decision === 'reject') {
       setOpen(true);
@@ -90,6 +66,7 @@ export function ToolApprovalAccordionEntry({
   const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase();
 
   const counterOver = draft.rejectReason.length > REJECT_REASON_MAX_LEN;
+  const triggerLabel = open ? t('triggerCollapse') : t('triggerExpand');
 
   return (
     <div
@@ -102,7 +79,7 @@ export function ToolApprovalAccordionEntry({
       <Collapsible open={open} onOpenChange={setOpen}>
         <div className="flex flex-wrap items-center gap-2 px-3 py-2">
           <CollapsibleTrigger
-            aria-label={`${call.toolName} — ${open ? RU.triggerCollapse : RU.triggerExpand}`}
+            aria-label={`${call.toolName} — ${triggerLabel}`}
             className="inline-flex items-center text-ink-mid hover:text-ink"
           >
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -127,45 +104,29 @@ export function ToolApprovalAccordionEntry({
 
         <CollapsibleContent>
           {/*
-            The Аргументы block + editable-fields hint
-            now render whenever the entry is expanded — gated only by
-            <CollapsibleContent>, NOT by `decision`. In Edit mode the editable
-            JSON view replaces the read-only one and the affordance chip
-            appears above it. Previously this whole block was hidden
-            unless `decision === 'edit'`, blocking inspect-before-approve.
+            The "Параметры" block is always visible when the entry is
+            expanded — operators can inspect args before picking a decision.
+            The form below switches between editable (decision === 'edit')
+            and read-only context-list modes; the rest of the wrapper stays
+            stable so the layout does not jump on decision toggle.
           */}
           <div className="space-y-2 px-3 pb-3">
-            <p className="text-sm font-semibold">{RU.argsHeading}</p>
-            {call.editableFields.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {RU.editableFieldsHint}: {call.editableFields.join(', ')}
-              </p>
-            )}
-            {draft.decision === 'edit' ? (
-              <>
-                <p
-                  className="text-xs italic text-muted-foreground"
-                  data-testid="edit-affordance-hint"
-                >
-                  {RU.editAffordanceHint}
-                </p>
-                <ToolApprovalJsonEditor
-                  args={call.args}
-                  editedArgs={draft.editedArgs}
-                  editableFields={call.editableFields}
-                  onEdit={onEditArg}
-                />
-              </>
-            ) : (
-              <JsonView value={call.args} collapsed={2} style={jsonViewTheme} />
-            )}
+            <p className="text-sm font-semibold">{t('argsHeading')}</p>
+            <ToolApprovalArgsForm
+              args={call.args}
+              editedArgs={draft.editedArgs}
+              editableFields={call.editableFields}
+              editable={draft.decision === 'edit'}
+              disabled={disabled}
+              onEdit={onEditArg}
+            />
           </div>
 
           {draft.decision === 'reject' && (
             <div className="space-y-1 px-3 pb-3">
               <Textarea
-                placeholder={RU.rejectPlaceholder}
-                aria-label={RU.rejectAriaLabel}
+                placeholder={t('rejectPlaceholder')}
+                aria-label={t('rejectAriaLabel')}
                 value={draft.rejectReason}
                 maxLength={500}
                 disabled={disabled}
@@ -178,7 +139,7 @@ export function ToolApprovalAccordionEntry({
                   counterOver ? 'text-destructive' : 'text-muted-foreground'
                 )}
               >
-                {/* eslint-disable-next-line i18next/no-literal-string -- pure numeric counter "<n> / <max>", no localizable copy. File opts out of i18n. */}
+                {/* eslint-disable-next-line i18next/no-literal-string -- pure numeric counter "<n> / <max>", no localizable copy. */}
                 {draft.rejectReason.length} / {REJECT_REASON_MAX_LEN}
               </p>
             </div>

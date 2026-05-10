@@ -118,6 +118,43 @@
       "badge": "нужна помощь",
       "helpAction": "Помочь",
       "contextAction": "Дать контекст"
+    },
+    "toolApproval": {
+      "argsHeading": "Аргументы",
+      "editableSectionHeading": "Можно изменить",
+      "lockedSectionHeading": "Зафиксировано",
+      "lockedHint": "Эти значения нельзя редактировать — они подставлены автоматически.",
+      "noEditableFields": "У этого действия нет редактируемых параметров.",
+      "noArgs": "У этого действия нет параметров.",
+      "rejectPlaceholder": "Причина (необязательно)",
+      "rejectAriaLabel": "Причина отказа",
+      "triggerExpand": "развернуть",
+      "triggerCollapse": "свернуть",
+      "booleanYes": "Да",
+      "booleanNo": "Нет",
+      "fieldFallback": "Параметр «{key}»",
+      "fields": {
+        "text": "Текст",
+        "caption": "Подпись",
+        "description": "Описание",
+        "hours": "Часы работы",
+        "channel_id": "ID канала",
+        "chat_id": "ID чата",
+        "message_id": "ID сообщения",
+        "photo_url": "Ссылка на изображение",
+        "group_id": "ID сообщества",
+        "publish_date": "Дата публикации",
+        "post_id": "ID поста",
+        "comment_id": "ID комментария",
+        "phone": "Телефон",
+        "website": "Сайт",
+        "category": "Категория",
+        "review_id": "ID отзыва",
+        "review_name": "Отзыв",
+        "count": "Количество",
+        "limit": "Лимит",
+        "parse_mode": "Формат разметки"
+      }
     }
   },
   "posts": {
