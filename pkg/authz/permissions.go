@@ -19,8 +19,10 @@ package authz
 // stable wire shape via the underlying string.
 type Permission string
 
-// PermissionMeta is the registry entry for one permission. Description is
-// empty in Phase 1; Phase 5 fills it for the role-editor tooltip UX.
+// PermissionMeta is the registry entry for one permission. Description is a
+// short Russian imperative string consumed by the role-editor Info tooltip
+// (UI-RBAC-09 D-13). Adding a new permission requires filling Description
+// here; the drift test in permissions_test.go fails CI when this is missed.
 type PermissionMeta struct {
 	Name        Permission `json:"name"`
 	Description string     `json:"description"`
@@ -85,37 +87,37 @@ const (
 func AllPermissions() []PermissionGroup {
 	return []PermissionGroup{
 		{Resource: "business", Permissions: []PermissionMeta{
-			{Name: PermBusinessRead, Description: ""},
-			{Name: PermBusinessUpdate, Description: ""},
-			{Name: PermBusinessDelete, Description: ""},
-			{Name: PermBusinessTransferOwnership, Description: ""},
+			{Name: PermBusinessRead, Description: "Видеть название, описание и настройки организации."},
+			{Name: PermBusinessUpdate, Description: "Редактировать название, описание и базовые настройки."},
+			{Name: PermBusinessDelete, Description: "Безвозвратно удалить организацию вместе со всеми данными."},
+			{Name: PermBusinessTransferOwnership, Description: "Передавать владение другому участнику. Только текущий владелец."},
 		}},
 		{Resource: "members", Permissions: []PermissionMeta{
-			{Name: PermMembersRead, Description: ""},
-			{Name: PermMembersInvite, Description: ""},
-			{Name: PermMembersRemove, Description: ""},
-			{Name: PermMembersUpdateRole, Description: ""},
+			{Name: PermMembersRead, Description: "Видеть список участников и их роли."},
+			{Name: PermMembersInvite, Description: "Создавать ссылки-приглашения для новых участников."},
+			{Name: PermMembersRemove, Description: "Исключать участников из организации."},
+			{Name: PermMembersUpdateRole, Description: "Назначать участникам другую роль. Кроме самих себя."},
 		}},
 		{Resource: "roles", Permissions: []PermissionMeta{
-			{Name: PermRolesRead, Description: ""},
-			{Name: PermRolesCreate, Description: ""},
-			{Name: PermRolesUpdate, Description: ""},
-			{Name: PermRolesDelete, Description: ""},
+			{Name: PermRolesRead, Description: "Видеть список ролей и какие у них права."},
+			{Name: PermRolesCreate, Description: "Создавать свои роли с особым набором прав."},
+			{Name: PermRolesUpdate, Description: "Редактировать свои роли — название, описание, права."},
+			{Name: PermRolesDelete, Description: "Удалять свои роли. Если на роли есть участники, потребуется выбрать новую роль для них."},
 		}},
 		{Resource: "integrations", Permissions: []PermissionMeta{
-			{Name: PermIntegrationsRead, Description: ""},
-			{Name: PermIntegrationsConnect, Description: ""},
-			{Name: PermIntegrationsDisconnect, Description: ""},
+			{Name: PermIntegrationsRead, Description: "Видеть подключённые платформы и их статус."},
+			{Name: PermIntegrationsConnect, Description: "Привязывать новые аккаунты — Telegram, VK, Яндекс.Бизнес."},
+			{Name: PermIntegrationsDisconnect, Description: "Отключать привязанные аккаунты."},
 		}},
 		{Resource: "content", Permissions: []PermissionMeta{
-			{Name: PermContentRead, Description: ""},
-			{Name: PermContentCreate, Description: ""},
-			{Name: PermContentUpdate, Description: ""},
-			{Name: PermContentDelete, Description: ""},
+			{Name: PermContentRead, Description: "Видеть посты, отзывы, переписку, задачи."},
+			{Name: PermContentCreate, Description: "Создавать посты, отвечать на отзывы, ставить задачи."},
+			{Name: PermContentUpdate, Description: "Редактировать существующие посты, ответы, задачи."},
+			{Name: PermContentDelete, Description: "Удалять посты, ответы, задачи."},
 		}},
 		{Resource: "billing", Permissions: []PermissionMeta{
-			{Name: PermBillingRead, Description: ""},
-			{Name: PermBillingUpdate, Description: ""},
+			{Name: PermBillingRead, Description: "Видеть тариф, счета, использование лимитов."},
+			{Name: PermBillingUpdate, Description: "Менять тариф, реквизиты, способ оплаты."},
 		}},
 	}
 }

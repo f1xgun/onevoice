@@ -302,6 +302,40 @@ func (r *businessMembershipRepository) ListByUser(ctx context.Context, userID uu
 	return out, nil
 }
 
+// ListUserIDsByRole returns the user_id values for every business_members row
+// holding roleID in the given business. Phase 5 RolesHandler.Delete captures
+// this set BEFORE tx.Commit() so it can fanout authz.InvalidateMember per
+// affected user AFTER commit succeeds (Open Question A2: InvalidateRole alone
+// evicts only the role-perms entry, NOT the per-member membership entry that
+// caches the OLD role_id).
+func (r *businessMembershipRepository) ListUserIDsByRole(ctx context.Context, businessID, roleID uuid.UUID) ([]uuid.UUID, error) {
+	sqlStr, args, err := r.sb.
+		Select("user_id").
+		From("business_members").
+		Where(squirrel.Eq{"business_id": businessID, "role_id": roleID}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build list user_ids by role: %w", err)
+	}
+	rows, err := r.pool.Query(ctx, sqlStr, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query user_ids by role: %w", err)
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan user_id: %w", err)
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate user_ids by role: %w", err)
+	}
+	return out, nil
+}
+
 // CountOwnersByBusiness returns the count of active members holding the
 // SystemRoleOwnerID role. Used by EnsureOwnerExistsAfter invariant (AUTHZ-06).
 func (r *businessMembershipRepository) CountOwnersByBusiness(ctx context.Context, businessID uuid.UUID) (int, error) {

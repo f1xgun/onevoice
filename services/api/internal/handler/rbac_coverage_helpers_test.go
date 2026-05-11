@@ -404,6 +404,26 @@ func seedSuspendedMembership(t *testing.T, pool *pgxpool.Pool, bizID, userID, ro
 	require.NoError(t, err)
 }
 
+// seedCustomRole inserts a non-system role row scoped to the given business
+// and returns its ID. Used by substituteURLParams so PATCH /roles/{roleId}
+// and DELETE /roles/{roleId} validate UUID parse + reach the repo layer
+// where the authz gates (401 / 403 / 404) fire as expected. Plan 05-03
+// mirror of seedInvitation.
+//
+// permissions is a single-row JSONB literal: '[]' (empty). The walker uses
+// the viewer JWT which lacks PermRolesUpdate / PermRolesDelete, so the
+// handler's authz.Can() returns 403 before any permission-content validation.
+func seedCustomRole(t *testing.T, pool *pgxpool.Pool, businessID uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO roles (id, business_id, name, description, permissions, is_system, created_at, updated_at)
+		 VALUES ($1, $2, $3, '', '[]'::jsonb, false, NOW(), NOW())`,
+		id, businessID, fmt.Sprintf("seed-role-%s", id.String()[:8]))
+	require.NoError(t, err)
+	return id
+}
+
 // seedInvitation inserts a pending invitation row for (businessID, roleID)
 // returning the new invitation's ID. Used by substituteURLParams to make
 // {inviteId} routes (DELETE /invitations/{inviteId}) reachable in the

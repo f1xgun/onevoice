@@ -152,7 +152,15 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create members handler: %w", err)
 	}
-	rolesHandler, err := handler.NewRolesHandler(repos.Role)
+	// Phase 5 — extended signature: + membership repo (Delete fanout target
+	// lookup) + pool (RepeatableRead tx for Create/Update/Delete) + invalidator
+	// (InvalidateRole AFTER commit + InvalidateMember fanout per reassigned user).
+	rolesHandler, err := handler.NewRolesHandler(
+		repos.Role,
+		repos.BusinessMembership,
+		h.PG,
+		svcs.AuthzCache,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create roles handler: %w", err)
 	}

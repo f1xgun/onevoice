@@ -79,6 +79,17 @@ var (
 var (
 	ErrRoleNotFound        = errors.New("role not found")
 	ErrSystemRoleImmutable = errors.New("system role is immutable")
+
+	// ErrRoleNameTaken is returned by RoleRepository.Create / UpdateInTx when the
+	// `UNIQUE (business_id, name)` constraint on the roles table fires (Postgres
+	// sqlstate 23505). Handler maps this to HTTP 409 role_name_taken.
+	ErrRoleNameTaken = errors.New("role name already taken in this business")
+
+	// ErrRoleInUse is returned by Phase 5 RolesHandler.Delete when the role has
+	// member_count > 0 and the request lacks `?reassign_to=<otherRoleId>`. Mapped
+	// to HTTP 422 role_in_use. The repository never returns this — the handler
+	// decides based on CountMembersByRole result.
+	ErrRoleInUse = errors.New("role is in use by one or more members")
 )
 
 // Invitation errors — RBAC. Handler maps states to HTTP codes:
