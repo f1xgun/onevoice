@@ -7,10 +7,16 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import { fetchMembers, listRoles, removeMember, updateMemberRole } from '@/lib/api/members';
+import { fetchMembers, removeMember, updateMemberRole } from '@/lib/api/members';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
-import type { Member, Role } from '@/lib/schemas';
+import type { Member } from '@/lib/schemas';
+
+// Phase 5: useRoles + the role mutation hooks moved to lib/hooks/useRoles.ts
+// so all role surfaces (list, create, update, delete) sit next to each other.
+// Re-export here for one release so Phase 4 import sites (page.tsx) compile
+// unchanged.
+export { useRoles } from '@/lib/hooks/useRoles';
 
 // React Query hooks for the team-members surface. Mutations follow the
 // mutate-then-invalidate pattern per CONTEXT D-07 — no optimistic updates,
@@ -26,14 +32,6 @@ export function useMembers(businessId: string | null): UseQueryResult<Member[]> 
   return useQuery<Member[]>({
     queryKey: QUERY_KEYS.MEMBERS(businessId),
     queryFn: () => fetchMembers(businessId as string),
-    enabled: !!businessId,
-  });
-}
-
-export function useRoles(businessId: string | null): UseQueryResult<Role[]> {
-  return useQuery<Role[]>({
-    queryKey: QUERY_KEYS.ROLES(businessId),
-    queryFn: () => listRoles(businessId as string),
     enabled: !!businessId,
   });
 }

@@ -1,81 +1,109 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-vi.mock('@/lib/stores/business', () => ({
-  useBusinessStore: vi.fn(),
+// Mock the API layer — usePermission goes through getMyPermissions.
+vi.mock('@/lib/api/permissions', () => ({
+  getMyPermissions: vi.fn(),
+  getPermissionsCatalog: vi.fn(),
 }));
-vi.mock('@/lib/hooks/useBusinessList', () => ({
-  useBusinessList: vi.fn(),
-  BUSINESS_LIST_QUERY_KEY: ['businesses'],
+
+// Mock the Zustand store so the test can flip activeBusinessId imperatively.
+let storeActiveBusinessId: string | null = 'biz-1';
+vi.mock('@/lib/stores/business', () => ({
+  useBusinessStore: (selector: (s: { activeBusinessId: string | null }) => unknown) =>
+    selector({ activeBusinessId: storeActiveBusinessId }),
 }));
 
 import { usePermission } from '@/lib/hooks/usePermission';
-import { useBusinessStore } from '@/lib/stores/business';
-import { useBusinessList } from '@/lib/hooks/useBusinessList';
+import { getMyPermissions } from '@/lib/api/permissions';
 
-const mockedStore = vi.mocked(useBusinessStore);
-const mockedList = vi.mocked(useBusinessList);
+const mockedGetMyPermissions = vi.mocked(getMyPermissions);
 
-function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+function makeWrapper(qc: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  };
 }
 
 beforeEach(() => {
-  mockedStore.mockReset();
-  mockedList.mockReset();
+  storeActiveBusinessId = 'biz-1';
+  mockedGetMyPermissions.mockReset();
 });
 
-function arrange(roleName: string | null, isLoading = false) {
-  mockedStore.mockImplementation((selector: (s: { activeBusinessId: string | null }) => unknown) =>
-    selector({ activeBusinessId: roleName ? 'biz-1' : null })
-  );
-  mockedList.mockReturnValue({
-    data: roleName
-      ? [
-          {
-            id: 'biz-1',
-            name: 'Acme',
-            role: { id: 'r1', name: roleName },
-            status: 'active',
-            joined_at: '',
-          },
-        ]
-      : [],
-    isLoading,
-  } as unknown as ReturnType<typeof useBusinessList>);
-}
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-describe('usePermission', () => {
-  it('returns { allowed: true } for admin members.invite', () => {
-    arrange('admin');
-    const { result } = renderHook(() => usePermission('members.invite'), { wrapper });
-    expect(result.current).toEqual({ allowed: true, isLoading: false });
-  });
-
-  it('returns { allowed: false } for viewer members.invite', () => {
-    arrange('viewer');
-    const { result } = renderHook(() => usePermission('members.invite'), { wrapper });
-    expect(result.current).toEqual({ allowed: false, isLoading: false });
-  });
-
-  it('returns { allowed: true } for owner asking any perm (sentinel)', () => {
-    arrange('owner');
-    const { result } = renderHook(() => usePermission('made.up.permission'), { wrapper });
-    expect(result.current).toEqual({ allowed: true, isLoading: false });
-  });
-
-  it('returns { allowed: false, isLoading: true } while list is loading', () => {
-    arrange('admin', true);
-    const { result } = renderHook(() => usePermission('members.invite'), { wrapper });
+describe('usePermission (Phase 5 swap — reads /me/permissions)', () => {
+  it('returns isLoading=true then allowed=true when API returns the perm', async () => {
+    mockedGetMyPermissions.mockResolvedValue(['business.read', 'members.invite']);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => usePermission('members.invite'), {
+      wrapper: makeWrapper(qc),
+    });
     expect(result.current).toEqual({ allowed: false, isLoading: true });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.allowed).toBe(true);
   });
 
-  it('returns { allowed: false } when no active business is set', () => {
-    arrange(null);
-    const { result } = renderHook(() => usePermission('members.read'), { wrapper });
-    expect(result.current).toEqual({ allowed: false, isLoading: false });
+  it('returns allowed=false when the requested perm is absent from the API response', async () => {
+    mockedGetMyPermissions.mockResolvedValue(['business.read']);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => usePermission('members.invite'), {
+      wrapper: makeWrapper(qc),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.allowed).toBe(false);
+  });
+
+  it('does not fetch when activeBusinessId is null (enabled gate)', () => {
+    storeActiveBusinessId = null;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(() => usePermission('business.read'), { wrapper: makeWrapper(qc) });
+    expect(mockedGetMyPermissions).not.toHaveBeenCalled();
+  });
+
+  it('refetches when activeBusinessId changes (cache partition by business)', async () => {
+    mockedGetMyPermissions.mockResolvedValue(['business.read']);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, rerender } = renderHook(() => usePermission('business.read'), {
+      wrapper: makeWrapper(qc),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(mockedGetMyPermissions).toHaveBeenCalledTimes(1);
+    expect(mockedGetMyPermissions).toHaveBeenLastCalledWith('biz-1');
+
+    act(() => {
+      storeActiveBusinessId = 'biz-2';
+    });
+    rerender();
+    await waitFor(() => expect(mockedGetMyPermissions).toHaveBeenCalledTimes(2));
+    expect(mockedGetMyPermissions).toHaveBeenLastCalledWith('biz-2');
+  });
+
+  it('refetches when the query is invalidated (PermissionsCacheGuard contract)', async () => {
+    // Asserts the second leg of the freshness contract: explicit cache
+    // invalidation triggers a re-fetch. The first leg (passive 60 s polling
+    // via refetchInterval) is a React-Query primitive — verified by reading
+    // the option in source and by the hook's integration with the live API
+    // in dev. Driving the interval deterministically here would require
+    // mocking React-Query's internal tick scheduler, which couples the test
+    // to library internals.
+    mockedGetMyPermissions.mockResolvedValue(['business.read']);
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+    const { result } = renderHook(() => usePermission('business.read'), {
+      wrapper: makeWrapper(qc),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(mockedGetMyPermissions).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await qc.invalidateQueries({ queryKey: ['businesses', 'biz-1', 'permissions'] });
+    });
+    await waitFor(() => expect(mockedGetMyPermissions).toHaveBeenCalledTimes(2));
   });
 });

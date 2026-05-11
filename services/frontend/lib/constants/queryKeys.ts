@@ -31,6 +31,16 @@ export const QUERY_KEYS = {
   MEMBERS: (bizId: string | null) => ['businesses', bizId, 'members'] as const,
   INVITATIONS: (bizId: string | null) => ['businesses', bizId, 'invitations'] as const,
   ROLES: (bizId: string | null) => ['businesses', bizId, 'roles'] as const,
+  // Phase 5 RBAC dynamic registry.
+  // PERMISSIONS_CATALOG is the global static catalog (all permissions; immutable
+  // per deploy). Kept top-level so logout's removeQueries(['businesses']) does
+  // NOT sweep it — the catalog persists across login/logout (correct: app-static).
+  // PERMISSIONS is per-business effective permissions for the active actor;
+  // nested under ['businesses', bizId, 'permissions'] so partial-match logout
+  // sweeps it alongside members/invitations/roles. Distinct keys avoid the
+  // Pitfall 5 confusion documented in 05-RESEARCH.md.
+  PERMISSIONS_CATALOG: ['permissions-catalog'] as const,
+  PERMISSIONS: (bizId: string | null) => ['businesses', bizId, 'permissions'] as const,
   REVIEWS_FILTERED: (platform: string, replyStatus: string) =>
     ['reviews', platform, replyStatus] as const,
   POSTS: (status: string, platform: string) => ['posts', status, platform] as const,

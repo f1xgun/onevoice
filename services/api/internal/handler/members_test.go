@@ -83,6 +83,14 @@ func (m *MockBusinessMembershipRepository) DeleteInTx(ctx context.Context, tx pg
 	return args.Error(0)
 }
 
+func (m *MockBusinessMembershipRepository) ListUserIDsByRole(ctx context.Context, businessID, roleID uuid.UUID) ([]uuid.UUID, error) {
+	args := m.Called(ctx, businessID, roleID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]uuid.UUID), args.Error(1)
+}
+
 // MockRoleRepository is a testify/mock implementation for domain.RoleRepository.
 type MockRoleRepository struct {
 	mock.Mock
@@ -108,20 +116,65 @@ func (m *MockRoleRepository) ListSystem(ctx context.Context) ([]domain.Role, err
 	return nil, errors.New("not implemented")
 }
 
+func (m *MockRoleRepository) ListByBusinessWithCounts(ctx context.Context, businessID uuid.UUID) ([]domain.RoleWithMemberCount, error) {
+	args := m.Called(ctx, businessID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.RoleWithMemberCount), args.Error(1)
+}
+
 func (m *MockRoleRepository) Create(ctx context.Context, role *domain.Role) error {
-	return errors.New("not implemented")
+	args := m.Called(ctx, role)
+	return args.Error(0)
+}
+
+func (m *MockRoleRepository) CreateInTx(ctx context.Context, tx pgx.Tx, role *domain.Role) error {
+	args := m.Called(ctx, tx, role)
+	return args.Error(0)
 }
 
 func (m *MockRoleRepository) Update(ctx context.Context, role *domain.Role) error {
-	return errors.New("not implemented")
+	args := m.Called(ctx, role)
+	return args.Error(0)
+}
+
+func (m *MockRoleRepository) UpdateInTx(ctx context.Context, tx pgx.Tx, role *domain.Role) error {
+	args := m.Called(ctx, tx, role)
+	return args.Error(0)
 }
 
 func (m *MockRoleRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return errors.New("not implemented")
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func (m *MockRoleRepository) DeleteInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	args := m.Called(ctx, tx, id)
+	return args.Error(0)
+}
+
+func (m *MockRoleRepository) DeleteWithReassignInTx(ctx context.Context, tx pgx.Tx, businessID, oldRoleID, reassignToID, actorUserID uuid.UUID) error {
+	args := m.Called(ctx, tx, businessID, oldRoleID, reassignToID, actorUserID)
+	return args.Error(0)
 }
 
 func (m *MockRoleRepository) Reassign(ctx context.Context, businessID, oldRoleID, newRoleID uuid.UUID) error {
-	return errors.New("not implemented")
+	args := m.Called(ctx, businessID, oldRoleID, newRoleID)
+	return args.Error(0)
+}
+
+func (m *MockRoleRepository) CountMembersByRole(ctx context.Context, businessID, roleID uuid.UUID) (int, error) {
+	args := m.Called(ctx, businessID, roleID)
+	return args.Int(0), args.Error(1)
+}
+
+func (m *MockRoleRepository) GetByMemberInBusiness(ctx context.Context, businessID, userID uuid.UUID) (*domain.Role, error) {
+	args := m.Called(ctx, businessID, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Role), args.Error(1)
 }
 
 // MockUserRepository is a testify/mock implementation for domain.UserRepository.

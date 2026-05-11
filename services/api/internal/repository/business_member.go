@@ -14,19 +14,10 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-// errNotImplemented marks a Phase 1 stub. Phase 2/3 implementations replace
-// these returns with real bodies. Sentinel intentionally lives in this file
-// (not pkg/domain/errors.go) because it is a Phase 1 internal scaffold, not
-// a public API contract.
-var errNotImplemented = errors.New("phase 1: not implemented; Phase 2/3 fills the body")
-
 // businessMembershipRepository implements domain.BusinessMembershipRepository.
 //
-// Phase 1 fully implements Insert (transaction-scoped) and GetByBusinessUser
-// (pool-scoped) — the minimum needed by Plan G's dual-write
-// service.business.Create() and Plan H's BEFORE DELETE trigger integration
-// test. The remaining interface methods compile but return wrapped
-// errNotImplemented so Phase 2/3 add bodies, not signatures.
+// All interface methods are implemented in this file. Earlier phases shipped
+// Insert + GetByBusinessUser; Phases 2/3 added the rest with real bodies.
 //
 // pool reuses the existing pgxPool interface from pool.go so both
 // *pgxpool.Pool (production) and pgxmock.PgxPoolIface (unit tests) satisfy
@@ -39,9 +30,8 @@ type businessMembershipRepository struct {
 // Compile-time check that we satisfy the interface.
 var _ domain.BusinessMembershipRepository = (*businessMembershipRepository)(nil)
 
-// NewBusinessMembershipRepository returns the Phase 1 implementation. Only
-// Insert and GetByBusinessUser are implemented; the rest return wrapped
-// errNotImplemented and Phase 2/3 fill them.
+// NewBusinessMembershipRepository wires the BusinessMembership repo onto the
+// given pgxPool (production *pgxpool.Pool or pgxmock for unit tests).
 func NewBusinessMembershipRepository(pool pgxPool) domain.BusinessMembershipRepository {
 	return &businessMembershipRepository{
 		pool: pool,
@@ -298,6 +288,40 @@ func (r *businessMembershipRepository) ListByUser(ctx context.Context, userID uu
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate business_members by user: %w", err)
+	}
+	return out, nil
+}
+
+// ListUserIDsByRole returns the user_id values for every business_members row
+// holding roleID in the given business. Phase 5 RolesHandler.Delete captures
+// this set BEFORE tx.Commit() so it can fanout authz.InvalidateMember per
+// affected user AFTER commit succeeds (Open Question A2: InvalidateRole alone
+// evicts only the role-perms entry, NOT the per-member membership entry that
+// caches the OLD role_id).
+func (r *businessMembershipRepository) ListUserIDsByRole(ctx context.Context, businessID, roleID uuid.UUID) ([]uuid.UUID, error) {
+	sqlStr, args, err := r.sb.
+		Select("user_id").
+		From("business_members").
+		Where(squirrel.Eq{"business_id": businessID, "role_id": roleID}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build list user_ids by role: %w", err)
+	}
+	rows, err := r.pool.Query(ctx, sqlStr, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query user_ids by role: %w", err)
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan user_id: %w", err)
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate user_ids by role: %w", err)
 	}
 	return out, nil
 }

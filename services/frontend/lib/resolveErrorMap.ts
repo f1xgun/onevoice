@@ -62,6 +62,7 @@ export function resolveErrorToRussian(status: number, body: unknown): string {
 const tTeamErrors = getTranslator('team.errors');
 const tInviteAcceptErrors = getTranslator('invite.accept.errors');
 const tInviteFormErrors = getTranslator('team.invite.errors');
+const tRolesErrors = getTranslator('roles.errors');
 
 interface ApiErrorBody {
   error?: string;
@@ -122,4 +123,33 @@ export function mapInviteError(err: unknown): string {
   if (status === HTTP_STATUS.TOO_MANY_REQUESTS && code === 'too_many_pending')
     return tInviteFormErrors('tooManyPending');
   return tInviteAcceptErrors('generic');
+}
+
+/**
+ * Maps backend errors from `/businesses/{id}/roles/...` mutations to a Russian
+ * toast string. Recognised codes (Plan 05-03):
+ *   - 403 cannot_grant_unowned_permissions → roles.errors.cannotGrantUnowned
+ *   - 422 self_lockout                     → roles.errors.selfLockout
+ *   - 422 system_role_immutable            → roles.errors.systemRoleImmutable
+ *   - 422 role_in_use                      → roles.errors.roleInUse
+ *   - 422 last_owner                       → roles.errors.lastOwnerOnDelete
+ *   - anything else                        → roles.errors.saveGeneric
+ *
+ * Callers surface the result via `toast.error(...)`. DeleteRoleDialog intercepts
+ * `role_in_use` separately (race-recovery in-place swap, CONTEXT D-10) BEFORE
+ * calling mapRoleError — see Plan 05-06.
+ */
+export function mapRoleError(err: unknown): string {
+  const { status, code } = extractStatusAndCode(err);
+  if (status === HTTP_STATUS.FORBIDDEN && code === 'cannot_grant_unowned_permissions')
+    return tRolesErrors('cannotGrantUnowned');
+  if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'self_lockout')
+    return tRolesErrors('selfLockout');
+  if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'system_role_immutable')
+    return tRolesErrors('systemRoleImmutable');
+  if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'role_in_use')
+    return tRolesErrors('roleInUse');
+  if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'last_owner')
+    return tRolesErrors('lastOwnerOnDelete');
+  return tRolesErrors('saveGeneric');
 }

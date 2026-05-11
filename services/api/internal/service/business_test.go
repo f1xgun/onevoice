@@ -121,6 +121,10 @@ func (m *mockBusinessMembershipRepository) DeleteInTx(_ context.Context, _ pgx.T
 	return nil
 }
 
+func (m *mockBusinessMembershipRepository) ListUserIDsByRole(_ context.Context, _, _ uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
 // newTestPool returns a fresh pgxmock pool the tests below use as the
 // PgxBeginner argument to NewBusinessService. The pool implicitly satisfies
 // the PgxBeginner interface — pgxmock.PgxPoolIface includes BeginTx.
@@ -819,6 +823,34 @@ func (m *mockRoleRepository) Delete(_ context.Context, _ uuid.UUID) error {
 
 func (m *mockRoleRepository) Reassign(_ context.Context, _, _, _ uuid.UUID) error {
 	return nil
+}
+
+func (m *mockRoleRepository) ListByBusinessWithCounts(_ context.Context, _ uuid.UUID) ([]domain.RoleWithMemberCount, error) {
+	return nil, nil
+}
+
+func (m *mockRoleRepository) CreateInTx(_ context.Context, _ pgx.Tx, _ *domain.Role) error {
+	return nil
+}
+
+func (m *mockRoleRepository) UpdateInTx(_ context.Context, _ pgx.Tx, _ *domain.Role) error {
+	return nil
+}
+
+func (m *mockRoleRepository) DeleteInTx(_ context.Context, _ pgx.Tx, _ uuid.UUID) error {
+	return nil
+}
+
+func (m *mockRoleRepository) DeleteWithReassignInTx(_ context.Context, _ pgx.Tx, _, _, _, _ uuid.UUID) error {
+	return nil
+}
+
+func (m *mockRoleRepository) CountMembersByRole(_ context.Context, _, _ uuid.UUID) (int, error) {
+	return 0, nil
+}
+
+func (m *mockRoleRepository) GetByMemberInBusiness(_ context.Context, _, _ uuid.UUID) (*domain.Role, error) {
+	return nil, domain.ErrMembershipNotFound
 }
 
 func TestBusinessService_ListMembershipsByUser(t *testing.T) {

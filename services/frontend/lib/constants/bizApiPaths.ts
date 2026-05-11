@@ -43,6 +43,13 @@ export const BIZ_API_PATHS = {
   },
   ROLES: {
     ROOT: '/roles',
+    BY_ID: (roleId: string) => `/roles/${roleId}` as const,
+  },
+  // Phase 5 RBAC: per-business "me" endpoints (actor's effective state).
+  // BIZ_API_PATHS.ME.PERMISSIONS resolves to
+  // GET /api/v1/businesses/{bizId}/me/permissions → { permissions: string[] }.
+  ME: {
+    PERMISSIONS: '/me/permissions',
   },
   INTEGRATIONS: {
     ROOT: '/integrations',

@@ -170,10 +170,10 @@ func setupTestEnv(t *testing.T) *testEnv {
 // cache for one constructed via authz.NewCacheForTest with small TTLs.
 //
 // Used ONLY by TestRBACCoverage_TTLCeiling (HIGH #1 + HIGH #2). The approach:
-//   1. Call wiring.BuildHandlers to get the full handler set + pool.
-//   2. Build a separate authz.Cache with short TTLs via NewCacheForTest.
-//   3. Rebuild the router (router.Setup) passing the test cache — so the
-//      RequireBusinessAccess middleware uses the short-TTL cache.
+//  1. Call wiring.BuildHandlers to get the full handler set + pool.
+//  2. Build a separate authz.Cache with short TTLs via NewCacheForTest.
+//  3. Rebuild the router (router.Setup) passing the test cache — so the
+//     RequireBusinessAccess middleware uses the short-TTL cache.
 //
 // This duplicates the router.Setup call for TTL tests only; documented in
 // 02-07-SUMMARY. The Clock interface is intentionally absent (HIGH #2 —
@@ -402,6 +402,26 @@ func seedSuspendedMembership(t *testing.T, pool *pgxpool.Pool, bizID, userID, ro
 		 ON CONFLICT (business_id, user_id) DO UPDATE SET role_id = $3, status = 'suspended'`,
 		bizID, userID, roleID)
 	require.NoError(t, err)
+}
+
+// seedCustomRole inserts a non-system role row scoped to the given business
+// and returns its ID. Used by substituteURLParams so PATCH /roles/{roleId}
+// and DELETE /roles/{roleId} validate UUID parse + reach the repo layer
+// where the authz gates (401 / 403 / 404) fire as expected. Plan 05-03
+// mirror of seedInvitation.
+//
+// permissions is a single-row JSONB literal: '[]' (empty). The walker uses
+// the viewer JWT which lacks PermRolesUpdate / PermRolesDelete, so the
+// handler's authz.Can() returns 403 before any permission-content validation.
+func seedCustomRole(t *testing.T, pool *pgxpool.Pool, businessID uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO roles (id, business_id, name, description, permissions, is_system, created_at, updated_at)
+		 VALUES ($1, $2, $3, '', '[]'::jsonb, false, NOW(), NOW())`,
+		id, businessID, fmt.Sprintf("seed-role-%s", id.String()[:8]))
+	require.NoError(t, err)
+	return id
 }
 
 // seedInvitation inserts a pending invitation row for (businessID, roleID)
