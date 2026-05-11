@@ -259,6 +259,17 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				}
 				if handlers.Roles != nil {
 					r.Get("/roles", handlers.Roles.List)
+					// Phase 5 RBAC role CRUD (ROLE-04..06). All gated by
+					// RequireBusinessAccess (inherited from the subroute) +
+					// per-route Can() check inside the handler.
+					r.Post("/roles", handlers.Roles.Create)
+					r.Patch("/roles/{roleId}", handlers.Roles.Update)
+					r.Delete("/roles/{roleId}", handlers.Roles.Delete)
+					// Phase 5 UI-RBAC-08 — actor's effective permissions in
+					// the active business. No additional permission gate
+					// beyond RequireBusinessAccess (any member can read their
+					// own permissions).
+					r.Get("/me/permissions", handlers.Roles.MyPermissions)
 				}
 
 				// Phase 3: invitations CRUD — business-scoped under

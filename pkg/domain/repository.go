@@ -111,22 +111,88 @@ type BusinessMembershipRepository interface {
 	// the isolation guarantee (G-07 fix — same shape as CR-01 for UpdateRoleInTx).
 	// Returns domain.ErrMembershipNotFound when no row matched.
 	DeleteInTx(ctx context.Context, tx pgx.Tx, businessID, userID uuid.UUID) error
+
+	// ListUserIDsByRole returns the user_id values for every business_members
+	// row holding roleID in the given business. Phase 5 RolesHandler.Delete
+	// captures this set BEFORE tx.Commit() so it can fanout
+	// authz.InvalidateMember per affected user AFTER commit succeeds (Open
+	// Question A2: InvalidateRole alone evicts only the role-perms entry, not
+	// the per-member membership entry that caches the OLD role_id).
+	ListUserIDsByRole(ctx context.Context, businessID, roleID uuid.UUID) ([]uuid.UUID, error)
 }
 
-// RoleRepository — Phase 1 declares the surface; Phase 2 adds Get/List
-// implementations, Phase 5 adds full CRUD. Phase 1 ships zero
-// implementations (system roles are seeded via migration SQL, not via
-// this interface).
+// RoleWithMemberCount augments a Role with the number of business_members
+// holding it in a specific business. Used by GET /businesses/{id}/roles for
+// the delete-with-reassignment UX (CONTEXT D-08 smart-branching). For system
+// roles the count is per-business (the JOIN is filtered by business_id), so
+// it reflects "how many local members hold this preset" — not the global
+// across-all-businesses count.
+type RoleWithMemberCount struct {
+	Role
+	MemberCount int `json:"member_count"`
+}
+
+// RoleRepository — Phase 1 declared the surface; Phase 2 added Get/List
+// implementations; Phase 5 adds full CRUD (CONTEXT D-08, ROLE-04..07).
+//
+// Tx-aware siblings (CreateInTx, UpdateInTx, DeleteInTx, DeleteWithReassignInTx)
+// follow the same pattern as BusinessMembershipRepository.UpdateRoleInTx /
+// DeleteInTx (Phase 2): the handler opens RepeatableRead, composes the
+// invariant check (CheckEscalationSubset / CheckSelfLockout / optional
+// EnsureOwnerExistsAfter) and the mutation in one tx, commits, then calls
+// authz.InvalidateRole AFTER tx.Commit() (AUTHZ-04 + ROLE-07).
 type RoleRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Role, error)
 	ListSystem(ctx context.Context) ([]Role, error)
 	ListByBusiness(ctx context.Context, businessID uuid.UUID) ([]Role, error)
+
+	// ListByBusinessWithCounts is the Phase 5 variant returning system + custom
+	// roles with member_count populated via LEFT JOIN business_members. Used by
+	// GET /businesses/{id}/roles for the new response shape (CONTEXT D-08).
+	ListByBusinessWithCounts(ctx context.Context, businessID uuid.UUID) ([]RoleWithMemberCount, error)
+
+	// Create inserts a custom role (is_system=false). Returns ErrRoleNameTaken
+	// on UNIQUE (business_id, name) conflict.
 	Create(ctx context.Context, role *Role) error
+	CreateInTx(ctx context.Context, tx pgx.Tx, role *Role) error
+
 	Update(ctx context.Context, role *Role) error
+	// UpdateInTx replaces name/description/permissions/updated_by on a custom
+	// role; refuses system rows via `WHERE is_system=false` (returns
+	// ErrRoleNotFound for both "missing" and "is_system=true" cases — defense
+	// in depth on top of handler-level CheckSystemRoleImmutable).
+	UpdateInTx(ctx context.Context, tx pgx.Tx, role *Role) error
+
 	Delete(ctx context.Context, id uuid.UUID) error
-	// Reassign moves every membership in business that holds oldRoleID to
-	// newRoleID; used by Phase 5 DELETE /roles/{id}?reassign_to=…
+	// DeleteInTx removes a custom role with zero members (caller verifies
+	// member_count==0 first). Refuses system rows via `WHERE is_system=false`.
+	DeleteInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) error
+
+	// DeleteWithReassignInTx reassigns all business_members holding oldRoleID
+	// in the given business to reassignToID, then deletes the old role — all
+	// in one tx. The reassign-first ordering is REQUIRED by the FK
+	// ON DELETE RESTRICT on business_members.role_id. actorUserID is written
+	// to business_members.role_changed_by for audit (DATA-08).
+	DeleteWithReassignInTx(ctx context.Context, tx pgx.Tx, businessID, oldRoleID, reassignToID, actorUserID uuid.UUID) error
+
+	// Reassign is the non-tx legacy signature retained for compatibility with
+	// Phase 1's interface declaration. Phase 5 prefers DeleteWithReassignInTx
+	// which composes reassign + delete atomically.
 	Reassign(ctx context.Context, businessID, oldRoleID, newRoleID uuid.UUID) error
+
+	// CountMembersByRole returns the number of active business_members rows
+	// with role_id == roleID in the given business. Used by RolesHandler.Delete
+	// to branch on the `?reassign_to=` requirement (ROLE-06).
+	CountMembersByRole(ctx context.Context, businessID, roleID uuid.UUID) (int, error)
+
+	// GetByMemberInBusiness returns the role for a specific (business, user)
+	// pair via JOIN business_members × roles. Used by RolesHandler.MyPermissions
+	// if the handler prefers fresh DB lookup over bc.Permissions (which is
+	// cache-derived; see 05-RESEARCH.md §GET /me/permissions Option 2). The
+	// bias in 05-03 is Option 1 (bc.Permissions), but this method exists so
+	// a fresh-lookup variant is one-line away if cache staleness becomes a
+	// concern.
+	GetByMemberInBusiness(ctx context.Context, businessID, userID uuid.UUID) (*Role, error)
 }
 
 // InvitationRepository — Phase 1 declares the surface; Phase 3 implements.

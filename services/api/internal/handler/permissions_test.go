@@ -13,8 +13,9 @@ import (
 // TestPermissionsHandler_List_HappyPath asserts the registry endpoint shape:
 // 200 OK, application/json, {"groups": [...]}, six PermissionGroups in
 // declared order (business, members, roles, integrations, content, billing),
-// and that the first group's first permission is `business.read` with an
-// empty description (Phase 1 leaves descriptions for Phase 5 tooltip UX).
+// and that the first group's first permission is `business.read` with a
+// non-empty Russian description (Phase 5-01 populated all 21 descriptions
+// for tooltip UX).
 //
 // This is the only test the plan specifies — auth/401-path testing belongs to
 // authMiddleware (covered in its own tests) and the route wiring is Plan G.
@@ -52,5 +53,5 @@ func TestPermissionsHandler_List_HappyPath(t *testing.T) {
 	// `business.read` per pkg/authz.AllPermissions() declaration order.
 	require.NotEmpty(t, body.Groups[0].Permissions)
 	assert.Equal(t, "business.read", body.Groups[0].Permissions[0].Name)
-	assert.Equal(t, "", body.Groups[0].Permissions[0].Description, "Phase 1 leaves descriptions empty")
+	assert.NotEmpty(t, body.Groups[0].Permissions[0].Description, "Phase 5-01 populates descriptions for tooltip UX")
 }

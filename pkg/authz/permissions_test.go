@@ -51,16 +51,6 @@ func TestAllPermissions_NameFormat(t *testing.T) {
 	}
 }
 
-func TestAllPermissions_Phase1DescriptionsEmpty(t *testing.T) {
-	for _, g := range AllPermissions() {
-		for _, p := range g.Permissions {
-			if p.Description != "" {
-				t.Errorf("permission %q has non-empty description %q (Phase 1 leaves these empty; Phase 5 fills)", p.Name, p.Description)
-			}
-		}
-	}
-}
-
 func TestPermissionConstantsExist(t *testing.T) {
 	// Compile-time: every constant referenced below must exist as an exported identifier.
 	// If any constant is renamed, this test stops compiling — that's the point.
@@ -71,5 +61,26 @@ func TestPermissionConstantsExist(t *testing.T) {
 		PermIntegrationsRead, PermIntegrationsConnect, PermIntegrationsDisconnect,
 		PermContentRead, PermContentCreate, PermContentUpdate, PermContentDelete,
 		PermBillingRead, PermBillingUpdate,
+	}
+}
+
+// TestAllPermissions_DescriptionsNotEmpty asserts every permission has a
+// non-empty Description after Phase 5 fill (05-CONTEXT D-13). This is the
+// CI guard against regressing UI-RBAC-09 (the PermissionTree Info tooltip
+// depends on description text). Adding a new permission requires filling
+// Description in permissions.go AllPermissions().
+func TestAllPermissions_DescriptionsNotEmpty(t *testing.T) {
+	t.Parallel()
+	groups := AllPermissions()
+	var empty []string
+	for _, g := range groups {
+		for _, p := range g.Permissions {
+			if p.Description == "" {
+				empty = append(empty, string(p.Name))
+			}
+		}
+	}
+	if len(empty) > 0 {
+		t.Fatalf("permissions missing Description (fill in pkg/authz/permissions.go AllPermissions()): %v", empty)
 	}
 }

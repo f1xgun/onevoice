@@ -53,6 +53,24 @@ func TestWriteAuthzInvariantError(t *testing.T) {
 			wantCode:   "member_not_found",
 		},
 		{
+			name:       "ErrRoleNotFound maps to 404 role_not_found",
+			err:        domain.ErrRoleNotFound,
+			wantStatus: http.StatusNotFound,
+			wantCode:   "role_not_found",
+		},
+		{
+			name:       "ErrRoleNameTaken maps to 409 role_name_taken",
+			err:        domain.ErrRoleNameTaken,
+			wantStatus: http.StatusConflict,
+			wantCode:   "role_name_taken",
+		},
+		{
+			name:       "ErrRoleInUse maps to 422 role_in_use",
+			err:        domain.ErrRoleInUse,
+			wantStatus: http.StatusUnprocessableEntity,
+			wantCode:   "role_in_use",
+		},
+		{
 			name:       "unknown error maps to 500 internal_server_error",
 			err:        errors.New("something unexpected"),
 			wantStatus: http.StatusInternalServerError,
