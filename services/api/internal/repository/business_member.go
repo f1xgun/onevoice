@@ -14,19 +14,10 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-// errNotImplemented marks a Phase 1 stub. Phase 2/3 implementations replace
-// these returns with real bodies. Sentinel intentionally lives in this file
-// (not pkg/domain/errors.go) because it is a Phase 1 internal scaffold, not
-// a public API contract.
-var errNotImplemented = errors.New("phase 1: not implemented; Phase 2/3 fills the body")
-
 // businessMembershipRepository implements domain.BusinessMembershipRepository.
 //
-// Phase 1 fully implements Insert (transaction-scoped) and GetByBusinessUser
-// (pool-scoped) — the minimum needed by Plan G's dual-write
-// service.business.Create() and Plan H's BEFORE DELETE trigger integration
-// test. The remaining interface methods compile but return wrapped
-// errNotImplemented so Phase 2/3 add bodies, not signatures.
+// All interface methods are implemented in this file. Earlier phases shipped
+// Insert + GetByBusinessUser; Phases 2/3 added the rest with real bodies.
 //
 // pool reuses the existing pgxPool interface from pool.go so both
 // *pgxpool.Pool (production) and pgxmock.PgxPoolIface (unit tests) satisfy
@@ -39,9 +30,8 @@ type businessMembershipRepository struct {
 // Compile-time check that we satisfy the interface.
 var _ domain.BusinessMembershipRepository = (*businessMembershipRepository)(nil)
 
-// NewBusinessMembershipRepository returns the Phase 1 implementation. Only
-// Insert and GetByBusinessUser are implemented; the rest return wrapped
-// errNotImplemented and Phase 2/3 fill them.
+// NewBusinessMembershipRepository wires the BusinessMembership repo onto the
+// given pgxPool (production *pgxpool.Pool or pgxmock for unit tests).
 func NewBusinessMembershipRepository(pool pgxPool) domain.BusinessMembershipRepository {
 	return &businessMembershipRepository{
 		pool: pool,

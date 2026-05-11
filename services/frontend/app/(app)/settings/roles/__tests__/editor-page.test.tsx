@@ -190,7 +190,7 @@ describe('NewRolePage (UI-RBAC-08 create flow)', () => {
 
 describe('EditRolePage (UI-RBAC-08 edit flow)', () => {
   it('pre-fills form from roles cache (name + description)', async () => {
-    renderPage(<EditRolePage params={{ id: MARKETING_ROLE.id }} />);
+    renderPage(<EditRolePage params={Promise.resolve({ id: MARKETING_ROLE.id })} />);
     await waitFor(() => {
       expect((screen.getByLabelText(/Название/i) as HTMLInputElement).value).toBe('Marketing');
     });
@@ -200,7 +200,7 @@ describe('EditRolePage (UI-RBAC-08 edit flow)', () => {
   });
 
   it('Save button stays disabled until the user edits a field', async () => {
-    renderPage(<EditRolePage params={{ id: MARKETING_ROLE.id }} />);
+    renderPage(<EditRolePage params={Promise.resolve({ id: MARKETING_ROLE.id })} />);
     await waitFor(() =>
       expect((screen.getByLabelText(/Название/i) as HTMLInputElement).value).toBe('Marketing')
     );
@@ -210,7 +210,7 @@ describe('EditRolePage (UI-RBAC-08 edit flow)', () => {
 
   it('submits PATCH /roles/:id when user edits and saves', async () => {
     mockedUpdateRole.mockResolvedValue({ ...MARKETING_ROLE, name: 'Marketing 2' });
-    renderPage(<EditRolePage params={{ id: MARKETING_ROLE.id }} />);
+    renderPage(<EditRolePage params={Promise.resolve({ id: MARKETING_ROLE.id })} />);
     await waitFor(() =>
       expect((screen.getByLabelText(/Название/i) as HTMLInputElement).value).toBe('Marketing')
     );
