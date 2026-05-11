@@ -21,7 +21,6 @@ type mockBusinessRepository struct {
 	createFunc              func(ctx context.Context, business *domain.Business) error
 	createInTxFunc          func(ctx context.Context, tx pgx.Tx, business *domain.Business) error
 	getByIDFunc             func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
-	getByUserIDFunc         func(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
 	updateFunc              func(ctx context.Context, business *domain.Business) error
 	updateToolApprovalsFunc func(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
@@ -49,13 +48,6 @@ func (m *mockBusinessRepository) CreateInTx(ctx context.Context, tx pgx.Tx, busi
 func (m *mockBusinessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
 	if m.getByIDFunc != nil {
 		return m.getByIDFunc(ctx, id)
-	}
-	return nil, domain.ErrBusinessNotFound
-}
-
-func (m *mockBusinessRepository) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
-	if m.getByUserIDFunc != nil {
-		return m.getByUserIDFunc(ctx, userID)
 	}
 	return nil, domain.ErrBusinessNotFound
 }
@@ -168,7 +160,6 @@ func TestBusinessService_Create(t *testing.T) {
 
 		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
 		business := &domain.Business{
-			UserID:      userID,
 			Name:        "Test Coffee Shop",
 			Category:    "cafe",
 			Address:     "123 Main St",
@@ -178,11 +169,10 @@ func TestBusinessService_Create(t *testing.T) {
 			Settings:    map[string]interface{}{"theme": "dark"},
 		}
 
-		result, err := svc.Create(ctx, business)
+		result, err := svc.Create(ctx, business, userID)
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		assert.Equal(t, userID, result.UserID)
 		assert.Equal(t, "Test Coffee Shop", result.Name)
 		assert.Equal(t, "cafe", result.Category)
 		assert.Equal(t, "123 Main St", result.Address)
@@ -196,7 +186,6 @@ func TestBusinessService_Create(t *testing.T) {
 
 		// Verify repository was called via the CreateInTx → createFunc fallback
 		assert.NotNil(t, createdBusiness)
-		assert.Equal(t, userID, createdBusiness.UserID)
 
 		require.NoError(t, pool.ExpectationsWereMet())
 	})
@@ -217,15 +206,13 @@ func TestBusinessService_Create(t *testing.T) {
 
 		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
 		business := &domain.Business{
-			UserID: userID,
-			Name:   "Minimal Business",
+			Name: "Minimal Business",
 		}
 
-		result, err := svc.Create(ctx, business)
+		result, err := svc.Create(ctx, business, userID)
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		assert.Equal(t, userID, result.UserID)
 		assert.Equal(t, "Minimal Business", result.Name)
 		assert.Empty(t, result.Category)
 		assert.Empty(t, result.Address)
@@ -249,12 +236,11 @@ func TestBusinessService_Create(t *testing.T) {
 
 		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
 		business := &domain.Business{
-			UserID:   userID,
 			Name:     "Business with nil settings",
 			Settings: nil,
 		}
 
-		result, err := svc.Create(ctx, business)
+		result, err := svc.Create(ctx, business, userID)
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -269,11 +255,10 @@ func TestBusinessService_Create(t *testing.T) {
 		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
 
 		business := &domain.Business{
-			UserID: uuid.New(),
-			Name:   "",
+			Name: "",
 		}
 
-		result, err := svc.Create(ctx, business)
+		result, err := svc.Create(ctx, business, uuid.New())
 
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -287,15 +272,14 @@ func TestBusinessService_Create(t *testing.T) {
 		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
 
 		business := &domain.Business{
-			UserID: uuid.Nil,
-			Name:   "Test Business",
+			Name: "Test Business",
 		}
 
-		result, err := svc.Create(ctx, business)
+		result, err := svc.Create(ctx, business, uuid.Nil)
 
 		assert.Error(t, err)
 		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "user id is required")
+		assert.Contains(t, err.Error(), "owner user id is required")
 	})
 
 	t.Run("error - business already exists", func(t *testing.T) {
@@ -311,11 +295,10 @@ func TestBusinessService_Create(t *testing.T) {
 
 		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
 		business := &domain.Business{
-			UserID: uuid.New(),
-			Name:   "Test Business",
+			Name: "Test Business",
 		}
 
-		result, err := svc.Create(ctx, business)
+		result, err := svc.Create(ctx, business, uuid.New())
 
 		assert.ErrorIs(t, err, domain.ErrBusinessExists)
 		assert.Nil(t, result)
@@ -336,11 +319,10 @@ func TestBusinessService_Create(t *testing.T) {
 
 		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
 		business := &domain.Business{
-			UserID: uuid.New(),
-			Name:   "Test Business",
+			Name: "Test Business",
 		}
 
-		result, err := svc.Create(ctx, business)
+		result, err := svc.Create(ctx, business, uuid.New())
 
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -378,9 +360,9 @@ func TestBusinessService_Create_Success_DualWrite(t *testing.T) {
 	pool.ExpectCommit()
 
 	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
-	business := &domain.Business{UserID: userID, Name: "Atomic Co"}
+	business := &domain.Business{Name: "Atomic Co"}
 
-	result, err := svc.Create(ctx, business)
+	result, err := svc.Create(ctx, business, userID)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, businessSeenInTx)
@@ -421,9 +403,9 @@ func TestBusinessService_Create_BusinessInsertFails(t *testing.T) {
 	pool.ExpectRollback()
 
 	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
-	business := &domain.Business{UserID: uuid.New(), Name: "Will Fail"}
+	business := &domain.Business{Name: "Will Fail"}
 
-	result, err := svc.Create(ctx, business)
+	result, err := svc.Create(ctx, business, uuid.New())
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "create business")
@@ -454,9 +436,9 @@ func TestBusinessService_Create_MembershipInsertFails(t *testing.T) {
 	pool.ExpectRollback()
 
 	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
-	business := &domain.Business{UserID: uuid.New(), Name: "Half-written Co"}
+	business := &domain.Business{Name: "Half-written Co"}
 
-	result, err := svc.Create(ctx, business)
+	result, err := svc.Create(ctx, business, uuid.New())
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "insert owner membership")
@@ -485,9 +467,9 @@ func TestBusinessService_Create_MembershipDuplicate(t *testing.T) {
 	pool.ExpectCommit()
 
 	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
-	business := &domain.Business{UserID: uuid.New(), Name: "Already-backfilled Co"}
+	business := &domain.Business{Name: "Already-backfilled Co"}
 
-	result, err := svc.Create(ctx, business)
+	result, err := svc.Create(ctx, business, uuid.New())
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NoError(t, pool.ExpectationsWereMet())
@@ -539,24 +521,6 @@ func TestBusinessService_Create_NilDeps(t *testing.T) {
 	})
 }
 
-// TestBusinessService_GetByUserID — Plan 02-02 deleted the real implementation;
-// GetByUserID is now a stub that always returns an error directing callers to
-// authz.BusinessContextFromCtx (Plan 02-05 will migrate all call sites).
-// This test documents the stub contract so it does not regress unexpectedly.
-func TestBusinessService_GetByUserID(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("stub always returns error", func(t *testing.T) {
-		repo := &mockBusinessRepository{}
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
-		result, err := svc.GetByUserID(ctx, uuid.New())
-
-		assert.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "authz.BusinessContextFromCtx")
-	})
-}
-
 func TestBusinessService_GetByID(t *testing.T) {
 	ctx := context.Background()
 
@@ -564,7 +528,6 @@ func TestBusinessService_GetByID(t *testing.T) {
 		businessID := uuid.New()
 		existingBusiness := &domain.Business{
 			ID:          businessID,
-			UserID:      uuid.New(),
 			Name:        "Test Coffee Shop",
 			Category:    "cafe",
 			Address:     "123 Main St",
@@ -591,7 +554,6 @@ func TestBusinessService_GetByID(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Equal(t, existingBusiness.ID, result.ID)
-		assert.Equal(t, existingBusiness.UserID, result.UserID)
 		assert.Equal(t, existingBusiness.Name, result.Name)
 	})
 
@@ -631,7 +593,7 @@ func TestBusinessService_Update(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		businessID := uuid.New()
-		userID := uuid.New()
+		_ = uuid.New()
 		var updatedBusiness *domain.Business
 
 		repo := &mockBusinessRepository{
@@ -646,7 +608,6 @@ func TestBusinessService_Update(t *testing.T) {
 		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
 		business := &domain.Business{
 			ID:          businessID,
-			UserID:      userID,
 			Name:        "Updated Coffee Shop",
 			Category:    "restaurant",
 			Address:     "456 New St",
@@ -688,7 +649,6 @@ func TestBusinessService_Update(t *testing.T) {
 		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
 		business := &domain.Business{
 			ID:          businessID,
-			UserID:      uuid.New(),
 			Name:        "Business Name",
 			Category:    "",
 			Address:     "",
@@ -715,9 +675,8 @@ func TestBusinessService_Update(t *testing.T) {
 		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
 
 		business := &domain.Business{
-			ID:     uuid.New(),
-			UserID: uuid.New(),
-			Name:   "",
+			ID:   uuid.New(),
+			Name: "",
 		}
 
 		result, err := svc.Update(ctx, business)
@@ -732,9 +691,8 @@ func TestBusinessService_Update(t *testing.T) {
 		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
 
 		business := &domain.Business{
-			ID:     uuid.Nil,
-			UserID: uuid.New(),
-			Name:   "Test Business",
+			ID:   uuid.Nil,
+			Name: "Test Business",
 		}
 
 		result, err := svc.Update(ctx, business)
@@ -753,9 +711,8 @@ func TestBusinessService_Update(t *testing.T) {
 
 		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
 		business := &domain.Business{
-			ID:     uuid.New(),
-			UserID: uuid.New(),
-			Name:   "Test Business",
+			ID:   uuid.New(),
+			Name: "Test Business",
 		}
 
 		result, err := svc.Update(ctx, business)
@@ -774,9 +731,8 @@ func TestBusinessService_Update(t *testing.T) {
 
 		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
 		business := &domain.Business{
-			ID:     uuid.New(),
-			UserID: uuid.New(),
-			Name:   "Test Business",
+			ID:   uuid.New(),
+			Name: "Test Business",
 		}
 
 		result, err := svc.Update(ctx, business)

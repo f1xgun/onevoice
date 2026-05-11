@@ -330,14 +330,14 @@ func setupTestEnvWithLoginRateLimit(t *testing.T, limit int) *testEnv {
 }
 
 // mintJWT signs a JWT token claiming the given userID using the test secret.
-// Role is hardcoded to "user" (the system-role field is not part of the RBAC
-// business-membership check — only the JWT sub claim is used).
+// Note: AccessTokenClaims no longer carries a Role field — per-business RBAC
+// lives entirely in business_members (Phase 6, CLEAN-02). Walker tests rely
+// solely on the user_id sub claim for the membership lookup.
 func mintJWT(t *testing.T, secret []byte, userID uuid.UUID) string {
 	t.Helper()
 	claims := &auth.AccessTokenClaims{
 		UserID: userID,
 		Email:  fmt.Sprintf("%s@rbac-test.local", userID),
-		Role:   "user",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},
@@ -356,8 +356,8 @@ func seedUser(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	uid := uuid.New()
 	_, err := pool.Exec(context.Background(),
-		`INSERT INTO users (id, email, password_hash, role)
-		 VALUES ($1, $2, '$2a$10$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'user')`,
+		`INSERT INTO users (id, email, password_hash)
+		 VALUES ($1, $2, '$2a$10$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')`,
 		uid, fmt.Sprintf("%s@rbac-test.local", uid))
 	require.NoError(t, err)
 	return uid
@@ -369,8 +369,8 @@ func seedBusiness(t *testing.T, pool *pgxpool.Pool, ownerUserID uuid.UUID) uuid.
 	t.Helper()
 	bizID := uuid.New()
 	_, err := pool.Exec(context.Background(),
-		`INSERT INTO businesses (id, name, user_id) VALUES ($1, $2, $3)`,
-		bizID, fmt.Sprintf("test-biz-%s", bizID), ownerUserID)
+		`INSERT INTO businesses (id, name) VALUES ($1, $2)`,
+		bizID, fmt.Sprintf("test-biz-%s", bizID))
 	require.NoError(t, err)
 	ownerRoleID := uuid.MustParse(domain.SystemRoleOwnerID)
 	_, err = pool.Exec(context.Background(),

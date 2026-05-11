@@ -133,7 +133,7 @@ func TestGetGoogleAuthURL_Forbidden(t *testing.T) {
 
 func TestGoogleCallback_SingleLocation_AutoConnects(t *testing.T) {
 	businessID := uuid.New()
-	userID := uuid.New()
+	_ = uuid.New()
 
 	server := newGoogleMockServer(t,
 		map[string]interface{}{
@@ -155,7 +155,6 @@ func TestGoogleCallback_SingleLocation_AutoConnects(t *testing.T) {
 	mockBusiness := new(MockBusinessService)
 
 	stateData := &service.OAuthStateData{
-		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "google_business",
 	}
@@ -205,7 +204,7 @@ func TestGoogleCallback_SingleLocation_AutoConnects(t *testing.T) {
 
 func TestGoogleCallback_MultipleLocations_RedirectsToSelection(t *testing.T) {
 	businessID := uuid.New()
-	userID := uuid.New()
+	_ = uuid.New()
 
 	server := newGoogleMockServer(t,
 		map[string]interface{}{
@@ -231,7 +230,6 @@ func TestGoogleCallback_MultipleLocations_RedirectsToSelection(t *testing.T) {
 	mockBusiness := new(MockBusinessService)
 
 	stateData := &service.OAuthStateData{
-		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "google_business",
 	}
@@ -318,7 +316,7 @@ func TestGoogleCallback_InvalidState(t *testing.T) {
 
 func TestGoogleCallback_NoRefreshToken(t *testing.T) {
 	businessID := uuid.New()
-	userID := uuid.New()
+	_ = uuid.New()
 
 	server := newGoogleMockServer(t,
 		map[string]interface{}{
@@ -332,7 +330,6 @@ func TestGoogleCallback_NoRefreshToken(t *testing.T) {
 
 	mockOAuth := new(MockOAuthStateService)
 	stateData := &service.OAuthStateData{
-		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "google_business",
 	}

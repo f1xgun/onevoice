@@ -75,14 +75,6 @@ type MockBusinessService struct {
 	mock.Mock
 }
 
-func (m *MockBusinessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
-	args := m.Called(ctx, userID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.Business), args.Error(1)
-}
-
 // oauthBizCtx seeds an authz.BusinessContext with the given perms. Used by
 // handlers under PermIntegrationsConnect (Phase 2 v2.0 RBAC). Migrated from
 // the deleted handler/oauth_test.go after the modular decomposition (PR #76).

@@ -41,8 +41,8 @@ func (r *businessRepository) Create(ctx context.Context, business *domain.Busine
 
 	sql, args, err := r.sb.
 		Insert("businesses").
-		Columns("id", "user_id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
-		Values(business.ID, business.UserID, business.Name, business.Category, business.Address, business.Phone, business.Website, business.Description, business.LogoURL, business.Settings, business.CreatedAt, business.UpdatedAt).
+		Columns("id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
+		Values(business.ID, business.Name, business.Category, business.Address, business.Phone, business.Website, business.Description, business.LogoURL, business.Settings, business.CreatedAt, business.UpdatedAt).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert: %w", err)
@@ -78,8 +78,8 @@ func (r *businessRepository) CreateInTx(ctx context.Context, tx pgx.Tx, business
 
 	sql, args, err := r.sb.
 		Insert("businesses").
-		Columns("id", "user_id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
-		Values(business.ID, business.UserID, business.Name, business.Category, business.Address, business.Phone, business.Website, business.Description, business.LogoURL, business.Settings, business.CreatedAt, business.UpdatedAt).
+		Columns("id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
+		Values(business.ID, business.Name, business.Category, business.Address, business.Phone, business.Website, business.Description, business.LogoURL, business.Settings, business.CreatedAt, business.UpdatedAt).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert: %w", err)
@@ -97,7 +97,7 @@ func (r *businessRepository) CreateInTx(ctx context.Context, tx pgx.Tx, business
 
 func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
 	sql, args, err := r.sb.
-		Select("id", "user_id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
+		Select("id", "name", "category", "address", "phone", "website", "description", "logo_url", "settings", "created_at", "updated_at").
 		From("businesses").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -108,7 +108,6 @@ func (r *businessRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	var business domain.Business
 	err = r.pool.QueryRow(ctx, sql, args...).Scan(
 		&business.ID,
-		&business.UserID,
 		&business.Name,
 		&business.Category,
 		&business.Address,

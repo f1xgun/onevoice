@@ -4,6 +4,7 @@
 # Binaries
 bin/
 tools/lint-rbac/lint-rbac
+tools/nourl/nourl
 *.exe
 *.dll
 *.so

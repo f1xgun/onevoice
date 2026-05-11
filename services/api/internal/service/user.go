@@ -89,7 +89,6 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 		ID:           uuid.New(),
 		Email:        email,
 		PasswordHash: string(passwordHash),
-		Role:         domain.UserRoleOwner, // Default role for new registrations
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -332,7 +331,6 @@ func generateAccessToken(user *domain.User, secret []byte) (string, error) {
 	claims := &auth.AccessTokenClaims{
 		UserID: user.ID,
 		Email:  user.Email,
-		Role:   string(user.Role),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},

@@ -28,16 +28,8 @@ type MockBusinessService struct {
 	mock.Mock
 }
 
-func (m *MockBusinessService) Create(ctx context.Context, business *domain.Business) (*domain.Business, error) {
-	args := m.Called(ctx, business)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.Business), args.Error(1)
-}
-
-func (m *MockBusinessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
-	args := m.Called(ctx, userID)
+func (m *MockBusinessService) Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error) {
+	args := m.Called(ctx, business, ownerUserID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -70,22 +62,22 @@ func (m *MockBusinessService) ListMembershipsByUser(ctx context.Context, userID 
 
 // Tool-approval stubs. Default behavior: return nil/empty so existing
 // tests that don't exercise these paths keep working unchanged.
-func (m *MockBusinessService) GetToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID) (map[string]domain.ToolFloor, error) {
+func (m *MockBusinessService) GetToolApprovals(ctx context.Context, businessID uuid.UUID) (map[string]domain.ToolFloor, error) {
 	if !m.hasExpectation("GetToolApprovals") {
 		return map[string]domain.ToolFloor{}, nil
 	}
-	args := m.Called(ctx, actorUserID, businessID)
+	args := m.Called(ctx, businessID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(map[string]domain.ToolFloor), args.Error(1)
 }
 
-func (m *MockBusinessService) UpdateToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
+func (m *MockBusinessService) UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
 	if !m.hasExpectation("UpdateToolApprovals") {
 		return nil
 	}
-	args := m.Called(ctx, actorUserID, businessID, approvals)
+	args := m.Called(ctx, businessID, approvals)
 	return args.Error(0)
 }
 
@@ -229,10 +221,9 @@ func TestBusinessHandler_CreateBusiness(t *testing.T) {
 	t.Run("happy path returns 201 with created business", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
 		mockSvc.On("Create", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
-			return b.Name == "Acme Corp" && b.UserID == testUserID && b.Category == "retail"
-		})).Return(&domain.Business{
+			return b.Name == "Acme Corp" && b.Category == "retail"
+		}), testUserID).Return(&domain.Business{
 			ID:       testBusinessID,
-			UserID:   testUserID,
 			Name:     "Acme Corp",
 			Category: "retail",
 		}, nil)
@@ -275,7 +266,7 @@ func TestBusinessHandler_CreateBusiness(t *testing.T) {
 
 	t.Run("service error returns 500 internal_server_error", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
-		mockSvc.On("Create", mock.Anything, mock.Anything).
+		mockSvc.On("Create", mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, errors.New("db exploded"))
 
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
@@ -306,9 +297,8 @@ func TestBusinessHandler_GetBusiness(t *testing.T) {
 		mockSvc := new(MockBusinessService)
 		mockSvc.On("GetByID", mock.Anything, testBusinessID).
 			Return(&domain.Business{
-				ID:     testBusinessID,
-				UserID: testUserID,
-				Name:   "My Coffee Shop",
+				ID:   testBusinessID,
+				Name: "My Coffee Shop",
 			}, nil)
 
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
@@ -333,7 +323,6 @@ func TestBusinessHandler_GetBusiness(t *testing.T) {
 
 		bc := authz.BusinessContext{
 			BusinessID:  testBusinessID,
-			UserID:      testUserID,
 			Permissions: []authz.Permission{}, // no read perm
 		}
 		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
@@ -412,7 +401,6 @@ func TestBusinessHandler_UpdateBusiness(t *testing.T) {
 
 		bc := authz.BusinessContext{
 			BusinessID:  testBusinessID,
-			UserID:      testUserID,
 			Permissions: []authz.Permission{authz.PermBusinessRead}, // no update perm
 		}
 		body := `{"name":"New Name"}`
@@ -476,7 +464,6 @@ func TestBusinessHandler_UpdateSchedule(t *testing.T) {
 	existing := func() *domain.Business {
 		return &domain.Business{
 			ID:       testBusinessID,
-			UserID:   testUserID,
 			Name:     "Cafe",
 			Settings: map[string]interface{}{},
 		}
@@ -494,7 +481,6 @@ func TestBusinessHandler_UpdateSchedule(t *testing.T) {
 			return true
 		})).Return(&domain.Business{
 			ID:       testBusinessID,
-			UserID:   testUserID,
 			Name:     "Cafe",
 			Settings: map[string]interface{}{},
 		}, nil)
@@ -529,7 +515,6 @@ func TestBusinessHandler_UpdateSchedule(t *testing.T) {
 
 		bc := authz.BusinessContext{
 			BusinessID:  testBusinessID,
-			UserID:      testUserID,
 			Permissions: []authz.Permission{authz.PermBusinessRead},
 		}
 		req := httptest.NewRequest(http.MethodPut, "/schedule", bytes.NewBufferString(`{"schedule":[]}`))
@@ -611,7 +596,6 @@ func TestBusinessHandler_UpdateVoiceTone(t *testing.T) {
 
 		bc := authz.BusinessContext{
 			BusinessID:  testBusinessID,
-			UserID:      testUserID,
 			Permissions: []authz.Permission{authz.PermBusinessRead},
 		}
 		req := httptest.NewRequest(http.MethodPut, "/voice-tone", bytes.NewBufferString(`{"tones":[]}`))
@@ -667,7 +651,6 @@ func TestBusinessHandler_UploadLogo(t *testing.T) {
 
 		existing := &domain.Business{
 			ID:        testBusinessID,
-			UserID:    testUserID,
 			Name:      "Cafe",
 			CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -690,7 +673,6 @@ func TestBusinessHandler_UploadLogo(t *testing.T) {
 			return b.LogoURL == "/media/businesses/x/logo.png"
 		})).Return(&domain.Business{
 			ID:      testBusinessID,
-			UserID:  testUserID,
 			Name:    "Cafe",
 			LogoURL: "/media/businesses/x/logo.png",
 		}, nil)
@@ -738,7 +720,6 @@ func TestBusinessHandler_UploadLogo(t *testing.T) {
 
 		bc := authz.BusinessContext{
 			BusinessID:  testBusinessID,
-			UserID:      testUserID,
 			Permissions: []authz.Permission{authz.PermBusinessRead},
 		}
 		body, contentType := buildLogoMultipart(t, pngMagic)
@@ -780,7 +761,7 @@ func TestBusinessHandler_ToolApprovals(t *testing.T) {
 
 	t.Run("GetBusinessToolApprovals happy path returns approvals", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
-		mockSvc.On("GetToolApprovals", mock.Anything, testUserID, testBusinessID).
+		mockSvc.On("GetToolApprovals", mock.Anything, testBusinessID).
 			Return(map[string]domain.ToolFloor{"tool_a": domain.ToolFloorAuto}, nil)
 
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
@@ -802,7 +783,6 @@ func TestBusinessHandler_ToolApprovals(t *testing.T) {
 
 		bc := authz.BusinessContext{
 			BusinessID:  testBusinessID,
-			UserID:      testUserID,
 			Permissions: []authz.Permission{authz.PermBusinessUpdate},
 		}
 		req := httptest.NewRequest(http.MethodGet, "/tool-approvals", http.NoBody)
@@ -820,7 +800,6 @@ func TestBusinessHandler_ToolApprovals(t *testing.T) {
 
 		bc := authz.BusinessContext{
 			BusinessID:  testBusinessID,
-			UserID:      testUserID,
 			Permissions: []authz.Permission{authz.PermBusinessRead},
 		}
 		body := `{"toolApprovals":{"tool_a":"auto"}}`

@@ -31,15 +31,16 @@ var allowedMimeTypes = map[string]string{
 
 // BusinessService defines the interface for business operations
 type BusinessService interface {
-	Create(ctx context.Context, business *domain.Business) (*domain.Business, error)
-	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
+	Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
 	// ListMembershipsByUser powers GET /api/v1/businesses.
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]service.MembershipSummary, error)
-	// Tool-approval methods:
-	GetToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
-	UpdateToolApprovals(ctx context.Context, actorUserID uuid.UUID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
+	// Tool-approval methods. Permission enforcement (PermBusinessRead /
+	// PermBusinessUpdate) is at the handler layer via authz.Can — the
+	// service is a thin data wrapper since Phase 6 (CLEAN-01).
+	GetToolApprovals(ctx context.Context, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
+	UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
 
 // BusinessSyncer syncs updated business data to connected platforms.
@@ -179,7 +180,6 @@ func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request)
 
 	newBusiness := &domain.Business{
 		ID:          uuid.New(),
-		UserID:      userID,
 		Name:        req.Name,
 		Category:    req.Category,
 		Address:     req.Address,
@@ -191,7 +191,7 @@ func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request)
 		UpdatedAt:   time.Now(),
 	}
 
-	created, err := h.businessService.Create(r.Context(), newBusiness)
+	created, err := h.businessService.Create(r.Context(), newBusiness, userID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessExists) {
 			writeJSONError(w, http.StatusConflict, "business_already_exists")
@@ -419,7 +419,7 @@ func (h *BusinessHandler) GetBusinessToolApprovals(w http.ResponseWriter, r *htt
 		return
 	}
 
-	approvals, err := h.businessService.GetToolApprovals(r.Context(), bc.UserID, bc.BusinessID)
+	approvals, err := h.businessService.GetToolApprovals(r.Context(), bc.BusinessID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
@@ -485,7 +485,7 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 		approvals[toolName] = floor
 	}
 
-	if err := h.businessService.UpdateToolApprovals(r.Context(), bc.UserID, bc.BusinessID, approvals); err != nil {
+	if err := h.businessService.UpdateToolApprovals(r.Context(), bc.BusinessID, approvals); err != nil {
 		if errors.Is(err, domain.ErrBusinessNotFound) {
 			writeJSONError(w, http.StatusNotFound, "business not found")
 			return

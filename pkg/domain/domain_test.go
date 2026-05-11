@@ -53,30 +53,16 @@ func TestSentinelErrors_MatchWithIs(t *testing.T) {
 	}
 }
 
-// --- UserRole ---
-
-func TestUserRole_IsValid(t *testing.T) {
-	assert.True(t, UserRoleOwner.IsValid())
-	assert.True(t, UserRoleAdmin.IsValid())
-	assert.True(t, UserRoleMember.IsValid())
-	assert.False(t, UserRole("superadmin").IsValid())
-	assert.False(t, UserRole("").IsValid())
-}
-
-func TestUserRole_String(t *testing.T) {
-	assert.Equal(t, "owner", UserRoleOwner.String())
-	assert.Equal(t, "admin", UserRoleAdmin.String())
-	assert.Equal(t, "member", UserRoleMember.String())
-}
-
 // --- User JSON ---
+// Phase 6 (CLEAN-02, CLEAN-03): UserRole enum and the User.Role field were
+// removed. Per-business role lives in business_members.role_id; the legacy
+// TestUserRole_* tests were dropped together with the enum.
 
 func TestUser_JSON_OmitsPasswordHash(t *testing.T) {
 	u := User{
 		ID:           uuid.New(),
 		Email:        "test@example.com",
 		PasswordHash: "secret_hash_value",
-		Role:         UserRoleOwner,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -91,7 +77,6 @@ func TestUser_JSON_OmitsPasswordHash(t *testing.T) {
 
 	// Other fields present
 	assert.Contains(t, string(data), "test@example.com")
-	assert.Contains(t, string(data), "owner")
 }
 
 func TestUser_JSON_RoundTrip(t *testing.T) {
@@ -100,7 +85,6 @@ func TestUser_JSON_RoundTrip(t *testing.T) {
 	original := User{
 		ID:        id,
 		Email:     "user@test.com",
-		Role:      UserRoleAdmin,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -113,7 +97,6 @@ func TestUser_JSON_RoundTrip(t *testing.T) {
 
 	assert.Equal(t, original.ID, decoded.ID)
 	assert.Equal(t, original.Email, decoded.Email)
-	assert.Equal(t, original.Role, decoded.Role)
 	assert.Empty(t, decoded.PasswordHash, "PasswordHash should not survive round-trip")
 }
 

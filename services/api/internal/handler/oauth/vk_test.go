@@ -108,7 +108,7 @@ func TestGetVKAuthURL_Forbidden(t *testing.T) {
 
 func TestVKCallback_ExchangesCode(t *testing.T) {
 	businessID := uuid.New()
-	userID := uuid.New()
+	_ = uuid.New()
 
 	// Mock VK token exchange server
 	vkServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +127,6 @@ func TestVKCallback_ExchangesCode(t *testing.T) {
 	mockBusiness := new(MockBusinessService)
 
 	stateData := &service.OAuthStateData{
-		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "vk",
 	}

@@ -10,14 +10,12 @@ type User struct {
 	ID           uuid.UUID `json:"id" db:"id"`
 	Email        string    `json:"email" db:"email"`
 	PasswordHash string    `json:"-" db:"password_hash"`
-	Role         UserRole  `json:"role" db:"role"`
 	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 type Business struct {
 	ID          uuid.UUID              `json:"id" db:"id"`
-	UserID      uuid.UUID              `json:"userId" db:"user_id"`
 	Name        string                 `json:"name" db:"name"`
 	Category    string                 `json:"category" db:"category"`
 	Address     string                 `json:"address" db:"address"`
