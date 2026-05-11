@@ -33,6 +33,8 @@ vi.mock('@/lib/auth', () => ({
   },
 }));
 
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+
 // Import the api module (triggers interceptor registration as side effect)
 const { api } = await import('@/lib/api');
 
@@ -133,5 +135,75 @@ describe('404 interceptor (CONTEXT D-16)', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handlers = (api.interceptors.response as any).handlers as Array<unknown>;
     expect(handlers.filter(Boolean).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+import { toast } from 'sonner';
+// Re-import mocked modules to access spies in the second describe block
+const { useBusinessStore: bStore } = await import('@/lib/stores/business');
+const { queryClient: qc } = await import('@/lib/queryClient');
+
+describe('404 interceptor — warning toast (UI-RBAC-04)', () => {
+  let clearFn: ReturnType<typeof vi.fn>;
+  let invalidateFn: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearFn = vi.fn();
+    invalidateFn = vi.fn();
+    (bStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({ clear: clearFn });
+    (qc.invalidateQueries as ReturnType<typeof vi.fn>).mockImplementation(invalidateFn);
+  });
+
+  async function invokeInterceptor(
+    url: string,
+    status: number,
+    metadata?: { skipBusinessNotFound?: boolean }
+  ) {
+    const error = {
+      config: { url, ...(metadata ? { metadata } : {}) },
+      response: { status, data: {} },
+      message: `Request failed with status code ${status}`,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handlers = (api.interceptors.response as any).handlers as Array<{
+      fulfilled: ((v: unknown) => unknown) | null;
+      rejected: ((e: unknown) => unknown) | null;
+    }>;
+    let result: unknown = error;
+    for (const handler of handlers) {
+      if (handler?.rejected) {
+        try {
+          result = await handler.rejected(result);
+        } catch (e) {
+          result = e;
+        }
+      }
+    }
+    return Promise.reject(result);
+  }
+
+  it('fires toast.warning + clears store + invalidates on 404 /businesses/...', async () => {
+    await expect(invokeInterceptor('/businesses/biz-1/members', 404)).rejects.toBeDefined();
+    expect(clearFn).toHaveBeenCalled();
+    expect(invalidateFn).toHaveBeenCalledWith({ queryKey: ['businesses'] });
+    expect(toast.warning).toHaveBeenCalledWith('Эта организация больше недоступна');
+  });
+
+  it('does NOT fire toast.warning when URL is not /businesses/...', async () => {
+    await expect(invokeInterceptor('/auth/me', 404)).rejects.toBeDefined();
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire toast.warning when skipBusinessNotFound is true', async () => {
+    await expect(
+      invokeInterceptor('/businesses/biz-1/preview', 404, { skipBusinessNotFound: true })
+    ).rejects.toBeDefined();
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire toast.warning on 500 (only 404 triggers the branch)', async () => {
+    await expect(invokeInterceptor('/businesses/biz-1/members', 500)).rejects.toBeDefined();
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });

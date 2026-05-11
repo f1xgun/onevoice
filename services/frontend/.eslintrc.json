@@ -131,7 +131,8 @@
             "value",
             "align",
             "mode",
-            "mark"
+            "mark",
+            "perm"
           ]
         },
         "callees": {
