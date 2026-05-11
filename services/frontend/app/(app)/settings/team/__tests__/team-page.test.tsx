@@ -24,6 +24,22 @@ vi.mock('@/lib/hooks/useInvitations', () => ({
 }));
 vi.mock('@/lib/auth', () => ({ useAuthStore: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+// Phase 5: usePermission now fetches /me/permissions via React Query.
+// The admin actor in this test holds members.invite + members.remove so the
+// «Пригласить» button and the row-level action menu render.
+vi.mock('@/lib/api/permissions', () => ({
+  getMyPermissions: vi
+    .fn()
+    .mockResolvedValue([
+      'business.read',
+      'members.read',
+      'members.invite',
+      'members.remove',
+      'members.update_role',
+      'roles.read',
+    ]),
+  getPermissionsCatalog: vi.fn(),
+}));
 
 import { useBusinessStore } from '@/lib/stores/business';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
@@ -125,9 +141,10 @@ describe('TeamPage', () => {
     expect(screen.getByRole('tab', { name: /Приглашения/ })).toBeInTheDocument();
   });
 
-  it('shows the «Пригласить» button when user has members.invite (admin role)', () => {
+  it('shows the «Пригласить» button when user has members.invite (admin role)', async () => {
     render(wrap(<TeamPage />));
-    expect(screen.getByRole('button', { name: /Пригласить/ })).toBeInTheDocument();
+    // Phase 5: usePermission is async — wait for /me/permissions to settle.
+    expect(await screen.findByRole('button', { name: /Пригласить/ })).toBeInTheDocument();
   });
 
   it('renders members rows with name, email, role pill', () => {
@@ -139,6 +156,9 @@ describe('TeamPage', () => {
   it('shows «Покинуть организацию» for the current user row (self-row)', async () => {
     const user = userEvent.setup();
     render(wrap(<TeamPage />));
+    // Phase 5: usePermission is async — wait for /me/permissions to settle
+    // before reaching for permission-gated DOM (the dropdown trigger).
+    await screen.findByRole('button', { name: /Пригласить/ });
     const triggers = screen.getAllByLabelText(/Действия для участника/);
     await user.click(triggers[0]);
     expect(await screen.findByText('Покинуть организацию')).toBeInTheDocument();
@@ -152,6 +172,10 @@ describe('TeamPage', () => {
     } as any);
     const user = userEvent.setup();
     render(wrap(<TeamPage />));
+    // Phase 5: wait for permissions to settle so the row's DropdownMenu
+    // renders (otherwise the disabled tooltip variant is rendered and the
+    // click is a no-op).
+    await screen.findByRole('button', { name: /Пригласить/ });
     const triggers = screen.getAllByLabelText(/Действия для участника/);
     await user.click(triggers[1]);
     await user.click(await screen.findByText('Удалить участника'));

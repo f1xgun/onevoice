@@ -10,6 +10,9 @@ import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { useAuthStore } from '@/lib/auth';
+import { queryClient } from '@/lib/queryClient';
+import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
+import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { registerSchema, type RegisterInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +41,18 @@ export default function RegisterPage() {
         password: data.password,
       });
       setAuth(res.data.user, res.data.accessToken);
+      // Phase 5 / Phase 5 review HIGH-02: drop ALL session-scoped React Query
+      // caches before the next render so a fresh actor never observes a prior
+      // actor's permissions array. removeQueries is required (not just
+      // invalidateQueries): invalidate marks data stale but keeps the
+      // cached value, so a PermissionsCacheGuard miss window can briefly
+      // surface the previous user's perms. BUSINESS_LIST_QUERY_KEY is
+      // ['businesses'] (verified) — partial-prefix sweep also drops nested
+      // ['businesses', bizId, 'permissions' | 'roles' | 'members' | …].
+      // PERMISSIONS_CATALOG is a separate top-level key — remove it
+      // explicitly so a different-deploy catalog can re-fetch.
+      queryClient.removeQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.PERMISSIONS_CATALOG });
       router.push('/chat');
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
