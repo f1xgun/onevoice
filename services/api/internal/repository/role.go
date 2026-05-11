@@ -156,7 +156,7 @@ func (r *roleRepository) ListSystem(ctx context.Context) ([]domain.Role, error) 
 // filtered on m.business_id = $1 so system rows count members in the queried
 // business only (CONTEXT D-08). GROUP BY id is sufficient because every other
 // selected column is functionally dependent on roles.id (Postgres ≥9.1
-// recognises this).
+// recognizes this).
 //
 // LOW-02 (Phase 5 review): the LEFT JOIN restricts m.status = 'active' so
 // the displayed "N participants" badge counts only active members.

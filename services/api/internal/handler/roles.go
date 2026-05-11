@@ -45,7 +45,7 @@ type roleCacheInvalidator interface {
 //     so the field is omitted entirely via `omitempty` on the *int pointer.
 //   - Description is plain `string` (no `omitempty`) — always present in
 //     every response, including the empty string. The frontend zod schema
-//     (`description: z.string().optional().default('')`) accepts both
+//     (`description: z.string().optional().default(”)`) accepts both
 //     "missing" and "" — backend always sends "" for consistency.
 type RolesHandler struct {
 	roleRepo       domain.RoleRepository

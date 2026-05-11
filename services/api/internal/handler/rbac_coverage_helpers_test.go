@@ -170,10 +170,10 @@ func setupTestEnv(t *testing.T) *testEnv {
 // cache for one constructed via authz.NewCacheForTest with small TTLs.
 //
 // Used ONLY by TestRBACCoverage_TTLCeiling (HIGH #1 + HIGH #2). The approach:
-//   1. Call wiring.BuildHandlers to get the full handler set + pool.
-//   2. Build a separate authz.Cache with short TTLs via NewCacheForTest.
-//   3. Rebuild the router (router.Setup) passing the test cache — so the
-//      RequireBusinessAccess middleware uses the short-TTL cache.
+//  1. Call wiring.BuildHandlers to get the full handler set + pool.
+//  2. Build a separate authz.Cache with short TTLs via NewCacheForTest.
+//  3. Rebuild the router (router.Setup) passing the test cache — so the
+//     RequireBusinessAccess middleware uses the short-TTL cache.
 //
 // This duplicates the router.Setup call for TTL tests only; documented in
 // 02-07-SUMMARY. The Clock interface is intentionally absent (HIGH #2 —

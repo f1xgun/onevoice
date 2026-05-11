@@ -403,18 +403,18 @@ func readPathExempt(method, route string) bool {
 		return false
 	}
 	exempt := map[string]bool{
-		"/api/v1/businesses/{id}/conversations/{id}":               true,
-		"/api/v1/businesses/{id}/conversations/{id}/messages":      true,
-		"/api/v1/businesses/{id}/projects/{id}":                    true,
-		"/api/v1/businesses/{id}/projects/{id}/conversation-count": true,
-		"/api/v1/businesses/{id}/reviews/{id}":                     true,
-		"/api/v1/businesses/{id}/posts/{id}":                       true,
-		"/api/v1/businesses/{id}/tasks/stream":                     true,
-		"/api/v1/businesses/{id}/integrations/vk/communities":      true,
-		"/api/v1/businesses/{id}/integrations/vk/community-auth-url": true,
-		"/api/v1/businesses/{id}/integrations/vk/auth-url":           true,
-		"/api/v1/businesses/{id}/integrations/yandex_business/auth-url": true,
-		"/api/v1/businesses/{id}/integrations/google_business/auth-url": true,
+		"/api/v1/businesses/{id}/conversations/{id}":                     true,
+		"/api/v1/businesses/{id}/conversations/{id}/messages":            true,
+		"/api/v1/businesses/{id}/projects/{id}":                          true,
+		"/api/v1/businesses/{id}/projects/{id}/conversation-count":       true,
+		"/api/v1/businesses/{id}/reviews/{id}":                           true,
+		"/api/v1/businesses/{id}/posts/{id}":                             true,
+		"/api/v1/businesses/{id}/tasks/stream":                           true,
+		"/api/v1/businesses/{id}/integrations/vk/communities":            true,
+		"/api/v1/businesses/{id}/integrations/vk/community-auth-url":     true,
+		"/api/v1/businesses/{id}/integrations/vk/auth-url":               true,
+		"/api/v1/businesses/{id}/integrations/yandex_business/auth-url":  true,
+		"/api/v1/businesses/{id}/integrations/google_business/auth-url":  true,
 		"/api/v1/businesses/{id}/integrations/google_business/locations": true,
 		// G-04: search requires ?q= (len >= 2); walker cannot synthesize the param.
 		// Authz gates (401 + 404) are still asserted.
@@ -451,13 +451,13 @@ func writePathExempt(method, route string) bool {
 		return false
 	}
 	exempt := map[string]bool{
-		"/api/v1/businesses/{id}/chat/{conversationID}":                                  true,
-		"/api/v1/businesses/{id}/chat/{id}/resume":                                       true,
-		"/api/v1/businesses/{id}/conversations/{id}/pending-tool-calls/{id}/resolve":     true,
+		"/api/v1/businesses/{id}/chat/{conversationID}":                              true,
+		"/api/v1/businesses/{id}/chat/{id}/resume":                                   true,
+		"/api/v1/businesses/{id}/conversations/{id}/pending-tool-calls/{id}/resolve": true,
 		// G-11: handler validates required body field "hash" before reaching the
 		// authz Can() check; viewer with empty body gets 400 not 403. Authz gate
 		// 401 (no JWT) and 404 (non-member) still assert correctly.
-		"/api/v1/businesses/{id}/integrations/telegram/verify":                           true,
+		"/api/v1/businesses/{id}/integrations/telegram/verify": true,
 	}
 	return exempt[route]
 }
