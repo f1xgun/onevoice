@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toast } from 'sonner';
 import { API_BASE_URL, API_PATHS, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { useAuthStore } from './auth';
@@ -6,6 +7,7 @@ import type { User } from './auth';
 import { useBusinessStore } from '@/lib/stores/business';
 import { queryClient } from '@/lib/queryClient';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
+import { getTranslator } from '@/lib/i18n/translator';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -119,7 +121,9 @@ api.interceptors.response.use(
 
 // 404 interceptor (D-16): on /businesses/{id}/... 404, the active business
 // is stale (server-side membership removed). Clear the store + re-fetch
-// the list. Phase 4 layers a switcher-redirect UX on top of this.
+// the list + show a sonner warning toast. The redirect to /onboarding or
+// /chat happens implicitly via BusinessRequiredGuard on the next render
+// (RESEARCH P-04: do not call router from a module-level interceptor).
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
@@ -134,6 +138,8 @@ api.interceptors.response.use(
     ) {
       useBusinessStore.getState().clear();
       queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
+      // Re-create translator per call so a future locale switch picks it up.
+      toast.warning(getTranslator('team.errors')('staleBusiness'));
     }
 
     return Promise.reject(error);

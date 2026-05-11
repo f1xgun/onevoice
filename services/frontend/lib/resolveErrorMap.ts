@@ -1,3 +1,5 @@
+import type { AxiosError } from 'axios';
+
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 import { getTranslator } from '@/lib/i18n/translator';
 
@@ -45,4 +47,79 @@ export function resolveErrorToRussian(status: number, body: unknown): string {
 
   // Fall-through: 400-with-editable, other 4xx, 5xx, network-thrown → generic.
   return tErrors('connectionRetry');
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 RBAC — mapMemberError + mapInviteError.
+//
+// These helpers convert AxiosError instances thrown by lib/api/members.ts
+// and lib/api/invitations.ts into the exact Russian copy required by the
+// UI-SPEC. Callers (toast handlers, refusal cards) pass the raw error
+// they catch; both mappers tolerate undefined, plain Error instances, and
+// network errors (no .response) without throwing.
+// ---------------------------------------------------------------------------
+
+const tTeamErrors = getTranslator('team.errors');
+const tInviteAcceptErrors = getTranslator('invite.accept.errors');
+const tInviteFormErrors = getTranslator('team.invite.errors');
+
+interface ApiErrorBody {
+  error?: string;
+  reason?: string;
+}
+
+function extractStatusAndCode(err: unknown): {
+  status: number | undefined;
+  code: string | undefined;
+  reason: string | undefined;
+} {
+  const axiosErr = err as AxiosError<ApiErrorBody> | undefined;
+  const status = axiosErr?.response?.status;
+  const code = axiosErr?.response?.data?.error;
+  const reason = axiosErr?.response?.data?.reason;
+  return { status, code, reason };
+}
+
+/**
+ * Maps backend errors from `/businesses/{id}/members/...` mutations to a
+ * Russian toast string. Recognised codes:
+ *   - 422 last_owner             → team.errors.lastOwner
+ *   - 422 self_lockout           → team.errors.selfLockout
+ *   - 422 system_role_immutable  → team.errors.systemRoleImmutable
+ *   - anything else              → team.errors.generic
+ *
+ * Callers should pass the returned string to `toast.error(...)`.
+ */
+export function mapMemberError(err: unknown): string {
+  const { status, code } = extractStatusAndCode(err);
+  if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'last_owner')
+    return tTeamErrors('lastOwner');
+  if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'self_lockout')
+    return tTeamErrors('selfLockout');
+  if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'system_role_immutable')
+    return tTeamErrors('systemRoleImmutable');
+  return tTeamErrors('generic');
+}
+
+/**
+ * Maps backend errors from invitation flows (create, revoke, preview,
+ * accept) to a Russian string. The caller (accept page, invite modal)
+ * decides whether to render the result as a full-card refusal (for 410
+ * / 409) or as a toast (for other failures) — see RESEARCH.md lines
+ * 779-789.
+ *
+ * Mappings:
+ *   - 410 (any reason)        → invite.accept.errors.gone.body
+ *   - 409 already_member      → invite.accept.errors.alreadyMember.body
+ *   - 429 too_many_pending    → team.invite.errors.tooManyPending
+ *   - anything else           → invite.accept.errors.generic
+ */
+export function mapInviteError(err: unknown): string {
+  const { status, code } = extractStatusAndCode(err);
+  if (status === HTTP_STATUS.GONE) return tInviteAcceptErrors('gone.body');
+  if (status === HTTP_STATUS.CONFLICT && code === 'already_member')
+    return tInviteAcceptErrors('alreadyMember.body');
+  if (status === HTTP_STATUS.TOO_MANY_REQUESTS && code === 'too_many_pending')
+    return tInviteFormErrors('tooManyPending');
+  return tInviteAcceptErrors('generic');
 }

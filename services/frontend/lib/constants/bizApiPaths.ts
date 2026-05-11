@@ -32,6 +32,18 @@ export const BIZ_API_PATHS = {
     MOVE: (id: string) => `/conversations/${id}/move`,
     REGENERATE_TITLE: (id: string) => `/conversations/${id}/regenerate-title`,
   },
+  // Phase 4 RBAC: team membership endpoints.
+  MEMBERS: {
+    ROOT: '/members',
+    BY_ID: (userId: string) => `/members/${userId}` as const,
+  },
+  INVITATIONS: {
+    ROOT: '/invitations',
+    BY_ID: (inviteId: string) => `/invitations/${inviteId}` as const,
+  },
+  ROLES: {
+    ROOT: '/roles',
+  },
   INTEGRATIONS: {
     ROOT: '/integrations',
     BY_ID: (id: string) => `/integrations/${id}`,

@@ -1,5 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { resolveErrorToRussian, RESUME_STREAM_ERROR } from '../resolveErrorMap';
+import type { AxiosError } from 'axios';
+import {
+  resolveErrorToRussian,
+  RESUME_STREAM_ERROR,
+  mapInviteError,
+  mapMemberError,
+} from '../resolveErrorMap';
+
+function axiosErr(status: number, body?: { error?: string; reason?: string }): AxiosError {
+  return {
+    isAxiosError: true,
+    response: { status, data: body ?? {}, statusText: '', headers: {}, config: {} as never },
+  } as unknown as AxiosError;
+}
 
 describe('resolveErrorToRussian', () => {
   it('maps HTTP 409 → "operation already processed" toast', () => {
@@ -98,6 +111,88 @@ describe('resolveErrorToRussian', () => {
     // crossing a trust boundary, not just hitting a policy gate.
     expect(resolveErrorToRussian(403, { reason: 'policy_revoked' })).toBe(
       'Отказано: операция вне вашей бизнес-области'
+    );
+  });
+});
+
+describe('mapMemberError', () => {
+  it('maps 422 last_owner → team.errors.lastOwner', () => {
+    expect(mapMemberError(axiosErr(422, { error: 'last_owner' }))).toBe(
+      'Нельзя удалить последнего владельца. Сначала назначьте нового владельца.'
+    );
+  });
+
+  it('maps 422 self_lockout → team.errors.selfLockout', () => {
+    expect(mapMemberError(axiosErr(422, { error: 'self_lockout' }))).toBe(
+      'Нельзя забрать у себя право управлять ролями.'
+    );
+  });
+
+  it('maps 422 system_role_immutable → team.errors.systemRoleImmutable', () => {
+    expect(mapMemberError(axiosErr(422, { error: 'system_role_immutable' }))).toBe(
+      'Системные роли нельзя изменять.'
+    );
+  });
+
+  it('maps 422 with unrecognised code → team.errors.generic', () => {
+    expect(mapMemberError(axiosErr(422, { error: 'some_other_code' }))).toBe(
+      'Не удалось выполнить действие.'
+    );
+  });
+
+  it('maps 500 → team.errors.generic', () => {
+    expect(mapMemberError(axiosErr(500))).toBe('Не удалось выполнить действие.');
+  });
+
+  it('handles undefined / plain Error / network errors without throwing', () => {
+    expect(mapMemberError(undefined)).toBe('Не удалось выполнить действие.');
+    expect(mapMemberError(new Error('network down'))).toBe('Не удалось выполнить действие.');
+    expect(mapMemberError({ isAxiosError: true } as AxiosError)).toBe(
+      'Не удалось выполнить действие.'
+    );
+  });
+});
+
+describe('mapInviteError', () => {
+  it('maps 410 (any body) → invite.accept.errors.gone.body', () => {
+    expect(mapInviteError(axiosErr(410))).toBe(
+      'Возможно, срок ссылки истёк или её отозвали. Попросите ссылку заново.'
+    );
+    expect(mapInviteError(axiosErr(410, { error: 'expired' }))).toBe(
+      'Возможно, срок ссылки истёк или её отозвали. Попросите ссылку заново.'
+    );
+  });
+
+  it('maps 409 already_member → invite.accept.errors.alreadyMember.body', () => {
+    expect(mapInviteError(axiosErr(409, { error: 'already_member' }))).toBe(
+      'Откройте панель и выберите её в переключателе организаций сверху.'
+    );
+  });
+
+  it('maps 429 too_many_pending → team.invite.errors.tooManyPending', () => {
+    expect(mapInviteError(axiosErr(429, { error: 'too_many_pending' }))).toBe(
+      'Достигнут лимит — 20 ожидающих приглашений на организацию. Отзовите старые, чтобы создать новое.'
+    );
+  });
+
+  it('maps 409 with unrecognised code → invite.accept.errors.generic (no alreadyMember collision)', () => {
+    expect(mapInviteError(axiosErr(409, { error: 'some_other_conflict' }))).toBe(
+      'Не удалось обработать приглашение. Попробуйте ещё раз.'
+    );
+  });
+
+  it('maps 500 → invite.accept.errors.generic', () => {
+    expect(mapInviteError(axiosErr(500))).toBe(
+      'Не удалось обработать приглашение. Попробуйте ещё раз.'
+    );
+  });
+
+  it('handles undefined / plain Error / network errors without throwing', () => {
+    expect(mapInviteError(undefined)).toBe(
+      'Не удалось обработать приглашение. Попробуйте ещё раз.'
+    );
+    expect(mapInviteError(new Error('network down'))).toBe(
+      'Не удалось обработать приглашение. Попробуйте ещё раз.'
     );
   });
 });

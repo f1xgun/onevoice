@@ -115,3 +115,79 @@ export const businessToolApprovalsResponseSchema = z.object({
   toolApprovals: toolApprovalsSchema.default({}),
 });
 export type BusinessToolApprovalsResponse = z.infer<typeof businessToolApprovalsResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Phase 4 RBAC — members, roles, invitations.
+//
+// Every response body from the Phase 2/3 endpoints is parsed with `.parse`
+// (not `safeParse`) so malformed data throws at the API seam rather than
+// crashing the UI later. See plan 04-02 threat T-04-02-01.
+// ---------------------------------------------------------------------------
+
+export const memberSchema = z.object({
+  user: z.object({
+    id: z.string(),
+    email: z.string().email(),
+    name: z.string().optional(),
+  }),
+  role: z.object({
+    id: z.string(),
+    name: z.string(),
+    permissions: z.array(z.string()),
+  }),
+  status: z.enum(['active', 'suspended']),
+  joined_at: z.string(),
+  invited_by: z.string().nullable(),
+  invited_at: z.string().nullable(),
+});
+export type Member = z.infer<typeof memberSchema>;
+export const membersListSchema = z.array(memberSchema);
+
+export const roleSchema = z.object({
+  id: z.string(),
+  business_id: z.string().nullable(),
+  name: z.string(),
+  description: z.string().optional().default(''),
+  permissions: z.array(z.string()),
+  is_system: z.boolean(),
+});
+export type Role = z.infer<typeof roleSchema>;
+export const rolesListSchema = z.array(roleSchema);
+
+export const pendingInvitationSchema = z.object({
+  id: z.string(),
+  role_id: z.string(),
+  role_name: z.string(),
+  expires_at: z.string(),
+  created_at: z.string(),
+  created_by: z.object({
+    id: z.string(),
+    email: z.string().email(),
+  }),
+});
+export type PendingInvitation = z.infer<typeof pendingInvitationSchema>;
+export const pendingInvitationsListSchema = z.array(pendingInvitationSchema);
+
+export const invitationCreateResponseSchema = z.object({
+  id: z.string(),
+  token: z.string(),
+  role_id: z.string(),
+  expires_at: z.string(),
+  created_at: z.string(),
+});
+export type InvitationCreateResponse = z.infer<typeof invitationCreateResponseSchema>;
+
+export const invitationPreviewSchema = z.object({
+  business_id: z.string(),
+  business_name: z.string(),
+  role_id: z.string(),
+  role_name: z.string(),
+  expires_at: z.string(),
+});
+export type InvitationPreview = z.infer<typeof invitationPreviewSchema>;
+
+export const invitationAcceptResponseSchema = z.object({
+  business_id: z.string(),
+  role_id: z.string(),
+});
+export type InvitationAcceptResponse = z.infer<typeof invitationAcceptResponseSchema>;
