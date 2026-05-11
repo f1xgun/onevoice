@@ -62,6 +62,17 @@ export const API_PATHS = {
   REVIEWS: {
     REFRESH: '/reviews/refresh',
   },
+  // Phase 4 RBAC: PUBLIC invitation routes (not business-scoped).
+  // `GET /invitations/{token}` returns the preview (rate-limited per-IP by
+  // backend); `POST /invitations/{token}/accept` claims the invitation for
+  // the authenticated user. Both go through the raw `api` axios instance
+  // (NOT `bizApi`), and the preview call passes
+  // `metadata: { skipBusinessNotFound: true }` so the 404 interceptor
+  // never mistakes a missing token for a stale active business.
+  INVITATIONS_PUBLIC: {
+    PREVIEW: (token: string) => `/invitations/${token}` as const,
+    ACCEPT: (token: string) => `/invitations/${token}/accept` as const,
+  },
 } as const;
 
 // Absolute paths used by bare `fetch(...)` / `axios(...)` calls that
