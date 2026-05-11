@@ -16,7 +16,7 @@ router.Use(middleware.Auth(jwtSecret))
 **Features:**
 - Validates JWT signature using HS256
 - Checks token expiration automatically
-- Extracts and validates required claims: `user_id`, `email`, `role`
+- Extracts and validates required claims: `user_id`, `email`
 - Stores claims in request context for handlers to access
 - Returns 401 Unauthorized for invalid/missing/expired tokens
 
@@ -24,7 +24,6 @@ router.Use(middleware.Auth(jwtSecret))
 ```go
 userID, err := middleware.GetUserID(r.Context())
 email, err := middleware.GetUserEmail(r.Context())
-role, err := middleware.GetUserRole(r.Context())
 ```
 
 **Selective Application:**

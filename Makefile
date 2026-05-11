@@ -100,7 +100,7 @@ lint-rbac: ## Run RBAC drift checker (custom Go analyzer at tools/lint-rbac)
 	@echo "Building lint-rbac..."
 	@cd tools/lint-rbac && GOWORK=off go build -o lint-rbac .
 	@echo "Running RBAC drift check..."
-	@./tools/lint-rbac/lint-rbac -allowlist .rbac-migration-allowlist services/api/internal/router/router.go
+	@./tools/lint-rbac/lint-rbac services/api/internal/router/router.go
 	@echo "RBAC drift check passed"
 
 lint-urls: ## Reject inline http(s):// URL string literals (custom analyzer)

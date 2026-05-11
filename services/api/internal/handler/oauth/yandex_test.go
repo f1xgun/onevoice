@@ -106,7 +106,7 @@ func TestGetYandexAuthURL_Forbidden(t *testing.T) {
 
 func TestYandexCallback_ExchangesCode(t *testing.T) {
 	businessID := uuid.New()
-	userID := uuid.New()
+	_ = uuid.New()
 
 	// Mock Yandex token server
 	yandexServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +124,6 @@ func TestYandexCallback_ExchangesCode(t *testing.T) {
 	mockBusiness := new(MockBusinessService)
 
 	stateData := &service.OAuthStateData{
-		UserID:     userID,
 		BusinessID: businessID,
 		Platform:   "yandex_business",
 	}

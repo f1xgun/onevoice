@@ -114,9 +114,6 @@ func (s *stubBusinessRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Busi
 	b := *s.Business
 	return &b, nil
 }
-func (s *stubBusinessRepo) GetByUserID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-	return nil, domain.ErrBusinessNotFound
-}
 func (s *stubBusinessRepo) Update(_ context.Context, b *domain.Business) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -65,10 +65,11 @@ type OAuthIntegrationService interface {
 
 // BusinessService is the subset of BusinessService needed for OAuth flows.
 // Defined locally per CONVENTIONS.md §"Service Interfaces" — interfaces
-// belong with their consumer.
-type BusinessService interface {
-	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
-}
+// belong with their consumer. Phase 6 (CLEAN-01) emptied this interface:
+// OAuth handlers do not invoke any method on BusinessService at runtime;
+// the dependency is retained to preserve constructor wiring symmetry with
+// the rest of the API.
+type BusinessService interface{}
 
 // OAuthConfig holds platform OAuth credentials and optional test overrides.
 type OAuthConfig struct {

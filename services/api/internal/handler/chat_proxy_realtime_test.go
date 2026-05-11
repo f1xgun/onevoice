@@ -91,7 +91,7 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Кофейня"}
+	business := &domain.Business{ID: businessID, Name: "Кофейня"}
 	integrations := []domain.Integration{
 		{ID: uuid.New(), BusinessID: businessID, Platform: "telegram", Status: "active"},
 	}
@@ -111,7 +111,7 @@ func TestChatProxy_Realtime_CreatesRunningThenUpdatesDone(t *testing.T) {
 	defer orchServer.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return(integrations, nil)
 

@@ -103,9 +103,6 @@ func (f *fakeBusinessRepoHITL) GetByID(_ context.Context, _ uuid.UUID) (*domain.
 	b := *f.biz
 	return &b, nil
 }
-func (f *fakeBusinessRepoHITL) GetByUserID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-	return nil, domain.ErrBusinessNotFound
-}
 func (f *fakeBusinessRepoHITL) Update(_ context.Context, _ *domain.Business) error { return nil }
 func (f *fakeBusinessRepoHITL) UpdateToolApprovals(_ context.Context, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
 	return nil
@@ -140,14 +137,8 @@ type hitlBusinessService struct {
 	biz *domain.Business
 }
 
-func (s *hitlBusinessService) Create(_ context.Context, _ *domain.Business) (*domain.Business, error) {
+func (s *hitlBusinessService) Create(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
-}
-func (s *hitlBusinessService) GetByUserID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-	if s.biz == nil {
-		return nil, domain.ErrBusinessNotFound
-	}
-	return s.biz, nil
 }
 func (s *hitlBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
 	if s.biz == nil {
@@ -158,13 +149,13 @@ func (s *hitlBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.B
 func (s *hitlBusinessService) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
 	return nil, nil
 }
-func (s *hitlBusinessService) GetToolApprovals(_ context.Context, _, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
+func (s *hitlBusinessService) GetToolApprovals(_ context.Context, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
 	if s.biz == nil {
 		return map[string]domain.ToolFloor{}, nil
 	}
 	return s.biz.ToolApprovals(), nil
 }
-func (s *hitlBusinessService) UpdateToolApprovals(_ context.Context, _, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
+func (s *hitlBusinessService) UpdateToolApprovals(_ context.Context, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
 	return nil
 }
 func (s *hitlBusinessService) ListMembershipsByUser(_ context.Context, _ uuid.UUID) ([]service.MembershipSummary, error) {

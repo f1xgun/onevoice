@@ -20,7 +20,6 @@ type contextKey string
 const (
 	UserIDKey    contextKey = "userID"
 	UserEmailKey contextKey = "email"
-	UserRoleKey  contextKey = "role"
 )
 
 // ErrorResponse represents a JSON error response
@@ -67,7 +66,6 @@ func Auth(jwtSecret []byte) func(http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
-			ctx = context.WithValue(ctx, UserRoleKey, claims.Role)
 
 			// Call next handler with updated context
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -110,15 +108,6 @@ func GetUserEmail(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("email not found in context")
 	}
 	return email, nil
-}
-
-// GetUserRole retrieves the user role from the request context
-func GetUserRole(ctx context.Context) (string, error) {
-	role, ok := ctx.Value(UserRoleKey).(string)
-	if !ok {
-		return "", fmt.Errorf("role not found in context")
-	}
-	return role, nil
 }
 
 // writeJSONError writes a 401 JSON error response.

@@ -23,7 +23,6 @@ func TestGenerateState_StoresInRedis(t *testing.T) {
 	svc := setupOAuthService(t)
 	ctx := context.Background()
 	data := OAuthStateData{
-		UserID:     uuid.New(),
 		BusinessID: uuid.New(),
 		Platform:   "vk",
 	}
@@ -36,7 +35,6 @@ func TestValidateState_Success(t *testing.T) {
 	svc := setupOAuthService(t)
 	ctx := context.Background()
 	data := OAuthStateData{
-		UserID:     uuid.New(),
 		BusinessID: uuid.New(),
 		Platform:   "vk",
 	}

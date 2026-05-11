@@ -21,11 +21,10 @@ import (
 var testJWTSecret = []byte("test-secret-key-for-jwt-signing")
 
 // Helper to create valid JWT token using typed AccessTokenClaims
-func createTestToken(userID uuid.UUID, email, role string, expiry time.Duration) string {
+func createTestToken(userID uuid.UUID, email string, expiry time.Duration) string {
 	claims := &auth.AccessTokenClaims{
 		UserID: userID,
 		Email:  email,
-		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},
@@ -40,7 +39,7 @@ func createTestToken(userID uuid.UUID, email, role string, expiry time.Duration)
 }
 
 // Test handler that accesses context values
-func testHandler(t *testing.T, expectedUserID uuid.UUID, expectedEmail, expectedRole string) http.HandlerFunc {
+func testHandler(t *testing.T, expectedUserID uuid.UUID, expectedEmail string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := GetUserID(r.Context())
 		require.NoError(t, err)
@@ -50,10 +49,6 @@ func testHandler(t *testing.T, expectedUserID uuid.UUID, expectedEmail, expected
 		require.NoError(t, err)
 		assert.Equal(t, expectedEmail, email)
 
-		role, err := GetUserRole(r.Context())
-		require.NoError(t, err)
-		assert.Equal(t, expectedRole, role)
-
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("success"))
 	}
@@ -62,16 +57,15 @@ func testHandler(t *testing.T, expectedUserID uuid.UUID, expectedEmail, expected
 func TestAuth_ValidToken(t *testing.T) {
 	userID := uuid.New()
 	email := "test@example.com"
-	role := "owner"
 
-	token := createTestToken(userID, email, role, 15*time.Minute)
+	token := createTestToken(userID, email, 15*time.Minute)
 
 	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	rr := httptest.NewRecorder()
 
-	handler := Auth(testJWTSecret)(testHandler(t, userID, email, role))
+	handler := Auth(testJWTSecret)(testHandler(t, userID, email))
 	handler.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
@@ -132,7 +126,7 @@ func TestAuth_InvalidHeaderFormat(t *testing.T) {
 
 func TestAuth_InvalidTokenSignature(t *testing.T) {
 	userID := uuid.New()
-	token := createTestToken(userID, "test@example.com", "owner", 15*time.Minute)
+	token := createTestToken(userID, "test@example.com", 15*time.Minute)
 
 	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -157,7 +151,7 @@ func TestAuth_InvalidTokenSignature(t *testing.T) {
 func TestAuth_ExpiredToken(t *testing.T) {
 	userID := uuid.New()
 	// Create token that expired 1 hour ago
-	token := createTestToken(userID, "test@example.com", "owner", -1*time.Hour)
+	token := createTestToken(userID, "test@example.com", -1*time.Hour)
 
 	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -205,7 +199,6 @@ func TestAuth_MissingClaims(t *testing.T) {
 			name: "missing user_id",
 			claims: jwt.MapClaims{
 				"email": "test@example.com",
-				"role":  "owner",
 				"exp":   time.Now().Add(15 * time.Minute).Unix(),
 			},
 		},
@@ -213,15 +206,6 @@ func TestAuth_MissingClaims(t *testing.T) {
 			name: "missing email",
 			claims: jwt.MapClaims{
 				"user_id": uuid.New().String(),
-				"role":    "owner",
-				"exp":     time.Now().Add(15 * time.Minute).Unix(),
-			},
-		},
-		{
-			name: "missing role",
-			claims: jwt.MapClaims{
-				"user_id": uuid.New().String(),
-				"email":   "test@example.com",
 				"exp":     time.Now().Add(15 * time.Minute).Unix(),
 			},
 		},
@@ -257,7 +241,6 @@ func TestAuth_InvalidUserIDFormat(t *testing.T) {
 	claims := jwt.MapClaims{
 		"user_id": "not-a-valid-uuid",
 		"email":   "test@example.com",
-		"role":    "owner",
 		"exp":     time.Now().Add(15 * time.Minute).Unix(),
 	}
 
@@ -325,29 +308,10 @@ func TestGetUserEmail_Missing(t *testing.T) {
 	assert.Contains(t, err.Error(), "email not found")
 }
 
-func TestGetUserRole_Success(t *testing.T) {
-	expectedRole := "owner"
-	ctx := context.WithValue(context.Background(), UserRoleKey, expectedRole)
-
-	role, err := GetUserRole(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, expectedRole, role)
-}
-
-func TestGetUserRole_Missing(t *testing.T) {
-	ctx := context.Background()
-
-	_, err := GetUserRole(ctx)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "role not found")
-}
-
 func TestAuth_WrongSigningMethod(t *testing.T) {
-	userID := uuid.New()
+	_ = uuid.New()
 	claims := &auth.AccessTokenClaims{
-		UserID: userID,
-		Email:  "test@example.com",
-		Role:   "owner",
+		Email: "test@example.com",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},
@@ -378,11 +342,9 @@ func TestAuth_WrongSigningMethod(t *testing.T) {
 }
 
 func TestAuth_WrongIssuer(t *testing.T) {
-	userID := uuid.New()
+	_ = uuid.New()
 	claims := &auth.AccessTokenClaims{
-		UserID: userID,
-		Email:  "test@example.com",
-		Role:   "owner",
+		Email: "test@example.com",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "wrong-issuer",
 			Audience:  jwt.ClaimStrings{auth.TokenAudience},
@@ -412,11 +374,9 @@ func TestAuth_WrongIssuer(t *testing.T) {
 }
 
 func TestAuth_WrongAudience(t *testing.T) {
-	userID := uuid.New()
+	_ = uuid.New()
 	claims := &auth.AccessTokenClaims{
-		UserID: userID,
-		Email:  "test@example.com",
-		Role:   "owner",
+		Email: "test@example.com",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    auth.TokenIssuer,
 			Audience:  jwt.ClaimStrings{"wrong-audience"},
@@ -450,7 +410,7 @@ func TestAuth_NoneAlgorithm(t *testing.T) {
 	// Header: {"alg":"none","typ":"JWT"}
 	// Claims: valid-looking claims with correct issuer/audience
 	header := base64RawURL([]byte(`{"alg":"none","typ":"JWT"}`))
-	payload := base64RawURL([]byte(`{"user_id":"` + uuid.New().String() + `","email":"test@example.com","role":"owner","iss":"` + auth.TokenIssuer + `","aud":["` + auth.TokenAudience + `"],"exp":` + fmt.Sprintf("%d", time.Now().Add(15*time.Minute).Unix()) + `}`))
+	payload := base64RawURL([]byte(`{"user_id":"` + uuid.New().String() + `","email":"test@example.com","iss":"` + auth.TokenIssuer + `","aud":["` + auth.TokenAudience + `"],"exp":` + fmt.Sprintf("%d", time.Now().Add(15*time.Minute).Unix()) + `}`))
 	tokenString := header + "." + payload + "."
 
 	req := httptest.NewRequest("GET", "/api/v1/businesses", http.NoBody)

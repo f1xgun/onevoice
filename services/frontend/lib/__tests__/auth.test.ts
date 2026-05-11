@@ -8,7 +8,7 @@ describe('useAuthStore', () => {
   });
 
   it('sets user and token on login', () => {
-    const user: User = { id: '1', email: 'test@test.com', name: 'Test', role: 'owner' };
+    const user: User = { id: '1', email: 'test@test.com', name: 'Test' };
     useAuthStore.getState().setAuth(user, 'access-token');
 
     expect(useAuthStore.getState().user).toEqual(user);
@@ -17,7 +17,7 @@ describe('useAuthStore', () => {
   });
 
   it('clears state on logout', () => {
-    const logoutUser: User = { id: '1', email: 'test@test.com', name: 'Test', role: 'owner' };
+    const logoutUser: User = { id: '1', email: 'test@test.com', name: 'Test' };
     useAuthStore.getState().setAuth(logoutUser, 'access-token');
     useAuthStore.getState().logout();
 
