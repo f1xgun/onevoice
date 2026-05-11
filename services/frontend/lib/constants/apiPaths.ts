@@ -73,6 +73,10 @@ export const API_PATHS = {
     PREVIEW: (token: string) => `/invitations/${token}` as const,
     ACCEPT: (token: string) => `/invitations/${token}/accept` as const,
   },
+  // Phase 5 RBAC: static permission catalog. NOT business-scoped — the
+  // registry is a build-time constant exposed by the API for the frontend
+  // PermissionTree. Use top-level `api.get(API_PATHS.PERMISSIONS)`.
+  PERMISSIONS: '/permissions',
 } as const;
 
 // Absolute paths used by bare `fetch(...)` / `axios(...)` calls that

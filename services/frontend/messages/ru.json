@@ -180,6 +180,72 @@
       "generic": "Не удалось выполнить действие."
     }
   },
+  "roles": {
+    "title": "Роли",
+    "list": {
+      "systemSection": "Системные роли",
+      "customSection": "Свои роли",
+      "addRole": "Новая роль",
+      "noCustom": "Пока нет своих ролей",
+      "noCustomCta": "Создайте первую роль с особым набором прав.",
+      "membersCount": "{count, plural, one {# участник} few {# участника} many {# участников} other {# участников}}",
+      "permsCount": "{count, plural, one {# право} few {# права} many {# прав} other {# прав}}",
+      "allPerms": "все права",
+      "systemBadge": "системная",
+      "loadError": "Не удалось загрузить роли. Попробуйте обновить страницу.",
+      "retry": "Попробовать снова",
+      "menuAria": "Действия для роли {name}",
+      "actions": {
+        "duplicate": "Дублировать",
+        "delete": "Удалить"
+      },
+      "systemLabels": {
+        "owner": "Владелец",
+        "admin": "Администратор",
+        "editor": "Редактор",
+        "viewer": "Наблюдатель"
+      }
+    },
+    "editor": {
+      "newTitle": "Новая роль",
+      "editTitle": "Редактирование роли",
+      "nameLabel": "Название",
+      "namePlaceholder": "Например, «Маркетолог»",
+      "nameRequired": "Введите название роли",
+      "descriptionLabel": "Описание",
+      "descriptionPlaceholder": "Краткое описание того, что может делать эта роль",
+      "permissionsLabel": "Права",
+      "save": "Сохранить",
+      "cancel": "Отмена",
+      "back": "К списку",
+      "cloneNamePrefix": "Копия — {sourceName}",
+      "unsavedPrompt": "Несохранённые изменения. Покинуть страницу?",
+      "createSuccess": "Роль создана",
+      "updateSuccess": "Изменения сохранены"
+    },
+    "delete": {
+      "title": "Удалить роль «{name}»?",
+      "simpleBody": "Действие нельзя отменить.",
+      "pickerBody": "На эту роль назначены участники ({count}). Выберите, на какую роль их перенести.",
+      "pickerLabel": "Перенести участников на:",
+      "confirm": "Удалить",
+      "cancel": "Отмена",
+      "toastSuccess": "Роль удалена"
+    },
+    "permissionTree": {
+      "disabledTooltip": "У вас нет этого права",
+      "groupCount": "{selected} / {total}"
+    },
+    "errors": {
+      "cannotGrantUnowned": "Нельзя выдать права, которых у вас нет. Уберите серые галочки.",
+      "selfLockout": "Нельзя забрать у себя право редактировать роли — иначе потеряете доступ к этой странице.",
+      "systemRoleImmutable": "Системные роли нельзя изменять.",
+      "roleInUse": "На эту роль назначены участники. Выберите, на какую роль их перенести.",
+      "lastOwnerOnDelete": "Нельзя удалить роль — иначе в организации не останется владельцев.",
+      "saveGeneric": "Не удалось сохранить роль. Попробуйте ещё раз.",
+      "deleteGeneric": "Не удалось удалить роль. Попробуйте ещё раз."
+    }
+  },
   "common": {
     "cancel": "Отмена",
     "delete": "Удалить",
@@ -1007,6 +1073,7 @@
       "profile": "Профиль",
       "tools": "Инструменты",
       "team": "Команда",
+      "roles": "Роли",
       "navAria": "Настройки — разделы"
     },
     "tools": {

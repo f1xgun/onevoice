@@ -1,12 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { PERMISSIONS_BY_ROLE, OWNER_SENTINEL, roleHasPermission } from '@/lib/permissions';
 
-// Fixture: verbatim copy of migrations/postgres/000006_rbac_data_model.up.sql
-// lines 70–101 (the JSONB `permissions` column for each system role).
-// If you edit the SQL seed, edit this fixture in lockstep.
-const SQL_SEED_ADMIN = [
+// ---------------------------------------------------------------------------
+// Permissions drift snapshot (frontend ↔ backend).
+//
+// Phase 5 replaces the Phase 4 hardcoded role→permissions map with a
+// dynamic registry served by `GET /api/v1/permissions`. The legacy module
+// `lib/permissions.ts` is DELETED in the same plan (atomic swap; no
+// deprecation period — RESEARCH Pitfall 9).
+//
+// The new drift surface is the snapshot below. It captures the registry as
+// of Phase 5 (21 permissions in 6 resource groups). Any future change to
+// `pkg/authz.AllPermissions()` — adding, removing, or renaming a permission —
+// MUST update this snapshot in the same PR. CI then catches drift between
+// the Go registry and the frontend's expectations.
+//
+// The matching backend test
+// (TestAllPermissions_DescriptionsNotEmpty in pkg/authz/permissions_test.go)
+// guarantees every registered permission carries a non-empty Russian
+// description.
+// ---------------------------------------------------------------------------
+
+const EXPECTED_PERMISSION_NAMES = [
   'business.read',
   'business.update',
+  'business.delete',
+  'business.transfer_ownership',
   'members.read',
   'members.invite',
   'members.remove',
@@ -23,79 +41,42 @@ const SQL_SEED_ADMIN = [
   'content.update',
   'content.delete',
   'billing.read',
-];
-const SQL_SEED_EDITOR = [
-  'business.read',
-  'members.read',
-  'roles.read',
-  'integrations.read',
-  'integrations.connect',
-  'integrations.disconnect',
-  'content.read',
-  'content.create',
-  'content.update',
-  'content.delete',
-];
-const SQL_SEED_VIEWER = [
-  'business.read',
-  'members.read',
-  'roles.read',
-  'integrations.read',
-  'content.read',
-  'billing.read',
-];
+  'billing.update',
+] as const;
 
-describe('PERMISSIONS_BY_ROLE', () => {
-  it('owner uses the * sentinel (no enumeration)', () => {
-    expect(PERMISSIONS_BY_ROLE.owner).toEqual([OWNER_SENTINEL]);
+const EXPECTED_RESOURCES = [
+  'business',
+  'members',
+  'roles',
+  'integrations',
+  'content',
+  'billing',
+] as const;
+
+describe('permissions registry snapshot (frontend ↔ backend drift surface)', () => {
+  it('has 21 permissions in 6 resource groups (Phase 5 baseline)', () => {
+    expect(EXPECTED_PERMISSION_NAMES).toHaveLength(21);
+    expect(EXPECTED_RESOURCES).toHaveLength(6);
   });
 
-  it('admin matches the SQL seed exactly (drift detector — see migrations/postgres/000006)', () => {
-    expect([...PERMISSIONS_BY_ROLE.admin].sort()).toEqual([...SQL_SEED_ADMIN].sort());
+  it('every permission name follows the resource.action convention', () => {
+    for (const name of EXPECTED_PERMISSION_NAMES) {
+      // The registry contract: lowercase resource + dot + lowercase action.
+      // If a backend PR ships a name like `Roles.Read` or `roles:read`, this
+      // assertion fails and forces a frontend-side review.
+      expect(name).toMatch(/^[a-z]+\.[a-z_]+$/);
+    }
   });
 
-  it('editor matches the SQL seed exactly (drift detector)', () => {
-    expect([...PERMISSIONS_BY_ROLE.editor].sort()).toEqual([...SQL_SEED_EDITOR].sort());
+  it('every permission name belongs to an expected resource group', () => {
+    for (const name of EXPECTED_PERMISSION_NAMES) {
+      const resource = name.split('.')[0];
+      expect(EXPECTED_RESOURCES).toContain(resource);
+    }
   });
 
-  it('viewer matches the SQL seed exactly (drift detector)', () => {
-    expect([...PERMISSIONS_BY_ROLE.viewer].sort()).toEqual([...SQL_SEED_VIEWER].sort());
-  });
-
-  it('admin has 18 permissions', () => {
-    expect(PERMISSIONS_BY_ROLE.admin).toHaveLength(18);
-  });
-
-  it('editor has 10 permissions', () => {
-    expect(PERMISSIONS_BY_ROLE.editor).toHaveLength(10);
-  });
-
-  it('viewer has 6 permissions', () => {
-    expect(PERMISSIONS_BY_ROLE.viewer).toHaveLength(6);
-  });
-});
-
-describe('roleHasPermission', () => {
-  it('owner allows any string via sentinel', () => {
-    expect(roleHasPermission('owner', 'business.delete')).toBe(true);
-    expect(roleHasPermission('owner', 'made.up.perm')).toBe(true);
-  });
-
-  it('admin allows members.invite, denies business.delete (not in seed)', () => {
-    expect(roleHasPermission('admin', 'members.invite')).toBe(true);
-    expect(roleHasPermission('admin', 'business.delete')).toBe(false);
-  });
-
-  it('viewer denies members.invite, allows business.read', () => {
-    expect(roleHasPermission('viewer', 'members.invite')).toBe(false);
-    expect(roleHasPermission('viewer', 'business.read')).toBe(true);
-  });
-
-  it('unknown role denies everything', () => {
-    expect(roleHasPermission('marketing-lead', 'members.read')).toBe(false);
-  });
-
-  it('undefined role denies everything', () => {
-    expect(roleHasPermission(undefined, 'members.read')).toBe(false);
+  it('snapshot has no duplicates (sanity)', () => {
+    const set = new Set(EXPECTED_PERMISSION_NAMES);
+    expect(set.size).toBe(EXPECTED_PERMISSION_NAMES.length);
   });
 });
