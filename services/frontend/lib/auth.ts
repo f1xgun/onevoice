@@ -1,12 +1,9 @@
 import { create } from 'zustand';
 
-export type UserRole = 'owner' | 'admin' | 'member';
-
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: UserRole;
 }
 
 interface AuthState {

@@ -80,7 +80,6 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">
               <ReadOnlyField label={tSettings('nameLabel')} value={user?.name} />
               <ReadOnlyField label={tSettings('emailLabel')} value={user?.email} />
-              <ReadOnlyField label={tSettings('roleLabel')} value={user?.role} mono />
             </div>
           </section>
 

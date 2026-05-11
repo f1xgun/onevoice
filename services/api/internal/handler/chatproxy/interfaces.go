@@ -20,8 +20,11 @@ import (
 // RequestEnricher consumes. Declared where consumed (CONVENTIONS.md
 // §"Service Interfaces") so chatproxy_test.go can inject a fake without
 // importing the full service package.
+//
+// Phase 6 (CLEAN-01): GetByUserID is replaced by GetByID; Enrich reads the
+// business id from authz.BusinessContextFromCtx and dereferences via GetByID.
 type BusinessService interface {
-	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 }
 
 // IntegrationService is the strict subset of *service.IntegrationService

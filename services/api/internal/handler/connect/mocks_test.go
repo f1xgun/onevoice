@@ -56,14 +56,6 @@ type MockBusinessService struct {
 	mock.Mock
 }
 
-func (m *MockBusinessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
-	args := m.Called(ctx, userID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.Business), args.Error(1)
-}
-
 // connectBizCtx seeds an authz.BusinessContext for connect handlers (Phase 2
 // v2.0 RBAC). Mirrors oauthBizCtx in handler/oauth/mocks_test.go.
 func connectBizCtx(businessID, userID uuid.UUID, perms ...authz.Permission) context.Context {

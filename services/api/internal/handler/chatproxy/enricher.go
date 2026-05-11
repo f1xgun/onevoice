@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
@@ -83,8 +84,17 @@ func NewRequestEnricher(
 // Enrich resolves business, active_integrations, project_*, history, and
 // builds the not-yet-persisted user Message. Errors map to the entry
 // handler's existing sentinel-based HTTP responses (ErrBusinessNotFound→404).
+//
+// Phase 6 (CLEAN-01): the business id is now sourced from
+// authz.BusinessContextFromCtx (populated by RequireBusinessAccess
+// middleware) rather than from a per-user GetByUserID lookup. The userID
+// parameter is retained for the user-message construction below.
 func (e *RequestEnricher) Enrich(ctx context.Context, userID uuid.UUID, conversationID string, body ChatProxyRequest) (*EnrichmentResult, error) {
-	business, err := e.business.GetByUserID(ctx, userID)
+	bc, ok := authz.BusinessContextFromCtx(ctx)
+	if !ok {
+		return nil, fmt.Errorf("chatproxy: missing BusinessContext (handler must run under RequireBusinessAccess)")
+	}
+	business, err := e.business.GetByID(ctx, bc.BusinessID)
 	if err != nil {
 		return nil, err
 	}

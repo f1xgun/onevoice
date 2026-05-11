@@ -13,6 +13,7 @@ import (
 	natslib "github.com/nats-io/nats.go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
@@ -105,17 +106,21 @@ func (s *reviewService) GetByID(ctx context.Context, businessID uuid.UUID, id st
 	return review, nil
 }
 
-// Refresh resolves the user's business and triggers a synchronous sync
-// across every active integration platform that supports reviews.
+// Refresh resolves the request's business (from authz.BusinessContext) and
+// triggers a synchronous sync across every active integration platform that
+// supports reviews. The userID parameter is retained for logging / future
+// audit-log entries; the business id is sourced from the request context
+// after Phase 6 (CLEAN-01) deleted businessService.GetByUserID.
 func (s *reviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
+	_ = userID
 	if s.refresher == nil {
 		return fmt.Errorf("review refresh is not configured")
 	}
-	business, err := s.businessService.GetByUserID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("get business: %w", err)
+	bc, ok := authz.BusinessContextFromCtx(ctx)
+	if !ok {
+		return fmt.Errorf("review refresh: missing BusinessContext (handler must run under RequireBusinessAccess)")
 	}
-	return s.refresher.SyncForBusiness(ctx, business.ID)
+	return s.refresher.SyncForBusiness(ctx, bc.BusinessID)
 }
 
 func (s *reviewService) Reply(ctx context.Context, businessID uuid.UUID, id, replyText string) error {

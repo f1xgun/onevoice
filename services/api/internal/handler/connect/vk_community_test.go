@@ -175,7 +175,7 @@ func TestConnectVK_Paste_VKAPIError_400(t *testing.T) {
 func TestConnectVK_Paste_EmptyToken_400(t *testing.T) {
 	businessID := uuid.New()
 	userID := uuid.New()
-	mockBusiness := new(MockBusinessService) // GetByUserID must NOT be called — fail-fast on input
+	mockBusiness := new(MockBusinessService)
 	mockIntegration := new(MockConnectIntegrationService)
 	h := NewConnectHandler(mockIntegration, mockBusiness, ConnectConfig{}, nil)
 
@@ -190,7 +190,6 @@ func TestConnectVK_Paste_EmptyToken_400(t *testing.T) {
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
 	}
-	mockBusiness.AssertNotCalled(t, "GetByUserID", mock.Anything, mock.Anything)
 }
 
 func TestConnectVK_Paste_VKReturnsNoCommunity_400(t *testing.T) {
