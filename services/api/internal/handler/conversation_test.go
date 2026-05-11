@@ -216,30 +216,27 @@ func (m *MockMessageRepository) SearchByConversationIDs(_ context.Context, _ str
 }
 
 // noopBusinessService returns ErrBusinessNotFound by default. Tests that need
-// a populated business override GetByUserIDFunc.
+// a populated business override GetByIDFunc.
 type noopBusinessService struct {
-	GetByUserIDFunc func(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
+	GetByIDFunc func(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 }
 
-func (s *noopBusinessService) Create(_ context.Context, _ *domain.Business) (*domain.Business, error) {
+func (s *noopBusinessService) Create(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
 }
-func (s *noopBusinessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
-	if s.GetByUserIDFunc != nil {
-		return s.GetByUserIDFunc(ctx, userID)
+func (s *noopBusinessService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error) {
+	if s.GetByIDFunc != nil {
+		return s.GetByIDFunc(ctx, id)
 	}
-	return nil, domain.ErrBusinessNotFound
-}
-func (s *noopBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
 	return nil, domain.ErrBusinessNotFound
 }
 func (s *noopBusinessService) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
 	return nil, nil
 }
-func (s *noopBusinessService) GetToolApprovals(_ context.Context, _, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
+func (s *noopBusinessService) GetToolApprovals(_ context.Context, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
 	return map[string]domain.ToolFloor{}, nil
 }
-func (s *noopBusinessService) UpdateToolApprovals(_ context.Context, _, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
+func (s *noopBusinessService) UpdateToolApprovals(_ context.Context, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
 	return nil
 }
 func (s *noopBusinessService) ListMembershipsByUser(_ context.Context, _ uuid.UUID) ([]service.MembershipSummary, error) {

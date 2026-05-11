@@ -37,8 +37,8 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 	sql, args, err := r.sb.
 		Insert("users").
-		Columns("id", "email", "password_hash", "role", "created_at", "updated_at").
-		Values(user.ID, user.Email, user.PasswordHash, user.Role, user.CreatedAt, user.UpdatedAt).
+		Columns("id", "email", "password_hash", "created_at", "updated_at").
+		Values(user.ID, user.Email, user.PasswordHash, user.CreatedAt, user.UpdatedAt).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert: %w", err)
@@ -57,7 +57,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "password_hash", "role", "created_at", "updated_at").
+		Select("id", "email", "password_hash", "created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -70,7 +70,6 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
-		&user.Role,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -86,7 +85,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "password_hash", "role", "created_at", "updated_at").
+		Select("id", "email", "password_hash", "created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"email": email}).
 		ToSql()
@@ -99,7 +98,6 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
-		&user.Role,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -120,7 +118,6 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 		Update("users").
 		Set("email", user.Email).
 		Set("password_hash", user.PasswordHash).
-		Set("role", user.Role).
 		Set("updated_at", user.UpdatedAt).
 		Where(squirrel.Eq{"id": user.ID}).
 		ToSql()

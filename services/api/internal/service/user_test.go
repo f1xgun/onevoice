@@ -192,7 +192,6 @@ func TestUserService_Login(t *testing.T) {
 			ID:           uuid.New(),
 			Email:        "test@example.com",
 			PasswordHash: string(passwordHash),
-			Role:         domain.UserRoleOwner,
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
 		}
@@ -228,7 +227,6 @@ func TestUserService_Login(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, existingUser.ID, claims.UserID)
 		assert.Equal(t, existingUser.Email, claims.Email)
-		assert.Equal(t, string(existingUser.Role), claims.Role)
 
 		// Verify refresh token
 		refreshTokenParsed, err := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
@@ -278,7 +276,6 @@ func TestUserService_Login(t *testing.T) {
 			ID:           uuid.New(),
 			Email:        "test@example.com",
 			PasswordHash: string(passwordHash),
-			Role:         domain.UserRoleOwner,
 		}
 
 		repo := &mockUserRepository{
@@ -325,7 +322,6 @@ func TestUserService_Login(t *testing.T) {
 			ID:           uuid.New(),
 			Email:        "test@example.com",
 			PasswordHash: string(passwordHash),
-			Role:         domain.UserRoleOwner,
 		}
 
 		repo := &mockUserRepository{
@@ -355,7 +351,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 		existingUser := &domain.User{
 			ID:    userID,
 			Email: "test@example.com",
-			Role:  domain.UserRoleOwner,
 		}
 
 		repo := &mockUserRepository{
@@ -445,7 +440,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 	})
 
 	t.Run("expired token", func(t *testing.T) {
-		userID := uuid.New()
+		_ = uuid.New()
 		tokenID := uuid.New()
 
 		repo := &mockUserRepository{}
@@ -453,7 +448,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 
 		// Generate expired refresh token
 		refreshClaims := &auth.RefreshTokenClaims{
-			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
@@ -476,7 +470,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 	})
 
 	t.Run("token not in redis", func(t *testing.T) {
-		userID := uuid.New()
+		_ = uuid.New()
 		tokenID := uuid.New()
 
 		repo := &mockUserRepository{}
@@ -484,7 +478,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 
 		// Generate valid token but don't store in Redis
 		refreshClaims := &auth.RefreshTokenClaims{
-			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
@@ -546,7 +539,7 @@ func TestUserService_RefreshToken(t *testing.T) {
 	})
 
 	t.Run("redis error", func(t *testing.T) {
-		userID := uuid.New()
+		_ = uuid.New()
 		tokenID := uuid.New()
 
 		repo := &mockUserRepository{}
@@ -554,7 +547,6 @@ func TestUserService_RefreshToken(t *testing.T) {
 
 		// Generate valid token
 		refreshClaims := &auth.RefreshTokenClaims{
-			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
@@ -599,7 +591,6 @@ func TestUserService_Logout(t *testing.T) {
 
 		// Generate refresh token
 		refreshClaims := &auth.RefreshTokenClaims{
-			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
@@ -638,12 +629,11 @@ func TestUserService_Logout(t *testing.T) {
 		repo := &mockUserRepository{}
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
-		userID := uuid.New()
+		_ = uuid.New()
 		tokenID := uuid.New()
 
 		// Generate expired token
 		refreshClaims := &auth.RefreshTokenClaims{
-			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
@@ -667,11 +657,10 @@ func TestUserService_Logout(t *testing.T) {
 		repo := &mockUserRepository{}
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
-		userID := uuid.New()
+		_ = uuid.New()
 		tokenID := uuid.New()
 
 		refreshClaims := &auth.RefreshTokenClaims{
-			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
@@ -699,11 +688,10 @@ func TestUserService_Logout(t *testing.T) {
 		repo := &mockUserRepository{}
 		svc, _ := NewUserService(repo, redisClient, jwtSecret)
 
-		userID := uuid.New()
+		_ = uuid.New()
 		tokenID := uuid.New()
 
 		refreshClaims := &auth.RefreshTokenClaims{
-			UserID:  userID,
 			TokenID: tokenID,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    auth.TokenIssuer,
@@ -735,7 +723,6 @@ func TestUserService_GetByID(t *testing.T) {
 			ID:           userID,
 			Email:        "test@example.com",
 			PasswordHash: "hashed-password",
-			Role:         domain.UserRoleOwner,
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
 		}
@@ -795,7 +782,6 @@ func TestSanitizeUser(t *testing.T) {
 		ID:           uuid.New(),
 		Email:        "test@example.com",
 		PasswordHash: "secret-hash",
-		Role:         domain.UserRoleOwner,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -806,7 +792,6 @@ func TestSanitizeUser(t *testing.T) {
 	assert.Equal(t, user.ID, sanitized.ID)
 	assert.Equal(t, user.Email, sanitized.Email)
 	assert.Empty(t, sanitized.PasswordHash)
-	assert.Equal(t, user.Role, sanitized.Role)
 
 	// Ensure original user is not modified
 	assert.NotEmpty(t, user.PasswordHash)
@@ -846,7 +831,6 @@ func TestGenerateTokens(t *testing.T) {
 	user := &domain.User{
 		ID:    uuid.New(),
 		Email: "test@example.com",
-		Role:  domain.UserRoleOwner,
 	}
 
 	t.Run("generate access token", func(t *testing.T) {
@@ -865,7 +849,6 @@ func TestGenerateTokens(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, user.ID, claims.UserID)
 		assert.Equal(t, user.Email, claims.Email)
-		assert.Equal(t, string(user.Role), claims.Role)
 	})
 
 	t.Run("generate refresh token", func(t *testing.T) {

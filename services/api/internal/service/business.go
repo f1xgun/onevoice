@@ -26,8 +26,12 @@ type MembershipSummary struct {
 
 // BusinessService defines the interface for business profile management
 type BusinessService interface {
-	Create(ctx context.Context, business *domain.Business) (*domain.Business, error)
-	GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error)
+	// Create creates a new business and the dual-write owner membership
+	// (DATA-06). ownerUserID is the user that will be seeded as the first
+	// business_members row with role_id=SystemRoleOwnerID. Phase 6 (CLEAN-01)
+	// removed Business.UserID; the handler now passes the authenticated user
+	// id explicitly as a third arg.
+	Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
 	// ListMembershipsByUser returns the businesses a user has membership in,
@@ -36,15 +40,21 @@ type BusinessService interface {
 	// GetToolApprovals returns the current businesses.settings.tool_approvals
 	// map. Returns a non-nil empty map when no approvals are stored —
 	// matches Business.ToolApprovals() contract.
-	GetToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
+	//
+	// Caller is expected to have passed `authz.Can(ctx, PermBusinessRead)` at
+	// the handler layer; the service is a thin data wrapper since Phase 6
+	// (CLEAN-01) removed the legacy b.UserID != actor ownership check.
+	GetToolApprovals(ctx context.Context, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
 	// UpdateToolApprovals replaces the businesses.settings.tool_approvals
 	// map with the given approvals. Validation:
 	//   - Keys must exist in the live orchestrator registry (caller injects
 	//     via ToolsRegistryCache — see handler.UpdateBusinessToolApprovals).
 	//   - Values must be in {Auto, Manual}. Forbidden is NOT a valid user-set
 	//     value (floor is set at registration only).
-	// Ownership (actor owns the business) is enforced before the repo write.
-	UpdateToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
+	// Permission enforcement is at the handler layer via
+	// `authz.Can(ctx, PermBusinessUpdate)` after Phase 6 (CLEAN-01) removed
+	// the legacy b.UserID != actor ownership check.
+	UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
 
 // PgxBeginner is the minimal subset of *pgxpool.Pool that businessService
@@ -116,7 +126,11 @@ func NewBusinessService(
 // ErrMembershipExists from the second insert is treated as the
 // idempotent backfill-already-landed path: we still commit so the
 // businesses row lands.
-func (s *businessService) Create(ctx context.Context, business *domain.Business) (*domain.Business, error) {
+//
+// Phase 6 (CLEAN-01): ownerUserID is now a separate parameter (was
+// business.UserID before; the field was dropped from domain.Business).
+// The handler reads it from middleware.GetUserID and passes it explicitly.
+func (s *businessService) Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error) {
 	// Check context
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -132,8 +146,8 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business)
 		return nil, fmt.Errorf("name is required")
 	}
 
-	if business.UserID == uuid.Nil {
-		return nil, fmt.Errorf("user id is required")
+	if ownerUserID == uuid.Nil {
+		return nil, fmt.Errorf("owner user id is required")
 	}
 
 	// Phase 1 v2.0 RBAC (DATA-06): dual-write businesses + business_members
@@ -169,7 +183,7 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business)
 
 	member := &domain.BusinessMember{
 		BusinessID: business.ID,
-		UserID:     business.UserID,
+		UserID:     ownerUserID,
 		RoleID:     ownerRoleID,
 		Status:     "active",
 		// JoinedAt left zero so the repo populates time.Now() during Insert.
@@ -186,13 +200,6 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business)
 		return nil, fmt.Errorf("commit business+membership: %w", commitErr)
 	}
 	return business, nil
-}
-
-// GetByUserID retrieves a business by user ID.
-// TODO(Plan 02-05): migrate call sites to authz.BusinessContextFromCtx;
-// this stub unblocks compilation after Plan 02-02 deleted BusinessRepository.GetByUserID.
-func (s *businessService) GetByUserID(ctx context.Context, userID uuid.UUID) (*domain.Business, error) {
-	return nil, fmt.Errorf("GetByUserID: use authz.BusinessContextFromCtx instead (Plan 02-05)")
 }
 
 // ListMembershipsByUser returns the businesses a user has membership in,
@@ -255,30 +262,25 @@ func (s *businessService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Bu
 }
 
 // GetToolApprovals returns the businesses.settings.tool_approvals map for
-// the business identified by businessID. Access control: actorUserID must
-// own businessID (Business.UserID check) — otherwise ErrBusinessNotFound
-// (404-to-avoid-enumeration).
-func (s *businessService) GetToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID) (map[string]domain.ToolFloor, error) {
+// the business identified by businessID. Phase 6 (CLEAN-01) removed the
+// legacy b.UserID != actor ownership check; the caller (handler) is expected
+// to gate on authz.Can(ctx, PermBusinessRead).
+func (s *businessService) GetToolApprovals(ctx context.Context, businessID uuid.UUID) (map[string]domain.ToolFloor, error) {
 	b, err := s.repo.GetByID(ctx, businessID)
 	if err != nil {
 		return nil, err
 	}
-	if b.UserID != actorUserID {
-		return nil, domain.ErrBusinessNotFound
-	}
 	return b.ToolApprovals(), nil
 }
 
-// UpdateToolApprovals persists a new tool_approvals map. Ownership check is
-// identical to GetToolApprovals. Value validation (Auto/Manual only) is the
-// handler's concern — this layer just maps the typed map into the repo call.
-func (s *businessService) UpdateToolApprovals(ctx context.Context, actorUserID, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
-	b, err := s.repo.GetByID(ctx, businessID)
-	if err != nil {
+// UpdateToolApprovals persists a new tool_approvals map. Phase 6 (CLEAN-01)
+// removed the legacy b.UserID != actor ownership check; the caller (handler)
+// is expected to gate on authz.Can(ctx, PermBusinessUpdate). Value
+// validation (Auto/Manual only) is the handler's concern — this layer just
+// maps the typed map into the repo call.
+func (s *businessService) UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
+	if _, err := s.repo.GetByID(ctx, businessID); err != nil {
 		return err
-	}
-	if b.UserID != actorUserID {
-		return domain.ErrBusinessNotFound
 	}
 	return s.repo.UpdateToolApprovals(ctx, businessID, approvals)
 }

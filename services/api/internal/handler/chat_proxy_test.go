@@ -66,7 +66,6 @@ func TestChatProxy_EnrichesContext(t *testing.T) {
 
 	business := &domain.Business{
 		ID:          businessID,
-		UserID:      userID,
 		Name:        "Кофейня",
 		Category:    "Кафе",
 		Address:     "ул. Ленина, 1",
@@ -95,7 +94,7 @@ func TestChatProxy_EnrichesContext(t *testing.T) {
 	defer orchServer.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return(integrations, nil)
@@ -139,9 +138,8 @@ func TestChatProxy_StreamsSSE(t *testing.T) {
 	businessID := uuid.New()
 
 	business := &domain.Business{
-		ID:     businessID,
-		UserID: userID,
-		Name:   "Test",
+		ID:   businessID,
+		Name: "Test",
 	}
 
 	orchServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +150,7 @@ func TestChatProxy_StreamsSSE(t *testing.T) {
 	defer orchServer.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
@@ -193,7 +191,7 @@ func TestChatProxy_StreamsSSE(t *testing.T) {
 func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -202,7 +200,7 @@ func TestChatProxy_FreshTurn_ErrorEvent_PersistsAssistantWithError(t *testing.T)
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -291,7 +289,7 @@ func TestChatProxy_NoBusiness(t *testing.T) {
 	businessID := uuid.New()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(nil, domain.ErrBusinessNotFound)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(nil, domain.ErrBusinessNotFound)
 
 	mockInteg := new(MockIntegrationService)
 
@@ -325,13 +323,12 @@ func TestChatProxy_OrchestratorDown(t *testing.T) {
 	businessID := uuid.New()
 
 	business := &domain.Business{
-		ID:     businessID,
-		UserID: userID,
-		Name:   "Test",
+		ID:   businessID,
+		Name: "Test",
 	}
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
@@ -368,7 +365,7 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 	businessID := uuid.New()
 	conversationID := "conv-np-1"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	var captured map[string]interface{}
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -381,7 +378,7 @@ func TestChatProxy_ProjectEnrichment_WithoutProject(t *testing.T) {
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -434,7 +431,7 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 	projectID := uuid.New()
 	conversationID := "conv-p-1"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	var captured map[string]interface{}
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -447,7 +444,7 @@ func TestChatProxy_ProjectEnrichment_WithProjectExplicitWhitelist(t *testing.T) 
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -508,7 +505,7 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	// Build a ~512KB JSON payload (well above the old 64KB limit).
 	bigText := strings.Repeat("a", 500_000)
@@ -527,7 +524,7 @@ func TestChatProxy_ScannerBuffer_HandlesLargeToolResult(t *testing.T) {
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -568,7 +565,7 @@ func TestChatProxy_NoSyntheticToolCallID(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -579,7 +576,7 @@ func TestChatProxy_NoSyntheticToolCallID(t *testing.T) {
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -622,7 +619,7 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 	userID := uuid.New()
 	businessID := uuid.New()
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -633,7 +630,7 @@ func TestChatProxy_ToolApprovalRequired_PersistsPendingApprovalMessage(t *testin
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -687,7 +684,7 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 	businessID := uuid.New()
 	convID := "conv-resume"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	activeMsg := &domain.Message{
 		ID:             "msg-1",
@@ -716,7 +713,7 @@ func TestChatProxy_Resume_AppendsToExistingMessage(t *testing.T) {
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -785,7 +782,7 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 	businessID := uuid.New()
 	convID := "conv-resume-missing"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	// Message exists but batch does not.
 	activeMsg := &domain.Message{
@@ -801,7 +798,7 @@ func TestChatProxy_Resume_NoActiveApproval_EmitsInlineError(t *testing.T) {
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -851,7 +848,7 @@ func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T)
 	businessID := uuid.New()
 	convID := "conv-resume-error"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	activeMsg := &domain.Message{
 		ID:             "msg-stuck",
@@ -875,7 +872,7 @@ func TestChatProxy_Resume_ErrorEvent_TransitionsOffPendingApproval(t *testing.T)
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -943,7 +940,7 @@ func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t
 	businessID := uuid.New()
 	convID := "conv-resume-no-done"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	activeMsg := &domain.Message{
 		ID:             "msg-stuck-2",
@@ -963,7 +960,7 @@ func TestChatProxy_Resume_StreamEndedWithoutDone_TransitionsOffPendingApproval(t
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -1021,7 +1018,7 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 	businessID := uuid.New()
 	convID := "conv-implicit"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	activeMsg := &domain.Message{
 		ID: "msg-2", ConversationID: convID, Role: "assistant",
@@ -1041,7 +1038,7 @@ func TestChatProxy_ImplicitResume_InProgressMessage_Rejoins(t *testing.T) {
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -1104,7 +1101,7 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 	businessID := uuid.New()
 	convID := "conv-pending-reconnect"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	activeMsg := &domain.Message{
 		ID: "msg-3", ConversationID: convID, Role: "assistant",
@@ -1119,7 +1116,7 @@ func TestChatProxy_Reconnect_PendingBatch_ReEmitsApprovalEvent(t *testing.T) {
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -1173,7 +1170,7 @@ func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testin
 	businessID := uuid.New()
 	convID := "conv-orphan"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	activeMsg := &domain.Message{
 		ID: "msg-orphan", ConversationID: convID, Role: "assistant",
@@ -1187,7 +1184,7 @@ func TestChatProxy_OrphanInProgress_NoBatch_EmitsTurnAlreadyInProgress(t *testin
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -1232,7 +1229,7 @@ func TestChatProxy_ToolApprovalRequired_NoErrorIfPersistFails(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -1241,7 +1238,7 @@ func TestChatProxy_ToolApprovalRequired_NoErrorIfPersistFails(t *testing.T) {
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -1282,7 +1279,7 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := "conv-stale-1"
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+	business := &domain.Business{ID: businessID, Name: "Biz"}
 
 	var captured map[string]interface{}
 	orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1295,7 +1292,7 @@ func TestChatProxy_ProjectEnrichment_StaleProjectID(t *testing.T) {
 	defer orch.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -1348,9 +1345,8 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		conversationID := "conv-p16-1"
 
 		business := &domain.Business{
-			ID:     businessID,
-			UserID: userID,
-			Name:   "Biz",
+			ID:   businessID,
+			Name: "Biz",
 			Settings: map[string]interface{}{
 				"tool_approvals": map[string]interface{}{
 					tools.TelegramSendChannelPost: "manual",
@@ -1369,7 +1365,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		defer orch.Close()
 
 		mockBiz := new(MockBusinessService)
-		mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+		mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 		mockInteg := new(MockIntegrationService)
 		mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
@@ -1457,7 +1453,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		businessID := uuid.New()
 		conversationID := "conv-p16-noproj"
 
-		business := &domain.Business{ID: businessID, UserID: userID, Name: "Biz"}
+		business := &domain.Business{ID: businessID, Name: "Biz"}
 
 		var captured map[string]interface{}
 		orch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1470,7 +1466,7 @@ func TestChatProxy_ForwardsPhase16Fields(t *testing.T) {
 		defer orch.Close()
 
 		mockBiz := new(MockBusinessService)
-		mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+		mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 		mockInteg := new(MockIntegrationService)
 		mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 

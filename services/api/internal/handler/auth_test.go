@@ -82,7 +82,6 @@ func TestRegister(t *testing.T) {
 					Return(&domain.User{
 						ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 						Email:     "user@example.com",
-						Role:      domain.UserRoleOwner,
 						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 						UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 					}, nil)
@@ -90,7 +89,6 @@ func TestRegister(t *testing.T) {
 					Return(&domain.User{
 						ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 						Email:     "user@example.com",
-						Role:      domain.UserRoleOwner,
 						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 						UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 					}, "access-token", "refresh-token", nil)
@@ -101,7 +99,6 @@ func TestRegister(t *testing.T) {
 				err := json.Unmarshal(w.Body.Bytes(), &resp)
 				require.NoError(t, err)
 				assert.Equal(t, "user@example.com", resp.User.Email)
-				assert.Equal(t, domain.UserRoleOwner, resp.User.Role)
 				assert.Equal(t, "access-token", resp.AccessToken)
 
 				// Verify refresh token is in cookie, not in response body
@@ -238,7 +235,6 @@ func TestLogin(t *testing.T) {
 						&domain.User{
 							ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 							Email:     "user@example.com",
-							Role:      domain.UserRoleOwner,
 							CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 							UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 						},
@@ -373,7 +369,6 @@ func TestRefreshToken(t *testing.T) {
 						&domain.User{
 							ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 							Email:     "user@example.com",
-							Role:      domain.UserRoleOwner,
 							CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 							UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 						},
@@ -743,7 +738,6 @@ func TestSecureCookies(t *testing.T) {
 			Return(&domain.User{
 				ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 				Email:     "user@example.com",
-				Role:      domain.UserRoleOwner,
 				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 				UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			}, "access-token", "refresh-token", nil)
@@ -781,7 +775,6 @@ func TestSecureCookies(t *testing.T) {
 			Return(&domain.User{
 				ID:    uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 				Email: "user@example.com",
-				Role:  domain.UserRoleOwner,
 			}, "new-access", "new-refresh", nil)
 
 		handler, err := NewAuthHandler(mockService, true)
@@ -803,7 +796,6 @@ func TestSecureCookies(t *testing.T) {
 			Return(&domain.User{
 				ID:    uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 				Email: "user@example.com",
-				Role:  domain.UserRoleOwner,
 			}, "new-access", "new-refresh", nil)
 
 		handler, err := NewAuthHandler(mockService, true)
@@ -826,7 +818,6 @@ func TestRegister_AutoLoginFailure(t *testing.T) {
 		Return(&domain.User{
 			ID:    uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 			Email: "user@example.com",
-			Role:  domain.UserRoleOwner,
 		}, nil)
 	mockService.On("Login", mock.Anything, "user@example.com", "password123").
 		Return(nil, "", "", errors.New("auto-login failed"))
@@ -868,7 +859,6 @@ func TestMe(t *testing.T) {
 					Return(&domain.User{
 						ID:        testUserID,
 						Email:     "user@example.com",
-						Role:      domain.UserRoleOwner,
 						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 						UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 					}, nil)
@@ -879,7 +869,6 @@ func TestMe(t *testing.T) {
 				err := json.Unmarshal(w.Body.Bytes(), &user)
 				require.NoError(t, err)
 				assert.Equal(t, "user@example.com", user.Email)
-				assert.Equal(t, domain.UserRoleOwner, user.Role)
 				assert.Empty(t, user.PasswordHash, "password hash should not be returned")
 			},
 		},

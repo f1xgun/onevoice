@@ -42,25 +42,17 @@ func newStubToolsCache(names ...string) handler.ToolsCache {
 
 // stubBusinessServiceForApprovals is a minimal stub that captures calls.
 type stubBusinessServiceForApprovals struct {
-	bizByUser    *domain.Business
-	bizByID      *domain.Business
-	getByUserErr error
-	getByIDErr   error
+	bizByID    *domain.Business
+	getByIDErr error
 
-	GetApprovalsFn    func(ctx context.Context, actor, biz uuid.UUID) (map[string]domain.ToolFloor, error)
-	UpdateApprovalsFn func(ctx context.Context, actor, biz uuid.UUID, approvals map[string]domain.ToolFloor) error
+	GetApprovalsFn    func(ctx context.Context, biz uuid.UUID) (map[string]domain.ToolFloor, error)
+	UpdateApprovalsFn func(ctx context.Context, biz uuid.UUID, approvals map[string]domain.ToolFloor) error
 
 	updateCallApprovals map[string]domain.ToolFloor
 }
 
-func (s *stubBusinessServiceForApprovals) Create(_ context.Context, _ *domain.Business) (*domain.Business, error) {
+func (s *stubBusinessServiceForApprovals) Create(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
-}
-func (s *stubBusinessServiceForApprovals) GetByUserID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
-	if s.getByUserErr != nil {
-		return nil, s.getByUserErr
-	}
-	return s.bizByUser, nil
 }
 func (s *stubBusinessServiceForApprovals) GetByID(_ context.Context, _ uuid.UUID) (*domain.Business, error) {
 	if s.getByIDErr != nil {
@@ -71,16 +63,16 @@ func (s *stubBusinessServiceForApprovals) GetByID(_ context.Context, _ uuid.UUID
 func (s *stubBusinessServiceForApprovals) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
 	return nil, nil
 }
-func (s *stubBusinessServiceForApprovals) GetToolApprovals(ctx context.Context, actor, biz uuid.UUID) (map[string]domain.ToolFloor, error) {
+func (s *stubBusinessServiceForApprovals) GetToolApprovals(ctx context.Context, biz uuid.UUID) (map[string]domain.ToolFloor, error) {
 	if s.GetApprovalsFn != nil {
-		return s.GetApprovalsFn(ctx, actor, biz)
+		return s.GetApprovalsFn(ctx, biz)
 	}
 	return map[string]domain.ToolFloor{}, nil
 }
-func (s *stubBusinessServiceForApprovals) UpdateToolApprovals(ctx context.Context, actor, biz uuid.UUID, approvals map[string]domain.ToolFloor) error {
+func (s *stubBusinessServiceForApprovals) UpdateToolApprovals(ctx context.Context, biz uuid.UUID, approvals map[string]domain.ToolFloor) error {
 	s.updateCallApprovals = approvals
 	if s.UpdateApprovalsFn != nil {
-		return s.UpdateApprovalsFn(ctx, actor, biz, approvals)
+		return s.UpdateApprovalsFn(ctx, biz, approvals)
 	}
 	return nil
 }
@@ -132,8 +124,8 @@ func TestGetBusinessToolApprovals_ReturnsCurrentMap(t *testing.T) {
 	bizID := uuid.New()
 	userID := uuid.New()
 	svc := &stubBusinessServiceForApprovals{
-		bizByUser: &domain.Business{ID: bizID, UserID: userID},
-		GetApprovalsFn: func(_ context.Context, _, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
+		bizByID: &domain.Business{ID: bizID},
+		GetApprovalsFn: func(_ context.Context, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
 			return map[string]domain.ToolFloor{tools.TelegramSendChannelPost: "manual"}, nil
 		},
 	}
@@ -159,7 +151,7 @@ func TestUpdateBusinessToolApprovals_ValidPayload_Persists(t *testing.T) {
 	bizID := uuid.New()
 	userID := uuid.New()
 	svc := &stubBusinessServiceForApprovals{
-		bizByUser: &domain.Business{ID: bizID, UserID: userID},
+		bizByID: &domain.Business{ID: bizID},
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
 	require.NoError(t, err)
@@ -190,7 +182,7 @@ func TestUpdateBusinessToolApprovals_UnknownTool_Returns400(t *testing.T) {
 	bizID := uuid.New()
 	userID := uuid.New()
 	svc := &stubBusinessServiceForApprovals{
-		bizByUser: &domain.Business{ID: bizID, UserID: userID},
+		bizByID: &domain.Business{ID: bizID},
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
 	require.NoError(t, err)
@@ -215,7 +207,7 @@ func TestUpdateBusinessToolApprovals_InvalidValue_Returns400(t *testing.T) {
 	bizID := uuid.New()
 	userID := uuid.New()
 	svc := &stubBusinessServiceForApprovals{
-		bizByUser: &domain.Business{ID: bizID, UserID: userID},
+		bizByID: &domain.Business{ID: bizID},
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
 	require.NoError(t, err)
@@ -241,8 +233,8 @@ func TestUpdateBusinessToolApprovals_CrossTenant_Returns403(t *testing.T) {
 	bizID := uuid.New()
 	userID := uuid.New()
 	svc := &stubBusinessServiceForApprovals{
-		bizByUser: &domain.Business{ID: bizID, UserID: userID},
-		UpdateApprovalsFn: func(_ context.Context, _, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
+		bizByID: &domain.Business{ID: bizID},
+		UpdateApprovalsFn: func(_ context.Context, _ uuid.UUID, _ map[string]domain.ToolFloor) error {
 			return domain.ErrBusinessNotFound
 		},
 	}
@@ -276,7 +268,7 @@ func TestUpdateBusinessToolApprovals_PreservesOtherSettings(t *testing.T) {
 	bizID := uuid.New()
 	userID := uuid.New()
 	svc := &stubBusinessServiceForApprovals{
-		bizByUser: &domain.Business{ID: bizID, UserID: userID},
+		bizByID: &domain.Business{ID: bizID},
 	}
 	h, err := handler.NewBusinessHandler(svc, nil, storage.Uploader(nil))
 	require.NoError(t, err)

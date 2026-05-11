@@ -64,7 +64,7 @@ func TestChatProxy_ToolCallIDCorrelation(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
 
-	business := &domain.Business{ID: businessID, UserID: userID, Name: "Test"}
+	business := &domain.Business{ID: businessID, Name: "Test"}
 
 	// Orchestrator returns two tool_calls with the SAME name but distinct IDs,
 	// plus results emitted in a DIFFERENT order than the calls. Correlation by
@@ -86,7 +86,7 @@ func TestChatProxy_ToolCallIDCorrelation(t *testing.T) {
 	defer orchServer.Close()
 
 	mockBiz := new(MockBusinessService)
-	mockBiz.On("GetByUserID", mock.Anything, userID).Return(business, nil)
+	mockBiz.On("GetByID", mock.Anything, businessID).Return(business, nil)
 
 	mockInteg := new(MockIntegrationService)
 	mockInteg.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
