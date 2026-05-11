@@ -12,6 +12,7 @@ import { Sidebar } from '@/components/sidebar';
 import { NavRail } from '@/components/sidebar/NavRail';
 import { ProjectPane } from '@/components/sidebar/ProjectPane';
 import { BusinessRequiredGuard } from '@/components/BusinessRequiredGuard';
+import { PermissionsCacheGuard } from '@/components/PermissionsCacheGuard';
 import type { ReactNode } from 'react';
 
 // Module-level event-name singleton: any input/element listening for this
@@ -100,6 +101,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <BusinessRequiredGuard>
       <>
+        {/* Phase 5 RBAC: invalidate per-business permissions cache on every
+            business switch. Mounted here so it's active for the entire (app)
+            shell but only after BusinessRequiredGuard resolves a valid
+            activeBusinessId. Renders no DOM. */}
+        <PermissionsCacheGuard />
         {/* Mobile: keep the existing Sheet-based drawer (Sidebar) which
             renders top bar + drawer with the full nav + project tree.
             The flex-column + h-screen pair gives <main> a real height so

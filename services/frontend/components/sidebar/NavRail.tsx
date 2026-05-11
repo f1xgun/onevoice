@@ -24,6 +24,8 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
+import { queryClient } from '@/lib/queryClient';
+import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 
 interface Integration {
   platform: string;
@@ -78,6 +80,15 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   });
 
   function handleLogout() {
+    // Phase 5: drop session-scoped React-Query caches BEFORE the auth store
+    // clears so any in-flight subscription gets the empty state.
+    //   - ['businesses', ...] sweeps members, invitations, roles, permissions
+    //     by partial-match (all are nested under that prefix).
+    //   - ['permissions-catalog'] is top-level and persists across login by
+    //     default (app-static); we remove it here so a different actor's
+    //     deploy build can re-fetch fresh.
+    queryClient.removeQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
+    queryClient.removeQueries({ queryKey: QUERY_KEYS.PERMISSIONS_CATALOG });
     logout();
     router.push('/login');
   }
