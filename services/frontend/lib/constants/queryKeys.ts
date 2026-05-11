@@ -24,6 +24,13 @@ export const QUERY_KEYS = {
   BUSINESS_PROFILE: (bizId: string | null) => ['businesses', bizId, 'business'] as const,
   BUSINESS_REVIEWS: (bizId: string | null) => ['businesses', bizId, 'reviews'] as const,
   BUSINESS_TASKS: (bizId: string | null) => ['businesses', bizId, 'tasks'] as const,
+  // Phase 4 RBAC: per-business membership data. Plural-form keys keep them
+  // adjacent to the other BUSINESS_* entries in the cache hierarchy so a
+  // single `['businesses', bizId]` partial-match invalidation can sweep
+  // every per-business slice if ever needed.
+  MEMBERS: (bizId: string | null) => ['businesses', bizId, 'members'] as const,
+  INVITATIONS: (bizId: string | null) => ['businesses', bizId, 'invitations'] as const,
+  ROLES: (bizId: string | null) => ['businesses', bizId, 'roles'] as const,
   REVIEWS_FILTERED: (platform: string, replyStatus: string) =>
     ['reviews', platform, replyStatus] as const,
   POSTS: (status: string, platform: string) => ['posts', status, platform] as const,

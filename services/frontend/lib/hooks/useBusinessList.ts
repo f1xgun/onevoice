@@ -13,6 +13,8 @@ export interface BusinessSummary {
 
 export const BUSINESS_LIST_QUERY_KEY = ['businesses'] as const;
 
+const STALE_TIME_MS = 30_000;
+
 export function useBusinessList() {
   return useQuery<BusinessSummary[]>({
     queryKey: BUSINESS_LIST_QUERY_KEY,
@@ -20,5 +22,9 @@ export function useBusinessList() {
       const { data } = await api.get<BusinessSummary[]>('/businesses');
       return data;
     },
+    // The 404 interceptor invalidates this key on stale-business detection;
+    // default 3-retry exponential backoff would amplify load on backend hiccups.
+    retry: 1,
+    staleTime: STALE_TIME_MS,
   });
 }
