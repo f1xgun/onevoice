@@ -8,7 +8,7 @@ const TABS = [
   { href: '/settings', labelKey: 'profile' },
   { href: '/settings/tools', labelKey: 'tools' },
   { href: '/settings/team', labelKey: 'team' },
-  // Phase 5 will add: { href: '/settings/roles', labelKey: 'roles' }
+  { href: '/settings/roles', labelKey: 'roles' },
 ] as const;
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {

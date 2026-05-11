@@ -31,6 +31,10 @@ func writeAuthzInvariantError(ctx context.Context, w http.ResponseWriter, op str
 		writeJSONError(w, http.StatusNotFound, "member_not_found")
 	case errors.Is(err, domain.ErrRoleNotFound):
 		writeJSONError(w, http.StatusNotFound, "role_not_found")
+	case errors.Is(err, domain.ErrRoleNameTaken):
+		writeJSONError(w, http.StatusConflict, "role_name_taken")
+	case errors.Is(err, domain.ErrRoleInUse):
+		writeJSONError(w, http.StatusUnprocessableEntity, "role_in_use")
 	default:
 		slog.ErrorContext(ctx, "handler authz error",
 			"op", op,

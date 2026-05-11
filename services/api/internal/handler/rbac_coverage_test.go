@@ -121,10 +121,13 @@ func TestRBACCoverage_AllBusinessRoutes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// AUTHZ-10 acceptance: walker must find at least 33 business-scoped routes.
-	// Phase 2 baseline ~30 + Phase 3 invitations × 3 (POST/GET/DELETE) = 33.
-	require.GreaterOrEqual(t, walked, 33,
-		"AUTHZ-10: expected >=33 business-scoped routes (Phase 2 baseline 30 + Phase 3 invitations × 3), chi.Walk found %d", walked)
+	// AUTHZ-10 acceptance: walker must find at least 37 business-scoped routes.
+	// Phase 2 baseline ~30 + Phase 3 invitations × 3 (POST/GET/DELETE) = 33,
+	// + Phase 5 routes × 4 (POST /roles, PATCH /roles/{roleId},
+	// DELETE /roles/{roleId}, GET /me/permissions) = 37.
+	require.GreaterOrEqual(t, walked, 37,
+		"AUTHZ-10: expected >=37 business-scoped routes "+
+			"(Phase 2 baseline 30 + Phase 3 invitations × 3 + Phase 5 roles × 4), chi.Walk found %d", walked)
 
 	// LOW #9 — AUTHZ-11 integration assertion: the allow counter must have
 	// incremented at least once during the viewer GET checks above.
@@ -155,6 +158,35 @@ func TestRBACCoverage_SuspendedMember(t *testing.T) {
 		"suspended member GET should return 403, got %d body=%q", rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "forbidden_suspended",
 		"suspended member 403 body must contain 'forbidden_suspended' (Plan 02-01 middleware contract)")
+}
+
+// TestRBACCoverage_SuspendedMember_MyPermissions — Phase 5 review HIGH-01.
+//
+// MyPermissions deliberately skips the per-route authz.Can(...) gate (any
+// active member can read their own permissions). This test pins the
+// invariant that the RequireBusinessAccess middleware short-circuits BEFORE
+// the handler runs for suspended members, returning 403 forbidden_suspended.
+// Without this regression a future refactor that loosens the middleware
+// could leak permission strings to a suspended actor.
+func TestRBACCoverage_SuspendedMember_MyPermissions(t *testing.T) {
+	env := setupTestEnv(t)
+	teardownTestData(t, env.pool)
+
+	ownerID := seedUser(t, env.pool)
+	suspendedID := seedUser(t, env.pool)
+	bizID := seedBusiness(t, env.pool, ownerID)
+	viewerRoleID := uuid.MustParse(domain.SystemRoleViewerID)
+	seedSuspendedMembership(t, env.pool, bizID, suspendedID, viewerRoleID)
+
+	suspendedJWT := mintJWT(t, env.jwtSecret, suspendedID)
+
+	url := fmt.Sprintf("/api/v1/businesses/%s/me/permissions", bizID)
+	rec := doAuthedRequest(t, env, http.MethodGet, url, suspendedJWT, nil)
+	require.Equal(t, http.StatusForbidden, rec.Code,
+		"suspended member GET /me/permissions must return 403, got %d body=%q",
+		rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "forbidden_suspended",
+		"suspended member 403 body must contain 'forbidden_suspended'")
 }
 
 // TestRBACCoverage_CacheInvalidation verifies AUTHZ-04:
@@ -330,6 +362,16 @@ func substituteURLParams(t *testing.T, env *testEnv, bizID uuid.UUID, route stri
 		invID := seedInvitation(t, env.pool, bizID, ownerRoleID, creatorID)
 		url = strings.ReplaceAll(url, "{inviteId}", invID.String())
 	}
+	if strings.Contains(url, "{roleId}") {
+		// Plan 05-03 Task 3: Seed a real custom role so PATCH /roles/{roleId}
+		// and DELETE /roles/{roleId} validate UUID parse + reach the repo
+		// layer (where the authz gates 401 / 404 still fire as expected). The
+		// viewer JWT used by the walker lacks PermRolesUpdate / PermRolesDelete
+		// so the handler's authz.Can() returns 403 before the repo lookup —
+		// which is exactly what the 4-case authz trio asserts.
+		roleID := seedCustomRole(t, env.pool, bizID)
+		url = strings.ReplaceAll(url, "{roleId}", roleID.String())
+	}
 	return url
 }
 
@@ -361,18 +403,18 @@ func readPathExempt(method, route string) bool {
 		return false
 	}
 	exempt := map[string]bool{
-		"/api/v1/businesses/{id}/conversations/{id}":               true,
-		"/api/v1/businesses/{id}/conversations/{id}/messages":      true,
-		"/api/v1/businesses/{id}/projects/{id}":                    true,
-		"/api/v1/businesses/{id}/projects/{id}/conversation-count": true,
-		"/api/v1/businesses/{id}/reviews/{id}":                     true,
-		"/api/v1/businesses/{id}/posts/{id}":                       true,
-		"/api/v1/businesses/{id}/tasks/stream":                     true,
-		"/api/v1/businesses/{id}/integrations/vk/communities":      true,
-		"/api/v1/businesses/{id}/integrations/vk/community-auth-url": true,
-		"/api/v1/businesses/{id}/integrations/vk/auth-url":           true,
-		"/api/v1/businesses/{id}/integrations/yandex_business/auth-url": true,
-		"/api/v1/businesses/{id}/integrations/google_business/auth-url": true,
+		"/api/v1/businesses/{id}/conversations/{id}":                     true,
+		"/api/v1/businesses/{id}/conversations/{id}/messages":            true,
+		"/api/v1/businesses/{id}/projects/{id}":                          true,
+		"/api/v1/businesses/{id}/projects/{id}/conversation-count":       true,
+		"/api/v1/businesses/{id}/reviews/{id}":                           true,
+		"/api/v1/businesses/{id}/posts/{id}":                             true,
+		"/api/v1/businesses/{id}/tasks/stream":                           true,
+		"/api/v1/businesses/{id}/integrations/vk/communities":            true,
+		"/api/v1/businesses/{id}/integrations/vk/community-auth-url":     true,
+		"/api/v1/businesses/{id}/integrations/vk/auth-url":               true,
+		"/api/v1/businesses/{id}/integrations/yandex_business/auth-url":  true,
+		"/api/v1/businesses/{id}/integrations/google_business/auth-url":  true,
 		"/api/v1/businesses/{id}/integrations/google_business/locations": true,
 		// G-04: search requires ?q= (len >= 2); walker cannot synthesize the param.
 		// Authz gates (401 + 404) are still asserted.
@@ -409,13 +451,13 @@ func writePathExempt(method, route string) bool {
 		return false
 	}
 	exempt := map[string]bool{
-		"/api/v1/businesses/{id}/chat/{conversationID}":                                  true,
-		"/api/v1/businesses/{id}/chat/{id}/resume":                                       true,
-		"/api/v1/businesses/{id}/conversations/{id}/pending-tool-calls/{id}/resolve":     true,
+		"/api/v1/businesses/{id}/chat/{conversationID}":                              true,
+		"/api/v1/businesses/{id}/chat/{id}/resume":                                   true,
+		"/api/v1/businesses/{id}/conversations/{id}/pending-tool-calls/{id}/resolve": true,
 		// G-11: handler validates required body field "hash" before reaching the
 		// authz Can() check; viewer with empty body gets 400 not 403. Authz gate
 		// 401 (no JWT) and 404 (non-member) still assert correctly.
-		"/api/v1/businesses/{id}/integrations/telegram/verify":                           true,
+		"/api/v1/businesses/{id}/integrations/telegram/verify": true,
 	}
 	return exempt[route]
 }

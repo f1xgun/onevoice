@@ -150,9 +150,45 @@ export const roleSchema = z.object({
   description: z.string().optional().default(''),
   permissions: z.array(z.string()),
   is_system: z.boolean(),
+  // Phase 5: populated by the role-list endpoint (GET /businesses/{id}/roles)
+  // so the role list can render a «N участников» badge without a second fetch.
+  // Optional because the POST/PATCH response does NOT include it (those return
+  // the role document only — list/detail differ here by design).
+  member_count: z.number().int().nonnegative().optional(),
 });
 export type Role = z.infer<typeof roleSchema>;
 export const rolesListSchema = z.array(roleSchema);
+
+// Phase 5 RBAC dynamic registry — schemas for /permissions (catalog) and
+// /businesses/{id}/me/permissions (effective).
+//
+// Catalog wire shape (services/api/internal/handler/permissions.go):
+//   { groups: [ { resource: string, permissions: [{name, description}] } ] }
+// Effective wire shape (services/api/internal/handler/permissions.go me handler):
+//   { permissions: string[] }
+//
+// Both endpoints come from Plan 05-03. The catalog is app-static (cached with
+// staleTime: Infinity); the effective list is per-actor-per-business (cached
+// with staleTime: 60_000 + refetchInterval: 60_000 per UI-RBAC-12).
+export const permissionMetaSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+});
+export const permissionGroupSchema = z.object({
+  resource: z.string(),
+  permissions: z.array(permissionMetaSchema),
+});
+export const permissionsCatalogSchema = z.object({
+  groups: z.array(permissionGroupSchema),
+});
+export type PermissionMeta = z.infer<typeof permissionMetaSchema>;
+export type PermissionGroup = z.infer<typeof permissionGroupSchema>;
+export type PermissionsCatalog = z.infer<typeof permissionsCatalogSchema>;
+
+export const myPermissionsSchema = z.object({
+  permissions: z.array(z.string()),
+});
+export type MyPermissions = z.infer<typeof myPermissionsSchema>;
 
 export const pendingInvitationSchema = z.object({
   id: z.string(),
