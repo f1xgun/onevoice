@@ -5,6 +5,7 @@ import {
   RESUME_STREAM_ERROR,
   mapInviteError,
   mapMemberError,
+  mapRoleError,
 } from '../resolveErrorMap';
 
 function axiosErr(status: number, body?: { error?: string; reason?: string }): AxiosError {
@@ -193,6 +194,51 @@ describe('mapInviteError', () => {
     );
     expect(mapInviteError(new Error('network down'))).toBe(
       'Не удалось обработать приглашение. Попробуйте ещё раз.'
+    );
+  });
+});
+
+describe('mapRoleError', () => {
+  it('maps 403 cannot_grant_unowned_permissions → roles.errors.cannotGrantUnowned', () => {
+    expect(mapRoleError(axiosErr(403, { error: 'cannot_grant_unowned_permissions' }))).toBe(
+      'Нельзя выдать права, которых у вас нет. Уберите серые галочки.'
+    );
+  });
+
+  it('maps 422 self_lockout → roles.errors.selfLockout', () => {
+    expect(mapRoleError(axiosErr(422, { error: 'self_lockout' }))).toBe(
+      'Нельзя забрать у себя право редактировать роли — иначе потеряете доступ к этой странице.'
+    );
+  });
+
+  it('maps 422 system_role_immutable → roles.errors.systemRoleImmutable', () => {
+    expect(mapRoleError(axiosErr(422, { error: 'system_role_immutable' }))).toBe(
+      'Системные роли нельзя изменять.'
+    );
+  });
+
+  it('maps 422 role_in_use → roles.errors.roleInUse', () => {
+    expect(mapRoleError(axiosErr(422, { error: 'role_in_use' }))).toBe(
+      'На эту роль назначены участники. Выберите, на какую роль их перенести.'
+    );
+  });
+
+  it('maps 422 last_owner → roles.errors.lastOwnerOnDelete', () => {
+    expect(mapRoleError(axiosErr(422, { error: 'last_owner' }))).toBe(
+      'Нельзя удалить роль — иначе в организации не останется владельцев.'
+    );
+  });
+
+  it('falls back to roles.errors.saveGeneric for unrecognised codes', () => {
+    expect(mapRoleError(axiosErr(500, { error: 'internal_server_error' }))).toBe(
+      'Не удалось сохранить роль. Попробуйте ещё раз.'
+    );
+  });
+
+  it('handles undefined / plain Error / network errors without throwing', () => {
+    expect(mapRoleError(undefined)).toBe('Не удалось сохранить роль. Попробуйте ещё раз.');
+    expect(mapRoleError(new Error('network down'))).toBe(
+      'Не удалось сохранить роль. Попробуйте ещё раз.'
     );
   });
 });
