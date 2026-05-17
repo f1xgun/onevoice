@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { createTranslator } from 'next-intl';
 import { toast } from 'sonner';
 import { API_BASE_URL, API_PATHS, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
@@ -7,8 +8,7 @@ import type { User } from './auth';
 import { useBusinessStore } from '@/lib/stores/business';
 import { queryClient } from '@/lib/queryClient';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
-import { getTranslator } from '@/lib/i18n/translator';
-import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from '@/lib/i18n/locales';
+import { DEFAULT_LOCALE, isLocale, type Locale, LOCALE_COOKIE } from '@/lib/i18n/locales';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -161,10 +161,26 @@ api.interceptors.response.use(
     ) {
       useBusinessStore.getState().clear();
       queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
-      // Re-create translator per call so a future locale switch picks it up.
-      toast.warning(getTranslator('team.errors')('staleBusiness'));
+      // Locale-aware toast (Phase B1). The interceptor runs outside the
+      // React tree, so we resolve the current locale from the cookie
+      // (same source the request interceptor above uses) and dynamically
+      // import the matching bundle. Dynamic import + a tiny inline
+      // createTranslator avoids pinning ru.json at module load.
+      void showStaleBusinessToast();
     }
 
     return Promise.reject(error);
   }
 );
+
+async function showStaleBusinessToast() {
+  const locale = readClientLocale() as Locale;
+  try {
+    const messages = (await import(`@/messages/${locale}.json`)).default;
+    const t = createTranslator({ locale, messages, namespace: 'team.errors' });
+    toast.warning(t('staleBusiness'));
+  } catch {
+    // Bundle load failed — silent fall-through. The 404 itself is the
+    // primary signal; a missing toast is acceptable degradation.
+  }
+}
