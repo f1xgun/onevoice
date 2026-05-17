@@ -233,6 +233,29 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   (globalThis as any).ResizeObserver = ResizeObserverStub;
 }
 
+// matchMedia polyfill — jsdom's matchMedia returns a stub whose `.matches`
+// is always false. The (app) layout's `useIsDesktop` hook uses
+// `matchMedia('(min-width: 768px)')` to render exactly one of the
+// mobile/desktop variants; without this polyfill defaulting to `true`,
+// tests that assert desktop chrome (`nav-rail`, `project-pane`) would
+// observe the mobile branch only. We default `matches: true` so tests
+// see the desktop layout — individual tests can override per case.
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: true, // default to desktop viewport for tests
+      media: query,
+      onchange: null,
+      addListener: () => {}, // deprecated MediaQueryList API
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 // hasPointerCapture / releasePointerCapture / scrollIntoView — jsdom stubs
 // used by Radix primitives. Only install if missing.
 if (typeof (globalThis as unknown as { Element?: typeof Element }).Element !== 'undefined') {
