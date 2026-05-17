@@ -16,6 +16,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useCreateConversation } from '@/hooks/useConversations';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { useRovingTabIndex } from '@/hooks/useRovingTabIndex';
 // ChatRowMenu hosts the per-row actions (rename, regenerate title, move,
 // pin/unpin, delete). Shared with ProjectSection / PinnedSection / ChatHeader.
@@ -37,6 +38,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
   const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const createConversation = useCreateConversation();
+  const canCreate = usePermission('content.create').allowed;
 
   const count = conversations.length;
   const visible = conversations.slice(0, MAX_VISIBLE);
@@ -82,16 +84,18 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
             <span className="shrink-0 text-xs text-ink-faint">· {count}</span>
           </span>
         </button>
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={createConversation.isPending}
-          aria-label={tSide('unassignedNewChatAria')}
-          title={tSide('unassignedNewChatTitle')}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/bucket:opacity-100 md:h-8 md:w-8"
-        >
-          <Plus size={14} />
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={createConversation.isPending}
+            aria-label={tSide('unassignedNewChatAria')}
+            title={tSide('unassignedNewChatTitle')}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/bucket:opacity-100 md:h-8 md:w-8"
+          >
+            <Plus size={14} />
+          </button>
+        )}
       </div>
 
       {!collapsed && visible.length === 0 && (

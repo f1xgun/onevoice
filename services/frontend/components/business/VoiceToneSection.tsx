@@ -18,6 +18,7 @@ import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { cn } from '@/lib/utils';
 import { TONE_OPTIONS, type ToneId, toneLabel } from '@/lib/tones';
 
@@ -38,6 +39,7 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
   const [dirty, setDirty] = useState(false);
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const canEdit = usePermission('business.update').allowed;
 
   // Sync internal state when the parent's `initial` prop changes — the
   // /business query loads async, so `initial` arrives as [] on first render
@@ -115,7 +117,7 @@ export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
           variant="primary"
           size="md"
           onClick={handleSave}
-          disabled={!dirty || mutation.isPending}
+          disabled={!dirty || mutation.isPending || !canEdit}
         >
           {mutation.isPending ? tVoice('saving') : tVoice('saveButton')}
         </Button>
