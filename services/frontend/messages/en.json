@@ -337,7 +337,15 @@
     },
     "moveMenu": {
       "trigger": "Move to…",
-      "noProjects": "No other projects yet."
+      "noProjects": "No other projects yet.",
+      "unassignedLabel": "Unassigned",
+      "movedTo": "Chat moved to \"{name}\"",
+      "undo": "Undo",
+      "moveError": "Couldn't move the chat"
+    },
+    "expiredBanner": {
+      "message": "This action expired — send a new message to continue.",
+      "dismissLabel": "Dismiss message"
     },
     "projectPicker": {
       "currentLabel": "Project: {name}",
@@ -354,7 +362,19 @@
       "error": "Error",
       "aborted": "Aborted",
       "abortedTooltip": "Aborted — no result was returned",
-      "abortedNote": "Aborted — no result was returned"
+      "abortedNote": "Aborted — no result was returned",
+      "rejectedBadge": "Rejected by user",
+      "rejectedReason": "Reason: {reason}",
+      "expiredBadge": "Expired",
+      "editedTooltip": "Arguments edited by user",
+      "nothingFound": "Nothing found",
+      "sent": "Sent",
+      "gotCount": "Received: {count}",
+      "gotReviews": "Received: {count, plural, one {# review} other {# reviews}}",
+      "gotComments": "Received: {count, plural, one {# comment} other {# comments}}",
+      "gotPosts": "Received: {count, plural, one {# post} other {# posts}}",
+      "gotMessages": "Received: {count, plural, one {# message} other {# messages}}",
+      "gotItems": "Received: {count, plural, one {# item} other {# items}}"
     },
     "toolNeedsHelp": {
       "badge": "needs help",
@@ -375,6 +395,22 @@
       "booleanYes": "Yes",
       "booleanNo": "No",
       "fieldFallback": "Parameter \"{key}\"",
+      "card": {
+        "titleWithCount": "Awaiting confirmation ({count})",
+        "subtitle": "Review the arguments before running",
+        "submitIdle": "Confirm",
+        "submitLoading": "Sending…",
+        "submitHelper": "Pick an action for every task"
+      },
+      "actions": {
+        "approve": "Approve",
+        "edit": "Edit",
+        "reject": "Reject",
+        "groupAria": "Actions for {toolName}",
+        "approveAria": "Approve {toolName}",
+        "editAria": "Edit {toolName}",
+        "rejectAria": "Reject {toolName}"
+      },
       "fields": {
         "text": "Text",
         "caption": "Caption",

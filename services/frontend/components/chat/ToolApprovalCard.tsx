@@ -2,6 +2,7 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -9,16 +10,6 @@ import type { ApprovalAction, ApprovalDecision, PendingApproval } from '@/types/
 
 import { ToolApprovalAccordionEntry, type AccordionEntryDraft } from './ToolApprovalAccordionEntry';
 import { REJECT_REASON_MAX_LEN } from './toolApprovalConstants';
-
-// Exact Russian copy — UI-SPEC §Copywriting Contract. Inlined
-// (no shared i18n layer in v1.3).
-const RU = {
-  titlePrefix: 'Ожидает подтверждения',
-  subtitle: 'Проверьте аргументы перед выполнением',
-  submitIdle: 'Подтвердить',
-  submitLoading: 'Отправляем…',
-  submitHelper: 'Выберите действие для каждой задачи',
-} as const;
 
 // Keys that MUST NEVER appear in the resolve body — toolName is pinned
 // server-side, so echoing it signals misuse. Stored in a Set
@@ -118,6 +109,7 @@ export interface ToolApprovalCardProps {
 }
 
 export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
+  const tCard = useTranslations('chat.toolApproval.card');
   const [drafts, dispatch] = useReducer(draftReducer, batch, initialDrafts);
   const [submitting, setSubmitting] = useState(false);
   // Synchronous re-entry guard. `submitting` is React state and only flips
@@ -191,7 +183,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
   }
 
   const draftByCallId = new Map(drafts.map((d) => [d.callId, d] as const));
-  const title = `${RU.titlePrefix} (${batch.calls.length})`;
+  const title = tCard('titleWithCount', { count: batch.calls.length });
 
   return (
     <div
@@ -203,7 +195,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
         <h2 id="approval-card-title" className="text-sm font-semibold">
           {title}
         </h2>
-        <p className="text-xs text-muted-foreground">{RU.subtitle}</p>
+        <p className="text-xs text-muted-foreground">{tCard('subtitle')}</p>
       </div>
       <div className="space-y-2 px-4 pb-2">
         {batch.calls.map((call) => {
@@ -263,11 +255,11 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
                   className={!allDecided ? 'opacity-50' : undefined}
                 >
                   {submitting && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
-                  {submitting ? RU.submitLoading : RU.submitIdle}
+                  {submitting ? tCard('submitLoading') : tCard('submitIdle')}
                 </Button>
               </span>
             </TooltipTrigger>
-            {!allDecided && <TooltipContent>{RU.submitHelper}</TooltipContent>}
+            {!allDecided && <TooltipContent>{tCard('submitHelper')}</TooltipContent>}
           </Tooltip>
         </TooltipProvider>
         {/*
@@ -281,7 +273,7 @@ export function ToolApprovalCard({ batch, onSubmit }: ToolApprovalCardProps) {
         */}
         {!allDecided && (
           <span id="approval-card-submit-helper" className="sr-only">
-            {RU.submitHelper}
+            {tCard('submitHelper')}
           </span>
         )}
       </div>

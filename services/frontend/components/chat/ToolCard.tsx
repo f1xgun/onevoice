@@ -18,20 +18,9 @@ import { useTranslations } from 'next-intl';
 
 import type { ToolCall } from '@/types/chat';
 import { PLATFORM_COLORS, PLATFORM_LABELS, getPlatform } from '@/lib/platforms';
-import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-
-// Exact Russian literals from UI-SPEC §Copywriting Contract (Post-submit
-// in-history visuals) + §Expired approval banner / Rejected tool visual.
-// Kept inline (no shared i18n layer in v1.3).
-const RU = {
-  rejectedBadge: 'Отклонено пользователем',
-  rejectedReasonPrefix: 'Причина: ',
-  expiredBadge: 'Истекло',
-  editedTooltip: 'Аргументы изменены пользователем',
-} as const;
 
 export function ToolCard({ tool }: { tool: ToolCall }) {
   const tCard = useTranslations('chat.toolCard');
@@ -87,11 +76,11 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
                   <Pencil
                     size={12}
                     className="text-muted-foreground"
-                    aria-label={RU.editedTooltip}
+                    aria-label={tCard('editedTooltip')}
                   />
                 </span>
               </TooltipTrigger>
-              <TooltipContent>{RU.editedTooltip}</TooltipContent>
+              <TooltipContent>{tCard('editedTooltip')}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -109,19 +98,18 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
         )}
         {tool.status === 'rejected' && (
           <Badge tone="danger" className="text-destructive">
-            {RU.rejectedBadge}
+            {tCard('rejectedBadge')}
           </Badge>
         )}
-        {tool.status === 'expired' && <Badge tone="warning">{RU.expiredBadge}</Badge>}
+        {tool.status === 'expired' && <Badge tone="warning">{tCard('expiredBadge')}</Badge>}
       </div>
-      {tool.result && summarizeResult(tool.name, tool.result) && (
-        <p className="text-xs text-ink-soft">{summarizeResult(tool.name, tool.result)}</p>
+      {tool.result && summarizeResult(tCard, tool.name, tool.result) && (
+        <p className="text-xs text-ink-soft">{summarizeResult(tCard, tool.name, tool.result)}</p>
       )}
       {tool.error && <p className="text-xs text-[var(--ov-danger)]">{tool.error}</p>}
       {tool.status === 'rejected' && tool.rejectReason && (
         <p className="text-xs italic text-muted-foreground">
-          {RU.rejectedReasonPrefix}
-          {tool.rejectReason}
+          {tCard('rejectedReason', { reason: tool.rejectReason })}
         </p>
       )}
       {tool.status === 'aborted' && (
@@ -134,47 +122,40 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
 // Human-readable, locale-aware summary of a tool result. Returns null when
 // nothing useful can be said — in that case the success badge alone is the
 // signal. Per brand voice we never surface raw JSON to the operator.
-function summarizeResult(toolName: string, result: unknown): string | null {
+// The `t` translator is the request-scoped instance from `chat.toolCard`,
+// passed in by the React component so the helper stays pure and the i18n
+// strings (plurals + countless variants) resolve via ICU/next-intl.
+type ToolCardTranslator = (key: string, values?: Record<string, string | number | Date>) => string;
+
+function summarizeResult(t: ToolCardTranslator, toolName: string, result: unknown): string | null {
   if (!result || typeof result !== 'object') return null;
   const r = result as Record<string, unknown>;
 
-  // Common get-list shapes across platforms.
-  const lists: { key: string; word: (n: number) => string }[] = [
-    { key: 'reviews', word: pluralReviews },
-    { key: 'comments', word: pluralComments },
-    { key: 'posts', word: pluralPosts },
-    { key: 'messages', word: pluralMessages },
-    { key: 'items', word: pluralItems },
+  // Common get-list shapes across platforms. ICU plural keys live under
+  // chat.toolCard.got* — one per noun (reviews / comments / posts / messages /
+  // items). Each key uses RU one/few/many/other and EN one/other categories.
+  const lists: { key: string; tKey: string }[] = [
+    { key: 'reviews', tKey: 'gotReviews' },
+    { key: 'comments', tKey: 'gotComments' },
+    { key: 'posts', tKey: 'gotPosts' },
+    { key: 'messages', tKey: 'gotMessages' },
+    { key: 'items', tKey: 'gotItems' },
   ];
-  for (const { key, word } of lists) {
+  for (const { key, tKey } of lists) {
     const v = r[key];
     if (Array.isArray(v)) {
       const n = typeof r.count === 'number' ? r.count : v.length;
-      return n === 0 ? `Ничего не нашлось` : `Получено: ${n} ${word(n)}`;
+      return n === 0 ? t('nothingFound') : t(tKey, { count: n });
     }
   }
   if (typeof r.count === 'number') {
-    return r.count === 0 ? 'Ничего не нашлось' : `Получено: ${r.count}`;
+    return r.count === 0 ? t('nothingFound') : t('gotCount', { count: r.count });
   }
 
   // Send-action shape — orchestrator returns ok/sent/posted booleans.
   if (toolName.includes('send') || toolName.includes('post') || toolName.includes('reply')) {
-    if (r.ok === true || r.sent === true || r.posted === true) return 'Отправлено';
+    if (r.ok === true || r.sent === true || r.posted === true) return t('sent');
   }
 
   return null;
 }
-
-function pluralRu(n: number, [one, few, many]: [string, string, string]): string {
-  const last = n % 10;
-  const lastTwo = n % 100;
-  if (lastTwo >= RU_PLURAL_TEEN_LOWER && lastTwo <= RU_PLURAL_TEEN_UPPER) return many;
-  if (last === 1) return one;
-  if (last >= 2 && last <= RU_PLURAL_PAUCAL_UPPER) return few;
-  return many;
-}
-const pluralReviews = (n: number) => pluralRu(n, ['отзыв', 'отзыва', 'отзывов']);
-const pluralComments = (n: number) => pluralRu(n, ['комментарий', 'комментария', 'комментариев']);
-const pluralPosts = (n: number) => pluralRu(n, ['пост', 'поста', 'постов']);
-const pluralMessages = (n: number) => pluralRu(n, ['сообщение', 'сообщения', 'сообщений']);
-const pluralItems = (n: number) => pluralRu(n, ['элемент', 'элемента', 'элементов']);

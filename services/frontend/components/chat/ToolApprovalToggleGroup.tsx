@@ -1,16 +1,10 @@
 'use client';
 
 import { Check, Pencil, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ApprovalAction } from '@/types/chat';
-
-// Exact Russian labels — UI-SPEC §Copywriting Contract. Do NOT paraphrase.
-const RU_LABELS = {
-  approve: 'Одобрить',
-  edit: 'Изменить',
-  reject: 'Отклонить',
-} as const;
 
 type ActiveVariant = 'default' | 'secondary' | 'destructive';
 
@@ -43,7 +37,17 @@ interface ToggleBtnProps {
   onClick: () => void;
 }
 
+// Action → aria-label key (under chat.toolApproval.actions). Kept in a
+// const so the test contract `aria-label="Одобрить telegram__send_..."`
+// stays mechanical (renders as `t(ariaKey, { toolName })`).
+const ARIA_LABEL_KEYS: Record<ApprovalAction, 'approveAria' | 'editAria' | 'rejectAria'> = {
+  approve: 'approveAria',
+  edit: 'editAria',
+  reject: 'rejectAria',
+};
+
 function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: ToggleBtnProps) {
+  const tActions = useTranslations('chat.toolApproval.actions');
   const variant = active ? ACTIVE_VARIANTS[action] : 'outline';
   return (
     <Button
@@ -51,7 +55,7 @@ function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: 
       size="sm"
       disabled={disabled}
       aria-pressed={active}
-      aria-label={`${RU_LABELS[action]} ${toolName}`}
+      aria-label={tActions(ARIA_LABEL_KEYS[action], { toolName })}
       onClick={onClick}
       className={cn(
         'h-8 px-3',
@@ -63,7 +67,7 @@ function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: 
       )}
     >
       <Icon size={14} className="mr-1" />
-      {RU_LABELS[action]}
+      {tActions(action)}
     </Button>
   );
 }
@@ -80,8 +84,13 @@ export function ToolApprovalToggleGroup({
   disabled,
   onSelect,
 }: ToolApprovalToggleGroupProps) {
+  const tActions = useTranslations('chat.toolApproval.actions');
   return (
-    <div role="group" aria-label={`Действия для ${toolName}`} className="flex flex-wrap gap-2">
+    <div
+      role="group"
+      aria-label={tActions('groupAria', { toolName })}
+      className="flex flex-wrap gap-2"
+    >
       <ToggleBtn
         action="approve"
         active={decision === 'approve'}

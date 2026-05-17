@@ -337,7 +337,15 @@
     },
     "moveMenu": {
       "trigger": "Переместить в…",
-      "noProjects": "Других проектов пока нет."
+      "noProjects": "Других проектов пока нет.",
+      "unassignedLabel": "Без проекта",
+      "movedTo": "Чат перемещён в «{name}»",
+      "undo": "Отменить",
+      "moveError": "Не удалось переместить чат"
+    },
+    "expiredBanner": {
+      "message": "Эта операция истекла — отправьте новое сообщение, чтобы продолжить.",
+      "dismissLabel": "Закрыть сообщение"
     },
     "projectPicker": {
       "currentLabel": "Проект: {name}",
@@ -354,7 +362,19 @@
       "error": "Ошибка",
       "aborted": "Прервано",
       "abortedTooltip": "Выполнение прервано — результат не получен",
-      "abortedNote": "Выполнение прервано — результат не получен"
+      "abortedNote": "Выполнение прервано — результат не получен",
+      "rejectedBadge": "Отклонено пользователем",
+      "rejectedReason": "Причина: {reason}",
+      "expiredBadge": "Истекло",
+      "editedTooltip": "Аргументы изменены пользователем",
+      "nothingFound": "Ничего не нашлось",
+      "sent": "Отправлено",
+      "gotCount": "Получено: {count}",
+      "gotReviews": "Получено: {count, plural, one {# отзыв} few {# отзыва} many {# отзывов} other {# отзывов}}",
+      "gotComments": "Получено: {count, plural, one {# комментарий} few {# комментария} many {# комментариев} other {# комментариев}}",
+      "gotPosts": "Получено: {count, plural, one {# пост} few {# поста} many {# постов} other {# постов}}",
+      "gotMessages": "Получено: {count, plural, one {# сообщение} few {# сообщения} many {# сообщений} other {# сообщений}}",
+      "gotItems": "Получено: {count, plural, one {# элемент} few {# элемента} many {# элементов} other {# элементов}}"
     },
     "toolNeedsHelp": {
       "badge": "нужна помощь",
@@ -375,6 +395,22 @@
       "booleanYes": "Да",
       "booleanNo": "Нет",
       "fieldFallback": "Параметр «{key}»",
+      "card": {
+        "titleWithCount": "Ожидает подтверждения ({count})",
+        "subtitle": "Проверьте аргументы перед выполнением",
+        "submitIdle": "Подтвердить",
+        "submitLoading": "Отправляем…",
+        "submitHelper": "Выберите действие для каждой задачи"
+      },
+      "actions": {
+        "approve": "Одобрить",
+        "edit": "Изменить",
+        "reject": "Отклонить",
+        "groupAria": "Действия для {toolName}",
+        "approveAria": "Одобрить {toolName}",
+        "editAria": "Изменить {toolName}",
+        "rejectAria": "Отклонить {toolName}"
+      },
       "fields": {
         "text": "Текст",
         "caption": "Подпись",

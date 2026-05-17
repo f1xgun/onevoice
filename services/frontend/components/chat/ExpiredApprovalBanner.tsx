@@ -2,16 +2,9 @@
 
 import { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
-
-// Exact Russian copy from 17-UI-SPEC §Copywriting Contract → Expired approval banner.
-// Kept as an inline `const RU = { ... } as const` per 17-RESEARCH §Don't Hand-Roll
-// (no shared i18n layer in v1.3; strings must match UI-SPEC verbatim).
-const RU = {
-  message: 'Эта операция истекла — отправьте новое сообщение, чтобы продолжить.',
-  dismissLabel: 'Закрыть сообщение',
-} as const;
 
 export interface ExpiredApprovalBannerProps {
   /**
@@ -24,6 +17,7 @@ export interface ExpiredApprovalBannerProps {
 }
 
 export function ExpiredApprovalBanner({ onDismiss }: ExpiredApprovalBannerProps) {
+  const t = useTranslations('chat.expiredBanner');
   const [visible, setVisible] = useState(true);
 
   if (!visible) {
@@ -42,10 +36,10 @@ export function ExpiredApprovalBanner({ onDismiss }: ExpiredApprovalBannerProps)
       )}
     >
       <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-      <span className="flex-1">{RU.message}</span>
+      <span className="flex-1">{t('message')}</span>
       <button
         type="button"
-        aria-label={RU.dismissLabel}
+        aria-label={t('dismissLabel')}
         onClick={() => {
           setVisible(false);
           onDismiss?.();
