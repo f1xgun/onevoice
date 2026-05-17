@@ -124,8 +124,30 @@ function Hero() {
   );
 }
 
+// Channel id + tone for each preview row stays in code (brand-icon id is
+// not user-facing copy; tone is presentation, not content). Text is
+// resolved from `landing.demo.inboxRows.<idx>` per locale.
+const INBOX_ROW_META: Array<{
+  channel: string;
+  channelLabelKey: 'telegram' | 'vk' | 'yandex';
+  tone: 'accent' | 'success' | 'neutral';
+}> = [
+  { channel: 'Telegram', channelLabelKey: 'telegram', tone: 'accent' },
+  { channel: 'Yandex', channelLabelKey: 'yandex', tone: 'success' },
+  { channel: 'VK', channelLabelKey: 'vk', tone: 'neutral' },
+];
+
 function HeroPreview() {
   const tPreview = useTranslations('landing.preview');
+  const tDemo = useTranslations('landing.demo');
+  // Channel labels: Telegram and VK are brand names that pass through
+  // both locales unchanged; only "Yandex"/"Яндекс" actually differs by
+  // locale, so we resolve the labels through tDemo to keep one source.
+  const channelLabel: Record<'telegram' | 'vk' | 'yandex', string> = {
+    telegram: 'Telegram',
+    vk: 'VK',
+    yandex: tDemo('yandexLabel'),
+  };
   return (
     <div aria-hidden className="rounded-xl border border-line bg-paper-raised p-4 shadow-ov-3">
       {/* Window chrome */}
@@ -144,22 +166,24 @@ function HeroPreview() {
           <MonoLabel className="ml-auto">{tPreview('waiting')}</MonoLabel>
         </div>
 
-        {INBOX_ROWS.map((r, i) => (
+        {INBOX_ROW_META.map((r, i) => (
           <div
-            key={r.name}
+            key={r.channel}
             className={`grid items-center gap-3 px-4 py-3 sm:grid-cols-[88px_1fr_auto] ${
-              i < INBOX_ROWS.length - 1 ? 'border-b border-line-soft' : ''
+              i < INBOX_ROW_META.length - 1 ? 'border-b border-line-soft' : ''
             }`}
           >
             <div className="flex items-center gap-2">
               <ChannelMark name={r.channel} size={20} />
-              <span className="text-[12px] text-ink-soft">{r.channelLabel}</span>
+              <span className="text-[12px] text-ink-soft">{channelLabel[r.channelLabelKey]}</span>
             </div>
             <div className="min-w-0">
-              <div className="truncate text-[13px] font-medium">{r.name}</div>
-              <div className="mt-0.5 truncate text-[13px] text-ink-mid">{r.msg}</div>
+              <div className="truncate text-[13px] font-medium">{tDemo(`inboxRows.${i}.name`)}</div>
+              <div className="mt-0.5 truncate text-[13px] text-ink-mid">
+                {tDemo(`inboxRows.${i}.message`)}
+              </div>
             </div>
-            <Badge tone={r.tone}>{r.label}</Badge>
+            <Badge tone={r.tone}>{tDemo(`inboxRows.${i}.label`)}</Badge>
           </div>
         ))}
 
@@ -173,40 +197,6 @@ function HeroPreview() {
     </div>
   );
 }
-
-const INBOX_ROWS: Array<{
-  channel: string;
-  channelLabel: string;
-  name: string;
-  msg: string;
-  tone: 'accent' | 'success' | 'neutral';
-  label: string;
-}> = [
-  {
-    channel: 'Telegram',
-    channelLabel: 'Telegram',
-    name: 'Алёна К.',
-    msg: 'Вы открыты в воскресенье?',
-    tone: 'accent',
-    label: 'черновик готов',
-  },
-  {
-    channel: 'Yandex',
-    channelLabel: 'Яндекс',
-    name: 'Михаил П.',
-    msg: 'Поставил пять звёзд — спасибо за внимание',
-    tone: 'success',
-    label: 'отвечено',
-  },
-  {
-    channel: 'VK',
-    channelLabel: 'VK',
-    name: 'Olga · комментарий',
-    msg: 'А капучино у вас на овсяном делают?',
-    tone: 'neutral',
-    label: 'новое',
-  },
-];
 
 // ─── Belief ───────────────────────────────────────────────────────────
 
@@ -234,36 +224,14 @@ function Belief() {
 
 function Features() {
   const tF = useTranslations('landing.features');
-  const items: Array<{
-    kicker: string;
-    title: string;
-    body: string;
-    sample: React.ReactNode;
-  }> = [
-    {
-      kicker: '01 · Один ящик',
-      title: 'Все каналы — одним списком',
-      body: 'Сообщения, отзывы и комментарии из Telegram, ВКонтакте и Яндекс.Бизнес собираются в общий поток. Без переключений и забытых вкладок.',
-      sample: <SampleInbox />,
-    },
-    {
-      kicker: '02 · Черновики',
-      title: 'Ответ за пару секунд, ваш — за пару минут',
-      body: 'OneVoice знает ваши часы работы, меню и тон. Готовит черновик. Вы отправляете, правите или просите попробовать ещё раз.',
-      sample: <SampleDraft />,
-    },
-    {
-      kicker: '03 · Посты',
-      title: 'Один пост — все каналы сразу',
-      body: 'Напишите один раз — публикуется везде, с поправкой на формат каждой площадки. Запланируйте на час, когда вас читают.',
-      sample: <SamplePosts />,
-    },
-    {
-      kicker: '04 · Отзывы',
-      title: 'Отзывы под спокойным присмотром',
-      body: 'Каждый отзыв на виду. Низкие оценки — наверху списка. Высокие — с благодарностью в вашем тоне.',
-      sample: <SampleReviews />,
-    },
+  // Sample components stay in code (they're React nodes); textual fields
+  // come from `landing.features.items.<idx>` so the headline copy follows
+  // the active locale.
+  const samples: React.ReactNode[] = [
+    <SampleInbox key="inbox" />,
+    <SampleDraft key="draft" />,
+    <SamplePosts key="posts" />,
+    <SampleReviews key="reviews" />,
   ];
 
   return (
@@ -275,18 +243,18 @@ function Features() {
         </h2>
 
         <div className="mt-12 grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-x-16 lg:gap-y-14">
-          {items.map((it) => (
-            <article key={it.kicker} className="flex flex-col gap-6 border-t border-line pt-8">
+          {samples.map((sample, i) => (
+            <article key={i} className="flex flex-col gap-6 border-t border-line pt-8">
               <div>
-                <MonoLabel tone="ochre">{it.kicker}</MonoLabel>
+                <MonoLabel tone="ochre">{tF(`items.${i}.kicker`)}</MonoLabel>
                 <h3 className="mt-2 text-[24px] font-medium leading-snug tracking-[-0.01em]">
-                  {it.title}
+                  {tF(`items.${i}.title`)}
                 </h3>
                 <p className="mt-3 max-w-[460px] text-[15px] leading-relaxed text-ink-mid">
-                  {it.body}
+                  {tF(`items.${i}.body`)}
                 </p>
               </div>
-              {it.sample}
+              {sample}
             </article>
           ))}
         </div>
@@ -297,15 +265,24 @@ function Features() {
 
 const sampleBox = 'overflow-hidden rounded-lg border border-line bg-paper-raised';
 
+// Channel id (brand icon hint) + label key stay in code; user-facing
+// message + relative-time copy resolves through `landing.demo.sampleInbox`.
+const SAMPLE_INBOX_META: Array<{ p: string; labelKey: 'telegram' | 'vk' | 'yandex' }> = [
+  { p: 'Telegram', labelKey: 'telegram' },
+  { p: 'VK', labelKey: 'vk' },
+  { p: 'Yandex', labelKey: 'yandex' },
+];
+
 function SampleInbox() {
-  const rows = [
-    { p: 'Telegram', label: 'Telegram', msg: 'Вы открыты завтра?', t: '1 мин' },
-    { p: 'VK', label: 'VK', msg: 'Где вас найти?', t: '12 мин' },
-    { p: 'Yandex', label: 'Яндекс', msg: 'Спасибо, всё на месте — пять звёзд', t: '1 ч' },
-  ];
+  const tDemo = useTranslations('landing.demo');
+  const channelLabel: Record<'telegram' | 'vk' | 'yandex', string> = {
+    telegram: 'Telegram',
+    vk: 'VK',
+    yandex: tDemo('yandexLabel'),
+  };
   return (
     <div className={sampleBox} aria-hidden>
-      {rows.map((r, i) => (
+      {SAMPLE_INBOX_META.map((r, i) => (
         <div
           key={r.p}
           className={`grid items-center gap-3 px-4 py-3 sm:grid-cols-[96px_1fr_auto] ${
@@ -314,10 +291,12 @@ function SampleInbox() {
         >
           <div className="flex items-center gap-2">
             <ChannelMark name={r.p} size={20} />
-            <span className="text-[12px] text-ink-soft">{r.label}</span>
+            <span className="text-[12px] text-ink-soft">{channelLabel[r.labelKey]}</span>
           </div>
-          <div className="truncate text-[13px] text-ink-mid">{r.msg}</div>
-          <MonoLabel>{r.t}</MonoLabel>
+          <div className="truncate text-[13px] text-ink-mid">
+            {tDemo(`sampleInbox.${i}.message`)}
+          </div>
+          <MonoLabel>{tDemo(`sampleInbox.${i}.ago`)}</MonoLabel>
         </div>
       ))}
     </div>
@@ -384,45 +363,36 @@ function SamplePosts() {
   );
 }
 
+// Star count, channel id, and replied flag stay in code (presentation /
+// state, not copy). Author name and review text resolve via
+// `landing.demo.sampleReviews.<idx>` per locale.
+const SAMPLE_REVIEW_META: Array<{
+  stars: number;
+  plat: string;
+  replied: boolean;
+}> = [
+  { stars: 5, plat: 'Yandex', replied: true },
+  { stars: 3, plat: 'Yandex', replied: false },
+];
+
 function SampleReviews() {
   const tS = useTranslations('landing.sample');
-  const items: Array<{
-    stars: number;
-    name: string;
-    text: string;
-    plat: string;
-    replied: boolean;
-  }> = [
-    {
-      stars: 5,
-      name: 'Михаил П.',
-      text: 'Лучший флэт в районе. Вернусь.',
-      plat: 'Yandex',
-      replied: true,
-    },
-    {
-      stars: 3,
-      name: 'Анна',
-      text: 'Капучино обычный, но обслуживание вежливое.',
-      plat: 'Yandex',
-      replied: false,
-    },
-  ];
+  const tDemo = useTranslations('landing.demo');
   return (
     <div className={sampleBox} aria-hidden>
-      {items.map((r, i) => (
-        <div key={r.name} className={`px-4 py-3 ${i > 0 ? 'border-t border-line-soft' : ''}`}>
+      {SAMPLE_REVIEW_META.map((r, i) => (
+        <div key={i} className={`px-4 py-3 ${i > 0 ? 'border-t border-line-soft' : ''}`}>
           <div className="mb-1.5 flex items-center gap-2">
             <span className="text-[13px] tracking-[1px] text-ochre">
               {'★'.repeat(r.stars)}
               <span className="text-line">{'★'.repeat(MAX_REVIEW_STARS - r.stars)}</span>
             </span>
-            <span className="text-[13px] font-medium">{r.name}</span>
+            <span className="text-[13px] font-medium">{tDemo(`sampleReviews.${i}.name`)}</span>
             <span className="ml-auto">
               <ChannelMark name={r.plat} size={20} />
             </span>
           </div>
-          <div className="text-[13px] text-ink-mid">{r.text}</div>
+          <div className="text-[13px] text-ink-mid">{tDemo(`sampleReviews.${i}.text`)}</div>
           <div className="mt-2">
             {r.replied ? (
               <Badge tone="success">{tS('repliedByOneVoice')}</Badge>
@@ -438,28 +408,12 @@ function SampleReviews() {
 
 // ─── How it works ────────────────────────────────────────────────────
 
+// Step numbers stay in code (decorative numeral, same in every locale);
+// title + description resolve from `landing.howItWorks.steps.<idx>`.
+const HOW_IT_WORKS_NUMERALS = ['01', '02', '03'] as const;
+
 function HowItWorks() {
   const tHow = useTranslations('landing.howItWorks');
-  // Step copy is intentionally kept inline here — they're brand-voice
-  // marketing strings that should stay close to the layout. The kicker /
-  // headline use the i18n catalogue; per-step bullets remain untranslated.
-  const STEPS = [
-    {
-      n: '01',
-      t: 'Подключите',
-      d: 'Telegram, ВКонтакте, Яндекс.Бизнес — по одной ссылке за раз. Без ключей API и тонких настроек.',
-    },
-    {
-      n: '02',
-      t: 'Поговорите',
-      d: 'Расскажите про меню, часы работы и тон. OneVoice запомнит и будет писать вашими словами.',
-    },
-    {
-      n: '03',
-      t: 'Получайте',
-      d: 'Ответы клиентам, посты на все каналы, отчёт по отзывам. Вы — последнее слово, всегда.',
-    },
-  ];
   return (
     <section className="border-b border-line-soft bg-paper-sunken">
       <div className="mx-auto w-full max-w-[1180px] px-6 py-24 sm:px-12">
@@ -468,16 +422,20 @@ function HowItWorks() {
           {tHow('headline')}
         </h2>
         <div className="mt-14 grid grid-cols-1 gap-10 sm:grid-cols-3">
-          {STEPS.map((s) => (
-            <div key={s.n}>
+          {HOW_IT_WORKS_NUMERALS.map((n, i) => (
+            <div key={n}>
               <span
                 className="font-mono text-[15px] font-medium tracking-[0.04em] text-ochre-deep"
                 aria-hidden
               >
-                {s.n}
+                {n}
               </span>
-              <h3 className="mt-3 text-[22px] font-medium tracking-[-0.005em]">{s.t}</h3>
-              <p className="mt-2.5 text-[15px] leading-relaxed text-ink-mid">{s.d}</p>
+              <h3 className="mt-3 text-[22px] font-medium tracking-[-0.005em]">
+                {tHow(`steps.${i}.title`)}
+              </h3>
+              <p className="mt-2.5 text-[15px] leading-relaxed text-ink-mid">
+                {tHow(`steps.${i}.body`)}
+              </p>
             </div>
           ))}
         </div>

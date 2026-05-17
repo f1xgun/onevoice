@@ -956,7 +956,54 @@
     },
     "features": {
       "kicker": "Features",
-      "headline": "Four things you usually don't have time for."
+      "headline": "Four things you usually don't have time for.",
+      "items": {
+        "0": {
+          "kicker": "01 · One inbox",
+          "title": "Every channel in one list",
+          "body": "Messages, reviews, and comments from Telegram, VK, and Yandex.Business land in a single stream. No tab-hopping, no forgotten threads."
+        },
+        "1": {
+          "kicker": "02 · Drafts",
+          "title": "A reply in seconds, yours in minutes",
+          "body": "OneVoice knows your hours, menu, and tone. It prepares a draft. You send, tweak, or ask for another try."
+        },
+        "2": {
+          "kicker": "03 · Posts",
+          "title": "One post — every channel at once",
+          "body": "Write it once — it publishes everywhere, tuned for each platform's format. Schedule it for when your audience is reading."
+        },
+        "3": {
+          "kicker": "04 · Reviews",
+          "title": "Reviews under calm watch",
+          "body": "Every review in plain sight. Low ratings rise to the top. High ones get a thank-you in your tone of voice."
+        }
+      }
+    },
+    "demo": {
+      "yandexLabel": "Yandex",
+      "inboxRows": {
+        "0": { "name": "Alena K.", "message": "Are you open on Sunday?", "label": "draft ready" },
+        "1": {
+          "name": "Mikhail P.",
+          "message": "Gave you five stars — thanks for the attention",
+          "label": "replied"
+        },
+        "2": {
+          "name": "Olga · comment",
+          "message": "Do you make cappuccinos with oat milk?",
+          "label": "new"
+        }
+      },
+      "sampleInbox": {
+        "0": { "message": "Are you open tomorrow?", "ago": "1 min" },
+        "1": { "message": "Where can I find you?", "ago": "12 min" },
+        "2": { "message": "Thanks, all set — five stars", "ago": "1 h" }
+      },
+      "sampleReviews": {
+        "0": { "name": "Mikhail P.", "text": "Best flat white in the neighborhood. I'll be back." },
+        "1": { "name": "Anna", "text": "The cappuccino is ordinary, but the staff is polite." }
+      }
     },
     "sample": {
       "from": "from: Alena K.",
@@ -975,7 +1022,21 @@
     },
     "howItWorks": {
       "kicker": "How it works",
-      "headline": "Three steps. Half an hour of your time."
+      "headline": "Three steps. Half an hour of your time.",
+      "steps": {
+        "0": {
+          "title": "Connect",
+          "body": "Telegram, VK, Yandex.Business — one link at a time. No API keys, no fiddly settings."
+        },
+        "1": {
+          "title": "Tell us",
+          "body": "Share your menu, hours, and tone. OneVoice remembers and writes in your words."
+        },
+        "2": {
+          "title": "Receive",
+          "body": "Customer replies, posts across every channel, a reviews digest. You have the final word, always."
+        }
+      }
     },
     "channels": {
       "kicker": "Channels",
