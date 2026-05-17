@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { businessSchema } from '../schemas';
+import { createBusinessSchema } from '../schemas';
+
+// Stub translator mirrors the shape `useTranslations('validation')` /
+// `getServerTranslator('validation')` produce. Returns the key — tests
+// here only need behavior coverage (accept/reject), not the exact copy.
+const t = (key: string) => key;
+const businessSchema = createBusinessSchema(t);
 
 describe('businessSchema', () => {
   it('accepts valid business data', () => {
