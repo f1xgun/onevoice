@@ -265,7 +265,7 @@ func (h *ChatProxyHandler) dispatchSSEEvent(taskOpsCtx context.Context, business
 			Name:      ev.ToolName,
 			Arguments: ev.ToolArgs,
 		})
-		h.postal.OnToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolArgs, idMap)
+		h.postal.OnToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, idMap)
 	case "tool_result":
 		var content map[string]interface{}
 		if m, ok := ev.ToolResult.(map[string]interface{}); ok {

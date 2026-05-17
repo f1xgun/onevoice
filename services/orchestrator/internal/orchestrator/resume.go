@@ -236,12 +236,17 @@ func (o *Orchestrator) dispatchApprovedCalls(
 
 			// Emit tool_call event so chat_proxy can persist it on
 			// Message.ToolCalls (the LLM's real call_id flows all
-			// the way through — no synthetic tc-N).
+			// the way through — no synthetic tc-N). DisplayName +
+			// DisplayNameKey populated so the AgentTask row created on
+			// the resume path also carries the i18n key (Phase D3) —
+			// matches the fresh-turn path in dispatchToolCalls.
 			out <- Event{
-				Type:       EventToolCall,
-				ToolCallID: c.CallID,
-				ToolName:   c.ToolName,
-				ToolArgs:   args,
+				Type:               EventToolCall,
+				ToolCallID:         c.CallID,
+				ToolName:           c.ToolName,
+				ToolDisplayName:    o.tools.DisplayName(c.ToolName),
+				ToolDisplayNameKey: o.tools.DisplayNameKey(c.ToolName),
+				ToolArgs:           args,
 			}
 
 			result, execErr := o.tools.ExecuteWithApproval(ctx, c.ToolName, args, approvalID)
@@ -278,13 +283,18 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				)
 			}
 
-			// Emit tool_result event to the SSE stream.
+			// Emit tool_result event to the SSE stream. DisplayName +
+			// DisplayNameKey carried through so chat_proxy can update
+			// the AgentTask with the localizable key even when the row
+			// was first created by a different orchestrator instance.
 			out <- Event{
-				Type:       EventToolResult,
-				ToolCallID: c.CallID,
-				ToolName:   c.ToolName,
-				ToolResult: result,
-				ToolError:  errStr,
+				Type:               EventToolResult,
+				ToolCallID:         c.CallID,
+				ToolName:           c.ToolName,
+				ToolDisplayName:    o.tools.DisplayName(c.ToolName),
+				ToolDisplayNameKey: o.tools.DisplayNameKey(c.ToolName),
+				ToolResult:         result,
+				ToolError:          errStr,
 			}
 		}(call)
 	}

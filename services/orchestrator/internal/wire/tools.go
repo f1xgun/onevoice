@@ -39,9 +39,15 @@ type toolSpec struct {
 	// `agentTasks.displayName.tools.<platform>.<action>.name` on the FE)
 	// that the frontend uses to render localized task titles. The legacy
 	// `displayName` stays as the source-of-truth literal — the FE renders
-	// `t(displayNameKey) || displayName`. Phase C3 adds the field; Phase D
-	// will add a sibling `descriptionEn` for the LLM-visible description.
-	displayNameKey  string
+	// `t(displayNameKey) || displayName`. Phase C3 added the field.
+	displayNameKey string
+	// descriptionEn is the English translation of def.Function.Description
+	// (which stays Russian as the source-of-truth literal). Resolved by
+	// Registry.AvailableForLocale / AllEntriesForLocale at call time based
+	// on the request's language tag (Phase D3 of `.planning/i18n-readiness/
+	// PLAN.md`). Parameter descriptions inside def.Function.Parameters stay
+	// RU-only for now — see deferred TODO note in Phase D3 plan.
+	descriptionEn   string
 	userDescription string // end-user-facing copy for /settings/tools (NO tool-name refs, NO "используй X вместо Y" disambiguation).
 	floor           domain.ToolFloor
 	editable        []string
@@ -96,6 +102,12 @@ func RegisterPlatformTools(reg *toolregistry.Registry, nc *natslib.Conn) {
 			reg.Register(spec.def, spec.displayName, exec, spec.floor, spec.editable)
 			if spec.userDescription != "" {
 				reg.SetUserDescription(spec.def.Function.Name, spec.userDescription)
+			}
+			if spec.displayNameKey != "" {
+				reg.SetDisplayNameKey(spec.def.Function.Name, spec.displayNameKey)
+			}
+			if spec.descriptionEn != "" {
+				reg.SetDescriptionEn(spec.def.Function.Name, spec.descriptionEn)
 			}
 		}
 	}

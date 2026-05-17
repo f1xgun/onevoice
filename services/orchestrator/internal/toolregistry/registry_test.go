@@ -9,8 +9,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
@@ -426,4 +428,80 @@ func TestRegistry_AllEntries_EditableFieldsCopy(t *testing.T) {
 
 	fresh := reg.AllEntries()
 	assert.Equal(t, "text", fresh[0].EditableFields[0])
+}
+
+// --- Phase D3: locale-aware tool descriptions + DisplayNameKey wiring ---
+
+func TestRegistry_DisplayNameKey_GetterReturnsSetValue(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "Отправить пост", nil, domain.ToolFloorManual, []string{"text"})
+	reg.SetDisplayNameKey(tools.TelegramSendChannelPost, "tools.telegram.send_channel_post.name")
+
+	assert.Equal(t, "tools.telegram.send_channel_post.name", reg.DisplayNameKey(tools.TelegramSendChannelPost))
+	assert.Equal(t, "", reg.DisplayNameKey("unknown__tool"))
+}
+
+func TestRegistry_SetDescriptionEn_AvailableForWhitelist_LocaleAware(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	// Russian source-of-truth Description on def.
+	def := llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "Публикует пост в Telegram"},
+	}
+	reg.Register(def, "Отправить пост", nil, domain.ToolFloorManual, []string{"text"})
+	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "Publishes a post to Telegram")
+
+	// RU ctx (default) → RU description.
+	ru := i18n.WithLocale(context.Background(), language.Russian)
+	defsRu := reg.AvailableForWhitelist(ru, []string{"telegram"}, "", nil)
+	require.Len(t, defsRu, 1)
+	assert.Equal(t, "Публикует пост в Telegram", defsRu[0].Function.Description)
+
+	// EN ctx → EN description.
+	en := i18n.WithLocale(context.Background(), language.English)
+	defsEn := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
+	require.Len(t, defsEn, 1)
+	assert.Equal(t, "Publishes a post to Telegram", defsEn[0].Function.Description)
+
+	// Source def must not be mutated by either call (defensive copy).
+	defsRu2 := reg.AvailableForWhitelist(ru, []string{"telegram"}, "", nil)
+	assert.Equal(t, "Публикует пост в Telegram", defsRu2[0].Function.Description)
+}
+
+func TestRegistry_AvailableForWhitelist_NoDescriptionEn_FallsBackToRu(t *testing.T) {
+	// A tool without descriptionEn must serve its RU description in BOTH locales —
+	// the fallback prevents an unset EN translation from showing as an empty
+	// description to the LLM (which would degrade reasoning).
+	reg := toolregistry.NewRegistry()
+	def := llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.VKPublishPost, Description: "Публикует пост ВКонтакте"},
+	}
+	reg.Register(def, "", nil, domain.ToolFloorAuto, nil)
+
+	en := i18n.WithLocale(context.Background(), language.English)
+	defs := reg.AvailableForWhitelist(en, []string{"vk"}, "", nil)
+	require.Len(t, defs, 1)
+	assert.Equal(t, "Публикует пост ВКонтакте", defs[0].Function.Description)
+}
+
+func TestRegistry_AllEntriesForLocale_ResolvesDescriptionAndKey(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	def := llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "RU desc"},
+	}
+	reg.Register(def, "DisplayRu", nil, domain.ToolFloorManual, []string{"text"})
+	reg.SetDisplayNameKey(tools.TelegramSendChannelPost, "tools.telegram.send_channel_post.name")
+	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "EN desc")
+
+	ru := reg.AllEntriesForLocale(language.Russian)
+	require.Len(t, ru, 1)
+	assert.Equal(t, "RU desc", ru[0].Description)
+	assert.Equal(t, "tools.telegram.send_channel_post.name", ru[0].DisplayNameKey, "DisplayNameKey must be exposed regardless of locale (locale-independent)")
+
+	en := reg.AllEntriesForLocale(language.English)
+	require.Len(t, en, 1)
+	assert.Equal(t, "EN desc", en[0].Description)
+	assert.Equal(t, "tools.telegram.send_channel_post.name", en[0].DisplayNameKey)
 }

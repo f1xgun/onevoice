@@ -55,9 +55,16 @@ type Event struct {
 	ToolCallID      string
 	ToolName        string
 	ToolDisplayName string
-	ToolArgs        map[string]interface{}
-	ToolResult      interface{}
-	ToolError       string
+	// ToolDisplayNameKey is the i18n catalog key the frontend uses to render
+	// the agent_tasks task title in the user's locale (Phase D3). Populated
+	// from toolregistry.Registry.DisplayNameKey at dispatch time. Empty when
+	// the tool has no registered key — the FE falls back to ToolDisplayName.
+	// Surfaces on EventToolCall + EventToolResult so chat_proxy can stamp
+	// AgentTask documents with the localizable key from either event.
+	ToolDisplayNameKey string
+	ToolArgs           map[string]interface{}
+	ToolResult         interface{}
+	ToolError          string
 	// BatchID is set on EventToolApprovalRequired events. Carries the
 	// PendingToolCallBatch._id so the frontend can POST to the resolve
 	// endpoint with the same identifier at approval time.
@@ -250,11 +257,12 @@ func (o *Orchestrator) dispatchToolCalls(
 
 		select {
 		case ch <- Event{
-			Type:            EventToolCall,
-			ToolCallID:      tc.ID,
-			ToolName:        tc.Function.Name,
-			ToolDisplayName: o.tools.DisplayName(tc.Function.Name),
-			ToolArgs:        args,
+			Type:               EventToolCall,
+			ToolCallID:         tc.ID,
+			ToolName:           tc.Function.Name,
+			ToolDisplayName:    o.tools.DisplayName(tc.Function.Name),
+			ToolDisplayNameKey: o.tools.DisplayNameKey(tc.Function.Name),
+			ToolArgs:           args,
 		}:
 		case <-ctx.Done():
 			return false
@@ -271,7 +279,7 @@ func (o *Orchestrator) dispatchToolCalls(
 			outcomes[i].result = result
 			outcomes[i].execErr = execErr
 
-			ev := buildToolResultEvent(outcomes[i].tc, o.tools.DisplayName(name), result, execErr)
+			ev := buildToolResultEvent(outcomes[i].tc, o.tools.DisplayName(name), o.tools.DisplayNameKey(name), result, execErr)
 			select {
 			case ch <- ev:
 			case <-ctx.Done():
@@ -304,17 +312,20 @@ func (o *Orchestrator) dispatchToolCalls(
 
 // buildToolResultEvent wraps a tool outcome into the event emitted on the SSE
 // channel. Shaping it here keeps the goroutine body short and side-effect free.
-func buildToolResultEvent(tc llm.ToolCall, displayName string, result interface{}, execErr error) Event {
+// displayNameKey is the i18n catalog key threaded through so chat_proxy can
+// stamp the AgentTask document with a localizable key — Phase D3.
+func buildToolResultEvent(tc llm.ToolCall, displayName, displayNameKey string, result interface{}, execErr error) Event {
 	payload := result
 	if execErr != nil {
 		payload = map[string]interface{}{"error": execErr.Error(), "tool_name": tc.Function.Name}
 	}
 	ev := Event{
-		Type:            EventToolResult,
-		ToolCallID:      tc.ID,
-		ToolName:        tc.Function.Name,
-		ToolDisplayName: displayName,
-		ToolResult:      payload,
+		Type:               EventToolResult,
+		ToolCallID:         tc.ID,
+		ToolName:           tc.Function.Name,
+		ToolDisplayName:    displayName,
+		ToolDisplayNameKey: displayNameKey,
+		ToolResult:         payload,
 	}
 	if execErr != nil {
 		ev.ToolError = execErr.Error()

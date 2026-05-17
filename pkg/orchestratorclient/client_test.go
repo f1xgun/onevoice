@@ -94,7 +94,7 @@ func TestListTools_ParsesEntries(t *testing.T) {
 	defer srv.Close()
 
 	client := New(srv.URL, srv.Client())
-	got, err := client.ListTools(context.Background())
+	got, err := client.ListTools(context.Background(), "")
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
@@ -106,6 +106,38 @@ func TestListTools_ParsesEntries(t *testing.T) {
 	}
 	if got[1].Name != tools.VKPublishPost {
 		t.Errorf("got[1].Name = %q, want vk__publish_post", got[1].Name)
+	}
+}
+
+// TestListTools_ForwardsAcceptLanguage — Phase D3: the per-locale tools
+// projection round-trips correctly when the caller supplies a tag. The
+// orchestrator's middleware.Locale resolves Accept-Language to the per-locale
+// description; this test pins the wire contract from the API's cache side.
+func TestListTools_ForwardsAcceptLanguage(t *testing.T) {
+	var gotAcceptLang string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAcceptLang = r.Header.Get("Accept-Language")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL, srv.Client())
+	if _, err := client.ListTools(context.Background(), "en"); err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	if gotAcceptLang != "en" {
+		t.Errorf("Accept-Language = %q, want en", gotAcceptLang)
+	}
+
+	// Empty acceptLanguage must NOT set the header at all (so the
+	// orchestrator's middleware falls back to its own default).
+	gotAcceptLang = "<unset>"
+	if _, err := client.ListTools(context.Background(), ""); err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	if gotAcceptLang != "" {
+		t.Errorf("Accept-Language = %q, want empty (header not set)", gotAcceptLang)
 	}
 }
 
