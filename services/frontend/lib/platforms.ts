@@ -4,16 +4,29 @@
 // presentation side: colors, labels, icons, display order. The backend
 // registry uses the same ids verbatim, so a join by id is exact.
 //
-// Adding a new platform = one entry in PLATFORM_META + one entry in the Go
-// registry (pkg/domain/platform.go) + one entry under platforms.fullLabel
-// in messages/ru.json. All consumers (landing, /integrations, filter
-// dropdowns, tool whitelist UI, chat tool cards) read from here, so
-// nothing else needs to be touched.
+// Adding a new platform = one entry in PLATFORM_STATIC_META + one entry in
+// the Go registry (pkg/domain/platform.go) + one entry under
+// `platforms.fullLabel` in every locale bundle in messages/*.json. All
+// consumers (landing, /integrations, filter dropdowns, tool whitelist UI,
+// chat tool cards) read from here, so nothing else needs to be touched.
+//
+// Locale split (Phase B1): everything that depends on a string from
+// messages/*.json — `fullLabel`, the optional `comingSoonWhen` subtitle —
+// lives behind a factory (`createPlatformMeta(t)` /
+// `createPlatformFullLabels(t)`). Static fields (color, shortLabel,
+// displayOrder, defaultStatus) stay on a module-level constant
+// (`PLATFORM_STATIC_META`) and ship to the client bundle as-is. The
+// previous module-level `PLATFORM_META` / `PLATFORM_FULL_LABELS` shape is
+// preserved via a single hook (`usePlatformMeta`) so React consumers can
+// keep their existing record-lookup ergonomics.
 
-import { getTranslator } from '@/lib/i18n/translator';
+import { useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 
-const tPlatforms = getTranslator('platforms');
-const tFullLabel = getTranslator('platforms.fullLabel');
+// Translator shapes we depend on. Declared structurally so this module
+// doesn't have to import next-intl just to type the factory.
+type PlatformsTranslator = (key: 'comingSoonWhen') => string;
+type FullLabelTranslator = (key: PlatformId) => string;
 
 export type PlatformId =
   | 'telegram'
@@ -44,83 +57,102 @@ export interface PlatformMeta {
   comingSoonWhen?: string;
 }
 
-const COMING_SOON_WHEN = tPlatforms('comingSoonWhen');
+// Locale-invariant slice: color, shortLabel ("TG", "VK"), displayOrder,
+// defaultStatus. These never change per language and stay in module scope
+// so existing static consumers (parity tests, fallback enrichment in
+// usePlatforms) keep their cheap lookup.
+export interface PlatformStaticMeta {
+  color: string;
+  shortLabel: string;
+  displayOrder: number;
+  defaultStatus: PlatformDefaultStatus;
+}
 
-export const PLATFORM_META: Record<PlatformId, PlatformMeta> = {
-  telegram: {
-    color: '#2AABEE',
-    shortLabel: 'TG',
-    fullLabel: tFullLabel('telegram'),
-    displayOrder: 0,
-    defaultStatus: 'active',
-  },
-  vk: {
-    color: '#4680C2',
-    shortLabel: 'VK',
-    fullLabel: tFullLabel('vk'),
-    displayOrder: 1,
-    defaultStatus: 'active',
-  },
+export const PLATFORM_STATIC_META: Record<PlatformId, PlatformStaticMeta> = {
+  telegram: { color: '#2AABEE', shortLabel: 'TG', displayOrder: 0, defaultStatus: 'active' },
+  vk: { color: '#4680C2', shortLabel: 'VK', displayOrder: 1, defaultStatus: 'active' },
   yandex_business: {
     color: '#FC3F1D',
     shortLabel: 'YB',
-    fullLabel: tFullLabel('yandex_business'),
     displayOrder: 2,
     defaultStatus: 'active',
   },
   google_business: {
     color: '#1A73E8',
     shortLabel: 'GB',
-    fullLabel: tFullLabel('google_business'),
     displayOrder: 3,
     defaultStatus: 'coming_soon',
-    comingSoonWhen: COMING_SOON_WHEN,
   },
-  '2gis': {
-    color: '#1DA045',
-    shortLabel: '2G',
-    fullLabel: tFullLabel('2gis'),
-    displayOrder: 4,
-    defaultStatus: 'coming_soon',
-    comingSoonWhen: COMING_SOON_WHEN,
-  },
-  avito: {
-    color: '#00AAFF',
-    shortLabel: 'AV',
-    fullLabel: tFullLabel('avito'),
-    displayOrder: 5,
-    defaultStatus: 'coming_soon',
-    comingSoonWhen: COMING_SOON_WHEN,
-  },
-  whatsapp: {
-    color: '#25D366',
-    shortLabel: 'WA',
-    fullLabel: tFullLabel('whatsapp'),
-    displayOrder: 6,
-    defaultStatus: 'coming_soon',
-    comingSoonWhen: COMING_SOON_WHEN,
-  },
+  '2gis': { color: '#1DA045', shortLabel: '2G', displayOrder: 4, defaultStatus: 'coming_soon' },
+  avito: { color: '#00AAFF', shortLabel: 'AV', displayOrder: 5, defaultStatus: 'coming_soon' },
+  whatsapp: { color: '#25D366', shortLabel: 'WA', displayOrder: 6, defaultStatus: 'coming_soon' },
 };
 
 export const PLATFORM_DISPLAY_ORDER: PlatformId[] = (
-  Object.keys(PLATFORM_META) as PlatformId[]
-).sort((a, b) => PLATFORM_META[a].displayOrder - PLATFORM_META[b].displayOrder);
+  Object.keys(PLATFORM_STATIC_META) as PlatformId[]
+).sort((a, b) => PLATFORM_STATIC_META[a].displayOrder - PLATFORM_STATIC_META[b].displayOrder);
 
-// Legacy view-objects: existing call sites read these maps with arbitrary
-// string keys (platform ids parsed out of tool names like "telegram__send").
-// Re-deriving them from PLATFORM_META keeps a single source of truth without
-// forcing a sweeping rename across components in this PR.
+// Locale-invariant view-objects. Existing call sites read these with
+// arbitrary string keys (platform ids parsed out of tool names like
+// "telegram__send"). Re-derived from PLATFORM_STATIC_META so adding a
+// platform stays single-source.
 export const PLATFORM_COLORS: Record<string, string> = Object.fromEntries(
-  (Object.keys(PLATFORM_META) as PlatformId[]).map((id) => [id, PLATFORM_META[id].color])
+  (Object.keys(PLATFORM_STATIC_META) as PlatformId[]).map((id) => [
+    id,
+    PLATFORM_STATIC_META[id].color,
+  ])
 );
 
 export const PLATFORM_LABELS: Record<string, string> = Object.fromEntries(
-  (Object.keys(PLATFORM_META) as PlatformId[]).map((id) => [id, PLATFORM_META[id].shortLabel])
+  (Object.keys(PLATFORM_STATIC_META) as PlatformId[]).map((id) => [
+    id,
+    PLATFORM_STATIC_META[id].shortLabel,
+  ])
 );
 
-export const PLATFORM_FULL_LABELS: Record<string, string> = Object.fromEntries(
-  (Object.keys(PLATFORM_META) as PlatformId[]).map((id) => [id, PLATFORM_META[id].fullLabel])
-);
+// Factories — request-scoped (Phase B1). Use the hook below from React
+// components; call the factory directly from server-side code that has
+// already resolved a translator instance (via `getServerTranslator`).
+
+export function createPlatformFullLabels(t: FullLabelTranslator): Record<string, string> {
+  return Object.fromEntries(
+    (Object.keys(PLATFORM_STATIC_META) as PlatformId[]).map((id) => [id, t(id)])
+  );
+}
+
+export function createPlatformMeta(
+  tFullLabel: FullLabelTranslator,
+  tPlatforms: PlatformsTranslator
+): Record<PlatformId, PlatformMeta> {
+  const comingSoonWhen = tPlatforms('comingSoonWhen');
+  const out = {} as Record<PlatformId, PlatformMeta>;
+  for (const id of Object.keys(PLATFORM_STATIC_META) as PlatformId[]) {
+    const base = PLATFORM_STATIC_META[id];
+    out[id] = {
+      color: base.color,
+      shortLabel: base.shortLabel,
+      displayOrder: base.displayOrder,
+      defaultStatus: base.defaultStatus,
+      fullLabel: tFullLabel(id),
+      ...(base.defaultStatus === 'coming_soon' ? { comingSoonWhen } : {}),
+    };
+  }
+  return out;
+}
+
+// React-tree hooks — the canonical consumer surface for B1. Memoize on
+// the translator identity so callers can safely pass the records into
+// dependency arrays.
+export function usePlatformMeta(): Record<PlatformId, PlatformMeta> {
+  const tFullLabel = useTranslations('platforms.fullLabel') as FullLabelTranslator;
+  const tPlatforms = useTranslations('platforms') as PlatformsTranslator;
+  return useMemo(() => createPlatformMeta(tFullLabel, tPlatforms), [tFullLabel, tPlatforms]);
+}
+
+export function usePlatformFullLabels(): Record<string, string> {
+  const tFullLabel = useTranslations('platforms.fullLabel') as FullLabelTranslator;
+  return useMemo(() => createPlatformFullLabels(tFullLabel), [tFullLabel]);
+}
 
 // Backend platform id → ChannelMark `name` prop. Latin technical names
 // (Telegram/VK/Yandex.Business/Google/2GIS) — these key into the
@@ -142,5 +174,5 @@ export function getPlatform(toolName: string): string {
 }
 
 export function isKnownPlatform(id: string): id is PlatformId {
-  return id in PLATFORM_META;
+  return id in PLATFORM_STATIC_META;
 }

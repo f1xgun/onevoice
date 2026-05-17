@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ui/page-header';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { useBusinessStore } from '@/lib/stores/business';
-import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
+import { usePlatformFullLabels } from '@/lib/platforms';
 import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import {
@@ -45,6 +45,7 @@ function sameDraft(
 
 export function ToolsPageClient() {
   const tTools = useTranslations('settings.tools');
+  const platformFullLabels = usePlatformFullLabels();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const businessId = activeBusinessId ?? '';
 
@@ -145,7 +146,7 @@ export function ToolsPageClient() {
                 (t) => t.floor === 'manual' || t.floor === 'forbidden'
               );
               if (toolsForPlatform.length === 0) return null;
-              const label = PLATFORM_FULL_LABELS[platform] ?? platform;
+              const label = platformFullLabels[platform] ?? platform;
               return (
                 <section
                   key={platform}
