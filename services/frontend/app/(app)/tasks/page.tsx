@@ -26,7 +26,6 @@ import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
-import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import {
   TASK_STATUS_DOT_CLASSES,
   useTaskStatusLabels,
@@ -160,7 +159,6 @@ export default function TasksPage() {
               : tStats('doneSummary', {
                   success: doneToday,
                   needsHelp,
-                  needsHelpWord: needsHelpPlural(needsHelp),
                 })
           }
           tone="default"
@@ -322,15 +320,6 @@ function BigStat({
       <span className="text-[13px] leading-relaxed text-ink-mid">{hint}</span>
     </div>
   );
-}
-
-function needsHelpPlural(n: number): string {
-  const last = n % 10;
-  const lastTwo = n % 100;
-  if (lastTwo >= RU_PLURAL_TEEN_LOWER && lastTwo <= RU_PLURAL_TEEN_UPPER) return 'требуют';
-  if (last === 1) return 'требует';
-  if (last >= 2 && last <= RU_PLURAL_PAUCAL_UPPER) return 'требуют';
-  return 'требуют';
 }
 
 // ─── Loading skeleton ───────────────────────────────────────────────

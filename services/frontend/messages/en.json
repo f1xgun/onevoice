@@ -452,6 +452,13 @@
       "telegram": "Telegram",
       "yandexBusiness": "Yandex.Business"
     },
+    "platformShort": {
+      "telegram": "Telegram",
+      "vk": "VK",
+      "yandex_business": "Yandex"
+    },
+    "errorFallback": "Couldn't publish. Check your channel connections and try again.",
+    "mediaFile": "file {index}",
     "tabs": {
       "all": "All · {count}",
       "published": "Published · {count}",
@@ -497,7 +504,7 @@
       "inProgress": "In progress now",
       "awaitingUser": "Waiting on you",
       "doneEmptyHint": "nothing yet",
-      "doneSummary": "of those {success} succeeded, {needsHelp} {needsHelpWord} your attention",
+      "doneSummary": "of those {success} succeeded, {needsHelp, plural, one {# needs} other {# need}} your attention",
       "inProgressNone": "no active tasks",
       "inProgressSome": "running right now",
       "awaitingNone": "all good",
@@ -573,7 +580,20 @@
       "writeOwn": "Write your own",
       "draftFailed": "Couldn't prepare a draft. You can reply manually.",
       "draftPending": "Draft isn't ready yet. You can reply manually."
-    }
+    },
+    "ratingAria": "Rating: {rating} out of 5",
+    "platformLabels": {
+      "yandex_business": "Yandex.Business",
+      "yandex": "Yandex",
+      "google": "Google",
+      "google_business": "Google Business",
+      "2gis": "2GIS",
+      "telegram": "Telegram",
+      "vk": "VK"
+    },
+    "sendReplyError": "Couldn't send the reply",
+    "refreshSuccess": "Reviews refreshed",
+    "refreshError": "Couldn't refresh the reviews"
   },
   "business": {
     "title": "Business profile",
@@ -1169,11 +1189,20 @@
       "unsavedChanges": "You have unsaved changes. Click \"Save\" to apply them.",
       "loadError": "Couldn't load the tool list. Refresh the page or try again later.",
       "noTools": "No configurable tools.",
-      "platform": "Platform"
+      "platform": "Platform",
+      "toolsCount": "{count, plural, one {# tool} other {# tools}}",
+      "saveSuccess": "Settings saved",
+      "saveError": "Couldn't save",
+      "saveRetry": "Please try again."
     },
     "toolApproval": {
       "blocked": "Blocked",
-      "blockedHint": "This tool can't be enabled from settings"
+      "blockedHint": "This tool can't be enabled from settings",
+      "modeAriaLabel": "Approval mode for {label}",
+      "modes": {
+        "manual": "With your approval",
+        "auto": "On its own"
+      }
     }
   },
   "sidebar": {

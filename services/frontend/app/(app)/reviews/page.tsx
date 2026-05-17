@@ -51,22 +51,25 @@ import { ChannelMark } from '@/components/ui/channel-mark';
 import { cn } from '@/lib/utils';
 import type { Review } from '@/types/review';
 
-// Platform id → display label + ChannelMark name. Reviews can land from
-// any connected channel — Telegram/VK forward DMs that read as feedback,
-// Yandex.Business is the canonical reviews surface.
-const platformMeta: Record<string, { label: string; channel: string }> = {
-  yandex_business: { label: 'Яндекс.Бизнес', channel: 'Yandex.Business' },
-  yandex: { label: 'Яндекс', channel: 'Yandex' },
-  google: { label: 'Google', channel: 'Google' },
-  google_business: { label: 'Google Business', channel: 'Google' },
-  '2gis': { label: '2ГИС', channel: '2GIS' },
-  telegram: { label: 'Telegram', channel: 'Telegram' },
-  vk: { label: 'ВКонтакте', channel: 'VK' },
+// ChannelMark `name` map (icon hint, EN-only — these are brand icon ids,
+// not user-facing copy). The user-facing display label is resolved
+// per-render through `reviews.platformLabels.<id>` inside the consumer
+// so a locale switch retitles the row without remounting.
+const PLATFORM_CHANNEL_MARK: Record<string, string> = {
+  yandex_business: 'Yandex.Business',
+  yandex: 'Yandex',
+  google: 'Google',
+  google_business: 'Google',
+  '2gis': '2GIS',
+  telegram: 'Telegram',
+  vk: 'VK',
 };
 
-function platformInfo(id: string): { label: string; channel: string } {
-  return platformMeta[id] ?? { label: id, channel: id };
-}
+// Whitelist of platform ids that have a translation key under
+// reviews.platformLabels. Anything outside this set falls back to the
+// raw platform id (defensive against backend adding new sources before
+// the FE has copy ready).
+const PLATFORM_LABEL_KEYS: ReadonlySet<string> = new Set(Object.keys(PLATFORM_CHANNEL_MARK));
 
 // Telegram channels and VK comments don't carry a 0–5 rating — the
 // platform simply has no concept of one. Showing zero stars is misleading
@@ -88,8 +91,9 @@ function platformHasRating(id: string): boolean {
 type StatusKey = ReviewStatus;
 
 function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
+  const tReviews = useTranslations('reviews');
   return (
-    <div className="flex items-center gap-0.5" aria-label={`Оценка ${rating} из 5`}>
+    <div className="flex items-center gap-0.5" aria-label={tReviews('ratingAria', { rating })}>
       {Array.from({ length: 5 }, (_, i) => (
         <Star
           key={i}
@@ -175,7 +179,7 @@ export default function ReviewsPage() {
       setReplyDialog(null);
       setReplyText('');
     },
-    onError: () => toast.error('Не получилось отправить ответ'),
+    onError: () => toast.error(tReviews('sendReplyError')),
   });
 
   // Manual refresh — POSTs to /reviews/refresh which synchronously fans
@@ -187,9 +191,9 @@ export default function ReviewsPage() {
       api.post(API_PATHS.REVIEWS.REFRESH, undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
-      toast.success('Отзывы обновлены');
+      toast.success(tReviews('refreshSuccess'));
     },
-    onError: () => toast.error('Не удалось обновить отзывы'),
+    onError: () => toast.error(tReviews('refreshError')),
   });
 
   // Stats are computed from the loaded slice — they reflect what the
@@ -331,7 +335,10 @@ export default function ReviewsPage() {
             <div className="space-y-4">
               <div className="rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
                 <div className="mb-1.5 flex items-center gap-2">
-                  <ChannelMark name={platformInfo(replyDialog.platform).channel} size={20} />
+                  <ChannelMark
+                    name={PLATFORM_CHANNEL_MARK[replyDialog.platform] ?? replyDialog.platform}
+                    size={20}
+                  />
                   <span className="text-sm font-medium text-ink">{replyDialog.authorName}</span>
                   {platformHasRating(replyDialog.platform) && (
                     <StarRating rating={replyDialog.rating} size={14} />
@@ -407,8 +414,17 @@ function ReviewCard({
   isSending: boolean;
 }) {
   const tReviews = useTranslations('reviews');
+  const tPlatformLabels = useTranslations('reviews.platformLabels');
   const statusBadge = useReviewStatusBadges();
-  const meta = platformInfo(review.platform);
+  // ChannelMark icon hint is EN/brand-id; display label resolves via i18n
+  // platformLabels.<id> so a locale switch retitles the row.
+  const channelMark = PLATFORM_CHANNEL_MARK[review.platform] ?? review.platform;
+  const meta = {
+    channel: channelMark,
+    label: PLATFORM_LABEL_KEYS.has(review.platform)
+      ? tPlatformLabels(review.platform)
+      : review.platform,
+  };
   const status =
     (review.replyStatus as StatusKey) in statusBadge ? (review.replyStatus as StatusKey) : 'read';
   const badge = statusBadge[status];
