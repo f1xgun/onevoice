@@ -214,6 +214,7 @@ interface SpecialDatesFormProps {
 
 export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: SpecialDatesFormProps) {
   const tSchedule = useTranslations('business.scheduleForm');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const { schedule, specialDates, setSpecialDates } = useSchedule(
     initialSchedule,
     initialSpecialDates
@@ -264,7 +265,11 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
-            <Calendar mode="single" onSelect={(date) => date && addSpecialDate(date)} locale={ru} />
+            <Calendar
+              mode="single"
+              onSelect={(date) => date && addSpecialDate(date)}
+              locale={dateFnsLocale}
+            />
           </PopoverContent>
         </Popover>
 
