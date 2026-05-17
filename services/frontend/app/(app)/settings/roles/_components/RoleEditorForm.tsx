@@ -16,7 +16,7 @@ import { useRoles, useCreateRole, useUpdateRole } from '@/lib/hooks/useRoles';
 import { getMyPermissions } from '@/lib/api/permissions';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useUnsavedChangesPrompt } from '@/lib/hooks/useUnsavedChangesPrompt';
-import { mapRoleError } from '@/lib/resolveErrorMap';
+import { useMapRoleError } from '@/lib/resolveErrorMap';
 import { PermissionTree } from '@/components/permission-tree/PermissionTree';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Card } from '@/components/ui/card';
@@ -93,6 +93,7 @@ export interface RoleEditorFormProps {
  */
 export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProps) {
   const t = useTranslations('roles.editor');
+  const mapRoleError = useMapRoleError();
   const router = useRouter();
   const businessId = useBusinessStore((s) => s.activeBusinessId);
 

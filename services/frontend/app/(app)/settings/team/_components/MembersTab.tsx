@@ -25,7 +25,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMembers, useRemoveMember, useUpdateMemberRole } from '@/lib/hooks/useMembers';
-import { mapMemberError } from '@/lib/resolveErrorMap';
+import { useMapMemberError } from '@/lib/resolveErrorMap';
 import { usePermission } from '@/lib/hooks/usePermission';
 import type { Member, Role } from '@/lib/schemas';
 import { RolePill } from '@/components/business-switcher/RolePill';
@@ -45,6 +45,7 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
   const tTeam = useTranslations('team');
   const tCols = useTranslations('team.members.cols');
   const tActions = useTranslations('team.members.actions');
+  const mapMemberError = useMapMemberError();
   const { data: members, isLoading, isError } = useMembers(businessId);
   const currentUserId = useAuthStore((s) => s.user?.id);
   const updateRole = useUpdateMemberRole(businessId);

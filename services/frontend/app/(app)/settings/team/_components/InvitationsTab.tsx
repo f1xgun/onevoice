@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRevokeInvitation } from '@/lib/hooks/useInvitations';
-import { mapInviteError } from '@/lib/resolveErrorMap';
+import { useMapInviteError } from '@/lib/resolveErrorMap';
 import type { PendingInvitation } from '@/lib/schemas';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { RequirePermission } from '@/components/permission/RequirePermission';
@@ -35,6 +35,7 @@ export function InvitationsTab({ businessId, invitations, sessionTokens }: Invit
   const tTeam = useTranslations('team');
   const tCols = useTranslations('team.invitations.cols');
   const tActions = useTranslations('team.invitations.actions');
+  const mapInviteError = useMapInviteError();
   const revoke = useRevokeInvitation(businessId);
   const [confirmRevoke, setConfirmRevoke] = useState<PendingInvitation | null>(null);
 
