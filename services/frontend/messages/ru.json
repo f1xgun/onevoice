@@ -1202,7 +1202,16 @@
     "chatRowMenuAria": "Меню чата «{title}»",
     "search": {
       "resultsAria": "Результаты поиска",
-      "stateAria": "Состояние поиска"
+      "stateAria": "Состояние поиска",
+      "placeholder": "Поиск... {os, select, mac {⌘K} other {Ctrl-K}}",
+      "noResultsByQuery": "Ничего не найдено по «{query}»"
+    },
+    "project": {
+      "expandAria": "Развернуть «{name}»",
+      "collapseAria": "Свернуть «{name}»",
+      "newChatAria": "Новый чат в проекте «{name}»",
+      "newChatTitle": "Новый чат в проекте «{name}»",
+      "chatsAria": "Чаты проекта «{name}»"
     }
   },
   "states": {
