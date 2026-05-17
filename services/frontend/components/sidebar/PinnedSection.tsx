@@ -84,11 +84,15 @@ export function PinnedSection({
       </button>
 
       {!collapsed && (
+        // Plain navigation list — NOT a listbox. axe `aria-required-children`
+        // (critical) fires when role="listbox" hosts non-option children
+        // (per-row dropdown trigger buttons live here). Roving-tabindex still
+        // applies via the data-roving-item attribute + onKeyDown handler; the
+        // semantic role is dropped because these are navigation links, not a
+        // single-select widget. Active row is announced via aria-current="page".
         <div
           ref={containerRef as RefObject<HTMLDivElement>}
           onKeyDown={onKeyDown}
-          role="listbox"
-          aria-label={tSide('pinnedSectionAria')}
           className="ml-5 mt-0.5 space-y-0.5"
         >
           {visible.map((conv, i) => {
@@ -100,8 +104,7 @@ export function PinnedSection({
                   onClick={onNavigate}
                   data-roving-item
                   tabIndex={i === 0 ? 0 : -1}
-                  role="option"
-                  aria-selected={conv.id === activeConversationId}
+                  aria-current={conv.id === activeConversationId ? 'page' : undefined}
                   className={cn(
                     'flex flex-1 items-center gap-1 truncate rounded-md px-2 py-1 text-xs transition-colors',
                     conv.id === activeConversationId
