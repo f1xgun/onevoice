@@ -25,7 +25,7 @@
 // # Permission Format
 //
 // Flat resource.action strings only — no wildcards, no hierarchy. The
-// migration seed (migrations/postgres/000006_rbac_data_model.up.sql and the
+// migration seed (migrations/postgres/000007_rbac_data_model.up.sql and the
 // integration-test mirror) hardcodes the same JSONB arrays; drift is caught
 // by test/integration/system_roles_test.go which queries the seeded rows
 // and asserts equality with AllPermissions() minus role-specific
