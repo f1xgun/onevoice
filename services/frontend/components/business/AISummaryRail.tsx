@@ -78,7 +78,10 @@ export function AISummaryRail({ business, tones }: AISummaryRailProps) {
   }, [business, tones, tRail, tCategoriesShort, toneLabel]);
 
   return (
-    <aside className="flex flex-col gap-3 lg:sticky lg:top-8 lg:self-start">
+    <aside
+      aria-label={t('railAria')}
+      className="flex flex-col gap-3 lg:sticky lg:top-8 lg:self-start"
+    >
       {/* AI understanding */}
       <section className="flex flex-col gap-3 rounded-lg border border-line bg-paper-sunken p-5">
         <MonoLabel>{t('sample')}</MonoLabel>

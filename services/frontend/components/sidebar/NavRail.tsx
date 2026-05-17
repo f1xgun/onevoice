@@ -99,6 +99,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
     <TooltipProvider delayDuration={150}>
       <aside
         data-testid="nav-rail"
+        aria-label={tNav('railAria')}
         className="flex h-screen w-14 shrink-0 flex-col items-center border-r border-line bg-paper-raised py-2"
       >
         {/* BusinessSwitcher — visible payoff of the v2.0 multi-tenant model.
