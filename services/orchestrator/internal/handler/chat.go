@@ -169,7 +169,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Phone:              req.BusinessPhone,
 		Website:            req.BusinessWebsite,
 		Description:        req.BusinessDesc,
-		Tone:               joinTone(req.BusinessVoiceTone),
+		Tone:               joinTone(req.BusinessVoiceTone, locale),
 		ActiveIntegrations: req.ActiveIntegrations,
 		Now:                time.Now(),
 		Locale:             locale,
@@ -328,9 +328,26 @@ var toneIDToRu = map[string]string{
 	"businesslike": "деловой",
 }
 
+// toneIDToEn is the EN parallel of toneIDToRu (Phase D2). Same key set so a
+// missing English value is a compile-time inconsistency, not a silent fallback
+// to the literal id. Adjectives chosen to match the frontend lib/tones.ts
+// English labels word-for-word.
+var toneIDToEn = map[string]string{
+	"warm":         "warm",
+	"calm":         "calm",
+	"friendly":     "friendly",
+	"professional": "professional",
+	"playful":      "playful",
+	"businesslike": "businesslike",
+}
+
 // Legacy Russian display labels that pre-migration records may still hold
 // in business.settings.voiceTone. Recognized so older businesses keep
 // influencing the prompt until the next save flushes the canonical id form.
+//
+// EN locale also routes legacy RU labels through this map first (so we can
+// recognize them) then translates the recognized id via toneIDToEn — see
+// toneLabel below.
 var toneLegacyRuToRu = map[string]string{
 	"тёплый":           "тёплый",
 	"теплый":           "тёплый",
@@ -341,31 +358,70 @@ var toneLegacyRuToRu = map[string]string{
 	"деловой":          "деловой",
 }
 
+// toneLegacyRuToID maps legacy RU labels back to canonical IDs so the EN path
+// can find an English adjective for a business that still has Russian text in
+// settings.voiceTone. Direct id maps for forward-compat; legacy-text-only
+// records still translate cleanly.
+var toneLegacyRuToID = map[string]string{
+	"тёплый":           "warm",
+	"теплый":           "warm",
+	"спокойный":        "calm",
+	"дружеский":        "friendly",
+	"профессиональный": "professional",
+	"игривый":          "playful",
+	"деловой":          "businesslike",
+}
+
+// toneLabel translates a single tone token (canonical id or legacy RU label)
+// into the per-locale adjective. Returns "" if the token is unknown — the
+// caller filters those.
+//
+// EN path: first try direct id → toneIDToEn, then legacy RU → id → toneIDToEn.
+// RU path: kept verbatim — toneIDToRu for ids, toneLegacyRuToRu for legacy.
+func toneLabel(token string, tag language.Tag) (string, bool) {
+	key := strings.ToLower(strings.TrimSpace(token))
+	if key == "" {
+		return "", false
+	}
+	if tag == language.English {
+		if v, ok := toneIDToEn[key]; ok {
+			return v, true
+		}
+		if id, ok := toneLegacyRuToID[key]; ok {
+			return toneIDToEn[id], true
+		}
+		return "", false
+	}
+	if v, ok := toneIDToRu[key]; ok {
+		return v, true
+	}
+	if v, ok := toneLegacyRuToRu[key]; ok {
+		return v, true
+	}
+	return "", false
+}
+
 // joinTone resolves a list of stored tone identifiers (or legacy Russian
-// labels) into a single comma-separated Russian phrase suitable for the
-// "Тон общения: …" line in the system prompt. Unknown / empty entries are
-// dropped — when nothing remains, returns "" so the prompt builder falls
-// back to its default ("профессиональный").
-func joinTone(tags []string) string {
+// labels) into a single comma-separated phrase in the requested locale,
+// suitable for the "Тон общения: …" / "Tone: …" line in the system prompt.
+// Unknown / empty entries are dropped — when nothing remains, returns "" so
+// the prompt builder falls back to its locale-appropriate default.
+//
+// tag drives the output language; the input format is locale-agnostic (ids
+// like "warm" or legacy RU labels like "тёплый" both translate cleanly).
+func joinTone(tags []string, tag language.Tag) string {
 	out := make([]string, 0, len(tags))
 	seen := make(map[string]struct{}, len(tags))
 	for _, t := range tags {
-		key := strings.ToLower(strings.TrimSpace(t))
-		if key == "" {
-			continue
-		}
-		ru, ok := toneIDToRu[key]
-		if !ok {
-			ru, ok = toneLegacyRuToRu[key]
-		}
+		label, ok := toneLabel(t, tag)
 		if !ok {
 			continue
 		}
-		if _, dup := seen[ru]; dup {
+		if _, dup := seen[label]; dup {
 			continue
 		}
-		seen[ru] = struct{}{}
-		out = append(out, ru)
+		seen[label] = struct{}{}
+		out = append(out, label)
 	}
 	return strings.Join(out, ", ")
 }
