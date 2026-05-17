@@ -11,11 +11,11 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { useAuthStore } from '@/lib/auth';
 import { useBusinessStore } from '@/lib/stores/business';
 import { conversationsQueryKey } from '@/hooks/useConversations';
 import { API_BASE_URL } from '@/lib/constants/apiPaths';
-import { getTranslator } from '@/lib/i18n/translator';
 import { applySSEEvent, consumeSSEStream } from '@/lib/sse';
 import { trackEvent } from '@/lib/telemetry';
 import type { Message, PendingApproval, PendingApprovalCall, ToolCall } from '@/types/chat';
@@ -47,11 +47,6 @@ function normalizePendingApproval(raw: unknown): PendingApproval | null {
     createdAt: (r.createdAt as string) ?? new Date().toISOString(),
   };
 }
-
-// Module-level translator for the SSE-stream failure branch below. Strings
-// are static, so a once-per-module lookup matches the rest of `lib/`.
-// (D-AM-01: `usePendingApprovalFlow` keeps its own copy.)
-const tCommon = getTranslator('common');
 
 // Business-scoped URL builders. Kept inline here (rather than centralised
 // in API_STREAM_PATHS) because every call site needs to forward the
@@ -102,6 +97,10 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
   const [isLoading, setIsLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const isStreamingRef = useRef(false);
+  // Request-scoped translator (Phase B1). The SSE-stream failure branch
+  // below renders a single key — `common.connectionError` — into the
+  // user-visible assistant bubble when the stream errors out.
+  const tCommon = useTranslations('common');
   const accessToken = useAuthStore((s) => s.accessToken);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const abortRef = useRef<AbortController | null>(null);
@@ -310,7 +309,7 @@ export function useChat({ conversationId, onApprovalRequired }: UseChatOptions) 
         isStreamingRef.current = false;
       }
     },
-    [conversationId, accessToken, activeBusinessId, finalizeStreamingAssistant]
+    [conversationId, accessToken, activeBusinessId, finalizeStreamingAssistant, tCommon]
   );
 
   // appendSSEEvent — public for the sibling `usePendingApprovalFlow` to
