@@ -19,6 +19,7 @@ import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { REVIEW_STATUS_BADGES, type ReviewStatus } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
 
@@ -142,6 +143,7 @@ export default function ReviewsPage() {
   const [replyStatus, setReplyStatus] = useState<string>('all');
   const [replyDialog, setReplyDialog] = useState<Review | null>(null);
   const [replyText, setReplyText] = useState('');
+  const canReply = usePermission('content.update').allowed;
 
   const { data: reviews = [], isLoading } = useQuery<Review[]>({
     queryKey: ['businesses', activeBusinessId, 'reviews', platform, replyStatus],
@@ -315,6 +317,7 @@ export default function ReviewsPage() {
                 onEdit={() => openReply(review, review.draftReply ?? '')}
                 onWriteOwn={() => openReply(review, '')}
                 isSending={replyMutation.isPending && replyMutation.variables?.id === review.id}
+                canReply={canReply}
               />
             ))}
           </div>
@@ -398,12 +401,14 @@ function ReviewCard({
   onEdit,
   onWriteOwn,
   isSending,
+  canReply,
 }: {
   review: Review;
   onSendDraft: () => void;
   onEdit: () => void;
   onWriteOwn: () => void;
   isSending: boolean;
+  canReply: boolean;
 }) {
   const tReviews = useTranslations('reviews');
   const meta = platformInfo(review.platform);
@@ -462,14 +467,16 @@ function ReviewCard({
             <span className="text-xs text-ink-soft">{tReviews('aiSample.hint')}</span>
           </div>
           <p className="mt-2 text-sm leading-relaxed text-ink">{review.draftReply}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button variant="primary" size="sm" onClick={onSendDraft} disabled={isSending}>
-              {isSending ? tReviews('sending') : tReviews('send')}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onEdit} disabled={isSending}>
-              {tReviews('aiSample.edit')}
-            </Button>
-          </div>
+          {canReply && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button variant="primary" size="sm" onClick={onSendDraft} disabled={isSending}>
+                {isSending ? tReviews('sending') : tReviews('send')}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onEdit} disabled={isSending}>
+                {tReviews('aiSample.edit')}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -477,9 +484,11 @@ function ReviewCard({
       {draftGenerating && (
         <div className="bg-paper-sunken/60 mt-4 flex items-center justify-between gap-3 rounded-md border border-dashed border-line px-4 py-3">
           <span className="text-sm text-ink-mid">{tReviews('aiSample.preparing')}</span>
-          <Button variant="secondary" size="sm" onClick={onWriteOwn}>
-            {tReviews('aiSample.replyNow')}
-          </Button>
+          {canReply && (
+            <Button variant="secondary" size="sm" onClick={onWriteOwn}>
+              {tReviews('aiSample.replyNow')}
+            </Button>
+          )}
         </div>
       )}
 
@@ -492,9 +501,11 @@ function ReviewCard({
               ? tReviews('aiSample.draftFailed')
               : tReviews('aiSample.draftPending')}
           </span>
-          <Button variant="secondary" size="sm" onClick={onWriteOwn}>
-            {tReviews('aiSample.writeOwn')}
-          </Button>
+          {canReply && (
+            <Button variant="secondary" size="sm" onClick={onWriteOwn}>
+              {tReviews('aiSample.writeOwn')}
+            </Button>
+          )}
         </div>
       )}
     </article>
