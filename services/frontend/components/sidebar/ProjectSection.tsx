@@ -95,7 +95,7 @@ export function ProjectSection({
         >
           <FolderOpen size={12} className="shrink-0 text-ink-faint" />
           <span className="flex-1 truncate">{project.name}</span>
-          <span className="text-xs text-ink-faint">· {count}</span>
+          <span className="text-xs text-ink-soft">· {count}</span>
         </Link>
         {canCreate && (
           <button
