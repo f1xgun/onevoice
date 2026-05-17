@@ -5,11 +5,23 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/language"
+
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 // BusinessContext holds all data needed to build the system prompt.
+//
+// Locale steers BOTH the section labels ("## Бизнес" vs "## Business") AND
+// the language-directive line at the end of the rules block ("Общайся на
+// русском языке" vs "Respond in English"). The directive is load-bearing —
+// it is the single string that flips the LLM's output language. Phase D of
+// `.planning/i18n-readiness/PLAN.md` documents the rationale.
+//
+// Empty Tag = legacy callers (no i18n in scope) → defaults to Russian via
+// resolveLocale below, preserving the byte-for-byte pre-i18n output.
 type BusinessContext struct {
 	Name               string
 	Category           string
@@ -20,6 +32,34 @@ type BusinessContext struct {
 	Tone               string   // e.g., "дружелюбный", "профессиональный"
 	ActiveIntegrations []string // e.g., ["telegram", "vk", "google_business"]
 	Now                time.Time
+	// Locale drives the system-prompt language. Zero Tag = RU (legacy).
+	// Populated by services/orchestrator/internal/handler/chat.go from the
+	// per-request body's `locale` field or, as a fallback, from
+	// i18n.LocaleFromContext(r.Context()) (LocaleResolver middleware).
+	Locale language.Tag
+}
+
+// resolveLocale collapses the BusinessContext.Locale tag down to a base
+// language we have a template for. Any tag that doesn't reduce to "en"
+// (and isn't the zero Tag — see below) falls through to Russian, which
+// matches the catalog lookup semantics in pkg/i18n.lookup() so a single
+// unknown-locale value can't produce inconsistent output between section
+// labels and language-steering directives.
+//
+// Edge case: a zero language.Tag has base "en" (golang.org/x/text default).
+// Treat the zero Tag as "unset" and resolve to the catalog default (RU) so
+// legacy callers that never populate Locale keep their byte-for-byte RU
+// output — critical for backward compatibility with the pre-i18n shape and
+// for the existing snapshot tests.
+func resolveLocale(tag language.Tag) language.Tag {
+	if tag == (language.Tag{}) {
+		return i18n.DefaultTag
+	}
+	base, _ := tag.Base()
+	if base.String() == "en" {
+		return language.English
+	}
+	return i18n.DefaultTag
 }
 
 // ProjectContext carries the optional project prompt layer that is appended
@@ -41,12 +81,16 @@ type ProjectContext struct {
 
 // Build returns a []llm.Message starting with a system message built from
 // the business context, followed by the conversation history. When proj is
-// non-nil, the system message ends with a "## Проект: {Name}" block after the
-// business rules and before the history.
+// non-nil, the system message ends with a "## Проект: {Name}" /
+// "## Project: {Name}" block (per locale) after the business rules and before
+// the history.
+//
+// Locale is read from ctx.Locale; zero Tag = Russian (legacy callers preserved
+// byte-for-byte).
 func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []llm.Message {
 	system := buildSystemContent(ctx)
 	if proj != nil {
-		system = appendProjectBlock(system, proj)
+		system = appendProjectBlock(system, proj, ctx.Locale)
 	}
 	msgs := make([]llm.Message, 0, 1+len(history))
 	msgs = append(msgs, llm.Message{Role: "system", Content: system})
@@ -63,13 +107,21 @@ func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []l
 // "### Ограничения инструментов" section is emitted so the LLM knows to
 // refuse/explain unavailable-platform requests instead of silently
 // substituting the closest allowed tool.
-func appendProjectBlock(base string, proj *ProjectContext) string {
+//
+// Locale steers section labels and the explanatory phrasing; the tool name
+// list itself is rendered as-is (LLM tool names are not localized).
+func appendProjectBlock(base string, proj *ProjectContext, tag language.Tag) string {
+	tag = resolveLocale(tag)
 	var sb strings.Builder
 	sb.WriteString(base)
 	if !strings.HasSuffix(base, "\n") {
 		sb.WriteString("\n")
 	}
-	sb.WriteString("\n## Проект: ")
+	if tag == language.English {
+		sb.WriteString("\n## Project: ")
+	} else {
+		sb.WriteString("\n## Проект: ")
+	}
 	sb.WriteString(proj.Name)
 	sb.WriteString("\n")
 	if proj.SystemPrompt != "" {
@@ -86,23 +138,12 @@ func appendProjectBlock(base string, proj *ProjectContext) string {
 			// Defensive: shouldn't happen (service layer rejects this via
 			// ErrProjectWhitelistEmpty), but if it does we tell the LLM the
 			// same thing WhitelistModeNone would say.
-			sb.WriteString("\n### Ограничения инструментов\n")
-			sb.WriteString("В этом проекте все инструменты отключены. Отвечай только текстом. ")
-			sb.WriteString("Если пользователь просит действие, объясни ограничение и предложи перенести чат в другой проект. ")
-			sb.WriteString("НЕ подменяй канал молча.\n")
+			sb.WriteString(restrictionsAllDisabled(tag))
 		} else {
-			sb.WriteString("\n### Ограничения инструментов\n")
-			sb.WriteString("В этом проекте разрешены только: ")
-			sb.WriteString(strings.Join(proj.AllowedTools, ", "))
-			sb.WriteString(". Если пользователь просит действие через недоступный канал, ")
-			sb.WriteString("объясни вежливо, что этот канал отключён для проекта, и предложи разрешённую альтернативу ")
-			sb.WriteString("(или просто откажись, если альтернативы нет). НЕ подменяй канал молча.\n")
+			sb.WriteString(restrictionsAllowedOnly(tag, proj.AllowedTools))
 		}
 	case domain.WhitelistModeNone:
-		sb.WriteString("\n### Ограничения инструментов\n")
-		sb.WriteString("В этом проекте все инструменты отключены. Отвечай только текстом. ")
-		sb.WriteString("Если пользователь просит действие, объясни ограничение и предложи перенести чат в другой проект. ")
-		sb.WriteString("НЕ подменяй канал молча.\n")
+		sb.WriteString(restrictionsAllDisabled(tag))
 	case domain.WhitelistModeAll, domain.WhitelistModeInherit, "":
 		// No hint — permissive whitelist modes don't constrain the LLM.
 	}
@@ -110,7 +151,64 @@ func appendProjectBlock(base string, proj *ProjectContext) string {
 	return sb.String()
 }
 
+// restrictionsAllDisabled returns the per-locale "all tools disabled" hint
+// emitted under "### Ограничения инструментов" / "### Tool restrictions".
+// The two language variants intentionally carry the same semantic load
+// (refuse-with-explanation + anti-substitution instruction) so the LLM
+// behavior is identical across locales.
+func restrictionsAllDisabled(tag language.Tag) string {
+	if tag == language.English {
+		return "\n### Tool restrictions\n" +
+			"All tools are disabled for this project. Reply with text only. " +
+			"If the user requests an action, explain the restriction and suggest moving the chat to another project. " +
+			"Do NOT silently substitute a channel.\n"
+	}
+	return "\n### Ограничения инструментов\n" +
+		"В этом проекте все инструменты отключены. Отвечай только текстом. " +
+		"Если пользователь просит действие, объясни ограничение и предложи перенести чат в другой проект. " +
+		"НЕ подменяй канал молча.\n"
+}
+
+// restrictionsAllowedOnly returns the per-locale "only these tools allowed"
+// hint. Tool names are emitted verbatim (e.g. `telegram__send_channel_post`)
+// in both locales because they are stable identifiers the LLM matches against
+// its tools schema, not user-facing copy.
+func restrictionsAllowedOnly(tag language.Tag, allowed []string) string {
+	if tag == language.English {
+		return "\n### Tool restrictions\n" +
+			"Only the following tools are allowed in this project: " +
+			strings.Join(allowed, ", ") +
+			". If the user requests an action through an unavailable channel, " +
+			"politely explain that the channel is disabled for the project and suggest an allowed alternative " +
+			"(or simply refuse if no alternative exists). Do NOT silently substitute a channel.\n"
+	}
+	return "\n### Ограничения инструментов\n" +
+		"В этом проекте разрешены только: " +
+		strings.Join(allowed, ", ") +
+		". Если пользователь просит действие через недоступный канал, " +
+		"объясни вежливо, что этот канал отключён для проекта, и предложи разрешённую альтернативу " +
+		"(или просто откажись, если альтернативы нет). НЕ подменяй канал молча.\n"
+}
+
+// buildSystemContent renders the locale-appropriate system prompt skeleton.
+// The two language paths are kept in lock-step: every section emitted in
+// Russian has an English counterpart and vice versa, so flipping the locale
+// never produces a partially-localized prompt. The trailing language-steering
+// line ("Общайся на русском языке" / "Respond in English") is the single
+// load-bearing string that flips the LLM's reply language — section headers
+// alone are insufficient. See Phase D of `.planning/i18n-readiness/PLAN.md`.
 func buildSystemContent(ctx BusinessContext) string {
+	if resolveLocale(ctx.Locale) == language.English {
+		return buildSystemContentEn(ctx)
+	}
+	return buildSystemContentRu(ctx)
+}
+
+// buildSystemContentRu is the original (and default) Russian template. Kept
+// byte-for-byte identical to the pre-i18n shape so existing snapshot tests
+// continue to pass and so RU-locale users see no behavioral drift after the
+// i18n switch lands.
+func buildSystemContentRu(ctx BusinessContext) string {
 	var sb strings.Builder
 
 	sb.WriteString("Ты — AI-ассистент для управления цифровым присутствием бизнеса.\n\n")
@@ -156,6 +254,63 @@ func buildSystemContent(ctx BusinessContext) string {
 	sb.WriteString("- Когда пользователь просит получить отзывы/комментарии — вызывай инструменты ДЛЯ ВСЕХ активных платформ, а не только для одной\n")
 	sb.WriteString("- Частичные ошибки допустимы: сообщи об успехах и неудачах после выполнения\n")
 	sb.WriteString("- Общайся на русском языке\n")
+
+	return sb.String()
+}
+
+// buildSystemContentEn is the English counterpart of buildSystemContentRu.
+// Every section header, tone-default, and rule line mirrors the Russian text
+// 1:1 — keep them in sync when adding new rules so locale switching never
+// produces an asymmetric prompt.
+//
+// The trailing "Respond in English" line is load-bearing: section labels in
+// English alone do not flip LLM output language without an explicit directive.
+func buildSystemContentEn(ctx BusinessContext) string {
+	var sb strings.Builder
+
+	sb.WriteString("You are an AI assistant for managing a business's digital presence.\n\n")
+
+	fmt.Fprintf(&sb, "## Business: %s\n", ctx.Name)
+	if ctx.Category != "" {
+		fmt.Fprintf(&sb, "Category: %s\n", ctx.Category)
+	}
+	if ctx.Address != "" {
+		fmt.Fprintf(&sb, "Address: %s\n", ctx.Address)
+	}
+	if ctx.Phone != "" {
+		fmt.Fprintf(&sb, "Phone: %s\n", ctx.Phone)
+	}
+	if ctx.Website != "" {
+		fmt.Fprintf(&sb, "Website: %s\n", ctx.Website)
+	}
+	if ctx.Description != "" {
+		fmt.Fprintf(&sb, "Description: %s\n", ctx.Description)
+	}
+
+	tone := ctx.Tone
+	if tone == "" {
+		tone = "professional"
+	}
+	fmt.Fprintf(&sb, "\nTone: %s\n", tone)
+
+	fmt.Fprintf(&sb, "\nCurrent date and time: %s\n", ctx.Now.Format("2006-01-02 15:04 MST"))
+
+	if len(ctx.ActiveIntegrations) > 0 {
+		sb.WriteString("\n## Active integrations\n")
+		for _, integration := range ctx.ActiveIntegrations {
+			fmt.Fprintf(&sb, "- %s\n", integration)
+		}
+		sb.WriteString("\nYou can manage these platforms through the available tools.\n")
+	} else {
+		sb.WriteString("\nNo active platform integrations.\n")
+	}
+
+	sb.WriteString("\n## Rules\n")
+	sb.WriteString("- Perform tasks independently using the available tools — do not explain the plan, take action\n")
+	sb.WriteString("- If a task is unclear, ask one clarifying question, then complete the task without further confirmations\n")
+	sb.WriteString("- When the user asks for reviews/comments, call tools for ALL active platforms, not just one\n")
+	sb.WriteString("- Partial errors are acceptable: report successes and failures after execution\n")
+	sb.WriteString("- Respond in English\n")
 
 	return sb.String()
 }
