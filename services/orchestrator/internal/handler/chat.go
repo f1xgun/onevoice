@@ -11,9 +11,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
@@ -77,6 +79,16 @@ type chatRequest struct {
 	Tier                     string                      `json:"tier"`
 	BusinessApprovals        map[string]domain.ToolFloor `json:"business_approvals"`
 	ProjectApprovalOverrides map[string]domain.ToolFloor `json:"project_approval_overrides"`
+
+	// Locale is the per-chat language tag (e.g. "ru", "en") forwarded by the
+	// API's chat_proxy from i18n.LocaleFromContext(r.Context()). Drives the
+	// orchestrator prompt builder's locale-aware templates (Phase D1). Empty
+	// or invalid values fall back to the orchestrator's own Accept-Language
+	// resolution from middleware.Locale → i18n.LocaleFromContext, then
+	// finally to i18n.DefaultTag. The body field takes precedence over the
+	// header-derived ctx tag so the chat-conversation owner's preference
+	// wins even when an intermediate proxy strips/rewrites Accept-Language.
+	Locale string `json:"locale,omitempty"`
 }
 
 // sseEvent matches the JSON shape written to the SSE stream.
@@ -131,6 +143,25 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := a2a.WithBusinessID(r.Context(), req.BusinessID)
+	if corrID := r.Header.Get("X-Correlation-ID"); corrID != "" {
+		ctx = logger.WithCorrelationID(ctx, corrID)
+	}
+
+	// Resolve locale for the prompt builder. Two sources:
+	//   1. req.Locale  — set explicitly by the API's chat_proxy from the
+	//      browser cookie (NEXT_LOCALE) → propagated as a JSON field so the
+	//      chat-conversation owner's preference wins.
+	//   2. ctx tag    — set by middleware.Locale from this request's
+	//      Accept-Language header; the fallback when the body field is empty
+	//      or invalid.
+	// The body field takes precedence so that intermediate proxies that
+	// strip / rewrite Accept-Language can't silently flip the LLM's reply
+	// language out from under the user. See pkg/i18n + Phase D1 of
+	// `.planning/i18n-readiness/PLAN.md`.
+	locale := resolveChatLocale(ctx, req.Locale)
+	ctx = i18n.WithLocale(ctx, locale)
+
 	biz := prompt.BusinessContext{
 		Name:               req.BusinessName,
 		Category:           req.BusinessCategory,
@@ -141,11 +172,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Tone:               joinTone(req.BusinessVoiceTone),
 		ActiveIntegrations: req.ActiveIntegrations,
 		Now:                time.Now(),
-	}
-
-	ctx := a2a.WithBusinessID(r.Context(), req.BusinessID)
-	if corrID := r.Header.Get("X-Correlation-ID"); corrID != "" {
-		ctx = logger.WithCorrelationID(ctx, corrID)
+		Locale:             locale,
 	}
 
 	// Deserialise whitelist mode. Empty string means "inherit" (v1.3 = all).
@@ -263,6 +290,30 @@ func writeSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, 
 		return
 	}
 	flusher.Flush()
+}
+
+// resolveChatLocale picks the language tag for the prompt builder. Precedence:
+//
+//  1. bodyLocale — explicit string from the chat request body (set by the
+//     API's chat_proxy from the per-user cookie). Parsed via
+//     i18n.MatchAcceptLanguage so unsupported / malformed values fall back to
+//     i18n.DefaultTag rather than producing a zero Tag.
+//  2. ctx tag    — populated by middleware.Locale earlier in the chain from
+//     this request's Accept-Language header. Used only when bodyLocale is
+//     empty.
+//
+// Body-over-header is deliberate: a backend cookie value flips the orchestrator
+// language even when an intermediate proxy strips/rewrites Accept-Language. An
+// empty body field is the no-opinion signal that defers to the header path.
+func resolveChatLocale(ctx context.Context, bodyLocale string) language.Tag {
+	if bodyLocale != "" {
+		// MatchAcceptLanguage handles single-tag input ("en") and multi-tag
+		// preference lists ("en-US,en;q=0.9") uniformly, and returns
+		// i18n.DefaultTag on parse failure — so we never propagate a zero Tag
+		// downstream.
+		return i18n.MatchAcceptLanguage(bodyLocale)
+	}
+	return i18n.LocaleFromContext(ctx)
 }
 
 // toneIDToRu maps stable enum ids (frontend lib/tones.ts) to the Russian
