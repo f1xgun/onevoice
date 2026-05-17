@@ -38,6 +38,7 @@ export function ConversationItem({
   onRegenerateTitle: () => void;
 }) {
   const tRow = useTranslations('chat.rowMenu');
+  const tChat = useTranslations('chat');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(conv.title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -61,9 +62,12 @@ export function ConversationItem({
 
   // Placeholder when title is empty
   // OR an auto-title job is in flight. NO shimmer / skeleton / animation —
-  // pins the literal Russian copy for Sidebar Pending UX.
+  // pins the literal Russian copy for Sidebar Pending UX (resolved via i18n
+  // chat.newConversation; same key used by sidebar rows).
   const displayTitle =
-    conv.title === '' || conv.titleStatus === 'auto_pending' ? 'Новый диалог' : conv.title;
+    conv.title === '' || conv.titleStatus === 'auto_pending'
+      ? tChat('newConversation')
+      : conv.title;
 
   return (
     <div className="group flex items-center gap-3 rounded-lg border border-line p-4 transition-colors hover:bg-paper-sunken">

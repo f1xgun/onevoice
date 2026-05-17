@@ -98,7 +98,7 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
       { id: conversation.id, title: trimmed },
       {
         onSuccess: () => setRenameOpen(false),
-        onError: () => toast.error('Не удалось переименовать чат'),
+        onError: () => toast.error(tRow('renameError')),
       }
     );
   }
@@ -108,7 +108,7 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
     regenerateMutation.mutate(conversation.id, {
       onError: (err) => {
         const axErr = err as AxiosError<{ message?: string }> | undefined;
-        const msg = axErr?.response?.data?.message ?? 'Ошибка соединения';
+        const msg = axErr?.response?.data?.message ?? tCommon('connectionError');
         toast.error(msg);
       },
     });
@@ -127,7 +127,7 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
         }
         onDeleted?.();
       },
-      onError: () => toast.error('Не удалось удалить чат'),
+      onError: () => toast.error(tRow('deleteError')),
     });
   }
 
