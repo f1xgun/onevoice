@@ -33,8 +33,15 @@ import (
 //
 // When in doubt, prefer manual + a narrow editable list (conservative default).
 type toolSpec struct {
-	def             llm.ToolDefinition
-	displayName     string
+	def         llm.ToolDefinition
+	displayName string
+	// displayNameKey is the i18n catalog key (under
+	// `agentTasks.displayName.tools.<platform>.<action>.name` on the FE)
+	// that the frontend uses to render localized task titles. The legacy
+	// `displayName` stays as the source-of-truth literal — the FE renders
+	// `t(displayNameKey) || displayName`. Phase C3 adds the field; Phase D
+	// will add a sibling `descriptionEn` for the LLM-visible description.
+	displayNameKey  string
 	userDescription string // end-user-facing copy for /settings/tools (NO tool-name refs, NO "используй X вместо Y" disambiguation).
 	floor           domain.ToolFloor
 	editable        []string

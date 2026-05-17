@@ -202,3 +202,67 @@ func BackfillConversationsV19(ctx context.Context, db *mongo.Database) error {
 	slog.InfoContext(ctx, "phase 19 backfill complete", "marker", SchemaMigrationPhase19)
 	return nil
 }
+
+// agentTaskDisplayNameToKey is the canonical mapping from legacy
+// Russian-only `display_name` literals (written before i18n Phase C3) to
+// the i18n catalog keys the frontend uses after the migration. Sourced
+// from services/api/internal/platform/syncer.go where every syncer-side
+// display_name is hardcoded — keep both sides in sync when new sync
+// capabilities land.
+//
+// Unknown legacy literals (i.e. anything not in this map) are skipped on
+// purpose: the FE's fallback chain renders `t(displayNameKey) ||
+// displayName`, so an unrecognized row simply keeps its legacy Russian
+// label until the mapping is extended in a follow-up commit.
+var agentTaskDisplayNameToKey = map[string]string{
+	"Синхронизация названия":     "sync.business_name",
+	"Синхронизация описания":     "sync.business_description",
+	"Синхронизация фото":         "sync.photo",
+	"Синхронизация данных":       "sync.data",
+	"Синхронизация часов работы": "sync.hours",
+}
+
+// BackfillAgentTaskDisplayNameKey walks the agent_tasks collection and
+// populates display_name_key on every document that is missing or empty
+// for that field BUT whose legacy display_name maps to a known key (see
+// agentTaskDisplayNameToKey above).
+//
+// Idempotent: rows that already carry a non-empty display_name_key are
+// skipped via the `$or` clause in the filter. Returns the number of
+// modified documents (sum across all matched legacy literals).
+//
+// NOT called from any startup wiring in this commit — see the C3 plan in
+// `.planning/i18n-readiness/PLAN.md`. Operationally executed via a
+// one-off admin task when the FE deploy that consumes display_name_key
+// has shipped.
+func BackfillAgentTaskDisplayNameKey(ctx context.Context, db *mongo.Database) (int, error) {
+	tasks := db.Collection("agent_tasks")
+
+	totalModified := 0
+	for legacyName, key := range agentTaskDisplayNameToKey {
+		// Each row is updated at most once per call because the
+		// {$exists: false} OR empty-string guard removes the row from the
+		// matcher set after the first write. Iterating the map keeps the
+		// write list explicit per legacy literal so the operational logs
+		// show exactly which mapping moved how many rows.
+		filter := bson.M{
+			"display_name": legacyName,
+			"$or": []bson.M{
+				{"display_name_key": bson.M{"$exists": false}},
+				{"display_name_key": ""},
+			},
+		}
+		update := bson.M{"$set": bson.M{"display_name_key": key}}
+		res, err := tasks.UpdateMany(ctx, filter, update)
+		if err != nil {
+			return totalModified, fmt.Errorf("backfill display_name_key for %q: %w", legacyName, err)
+		}
+		slog.InfoContext(ctx, "agent_tasks backfill display_name_key",
+			"legacy_display_name", legacyName,
+			"display_name_key", key,
+			"matched", res.MatchedCount,
+			"modified", res.ModifiedCount)
+		totalModified += int(res.ModifiedCount)
+	}
+	return totalModified, nil
+}

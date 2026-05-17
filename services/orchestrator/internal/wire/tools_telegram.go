@@ -16,6 +16,7 @@ func telegramTools() []toolSpec {
 		// editable; channel_id pinned from integration.
 		{
 			displayName:     "Отправить пост",
+			displayNameKey:  "tools.telegram.send_channel_post.name",
 			userDescription: "Публикует текстовое сообщение в Telegram-канале.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramSendChannelPost,
@@ -37,6 +38,7 @@ func telegramTools() []toolSpec {
 		// time would be a footgun).
 		{
 			displayName:     "Отправить фото",
+			displayNameKey:  "tools.telegram.send_channel_photo.name",
 			userDescription: "Публикует фото с подписью в Telegram-канале.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramSendChannelPhoto,
@@ -58,6 +60,7 @@ func telegramTools() []toolSpec {
 		// from the integration (never editable).
 		{
 			displayName:     "Уведомление владельцу",
+			displayNameKey:  "tools.telegram.send_notification.name",
 			userDescription: "Отправляет личное уведомление владельцу бизнеса в Telegram.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramSendNotification,
@@ -76,6 +79,7 @@ func telegramTools() []toolSpec {
 		// Read-only query of recent messages. Auto, no edit needed.
 		{
 			displayName:     "Загрузить отзывы",
+			displayNameKey:  "tools.telegram.get_reviews.name",
 			userDescription: "Загружает комментарии и реакции из Telegram-канала.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramGetReviews,
@@ -95,6 +99,7 @@ func telegramTools() []toolSpec {
 		// would redirect the reply to an unrelated conversation).
 		{
 			displayName:     "Ответить на комментарий",
+			displayNameKey:  "tools.telegram.reply_to_comment.name",
 			userDescription: "Отвечает на комментарий к посту в Telegram-канале.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramReplyToComment,

@@ -15,6 +15,7 @@ func googleTools() []toolSpec {
 		// Read-only. Auto.
 		{
 			displayName:     "Загрузить отзывы Google",
+			displayNameKey:  "tools.google_business.get_reviews.name",
 			userDescription: "Загружает отзывы клиентов из Google Business Profile.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.GoogleBusinessGetReviews,
@@ -32,6 +33,7 @@ func googleTools() []toolSpec {
 		// Mutating public: review reply. text editable; review_name pinned.
 		{
 			displayName:     "Ответить на отзыв Google",
+			displayNameKey:  "tools.google_business.reply_review.name",
 			userDescription: "Отвечает на отзыв клиента в Google Business Profile.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.GoogleBusinessReplyReview,

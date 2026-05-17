@@ -15,6 +15,7 @@ func vkTools() []toolSpec {
 		// Mutating public: publishes wall post. text editable; group_id pinned.
 		{
 			displayName:     "Опубликовать пост",
+			displayNameKey:  "tools.vk.publish_post.name",
 			userDescription: "Публикует пост на стене сообщества ВКонтакте.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKPublishPost,
@@ -34,6 +35,7 @@ func vkTools() []toolSpec {
 		// Mutating public: photo + caption. caption editable; photo_url + group_id pinned.
 		{
 			displayName:     "Опубликовать фото",
+			displayNameKey:  "tools.vk.post_photo.name",
 			userDescription: "Публикует пост с фото на стене сообщества ВКонтакте.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKPostPhoto,
@@ -56,6 +58,7 @@ func vkTools() []toolSpec {
 		// semantic change — a separate tool call makes intent explicit).
 		{
 			displayName:     "Запланировать пост",
+			displayNameKey:  "tools.vk.schedule_post.name",
 			userDescription: "Планирует отложенную публикацию на стене ВКонтакте.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKSchedulePost,
@@ -78,6 +81,7 @@ func vkTools() []toolSpec {
 		// edit-allowlist until the LLM's JSON schema exposes them.
 		{
 			displayName:     "Обновить данные сообщества",
+			displayNameKey:  "tools.vk.update_group_info.name",
 			userDescription: "Изменяет название, описание и контакты сообщества ВКонтакте.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKUpdateGroupInfo,
@@ -97,6 +101,7 @@ func vkTools() []toolSpec {
 		// Read-only. Auto.
 		{
 			displayName:     "Загрузить комментарии",
+			displayNameKey:  "tools.vk.get_comments.name",
 			userDescription: "Загружает комментарии к посту ВКонтакте.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKGetComments,
@@ -117,6 +122,7 @@ func vkTools() []toolSpec {
 		// Mutating public: comment reply. text editable; ids pinned.
 		{
 			displayName:     "Ответить на комментарий",
+			displayNameKey:  "tools.vk.reply_comment.name",
 			userDescription: "Отвечает на комментарий ВКонтакте.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKReplyComment,
@@ -143,6 +149,7 @@ func vkTools() []toolSpec {
 		// approval time (redirect-delete attack).
 		{
 			displayName:     "Удалить комментарий",
+			displayNameKey:  "tools.vk.delete_comment.name",
 			userDescription: "Удаляет комментарий под постом ВКонтакте.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKDeleteComment,
@@ -162,6 +169,7 @@ func vkTools() []toolSpec {
 		// Read-only. Auto.
 		{
 			displayName:     "Загрузить данные сообщества",
+			displayNameKey:  "tools.vk.get_community_info.name",
 			userDescription: "Загружает карточку сообщества ВКонтакте.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKGetCommunityInfo,
@@ -180,6 +188,7 @@ func vkTools() []toolSpec {
 		// Read-only. Auto.
 		{
 			displayName:     "Загрузить посты",
+			displayNameKey:  "tools.vk.get_wall_posts.name",
 			userDescription: "Загружает посты со стены сообщества ВКонтакте.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKGetWallPosts,

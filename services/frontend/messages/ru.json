@@ -529,6 +529,50 @@
       "autoRetryHint": "Можно ничего не нажимать — мы попробуем ещё раз сами."
     }
   },
+  "agentTasks": {
+    "displayName": {
+      "sync": {
+        "business_name": "Синхронизация названия",
+        "business_description": "Синхронизация описания",
+        "photo": "Синхронизация фото",
+        "data": "Синхронизация данных",
+        "hours": "Синхронизация часов работы"
+      },
+      "tools": {
+        "telegram": {
+          "send_channel_post": { "name": "Отправить пост" },
+          "send_channel_photo": { "name": "Отправить фото" },
+          "send_notification": { "name": "Уведомление владельцу" },
+          "get_reviews": { "name": "Загрузить отзывы" },
+          "reply_to_comment": { "name": "Ответить на комментарий" }
+        },
+        "vk": {
+          "publish_post": { "name": "Опубликовать пост" },
+          "post_photo": { "name": "Опубликовать фото" },
+          "schedule_post": { "name": "Запланировать пост" },
+          "update_group_info": { "name": "Обновить данные сообщества" },
+          "get_comments": { "name": "Загрузить комментарии" },
+          "reply_comment": { "name": "Ответить на комментарий" },
+          "delete_comment": { "name": "Удалить комментарий" },
+          "get_community_info": { "name": "Загрузить данные сообщества" },
+          "get_wall_posts": { "name": "Загрузить посты" }
+        },
+        "yandex_business": {
+          "get_info": { "name": "Загрузить карточку организации" },
+          "update_hours": { "name": "Обновить часы работы" },
+          "update_info": { "name": "Обновить данные организации" },
+          "get_reviews": { "name": "Загрузить отзывы Яндекса" },
+          "reply_review": { "name": "Ответить на отзыв Яндекса" },
+          "upload_photo": { "name": "Загрузить фото" },
+          "create_post": { "name": "Опубликовать пост в Яндекс Бизнес" }
+        },
+        "google_business": {
+          "get_reviews": { "name": "Загрузить отзывы Google" },
+          "reply_review": { "name": "Ответить на отзыв Google" }
+        }
+      }
+    }
+  },
   "reviews": {
     "title": "Отзывы",
     "subtitle": "Здесь собираются отзывы клиентов с подключённых каналов. OneVoice предложит образец ответа — отправлять решаете вы.",

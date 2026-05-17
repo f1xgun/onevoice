@@ -529,6 +529,50 @@
       "autoRetryHint": "You don't have to click anything — we'll try again on our own."
     }
   },
+  "agentTasks": {
+    "displayName": {
+      "sync": {
+        "business_name": "Sync business name",
+        "business_description": "Sync description",
+        "photo": "Sync photo",
+        "data": "Sync data",
+        "hours": "Sync hours"
+      },
+      "tools": {
+        "telegram": {
+          "send_channel_post": { "name": "Send post" },
+          "send_channel_photo": { "name": "Send photo" },
+          "send_notification": { "name": "Owner notification" },
+          "get_reviews": { "name": "Fetch reviews" },
+          "reply_to_comment": { "name": "Reply to comment" }
+        },
+        "vk": {
+          "publish_post": { "name": "Publish post" },
+          "post_photo": { "name": "Publish photo" },
+          "schedule_post": { "name": "Schedule post" },
+          "update_group_info": { "name": "Update community info" },
+          "get_comments": { "name": "Fetch comments" },
+          "reply_comment": { "name": "Reply to comment" },
+          "delete_comment": { "name": "Delete comment" },
+          "get_community_info": { "name": "Fetch community info" },
+          "get_wall_posts": { "name": "Fetch wall posts" }
+        },
+        "yandex_business": {
+          "get_info": { "name": "Fetch business profile" },
+          "update_hours": { "name": "Update business hours" },
+          "update_info": { "name": "Update business info" },
+          "get_reviews": { "name": "Fetch Yandex reviews" },
+          "reply_review": { "name": "Reply to Yandex review" },
+          "upload_photo": { "name": "Upload photo" },
+          "create_post": { "name": "Publish Yandex Business post" }
+        },
+        "google_business": {
+          "get_reviews": { "name": "Fetch Google reviews" },
+          "reply_review": { "name": "Reply to Google review" }
+        }
+      }
+    }
+  },
   "reviews": {
     "title": "Reviews",
     "subtitle": "Customer reviews from your connected channels show up here. OneVoice will suggest a draft reply — you decide whether to send it.",
