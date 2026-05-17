@@ -160,7 +160,7 @@ describe('ProjectSection', () => {
   });
 
   // Roving-tabindex chat-list contract.
-  it('chat-row links carry data-roving-item, role="option", and roving tabindex', () => {
+  it('chat-row links carry data-roving-item and roving tabindex (no listbox role)', () => {
     const convs = [
       makeConv('c-1', 'First chat'),
       makeConv('c-2', 'Second chat'),
@@ -173,15 +173,20 @@ describe('ProjectSection', () => {
     );
     const items = container.querySelectorAll('[data-roving-item]');
     expect(items.length).toBe(3);
+    // Plain navigation links — neither role="option" nor a parent
+    // role="listbox" are used; axe `aria-required-children` (critical) would
+    // fire if either appeared (per-row dropdown trigger buttons live in the
+    // same container, which is not a valid listbox child). Roving-tabindex
+    // still works via the data-roving-item attribute + onKeyDown handler.
     items.forEach((item) => {
-      expect(item.getAttribute('role')).toBe('option');
+      expect(item.getAttribute('role')).toBeNull();
     });
     // Initial tabindex distribution: first=0, rest=-1 (single Tab stop).
     expect(items[0].getAttribute('tabindex')).toBe('0');
     expect(items[1].getAttribute('tabindex')).toBe('-1');
     expect(items[2].getAttribute('tabindex')).toBe('-1');
-    // The roving container itself has role="listbox".
-    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+    // No listbox container — see WP4a.
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
   });
 
   it('project-header expand/collapse button is OUTSIDE the roving container (separate Tab stop)', () => {
@@ -192,10 +197,13 @@ describe('ProjectSection', () => {
       </Wrapper>
     );
     // The collapse button has aria-label «Свернуть «Отзывы»» — it should
-    // NOT live inside the role="listbox" container (separate Tab stop).
-    const listbox = container.querySelector('[role="listbox"]');
+    // NOT live inside the roving-tabindex container (separate Tab stop).
+    // Probe the container via the data-roving-item attribute since the
+    // semantic listbox role was dropped (see WP4a).
+    const rovingItem = container.querySelector('[data-roving-item]');
+    const rovingContainer = rovingItem?.parentElement?.parentElement ?? null;
     const collapseBtn = screen.getByRole('button', { name: /Свернуть «Отзывы»/ });
-    expect(listbox).not.toBeNull();
-    expect(listbox?.contains(collapseBtn)).toBe(false);
+    expect(rovingContainer).not.toBeNull();
+    expect(rovingContainer?.contains(collapseBtn)).toBe(false);
   });
 });
