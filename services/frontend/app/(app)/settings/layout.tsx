@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react';
-import { getTranslator } from '@/lib/i18n/translator';
+import { getTranslations } from 'next-intl/server';
 import { SettingsNavLink } from './_components/SettingsNavLink';
-
-const tNav = getTranslator('settings.nav');
 
 const TABS = [
   { href: '/settings', labelKey: 'profile' },
@@ -11,7 +9,11 @@ const TABS = [
   { href: '/settings/roles', labelKey: 'roles' },
 ] as const;
 
-export default function SettingsLayout({ children }: { children: ReactNode }) {
+// Server component (no 'use client' directive) — pulls request-scoped
+// translations via getTranslations from next-intl/server so a locale
+// switch is reflected on the next render without needing client-state.
+export default async function SettingsLayout({ children }: { children: ReactNode }) {
+  const tNav = await getTranslations('settings.nav');
   return (
     <div className="flex flex-col gap-6 md:flex-row md:gap-8">
       <nav

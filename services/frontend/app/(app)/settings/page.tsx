@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -11,7 +12,6 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
-import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,26 +20,34 @@ import { MonoLabel } from '@/components/ui/mono-label';
 
 const NEW_PASSWORD_MIN_LEN = 8;
 
-// Module-level translator for the schema messages — they're built at
-// import time, before any React context exists. See lib/schemas.ts.
-const tPasswordSchema = getTranslator('settings.page');
-
-const passwordSchema = z
-  .object({
-    currentPassword: z.string().min(1, tPasswordSchema('currentPasswordRequired')),
-    newPassword: z.string().min(NEW_PASSWORD_MIN_LEN, tPasswordSchema('newPasswordMinChars')),
-    confirmPassword: z.string(),
-  })
-  .refine((d) => d.newPassword === d.confirmPassword, {
-    message: tPasswordSchema('passwordsMismatch'),
-    path: ['confirmPassword'],
-  });
-
-type PasswordInput = z.infer<typeof passwordSchema>;
+// Schema is built inside the component (Phase B1) so the validation
+// messages follow the active locale. useMemo on the translator keeps the
+// schema identity stable across re-renders of the same locale, which
+// react-hook-form relies on for `resolver` stability.
+type PasswordInput = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
 
 export default function SettingsPage() {
   const tSettings = useTranslations('settings.page');
   const user = useAuthStore((s) => s.user);
+
+  const passwordSchema = useMemo(
+    () =>
+      z
+        .object({
+          currentPassword: z.string().min(1, tSettings('currentPasswordRequired')),
+          newPassword: z.string().min(NEW_PASSWORD_MIN_LEN, tSettings('newPasswordMinChars')),
+          confirmPassword: z.string(),
+        })
+        .refine((d) => d.newPassword === d.confirmPassword, {
+          message: tSettings('passwordsMismatch'),
+          path: ['confirmPassword'],
+        }),
+    [tSettings]
+  );
 
   const {
     register,

@@ -16,22 +16,28 @@
 'use client';
 
 import * as React from 'react';
-import { getTranslator } from '@/lib/i18n/translator';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 
 export type ApprovalMode = 'off' | 'manual' | 'auto-with-review' | 'auto';
 
-const tSwitch = getTranslator('common.approvalSwitch');
-const tModes = getTranslator('common.approvalSwitch.modes');
-
-export const APPROVAL_MODE_LABEL: Record<ApprovalMode, string> = {
-  off: tModes('off'),
-  manual: tModes('manual'),
-  'auto-with-review': tModes('auto-with-review'),
-  auto: tModes('auto'),
-};
-
 const ORDER: ApprovalMode[] = ['off', 'manual', 'auto-with-review', 'auto'];
+
+// Hook variant of the old APPROVAL_MODE_LABEL constant (Phase B1). Call
+// from inside a React component to get a locale-bound label record. The
+// constant export is gone — there were no out-of-tree consumers.
+export function useApprovalModeLabels(): Record<ApprovalMode, string> {
+  const tModes = useTranslations('common.approvalSwitch.modes');
+  return React.useMemo(
+    () => ({
+      off: tModes('off'),
+      manual: tModes('manual'),
+      'auto-with-review': tModes('auto-with-review'),
+      auto: tModes('auto'),
+    }),
+    [tModes]
+  );
+}
 
 export interface ApprovalSwitchProps {
   value: ApprovalMode;
@@ -39,7 +45,7 @@ export interface ApprovalSwitchProps {
   /** Optional recommended mode — marked with an ochre dot. */
   recommended?: ApprovalMode;
   disabled?: boolean;
-  /** Accessible label for the radiogroup. */
+  /** Accessible label for the radiogroup. Defaults to a localized fallback. */
   'aria-label'?: string;
   className?: string;
 }
@@ -50,8 +56,11 @@ export function ApprovalSwitch({
   recommended,
   disabled,
   className,
-  'aria-label': ariaLabel = tSwitch('defaultAriaLabel'),
+  'aria-label': ariaLabel,
 }: ApprovalSwitchProps) {
+  const tSwitch = useTranslations('common.approvalSwitch');
+  const labels = useApprovalModeLabels();
+  const resolvedAriaLabel = ariaLabel ?? tSwitch('defaultAriaLabel');
   const refs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   function focusByIndex(idx: number) {
@@ -82,7 +91,7 @@ export function ApprovalSwitch({
   return (
     <div
       role="radiogroup"
-      aria-label={ariaLabel}
+      aria-label={resolvedAriaLabel}
       aria-disabled={disabled || undefined}
       className={cn(
         'inline-flex gap-0.5 rounded-md bg-paper-sunken p-0.5',
@@ -116,7 +125,7 @@ export function ApprovalSwitch({
               disabled && 'cursor-not-allowed'
             )}
           >
-            {APPROVAL_MODE_LABEL[mode]}
+            {labels[mode]}
             {isRecommended && (
               <span
                 aria-hidden
