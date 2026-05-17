@@ -48,6 +48,9 @@ func (r *agentTaskRepository) Update(ctx context.Context, task *domain.AgentTask
 	if task.DisplayName != "" {
 		set["display_name"] = task.DisplayName
 	}
+	if task.DisplayNameKey != "" {
+		set["display_name_key"] = task.DisplayNameKey
+	}
 	if task.Output != nil {
 		set["output"] = task.Output
 	}

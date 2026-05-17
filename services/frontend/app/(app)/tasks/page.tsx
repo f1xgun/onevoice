@@ -200,6 +200,11 @@ export default function TasksPage() {
 
 function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
   const tErrors = useTranslations('tasks.errors');
+  // agentTasks.displayName is the i18n Phase C3 namespace. Each task may
+  // carry a `displayNameKey` like "sync.business_name" or
+  // "tools.telegram.send_channel_post.name" — render the localized copy
+  // when present, fall back to the legacy `displayName` for older rows.
+  const tAgentTaskNames = useTranslations('agentTasks.displayName');
   const taskStatusLabels = useTaskStatusLabels();
   const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const status = (task.status as TaskStatus) ?? 'pending';
@@ -209,6 +214,17 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
       ? 'text-sm font-medium text-[var(--ov-danger-ink)] tracking-[-0.005em]'
       : 'text-sm font-medium text-ink tracking-[-0.005em]';
   const human = status === 'error' ? explainError(task) : null;
+
+  // Prefer localized name from the catalog; fall back to legacy DB literal
+  // then to the bare task type if neither is populated. tAgentTaskNames
+  // returns the key itself when missing (next-intl's default-missing
+  // behavior), so we guard explicitly.
+  const localizedName = (() => {
+    if (!task.displayNameKey) return null;
+    const resolved = tAgentTaskNames(task.displayNameKey);
+    return resolved && resolved !== task.displayNameKey ? resolved : null;
+  })();
+  const titleText = localizedName ?? task.displayName ?? task.type;
 
   return (
     <div className={cn(!last && 'border-b border-line-soft')}>
@@ -226,7 +242,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
             On mobile, platform + when fold underneath the title as a single
             meta line so the row never exceeds the viewport width. */}
         <div className="min-w-0 flex-1">
-          <div className={titleClass}>{task.displayName || task.type}</div>
+          <div className={titleClass}>{titleText}</div>
           {status === 'done' &&
             typeof task.output === 'string' &&
             task.output.trim().length > 0 && (
