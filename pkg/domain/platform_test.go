@@ -42,13 +42,18 @@ func TestPlatforms_DefaultStatuses(t *testing.T) {
 	}
 }
 
-func TestPlatforms_NoEmptyMetadata(t *testing.T) {
+// TestPlatforms_NameDescriptionDropped pins the i18n Phase C2 invariant:
+// Name and Description are no longer populated by the registry. The
+// frontend renders both via its messages/*.json bundles. Re-introducing
+// values here would silently revert clients that have already migrated
+// to the i18n flow.
+func TestPlatforms_NameDescriptionDropped(t *testing.T) {
 	for _, p := range Platforms() {
-		if p.Name == "" {
-			t.Errorf("%s: empty Name", p.ID)
+		if p.Name != "" {
+			t.Errorf("%s: expected empty Name (Phase C2), got %q", p.ID, p.Name)
 		}
-		if p.Description == "" {
-			t.Errorf("%s: empty Description", p.ID)
+		if p.Description != "" {
+			t.Errorf("%s: expected empty Description (Phase C2), got %q", p.ID, p.Description)
 		}
 	}
 }

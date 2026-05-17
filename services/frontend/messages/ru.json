@@ -734,6 +734,15 @@
       "avito": "Авито",
       "whatsapp": "WhatsApp"
     },
+    "description": {
+      "telegram": "Бот для канала и уведомлений",
+      "vk": "Публикации и комментарии",
+      "yandex_business": "Отзывы и информация",
+      "google_business": "Отзывы и информация о бизнесе",
+      "2gis": "Скоро",
+      "avito": "Скоро",
+      "whatsapp": "Скоро"
+    },
     "comingSoonWhen": "оценивается",
     "comingSoonFallback": "скоро"
   },
