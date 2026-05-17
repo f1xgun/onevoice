@@ -1,1040 +1,1040 @@
 {
   "businessGuard": {
-    "loadFailed": "Не удалось загрузить список организаций",
-    "retry": "Повторить попытку",
-    "loading": "Загрузка"
+    "loadFailed": "Couldn't load the list of organizations",
+    "retry": "Try again",
+    "loading": "Loading"
   },
   "invite": {
     "accept": {
-      "kicker": "приглашение",
-      "expiry": "Истекает {date}",
-      "cta": "Принять приглашение",
-      "accepting": "Принимаем…",
-      "cancel": "Отмена",
+      "kicker": "invitation",
+      "expiry": "Expires {date}",
+      "cta": "Accept invitation",
+      "accepting": "Accepting…",
+      "cancel": "Cancel",
       "errors": {
         "gone": {
-          "title": "Ссылка больше не действительна",
-          "body": "Возможно, срок ссылки истёк или её отозвали. Попросите ссылку заново.",
-          "cta": "Вернуться"
+          "title": "This link is no longer valid",
+          "body": "The link may have expired or been revoked. Ask for a fresh one.",
+          "cta": "Go back"
         },
         "alreadyMember": {
-          "title": "Вы уже в этой организации",
-          "body": "Откройте панель и выберите её в переключателе организаций сверху.",
-          "cta": "Открыть {businessName}"
+          "title": "You're already in this organization",
+          "body": "Open the dashboard and pick it from the organization switcher at the top.",
+          "cta": "Open {businessName}"
         },
-        "generic": "Не удалось обработать приглашение. Попробуйте ещё раз."
+        "generic": "Couldn't process the invitation. Please try again."
       }
     }
   },
   "onboarding": {
-    "title": "Добро пожаловать в OneVoice",
-    "sub": "Начните с создания организации или примите приглашение.",
+    "title": "Welcome to OneVoice",
+    "sub": "Start by creating an organization or accepting an invitation.",
     "createOrg": {
-      "title": "Создать организацию",
-      "body": "Заведите новую команду и пригласите участников.",
-      "cta": "Создать"
+      "title": "Create an organization",
+      "body": "Set up a new team and invite people.",
+      "cta": "Create"
     },
     "haveInvite": {
-      "title": "У меня есть приглашение",
-      "body": "Вставьте ссылку — мы откроем приглашение.",
-      "label": "Ссылка-приглашение",
-      "placeholder": "Вставьте ссылку",
-      "cta": "Открыть приглашение",
+      "title": "I have an invitation",
+      "body": "Paste the link and we'll open the invitation.",
+      "label": "Invitation link",
+      "placeholder": "Paste the link",
+      "cta": "Open invitation",
       "errors": {
-        "invalidFormat": "Неверный формат ссылки"
+        "invalidFormat": "Invalid link format"
       }
     }
   },
   "team": {
     "page": {
-      "title": "Команда",
-      "sub": "Управляйте участниками и приглашениями. Действия зависят от вашей роли.",
-      "invite": "Пригласить",
-      "tabsAria": "Команда — разделы",
+      "title": "Team",
+      "sub": "Manage members and invitations. What you can do depends on your role.",
+      "invite": "Invite",
+      "tabsAria": "Team — sections",
       "tabs": {
-        "members": "Участники",
-        "invitations": "Приглашения"
+        "members": "Members",
+        "invitations": "Invitations"
       }
     },
     "switcher": {
-      "triggerAria": "{name}, переключить организацию",
-      "kicker": "организации",
-      "empty": "нет организаций",
-      "create": "+ Создать организацию",
-      "selectedAnnounce": "Активная организация: {name}"
+      "triggerAria": "{name}, switch organization",
+      "kicker": "organizations",
+      "empty": "no organizations",
+      "create": "+ Create organization",
+      "selectedAnnounce": "Active organization: {name}"
     },
     "roles": {
-      "owner": "владелец",
-      "admin": "админ",
-      "editor": "редактор",
-      "viewer": "наблюдатель"
+      "owner": "owner",
+      "admin": "admin",
+      "editor": "editor",
+      "viewer": "viewer"
     },
     "members": {
-      "kicker": "участники",
-      "count": "{count, plural, one {# участник} few {# участника} many {# участников} other {# участников}}",
+      "kicker": "members",
+      "count": "{count, plural, one {# member} other {# members}}",
       "cols": {
-        "name": "имя",
+        "name": "name",
         "email": "email",
-        "role": "роль",
-        "joined": "присоединился",
-        "actions": "действия"
+        "role": "role",
+        "joined": "joined",
+        "actions": "actions"
       },
       "actions": {
-        "changeRole": "Изменить роль",
-        "remove": "Удалить участника",
-        "leave": "Покинуть организацию",
-        "disabledHint": "Недостаточно прав",
-        "menuAria": "Действия для участника {name}"
+        "changeRole": "Change role",
+        "remove": "Remove member",
+        "leave": "Leave organization",
+        "disabledHint": "Not enough permissions",
+        "menuAria": "Actions for member {name}"
       },
-      "loadError": "Не удалось загрузить участников. Попробуйте обновить страницу.",
+      "loadError": "Couldn't load members. Try refreshing the page.",
       "remove": {
-        "title": "Удалить участника?",
-        "body": "{name} потеряет доступ к организации. Действие нельзя отменить — повторно пригласить можно через ссылку.",
-        "confirm": "Удалить",
-        "toastSuccess": "Участник удалён",
-        "toastError": "Не удалось удалить участника"
+        "title": "Remove this member?",
+        "body": "{name} will lose access to the organization. This can't be undone — you'd need to re-invite them via a link.",
+        "confirm": "Remove",
+        "toastSuccess": "Member removed",
+        "toastError": "Couldn't remove member"
       },
       "leave": {
-        "title": "Покинуть организацию?",
-        "body": "Вы потеряете доступ к {businessName}. Чтобы вернуться, понадобится новое приглашение.",
-        "confirm": "Покинуть"
+        "title": "Leave this organization?",
+        "body": "You'll lose access to {businessName}. To come back, you'll need a new invitation.",
+        "confirm": "Leave"
       },
       "changeRole": {
-        "toastSuccess": "Роль обновлена",
-        "toastError": "Не удалось обновить роль"
+        "toastSuccess": "Role updated",
+        "toastError": "Couldn't update role"
       }
     },
     "invitations": {
-      "kicker": "приглашения",
-      "count": "{count, plural, one {# приглашение} few {# приглашения} many {# приглашений} other {# приглашений}}",
+      "kicker": "invitations",
+      "count": "{count, plural, one {# invitation} other {# invitations}}",
       "cols": {
-        "role": "роль",
-        "expiry": "истекает",
-        "creator": "создал",
-        "actions": "действия"
+        "role": "role",
+        "expiry": "expires",
+        "creator": "created by",
+        "actions": "actions"
       },
-      "linkUnavailable": "Ссылка доступна только сразу после создания",
+      "linkUnavailable": "The link is only available right after creation",
       "actions": {
-        "copyLink": "Скопировать ссылку",
-        "revoke": "Отозвать"
+        "copyLink": "Copy link",
+        "revoke": "Revoke"
       },
       "revoke": {
-        "title": "Отозвать приглашение?",
-        "body": "Ссылка перестанет работать. Если её уже отправили — приглашённый получит ошибку. Можно создать новое приглашение в любой момент.",
-        "confirm": "Отозвать",
-        "toastSuccess": "Приглашение отозвано",
-        "toastError": "Не удалось отозвать приглашение"
+        "title": "Revoke this invitation?",
+        "body": "The link will stop working. If you've already sent it, the recipient will see an error. You can create a new invitation anytime.",
+        "confirm": "Revoke",
+        "toastSuccess": "Invitation revoked",
+        "toastError": "Couldn't revoke invitation"
       },
       "empty": {
-        "title": "Нет ожидающих приглашений",
-        "body": "Создайте приглашение, чтобы пригласить участника в команду.",
-        "cta": "Пригласить"
+        "title": "No pending invitations",
+        "body": "Create an invitation to add someone to the team.",
+        "cta": "Invite"
       },
-      "loadError": "Не удалось загрузить приглашения. Попробуйте обновить страницу.",
+      "loadError": "Couldn't load invitations. Try refreshing the page.",
       "expiry": {
-        "relative": "через {duration}"
+        "relative": "in {duration}"
       }
     },
     "invite": {
       "modal": {
-        "title": "Пригласить участника",
-        "description": "Создайте ссылку. Вы скопируете её и отправите выбранным способом — email, Telegram, что угодно."
+        "title": "Invite a member",
+        "description": "Create a link. Copy it and send it however you like — email, Telegram, whatever works."
       },
       "fields": {
-        "role": "Роль",
-        "roleHelper": "Что сможет делать новый участник",
-        "expiry": "Срок действия"
+        "role": "Role",
+        "roleHelper": "What the new member will be able to do",
+        "expiry": "Expires in"
       },
       "expiryOptions": {
-        "1h": "1 час",
-        "1d": "1 день",
-        "7d": "7 дней",
-        "30d": "30 дней"
+        "1h": "1 hour",
+        "1d": "1 day",
+        "7d": "7 days",
+        "30d": "30 days"
       },
-      "cancel": "Отмена",
-      "submit": "Создать ссылку",
-      "submitting": "Создаём…",
+      "cancel": "Cancel",
+      "submit": "Create link",
+      "submitting": "Creating…",
       "errors": {
-        "tooManyPending": "Достигнут лимит — 20 ожидающих приглашений на организацию. Отзовите старые, чтобы создать новое.",
-        "generic": "Не удалось создать приглашение. Попробуйте ещё раз.",
-        "invalidRole": "Выберите роль"
+        "tooManyPending": "You've hit the limit — 20 pending invitations per organization. Revoke an old one to create a new invitation.",
+        "generic": "Couldn't create invitation. Please try again.",
+        "invalidRole": "Pick a role"
       },
       "copy": {
-        "title": "Ссылка готова",
-        "description": "Отправьте её приглашённому. Ссылка действительна {duration}.",
-        "inputAria": "Ссылка-приглашение",
-        "button": "Скопировать",
-        "buttonAria": "Скопировать ссылку",
-        "warning": "Ссылка показывается один раз — закройте окно, и её нельзя будет восстановить.",
-        "toastSuccess": "Ссылка скопирована",
-        "toastError": "Не удалось скопировать ссылку. Скопируйте её вручную из поля выше.",
-        "autoCopyFallback": "Нажмите «Скопировать», чтобы скопировать ссылку",
-        "done": "Готово"
+        "title": "Link is ready",
+        "description": "Send it to the invitee. The link is valid for {duration}.",
+        "inputAria": "Invitation link",
+        "button": "Copy",
+        "buttonAria": "Copy link",
+        "warning": "This link is shown only once — close this window and you won't be able to recover it.",
+        "toastSuccess": "Link copied",
+        "toastError": "Couldn't copy the link. Copy it manually from the field above.",
+        "autoCopyFallback": "Click \"Copy\" to copy the link",
+        "done": "Done"
       }
     },
     "errors": {
-      "lastOwner": "Нельзя удалить последнего владельца. Сначала назначьте нового владельца.",
-      "selfLockout": "Нельзя забрать у себя право управлять ролями.",
-      "systemRoleImmutable": "Системные роли нельзя изменять.",
-      "staleBusiness": "Эта организация больше недоступна",
-      "generic": "Не удалось выполнить действие."
+      "lastOwner": "You can't remove the last owner. Assign a new owner first.",
+      "selfLockout": "You can't take away your own permission to manage roles.",
+      "systemRoleImmutable": "System roles can't be modified.",
+      "staleBusiness": "This organization is no longer available",
+      "generic": "Couldn't complete the action."
     }
   },
   "roles": {
-    "title": "Роли",
+    "title": "Roles",
     "list": {
-      "systemSection": "Системные роли",
-      "customSection": "Свои роли",
-      "addRole": "Новая роль",
-      "noCustom": "Пока нет своих ролей",
-      "noCustomCta": "Создайте первую роль с особым набором прав.",
-      "membersCount": "{count, plural, one {# участник} few {# участника} many {# участников} other {# участников}}",
-      "permsCount": "{count, plural, one {# право} few {# права} many {# прав} other {# прав}}",
-      "allPerms": "все права",
-      "systemBadge": "системная",
-      "loadError": "Не удалось загрузить роли. Попробуйте обновить страницу.",
-      "retry": "Попробовать снова",
-      "menuAria": "Действия для роли {name}",
+      "systemSection": "System roles",
+      "customSection": "Custom roles",
+      "addRole": "New role",
+      "noCustom": "No custom roles yet",
+      "noCustomCta": "Create your first role with a custom set of permissions.",
+      "membersCount": "{count, plural, one {# member} other {# members}}",
+      "permsCount": "{count, plural, one {# permission} other {# permissions}}",
+      "allPerms": "all permissions",
+      "systemBadge": "system",
+      "loadError": "Couldn't load roles. Try refreshing the page.",
+      "retry": "Try again",
+      "menuAria": "Actions for role {name}",
       "actions": {
-        "duplicate": "Дублировать",
-        "delete": "Удалить"
+        "duplicate": "Duplicate",
+        "delete": "Delete"
       },
       "systemLabels": {
-        "owner": "Владелец",
-        "admin": "Администратор",
-        "editor": "Редактор",
-        "viewer": "Наблюдатель"
+        "owner": "Owner",
+        "admin": "Admin",
+        "editor": "Editor",
+        "viewer": "Viewer"
       }
     },
     "editor": {
-      "newTitle": "Новая роль",
-      "editTitle": "Редактирование роли",
-      "nameLabel": "Название",
-      "namePlaceholder": "Например, «Маркетолог»",
-      "nameRequired": "Введите название роли",
-      "descriptionLabel": "Описание",
-      "descriptionPlaceholder": "Краткое описание того, что может делать эта роль",
-      "permissionsLabel": "Права",
-      "save": "Сохранить",
-      "cancel": "Отмена",
-      "back": "К списку",
-      "cloneNamePrefix": "Копия — {sourceName}",
-      "unsavedPrompt": "Несохранённые изменения. Покинуть страницу?",
-      "createSuccess": "Роль создана",
-      "updateSuccess": "Изменения сохранены"
+      "newTitle": "New role",
+      "editTitle": "Edit role",
+      "nameLabel": "Name",
+      "namePlaceholder": "For example, \"Marketing manager\"",
+      "nameRequired": "Enter a role name",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Short description of what this role can do",
+      "permissionsLabel": "Permissions",
+      "save": "Save",
+      "cancel": "Cancel",
+      "back": "Back to list",
+      "cloneNamePrefix": "Copy — {sourceName}",
+      "unsavedPrompt": "You have unsaved changes. Leave this page?",
+      "createSuccess": "Role created",
+      "updateSuccess": "Changes saved"
     },
     "delete": {
-      "title": "Удалить роль «{name}»?",
-      "simpleBody": "Действие нельзя отменить.",
-      "pickerBody": "На эту роль назначены участники ({count}). Выберите, на какую роль их перенести.",
-      "pickerLabel": "Перенести участников на:",
-      "confirm": "Удалить",
-      "cancel": "Отмена",
-      "toastSuccess": "Роль удалена"
+      "title": "Delete role \"{name}\"?",
+      "simpleBody": "This can't be undone.",
+      "pickerBody": "Members are assigned to this role ({count}). Pick another role to move them to.",
+      "pickerLabel": "Move members to:",
+      "confirm": "Delete",
+      "cancel": "Cancel",
+      "toastSuccess": "Role deleted"
     },
     "permissionTree": {
-      "disabledTooltip": "У вас нет этого права",
+      "disabledTooltip": "You don't have this permission",
       "groupCount": "{selected} / {total}"
     },
     "errors": {
-      "cannotGrantUnowned": "Нельзя выдать права, которых у вас нет. Уберите серые галочки.",
-      "selfLockout": "Нельзя забрать у себя право редактировать роли — иначе потеряете доступ к этой странице.",
-      "systemRoleImmutable": "Системные роли нельзя изменять.",
-      "roleInUse": "На эту роль назначены участники. Выберите, на какую роль их перенести.",
-      "lastOwnerOnDelete": "Нельзя удалить роль — иначе в организации не останется владельцев.",
-      "saveGeneric": "Не удалось сохранить роль. Попробуйте ещё раз.",
-      "deleteGeneric": "Не удалось удалить роль. Попробуйте ещё раз."
+      "cannotGrantUnowned": "You can't grant permissions you don't have. Uncheck the grayed-out boxes.",
+      "selfLockout": "You can't take away your own permission to edit roles — you'd lose access to this page.",
+      "systemRoleImmutable": "System roles can't be modified.",
+      "roleInUse": "Members are assigned to this role. Pick another role to move them to.",
+      "lastOwnerOnDelete": "Can't delete this role — the organization wouldn't have any owners left.",
+      "saveGeneric": "Couldn't save the role. Please try again.",
+      "deleteGeneric": "Couldn't delete the role. Please try again."
     }
   },
   "common": {
-    "cancel": "Отмена",
-    "delete": "Удалить",
-    "back": "Назад",
-    "next": "Далее",
-    "save": "Сохранить",
-    "close": "Закрыть",
-    "rename": "Переименовать",
-    "connectionError": "Ошибка соединения",
-    "allPlatforms": "Все платформы",
-    "loading": "Загрузка…",
-    "open": "Открыть",
-    "edit": "Редактировать",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "back": "Back",
+    "next": "Next",
+    "save": "Save",
+    "close": "Close",
+    "rename": "Rename",
+    "connectionError": "Connection error",
+    "allPlatforms": "All platforms",
+    "loading": "Loading…",
+    "open": "Open",
+    "edit": "Edit",
     "notFound": {
       "errorLabel": "ERROR · 404",
-      "title": "Такого здесь нет",
-      "body": "Возможно, ссылка устарела или раздел был перемещён. Попробуйте начать заново — главная всегда на месте.",
-      "homeLink": "На главную"
+      "title": "Nothing to see here",
+      "body": "The link may be out of date or this section was moved. Try starting from the top — the home page is always there.",
+      "homeLink": "Go home"
     },
     "errors": {
-      "connectionRetry": "Ошибка соединения — попробуйте ещё раз",
-      "resumeStream": "Ошибка продолжения — перезагрузите страницу",
-      "alreadyHandled": "Ошибка: операция уже была обработана",
-      "outOfScope": "Отказано: операция вне вашей бизнес-области",
-      "policyRevoked": "Отказано: инструмент запрещён текущей политикой"
+      "connectionRetry": "Connection error — please try again",
+      "resumeStream": "Couldn't resume — reload the page",
+      "alreadyHandled": "Error: this action was already handled",
+      "outOfScope": "Denied: this action is outside your business scope",
+      "policyRevoked": "Denied: this tool is blocked by current policy"
     },
     "approvalSwitch": {
-      "recommendedTitle": "рекомендуемый режим",
-      "defaultAriaLabel": "Режим разрешения",
+      "recommendedTitle": "recommended mode",
+      "defaultAriaLabel": "Approval mode",
       "modes": {
-        "off": "Никогда",
-        "manual": "С вашего согласия",
-        "auto-with-review": "Сам, но покажет",
-        "auto": "Полностью сам"
+        "off": "Never",
+        "manual": "With your approval",
+        "auto-with-review": "On its own, but shows you",
+        "auto": "Fully automatic"
       }
     }
   },
   "validation": {
-    "email": "Некорректный email",
-    "url": "Некорректный URL",
-    "phone": "Некорректный номер телефона",
-    "passwordsMismatch": "Пароли не совпадают",
-    "minChars": "Минимум {count, plural, one {# символ} few {# символа} many {# символов} other {# символов}}",
-    "maxChars": "Максимум {count, plural, one {# символ} few {# символа} many {# символов} other {# символов}}",
-    "businessCategoryRequired": "Выберите категорию",
-    "projectNameRequired": "Укажите название проекта.",
-    "projectSystemPromptMax": "Системный промпт слишком длинный (максимум {max, plural, one {# символ} few {# символа} many {# символов} other {# символов}}).",
-    "projectAllowedToolsRequired": "Выберите хотя бы один инструмент или переключите режим на «Никаких»."
+    "email": "Invalid email",
+    "url": "Invalid URL",
+    "phone": "Invalid phone number",
+    "passwordsMismatch": "Passwords don't match",
+    "minChars": "Minimum {count, plural, one {# character} other {# characters}}",
+    "maxChars": "Maximum {count, plural, one {# character} other {# characters}}",
+    "businessCategoryRequired": "Pick a category",
+    "projectNameRequired": "Enter a project name.",
+    "projectSystemPromptMax": "System prompt is too long (max {max, plural, one {# character} other {# characters}}).",
+    "projectAllowedToolsRequired": "Pick at least one tool, or switch the mode to \"None\"."
   },
   "chat": {
-    "heading": "Диалоги",
-    "newConversation": "Новый диалог",
-    "noConversations": "Нет диалогов",
-    "newConversationCta": "Начните новый диалог с AI-ассистентом",
-    "deleteConversationTitle": "Удалить диалог?",
-    "deleteConversationDescription": "Это действие нельзя отменить. Все сообщения будут безвозвратно удалены.",
+    "heading": "Chats",
+    "newConversation": "New chat",
+    "noConversations": "No chats",
+    "newConversationCta": "Start a new chat with the AI assistant",
+    "deleteConversationTitle": "Delete this chat?",
+    "deleteConversationDescription": "This can't be undone. All messages will be permanently deleted.",
     "rowMenu": {
-      "rename": "Переименовать",
-      "regenerateTitle": "Обновить заголовок",
-      "delete": "Удалить",
-      "renameDialogTitle": "Переименовать чат",
-      "renameDialogDescription": "Новое название будет видно везде, где отображается чат.",
-      "renamePlaceholder": "Название чата",
-      "renameError": "Не удалось переименовать чат",
-      "deleteError": "Не удалось удалить чат"
+      "rename": "Rename",
+      "regenerateTitle": "Regenerate title",
+      "delete": "Delete",
+      "renameDialogTitle": "Rename chat",
+      "renameDialogDescription": "The new name will appear everywhere this chat is shown.",
+      "renamePlaceholder": "Chat name",
+      "renameError": "Couldn't rename the chat",
+      "deleteError": "Couldn't delete the chat"
     },
     "window": {
-      "helpPrompt": "Чем могу помочь?",
-      "moveError": "Не удалось переместить чат",
-      "messagePlaceholder": "Напишите сообщение...",
-      "sendAria": "Отправить",
-      "typingAria": "OneVoice печатает"
+      "helpPrompt": "How can I help?",
+      "moveError": "Couldn't move the chat",
+      "messagePlaceholder": "Type a message...",
+      "sendAria": "Send",
+      "typingAria": "OneVoice is typing"
     },
     "header": {
-      "menuAria": "Меню чата",
-      "menuTitle": "Действия",
-      "pinAria": "Закрепить чат",
-      "unpinAria": "Открепить чат"
+      "menuAria": "Chat menu",
+      "menuTitle": "Actions",
+      "pinAria": "Pin chat",
+      "unpinAria": "Unpin chat"
     },
     "pinMenu": {
-      "pin": "Закрепить",
-      "unpin": "Открепить",
-      "pinError": "Не удалось закрепить чат",
-      "unpinError": "Не удалось открепить чат"
+      "pin": "Pin",
+      "unpin": "Unpin",
+      "pinError": "Couldn't pin the chat",
+      "unpinError": "Couldn't unpin the chat"
     },
     "projectChip": {
-      "unlinkedAria": "Чат не привязан к проекту",
-      "openProjectAria": "Открыть проект «{name}»"
+      "unlinkedAria": "This chat isn't linked to a project",
+      "openProjectAria": "Open project \"{name}\""
     },
     "moveMenu": {
-      "trigger": "Переместить в…",
-      "noProjects": "Других проектов пока нет."
+      "trigger": "Move to…",
+      "noProjects": "No other projects yet."
     },
     "projectPicker": {
-      "currentLabel": "Проект: {name}",
-      "menuLabel": "Куда сохранить чат?"
+      "currentLabel": "Project: {name}",
+      "menuLabel": "Where should we save this chat?"
     },
     "toolCalls": {
-      "showActions": "Показать действия ({count})",
-      "hideActions": "Скрыть действия ({count})",
+      "showActions": "Show actions ({count})",
+      "hideActions": "Hide actions ({count})",
       "doneCount": "✓ {done}/{total}"
     },
     "toolCard": {
-      "running": "Выполняется",
-      "done": "Готово",
-      "error": "Ошибка",
-      "aborted": "Прервано",
-      "abortedTooltip": "Выполнение прервано — результат не получен",
-      "abortedNote": "Выполнение прервано — результат не получен"
+      "running": "Running",
+      "done": "Done",
+      "error": "Error",
+      "aborted": "Aborted",
+      "abortedTooltip": "Aborted — no result was returned",
+      "abortedNote": "Aborted — no result was returned"
     },
     "toolNeedsHelp": {
-      "badge": "нужна помощь",
-      "helpAction": "Помочь",
-      "contextAction": "Дать контекст"
+      "badge": "needs help",
+      "helpAction": "Help",
+      "contextAction": "Add context"
     },
     "toolApproval": {
-      "argsHeading": "Аргументы",
-      "editableSectionHeading": "Можно изменить",
-      "lockedSectionHeading": "Зафиксировано",
-      "lockedHint": "Эти значения нельзя редактировать — они подставлены автоматически.",
-      "noEditableFields": "У этого действия нет редактируемых параметров.",
-      "noArgs": "У этого действия нет параметров.",
-      "rejectPlaceholder": "Причина (необязательно)",
-      "rejectAriaLabel": "Причина отказа",
-      "triggerExpand": "развернуть",
-      "triggerCollapse": "свернуть",
-      "booleanYes": "Да",
-      "booleanNo": "Нет",
-      "fieldFallback": "Параметр «{key}»",
+      "argsHeading": "Arguments",
+      "editableSectionHeading": "Editable",
+      "lockedSectionHeading": "Locked",
+      "lockedHint": "These values can't be edited — they're filled in automatically.",
+      "noEditableFields": "This action has no editable parameters.",
+      "noArgs": "This action has no parameters.",
+      "rejectPlaceholder": "Reason (optional)",
+      "rejectAriaLabel": "Reason for rejection",
+      "triggerExpand": "expand",
+      "triggerCollapse": "collapse",
+      "booleanYes": "Yes",
+      "booleanNo": "No",
+      "fieldFallback": "Parameter \"{key}\"",
       "fields": {
-        "text": "Текст",
-        "caption": "Подпись",
-        "description": "Описание",
-        "hours": "Часы работы",
-        "channel_id": "ID канала",
-        "chat_id": "ID чата",
-        "message_id": "ID сообщения",
-        "photo_url": "Ссылка на изображение",
-        "group_id": "ID сообщества",
-        "publish_date": "Дата публикации",
-        "post_id": "ID поста",
-        "comment_id": "ID комментария",
-        "phone": "Телефон",
-        "website": "Сайт",
-        "category": "Категория",
-        "review_id": "ID отзыва",
-        "review_name": "Отзыв",
-        "count": "Количество",
-        "limit": "Лимит",
-        "parse_mode": "Формат разметки"
+        "text": "Text",
+        "caption": "Caption",
+        "description": "Description",
+        "hours": "Business hours",
+        "channel_id": "Channel ID",
+        "chat_id": "Chat ID",
+        "message_id": "Message ID",
+        "photo_url": "Image URL",
+        "group_id": "Community ID",
+        "publish_date": "Publish date",
+        "post_id": "Post ID",
+        "comment_id": "Comment ID",
+        "phone": "Phone",
+        "website": "Website",
+        "category": "Category",
+        "review_id": "Review ID",
+        "review_name": "Review",
+        "count": "Count",
+        "limit": "Limit",
+        "parse_mode": "Markup format"
       }
     }
   },
   "posts": {
-    "title": "Посты",
-    "subtitle": "Все публикации на подключённых каналах. Один пост — везде сразу.",
-    "emptyState": "Постов пока нет",
-    "retry": "Повторить",
-    "retryUnavailable": "Скоро — пока недоступно",
-    "createPost": "Создать пост",
+    "title": "Posts",
+    "subtitle": "All your publications across connected channels. One post — everywhere at once.",
+    "emptyState": "No posts yet",
+    "retry": "Retry",
+    "retryUnavailable": "Soon — not available yet",
+    "createPost": "Create post",
     "status": {
-      "draft": "Черновик",
-      "scheduled": "Запланирован",
-      "published": "Опубликован",
-      "error": "Ошибка"
+      "draft": "Draft",
+      "scheduled": "Scheduled",
+      "published": "Published",
+      "error": "Error"
     },
     "platforms": {
       "telegram": "Telegram",
-      "yandexBusiness": "Яндекс.Бизнес"
+      "yandexBusiness": "Yandex.Business"
     },
     "tabs": {
-      "all": "Все · {count}",
-      "published": "Опубликованы · {count}",
-      "scheduled": "Запланированы · {count}",
-      "error": "Ошибки · {count}"
+      "all": "All · {count}",
+      "published": "Published · {count}",
+      "scheduled": "Scheduled · {count}",
+      "error": "Errors · {count}"
     },
     "table": {
-      "content": "Контент",
-      "status": "Статус",
-      "platforms": "Платформы",
-      "date": "Дата",
-      "results": "Результаты"
+      "content": "Content",
+      "status": "Status",
+      "platforms": "Platforms",
+      "date": "Date",
+      "results": "Results"
     },
     "shortcut": "⌘K",
-    "emptyHint": "Создайте первый пост — OneVoice опубликует его на всех подключённых каналах.",
+    "emptyHint": "Create your first post — OneVoice will publish it to every connected channel.",
     "more": "⋯",
-    "noStats": "Пока без статистики",
-    "duplicate": "Дублировать",
-    "openLink": "Открыть",
-    "searchPlaceholder": "Поиск по содержимому…",
+    "noStats": "No stats yet",
+    "duplicate": "Duplicate",
+    "openLink": "Open",
+    "searchPlaceholder": "Search by content…",
     "stats": {
-      "publishedLabel": "Опубликовано",
-      "publishedHint": "за всё время",
-      "scheduledLabel": "Запланировано",
-      "scheduledHintNext": "ближайшая — {label}",
-      "scheduledHintNone": "нет запланированных",
-      "errorLabel": "С ошибкой",
-      "errorHintSome": "требуют внимания",
-      "errorHintNone": "всё чисто"
+      "publishedLabel": "Published",
+      "publishedHint": "all time",
+      "scheduledLabel": "Scheduled",
+      "scheduledHintNext": "next — {label}",
+      "scheduledHintNone": "none scheduled",
+      "errorLabel": "With errors",
+      "errorHintSome": "need attention",
+      "errorHintNone": "all clear"
     }
   },
   "tasks": {
-    "title": "Что сделано",
-    "subtitle": "Здесь видно всё, что OneVoice делал от вашего имени. Можно ничего не нажимать — мы сами повторим, если что-то не получилось.",
+    "title": "What's been done",
+    "subtitle": "Here you'll see everything OneVoice has done on your behalf. You don't have to click anything — we'll retry on our own if something didn't go through.",
     "status": {
-      "pending": "Запланировано",
-      "running": "В работе",
-      "done": "Готово",
-      "error": "Нужна помощь"
+      "pending": "Scheduled",
+      "running": "In progress",
+      "done": "Done",
+      "error": "Needs help"
     },
     "stats": {
-      "done": "Сделано",
-      "inProgress": "Сейчас в работе",
-      "awaitingUser": "Ждут вашего шага",
-      "doneEmptyHint": "пока ничего",
-      "doneSummary": "из них {success} успешно, {needsHelp} {needsHelpWord} вашего внимания",
-      "inProgressNone": "нет активных задач",
-      "inProgressSome": "идёт прямо сейчас",
-      "awaitingNone": "всё в порядке",
-      "awaitingSome": "требуется ваше внимание"
+      "done": "Done",
+      "inProgress": "In progress now",
+      "awaitingUser": "Waiting on you",
+      "doneEmptyHint": "nothing yet",
+      "doneSummary": "of those {success} succeeded, {needsHelp} {needsHelpWord} your attention",
+      "inProgressNone": "no active tasks",
+      "inProgressSome": "running right now",
+      "awaitingNone": "all good",
+      "awaitingSome": "needs your attention"
     },
     "errors": {
-      "tokenVk": "Похоже, доступ к сообществу ВКонтакте истёк. Это бывает раз в пару недель — нужно переподключить канал, на это уйдёт минута.",
-      "tokenTelegram": "Telegram больше не принимает наш токен — возможно, бот был исключён из канала. Нужно переподключить.",
-      "tokenGeneric": "Доступ к платформе истёк. Переподключите канал, чтобы мы могли продолжить.",
-      "reconnectVk": "Переподключить ВКонтакте",
-      "reconnect": "Переподключить",
-      "rateLimit": "Платформа попросила подождать — мы попробуем ещё раз через несколько минут автоматически.",
-      "transient": "Сервис временно не отвечал. Уже попробовали несколько раз — повторим при следующей синхронизации.",
-      "notFound": "Канал не найден. Проверьте, что он всё ещё подключён и доступен.",
-      "openIntegrations": "Открыть каналы",
-      "media": "Не получилось загрузить изображение — возможно, файл слишком большой или платформа его отклонила.",
-      "fallback": "Что-то пошло не так. Мы попробуем ещё раз при следующей синхронизации.",
-      "autoRetryHint": "Можно ничего не нажимать — мы попробуем ещё раз сами."
+      "tokenVk": "Looks like access to the VK community expired. This happens once every couple of weeks — you'll need to reconnect the channel, takes about a minute.",
+      "tokenTelegram": "Telegram no longer accepts our token — the bot may have been removed from the channel. You'll need to reconnect it.",
+      "tokenGeneric": "Access to the platform expired. Reconnect the channel so we can keep going.",
+      "reconnectVk": "Reconnect VK",
+      "reconnect": "Reconnect",
+      "rateLimit": "The platform asked us to wait — we'll try again in a few minutes automatically.",
+      "transient": "The service was temporarily unreachable. We've already tried a few times — we'll retry on the next sync.",
+      "notFound": "Channel not found. Check that it's still connected and accessible.",
+      "openIntegrations": "Open channels",
+      "media": "Couldn't upload the image — the file may be too large or the platform rejected it.",
+      "fallback": "Something went wrong. We'll try again on the next sync.",
+      "autoRetryHint": "You don't have to click anything — we'll try again on our own."
     }
   },
   "reviews": {
-    "title": "Отзывы",
-    "subtitle": "Здесь собираются отзывы клиентов с подключённых каналов. OneVoice предложит образец ответа — отправлять решаете вы.",
+    "title": "Reviews",
+    "subtitle": "Customer reviews from your connected channels show up here. OneVoice will suggest a draft reply — you decide whether to send it.",
     "status": {
-      "pending": "Ждёт ответа",
-      "replied": "Ответ отправлен",
-      "error": "Ошибка отправки",
-      "read": "Прочитано"
+      "pending": "Awaiting reply",
+      "replied": "Reply sent",
+      "error": "Send failed",
+      "read": "Read"
     },
-    "replyToast": "Ответ отправлен",
+    "replyToast": "Reply sent",
     "platformOptions": {
-      "all": "Все платформы",
-      "yandexBusiness": "Яндекс.Бизнес",
+      "all": "All platforms",
+      "yandexBusiness": "Yandex.Business",
       "google": "Google",
-      "twoGis": "2ГИС",
+      "twoGis": "2GIS",
       "telegram": "Telegram",
-      "vk": "ВКонтакте"
+      "vk": "VK"
     },
     "tabs": {
-      "all": "Все",
-      "pending": "Без ответа",
-      "replied": "С ответом"
+      "all": "All",
+      "pending": "Unanswered",
+      "replied": "Answered"
     },
     "dialog": {
-      "title": "Ответ на отзыв",
-      "yourReply": "Ваш ответ"
+      "title": "Reply to review",
+      "yourReply": "Your reply"
     },
-    "sentReply": "Отправленный ответ",
-    "platformPlaceholder": "Платформа",
-    "replyPlaceholder": "Напишите ответ клиенту…",
-    "refreshTitle": "Запросить свежие отзывы у подключённых платформ",
-    "refresh": "Обновить",
-    "refreshing": "Обновляем…",
-    "send": "Отправить",
-    "sending": "Отправляем…",
+    "sentReply": "Reply sent",
+    "platformPlaceholder": "Platform",
+    "replyPlaceholder": "Write a reply to the customer…",
+    "refreshTitle": "Pull fresh reviews from connected platforms",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "send": "Send",
+    "sending": "Sending…",
     "stats": {
-      "pendingLabel": "Ждут ответа",
-      "pendingHintNone": "нет открытых",
-      "pendingHintSome": "требуют решения",
-      "totalLabel": "Всего в выборке",
-      "totalHint": "по выбранным фильтрам",
-      "avgLabel": "Средняя оценка",
-      "avgHintEmpty": "нет данных",
-      "avgHintOutOf": "из 5",
+      "pendingLabel": "Awaiting reply",
+      "pendingHintNone": "none open",
+      "pendingHintSome": "need a decision",
+      "totalLabel": "Total in selection",
+      "totalHint": "for the current filters",
+      "avgLabel": "Average rating",
+      "avgHintEmpty": "no data",
+      "avgHintOutOf": "out of 5",
       "avgEmpty": "—"
     },
     "aiSample": {
-      "label": "Образец ответа AI",
-      "hint": "Можно отправить или отредактировать",
-      "edit": "Отредактировать",
-      "preparing": "Готовим образец ответа…",
-      "replyNow": "Ответить сейчас",
-      "writeOwn": "Написать ответ",
-      "draftFailed": "Не получилось подготовить образец. Можно ответить вручную.",
-      "draftPending": "Образец ещё не подготовлен. Можно ответить вручную."
+      "label": "AI draft reply",
+      "hint": "Send as-is or edit",
+      "edit": "Edit",
+      "preparing": "Preparing a draft reply…",
+      "replyNow": "Reply now",
+      "writeOwn": "Write your own",
+      "draftFailed": "Couldn't prepare a draft. You can reply manually.",
+      "draftPending": "Draft isn't ready yet. You can reply manually."
     }
   },
   "business": {
-    "title": "Профиль бизнеса",
-    "createTitle": "Создайте профиль бизнеса",
-    "subtitle": "Чем подробнее вы расскажете о себе, тем точнее AI будет говорить вашим голосом.",
-    "createSubtitle": "Заполните «Основное», и появятся остальные разделы. OneVoice использует это, когда пишет от вашего имени.",
-    "errorLoad": "Не получилось загрузить данные. Попробуйте обновить страницу.",
+    "title": "Business profile",
+    "createTitle": "Create your business profile",
+    "subtitle": "The more you tell us about yourself, the better the AI will sound like you.",
+    "createSubtitle": "Fill in \"Basics\" and the other sections will appear. OneVoice uses this whenever it writes on your behalf.",
+    "errorLoad": "Couldn't load the data. Try refreshing the page.",
     "sections": {
       "profile": {
-        "caption": "Основное",
-        "title": "О бизнесе",
-        "sub": "Имя, контакты и описание для ИИ-ассистента."
+        "caption": "Basics",
+        "title": "About the business",
+        "sub": "Name, contacts, and a description for the AI assistant."
       },
       "voice": {
-        "caption": "Голос",
-        "title": "Голос и тон",
-        "sub": "Как ИИ должен звучать от вашего имени."
+        "caption": "Voice",
+        "title": "Voice and tone",
+        "sub": "How the AI should sound when speaking for you."
       },
       "hours": {
-        "caption": "Часы",
-        "title": "Часы работы",
-        "sub": "Используется, когда клиенты спрашивают «вы открыты?»."
+        "caption": "Hours",
+        "title": "Business hours",
+        "sub": "Used when customers ask \"are you open?\"."
       },
       "specialDates": {
-        "caption": "Особые даты",
-        "title": "Праздники и особый режим",
-        "sub": "Что ИИ должен учесть — праздники, ремонты, корпоративы."
+        "caption": "Special dates",
+        "title": "Holidays and special schedules",
+        "sub": "What the AI should know about — holidays, renovations, private events."
       }
     },
     "aiSummary": {
-      "sample": "Образец",
-      "sampleBody": "Так OneVoice описывает вас клиентам, когда отвечает на вопросы или пишет посты. Если звучит не так — поправьте «Основное» или тон.",
-      "tips": "Подсказки",
-      "tip1": "Опишите ваш район — клиенты узнают вас по нему.",
-      "tip2": "Укажите парковку или ориентир: про это часто спрашивают.",
-      "tip3": "В описании оставьте одну деталь, по которой узнают именно вас."
+      "sample": "Sample",
+      "sampleBody": "This is how OneVoice describes you to customers when answering questions or writing posts. If it doesn't sound right, tweak \"Basics\" or your tone.",
+      "tips": "Tips",
+      "tip1": "Mention your neighborhood — customers will recognize you by it.",
+      "tip2": "Note parking or a landmark: people ask about this all the time.",
+      "tip3": "Leave one detail in the description that's distinctly you."
     },
     "profileForm": {
-      "logoBadge": "лого",
-      "logoLabel": "Логотип",
-      "logoHint": "JPEG, PNG, WebP — до 5 МБ. Квадратный, минимум 256 px.",
-      "uploadLogo": "Загрузить",
-      "removeLogo": "Удалить",
-      "saved": "Данные сохранены",
-      "saveError": "Не получилось сохранить",
-      "logoUpdated": "Логотип обновлён",
-      "logoUploadError": "Не получилось загрузить логотип",
-      "logoUploadAria": "Загрузить логотип",
-      "logoAlt": "Логотип",
-      "namePlaceholder": "Кофейня «Мята»",
-      "categoryPlaceholder": "Выберите категорию",
-      "addressPlaceholder": "г. Москва, ул. Примерная, 1",
-      "descriptionPlaceholder": "Маленькая кофейня у метро. Спешелти, выпекаем круассаны утром.",
+      "logoBadge": "logo",
+      "logoLabel": "Logo",
+      "logoHint": "JPEG, PNG, WebP — up to 5 MB. Square, at least 256 px.",
+      "uploadLogo": "Upload",
+      "removeLogo": "Remove",
+      "saved": "Saved",
+      "saveError": "Couldn't save",
+      "logoUpdated": "Logo updated",
+      "logoUploadError": "Couldn't upload the logo",
+      "logoUploadAria": "Upload logo",
+      "logoAlt": "Logo",
+      "namePlaceholder": "Mint Coffee Shop",
+      "categoryPlaceholder": "Pick a category",
+      "addressPlaceholder": "123 Main St, Springfield",
+      "descriptionPlaceholder": "A small coffee shop by the subway. Specialty coffee, croissants baked fresh every morning.",
       "fields": {
-        "name": "Название",
-        "category": "Категория",
-        "address": "Город / адрес",
-        "phone": "Телефон",
-        "website": "Сайт",
-        "description": "Описание"
+        "name": "Name",
+        "category": "Category",
+        "address": "City / address",
+        "phone": "Phone",
+        "website": "Website",
+        "description": "Description"
       },
-      "descriptionHint": "Что вы делаете и для кого. OneVoice использует это, когда отвечает клиентам и пишет посты.",
-      "saving": "Сохраняем…"
+      "descriptionHint": "What you do and who you do it for. OneVoice uses this when replying to customers and writing posts.",
+      "saving": "Saving…"
     },
     "scheduleForm": {
-      "noSpecialDates": "Пока ничего не отмечено. Добавьте даты, которые ИИ должен учесть — праздники, ремонты, корпоративы.",
-      "addDate": "Добавить дату",
-      "closed": "Закрыто",
-      "specialMode": "Особый режим",
-      "hoursSaved": "Часы работы сохранены",
-      "datesSaved": "Особые даты сохранены",
-      "saveError": "Не получилось сохранить",
-      "saving": "Сохраняем…",
-      "saveHours": "Сохранить часы",
-      "saveDates": "Сохранить даты",
-      "open": "открыто",
-      "closedShort": "закрыто"
+      "noSpecialDates": "Nothing marked yet. Add dates the AI should know about — holidays, renovations, private events.",
+      "addDate": "Add date",
+      "closed": "Closed",
+      "specialMode": "Special hours",
+      "hoursSaved": "Business hours saved",
+      "datesSaved": "Special dates saved",
+      "saveError": "Couldn't save",
+      "saving": "Saving…",
+      "saveHours": "Save hours",
+      "saveDates": "Save dates",
+      "open": "open",
+      "closedShort": "closed"
     },
     "voiceTone": {
-      "saved": "Голос сохранён",
-      "saveError": "Не получилось сохранить",
-      "saving": "Сохраняем…",
-      "saveButton": "Сохранить голос",
-      "noneHint": "Ничего не выбрано — это тоже вариант, OneVoice выберет нейтральный тон.",
-      "selectedHint": "Выбрано {count} — можно больше или ничего.",
+      "saved": "Voice saved",
+      "saveError": "Couldn't save",
+      "saving": "Saving…",
+      "saveButton": "Save voice",
+      "noneHint": "Nothing selected — that's fine too, OneVoice will pick a neutral tone.",
+      "selectedHint": "{count} selected — you can add more or none.",
       "options": {
-        "warm": "Тёплый",
-        "calm": "Спокойный",
-        "friendly": "Дружеский",
-        "professional": "Профессиональный",
-        "playful": "Игривый",
-        "businesslike": "Деловой"
+        "warm": "Warm",
+        "calm": "Calm",
+        "friendly": "Friendly",
+        "professional": "Professional",
+        "playful": "Playful",
+        "businesslike": "Businesslike"
       }
     },
     "categories": {
-      "cafe": "Кафе / Ресторан",
-      "retail": "Розничная торговля",
-      "service": "Услуги",
-      "beauty": "Красота и здоровье",
-      "education": "Образование",
-      "other": "Другое"
+      "cafe": "Café / Restaurant",
+      "retail": "Retail",
+      "service": "Services",
+      "beauty": "Beauty and wellness",
+      "education": "Education",
+      "other": "Other"
     },
     "categoriesShort": {
-      "cafe": "кофейня",
-      "retail": "магазин",
-      "service": "студия услуг",
-      "beauty": "студия красоты",
-      "education": "учебный центр",
-      "other": "локальный бизнес"
+      "cafe": "coffee shop",
+      "retail": "shop",
+      "service": "service studio",
+      "beauty": "beauty studio",
+      "education": "learning center",
+      "other": "local business"
     },
     "daysOfWeek": {
-      "mon": "Понедельник",
-      "tue": "Вторник",
-      "wed": "Среда",
-      "thu": "Четверг",
-      "fri": "Пятница",
-      "sat": "Суббота",
-      "sun": "Воскресенье"
+      "mon": "Monday",
+      "tue": "Tuesday",
+      "wed": "Wednesday",
+      "thu": "Thursday",
+      "fri": "Friday",
+      "sat": "Saturday",
+      "sun": "Sunday"
     },
     "aiSummaryRail": {
-      "placeholder": "Заполните основное и OneVoice опишет ваш бизнес здесь — так вы увидите, как это прозвучит для клиентов.",
-      "nameFallback": "Ваш бизнес",
-      "describes": "OneVoice описывает вас как {kind}{hasName, select, true { «{name}»} other {}}{hasWhere, select, true { — {where}} other {}}.",
-      "toneLine": "Тон — {list}."
+      "placeholder": "Fill in the basics and OneVoice will describe your business here — so you can see how it'll sound to customers.",
+      "nameFallback": "Your business",
+      "describes": "OneVoice describes you as a {kind}{hasName, select, true { \"{name}\"} other {}}{hasWhere, select, true { — {where}} other {}}.",
+      "toneLine": "Tone — {list}."
     }
   },
   "platforms": {
     "fullLabel": {
       "telegram": "Telegram",
-      "vk": "ВКонтакте",
-      "yandex_business": "Яндекс.Бизнес",
+      "vk": "VK",
+      "yandex_business": "Yandex.Business",
       "google_business": "Google Business",
-      "2gis": "2ГИС",
-      "avito": "Авито",
+      "2gis": "2GIS",
+      "avito": "Avito",
       "whatsapp": "WhatsApp"
     },
-    "comingSoonWhen": "оценивается",
-    "comingSoonFallback": "скоро"
+    "comingSoonWhen": "being evaluated",
+    "comingSoonFallback": "soon"
   },
   "quickActions": {
-    "defaults": ["Проверить отзывы", "Обновить часы работы", "Опубликовать пост"]
+    "defaults": ["Check reviews", "Update business hours", "Publish a post"]
   },
   "integrations": {
-    "title": "Интеграции",
-    "subtitle": "Подключите каналы, по которым с вами общаются клиенты. OneVoice будет принимать в них сообщения и публиковать посты.",
-    "vkConnected": "VK сообщество подключено",
-    "googleConnected": "Google Business Profile подключён",
-    "telegramConnected": "Telegram канал подключён!",
-    "telegramConnectModalTitle": "Подключение Telegram",
-    "telegramStep1Intro": "Для подключения Telegram канала необходимо добавить бота OneVoice в ваш канал как администратора.",
-    "telegramStep1Item1": "Откройте ваш Telegram канал",
-    "telegramStep1Item2": "Перейдите в настройки канала → Администраторы",
-    "telegramStep1Item3Prefix": "Добавьте бота",
-    "telegramStep1Item4": "Дайте боту право публиковать сообщения",
-    "telegramStep2IntroBefore": "Введите ID или username вашего канала (например,",
-    "telegramStep2IntroOr": "или",
+    "title": "Integrations",
+    "subtitle": "Connect the channels your customers use to reach you. OneVoice will receive messages and publish posts through them.",
+    "vkConnected": "VK community connected",
+    "googleConnected": "Google Business Profile connected",
+    "telegramConnected": "Telegram channel connected!",
+    "telegramConnectModalTitle": "Connect Telegram",
+    "telegramStep1Intro": "To connect a Telegram channel, add the OneVoice bot to your channel as an administrator.",
+    "telegramStep1Item1": "Open your Telegram channel",
+    "telegramStep1Item2": "Go to channel settings → Administrators",
+    "telegramStep1Item3Prefix": "Add the bot",
+    "telegramStep1Item4": "Grant the bot permission to post messages",
+    "telegramStep2IntroBefore": "Enter your channel's ID or username (for example,",
+    "telegramStep2IntroOr": "or",
     "telegramStep2IntroAfter": "):",
-    "telegramStep2Placeholder": "@channel или -100...",
-    "telegramConnectFail": "Ошибка подключения. Убедитесь, что бот добавлен как администратор в канал.",
-    "telegramSubmit": "Подключить",
-    "telegramChecking": "Проверка...",
+    "telegramStep2Placeholder": "@channel or -100...",
+    "telegramConnectFail": "Connection failed. Make sure the bot has been added as an admin to the channel.",
+    "telegramSubmit": "Connect",
+    "telegramChecking": "Checking...",
     "telegramBot": "@OneVoiceBot",
     "telegramExampleChannel": "@mychannel",
     "page": {
-      "connected": "Подключённые",
-      "comingSoon": "Скоро",
-      "missingPlatform": "Не нашли свой канал?",
-      "missingPlatformBody": "Напишите нам — добавим в ближайших обновлениях.",
-      "requestChannel": "Запросить канал",
-      "subscribe": "Подписаться"
+      "connected": "Connected",
+      "comingSoon": "Coming soon",
+      "missingPlatform": "Can't find your channel?",
+      "missingPlatformBody": "Drop us a line — we'll add it in an upcoming release.",
+      "requestChannel": "Request a channel",
+      "subscribe": "Subscribe"
     },
     "platformCard": {
-      "connected": "Подключено",
-      "notConnected": "Не подключено",
-      "channels": "Каналы",
-      "addChannel": "+ Добавить канал",
-      "connect": "Подключить",
-      "connecting": "Подключение...",
-      "addBotToGroupTitle": "Добавьте бота в группу обсуждений",
-      "addBotToGroupBody": "У этого канала есть связанная группа для комментариев, но бот в неё не добавлен — поэтому комментарии к постам не собираются. Откройте группу обсуждений → участники → пригласите бота.",
-      "close": "Закрыть",
-      "disconnect": "Отключить",
-      "disconnectBody": "История сообщений останется в архиве. Чтобы снова получать сообщения из {name}, канал нужно будет подключить заново.",
-      "botMissingAria": "Бот не в группе обсуждений",
-      "botMissingTooltip": "Бот не в группе обсуждений — комментарии не собираются",
-      "botRecheck": "Я добавил бота — проверить",
-      "botRechecking": "Проверяем…"
+      "connected": "Connected",
+      "notConnected": "Not connected",
+      "channels": "Channels",
+      "addChannel": "+ Add channel",
+      "connect": "Connect",
+      "connecting": "Connecting...",
+      "addBotToGroupTitle": "Add the bot to the discussion group",
+      "addBotToGroupBody": "This channel has a linked discussion group for comments, but the bot isn't in it — so comments on posts aren't being collected. Open the discussion group → members → invite the bot.",
+      "close": "Close",
+      "disconnect": "Disconnect",
+      "disconnectBody": "Message history will stay in the archive. To start receiving messages from {name} again, you'll need to reconnect the channel.",
+      "botMissingAria": "Bot isn't in the discussion group",
+      "botMissingTooltip": "Bot isn't in the discussion group — comments aren't being collected",
+      "botRecheck": "I added the bot — check again",
+      "botRechecking": "Checking…"
     },
     "vkCommunity": {
-      "title": "Подключить сообщество VK",
-      "tokenIntro": "Где взять ключ",
-      "step1": "Откройте сообщество VK → «Управление» → «Работа с API».",
-      "step2Prefix": "На вкладке «Ключи доступа» нажмите ",
-      "step2Highlight": "«Создать ключ»",
+      "title": "Connect VK community",
+      "tokenIntro": "Where to get the key",
+      "step1": "Open your VK community → \"Manage\" → \"API usage\".",
+      "step2Prefix": "On the \"Access tokens\" tab, click ",
+      "step2Highlight": "\"Create token\"",
       "step2Suffix": ".",
       "warningPrefix": "",
-      "warningHighlight": "Не выбирайте приложение",
-      "warningSuffix": " — иначе ключ унаследует ограничения VK Mini App и не сможет отвечать на комментарии.",
-      "permissionsPrefix": "Включите права: ",
-      "permWall": "«Стена»",
-      "permMessages": "«Сообщения сообщества»",
-      "permManage": "«Управление сообществом»",
+      "warningHighlight": "Don't pick an app",
+      "warningSuffix": " — otherwise the token will inherit VK Mini App restrictions and won't be able to reply to comments.",
+      "permissionsPrefix": "Enable these permissions: ",
+      "permWall": "\"Wall\"",
+      "permMessages": "\"Community messages\"",
+      "permManage": "\"Community management\"",
       "permSeparator": ", ",
-      "step5": "Скопируйте выданный ключ и вставьте сюда.",
-      "tokenLabel": "Ключ доступа сообщества",
+      "step5": "Copy the token you receive and paste it here.",
+      "tokenLabel": "Community access token",
       "tokenPlaceholder": "vk1.a.…",
-      "tokenFooter": "OneVoice проверит ключ, найдёт привязанное сообщество и сохранит интеграцию. Ничего никуда не уходит, кроме самого VK API.",
-      "cancel": "Отмена",
-      "connect": "Подключить",
-      "connecting": "Подключаем…",
-      "connected": "Сообщество VK подключено",
-      "connectFailed": "Не удалось подключить сообщество"
+      "tokenFooter": "OneVoice will verify the token, find the linked community, and save the integration. Nothing leaves this app except calls to the VK API itself.",
+      "cancel": "Cancel",
+      "connect": "Connect",
+      "connecting": "Connecting…",
+      "connected": "VK community connected",
+      "connectFailed": "Couldn't connect the community"
     },
     "yandexBusiness": {
-      "title": "Подключить Яндекс.Бизнес",
-      "whyCookies": "Зачем нужны cookies?",
-      "whyCookiesBody": "У Яндекс.Бизнеса нет публичного API для управления отзывами и информацией о компании, поэтому OneVoice работает через ваш сеанс — как если бы вы открыли сайт сами. Cookies хранятся зашифрованно и используются только нашим RPA-агентом.",
-      "howToCopy": "Как скопировать cookies",
-      "step1Prefix": "Установите расширение ",
+      "title": "Connect Yandex.Business",
+      "whyCookies": "Why cookies?",
+      "whyCookiesBody": "Yandex.Business doesn't have a public API for managing reviews and company info, so OneVoice works through your session — as if you'd opened the site yourself. Cookies are stored encrypted and only used by our RPA agent.",
+      "howToCopy": "How to copy cookies",
+      "step1Prefix": "Install the ",
       "step1Link": "Cookie-Editor",
-      "step1Browsers": "(Chrome / Edge / Firefox).",
-      "step2Prefix": "Откройте ",
+      "step1Browsers": "extension (Chrome / Edge / Firefox).",
+      "step2Prefix": "Open ",
       "step2Domain": "business.yandex.ru",
-      "step2Suffix": " и войдите в нужный аккаунт.",
-      "step3Prefix": "Нажмите на иконку расширения → ",
+      "step2Suffix": " and sign in to the right account.",
+      "step3Prefix": "Click the extension icon → ",
       "step3Export": "Export",
       "step3Arrow": " → ",
       "step3ExportJson": "Export as JSON",
-      "step3Suffix": " — JSON автоматически скопируется в буфер.",
-      "step4": "Вставьте в поле ниже.",
-      "alternativePrefix": "Альтернативно: можно вставить только значение ",
+      "step3Suffix": " — the JSON will be copied to your clipboard automatically.",
+      "step4": "Paste it into the field below.",
+      "alternativePrefix": "Alternatively: you can paste just the ",
       "alternativeSession": "Session_id",
-      "alternativeSuffix": " или «сырой» Cookie-заголовок из DevTools → Network → Request Headers.",
-      "cancel": "Отмена",
-      "next": "Далее",
-      "searching": "Ищем ваши организации в Яндексе…",
-      "searchingBody": "Это может занять до минуты. Мы открываем Яндекс.Бизнес от вашего имени, чтобы получить список.",
-      "found": "Найдено {count} организ{ending}. Какую подключить к OneVoice?",
-      "back": "Назад",
-      "connect": "Подключить",
-      "connecting": "Подключение…",
-      "checking": "Проверяем…",
-      "formatNotRecognized": "Не распознан формат",
-      "formatRecognized": "✓ Формат распознан ({format})",
-      "loggedInAs": " — вошли как ",
-      "sessionActive": " — сеанс активен",
-      "sessionExpired": "⚠ Сеанс выглядит истёкшим — возможно, нужно заново войти в Яндекс и скопировать cookies снова. Можно подключить и проверить — ошибка вылезет при первом действии.",
-      "sessionUnchecked": "Не удалось проверить сеанс с нашей стороны (антибот Яндекса). Сеанс будет проверен при первом обращении.",
+      "alternativeSuffix": " value or the raw Cookie header from DevTools → Network → Request Headers.",
+      "cancel": "Cancel",
+      "next": "Next",
+      "searching": "Looking up your organizations on Yandex…",
+      "searchingBody": "This may take up to a minute. We're opening Yandex.Business on your behalf to fetch the list.",
+      "found": "Found {count} organization{ending}. Which one should we connect to OneVoice?",
+      "back": "Back",
+      "connect": "Connect",
+      "connecting": "Connecting…",
+      "checking": "Checking…",
+      "formatNotRecognized": "Format not recognized",
+      "formatRecognized": "✓ Format recognized ({format})",
+      "loggedInAs": " — signed in as ",
+      "sessionActive": " — session active",
+      "sessionExpired": "⚠ Session looks expired — you may need to sign back into Yandex and copy the cookies again. You can still connect and check; the error will surface on the first action.",
+      "sessionUnchecked": "We couldn't verify the session from our side (Yandex anti-bot). The session will be checked on the first request.",
       "probeError": "✗ {error}",
-      "probeFailed": "Не удалось проверить — попробуйте ещё раз",
-      "noOrgs": "В аккаунте Яндекса нет ни одной организации.",
-      "unnamedOrg": "Без названия",
-      "fetchOrgsFailed": "Не удалось получить список организаций. Попробуйте ещё раз.",
-      "connectFailed": "Не удалось подключить",
-      "connectedToast": "Подключено: {name}"
+      "probeFailed": "Couldn't verify — please try again",
+      "noOrgs": "This Yandex account has no organizations.",
+      "unnamedOrg": "Unnamed",
+      "fetchOrgsFailed": "Couldn't fetch the list of organizations. Please try again.",
+      "connectFailed": "Couldn't connect",
+      "connectedToast": "Connected: {name}"
     },
     "googleLocation": {
-      "title": "Выберите локацию",
-      "description": "В вашем аккаунте Google несколько бизнес-локаций. Выберите одну для подключения.",
-      "sessionExpired": "Сессия истекла. Пожалуйста, подключите Google заново.",
-      "noLocations": "Локации не найдены.",
-      "cancel": "Отмена",
-      "connect": "Подключить",
-      "connecting": "Подключение...",
-      "connectFailed": "Ошибка подключения локации"
+      "title": "Pick a location",
+      "description": "Your Google account has several business locations. Pick one to connect.",
+      "sessionExpired": "Your session has expired. Please reconnect Google.",
+      "noLocations": "No locations found.",
+      "cancel": "Cancel",
+      "connect": "Connect",
+      "connecting": "Connecting...",
+      "connectFailed": "Couldn't connect the location"
     },
     "whitelistWarning": {
-      "title": "Новая интеграция не попадёт в whitelist проектов",
-      "body": "Эти проекты используют явный whitelist и не включают инструменты {platform}: {names}. Откройте проект, чтобы добавить инструменты.",
-      "dismissAria": "Понятно",
-      "closeAria": "Закрыть предупреждение"
+      "title": "New integration won't be added to project whitelists",
+      "body": "These projects use an explicit whitelist and don't include {platform} tools: {names}. Open a project to add the tools.",
+      "dismissAria": "Got it",
+      "closeAria": "Dismiss warning"
     },
     "oauthErrors": {
-      "missingParams": "Не получилось войти: не хватает параметров",
-      "invalidState": "Не получилось войти: сессия истекла",
-      "tokenExchange": "Не удалось обменять токен",
-      "connectFailed": "Не удалось подключить",
-      "noCommunityToken": "Не удалось получить токен сообщества",
-      "internal": "Что-то пошло не так. Попробуйте ещё раз.",
-      "noRefreshToken": "Google не вернул refresh-токен. Попробуйте подключить снова.",
-      "noLocations": "В этом аккаунте Google нет бизнес-локаций.",
-      "fallback": "Не получилось: {error}"
+      "missingParams": "Couldn't sign in: missing parameters",
+      "invalidState": "Couldn't sign in: session expired",
+      "tokenExchange": "Couldn't exchange the token",
+      "connectFailed": "Couldn't connect",
+      "noCommunityToken": "Couldn't get the community token",
+      "internal": "Something went wrong. Please try again.",
+      "noRefreshToken": "Google didn't return a refresh token. Try connecting again.",
+      "noLocations": "This Google account has no business locations.",
+      "fallback": "Couldn't connect: {error}"
     }
   },
   "nav": {
-    "chat": "Чат",
-    "integrations": "Интеграции",
-    "business": "Профиль бизнеса",
-    "reviews": "Отзывы",
-    "posts": "Посты",
-    "tasks": "Задачи",
-    "settings": "Настройки",
-    "logout": "Выйти",
-    "platformsGroup": "Платформы"
+    "chat": "Chat",
+    "integrations": "Integrations",
+    "business": "Business profile",
+    "reviews": "Reviews",
+    "posts": "Posts",
+    "tasks": "Tasks",
+    "settings": "Settings",
+    "logout": "Log out",
+    "platformsGroup": "Platforms"
   },
   "noConnection": {
-    "heading": "Не получается дотянуться до OneVoice",
-    "body": "Похоже, проблема на нашей стороне. Подождите немного и попробуйте снова.",
-    "retry": "Попробовать снова",
-    "openStatus": "Открыть статус",
-    "codeLabel": "код:"
+    "heading": "Can't reach OneVoice",
+    "body": "Looks like the issue is on our side. Wait a moment and try again.",
+    "retry": "Try again",
+    "openStatus": "Open status page",
+    "codeLabel": "code:"
   },
   "landing": {
     "quote": {
-      "label": "Иллюстрация",
-      "body": "Утром — один ящик, а не пять вкладок. На простые вопросы OneVoice уже ответил — на сложные просит ваше подтверждение.",
-      "note": "Так может выглядеть обычный день, когда подключены все каналы."
+      "label": "Illustration",
+      "body": "In the morning — one inbox, not five tabs. OneVoice has already answered the simple questions; for the hard ones it asks for your sign-off.",
+      "note": "This is what a normal day can look like once all your channels are connected."
     },
     "nav": {
-      "features": "Возможности",
-      "channels": "Каналы",
-      "login": "Войти",
-      "tryIt": "Попробовать",
+      "features": "Features",
+      "channels": "Channels",
+      "login": "Log in",
+      "tryIt": "Try it",
       "logoMark": "OV",
       "wordmark": "OneVoice"
     },
     "hero": {
-      "kicker": "One Voice · v 0.9 · открытая бета",
-      "headlineLine1": "Один разговор",
-      "headlineLine2Prefix": "для всех каналов ",
+      "kicker": "One Voice · v 0.9 · open beta",
+      "headlineLine1": "One conversation",
+      "headlineLine2Prefix": "for every channel ",
       "headlinePunctuation": ".",
       "wordmark": "OneVoice",
-      "body": "Telegram, ВКонтакте, Яндекс.Бизнес — в одном ящике. OneVoice пишет черновики ответов, готовит посты для всех каналов и держит отзывы на виду, пока вы заняты делом.",
-      "cta": "Попробовать",
-      "secondary": "Посмотреть, как работает"
+      "body": "Telegram, VK, Yandex.Business — all in one inbox. OneVoice drafts replies, prepares posts for every channel, and keeps reviews in plain sight while you focus on your work.",
+      "cta": "Try it",
+      "secondary": "See how it works"
     },
     "preview": {
       "url": "onevoice.app/inbox",
-      "today": "Сегодня",
-      "waiting": "3 ждут ответа",
-      "composing": "OneVoice готовит черновик для Алёны",
-      "eta": "~4 сек"
+      "today": "Today",
+      "waiting": "3 awaiting reply",
+      "composing": "OneVoice is drafting a reply for Alena",
+      "eta": "~4 sec"
     },
     "belief": {
-      "kicker": "Как мы это видим",
-      "headlinePrefix": "Малый бизнес проигрывает не потому, что плохо работает. А потому, что ",
-      "headlineHighlight": "не успевает отвечать.",
-      "body": "Кофейня, салон, мастерская — десять каналов и одна пара рук. OneVoice не заменяет вас. Он отвечает первым, чтобы у вас осталось время ответить лучше."
+      "kicker": "How we see it",
+      "headlinePrefix": "Small businesses don't lose because they do bad work. They lose because ",
+      "headlineHighlight": "they can't reply fast enough.",
+      "body": "A coffee shop, a salon, a workshop — ten channels and one pair of hands. OneVoice doesn't replace you. It replies first so you have time to reply better."
     },
     "features": {
-      "kicker": "Возможности",
-      "headline": "Четыре вещи, на которые у вас обычно нет времени."
+      "kicker": "Features",
+      "headline": "Four things you usually don't have time for."
     },
     "sample": {
-      "from": "от: Алёна К.",
-      "ago": "4 мин назад",
-      "question": "Вы открыты в воскресенье?",
-      "answer": "Да, по воскресеньям мы работаем с 10:00 до 20:00 — будем рады вас видеть.",
-      "send": "Отправить",
-      "fix": "Поправить",
-      "tryAgain": "Ещё вариант",
-      "postContent": "Завтра до 11 утра — все капучино за 200 ₽. Заходите.",
-      "publishTo": "опубликовать в:",
-      "scheduledTime": "завтра, 09:00",
-      "schedule": "Запланировать",
-      "repliedByOneVoice": "отвечено OneVoice",
-      "draftReady": "черновик готов · нужно ваше «да»"
+      "from": "from: Alena K.",
+      "ago": "4 min ago",
+      "question": "Are you open on Sunday?",
+      "answer": "Yes, on Sundays we're open from 10:00 to 20:00 — we'd love to see you.",
+      "send": "Send",
+      "fix": "Tweak",
+      "tryAgain": "Try another",
+      "postContent": "Tomorrow until 11 a.m. — all cappuccinos for 200 ₽. Come by.",
+      "publishTo": "publish to:",
+      "scheduledTime": "tomorrow, 09:00",
+      "schedule": "Schedule",
+      "repliedByOneVoice": "answered by OneVoice",
+      "draftReady": "draft ready · needs your yes"
     },
     "howItWorks": {
-      "kicker": "Как это работает",
-      "headline": "Три шага. Полчаса вашего времени."
+      "kicker": "How it works",
+      "headline": "Three steps. Half an hour of your time."
     },
     "channels": {
-      "kicker": "Каналы",
-      "headline": "Поддерживаем то, чем пользуются ваши клиенты.",
-      "body": "В России — без компромиссов. Подключаем настоящие каналы, а не их западные аналоги."
+      "kicker": "Channels",
+      "headline": "We support the channels your customers actually use.",
+      "body": "In Russia — no compromises. We connect to the real channels, not their Western lookalikes."
     },
     "footer": {
-      "rights": "© {year} · Все права защищены",
-      "contacts": "Контакты",
+      "rights": "© {year} · All rights reserved",
+      "contacts": "Contact",
       "logoMark": "OV",
       "wordmark": "OneVoice"
     }
   },
   "projects": {
-    "fallbackTitle": "Проект",
-    "newChat": "Новый чат",
-    "settings": "Настроить",
-    "errorLoad": "Не удалось загрузить проект. Обновите страницу или попробуйте позже.",
-    "errorCreateChat": "Не удалось создать чат",
+    "fallbackTitle": "Project",
+    "newChat": "New chat",
+    "settings": "Configure",
+    "errorLoad": "Couldn't load the project. Refresh the page or try again later.",
+    "errorCreateChat": "Couldn't create the chat",
     "chats": {
-      "sectionLabel": "Чаты проекта",
+      "sectionLabel": "Project chats",
       "empty": {
-        "title": "В этом проекте ещё нет чатов",
-        "body": "Начните первый диалог — он унаследует системный промпт и whitelist этого проекта."
+        "title": "No chats in this project yet",
+        "body": "Start the first one — it'll inherit this project's system prompt and whitelist."
       }
     },
     "form": {
-      "tabBasics": "Основное",
-      "tabPrompt": "Промпт",
-      "tabTools": "Инструменты",
-      "tabQuickActions": "Быстрые действия",
-      "name": "Название",
-      "namePlaceholder": "Например: Отзывы",
-      "description": "Описание",
-      "descriptionPlaceholder": "Короткое описание — для кого этот проект.",
-      "optional": "(необязательно)",
-      "systemPrompt": "Системный промпт",
-      "systemPromptPlaceholder": "Ты — помощник по отзывам. Отвечай вежливо, по существу…",
-      "systemPromptDescription": "Описывает роль и ограничения ИИ. Добавляется к контексту бизнеса при каждом сообщении.",
-      "promptCounter": "{current} / {max} символов",
-      "tools": "Доступные инструменты",
-      "toolsDescription": "Какие действия вообще разрешены в этом проекте.",
-      "toolsList": "Список инструментов",
-      "approval": "Одобрение инструментов",
-      "approvalDescription": "Какие действия ИИ выполняет сам, а какие должны ждать вашего подтверждения. «Как у бизнеса» — использовать общую настройку из «Настройки → Одобрение инструментов».",
-      "loadingTools": "Загрузка списка инструментов…",
-      "quickActions": "Быстрые действия",
-      "quickActionsDescription": "Кнопки-подсказки, которые появляются над полем ввода в новом чате.",
-      "creationFooter": "Системный промпт, доступные инструменты и быстрые действия можно настроить после создания проекта.",
-      "cancel": "Отмена",
-      "saveSuccess": "Проект сохранён",
-      "deleteProject": "Удалить проект",
-      "saveError": "Не удалось сохранить проект",
-      "saveErrorRetry": "Попробуйте ещё раз. {detail}",
-      "deletedSuccess": "Проект удалён",
-      "save": "Сохранить",
-      "create": "Создать проект"
+      "tabBasics": "Basics",
+      "tabPrompt": "Prompt",
+      "tabTools": "Tools",
+      "tabQuickActions": "Quick actions",
+      "name": "Name",
+      "namePlaceholder": "For example: Reviews",
+      "description": "Description",
+      "descriptionPlaceholder": "Short description — who this project is for.",
+      "optional": "(optional)",
+      "systemPrompt": "System prompt",
+      "systemPromptPlaceholder": "You're a review assistant. Reply politely and to the point…",
+      "systemPromptDescription": "Describes the AI's role and limits. Added to the business context with every message.",
+      "promptCounter": "{current} / {max} characters",
+      "tools": "Available tools",
+      "toolsDescription": "Which actions are allowed at all in this project.",
+      "toolsList": "Tool list",
+      "approval": "Tool approval",
+      "approvalDescription": "Which actions the AI runs on its own, and which need your approval. \"Same as business\" — use the shared setting from \"Settings → Tool approval\".",
+      "loadingTools": "Loading tool list…",
+      "quickActions": "Quick actions",
+      "quickActionsDescription": "Prompt buttons that appear above the input in a new chat.",
+      "creationFooter": "You can set the system prompt, available tools, and quick actions after the project is created.",
+      "cancel": "Cancel",
+      "saveSuccess": "Project saved",
+      "deleteProject": "Delete project",
+      "saveError": "Couldn't save the project",
+      "saveErrorRetry": "Please try again. {detail}",
+      "deletedSuccess": "Project deleted",
+      "save": "Save",
+      "create": "Create project"
     },
     "approvalOverrides": {
-      "auto": "Автоматически",
-      "manual": "Вручную",
-      "inherit": "«как у бизнеса»",
-      "businessTag": "Бизнес: {label}",
-      "noTools": "Нет инструментов, требующих одобрения — всё работает автоматически."
+      "auto": "Automatic",
+      "manual": "Manual",
+      "inherit": "\"same as business\"",
+      "businessTag": "Business: {label}",
+      "noTools": "No tools require approval — everything runs automatically."
     },
     "quickActions": {
-      "hint": "До 6 коротких фраз — появятся кнопками в пустом чате.",
-      "add": "Добавить",
-      "placeholder": "Например: Проверить отзывы",
-      "itemAria": "Быстрое действие {index}",
-      "deleteAria": "Удалить быстрое действие {index}"
+      "hint": "Up to 6 short phrases — they appear as buttons in an empty chat.",
+      "add": "Add",
+      "placeholder": "For example: Check reviews",
+      "itemAria": "Quick action {index}",
+      "deleteAria": "Delete quick action {index}"
     },
     "toolCheckboxes": {
-      "noIntegrations": "Активных интеграций нет — доступных инструментов тоже нет.",
-      "loading": "Загрузка списка инструментов…"
+      "noIntegrations": "No active integrations — no tools available either.",
+      "loading": "Loading tool list…"
     },
     "deleteDialog": {
-      "cancel": "Отмена",
-      "delete": "Удалить",
-      "deleting": "Удаляем…"
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "deleting": "Deleting…"
     },
     "editPage": {
-      "title": "Редактировать проект",
-      "sub": "Изменения применяются к новым сообщениям. Существующие чаты сохраняют свою историю.",
-      "savedToast": "Проект сохранён"
+      "title": "Edit project",
+      "sub": "Changes apply to new messages. Existing chats keep their history.",
+      "savedToast": "Project saved"
     },
     "newPage": {
-      "title": "Новый проект",
-      "sub": "Дайте проекту название — остальное настроим позже.",
-      "createdToast": "Проект «{name}» создан",
-      "createdDescription": "Теперь можно настроить промпт и инструменты."
+      "title": "New project",
+      "sub": "Give the project a name — we'll set up the rest later.",
+      "createdToast": "Project \"{name}\" created",
+      "createdDescription": "Now you can set up the prompt and tools."
     }
   },
   "auth": {
     "login": {
       "illustration": {
-        "label": "Иллюстрация",
-        "body": "Утром — один ящик. AI готовит черновики, вы решаете, что отправить.",
-        "note": "Так может выглядеть обычный день, когда подключены все каналы."
+        "label": "Illustration",
+        "body": "One inbox in the morning. The AI drafts replies — you decide what to send.",
+        "note": "This is what a normal day can look like once all your channels are connected."
       },
-      "eyebrow": "Вход",
-      "title": "С возвращением.",
-      "description": "Введите почту и пароль, чтобы открыть общий ящик.",
-      "emailLabel": "Почта",
-      "passwordLabel": "Пароль",
-      "noAccount": "Ещё нет аккаунта?",
-      "register": "Зарегистрироваться",
-      "submit": "Войти",
-      "submitting": "Входим…",
-      "invalidCredentials": "Неверный email или пароль"
+      "eyebrow": "Log in",
+      "title": "Welcome back.",
+      "description": "Enter your email and password to open the shared inbox.",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "noAccount": "Don't have an account yet?",
+      "register": "Sign up",
+      "submit": "Log in",
+      "submitting": "Logging in…",
+      "invalidCredentials": "Invalid email or password"
     },
     "register": {
-      "nameLabel": "Как к вам обращаться",
-      "namePlaceholder": "Алина",
-      "emailLabel": "Почта",
-      "passwordLabel": "Пароль",
-      "confirmPasswordLabel": "Ещё раз",
-      "haveAccount": "Уже зарегистрированы?",
-      "login": "Войти",
-      "eyebrow": "Создание аккаунта",
-      "title": "Начнём знакомство.",
-      "description": "Минута на регистрацию — потом подключим каналы и поговорим о голосе бизнеса.",
-      "submit": "Создать аккаунт",
-      "submitting": "Создаём аккаунт…",
-      "benefitsLabel": "Что вы получите",
-      "benefitsBody": "После регистрации подключим каналы (Telegram, VK, Яндекс…). Можно пройти всё за пару минут или вернуться позже.",
+      "nameLabel": "What should we call you",
+      "namePlaceholder": "Alina",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "confirmPasswordLabel": "Confirm",
+      "haveAccount": "Already have an account?",
+      "login": "Log in",
+      "eyebrow": "Create account",
+      "title": "Let's get started.",
+      "description": "A minute to sign up — then we'll connect your channels and talk about your business voice.",
+      "submit": "Create account",
+      "submitting": "Creating account…",
+      "benefitsLabel": "What you'll get",
+      "benefitsBody": "After signing up we'll connect channels (Telegram, VK, Yandex…). You can finish in a couple of minutes or come back later.",
       "benefits": {
-        "channelsTitle": "Один разговор — все каналы",
-        "channelsBody": "Telegram, ВКонтакте, Яндекс.Бизнес отвечают по одной команде, без переключения между вкладками.",
-        "voiceTitle": "AI говорит вашим голосом",
-        "voiceBody": "Опишете тон один раз — на «Здравствуйте, у нас тихо в среду» он не ответит «Хей! 👋».",
-        "calmTitle": "Спокойнее по утрам",
-        "calmBody": "Ничего не пропустите: AI готовит черновики, вы пьёте кофе и подтверждаете в один клик."
+        "channelsTitle": "One conversation — every channel",
+        "channelsBody": "Telegram, VK, Yandex.Business reply with one command, no jumping between tabs.",
+        "voiceTitle": "AI in your voice",
+        "voiceBody": "Describe the tone once — to \"Hello, it's quiet on Wednesdays\" it won't reply \"Hey! 👋\".",
+        "calmTitle": "Calmer mornings",
+        "calmBody": "Nothing slips through: AI prepares drafts, you sip coffee and approve with one click."
       },
-      "emailExists": "Пользователь с таким email уже существует",
-      "genericError": "Ошибка регистрации. Проверьте данные."
+      "emailExists": "A user with this email already exists",
+      "genericError": "Sign-up failed. Check your details."
     },
     "shell": {
       "wordmark": "OneVoice",
@@ -1043,128 +1043,128 @@
   },
   "settings": {
     "page": {
-      "title": "Настройки",
-      "sub": "Аккаунт, безопасность и поведение OneVoice.",
-      "accountKicker": "Аккаунт",
-      "accountTitle": "Кто вы",
-      "nameLabel": "Имя",
-      "emailLabel": "Почта",
-      "securityKicker": "Безопасность",
-      "securityTitle": "Сменить пароль",
-      "currentPassword": "Текущий пароль",
-      "newPassword": "Новый пароль",
-      "confirmPassword": "Ещё раз",
-      "submit": "Изменить пароль",
-      "submitting": "Сохраняем…",
-      "passwordChanged": "Пароль изменён",
-      "passwordChangeError": "Не получилось сменить пароль. Проверьте текущий.",
-      "currentPasswordRequired": "Введите текущий пароль",
-      "newPasswordMinChars": "Минимум 8 символов",
-      "passwordsMismatch": "Пароли не совпадают",
-      "sectionsLabel": "Разделы",
+      "title": "Settings",
+      "sub": "Account, security, and OneVoice behavior.",
+      "accountKicker": "Account",
+      "accountTitle": "About you",
+      "nameLabel": "Name",
+      "emailLabel": "Email",
+      "securityKicker": "Security",
+      "securityTitle": "Change password",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm",
+      "submit": "Change password",
+      "submitting": "Saving…",
+      "passwordChanged": "Password changed",
+      "passwordChangeError": "Couldn't change the password. Check your current one.",
+      "currentPasswordRequired": "Enter your current password",
+      "newPasswordMinChars": "At least 8 characters",
+      "passwordsMismatch": "Passwords don't match",
+      "sectionsLabel": "Sections",
       "rail": {
-        "toolsTitle": "Что разрешено ИИ",
-        "toolsDescription": "Какие действия выполняются автоматически, а какие требуют вашего согласия."
+        "toolsTitle": "What the AI is allowed to do",
+        "toolsDescription": "Which actions run automatically and which need your approval."
       },
       "fallbackEmpty": "—"
     },
     "nav": {
-      "profile": "Профиль",
-      "tools": "Инструменты",
-      "team": "Команда",
-      "roles": "Роли",
-      "navAria": "Настройки — разделы"
+      "profile": "Profile",
+      "tools": "Tools",
+      "team": "Team",
+      "roles": "Roles",
+      "navAria": "Settings — sections"
     },
     "tools": {
-      "title": "Что разрешено ИИ",
-      "sub": "OneVoice выполняет одни действия сам, для других сначала спрашивает вас. Запрещённые инструменты включить отсюда нельзя.",
-      "save": "Сохранить",
-      "saving": "Сохраняем…",
-      "unsavedChanges": "Есть несохранённые изменения. Нажмите «Сохранить», чтобы применить.",
-      "loadError": "Не удалось загрузить список инструментов. Обновите страницу или попробуйте позже.",
-      "noTools": "Нет настраиваемых инструментов.",
-      "platform": "Платформа"
+      "title": "What the AI is allowed to do",
+      "sub": "OneVoice runs some actions on its own and asks first for others. Blocked tools can't be enabled from here.",
+      "save": "Save",
+      "saving": "Saving…",
+      "unsavedChanges": "You have unsaved changes. Click \"Save\" to apply them.",
+      "loadError": "Couldn't load the tool list. Refresh the page or try again later.",
+      "noTools": "No configurable tools.",
+      "platform": "Platform"
     },
     "toolApproval": {
-      "blocked": "Запрещено",
-      "blockedHint": "Этот инструмент нельзя разрешить настройками"
+      "blocked": "Blocked",
+      "blockedHint": "This tool can't be enabled from settings"
     }
   },
   "sidebar": {
-    "menuLabel": "Боковое меню",
-    "menuDescription": "Навигация по приложению и список проектов",
+    "menuLabel": "Side menu",
+    "menuDescription": "App navigation and project list",
     "wordmark": "OneVoice",
-    "pinned": "Закреплённые",
-    "moreCount": "…и ещё {count}",
-    "newProject": "+ Новый проект",
-    "noChatsInProject": "В проекте пока нет чатов",
-    "matchCount": "+{count} совпадений",
-    "scopeAllBusiness": "По всему бизнесу",
-    "noResults": "Попробуйте короче или поменяйте период.",
-    "unassigned": "Без проекта",
-    "unassignedChats": "Чаты без проекта",
-    "toggleAria": "Открыть боковое меню",
-    "resizeAria": "Изменить ширину боковой панели",
-    "unassignedNewChatAria": "Новый чат без проекта",
-    "unassignedNewChatTitle": "Новый чат без проекта",
-    "unassignedSectionAria": "Чаты без проекта",
-    "pinnedSectionAria": "Закреплённые чаты",
-    "expandUnassigned": "Развернуть «Без проекта»",
-    "collapseUnassigned": "Свернуть «Без проекта»",
-    "expandPinned": "Развернуть «Закреплённые»",
-    "collapsePinned": "Свернуть «Закреплённые»",
-    "chatRowMenuAria": "Меню чата «{title}»",
+    "pinned": "Pinned",
+    "moreCount": "…and {count} more",
+    "newProject": "+ New project",
+    "noChatsInProject": "No chats in this project yet",
+    "matchCount": "+{count} matches",
+    "scopeAllBusiness": "Across the whole business",
+    "noResults": "Try a shorter query or change the date range.",
+    "unassigned": "No project",
+    "unassignedChats": "Chats without a project",
+    "toggleAria": "Open side menu",
+    "resizeAria": "Resize side panel",
+    "unassignedNewChatAria": "New chat without a project",
+    "unassignedNewChatTitle": "New chat without a project",
+    "unassignedSectionAria": "Chats without a project",
+    "pinnedSectionAria": "Pinned chats",
+    "expandUnassigned": "Expand \"No project\"",
+    "collapseUnassigned": "Collapse \"No project\"",
+    "expandPinned": "Expand \"Pinned\"",
+    "collapsePinned": "Collapse \"Pinned\"",
+    "chatRowMenuAria": "Menu for chat \"{title}\"",
     "search": {
-      "resultsAria": "Результаты поиска",
-      "stateAria": "Состояние поиска"
+      "resultsAria": "Search results",
+      "stateAria": "Search state"
     }
   },
   "states": {
-    "channelConnectProgress": "в процессе",
+    "channelConnectProgress": "in progress",
     "emptyChannels": {
-      "connect": "Подключить канал",
-      "viewDemo": "Посмотреть демо",
-      "title": "Подключите первый канал",
-      "body": "Telegram, ВКонтакте или Яндекс.Бизнес — на ваш выбор. Сообщения и отзывы соберутся в общий ящик."
+      "connect": "Connect a channel",
+      "viewDemo": "View demo",
+      "title": "Connect your first channel",
+      "body": "Telegram, VK, or Yandex.Business — your choice. Messages and reviews will land in your shared inbox."
     },
     "emptyInbox": {
-      "openArchive": "Открыть архив",
-      "title": "Ящик пуст",
-      "body": "Ничего не ждёт ответа. Новые сообщения появятся здесь автоматически."
+      "openArchive": "Open archive",
+      "title": "Inbox empty",
+      "body": "Nothing's waiting for a reply. New messages will show up here automatically."
     },
     "emptyTasks": {
-      "title": "Сегодня всё сделано",
-      "body": "Можно выдохнуть. Если придёт что-то новое, OneVoice предупредит."
+      "title": "All done for today",
+      "body": "Take a breath. If something new comes in, OneVoice will let you know."
     },
     "emptyReviews": {
-      "lookBack": "Прошлая неделя →",
+      "lookBack": "Last week →",
       "all": {
-        "title": "За эту неделю отзывов не было",
-        "body": "Новые отзывы появятся, когда клиенты их оставят."
+        "title": "No reviews this week",
+        "body": "New reviews will appear when customers leave them."
       },
       "pending": {
-        "title": "Открытых отзывов нет",
-        "body": "Все обращения обработаны. OneVoice сообщит, как только придёт новый."
+        "title": "No open reviews",
+        "body": "Everything's handled. OneVoice will let you know as soon as a new one comes in."
       },
       "replied": {
-        "title": "Пока нечего показать",
-        "body": "Отвеченных отзывов в выборке нет. Снимите фильтр, чтобы увидеть остальные."
+        "title": "Nothing to show",
+        "body": "No answered reviews in this selection. Clear the filter to see the rest."
       }
     },
     "emptySearch": {
-      "noResultsPrefix": "Ничего не нашлось по запросу ",
-      "queryFormat": "«{query}»",
-      "resetFilters": "Сбросить фильтры",
-      "defaultBody": "Попробуйте короче или поменяйте период."
+      "noResultsPrefix": "Nothing matched ",
+      "queryFormat": "\"{query}\"",
+      "resetFilters": "Reset filters",
+      "defaultBody": "Try a shorter query or change the date range."
     },
     "skeleton": {
-      "channels": "Загружаем подключённые каналы",
-      "inbox": "Загружаем список",
-      "chat": "Загружаем диалог",
-      "metricStrip": "Загружаем метрики"
+      "channels": "Loading connected channels",
+      "inbox": "Loading list",
+      "chat": "Loading conversation",
+      "metricStrip": "Loading metrics"
     },
     "stickyAlert": {
-      "dismissAria": "Скрыть уведомление"
+      "dismissAria": "Dismiss notification"
     }
   }
 }
