@@ -32,9 +32,11 @@ const PROJECT_NAME_MAX_LEN = 200;
 const PROJECT_DESCRIPTION_MAX_LEN = 2000;
 
 // Schema factory — request-scoped (Phase B1). Called inside the hook
-// body via useMemo so a locale switch swaps the validation copy.
+// body via useMemo so a locale switch swaps the validation copy. The
+// `params` slot matches next-intl's `RichTranslationValues` shape so
+// the structural compatibility round-trips both directions.
 function createProjectFormSchema(
-  tValidation: (key: string, params?: Record<string, unknown>) => string
+  tValidation: (key: string, params?: Record<string, string | number | Date>) => string
 ) {
   return z
     .object({

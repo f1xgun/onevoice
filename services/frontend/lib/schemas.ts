@@ -16,9 +16,13 @@ const BUSINESS_ADDRESS_MAX_LEN = 500;
 
 // Translator shape we depend on for schema messages. Compatible with both
 // `useTranslations('validation')` (React) and `getServerTranslator(
-// 'validation')` (async server) outputs. Declared as a structural type so
-// consumers don't have to import next-intl just to call the factory.
-type ValidationTranslator = (key: string, params?: Record<string, unknown>) => string;
+// 'validation')` (async server) outputs. The `params` slot matches
+// next-intl's `RichTranslationValues` shape — primitive values + Date —
+// so the structural compatibility round-trips both directions.
+type ValidationTranslator = (
+  key: string,
+  params?: Record<string, string | number | Date>
+) => string;
 
 // Schema factories — request-scoped (Phase B1).
 //
