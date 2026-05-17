@@ -81,7 +81,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
             <span className="min-w-0 flex-1 truncate italic text-ink-soft">
               {tSide('unassigned')}
             </span>
-            <span className="shrink-0 text-xs text-ink-faint">· {count}</span>
+            <span className="shrink-0 text-xs text-ink-soft">· {count}</span>
           </span>
         </button>
         {canCreate && (

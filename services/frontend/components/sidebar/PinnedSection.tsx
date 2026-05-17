@@ -80,7 +80,7 @@ export function PinnedSection({
         )}
         <Bookmark size={12} className="shrink-0 text-yellow-400" />
         <span className="flex-1 truncate text-left">{tSide('pinned')}</span>
-        <span className="text-xs text-ink-faint">· {count}</span>
+        <span className="text-xs text-ink-soft">· {count}</span>
       </button>
 
       {!collapsed && (
