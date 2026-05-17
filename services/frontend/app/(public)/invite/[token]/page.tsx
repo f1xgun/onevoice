@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInvitationPreview, useAcceptInvitation } from '@/lib/hooks/useInvitations';
-import { mapInviteError } from '@/lib/resolveErrorMap';
+import { useMapInviteError } from '@/lib/resolveErrorMap';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { RefusalCard } from '@/components/invite/RefusalCard';
 import { useAuthStore } from '@/lib/auth';
@@ -22,6 +22,7 @@ export default function AcceptInvitePage() {
   const { token } = useParams<{ token: string }>();
   const router = useRouter();
   const tInvite = useTranslations('invite.accept');
+  const mapInviteError = useMapInviteError();
 
   const isAuthed = useAuthStore((s) => s.isAuthenticated);
 

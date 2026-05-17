@@ -30,7 +30,7 @@ import { useDeleteRole } from '@/lib/hooks/useRoles';
 import { getMyPermissions } from '@/lib/api/permissions';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
-import { mapRoleError } from '@/lib/resolveErrorMap';
+import { useMapRoleError } from '@/lib/resolveErrorMap';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/lib/schemas';
 
@@ -142,6 +142,7 @@ export function DeleteRoleDialog({
 }: DeleteRoleDialogProps) {
   const t = useTranslations('roles.delete');
   const tList = useTranslations('roles.list');
+  const mapRoleError = useMapRoleError();
   const qc = useQueryClient();
   const deleteMut = useDeleteRole(businessId);
 

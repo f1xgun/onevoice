@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCreateInvitation } from '@/lib/hooks/useInvitations';
-import { mapInviteError } from '@/lib/resolveErrorMap';
+import { useMapInviteError } from '@/lib/resolveErrorMap';
 import type { Role } from '@/lib/schemas';
 
 const EXPIRY_OPTIONS = ['3600', '86400', '604800', '2592000'] as const;
@@ -62,6 +62,7 @@ export function InviteModal({
   const tInvite = useTranslations('team.invite');
   const tInviteCopy = useTranslations('team.invite.copy');
   const tExpiry = useTranslations('team.invite.expiryOptions');
+  const mapInviteError = useMapInviteError();
   const [state, setState] = useState<ModalState>({ kind: 'form' });
   const [inlineError, setInlineError] = useState<string | null>(null);
   const copyButtonRef = useRef<HTMLButtonElement | null>(null);
