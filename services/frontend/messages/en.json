@@ -743,7 +743,10 @@
       "missingPlatform": "Can't find your channel?",
       "missingPlatformBody": "Drop us a line — we'll add it in an upcoming release.",
       "requestChannel": "Request a channel",
-      "subscribe": "Subscribe"
+      "subscribe": "Subscribe",
+      "channelDisconnected": "Channel disconnected",
+      "disconnectFailed": "Couldn't disconnect",
+      "googleAuthFailed": "Couldn't open Google sign-in"
     },
     "platformCard": {
       "connected": "Connected",
@@ -756,11 +759,22 @@
       "addBotToGroupBody": "This channel has a linked discussion group for comments, but the bot isn't in it — so comments on posts aren't being collected. Open the discussion group → members → invite the bot.",
       "close": "Close",
       "disconnect": "Disconnect",
+      "disconnectTitle": "Disconnect {name}?",
       "disconnectBody": "Message history will stay in the archive. To start receiving messages from {name} again, you'll need to reconnect the channel.",
       "botMissingAria": "Bot isn't in the discussion group",
       "botMissingTooltip": "Bot isn't in the discussion group — comments aren't being collected",
       "botRecheck": "I added the bot — check again",
-      "botRechecking": "Checking…"
+      "botRechecking": "Checking…",
+      "status": {
+        "active": "Connected",
+        "inactive": "Disconnected",
+        "error": "Error",
+        "pending_cookies": "Awaiting input",
+        "token_expired": "Token expired"
+      },
+      "linkedGroupOk": "The bot is in the discussion group — comments will be collected.",
+      "linkedGroupMissing": "The bot still isn't in the discussion group.",
+      "linkedGroupCheckFailed": "Couldn't check the status"
     },
     "vkCommunity": {
       "title": "Connect VK community",
@@ -811,7 +825,14 @@
       "next": "Next",
       "searching": "Looking up your organizations on Yandex…",
       "searchingBody": "This may take up to a minute. We're opening Yandex.Business on your behalf to fetch the list.",
-      "found": "Found {count} organization{ending}. Which one should we connect to OneVoice?",
+      "pastePlaceholder": "Paste here: a JSON array, a \"Cookie:\" header, or Session_id=...",
+      "formatLabels": {
+        "json": "JSON array (Cookie-Editor)",
+        "cookie_header": "Cookie header",
+        "session_id_value": "Session_id value",
+        "generic": "format"
+      },
+      "found": "Found {count, plural, one {# organization} other {# organizations}}. Which one should we connect to OneVoice?",
       "back": "Back",
       "connect": "Connect",
       "connecting": "Connecting…",

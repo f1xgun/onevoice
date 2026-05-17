@@ -9,7 +9,6 @@ import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
-import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,12 +31,6 @@ interface CompanyEntry {
   permalink: string;
   name: string;
 }
-
-const FORMAT_LABELS: Record<NonNullable<ProbeResponse['format']>, string> = {
-  json: 'JSON-массив (Cookie-Editor)',
-  cookie_header: 'Cookie-заголовок',
-  session_id_value: 'значение Session_id',
-};
 
 const PROBE_DEBOUNCE_MS = 500;
 
@@ -234,7 +227,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
                 autoFocus
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
-                placeholder='Вставьте сюда: JSON-массив, "Cookie:" заголовок, или Session_id=...'
+                placeholder={tYa('pastePlaceholder')}
                 rows={6}
                 className="font-mono text-xs"
               />
@@ -264,9 +257,7 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
 
         {step === 'pick' && (
           <form onSubmit={handlePickSubmit} className="space-y-4">
-            <p className="text-sm text-gray-700">
-              {tYa('found', { count: companies.length, ending: plural(companies.length) })}
-            </p>
+            <p className="text-sm text-gray-700">{tYa('found', { count: companies.length })}</p>
             <div className="max-h-80 space-y-2 overflow-y-auto">
               {companies.map((c) => (
                 <label
@@ -321,18 +312,6 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
   );
 }
 
-// plural picks the right Russian noun ending: 1 → "ация", 2-4 → "ации", else → "аций".
-function plural(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  // The 11–14 range (RU_PLURAL_TEEN_LOWER..RU_PLURAL_TEEN_UPPER) always
-  // takes the genitive-plural ending, overriding the last-digit rule.
-  const isTeen = mod100 >= RU_PLURAL_TEEN_LOWER && mod100 <= RU_PLURAL_TEEN_UPPER;
-  if (mod10 === 1 && !isTeen) return 'ация';
-  if (mod10 >= 2 && mod10 <= RU_PLURAL_PAUCAL_UPPER && !isTeen) return 'ации';
-  return 'аций';
-}
-
 function ProbeStatus({
   probing,
   probe,
@@ -357,7 +336,9 @@ function ProbeStatus({
     );
   }
 
-  const formatLabel = probe.format ? FORMAT_LABELS[probe.format] : 'формат';
+  const formatLabel = probe.format
+    ? tYa(`formatLabels.${probe.format}`)
+    : tYa('formatLabels.generic');
 
   return (
     <div className="space-y-1 text-sm">

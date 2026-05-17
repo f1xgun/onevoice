@@ -155,9 +155,9 @@ export default function IntegrationsPage() {
     onSuccess: () => {
       trackClick('disconnect_integration');
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
-      toast.success('Канал отключён');
+      toast.success(tIntegrations('page.channelDisconnected'));
     },
-    onError: () => toast.error('Не получилось отключить'),
+    onError: () => toast.error(tIntegrations('page.disconnectFailed')),
   });
 
   const getIntegrationsForPlatform = (platformId: string): Integration[] =>
@@ -181,7 +181,7 @@ export default function IntegrationsPage() {
         );
         window.location.href = data.url;
       } catch {
-        toast.error('Не получилось открыть авторизацию Google');
+        toast.error(tIntegrations('page.googleAuthFailed'));
       }
       return;
     }
