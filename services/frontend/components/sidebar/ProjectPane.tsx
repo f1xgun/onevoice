@@ -111,7 +111,7 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
       <Link
         href="/projects/new"
         onClick={onNavigate}
-        className="mt-1 block px-2 py-1 text-xs text-ink-faint hover:text-ink"
+        className="mt-1 block px-2 py-1 text-xs text-ink-soft hover:text-ink"
       >
         {tSide('newProject')}
       </Link>
