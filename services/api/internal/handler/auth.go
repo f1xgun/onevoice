@@ -142,7 +142,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Validate request
 	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 
@@ -185,7 +185,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Validate request
 	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 
@@ -306,7 +306,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 
@@ -351,7 +351,7 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 

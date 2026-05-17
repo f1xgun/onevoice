@@ -21,6 +21,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/vkapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -250,4 +251,13 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 // writeJSONError writes a JSON error response.
 func writeJSONError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, ErrorResponse{Error: message})
+}
+
+// writeJSONErrorKey resolves `key` against pkg/i18n using the locale on
+// r.Context() (populated by middleware.Locale) and writes the localized
+// message as the JSON `error` field. Mirrors handler.writeJSONErrorKey —
+// duplicated locally to avoid a circular import once package handler
+// imports this oauth sub-package.
+func writeJSONErrorKey(w http.ResponseWriter, r *http.Request, status int, key string, args ...any) {
+	writeJSON(w, status, ErrorResponse{Error: i18n.Tr(r.Context(), key, args...)})
 }

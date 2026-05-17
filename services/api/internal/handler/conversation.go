@@ -154,7 +154,7 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 
 	// Validate request
 	if err := validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 
@@ -323,7 +323,7 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 		return
 	}
 	if err := validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 
