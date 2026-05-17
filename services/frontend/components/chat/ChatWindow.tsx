@@ -18,7 +18,7 @@ import { useChat } from '@/hooks/useChat';
 import { usePendingApprovalFlow } from '@/hooks/usePendingApprovalFlow';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
-import { DEFAULT_QUICK_ACTIONS } from '@/lib/quick-actions';
+import { useDefaultQuickActions } from '@/lib/quick-actions';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { useBusinessStore } from '@/lib/stores/business';
@@ -84,10 +84,11 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
     return projects.find((p) => p.id === conversation.projectId) ?? null;
   }, [conversation?.projectId, projects]);
 
+  const defaultQuickActions = useDefaultQuickActions();
   const quickActions =
     currentProject?.quickActions && currentProject.quickActions.length > 0
       ? currentProject.quickActions
-      : DEFAULT_QUICK_ACTIONS;
+      : defaultQuickActions;
 
   const showEmptyState = messages.length === 0 && !isLoading;
 
