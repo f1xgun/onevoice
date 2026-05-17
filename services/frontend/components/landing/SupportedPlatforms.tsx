@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { ChannelMark } from '@/components/ui/channel-mark';
@@ -9,51 +10,50 @@ import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import type { PlatformStatus } from '@/lib/api/platforms';
 
 // Landing-channels grid for the Linen homepage. The 7 entries with a
-// registry id pull their "есть"/"скоро" status live from
-// GET /api/v1/platforms (so adding a new active platform to pkg/domain
-// automatically promotes its card here). The two editorial-only teasers
-// at the end (Instagram, Одноклассники) carry status='скоро' inline since
-// they have no agent and no roadmap commitment behind them.
+// registry id pull their live status from GET /api/v1/platforms (so
+// adding a new active platform to pkg/domain automatically promotes
+// its card here). The two editorial-only teasers at the end
+// (Instagram, Odnoklassniki) have no agent / no roadmap commitment.
 //
-// `name` matches a ChannelMark icon hint, `display` is the user-visible
-// label, `meta` is the small Russian descriptor.
+// `iconName` is an EN brand id consumed by ChannelMark (icon hint). The
+// user-facing label + meta blurb resolve from i18n via
+// landing.platforms.<key>.{display,meta}.
 type LandingPlatform = {
   id: string | null;
-  name: string;
-  display: string;
-  meta: string;
+  iconName: string;
+  i18nKey: string;
 };
 
 const LANDING_PLATFORMS: LandingPlatform[] = [
-  { id: 'telegram', name: 'Telegram', display: 'Telegram', meta: 'Каналы и боты' },
-  { id: 'vk', name: 'VK', display: 'ВКонтакте', meta: 'Сообщества' },
-  { id: 'yandex_business', name: 'Yandex', display: 'Яндекс.Бизнес', meta: 'Карта и отзывы' },
-  { id: 'google_business', name: 'Google', display: 'Google Business', meta: 'Оценивается' },
-  { id: '2gis', name: '2GIS', display: '2ГИС', meta: 'Оценивается' },
-  { id: 'avito', name: 'Avito', display: 'Авито', meta: 'Оценивается' },
-  { id: 'whatsapp', name: 'WhatsApp', display: 'WhatsApp', meta: 'Оценивается' },
-  // Editorial-only teasers — no backend registry entry, no agent. Stay
-  // hardcoded so we can advertise interest without polluting the technical
-  // platform list.
-  { id: null, name: 'Instagram', display: 'Instagram', meta: 'Оценивается' },
-  { id: null, name: 'OK', display: 'Одноклассники', meta: 'Оценивается' },
+  { id: 'telegram', iconName: 'Telegram', i18nKey: 'telegram' },
+  { id: 'vk', iconName: 'VK', i18nKey: 'vk' },
+  { id: 'yandex_business', iconName: 'Yandex', i18nKey: 'yandex_business' },
+  { id: 'google_business', iconName: 'Google', i18nKey: 'google_business' },
+  { id: '2gis', iconName: '2GIS', i18nKey: '2gis' },
+  { id: 'avito', iconName: 'Avito', i18nKey: 'avito' },
+  { id: 'whatsapp', iconName: 'WhatsApp', i18nKey: 'whatsapp' },
+  // Editorial-only teasers — no backend registry entry, no agent.
+  { id: null, iconName: 'Instagram', i18nKey: 'instagram' },
+  { id: null, iconName: 'OK', i18nKey: 'ok' },
 ];
 
 function statusForLanding(
   byId: Map<string, PlatformStatus>,
   id: string | null
-): { tone: 'success' | 'neutral'; label: 'есть' | 'скоро' } {
-  if (id === null) return { tone: 'neutral', label: 'скоро' };
+): { tone: 'success' | 'neutral'; key: 'have' | 'soon' } {
+  if (id === null) return { tone: 'neutral', key: 'soon' };
   const status = byId.get(id);
   // Treat oauth_not_configured the same as coming_soon for the landing —
   // visitors don't care that an admin hasn't configured creds, they care
   // whether the channel is live for them.
-  if (status === 'active') return { tone: 'success', label: 'есть' };
-  return { tone: 'neutral', label: 'скоро' };
+  if (status === 'active') return { tone: 'success', key: 'have' };
+  return { tone: 'neutral', key: 'soon' };
 }
 
 export function SupportedPlatforms() {
   const { platforms } = usePlatforms();
+  const tPlatforms = useTranslations('landing.platforms');
+  const tStatus = useTranslations('landing.platformStatus');
   const byId = useMemo(
     () => new Map<string, PlatformStatus>(platforms.map((p) => [p.id, p.status])),
     [platforms]
@@ -62,19 +62,21 @@ export function SupportedPlatforms() {
   return (
     <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
       {LANDING_PLATFORMS.map((p) => {
-        const { tone, label } = statusForLanding(byId, p.id);
+        const { tone, key } = statusForLanding(byId, p.id);
+        const display = tPlatforms(`${p.i18nKey}.display`);
+        const meta = tPlatforms(`${p.i18nKey}.meta`);
         return (
           <div
-            key={p.display}
+            key={display}
             className="flex min-h-[120px] flex-col gap-3 rounded-lg border border-line bg-paper-raised p-4"
           >
             <div className="flex items-center justify-between">
-              <ChannelMark name={p.name} size={28} />
-              <Badge tone={tone}>{label}</Badge>
+              <ChannelMark name={p.iconName} size={28} />
+              <Badge tone={tone}>{tStatus(key)}</Badge>
             </div>
             <div className="mt-auto">
-              <div className="text-[14px] font-medium">{p.display}</div>
-              <MonoLabel>{p.meta}</MonoLabel>
+              <div className="text-[14px] font-medium">{display}</div>
+              <MonoLabel>{meta}</MonoLabel>
             </div>
           </div>
         );
