@@ -19,7 +19,7 @@ import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
-import { REVIEW_STATUS_BADGES, type ReviewStatus } from '@/lib/constants/statuses';
+import { useReviewStatusBadges, type ReviewStatus } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
 
 // Manual refresh fan-out budget. The backend caps total work at 90s; the
@@ -83,8 +83,9 @@ function platformHasRating(id: string): boolean {
 }
 
 // Reply status → tone-mapped badge config — see lib/constants/statuses.
+// The badge record itself is built per-render via useReviewStatusBadges()
+// inside the consumer so a locale switch swaps the labels.
 type StatusKey = ReviewStatus;
-const statusBadge = REVIEW_STATUS_BADGES;
 
 function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
   return (
@@ -406,6 +407,7 @@ function ReviewCard({
   isSending: boolean;
 }) {
   const tReviews = useTranslations('reviews');
+  const statusBadge = useReviewStatusBadges();
   const meta = platformInfo(review.platform);
   const status =
     (review.replyStatus as StatusKey) in statusBadge ? (review.replyStatus as StatusKey) : 'read';

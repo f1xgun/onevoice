@@ -29,7 +29,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import {
   TASK_STATUS_DOT_CLASSES,
-  TASK_STATUS_LABELS,
+  useTaskStatusLabels,
   type TaskStatus,
 } from '@/lib/constants/statuses';
 import { CHANNEL_NAMES } from '@/lib/platforms';
@@ -201,6 +201,7 @@ export default function TasksPage() {
 
 function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
   const tErrors = useTranslations('tasks.errors');
+  const taskStatusLabels = useTaskStatusLabels();
   const status = (task.status as TaskStatus) ?? 'pending';
   const platformName = CHANNEL_NAMES[task.platform as keyof typeof CHANNEL_NAMES] ?? task.platform;
   const titleClass =
@@ -239,7 +240,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
             <span aria-hidden>·</span>
             <span>{format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}</span>
             <span aria-hidden>·</span>
-            <span>{TASK_STATUS_LABELS[status]}</span>
+            <span>{taskStatusLabels[status]}</span>
           </div>
         </div>
 
@@ -254,7 +255,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
           <span className="text-[13px] text-ink-mid">
             {format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}
           </span>
-          <span className="text-xs text-ink-soft">{TASK_STATUS_LABELS[status]}</span>
+          <span className="text-xs text-ink-soft">{taskStatusLabels[status]}</span>
         </div>
       </div>
 

@@ -187,6 +187,10 @@ describe('404 interceptor — warning toast (UI-RBAC-04)', () => {
     await expect(invokeInterceptor('/businesses/biz-1/members', 404)).rejects.toBeDefined();
     expect(clearFn).toHaveBeenCalled();
     expect(invalidateFn).toHaveBeenCalledWith({ queryKey: ['businesses'] });
+    // Phase B1: the toast is now fired via a fire-and-forget async
+    // helper that dynamically imports the messages bundle. Drain the
+    // microtask queue before asserting the mock saw the call.
+    await new Promise((r) => setTimeout(r, 0));
     expect(toast.warning).toHaveBeenCalledWith('Эта организация больше недоступна');
   });
 
