@@ -6,7 +6,7 @@
 // form so the section stays self-contained; the page-level header save lives
 // elsewhere and is reserved for cross-section coordination later.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -17,8 +17,7 @@ import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
-import { getTranslator } from '@/lib/i18n/translator';
-import { businessSchema, type BusinessInput } from '@/lib/schemas';
+import { createBusinessSchema, type BusinessInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,19 +31,31 @@ import {
 import type { Business } from '@/types/business';
 
 // Display order is fixed — labels are sourced from `business.categories.*`
-// in messages/ru.json (see Wave 3.2). The select's `value` is the stable
-// category id; the `label` only drives what the user sees.
+// in messages/{locale}.json. The select's `value` is the stable category
+// id; the `label` only drives what the user sees. Built inside the
+// component (B1) so a runtime locale switch swaps the labels along with
+// the rest of the page.
 const CATEGORY_IDS = ['cafe', 'retail', 'service', 'beauty', 'education', 'other'] as const;
-const tCategories = getTranslator('business.categories');
-const CATEGORIES = CATEGORY_IDS.map((id) => ({ value: id, label: tCategories(id) }));
 
 export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Business> }) {
   const tProfileForm = useTranslations('business.profileForm');
   const tCommon = useTranslations('common');
+  const tCategories = useTranslations('business.categories');
+  const tValidation = useTranslations('validation');
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState(defaultValues?.logoUrl ?? '');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+
+  // Rebuild on locale-driven translator changes so the dropdown items
+  // re-render with the active language's copy (B1).
+  const CATEGORIES = useMemo(
+    () => CATEGORY_IDS.map((id) => ({ value: id, label: tCategories(id) })),
+    [tCategories]
+  );
+  // Same idea for the Zod schema — validation messages must follow the
+  // active locale (B1).
+  const businessSchema = useMemo(() => createBusinessSchema(tValidation), [tValidation]);
 
   const {
     register,

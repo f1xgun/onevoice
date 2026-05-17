@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -13,7 +14,7 @@ import { useAuthStore } from '@/lib/auth';
 import { queryClient } from '@/lib/queryClient';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
-import { registerSchema, type RegisterInput } from '@/lib/schemas';
+import { createRegisterSchema, type RegisterInput } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,6 +25,11 @@ export default function RegisterPage() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
   const tReg = useTranslations('auth.register');
+  const tValidation = useTranslations('validation');
+  // Rebuild the schema whenever the validation translator identity changes
+  // so a runtime locale switch swaps the Russian validation copy with the
+  // English one (Phase B1).
+  const registerSchema = useMemo(() => createRegisterSchema(tValidation), [tValidation]);
 
   const {
     register,

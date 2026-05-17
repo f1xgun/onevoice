@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { getTranslator } from '@/lib/i18n/translator';
 
 // Field length limits — kept here to keep all schema-level
 // constraints in one place and to satisfy the
@@ -15,53 +14,78 @@ const BUSINESS_NAME_MAX_LEN = 200;
 const BUSINESS_DESCRIPTION_MAX_LEN = 500;
 const BUSINESS_ADDRESS_MAX_LEN = 500;
 
-// Module-level translator: schemas are declared once at module load, so a
-// React-hook translator wouldn't fit. `getTranslator` reads ru.json
-// directly and is bundle-safe on both server and client.
-const tValidation = getTranslator('validation');
-const minChars = (count: number) => tValidation('minChars', { count });
-const maxChars = (count: number) => tValidation('maxChars', { count });
+// Translator shape we depend on for schema messages. Compatible with both
+// `useTranslations('validation')` (React) and `getServerTranslator(
+// 'validation')` (async server) outputs. Declared as a structural type so
+// consumers don't have to import next-intl just to call the factory.
+type ValidationTranslator = (key: string, params?: Record<string, unknown>) => string;
 
-export const loginSchema = z.object({
-  email: z.string().email(tValidation('email')).max(EMAIL_MAX_LEN),
-  password: z.string().min(PASSWORD_MIN_LEN, minChars(PASSWORD_MIN_LEN)),
-});
+// Schema factories — request-scoped (Phase B1).
+//
+// Forms declared inside the React tree should call
+// `const t = useTranslations('validation')` and then wrap the schema in
+// `useMemo(() => createXxxSchema(t), [t])` so the schema is rebuilt with
+// the active locale's strings on every re-render. Server-side callers
+// pass an async-resolved `t` from `getServerTranslator('validation')`.
+//
+// The previous module-level `loginSchema` / `registerSchema` /
+// `businessSchema` exports are gone — keeping them around would re-pin
+// the runtime to `ru` (B1 fragility-removal). All consumers were
+// migrated in the same commit series.
 
-export const registerSchema = z
-  .object({
+export function createLoginSchema(t: ValidationTranslator) {
+  const minChars = (count: number) => t('minChars', { count });
+  return z.object({
+    email: z.string().email(t('email')).max(EMAIL_MAX_LEN),
+    password: z.string().min(PASSWORD_MIN_LEN, minChars(PASSWORD_MIN_LEN)),
+  });
+}
+
+export function createRegisterSchema(t: ValidationTranslator) {
+  const minChars = (count: number) => t('minChars', { count });
+  const maxChars = (count: number) => t('maxChars', { count });
+  return z
+    .object({
+      name: z
+        .string()
+        .min(NAME_MIN_LEN, minChars(NAME_MIN_LEN))
+        .max(NAME_MAX_LEN, maxChars(NAME_MAX_LEN)),
+      email: z.string().email(t('email')).max(EMAIL_MAX_LEN),
+      password: z.string().min(PASSWORD_MIN_LEN, minChars(PASSWORD_MIN_LEN)),
+      confirmPassword: z.string(),
+    })
+    .refine((d) => d.password === d.confirmPassword, {
+      message: t('passwordsMismatch'),
+      path: ['confirmPassword'],
+    });
+}
+
+export function createBusinessSchema(t: ValidationTranslator) {
+  const minChars = (count: number) => t('minChars', { count });
+  const maxChars = (count: number) => t('maxChars', { count });
+  return z.object({
     name: z
       .string()
       .min(NAME_MIN_LEN, minChars(NAME_MIN_LEN))
-      .max(NAME_MAX_LEN, maxChars(NAME_MAX_LEN)),
-    email: z.string().email(tValidation('email')).max(EMAIL_MAX_LEN),
-    password: z.string().min(PASSWORD_MIN_LEN, minChars(PASSWORD_MIN_LEN)),
-    confirmPassword: z.string(),
-  })
-  .refine((d) => d.password === d.confirmPassword, {
-    message: tValidation('passwordsMismatch'),
-    path: ['confirmPassword'],
+      .max(BUSINESS_NAME_MAX_LEN, maxChars(BUSINESS_NAME_MAX_LEN)),
+    category: z.string().min(1, t('businessCategoryRequired')),
+    phone: z
+      .string()
+      .regex(/^\+?[0-9]{7,15}$/, t('phone'))
+      .optional()
+      .or(z.literal('')),
+    website: z.string().url(t('url')).optional().or(z.literal('')),
+    description: z.string().max(BUSINESS_DESCRIPTION_MAX_LEN).optional(),
+    address: z.string().max(BUSINESS_ADDRESS_MAX_LEN).optional(),
   });
+}
 
-export type LoginInput = z.infer<typeof loginSchema>;
-export type RegisterInput = z.infer<typeof registerSchema>;
-
-export const businessSchema = z.object({
-  name: z
-    .string()
-    .min(NAME_MIN_LEN, minChars(NAME_MIN_LEN))
-    .max(BUSINESS_NAME_MAX_LEN, maxChars(BUSINESS_NAME_MAX_LEN)),
-  category: z.string().min(1, tValidation('businessCategoryRequired')),
-  phone: z
-    .string()
-    .regex(/^\+?[0-9]{7,15}$/, tValidation('phone'))
-    .optional()
-    .or(z.literal('')),
-  website: z.string().url(tValidation('url')).optional().or(z.literal('')),
-  description: z.string().max(BUSINESS_DESCRIPTION_MAX_LEN).optional(),
-  address: z.string().max(BUSINESS_ADDRESS_MAX_LEN).optional(),
-});
-
-export type BusinessInput = z.infer<typeof businessSchema>;
+// Inferred types stay stable across the factory because the resulting Zod
+// shape doesn't depend on `t`. `ReturnType<typeof createXxxSchema>` is the
+// canonical way to spell that.
+export type LoginInput = z.infer<ReturnType<typeof createLoginSchema>>;
+export type RegisterInput = z.infer<ReturnType<typeof createRegisterSchema>>;
+export type BusinessInput = z.infer<ReturnType<typeof createBusinessSchema>>;
 
 // HITL tool registry & approvals.
 //
