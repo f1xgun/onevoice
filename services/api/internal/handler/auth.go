@@ -24,6 +24,7 @@ type UserService interface {
 	Logout(ctx context.Context, refreshToken string) error
 	GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
+	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
 }
 
 // Package-level validator instance (reused across handlers)
@@ -118,6 +119,15 @@ type RefreshTokenResponse struct {
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword" validate:"required"`
 	NewPassword     string `json:"newPassword" validate:"required,min=8"`
+}
+
+// UpdatePreferredLocaleRequest is the body for PATCH /api/v1/auth/locale.
+// The validator's `oneof` tag enforces the 'ru'|'en' allow-list at the HTTP
+// boundary; the DB CHECK constraint added in migration 000008 is the
+// defense-in-depth floor. Widening the allow-list is a one-line tag + one
+// migration when we add more languages — i18n Phase A3.
+type UpdatePreferredLocaleRequest struct {
+	Locale string `json:"locale" validate:"required,oneof=ru en"`
 }
 
 // Register handles user registration and auto-login
@@ -315,4 +325,45 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// UpdatePreferredLocale handles PATCH /api/v1/auth/locale.
+//
+// Accepts `{"locale": "ru" | "en"}`, persists it on the authenticated user's
+// row, and returns 204 No Content on success. Invalid locale values return
+// 400 via the validator (`oneof=ru en` tag). This endpoint deliberately does
+// NOT read the Accept-Language header — it accepts an explicit user choice
+// from the body; the i18n.Locale middleware A1 wired into the chain still
+// stores the resolved header tag in r.Context() for OTHER endpoints that
+// localize their responses, but locale persistence is a user action, not a
+// header reflection. i18n Phase A3.
+func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req UpdatePreferredLocaleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, err)
+		return
+	}
+
+	if err := h.userService.UpdatePreferredLocale(r.Context(), userID, req.Locale); err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			writeJSONError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		slog.Error("failed to update preferred locale", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusNoContent, nil)
 }

@@ -131,6 +131,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Post("/auth/logout", handlers.Auth.Logout)
 			r.Get("/auth/me", handlers.Auth.Me)
 			r.Put("/auth/password", handlers.Auth.ChangePassword)
+			// i18n Phase A3: persist the user's UI language choice
+			// ('ru'|'en'). Sits next to /auth/me/password as a sibling
+			// account-self-service endpoint; the frontend syncs the cookie ↔
+			// DB on login via GET /auth/me reading preferred_locale + this
+			// PATCH writing it. PATCH (not PUT) because the request is a
+			// partial — only the locale field — and PATCH is the verb the
+			// rest of the API uses for scalar mutations (e.g.
+			// /members/{userId}).
+			r.Patch("/auth/locale", handlers.Auth.UpdatePreferredLocale)
 
 			// Phase 1 v2.0 RBAC (AUTHZ-01 / CONTEXT D-15): static permission registry.
 			// Auth-required (any logged-in user) — no business scope.
