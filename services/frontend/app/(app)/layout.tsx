@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { trackEvent } from '@/lib/telemetry';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Sidebar } from '@/components/sidebar';
 import { NavRail } from '@/components/sidebar/NavRail';
 import { ProjectPane } from '@/components/sidebar/ProjectPane';
@@ -29,6 +30,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // Start as true so we always show a loading state until the effect has run
   // This prevents the brief flash of protected content
   const [ready, setReady] = useState(false);
+  // Mount-time viewport gate. The shell renders EXACTLY ONE variant — mobile
+  // OR desktop — so the DOM has exactly one `<main>` and one `<h1>` (axe
+  // a11y rules `landmark-one-main` + `heading-one`). Two-variant CSS
+  // toggling (`hidden md:flex`) used to leak both into the tree and trip
+  // both rules across every authenticated route.
+  const isDesktop = useIsDesktop();
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -106,56 +113,75 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             shell but only after BusinessRequiredGuard resolves a valid
             activeBusinessId. Renders no DOM. */}
         <PermissionsCacheGuard />
-        {/* Mobile: keep the existing Sheet-based drawer (Sidebar) which
-            renders top bar + drawer with the full nav + project tree.
-            The flex-column + h-screen pair gives <main> a real height so
-            h-full layouts inside (chat composer at the bottom, etc.)
-            actually work — without it h-full collapses to 0 and the
-            composer drifts to wherever content ends. */}
-        <div className="flex h-screen flex-col md:hidden">
-          <Sidebar />
-          <main className="min-h-0 flex-1 overflow-y-auto bg-background">{children}</main>
-        </div>
-
-        {/* Desktop: NavRail (always) + PanelGroup hosting conditional
-            ProjectPane and main content. autoSaveId persists the resized
-            width to localStorage under
-            `react-resizable-panels:onevoice:sidebar-width`. */}
-        <div className="hidden h-screen md:flex">
-          <NavRail />
-          <PanelGroup direction="horizontal" autoSaveId="onevoice:sidebar-width" className="flex-1">
-            {showProjectPane && (
-              <>
-                {/* defaultSize=22 ≈ 280 px on a 1280 px viewport
-                    (default 280 px). minSize=12 / maxSize=35 cover the
-                    locked 200–480 px range without clipping.
-                    Explicit id+order keep the panel registry stable when
-                    showProjectPane toggles between routes — without them
-                    react-resizable-panels v3 re-keys panels on remount and
-                    the resize handle ends up reporting deltas against the
-                    wrong neighbour, inverting the drag direction. */}
-                <Panel
-                  id="project-pane"
-                  order={1}
-                  defaultSize={22}
-                  minSize={12}
-                  maxSize={35}
-                  className="motion-reduce:transition-none"
-                >
-                  <ProjectPane />
-                </Panel>
-                <PanelResizeHandle
-                  id="project-pane-handle"
-                  aria-label={tSidebar('resizeAria')}
-                  className="w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
-                />
-              </>
-            )}
-            <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
-              <main className="h-full overflow-y-auto bg-background">{children}</main>
-            </Panel>
-          </PanelGroup>
-        </div>
+        {/* Render EXACTLY ONE variant. The DOM holds a single <main
+            id="main-content"> and the page's PageHeader child renders a
+            single <h1>. The previous `md:hidden` + `hidden md:flex` dual
+            tree leaked both into the DOM and tripped axe-core's
+            `landmark-one-main` + `heading-one` on every authenticated
+            route. `useIsDesktop` returns false on first paint (SSR-safe)
+            and promotes on mount, so the user briefly sees mobile chrome
+            on a wide screen pre-hydration — acceptable trade for a clean
+            landmark tree. */}
+        {isDesktop ? (
+          // Desktop: NavRail (always) + PanelGroup hosting conditional
+          // ProjectPane and main content. autoSaveId persists the resized
+          // width to localStorage under
+          // `react-resizable-panels:onevoice:sidebar-width`.
+          <div className="flex h-screen">
+            <NavRail />
+            <PanelGroup
+              direction="horizontal"
+              autoSaveId="onevoice:sidebar-width"
+              className="flex-1"
+            >
+              {showProjectPane && (
+                <>
+                  {/* defaultSize=22 ≈ 280 px on a 1280 px viewport
+                      (default 280 px). minSize=12 / maxSize=35 cover the
+                      locked 200–480 px range without clipping.
+                      Explicit id+order keep the panel registry stable when
+                      showProjectPane toggles between routes — without them
+                      react-resizable-panels v3 re-keys panels on remount and
+                      the resize handle ends up reporting deltas against the
+                      wrong neighbour, inverting the drag direction. */}
+                  <Panel
+                    id="project-pane"
+                    order={1}
+                    defaultSize={22}
+                    minSize={12}
+                    maxSize={35}
+                    className="motion-reduce:transition-none"
+                  >
+                    <ProjectPane />
+                  </Panel>
+                  <PanelResizeHandle
+                    id="project-pane-handle"
+                    aria-label={tSidebar('resizeAria')}
+                    className="w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
+                  />
+                </>
+              )}
+              <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
+                <main id="main-content" className="h-full overflow-y-auto bg-background">
+                  {children}
+                </main>
+              </Panel>
+            </PanelGroup>
+          </div>
+        ) : (
+          // Mobile: top bar (Sidebar — renders the hamburger + Sheet drawer
+          // hosting NavRail + ProjectPane) + scrolling main content. The
+          // flex-column + h-screen pair gives <main> a real height so
+          // h-full layouts inside (chat composer at the bottom, etc.)
+          // actually work — without it h-full collapses to 0 and the
+          // composer drifts to wherever content ends.
+          <div className="flex h-screen flex-col">
+            <Sidebar />
+            <main id="main-content" className="min-h-0 flex-1 overflow-y-auto bg-background">
+              {children}
+            </main>
+          </div>
+        )}
       </>
     </BusinessRequiredGuard>
   );
