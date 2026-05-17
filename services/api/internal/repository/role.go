@@ -422,7 +422,7 @@ func (r *roleRepository) DeleteInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID
 // DeleteWithReassignInTx is the Phase 5 atomic delete-with-reassignment.
 // Order is FIXED: reassign members FIRST, then delete the role. Reversing
 // the order would 23503/restrict_violation because business_members.role_id
-// REFERENCES roles(id) ON DELETE RESTRICT (migrations/postgres/000006:34).
+// REFERENCES roles(id) ON DELETE RESTRICT (migrations/postgres/000007_rbac_data_model.up.sql:34).
 // actorUserID is written to business_members.role_changed_by for audit
 // (DATA-08); role_changed_at is set to now(). Returns ErrRoleNotFound if the
 // role is missing OR is_system=true. Returns an error if oldRoleID ==

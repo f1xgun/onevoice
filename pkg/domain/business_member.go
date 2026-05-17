@@ -1,7 +1,7 @@
 // Package domain — business_member.go
 //
 // BusinessMember is one row of the business_members table created in
-// migration 000006/000005. The PK is composite (business_id, user_id) — the
+// migration 000007/000005. The PK is composite (business_id, user_id) — the
 // table has no synthetic id column. Single-role-per-membership is enforced
 // by the PK; multi-role-per-membership is explicitly out of scope (AF-6 in
 // REQUIREMENTS.md).

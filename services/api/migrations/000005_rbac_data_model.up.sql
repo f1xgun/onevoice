@@ -3,7 +3,7 @@
 -- idempotent backfill of businesses.user_id, BEFORE DELETE trigger on users.
 --
 -- Integration-test path: uses uuid_generate_v4() (matches services/api/migrations/000001_initial_schema.up.sql).
--- Production mirror lives at migrations/postgres/000006_rbac_data_model.up.sql
+-- Production mirror lives at migrations/postgres/000007_rbac_data_model.up.sql
 -- and uses gen_random_uuid() — same logical schema, different UUID idiom per
 -- project_migration_dual_path memory.
 
