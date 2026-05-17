@@ -154,11 +154,21 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   >
                     <ProjectPane />
                   </Panel>
-                  <PanelResizeHandle
-                    id="project-pane-handle"
-                    aria-label={tSidebar('resizeAria')}
-                    className="w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
-                  />
+                  {/* The resize handle sits between two <Panel>s — outside
+                      both <aside> (ProjectPane) and <main>. axe-core's
+                      `region` rule flags it as content with no enclosing
+                      landmark (it has an aria-label, so axe's hasContent
+                      counts it as labeled content). Wrap in a thin
+                      role="region" landmark to satisfy the rule without
+                      moving the handle in the DOM (PanelGroup requires
+                      PanelResizeHandle as a descendant). */}
+                  <div role="region" aria-label={tSidebar('resizeAria')} className="h-full">
+                    <PanelResizeHandle
+                      id="project-pane-handle"
+                      aria-label={tSidebar('resizeAria')}
+                      className="h-full w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
+                    />
+                  </div>
                 </>
               )}
               <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
