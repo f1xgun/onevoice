@@ -111,6 +111,7 @@ export function ConversationItem({
             <Button
               variant="ghost"
               size="icon"
+              aria-label={tRow('triggerAria', { title: displayTitle })}
               className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
               onClick={(e) => e.stopPropagation()}
             >
