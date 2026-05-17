@@ -1,21 +1,50 @@
 import '@testing-library/jest-dom';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 
 // Global next-intl stub. Real translation plumbing lives at
 // lib/i18n/request.ts and only matters in production / e2e — tests
 // shouldn't have to mount NextIntlClientProvider just to render any
 // component that calls useTranslations.
 //
-// The stub looks the key up in messages/ru.json so tests that assert
-// Russian copy ('Чат', 'Профиль бизнеса', etc.) continue to find what
+// The stub looks the key up in messages/{ru,en}.json so tests that
+// assert literal copy ('Чат', 'Welcome', etc.) continue to find what
 // they expect. Missing keys fall back to the namespaced key string so
 // the failure surface is "saw 'nav.foo' instead of 'Чат'" rather than
 // a context-not-found exception.
+//
+// DEFAULT LOCALE IS `ru`. ~39 component tests assert RU literals from
+// `messages/ru.json` directly, so flipping the default would mass-fail
+// them. Tests that need to exercise EN behavior (locale-switch smoke,
+// future-localised UI assertions) opt in via `__setTestLocale('en')`,
+// which the cross-cutting `afterEach` below resets back to `ru`.
 import ruMessages from './messages/ru.json';
+import enMessages from './messages/en.json';
+
+type SupportedLocale = 'ru' | 'en';
+const messageBundles: Record<SupportedLocale, unknown> = {
+  ru: ruMessages,
+  en: enMessages,
+};
+
+const state: { locale: SupportedLocale } = { locale: 'ru' };
+
+// Per-test locale override hook. Call from inside a test:
+//   __setTestLocale('en');   // assertions now look up `messages/en.json`
+// The global `afterEach` below resets to 'ru' so subsequent tests stay
+// pinned.
+function setTestLocale(locale: SupportedLocale): void {
+  state.locale = locale;
+}
+(globalThis as unknown as { __setTestLocale: typeof setTestLocale }).__setTestLocale =
+  setTestLocale;
+
+afterEach(() => {
+  state.locale = 'ru';
+});
 
 function lookupRaw(namespace: string | undefined, key: string): unknown {
   const path = namespace ? `${namespace}.${key}`.split('.') : key.split('.');
-  let cursor: unknown = ruMessages;
+  let cursor: unknown = messageBundles[state.locale];
   for (const part of path) {
     if (typeof cursor === 'object' && cursor !== null && part in cursor) {
       cursor = (cursor as Record<string, unknown>)[part];
@@ -156,7 +185,7 @@ vi.mock('next-intl', () => {
     // function; the test stub mirrors `useTranslations` so callers get
     // the same key/params behavior.
     createTranslator: ({ namespace }: { namespace?: string } = {}) => tFactory(namespace),
-    useLocale: () => 'ru',
+    useLocale: () => state.locale,
     useFormatter: () => ({
       dateTime: (d: Date) => d.toISOString(),
       number: (n: number) => String(n),
