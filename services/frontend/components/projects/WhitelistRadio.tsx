@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -11,36 +12,12 @@ interface WhitelistRadioProps {
   name?: string;
 }
 
-interface WhitelistOption {
-  value: WhitelistMode;
-  label: string;
-  helper: string;
-}
-
-const OPTIONS: readonly WhitelistOption[] = [
-  {
-    value: 'inherit',
-    label: 'Как у бизнеса',
-    helper: 'Использовать настройки бизнеса (по умолчанию все доступные инструменты).',
-  },
-  {
-    value: 'all',
-    label: 'Все инструменты',
-    helper: 'Любой инструмент активной интеграции доступен LLM.',
-  },
-  {
-    value: 'explicit',
-    label: 'Выбранные',
-    helper: 'Разрешить только отмеченные ниже.',
-  },
-  {
-    value: 'none',
-    label: 'Никаких',
-    helper: 'LLM может отвечать, но не будет выполнять действия.',
-  },
-];
+// Stable iteration order — labels + helper copy resolve through
+// projects.whitelist.options.<mode>.{label,helper}.
+const OPTION_VALUES: readonly WhitelistMode[] = ['inherit', 'all', 'explicit', 'none'];
 
 export function WhitelistRadio({ value, onChange, name }: WhitelistRadioProps) {
+  const tWhitelist = useTranslations('projects.whitelist.options');
   return (
     <RadioGroup
       value={value}
@@ -48,22 +25,22 @@ export function WhitelistRadio({ value, onChange, name }: WhitelistRadioProps) {
       name={name}
       className="space-y-3"
     >
-      {OPTIONS.map((opt) => {
-        const id = `whitelist-${opt.value}`;
+      {OPTION_VALUES.map((mode) => {
+        const id = `whitelist-${mode}`;
         return (
           <div
-            key={opt.value}
+            key={mode}
             className={cn(
               'flex items-start gap-3 rounded-md border p-3 transition-colors',
-              value === opt.value ? 'bg-accent/40 border-primary' : 'border-border'
+              value === mode ? 'bg-accent/40 border-primary' : 'border-border'
             )}
           >
-            <RadioGroupItem value={opt.value} id={id} className="mt-0.5" />
+            <RadioGroupItem value={mode} id={id} className="mt-0.5" />
             <div className="flex-1">
               <Label htmlFor={id} className="cursor-pointer text-sm font-medium">
-                {opt.label}
+                {tWhitelist(`${mode}.label`)}
               </Label>
-              <p className="mt-1 text-xs text-muted-foreground">{opt.helper}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{tWhitelist(`${mode}.helper`)}</p>
             </div>
           </div>
         );

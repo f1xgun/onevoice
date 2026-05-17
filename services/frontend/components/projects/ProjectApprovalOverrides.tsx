@@ -67,13 +67,6 @@ function applySelection(
   return { ...current, [toolName]: selection };
 }
 
-function businessDefaultLabel(value: ToolApprovalValue | undefined): string {
-  if (value === 'auto') return 'Автоматически';
-  // Backend default for an unset key is effectively "manual"
-  // (no explicit entry ⇒ manual-floor tools require approval).
-  return 'Вручную';
-}
-
 function ToolRow({
   tool,
   value,
@@ -90,6 +83,12 @@ function ToolRow({
   const autoId = `po-auto-${tool.name}`;
   const manualId = `po-manual-${tool.name}`;
   const inheritId = `po-inherit-${tool.name}`;
+  // Backend default for an unset key is effectively "manual" (no explicit
+  // entry ⇒ manual-floor tools require approval). Routed through i18n via
+  // projects.approvalOverrides.businessDefault.<auto|manual>.
+  const businessDefaultLabel = tOver(
+    `businessDefault.${businessDefault === 'auto' ? 'auto' : 'manual'}`
+  );
 
   return (
     <div className="space-y-2 rounded-md border p-3">
@@ -126,9 +125,9 @@ function ToolRow({
               'rounded-md border px-2 py-0.5 text-xs text-muted-foreground',
               selection === SELECTION_INHERIT ? 'border-primary/40 bg-accent/40' : 'border-border'
             )}
-            aria-label={tOver('businessTag', { label: businessDefaultLabel(businessDefault) })}
+            aria-label={tOver('businessTag', { label: businessDefaultLabel })}
           >
-            {tOver('businessTag', { label: businessDefaultLabel(businessDefault) })}
+            {tOver('businessTag', { label: businessDefaultLabel })}
           </span>
         </div>
       </RadioGroup>
