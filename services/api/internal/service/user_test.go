@@ -20,10 +20,11 @@ import (
 
 // Mock UserRepository
 type mockUserRepository struct {
-	createFunc     func(ctx context.Context, user *domain.User) error
-	getByIDFunc    func(ctx context.Context, id uuid.UUID) (*domain.User, error)
-	getByEmailFunc func(ctx context.Context, email string) (*domain.User, error)
-	updateFunc     func(ctx context.Context, user *domain.User) error
+	createFunc                func(ctx context.Context, user *domain.User) error
+	getByIDFunc               func(ctx context.Context, id uuid.UUID) (*domain.User, error)
+	getByEmailFunc            func(ctx context.Context, email string) (*domain.User, error)
+	updateFunc                func(ctx context.Context, user *domain.User) error
+	updatePreferredLocaleFunc func(ctx context.Context, userID uuid.UUID, locale string) error
 }
 
 func (m *mockUserRepository) Create(ctx context.Context, user *domain.User) error {
@@ -50,6 +51,13 @@ func (m *mockUserRepository) GetByEmail(ctx context.Context, email string) (*dom
 func (m *mockUserRepository) Update(ctx context.Context, user *domain.User) error {
 	if m.updateFunc != nil {
 		return m.updateFunc(ctx, user)
+	}
+	return nil
+}
+
+func (m *mockUserRepository) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
+	if m.updatePreferredLocaleFunc != nil {
+		return m.updatePreferredLocaleFunc(ctx, userID, locale)
 	}
 	return nil
 }
@@ -774,6 +782,67 @@ func TestUserService_GetByID(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, user)
 		assert.Contains(t, err.Error(), "get user")
+	})
+}
+
+// TestUserService_UpdatePreferredLocale verifies the service layer delegates
+// straight to the repo, propagates ErrUserNotFound unwrapped (so the handler
+// can errors.Is against it for the 404 branch), and wraps unknown errors.
+func TestUserService_UpdatePreferredLocale(t *testing.T) {
+	ctx := context.Background()
+	redisClient, _ := setupRedis(t)
+	jwtSecret := "test-secret-must-be-32bytes-ok!!"
+
+	t.Run("success", func(t *testing.T) {
+		userID := uuid.New()
+		var calledWith struct {
+			id     uuid.UUID
+			locale string
+		}
+
+		repo := &mockUserRepository{
+			updatePreferredLocaleFunc: func(_ context.Context, id uuid.UUID, locale string) error {
+				calledWith.id = id
+				calledWith.locale = locale
+				return nil
+			},
+		}
+
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
+		err := svc.UpdatePreferredLocale(ctx, userID, "en")
+
+		require.NoError(t, err)
+		assert.Equal(t, userID, calledWith.id)
+		assert.Equal(t, "en", calledWith.locale)
+	})
+
+	t.Run("user not found - error propagated unwrapped", func(t *testing.T) {
+		repo := &mockUserRepository{
+			updatePreferredLocaleFunc: func(_ context.Context, _ uuid.UUID, _ string) error {
+				return domain.ErrUserNotFound
+			},
+		}
+
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
+		err := svc.UpdatePreferredLocale(ctx, uuid.New(), "ru")
+
+		assert.ErrorIs(t, err, domain.ErrUserNotFound)
+	})
+
+	t.Run("generic repo error - wrapped", func(t *testing.T) {
+		repoErr := errors.New("postgres write failed")
+		repo := &mockUserRepository{
+			updatePreferredLocaleFunc: func(_ context.Context, _ uuid.UUID, _ string) error {
+				return repoErr
+			},
+		}
+
+		svc, _ := NewUserService(repo, redisClient, jwtSecret)
+		err := svc.UpdatePreferredLocale(ctx, uuid.New(), "ru")
+
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, domain.ErrUserNotFound)
+		assert.Contains(t, err.Error(), "update preferred locale")
 	})
 }
 

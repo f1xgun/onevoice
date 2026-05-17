@@ -57,7 +57,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "password_hash", "created_at", "updated_at").
+		Select("id", "email", "password_hash", "preferred_locale", "created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -70,6 +70,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
+		&user.PreferredLocale,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -85,7 +86,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "password_hash", "created_at", "updated_at").
+		Select("id", "email", "password_hash", "preferred_locale", "created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"email": email}).
 		ToSql()
@@ -98,6 +99,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
+		&user.PreferredLocale,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -128,6 +130,37 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	cmdTag, err := r.pool.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("update user: %w", err)
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+
+	return nil
+}
+
+// UpdatePreferredLocale sets users.preferred_locale for the row matching
+// userID, also touching updated_at so audit-style queries notice the change.
+// Returns domain.ErrUserNotFound when 0 rows matched (mirrors Update above).
+//
+// Validation of the locale value itself ('ru' | 'en') happens at the handler
+// boundary. The DB CHECK constraint (migration 000008) is the defense-in-depth
+// floor — passing an invalid value here surfaces as a pgx error, NOT
+// ErrUserNotFound, because RowsAffected will be 0 only when id doesn't match.
+func (r *userRepository) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
+	sql, args, err := r.sb.
+		Update("users").
+		Set("preferred_locale", locale).
+		Set("updated_at", time.Now()).
+		Where(squirrel.Eq{"id": userID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update preferred_locale: %w", err)
+	}
+
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("update preferred_locale: %w", err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {

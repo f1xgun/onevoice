@@ -202,6 +202,13 @@ func (m *MockUserRepository) Update(ctx context.Context, user *domain.User) erro
 	return errors.New("not implemented")
 }
 
+// UpdatePreferredLocale is unused by the members/invitations handlers — the
+// stub returns "not implemented" so any future caller that wires it gets a
+// loud failure rather than a silent no-op.
+func (m *MockUserRepository) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
+	return errors.New("not implemented")
+}
+
 // MockCacheInvalidator is a testify/mock for memberCacheInvalidator.
 type MockCacheInvalidator struct {
 	mock.Mock
