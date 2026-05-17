@@ -17,14 +17,15 @@
 
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import Link from 'next/link';
 import { bizApi } from '@/lib/api/business-api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 import { useBusinessStore } from '@/lib/stores/business';
 import {
   TASK_STATUS_DOT_CLASSES,
@@ -200,6 +201,7 @@ export default function TasksPage() {
 function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
   const tErrors = useTranslations('tasks.errors');
   const taskStatusLabels = useTaskStatusLabels();
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const status = (task.status as TaskStatus) ?? 'pending';
   const platformName = CHANNEL_NAMES[task.platform as keyof typeof CHANNEL_NAMES] ?? task.platform;
   const titleClass =
@@ -236,7 +238,9 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
               {platformName}
             </span>
             <span aria-hidden>·</span>
-            <span>{format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}</span>
+            <span>
+              {format(new Date(task.createdAt), 'd MMM HH:mm', { locale: dateFnsLocale })}
+            </span>
             <span aria-hidden>·</span>
             <span>{taskStatusLabels[status]}</span>
           </div>
@@ -251,7 +255,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
         {/* Desktop-only: when · status label column */}
         <div className="hidden items-center justify-between gap-3 sm:flex">
           <span className="text-[13px] text-ink-mid">
-            {format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}
+            {format(new Date(task.createdAt), 'd MMM HH:mm', { locale: dateFnsLocale })}
           </span>
           <span className="text-xs text-ink-soft">{taskStatusLabels[status]}</span>
         </div>

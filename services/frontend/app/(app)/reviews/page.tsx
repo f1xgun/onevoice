@@ -10,7 +10,8 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
+import type { Locale } from '@/lib/i18n/locales';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { bizApi } from '@/lib/api/business-api';
@@ -128,11 +129,24 @@ function ReviewSkeleton() {
   );
 }
 
-// Format YYYY-MM-DD-ish ISO into "23 апр" style for the timestamp slot.
-function formatReviewDate(iso: string): string {
+// BCP-47 locale tag for Intl.DateTimeFormat. We map the in-app `Locale`
+// values to the canonical regional tags (`ru-RU`, `en-US`) so the
+// month-abbreviation form matches what the rest of the dashboard renders.
+const INTL_LOCALE_TAG: Record<Locale, string> = {
+  ru: 'ru-RU',
+  en: 'en-US',
+};
+
+// Format YYYY-MM-DD-ish ISO into "23 апр" / "Apr 23" style for the
+// timestamp slot. The locale comes from the consumer so a language
+// switch reformats existing rows without a remount.
+function formatReviewDate(iso: string, locale: Locale): string {
   try {
     const d = new Date(iso);
-    return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(d);
+    return new Intl.DateTimeFormat(INTL_LOCALE_TAG[locale], {
+      day: 'numeric',
+      month: 'short',
+    }).format(d);
   } catch {
     return iso;
   }
@@ -416,6 +430,7 @@ function ReviewCard({
   const tReviews = useTranslations('reviews');
   const tPlatformLabels = useTranslations('reviews.platformLabels');
   const statusBadge = useReviewStatusBadges();
+  const locale = useLocale() as Locale;
   // ChannelMark icon hint is EN/brand-id; display label resolves via i18n
   // platformLabels.<id> so a locale switch retitles the row.
   const channelMark = PLATFORM_CHANNEL_MARK[review.platform] ?? review.platform;
@@ -452,7 +467,7 @@ function ReviewCard({
         <span className="text-xs text-ink-soft">{meta.label}</span>
         {platformHasRating(review.platform) && <StarRating rating={review.rating} />}
         <span className="ml-auto flex items-center gap-3">
-          <MonoLabel>{formatReviewDate(review.createdAt)}</MonoLabel>
+          <MonoLabel>{formatReviewDate(review.createdAt, locale)}</MonoLabel>
           <Badge tone={badge.tone} dot>
             {badge.label}
           </Badge>

@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Link2 } from 'lucide-react';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 
 import {
   Table,
@@ -35,6 +36,7 @@ export function InvitationsTab({ businessId, invitations, sessionTokens }: Invit
   const tTeam = useTranslations('team');
   const tCols = useTranslations('team.invitations.cols');
   const tActions = useTranslations('team.invitations.actions');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const mapInviteError = useMapInviteError();
   const revoke = useRevokeInvitation(businessId);
   const [confirmRevoke, setConfirmRevoke] = useState<PendingInvitation | null>(null);
@@ -105,10 +107,10 @@ export function InvitationsTab({ businessId, invitations, sessionTokens }: Invit
                   </TableCell>
                   <TableCell
                     className="text-sm text-ink-mid"
-                    title={format(expires, 'd MMMM yyyy, HH:mm', { locale: ru })}
+                    title={format(expires, 'd MMMM yyyy, HH:mm', { locale: dateFnsLocale })}
                   >
                     {tTeam('invitations.expiry.relative', {
-                      duration: formatDistanceToNow(expires, { locale: ru }),
+                      duration: formatDistanceToNow(expires, { locale: dateFnsLocale }),
                     })}
                   </TableCell>
                   <TableCell className="text-sm text-ink-mid">{inv.created_by.email}</TableCell>

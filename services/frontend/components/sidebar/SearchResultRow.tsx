@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import type { ReactNode } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { ProjectChip } from '@/components/chat/ProjectChip';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 import type { SearchResult } from '@/types/search';
 
 // search result row.
@@ -78,11 +79,12 @@ interface Props {
 export function SearchResultRow({ result, onSelect }: Props) {
   const tSide = useTranslations('sidebar');
   const tChat = useTranslations('chat');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const href = result.topMessageId
     ? `/chat/${result.conversationId}?highlight=${encodeURIComponent(result.topMessageId)}`
     : `/chat/${result.conversationId}`;
   const dateLabel = result.lastMessageAt
-    ? format(parseISO(result.lastMessageAt), 'd MMM', { locale: ru })
+    ? format(parseISO(result.lastMessageAt), 'd MMM', { locale: dateFnsLocale })
     : '';
 
   // The parent Popover.Content carries role="listbox"

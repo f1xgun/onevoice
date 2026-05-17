@@ -12,13 +12,14 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import { CalendarIcon, X } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -291,8 +292,9 @@ function SpecialDateRow({
   onRemove: () => void;
 }) {
   const tSchedule = useTranslations('business.scheduleForm');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const closed = date.closed;
-  const formatted = format(parseISO(date.date), 'd MMMM · yyyy', { locale: ru });
+  const formatted = format(parseISO(date.date), 'd MMMM · yyyy', { locale: dateFnsLocale });
   return (
     <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-line-soft bg-paper px-4 py-3 sm:grid-cols-[180px_1fr_auto_auto]">
       <MonoLabel tone="ink" className="text-[13px] normal-case tracking-normal">

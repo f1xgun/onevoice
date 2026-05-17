@@ -5,8 +5,7 @@
 // convention: `_`-prefix means "not a route") lets the page shell stay
 // under the SC-01 LOC ceiling while preserving co-location.
 
-import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { format, type Locale as DateFnsLocale } from 'date-fns';
 
 import type { Post } from '@/types/post';
 
@@ -36,13 +35,17 @@ export function firstLink(post: Post): string | null {
   return null;
 }
 
-export function nextScheduledLabel(posts: Post[]): string {
+// Helper stays pure: caller hands in the active date-fns locale via
+// `getDateFnsLocale(useLocale())` so this module never has to import a
+// next-intl runtime hook (and the `_helpers.ts` server-helper
+// invariant is preserved).
+export function nextScheduledLabel(posts: Post[], locale: DateFnsLocale): string {
   const upcoming = posts
     .filter((p) => p.status === 'scheduled' && p.scheduledAt)
     .map((p) => new Date(p.scheduledAt as string))
     .sort((a, b) => a.getTime() - b.getTime());
   if (upcoming.length === 0) return '—';
-  return format(upcoming[0], 'd MMM', { locale: ru });
+  return format(upcoming[0], 'd MMM', { locale });
 }
 
 export function topLevelErrorStatus(post: Post): boolean {

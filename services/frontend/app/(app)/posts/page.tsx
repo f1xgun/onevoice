@@ -23,13 +23,14 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
 import { MonoLabel } from '@/components/ui/mono-label';
@@ -75,6 +76,7 @@ const POSTS_MIN_WIDTH = '620px';
 export default function PostsPage() {
   const tPosts = useTranslations('posts');
   const tCommon = useTranslations('common');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
   const { filters, setFilter, queryString } = useDataTableFilters<PostsFilters>({
@@ -167,7 +169,7 @@ export default function PostsPage() {
           const dateIso = p.scheduledAt ?? p.publishedAt ?? p.createdAt;
           return (
             <MonoLabel tone="mid" className="text-[12px] normal-case tracking-normal">
-              {format(new Date(dateIso), 'd MMM yyyy · HH:mm', { locale: ru })}
+              {format(new Date(dateIso), 'd MMM yyyy · HH:mm', { locale: dateFnsLocale })}
             </MonoLabel>
           );
         },
@@ -182,7 +184,7 @@ export default function PostsPage() {
         ),
       },
     ],
-    [tPosts]
+    [tPosts, dateFnsLocale]
   );
 
   return (
@@ -216,7 +218,9 @@ export default function PostsPage() {
               value={String(counts.scheduled)}
               hint={
                 counts.scheduled > 0
-                  ? tPosts('stats.scheduledHintNext', { label: nextScheduledLabel(posts) })
+                  ? tPosts('stats.scheduledHintNext', {
+                      label: nextScheduledLabel(posts, dateFnsLocale),
+                    })
                   : tPosts('stats.scheduledHintNone')
               }
             />
