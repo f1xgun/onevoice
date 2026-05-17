@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-import { PLATFORM_COLORS, PLATFORM_FULL_LABELS } from '@/lib/platforms';
+import { PLATFORM_COLORS, usePlatformFullLabels } from '@/lib/platforms';
 import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import { toolLabel, toolUserDescription, type Tool } from '@/lib/schemas';
 
@@ -17,10 +17,6 @@ interface ToolCheckboxGridProps {
 }
 
 const STORAGE_PREFIX = 'projects:whitelistPanel:';
-
-function platformLabel(platform: string): string {
-  return PLATFORM_FULL_LABELS[platform] ?? platform;
-}
 
 function readPersistedOpen(platform: string): boolean | undefined {
   if (typeof window === 'undefined') return undefined;
@@ -44,11 +40,13 @@ function writePersistedOpen(platform: string, open: boolean) {
 
 function PlatformSection({
   platform,
+  platformLabel,
   tools,
   value,
   onChange,
 }: {
   platform: string;
+  platformLabel: string;
   tools: Tool[];
   value: string[];
   onChange: (allowed: string[]) => void;
@@ -87,7 +85,7 @@ function PlatformSection({
         type="button"
       >
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{platformLabel(platform)}</span>
+          <span className="text-sm font-medium">{platformLabel}</span>
           <span className="text-xs text-muted-foreground">
             {checkedInPlatform} / {tools.length}
           </span>
@@ -130,6 +128,7 @@ function PlatformSection({
 
 export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCheckboxGridProps) {
   const tToolGrid = useTranslations('projects.toolCheckboxes');
+  const platformFullLabels = usePlatformFullLabels();
   const { data: tools, isLoading } = useTools();
 
   // Show all registered platforms (not just the user's active integrations)
@@ -153,6 +152,7 @@ export function ToolCheckboxGrid({ activeIntegrations, value, onChange }: ToolCh
         <PlatformSection
           key={platform}
           platform={platform}
+          platformLabel={platformFullLabels[platform] ?? platform}
           tools={buckets[platform]}
           value={value}
           onChange={onChange}

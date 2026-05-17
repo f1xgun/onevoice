@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
-import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
+import { usePlatformFullLabels } from '@/lib/platforms';
 import { groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import {
   toolLabel,
@@ -143,6 +143,7 @@ export function ProjectApprovalOverrides({
   onChange,
 }: ProjectApprovalOverridesProps) {
   const tOverMain = useTranslations('projects.approvalOverrides');
+  const platformFullLabels = usePlatformFullLabels();
   // Only manual-floor tools get a 3-way toggle. Forbidden tools can never
   // be enabled; auto-floor tools bypass HITL — neither is
   // meaningful here.
@@ -159,7 +160,7 @@ export function ProjectApprovalOverrides({
       {platforms.map((platform) => {
         const list = buckets[platform];
         if (list.length === 0) return null;
-        const label = PLATFORM_FULL_LABELS[platform] ?? platform;
+        const label = platformFullLabels[platform] ?? platform;
         return (
           <Card key={platform}>
             <CardHeader>
