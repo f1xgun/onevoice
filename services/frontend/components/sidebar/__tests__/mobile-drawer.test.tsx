@@ -70,6 +70,10 @@ vi.mock('@/lib/api/business-api', () => ({
   }),
 }));
 
+vi.mock('@/lib/hooks/usePermission', () => ({
+  usePermission: () => ({ allowed: true, isLoading: false }),
+}));
+
 // Mock plain api for non-business-scoped calls (auth, NavRail integrations).
 const apiGet = vi.fn();
 vi.mock('@/lib/api', () => ({

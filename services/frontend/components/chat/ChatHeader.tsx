@@ -14,6 +14,7 @@ import {
   useUnpinConversation,
 } from '@/hooks/useConversations';
 import { ChatRowMenu } from '@/components/chat/ChatRowMenu';
+import { usePermission } from '@/lib/hooks/usePermission';
 import type { Conversation, TitleStatus } from '@/lib/conversations';
 
 interface ChatHeaderProps {
@@ -110,24 +111,30 @@ function ChatHeaderImpl({
   const unpinMutation = useUnpinConversation();
   const tHeader = useTranslations('chat.header');
   const showMenu = menuTitle !== undefined && menuProjectId !== undefined;
+  const canUpdate = usePermission('content.update').allowed;
 
   return (
     <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-paper-raised px-6">
       <span className="truncate text-[15px] font-medium text-ink">{title}</span>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            if (pinned) unpinMutation.mutate(conversationId);
-            else pinMutation.mutate(conversationId);
-          }}
-          aria-label={pinned ? tHeader('unpinAria') : tHeader('pinAria')}
-          title={pinned ? tHeader('unpinAria') : tHeader('pinAria')}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
-          disabled={pinMutation.isPending || unpinMutation.isPending}
-        >
-          <Bookmark size={16} className={cn(pinned ? 'fill-ochre text-ochre' : 'text-ink-soft')} />
-        </button>
+        {canUpdate && (
+          <button
+            type="button"
+            onClick={() => {
+              if (pinned) unpinMutation.mutate(conversationId);
+              else pinMutation.mutate(conversationId);
+            }}
+            aria-label={pinned ? tHeader('unpinAria') : tHeader('pinAria')}
+            title={pinned ? tHeader('unpinAria') : tHeader('pinAria')}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
+            disabled={pinMutation.isPending || unpinMutation.isPending}
+          >
+            <Bookmark
+              size={16}
+              className={cn(pinned ? 'fill-ochre text-ochre' : 'text-ink-soft')}
+            />
+          </button>
+        )}
         {showMenu && (
           <ChatRowMenu
             conversation={{

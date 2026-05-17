@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { MessageCircle, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { conversationsQueryKey } from '@/hooks/useConversations';
@@ -33,6 +34,7 @@ export default function ChatListPage() {
   const tChat = useTranslations('chat');
   const tCommon = useTranslations('common');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const canCreate = usePermission('content.create').allowed;
 
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
     queryKey: conversationsQueryKey(activeBusinessId),
@@ -104,10 +106,12 @@ export default function ChatListPage() {
     <div className="mx-auto max-w-2xl p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{tChat('heading')}</h1>
-        <Button onClick={() => createConversation()} disabled={isPending}>
-          <Plus size={16} className="mr-2" />
-          {tChat('newConversation')}
-        </Button>
+        {canCreate && (
+          <Button onClick={() => createConversation()} disabled={isPending}>
+            <Plus size={16} className="mr-2" />
+            {tChat('newConversation')}
+          </Button>
+        )}
       </div>
 
       {isLoading ? (

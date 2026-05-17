@@ -37,6 +37,10 @@ vi.mock('@/lib/stores/business', () => ({
     selector({ activeBusinessId: 'test-biz-id' }),
 }));
 
+vi.mock('@/lib/hooks/usePermission', () => ({
+  usePermission: () => ({ allowed: true, isLoading: false }),
+}));
+
 const sampleProject: Project = {
   id: 'p-1',
   businessId: 'b-1',

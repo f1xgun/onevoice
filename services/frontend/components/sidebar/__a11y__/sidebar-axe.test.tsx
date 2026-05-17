@@ -50,6 +50,10 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
+vi.mock('@/lib/hooks/usePermission', () => ({
+  usePermission: () => ({ allowed: true, isLoading: false }),
+}));
+
 const BUSINESS_ID = 'biz-1';
 
 vi.mock('@/lib/stores/business', () => ({

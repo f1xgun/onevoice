@@ -41,6 +41,7 @@ import {
   useRegenerateConversationTitle,
   useRenameConversation,
 } from '@/hooks/useConversations';
+import { usePermission } from '@/lib/hooks/usePermission';
 import type { Conversation } from '@/lib/conversations';
 
 interface Props {
@@ -80,7 +81,11 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
   const regenerateMutation = useRegenerateConversationTitle();
   const deleteMutation = useDeleteConversation();
 
-  const canRegenerate = conversation.titleStatus !== 'manual';
+  const canUpdate = usePermission('content.update').allowed;
+  const canDelete = usePermission('content.delete').allowed;
+
+  const canRegenerate = canUpdate && conversation.titleStatus !== 'manual';
+  if (!canUpdate && !canDelete) return null;
 
   function openRename(e: Event) {
     e.preventDefault();
@@ -136,33 +141,43 @@ export function ChatRowMenu({ conversation, pinned, trigger, align = 'end', onDe
       <DropdownMenu>
         <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
         <DropdownMenuContent align={align}>
-          <DropdownMenuItem onSelect={openRename}>
-            <Pencil size={14} className="mr-2" />
-            {tRow('rename')}
-          </DropdownMenuItem>
+          {canUpdate && (
+            <DropdownMenuItem onSelect={openRename}>
+              <Pencil size={14} className="mr-2" />
+              {tRow('rename')}
+            </DropdownMenuItem>
+          )}
           {canRegenerate && (
             <DropdownMenuItem onSelect={handleRegenerate}>
               <RefreshCw size={14} className="mr-2" />
               {tRow('regenerateTitle')}
             </DropdownMenuItem>
           )}
-          <DropdownMenuSeparator />
-          <PinChatMenuItem conversationId={conversation.id} pinned={pinned} />
-          <MoveChatMenuItem
-            conversationId={conversation.id}
-            currentProjectId={conversation.projectId ?? null}
-          />
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="text-red-600 focus:text-red-600"
-            onSelect={(e) => {
-              e.preventDefault();
-              setConfirmDeleteOpen(true);
-            }}
-          >
-            <Trash2 size={14} className="mr-2" />
-            {tRow('delete')}
-          </DropdownMenuItem>
+          {canUpdate && (
+            <>
+              <DropdownMenuSeparator />
+              <PinChatMenuItem conversationId={conversation.id} pinned={pinned} />
+              <MoveChatMenuItem
+                conversationId={conversation.id}
+                currentProjectId={conversation.projectId ?? null}
+              />
+            </>
+          )}
+          {canDelete && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600"
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setConfirmDeleteOpen(true);
+                }}
+              >
+                <Trash2 size={14} className="mr-2" />
+                {tRow('delete')}
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

@@ -25,6 +25,7 @@ import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { cn } from '@/lib/utils';
 
 // Yandex.Business RPA refresh poll cadence (ms). After kicking off a
@@ -56,6 +57,8 @@ interface Props {
   onConnect: () => void;
   onDisconnect: (integrationId: string) => void;
   disabled?: boolean;
+  canConnect?: boolean;
+  canDisconnect?: boolean;
 }
 
 const statusLabels: Record<string, string> = {
@@ -93,6 +96,8 @@ export function PlatformCard({
   onConnect,
   onDisconnect,
   disabled,
+  canConnect = true,
+  canDisconnect = true,
 }: Props) {
   const tCard = useTranslations('integrations.platformCard');
   const qc = useQueryClient();
@@ -168,6 +173,7 @@ export function PlatformCard({
                   platform={platform}
                   platformLabel={label}
                   onDisconnect={onDisconnect}
+                  canDisconnect={canDisconnect}
                   refreshingID={refreshingID}
                   onRefreshTelegram={refreshTelegramLinkedGroup}
                   activeBusinessId={activeBusinessId}
@@ -179,19 +185,22 @@ export function PlatformCard({
                 platform={platform}
                 platformLabel={label}
                 onDisconnect={onDisconnect}
+                canDisconnect={canDisconnect}
                 refreshingID={refreshingID}
                 onRefreshTelegram={refreshTelegramLinkedGroup}
                 activeBusinessId={activeBusinessId}
               />
             )}
-            <Button variant="secondary" size="sm" className="mt-3" onClick={onConnect}>
-              {tCard('addChannel')}
-            </Button>
+            {canConnect && (
+              <Button variant="secondary" size="sm" className="mt-3" onClick={onConnect}>
+                {tCard('addChannel')}
+              </Button>
+            )}
           </div>
         </div>
       )}
 
-      {integrations.length === 0 && (
+      {integrations.length === 0 && canConnect && (
         <div className="px-5 pb-5">
           <Button variant="primary" size="sm" onClick={onConnect}>
             {tCard('connect')}
@@ -207,6 +216,7 @@ function ChannelList({
   platform,
   platformLabel,
   onDisconnect,
+  canDisconnect,
   refreshingID,
   onRefreshTelegram,
   activeBusinessId,
@@ -215,6 +225,7 @@ function ChannelList({
   platform: string;
   platformLabel: string;
   onDisconnect: (integrationId: string) => void;
+  canDisconnect: boolean;
   refreshingID: string | null;
   onRefreshTelegram: (i: Integration) => void;
   activeBusinessId: string | null;
@@ -223,6 +234,7 @@ function ChannelList({
   const tCommon = useTranslations('common');
   const qc = useQueryClient();
   const refreshedRef = useRef<Set<string>>(new Set());
+  const canRefresh = usePermission('integrations.connect').allowed;
 
   // Lazy backfill of missing friendly names. The first time we see an
   // integration without its platform-specific name field, we POST to the
@@ -233,7 +245,7 @@ function ChannelList({
   //   - VK:               metadata.community_name (groups.getById, ~200ms)
   //   - yandex_business:  metadata.business_name  (agent get_info RPA, ~30s)
   useEffect(() => {
-    if (!activeBusinessId) return;
+    if (!activeBusinessId || !canRefresh) return;
     integrations.forEach((i) => {
       if (refreshedRef.current.has(i.id)) return;
       const md = (i.metadata as Record<string, unknown>) ?? {};
@@ -272,7 +284,7 @@ function ChannelList({
           // Best-effort; swallow.
         });
     });
-  }, [integrations, qc, activeBusinessId]);
+  }, [integrations, qc, activeBusinessId, canRefresh]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -345,30 +357,32 @@ function ChannelList({
 
               <Badge tone={tone}>{statusLabel}</Badge>
 
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-7 px-2 text-[var(--ov-danger)]">
-                    {tCard('disconnect')}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>{`Отключить ${display.name}?`}</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {tCard('disconnectBody', { name: display.name })}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
-                    <AlertDialogAction
-                      className="hover:bg-[var(--ov-danger)]/90 border-[var(--ov-danger)] bg-[var(--ov-danger)] text-[oklch(0.99_0_0)]"
-                      onClick={() => onDisconnect(i.id)}
-                    >
+              {canDisconnect && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[var(--ov-danger)]">
                       {tCard('disconnect')}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{`Отключить ${display.name}?`}</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {tCard('disconnectBody', { name: display.name })}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="hover:bg-[var(--ov-danger)]/90 border-[var(--ov-danger)] bg-[var(--ov-danger)] text-[oklch(0.99_0_0)]"
+                        onClick={() => onDisconnect(i.id)}
+                      >
+                        {tCard('disconnect')}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
           </div>
         );

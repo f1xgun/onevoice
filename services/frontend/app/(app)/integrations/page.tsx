@@ -22,6 +22,7 @@ import { GoogleLocationModal } from '@/components/integrations/GoogleLocationMod
 import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusinessConnectModal';
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
+import { usePermission } from '@/lib/hooks/usePermission';
 import type { Business } from '@/types/business';
 
 interface Integration {
@@ -45,6 +46,8 @@ export default function IntegrationsPage() {
   const tPlatforms = useTranslations('platforms');
   const searchParams = useSearchParams();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const canConnect = usePermission('integrations.connect').allowed;
+  const canDisconnect = usePermission('integrations.disconnect').allowed;
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
   const [googleLocationOpen, setGoogleLocationOpen] = useState(false);
@@ -211,7 +214,7 @@ export default function IntegrationsPage() {
         {integrationsLoading ? (
           // Static paper-sunken skeletons per Linen loading rule (no shimmer).
           <SkeletonChannels count={3} />
-        ) : integrations.length === 0 ? (
+        ) : integrations.length === 0 && canConnect ? (
           // First-run state per mock-states.jsx "Каналы не подключены" — single
           // ochre-emphasis CTA scrolls to the platform list below so the user
           // can pick where to start.
@@ -239,6 +242,8 @@ export default function IntegrationsPage() {
                 integrations={platformIntegrations}
                 onConnect={() => handleConnect(p.id)}
                 onDisconnect={(integrationId) => disconnectMutation.mutate(integrationId)}
+                canConnect={canConnect}
+                canDisconnect={canDisconnect}
               />
             );
           })}
