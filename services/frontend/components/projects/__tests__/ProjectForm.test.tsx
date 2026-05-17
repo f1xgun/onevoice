@@ -16,6 +16,10 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('@/lib/hooks/usePermission', () => ({
+  usePermission: () => ({ allowed: true, isLoading: false }),
+}));
+
 // Mock axios-based API client: integrations endpoint + project CRUD.
 vi.mock('@/lib/api', () => ({
   api: {

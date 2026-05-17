@@ -22,6 +22,7 @@ import { DEFAULT_QUICK_ACTIONS } from '@/lib/quick-actions';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { useBusinessStore } from '@/lib/stores/business';
+import { usePermission } from '@/lib/hooks/usePermission';
 import type { Conversation } from '@/lib/conversations';
 import type { PendingApproval } from '@/types/chat';
 
@@ -61,11 +62,13 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   const qc = useQueryClient();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
+  const canSend = usePermission('content.create').allowed;
+
   // Invariant 9: the composer is disabled whenever a batch is awaiting
   // the user's decision OR while a message is streaming. Both conditions
   // must flow through a single flag so the Input and Send Button stay
   // in sync.
-  const composerDisabled = isStreaming || pendingApproval !== null;
+  const composerDisabled = isStreaming || pendingApproval !== null || !canSend;
 
   const { data: conversation } = useQuery<Conversation>({
     queryKey: ['businesses', activeBusinessId, 'conversations', conversationId],
