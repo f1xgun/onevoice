@@ -313,6 +313,7 @@
       "rename": "Переименовать",
       "regenerateTitle": "Обновить заголовок",
       "delete": "Удалить",
+      "triggerAria": "Меню чата «{title}»",
       "renameDialogTitle": "Переименовать чат",
       "renameDialogDescription": "Новое название будет видно везде, где отображается чат.",
       "renamePlaceholder": "Название чата",
@@ -680,7 +681,8 @@
       "tips": "Подсказки",
       "tip1": "Опишите ваш район — клиенты узнают вас по нему.",
       "tip2": "Укажите парковку или ориентир: про это часто спрашивают.",
-      "tip3": "В описании оставьте одну деталь, по которой узнают именно вас."
+      "tip3": "В описании оставьте одну деталь, по которой узнают именно вас.",
+      "railAria": "Подсказки по профилю"
     },
     "profileForm": {
       "logoBadge": "лого",
@@ -968,7 +970,9 @@
     "tasks": "Задачи",
     "settings": "Настройки",
     "logout": "Выйти",
-    "platformsGroup": "Платформы"
+    "platformsGroup": "Платформы",
+    "railAria": "Основная навигация",
+    "skipToContent": "Перейти к содержимому"
   },
   "noConnection": {
     "heading": "Не получается дотянуться до OneVoice",
@@ -1284,7 +1288,8 @@
     },
     "shell": {
       "wordmark": "OneVoice",
-      "footer": "© {year} OneVoice"
+      "footer": "© {year} OneVoice",
+      "illustrationAria": "Иллюстрация"
     }
   },
   "settings": {
@@ -1358,6 +1363,7 @@
     "noResults": "Попробуйте короче или поменяйте период.",
     "unassigned": "Без проекта",
     "unassignedChats": "Чаты без проекта",
+    "paneAria": "Проекты и диалоги",
     "toggleAria": "Открыть боковое меню",
     "resizeAria": "Изменить ширину боковой панели",
     "unassignedNewChatAria": "Новый чат без проекта",
@@ -1373,7 +1379,8 @@
       "resultsAria": "Результаты поиска",
       "stateAria": "Состояние поиска",
       "placeholder": "Поиск... {os, select, mac {⌘K} other {Ctrl-K}}",
-      "noResultsByQuery": "Ничего не найдено по «{query}»"
+      "noResultsByQuery": "Ничего не найдено по «{query}»",
+      "inputAria": "Поиск по чатам"
     },
     "project": {
       "expandAria": "Развернуть «{name}»",
