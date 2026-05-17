@@ -177,8 +177,11 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 
 	// Pitfall 2 / Landmine 5: fresh detached ctx with 30s timeout — r.Context()
 	// is canceled at HTTP response close and the cheap-LLM call takes 3-8s.
-	// The goroutine owns the cancel so the timer releases when it exits.
+	// The goroutine owns the cancel so the timer releases when it exits. Locale
+	// copied off the request ctx (set by middleware.Locale) so the cheap-LLM
+	// prompt matches the user's chosen language — Phase D2.
 	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	spawnCtx = i18n.WithLocale(spawnCtx, i18n.LocaleFromContext(r.Context()))
 	// The acceptance grep requires the literal `go h.titler.GenerateAndSave(spawnCtx`
 	// — wrap the call so the closure forwards every arg verbatim AND cancels the
 	// timeout when the spawned work completes (vet would flag a discarded cancel).

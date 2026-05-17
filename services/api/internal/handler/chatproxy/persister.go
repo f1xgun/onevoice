@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 )
 
 // MessagePersister centralizes the chat_proxy persistence sequence:
@@ -102,8 +103,11 @@ func (p *MessagePersister) FireAutoTitleIfPending(persistCtx PersistContextFn, c
 
 	// Detached 30s ctx for the titler goroutine. The cancel is wired through
 	// a small watcher so we never leak the timer goroutine if titler exits
-	// early; vet would also flag a discarded cancel.
+	// early; vet would also flag a discarded cancel. Locale is copied off the
+	// persist ctx (which inherited it from the request's middleware.Locale
+	// chain) so the cheap-LLM call sees the correct language tag — Phase D2.
 	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	spawnCtx = i18n.WithLocale(spawnCtx, i18n.LocaleFromContext(ctx))
 	go p.titler.GenerateAndSave(spawnCtx, businessID, conversationID, userText, assistantText)
 	go func() {
 		<-spawnCtx.Done()
@@ -146,7 +150,10 @@ func (p *MessagePersister) FireAutoTitleIfPendingResume(persistCtx PersistContex
 			break
 		}
 	}
+	// Locale copied off the persist ctx so the resume-path titler runs in the
+	// same language as the original chat. Phase D2.
 	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	spawnCtx = i18n.WithLocale(spawnCtx, i18n.LocaleFromContext(ctx))
 	go p.titler.GenerateAndSave(spawnCtx, conv.BusinessID, conversationID, userText, assistantMsg.Content)
 	go func() {
 		<-spawnCtx.Done()

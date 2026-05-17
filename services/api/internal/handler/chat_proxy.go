@@ -159,11 +159,16 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	conversationID := chi.URLParam(r, "conversationID")
 
 	corrID := logger.CorrelationIDFromContext(r.Context())
+	// Capture locale once at the request edge so every persist op + the
+	// auto-titler spawn ctx (Phase D2) sees the same language tag the user
+	// is chatting in. Resolved from middleware.Locale → i18n.LocaleFromContext.
+	reqLocale := i18n.LocaleFromContext(r.Context())
 	persistCtx := func() (context.Context, context.CancelFunc) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if corrID != "" {
 			ctx = logger.WithCorrelationID(ctx, corrID)
 		}
+		ctx = i18n.WithLocale(ctx, reqLocale)
 		return ctx, cancel
 	}
 
