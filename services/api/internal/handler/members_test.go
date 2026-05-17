@@ -394,7 +394,7 @@ func TestMembersHandler_UpdateMemberRole_LastOwnerRefuses(t *testing.T) {
 
 	bizID := uuid.New()
 	actorID := uuid.New()
-	targetID := actorID // sole owner trying to demote themselves
+	targetID := uuid.New()
 	newRoleID := uuid.New()
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 
@@ -443,6 +443,29 @@ func TestMembersHandler_UpdateMemberRole_Forbidden(t *testing.T) {
 	h.UpdateMemberRole(w, req)
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestMembersHandler_UpdateMemberRole_SelfRoleChangeForbidden(t *testing.T) {
+	mr := &MockBusinessMembershipRepository{}
+	rr := &MockRoleRepository{}
+	ur := &MockUserRepository{}
+	inv := &MockCacheInvalidator{}
+	h := newMembersHandlerForTest(mr, rr, ur, nil, inv)
+
+	bizID := uuid.New()
+	actorID := uuid.New()
+	ctx := businessContextWith(context.Background(), bizID, actorID, authz.PermMembersUpdateRole)
+	body := `{"role_id":"` + uuid.New().String() + `"}`
+	req := httptest.NewRequest(http.MethodPatch, "/", bytes.NewReader([]byte(body))).WithContext(ctx)
+	req = withChiParams(req, map[string]string{"userId": actorID.String()})
+	w := httptest.NewRecorder()
+	h.UpdateMemberRole(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assertErrorCode(t, w, "cannot_change_own_role")
+	mr.AssertNotCalled(t, "UpdateRoleInTx")
+	rr.AssertNotCalled(t, "GetByID")
+	inv.AssertNotCalled(t, "InvalidateMember")
 }
 
 func TestMembersHandler_UpdateMemberRole_InvalidBody(t *testing.T) {

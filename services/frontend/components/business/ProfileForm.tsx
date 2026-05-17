@@ -19,6 +19,7 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { getTranslator } from '@/lib/i18n/translator';
 import { businessSchema, type BusinessInput } from '@/lib/schemas';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,6 +46,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState(defaultValues?.logoUrl ?? '');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const canEdit = usePermission('business.update').allowed;
 
   const {
     register,
@@ -106,7 +108,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={logoMutation.isPending}
+          disabled={logoMutation.isPending || !canEdit}
           className="hover:border-ochre/40 relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-paper-sunken text-ink-soft transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
           aria-label={tProfileForm('logoUploadAria')}
         >
@@ -139,7 +141,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
               variant="secondary"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              disabled={logoMutation.isPending}
+              disabled={logoMutation.isPending || !canEdit}
             >
               {tProfileForm('uploadLogo')}
             </Button>
@@ -149,7 +151,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
                 variant="ghost"
                 size="sm"
                 onClick={() => setLogoUrl('')}
-                disabled={logoMutation.isPending}
+                disabled={logoMutation.isPending || !canEdit}
               >
                 {tProfileForm('removeLogo')}
               </Button>
@@ -162,6 +164,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           accept="image/jpeg,image/png,image/webp,image/gif"
           className="hidden"
           onChange={handleFileChange}
+          disabled={!canEdit}
         />
       </div>
 
@@ -232,7 +235,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           type="submit"
           variant="primary"
           size="md"
-          disabled={isSubmitting || mutation.isPending || !isDirty}
+          disabled={isSubmitting || mutation.isPending || !isDirty || !canEdit}
         >
           {isSubmitting || mutation.isPending ? tProfileForm('saving') : tCommon('save')}
         </Button>

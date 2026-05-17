@@ -20,6 +20,7 @@ import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -97,6 +98,7 @@ export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormPro
   const tSchedule = useTranslations('business.scheduleForm');
   const { schedule, setSchedule, specialDates } = useSchedule(initialSchedule, initialSpecialDates);
   const mutation = useScheduleMutation(tSchedule('hoursSaved'), tSchedule('saveError'));
+  const canEdit = usePermission('business.update').allowed;
 
   function updateDay(index: number, updates: Partial<ScheduleDay>) {
     setSchedule((prev) => prev.map((d, i) => (i === index ? { ...d, ...updates } : d)));
@@ -120,7 +122,7 @@ export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormPro
           variant="primary"
           size="md"
           onClick={() => mutation.mutate({ schedule, specialDates })}
-          disabled={mutation.isPending}
+          disabled={mutation.isPending || !canEdit}
         >
           {mutation.isPending ? tSchedule('saving') : tSchedule('saveHours')}
         </Button>
@@ -214,6 +216,7 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
   );
   const [calendarOpen, setCalendarOpen] = useState(false);
   const mutation = useScheduleMutation(tSchedule('datesSaved'), tSchedule('saveError'));
+  const canEdit = usePermission('business.update').allowed;
 
   function addSpecialDate(date: Date) {
     const iso = format(date, 'yyyy-MM-dd');
@@ -252,7 +255,7 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
           <PopoverTrigger asChild>
-            <Button type="button" variant="secondary" size="sm">
+            <Button type="button" variant="secondary" size="sm" disabled={!canEdit}>
               <CalendarIcon className="mr-1.5 h-4 w-4" aria-hidden />
               {tSchedule('addDate')}
             </Button>
@@ -267,7 +270,7 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
           variant="primary"
           size="md"
           onClick={() => mutation.mutate({ schedule, specialDates })}
-          disabled={mutation.isPending}
+          disabled={mutation.isPending || !canEdit}
         >
           {mutation.isPending ? tSchedule('saving') : tSchedule('saveDates')}
         </Button>
