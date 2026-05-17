@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { MoreHorizontal } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 
 import {
   Table,
@@ -45,6 +46,7 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
   const tTeam = useTranslations('team');
   const tCols = useTranslations('team.members.cols');
   const tActions = useTranslations('team.members.actions');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const mapMemberError = useMapMemberError();
   const { data: members, isLoading, isError } = useMembers(businessId);
   const currentUserId = useAuthStore((s) => s.user?.id);
@@ -139,7 +141,7 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
                     <RolePill roleName={m.role.name} />
                   </TableCell>
                   <TableCell className="text-xs text-ink-soft">
-                    {format(parseISO(m.joined_at), 'd MMMM yyyy', { locale: ru })}
+                    {format(parseISO(m.joined_at), 'd MMMM yyyy', { locale: dateFnsLocale })}
                   </TableCell>
                   <TableCell className="text-right">
                     {!canActOnThisRow ? (

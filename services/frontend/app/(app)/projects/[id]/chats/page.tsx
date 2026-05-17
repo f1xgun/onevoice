@@ -4,9 +4,8 @@ import { useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Bookmark, Plus, Settings } from 'lucide-react';
-import { useTranslations } from 'next-intl';
-import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { useLocale, useTranslations } from 'next-intl';
+import { format, type Locale as DateFnsLocale } from 'date-fns';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,6 +14,8 @@ import { MonoLabel } from '@/components/ui/mono-label';
 import { EmptyFrame } from '@/components/states';
 import { useConversationsQuery, useCreateConversation } from '@/hooks/useConversations';
 import { useProjectQuery } from '@/hooks/useProjects';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 import { cn } from '@/lib/utils';
 import type { Conversation } from '@/lib/conversations';
 
@@ -25,6 +26,7 @@ export default function ProjectChatsPage() {
 
   const tProjects = useTranslations('projects');
   const tChat = useTranslations('chat');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
 
   const { data: project, isLoading: projectLoading } = useProjectQuery(id);
   const { data: conversations, isLoading: conversationsLoading } = useConversationsQuery();
@@ -126,7 +128,11 @@ export default function ProjectChatsPage() {
             <ul className="divide-y divide-line-soft">
               {chats.map((chat) => (
                 <li key={chat.id}>
-                  <ChatRow chat={chat} fallbackTitle={tChat('newConversation')} />
+                  <ChatRow
+                    chat={chat}
+                    fallbackTitle={tChat('newConversation')}
+                    dateFnsLocale={dateFnsLocale}
+                  />
                 </li>
               ))}
             </ul>
@@ -137,10 +143,18 @@ export default function ProjectChatsPage() {
   );
 }
 
-function ChatRow({ chat, fallbackTitle }: { chat: Conversation; fallbackTitle: string }) {
+function ChatRow({
+  chat,
+  fallbackTitle,
+  dateFnsLocale,
+}: {
+  chat: Conversation;
+  fallbackTitle: string;
+  dateFnsLocale: DateFnsLocale;
+}) {
   const title = chat.title?.trim() || fallbackTitle;
   const ts = chat.lastMessageAt ?? chat.updatedAt ?? chat.createdAt;
-  const when = format(new Date(ts), 'd MMM · HH:mm', { locale: ru });
+  const when = format(new Date(ts), 'd MMM · HH:mm', { locale: dateFnsLocale });
   const pinned = chat.pinnedAt != null;
 
   return (

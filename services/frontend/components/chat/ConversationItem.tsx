@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import { MessageCircle, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
@@ -39,6 +40,7 @@ export function ConversationItem({
 }) {
   const tRow = useTranslations('chat.rowMenu');
   const tChat = useTranslations('chat');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(conv.title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -96,7 +98,7 @@ export function ConversationItem({
             <p className="text-sm text-ink-soft">
               {formatDistanceToNow(new Date(conv.createdAt), {
                 addSuffix: true,
-                locale: ru,
+                locale: dateFnsLocale,
               })}
             </p>
           </button>
