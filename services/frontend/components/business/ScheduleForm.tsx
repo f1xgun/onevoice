@@ -9,7 +9,7 @@
 // each section sends its slice alongside the other section's current value
 // to avoid clobbering. Parent owns the source of truth.
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -20,7 +20,6 @@ import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
-import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
@@ -39,18 +38,23 @@ const DEFAULT_SCHEDULE: ScheduleDay[] = [
   { day: 'sun', open: '10:00', close: '20:00', closed: true },
 ];
 
-// Day-of-week labels for the weekly hours grid. Resolved once at module
-// load via the module-level translator — same pattern as lib/tones.ts.
-const tDays = getTranslator('business.daysOfWeek');
-const DAY_LABELS: Record<ScheduleDay['day'], string> = {
-  mon: tDays('mon'),
-  tue: tDays('tue'),
-  wed: tDays('wed'),
-  thu: tDays('thu'),
-  fri: tDays('fri'),
-  sat: tDays('sat'),
-  sun: tDays('sun'),
-};
+// Day-of-week labels for the weekly hours grid. Built inside each
+// consumer via useDayLabels() so a locale switch swaps the row labels.
+function useDayLabels(): Record<ScheduleDay['day'], string> {
+  const tDays = useTranslations('business.daysOfWeek');
+  return useMemo(
+    () => ({
+      mon: tDays('mon'),
+      tue: tDays('tue'),
+      wed: tDays('wed'),
+      thu: tDays('thu'),
+      fri: tDays('fri'),
+      sat: tDays('sat'),
+      sun: tDays('sun'),
+    }),
+    [tDays]
+  );
+}
 
 interface SchedulePayload {
   schedule: ScheduleDay[];
@@ -95,6 +99,7 @@ interface HoursFormProps {
 
 export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormProps) {
   const tSchedule = useTranslations('business.scheduleForm');
+  const dayLabels = useDayLabels();
   const { schedule, setSchedule, specialDates } = useSchedule(initialSchedule, initialSpecialDates);
   const mutation = useScheduleMutation(tSchedule('hoursSaved'), tSchedule('saveError'));
 
@@ -108,7 +113,7 @@ export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormPro
         {schedule.map((day, index) => (
           <DayRow
             key={day.day}
-            label={DAY_LABELS[day.day]}
+            label={dayLabels[day.day]}
             day={day}
             onChange={(updates) => updateDay(index, updates)}
           />
