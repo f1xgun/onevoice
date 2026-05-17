@@ -83,11 +83,16 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowedHeaders:   []string{"Accept", "Accept-Language", "Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Link", "X-Correlation-ID"},
 		AllowCredentials: true,
 		MaxAge:           corsMaxAge,
 	}))
+	// LocaleResolver runs after CORS/correlation but before SecurityHeaders /
+	// metrics / auth so even unauthenticated error responses can be localized
+	// off the Accept-Language header. See pkg/i18n + Phase A1 of
+	// `.planning/i18n-readiness/PLAN.md`.
+	r.Use(middleware.Locale)
 	r.Use(middleware.SecurityHeaders())
 	r.Use(metrics.HTTPMiddleware)
 
@@ -306,6 +311,7 @@ func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.CorrelationID())
+	r.Use(middleware.Locale)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 
