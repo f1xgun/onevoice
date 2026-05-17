@@ -12,6 +12,10 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('@/lib/hooks/usePermission', () => ({
+  usePermission: () => ({ allowed: true, isLoading: false }),
+}));
+
 // Mock the axios-based api client used by fetchConversation, useProjectsQuery,
 // and useMoveConversation. Keep the shape minimal — tests only need GET to
 // return the conversation envelope and a stub projects list.

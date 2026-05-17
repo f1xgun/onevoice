@@ -12,6 +12,7 @@ import { PromptTab } from './PromptTab';
 import { QuickActionsTab } from './QuickActionsTab';
 import { ToolsTab } from './ToolsTab';
 import { useProjectForm } from './useProjectForm';
+import { usePermission } from '@/lib/hooks/usePermission';
 import type { Project } from '@/types/project';
 
 interface ProjectFormProps {
@@ -40,6 +41,10 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
     onSubmit,
     handleDelete,
   } = useProjectForm(project, onSaved);
+  const canCreate = usePermission('content.create').allowed;
+  const canUpdate = usePermission('content.update').allowed;
+  const canDelete = usePermission('content.delete').allowed;
+  const canSubmit = isEdit ? canUpdate : canCreate;
 
   return (
     <Form {...form}>
@@ -73,9 +78,11 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
         )}
 
         <div className="flex flex-wrap items-center gap-3 pt-2">
-          <Button type="submit" disabled={submitting}>
-            {isEdit ? tForm('save') : tForm('create')}
-          </Button>
+          {canSubmit && (
+            <Button type="submit" disabled={submitting}>
+              {isEdit ? tForm('save') : tForm('create')}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -84,7 +91,7 @@ export function ProjectForm({ project, onSaved }: ProjectFormProps) {
           >
             {tCommon('cancel')}
           </Button>
-          {isEdit && project && (
+          {isEdit && project && canDelete && (
             <Button
               type="button"
               variant="outline"

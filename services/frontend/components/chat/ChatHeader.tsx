@@ -129,7 +129,10 @@ function ChatHeaderImpl({
             className="flex h-8 w-8 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper-sunken hover:text-ink disabled:opacity-50"
             disabled={pinMutation.isPending || unpinMutation.isPending}
           >
-            <Bookmark size={16} className={cn(pinned ? 'fill-ochre text-ochre' : 'text-ink-soft')} />
+            <Bookmark
+              size={16}
+              className={cn(pinned ? 'fill-ochre text-ochre' : 'text-ink-soft')}
+            />
           </button>
         )}
         {showMenu && (
