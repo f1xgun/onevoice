@@ -17,6 +17,7 @@ func vkTools() []toolSpec {
 			displayName:     "Опубликовать пост",
 			displayNameKey:  "tools.vk.publish_post.name",
 			userDescription: "Публикует пост на стене сообщества ВКонтакте.",
+			descriptionEn:   "Publishes a text post (no photo) to a VK community wall. If you need to publish a post with a photo, use vk__post_photo instead.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKPublishPost,
 				Description: "Публикует текстовый пост (без фото) на стену сообщества ВКонтакте. Если нужно опубликовать пост с фото — используй vk__post_photo вместо этого.",
@@ -37,6 +38,7 @@ func vkTools() []toolSpec {
 			displayName:     "Опубликовать фото",
 			displayNameKey:  "tools.vk.post_photo.name",
 			userDescription: "Публикует пост с фото на стене сообщества ВКонтакте.",
+			descriptionEn:   "Publishes a post with a photo and text caption to a VK community wall. Use this function instead of publish_post when you need to publish a post that includes an image.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKPostPhoto,
 				Description: "Публикует пост с фото и текстовой подписью на стену сообщества ВКонтакте. Используй эту функцию вместо publish_post когда нужно опубликовать пост с изображением.",
@@ -60,6 +62,7 @@ func vkTools() []toolSpec {
 			displayName:     "Запланировать пост",
 			displayNameKey:  "tools.vk.schedule_post.name",
 			userDescription: "Планирует отложенную публикацию на стене ВКонтакте.",
+			descriptionEn:   "Schedules a delayed post on a VK community wall. The post will be automatically published by VK at the specified time.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKSchedulePost,
 				Description: "Планирует отложенный пост на стене сообщества ВКонтакте. Пост будет автоматически опубликован ВКонтакте в указанное время.",
@@ -83,6 +86,7 @@ func vkTools() []toolSpec {
 			displayName:     "Обновить данные сообщества",
 			displayNameKey:  "tools.vk.update_group_info.name",
 			userDescription: "Изменяет название, описание и контакты сообщества ВКонтакте.",
+			descriptionEn:   "Updates VK community info (description, links, contacts). If group_id is not provided, uses the community from the active VK integration.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKUpdateGroupInfo,
 				Description: "Обновляет информацию о сообществе ВКонтакте (описание, ссылки, контакты). Если group_id не указан, используется сообщество из активной VK-интеграции.",
@@ -103,6 +107,7 @@ func vkTools() []toolSpec {
 			displayName:     "Загрузить комментарии",
 			displayNameKey:  "tools.vk.get_comments.name",
 			userDescription: "Загружает комментарии к посту ВКонтакте.",
+			descriptionEn:   "Fetches comments for a specific post on a VK community wall. If post_id is not provided, returns comments for the most recent post.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKGetComments,
 				Description: "Получает комментарии к конкретному посту на стене сообщества ВКонтакте. Если post_id не указан, возвращает комментарии к последнему посту.",
@@ -124,6 +129,7 @@ func vkTools() []toolSpec {
 			displayName:     "Ответить на комментарий",
 			displayNameKey:  "tools.vk.reply_comment.name",
 			userDescription: "Отвечает на комментарий ВКонтакте.",
+			descriptionEn:   "Replies to a comment on a post on a VK community wall. Creates a reply in the discussion thread.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKReplyComment,
 				Description: "Отвечает на комментарий к посту на стене сообщества ВКонтакте. Создает ответ в ветке обсуждения.",
@@ -151,6 +157,7 @@ func vkTools() []toolSpec {
 			displayName:     "Удалить комментарий",
 			displayNameKey:  "tools.vk.delete_comment.name",
 			userDescription: "Удаляет комментарий под постом ВКонтакте.",
+			descriptionEn:   "Deletes a comment on a post on a VK community wall. Requires administrator or moderator permissions for the community.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKDeleteComment,
 				Description: "Удаляет комментарий к посту на стене сообщества ВКонтакте. Требуются права администратора или модератора сообщества.",
@@ -171,6 +178,7 @@ func vkTools() []toolSpec {
 			displayName:     "Загрузить данные сообщества",
 			displayNameKey:  "tools.vk.get_community_info.name",
 			userDescription: "Загружает карточку сообщества ВКонтакте.",
+			descriptionEn:   "Fetches VK community info: name, description, subscriber count, status, links. Use to answer questions about the community.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKGetCommunityInfo,
 				Description: "Получает информацию о сообществе ВКонтакте: название, описание, количество подписчиков, статус, ссылки. Используй для ответа на вопросы о сообществе.",
@@ -190,6 +198,7 @@ func vkTools() []toolSpec {
 			displayName:     "Загрузить посты",
 			displayNameKey:  "tools.vk.get_wall_posts.name",
 			userDescription: "Загружает посты со стены сообщества ВКонтакте.",
+			descriptionEn:   "Fetches the most recent posts from a VK community wall, with stats for likes, comments, reposts, and views.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKGetWallPosts,
 				Description: "Получает последние посты со стены сообщества ВКонтакте с данными о лайках, комментариях, репостах и просмотрах.",

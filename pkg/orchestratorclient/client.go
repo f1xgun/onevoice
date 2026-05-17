@@ -48,9 +48,15 @@ func (c *Client) HTTPClient() *http.Client { return c.httpClient }
 // ToolEntry is the per-tool projection returned by GET /internal/tools. JSON
 // tags mirror services/orchestrator/internal/handler/internal_tools.go's
 // AllEntries output.
+//
+// DisplayNameKey is the i18n catalog key the frontend uses to render the
+// settings UI's tool label in the user's locale (Phase D3). Optional —
+// orchestrator deploys without the key send "" and the FE falls back to
+// DisplayName.
 type ToolEntry struct {
 	Name            string   `json:"name"`
 	DisplayName     string   `json:"displayName"`
+	DisplayNameKey  string   `json:"displayNameKey,omitempty"`
 	Platform        string   `json:"platform"`
 	Floor           string   `json:"floor"`
 	EditableFields  []string `json:"editableFields"`
@@ -137,11 +143,21 @@ func (c *Client) StreamResume(ctx context.Context, conversationID, batchID strin
 // ListTools fetches the full tool registry projection via
 // GET {baseURL}/internal/tools. Replaces the inline HTTP fetch in
 // services/api/internal/service/hitl.go's ToolsRegistryCache.refresh.
-func (c *Client) ListTools(ctx context.Context) ([]ToolEntry, error) {
+//
+// acceptLanguage is forwarded as the request's Accept-Language header so the
+// orchestrator's locale-aware projection (Phase D3) returns the description
+// in the caller's preferred language. Pass "" to use the orchestrator's
+// default (RU). Single-tag values ("en") and preference lists
+// ("en-US,en;q=0.9") are both accepted — the orchestrator parses with
+// pkg/i18n.MatchAcceptLanguage.
+func (c *Client) ListTools(ctx context.Context, acceptLanguage string) ([]ToolEntry, error) {
 	u := c.baseURL + "/internal/tools"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("orchestratorclient: build list tools request: %w", err)
+	}
+	if acceptLanguage != "" {
+		req.Header.Set("Accept-Language", acceptLanguage)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

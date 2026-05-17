@@ -17,6 +17,7 @@ func yandexTools() []toolSpec {
 			displayName:     "Загрузить карточку организации",
 			displayNameKey:  "tools.yandex_business.get_info.name",
 			userDescription: "Загружает карточку организации из Яндекс.Бизнеса.",
+			descriptionEn:   "Fetches the current organization info from Yandex Business: name, phone, email, business hours, address, status.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessGetInfo,
 				Description: "Получает текущую информацию об организации в Яндекс Бизнес: название, телефон, email, часы работы, адрес, статус.",
@@ -33,6 +34,7 @@ func yandexTools() []toolSpec {
 			displayName:     "Обновить часы работы",
 			displayNameKey:  "tools.yandex_business.update_hours.name",
 			userDescription: "Обновляет часы работы организации в Яндекс.Бизнесе.",
+			descriptionEn:   "Updates business hours in Yandex Business. Accepts a free-form schedule description.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessUpdateHours,
 				Description: "Обновляет часы работы в Яндекс Бизнес. Принимает описание расписания в свободном формате.",
@@ -55,6 +57,7 @@ func yandexTools() []toolSpec {
 			displayName:     "Обновить данные организации",
 			displayNameKey:  "tools.yandex_business.update_info.name",
 			userDescription: "Изменяет описание, телефон и сайт организации в Яндекс.Бизнесе.",
+			descriptionEn:   "Updates contact info in Yandex Business (phone, website, description).",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessUpdateInfo,
 				Description: "Обновляет контактную информацию в Яндекс Бизнес (телефон, сайт, описание)",
@@ -75,6 +78,7 @@ func yandexTools() []toolSpec {
 			displayName:     "Загрузить отзывы Яндекса",
 			displayNameKey:  "tools.yandex_business.get_reviews.name",
 			userDescription: "Загружает отзывы клиентов с Яндекс.Бизнеса.",
+			descriptionEn:   "Fetches reviews of the organization from Yandex Business.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessGetReviews,
 				Description: "Получает отзывы об организации из Яндекс Бизнес",
@@ -93,6 +97,7 @@ func yandexTools() []toolSpec {
 			displayName:     "Ответить на отзыв Яндекса",
 			displayNameKey:  "tools.yandex_business.reply_review.name",
 			userDescription: "Отвечает на отзыв клиента в Яндекс.Бизнесе.",
+			descriptionEn:   "Publishes a reply to a review on Yandex Business.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessReplyReview,
 				Description: "Публикует ответ на отзыв в Яндекс Бизнес",
@@ -115,6 +120,7 @@ func yandexTools() []toolSpec {
 			displayName:     "Загрузить фото",
 			displayNameKey:  "tools.yandex_business.upload_photo.name",
 			userDescription: "Добавляет фото в галерею карточки организации в Яндекс.Бизнесе.",
+			descriptionEn:   "Uploads a photo to Yandex Business. Categories: general, logo, services, interior, exterior, enter (entrance), goods.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessUploadPhoto,
 				Description: "Загружает фото в Яндекс Бизнес. Категория: general (общее), logo (логотип), services, interior, exterior, enter (вход), goods (товары).",
@@ -135,6 +141,7 @@ func yandexTools() []toolSpec {
 			displayName:     "Опубликовать пост в Яндекс Бизнес",
 			displayNameKey:  "tools.yandex_business.create_post.name",
 			userDescription: "Публикует пост в Яндекс.Бизнесе.",
+			descriptionEn:   "Creates a publication (post) on Yandex Business. The post appears in Yandex Search and Yandex Maps.",
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessCreatePost,
 				Description: "Создаёт публикацию (пост) в Яндекс Бизнес. Публикация появится в Поиске Яндекса и Яндекс Картах.",

@@ -16,6 +16,11 @@ export interface ToolCall {
   // HITL additions (non-breaking):
   rejectReason?: string; // populated when status === 'rejected'
   wasEdited?: boolean; // true when user edited args before approving (UI-SPEC §Post-submit)
+  // Phase D3: i18n catalog key the backend stamps on tool_call / tool_result
+  // SSE frames so the UI can render the task label in the user's locale.
+  // Optional — orchestrator deploys without the key send undefined and the
+  // FE falls back to a name-based label (existing behavior).
+  displayNameKey?: string;
 }
 
 export interface Message {

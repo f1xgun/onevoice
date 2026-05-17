@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
@@ -72,8 +73,13 @@ func NewInternalToolsAllHandler(reg *toolregistry.Registry) *InternalToolsAllHan
 // (possibly empty) so downstream consumers (React Query cache, Go JSON
 // decoders) never see null — matches the convention applied to
 // project.allowed_tools and similar list fields.
+//
+// Description is locale-resolved from the request's Accept-Language (set by
+// middleware.Locale). The API caches per-locale snapshots in its
+// ToolsRegistryCache; cache misses re-fetch per locale (Phase D3).
 func (h *InternalToolsAllHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	entries := h.Registry.AllEntries()
+	tag := i18n.LocaleFromContext(r.Context())
+	entries := h.Registry.AllEntriesForLocale(tag)
 	// Normalize nil EditableFields to [] so the JSON array is non-null.
 	for i := range entries {
 		if entries[i].EditableFields == nil {

@@ -99,17 +99,22 @@ type chatRequest struct {
 //     tool_result / tool_rejected events so chat_proxy can persist the
 //     Message.ToolCalls with the real ID (no synthetic "tc-N").
 //   - BatchID + Calls are set on tool_approval_required events.
+//   - ToolDisplayNameKey carries the i18n catalog key on tool_call and
+//     tool_result events so chat_proxy can stamp the agent_tasks document
+//     with a localizable key (Phase D3). omitempty so legacy events with
+//     no key (older orchestrator deploys) remain byte-identical on the wire.
 type sseEvent struct {
-	Type            string                             `json:"type"`
-	Content         string                             `json:"content,omitempty"`
-	ToolCallID      string                             `json:"tool_call_id,omitempty"`
-	ToolName        string                             `json:"tool_name,omitempty"`
-	ToolDisplayName string                             `json:"tool_display_name,omitempty"`
-	ToolArgs        map[string]interface{}             `json:"tool_args,omitempty"`
-	ToolResult      interface{}                        `json:"result,omitempty"`
-	ToolError       string                             `json:"error,omitempty"`
-	BatchID         string                             `json:"batch_id,omitempty"`
-	Calls           []orchestrator.ApprovalCallSummary `json:"calls,omitempty"`
+	Type               string                             `json:"type"`
+	Content            string                             `json:"content,omitempty"`
+	ToolCallID         string                             `json:"tool_call_id,omitempty"`
+	ToolName           string                             `json:"tool_name,omitempty"`
+	ToolDisplayName    string                             `json:"tool_display_name,omitempty"`
+	ToolDisplayNameKey string                             `json:"tool_display_name_key,omitempty"`
+	ToolArgs           map[string]interface{}             `json:"tool_args,omitempty"`
+	ToolResult         interface{}                        `json:"result,omitempty"`
+	ToolError          string                             `json:"error,omitempty"`
+	BatchID            string                             `json:"batch_id,omitempty"`
+	Calls              []orchestrator.ApprovalCallSummary `json:"calls,omitempty"`
 }
 
 // Chat handles POST /chat/{conversationID} and streams SSE events.
@@ -252,11 +257,13 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
 			sse.ToolDisplayName = event.ToolDisplayName
+			sse.ToolDisplayNameKey = event.ToolDisplayNameKey
 			sse.ToolArgs = event.ToolArgs
 		case orchestrator.EventToolResult:
 			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
 			sse.ToolDisplayName = event.ToolDisplayName
+			sse.ToolDisplayNameKey = event.ToolDisplayNameKey
 			sse.ToolResult = event.ToolResult
 			sse.ToolError = event.ToolError
 		case orchestrator.EventToolRejected:
