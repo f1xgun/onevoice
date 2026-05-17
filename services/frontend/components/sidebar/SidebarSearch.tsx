@@ -131,6 +131,7 @@ export function SidebarSearch() {
             aria-autocomplete="list"
             aria-expanded={popoverOpen}
             aria-controls={listboxId}
+            aria-label={tSide('search.inputAria')}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

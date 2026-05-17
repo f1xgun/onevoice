@@ -123,7 +123,8 @@ describe('"Обновить заголовок" menu item visibility', () => {
     const user = userEvent.setup();
     renderItem({ ...baseAuto, titleStatus: 'auto' });
     // Open kebab.
-    await user.click(screen.getByRole('button', { name: '' }));
+    // a11y WP4b: the kebab trigger now exposes a localized aria-label.
+    await user.click(screen.getByRole('button', { name: /Меню чата/ }));
     // Item rendered with verbatim Russian label.
     expect(await screen.findByText('Обновить заголовок')).toBeInTheDocument();
   });
@@ -131,14 +132,16 @@ describe('"Обновить заголовок" menu item visibility', () => {
   it("is visible when titleStatus === 'auto_pending'", async () => {
     const user = userEvent.setup();
     renderItem({ ...baseAuto, titleStatus: 'auto_pending' });
-    await user.click(screen.getByRole('button', { name: '' }));
+    // a11y WP4b: the kebab trigger now exposes a localized aria-label.
+    await user.click(screen.getByRole('button', { name: /Меню чата/ }));
     expect(await screen.findByText('Обновить заголовок')).toBeInTheDocument();
   });
 
   it("is HIDDEN when titleStatus === 'manual'", async () => {
     const user = userEvent.setup();
     renderItem({ ...baseAuto, titleStatus: 'manual', title: 'My manual title' });
-    await user.click(screen.getByRole('button', { name: '' }));
+    // a11y WP4b: the kebab trigger now exposes a localized aria-label.
+    await user.click(screen.getByRole('button', { name: /Меню чата/ }));
     // Wait for the dropdown to render so the absence assertion is meaningful:
     // 'Переименовать' is a sibling item that renders unconditionally.
     expect(await screen.findByText('Переименовать')).toBeInTheDocument();
@@ -150,7 +153,8 @@ describe('"Обновить заголовок" menu item visibility', () => {
     const user = userEvent.setup();
     const onRegenerateTitle = vi.fn();
     renderItem({ ...baseAuto, titleStatus: 'auto' }, onRegenerateTitle);
-    await user.click(screen.getByRole('button', { name: '' }));
+    // a11y WP4b: the kebab trigger now exposes a localized aria-label.
+    await user.click(screen.getByRole('button', { name: /Меню чата/ }));
     const item = await screen.findByText('Обновить заголовок');
     await user.click(item);
     expect(onRegenerateTitle).toHaveBeenCalledTimes(1);
