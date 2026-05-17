@@ -743,7 +743,10 @@
       "missingPlatform": "Не нашли свой канал?",
       "missingPlatformBody": "Напишите нам — добавим в ближайших обновлениях.",
       "requestChannel": "Запросить канал",
-      "subscribe": "Подписаться"
+      "subscribe": "Подписаться",
+      "channelDisconnected": "Канал отключён",
+      "disconnectFailed": "Не получилось отключить",
+      "googleAuthFailed": "Не получилось открыть авторизацию Google"
     },
     "platformCard": {
       "connected": "Подключено",
@@ -756,11 +759,22 @@
       "addBotToGroupBody": "У этого канала есть связанная группа для комментариев, но бот в неё не добавлен — поэтому комментарии к постам не собираются. Откройте группу обсуждений → участники → пригласите бота.",
       "close": "Закрыть",
       "disconnect": "Отключить",
+      "disconnectTitle": "Отключить {name}?",
       "disconnectBody": "История сообщений останется в архиве. Чтобы снова получать сообщения из {name}, канал нужно будет подключить заново.",
       "botMissingAria": "Бот не в группе обсуждений",
       "botMissingTooltip": "Бот не в группе обсуждений — комментарии не собираются",
       "botRecheck": "Я добавил бота — проверить",
-      "botRechecking": "Проверяем…"
+      "botRechecking": "Проверяем…",
+      "status": {
+        "active": "Подключено",
+        "inactive": "Отключено",
+        "error": "Ошибка",
+        "pending_cookies": "Ожидание",
+        "token_expired": "Токен истёк"
+      },
+      "linkedGroupOk": "Бот в группе обсуждений — комментарии будут собираться.",
+      "linkedGroupMissing": "Бот всё ещё не в группе обсуждений.",
+      "linkedGroupCheckFailed": "Не удалось проверить статус"
     },
     "vkCommunity": {
       "title": "Подключить сообщество VK",
@@ -811,7 +825,14 @@
       "next": "Далее",
       "searching": "Ищем ваши организации в Яндексе…",
       "searchingBody": "Это может занять до минуты. Мы открываем Яндекс.Бизнес от вашего имени, чтобы получить список.",
-      "found": "Найдено {count} организ{ending}. Какую подключить к OneVoice?",
+      "pastePlaceholder": "Вставьте сюда: JSON-массив, \"Cookie:\" заголовок, или Session_id=...",
+      "formatLabels": {
+        "json": "JSON-массив (Cookie-Editor)",
+        "cookie_header": "Cookie-заголовок",
+        "session_id_value": "значение Session_id",
+        "generic": "формат"
+      },
+      "found": "Найдено {count, plural, one {# организация} few {# организации} many {# организаций} other {# организаций}}. Какую подключить к OneVoice?",
       "back": "Назад",
       "connect": "Подключить",
       "connecting": "Подключение…",
