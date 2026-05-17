@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { BusinessSwitcher } from '@/components/business-switcher/BusinessSwitcher';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/auth';
@@ -195,6 +196,11 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
             </ul>
           </TooltipContent>
         </Tooltip>
+
+        {/* Language switcher — compact 40 px wide select that fits the
+            56 px rail. Sits directly above logout so locale + identity
+            controls live in the same footer cluster. */}
+        <LanguageSwitcher className="mb-2 h-8 w-10 px-1" />
 
         {/* Logout */}
         <Tooltip>

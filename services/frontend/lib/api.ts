@@ -8,6 +8,7 @@ import { useBusinessStore } from '@/lib/stores/business';
 import { queryClient } from '@/lib/queryClient';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 import { getTranslator } from '@/lib/i18n/translator';
+import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from '@/lib/i18n/locales';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -15,12 +16,34 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-// Attach access token to every request
+// Read the locale cookie on the client. Server callers (RSC, route
+// handlers) hit this module only through code paths that don't reach
+// `document` — those should call the backend via their own server-side
+// fetcher. On the client we read it cookie-first so the value can't go
+// stale between renders (React state would). Falls back to DEFAULT_LOCALE
+// when running outside the browser or when the cookie isn't set yet.
+function readClientLocale(): string {
+  if (typeof document === 'undefined') return DEFAULT_LOCALE;
+  const raw = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${LOCALE_COOKIE}=`));
+  if (!raw) return DEFAULT_LOCALE;
+  const value = decodeURIComponent(raw.slice(LOCALE_COOKIE.length + 1));
+  return isLocale(value) ? value : DEFAULT_LOCALE;
+}
+
+// Attach access token + Accept-Language to every request.
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Always inject Accept-Language so the Go backend's locale middleware
+  // (Phase A1 / pkg/i18n) can pick the right catalog. Cookie wins over
+  // browser preference because the user's explicit toggle in
+  // <LanguageSwitcher> is the source of truth.
+  config.headers['Accept-Language'] = readClientLocale();
   return config;
 });
 
