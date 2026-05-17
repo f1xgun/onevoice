@@ -1019,7 +1019,31 @@
       "manual": "Manual",
       "inherit": "\"same as business\"",
       "businessTag": "Business: {label}",
-      "noTools": "No tools require approval — everything runs automatically."
+      "noTools": "No tools require approval — everything runs automatically.",
+      "businessDefault": {
+        "auto": "Automatic",
+        "manual": "Manual"
+      }
+    },
+    "whitelist": {
+      "options": {
+        "inherit": {
+          "label": "Same as business",
+          "helper": "Use the business-level settings (by default, every available tool)."
+        },
+        "all": {
+          "label": "All tools",
+          "helper": "Any tool from an active integration is available to the LLM."
+        },
+        "explicit": {
+          "label": "Selected",
+          "helper": "Only allow the tools checked below."
+        },
+        "none": {
+          "label": "None",
+          "helper": "The LLM can reply but won't take any actions."
+        }
+      }
     },
     "quickActions": {
       "hint": "Up to 6 short phrases — they appear as buttons in an empty chat.",
@@ -1035,7 +1059,12 @@
     "deleteDialog": {
       "cancel": "Cancel",
       "delete": "Delete",
-      "deleting": "Deleting…"
+      "deleting": "Deleting…",
+      "title": "Delete project \"{name}\"?",
+      "descriptionEmpty": "The project will be deleted. This can't be undone.",
+      "descriptionWithChats": "{count, plural, one {# chat will also be deleted} other {# chats will also be deleted}}. This can't be undone.",
+      "toastError": "Couldn't delete the project",
+      "toastRetry": "Please try again."
     },
     "editPage": {
       "title": "Edit project",
