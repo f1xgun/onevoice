@@ -43,7 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SkeletonMetricStrip } from '@/components/states';
 import { DataTable, type Column } from '@/components/lists/DataTable';
 import { useDataTableFilters } from '@/hooks/useDataTableFilters';
@@ -245,7 +245,14 @@ export default function PostsPage() {
             value={filters.platform}
             onValueChange={(v) => setFilter('platform', v as PlatformKey)}
           >
-            <SelectTrigger className="h-8 w-full text-sm sm:w-[180px]">
+            {/* Explicit ASCII id pins the Radix-generated id on the trigger
+                so axe's `aria-valid-attr-value` (serious) never sees the
+                «…» chars React 18 useId() injects into Radix's auto-id. */}
+            <SelectTrigger
+              id="posts-platform-select"
+              aria-label={tCommon('allPlatforms')}
+              className="h-8 w-full text-sm sm:w-[180px]"
+            >
               <SelectValue placeholder={tCommon('allPlatforms')} />
             </SelectTrigger>
             <SelectContent>
@@ -256,25 +263,81 @@ export default function PostsPage() {
             </SelectContent>
           </Select>
 
+          {/* Explicit ASCII ids pin the Radix-generated id + aria-controls +
+              aria-labelledby on each <Tabs.Trigger>/<Tabs.Content> pair. Same
+              useId() encoding bug as the Select above. We also render empty
+              <TabsContent> elements so the aria-controls IDREFs resolve to
+              live DOM nodes (axe fails on dangling references when the rule
+              format checks both attribute syntax + IDREF target presence). */}
           <Tabs
+            id="posts-status-tabs"
             value={filters.status}
             onValueChange={(v) => setFilter('status', v as StatusKey)}
             className="-mx-1 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0"
           >
             <TabsList className="h-8 bg-paper-sunken">
-              <TabsTrigger value="all" className="h-7 text-[13px]">
+              <TabsTrigger
+                value="all"
+                id="posts-status-tabs-trigger-all"
+                aria-controls="posts-status-tabs-content-all"
+                className="h-7 text-[13px]"
+              >
                 {tPosts('tabs.all', { count: counts.total })}
               </TabsTrigger>
-              <TabsTrigger value="published" className="h-7 text-[13px]">
+              <TabsTrigger
+                value="published"
+                id="posts-status-tabs-trigger-published"
+                aria-controls="posts-status-tabs-content-published"
+                className="h-7 text-[13px]"
+              >
                 {tPosts('tabs.published', { count: counts.published })}
               </TabsTrigger>
-              <TabsTrigger value="scheduled" className="h-7 text-[13px]">
+              <TabsTrigger
+                value="scheduled"
+                id="posts-status-tabs-trigger-scheduled"
+                aria-controls="posts-status-tabs-content-scheduled"
+                className="h-7 text-[13px]"
+              >
                 {tPosts('tabs.scheduled', { count: counts.scheduled })}
               </TabsTrigger>
-              <TabsTrigger value="error" className="h-7 text-[13px]">
+              <TabsTrigger
+                value="error"
+                id="posts-status-tabs-trigger-error"
+                aria-controls="posts-status-tabs-content-error"
+                className="h-7 text-[13px]"
+              >
                 {tPosts('tabs.error', { count: counts.error })}
               </TabsTrigger>
             </TabsList>
+            {/* Tabs on this page act as a filter chip group — the actual
+                content lives in the <DataTable> below, NOT in Tabs.Content.
+                But the ARIA tabs pattern requires aria-controls to resolve;
+                we render empty, hidden TabsContent panels purely to anchor
+                the IDREFs (and pin their ids to stable ASCII strings). */}
+            <TabsContent
+              value="all"
+              id="posts-status-tabs-content-all"
+              aria-labelledby="posts-status-tabs-trigger-all"
+              className="sr-only"
+            />
+            <TabsContent
+              value="published"
+              id="posts-status-tabs-content-published"
+              aria-labelledby="posts-status-tabs-trigger-published"
+              className="sr-only"
+            />
+            <TabsContent
+              value="scheduled"
+              id="posts-status-tabs-content-scheduled"
+              aria-labelledby="posts-status-tabs-trigger-scheduled"
+              className="sr-only"
+            />
+            <TabsContent
+              value="error"
+              id="posts-status-tabs-content-error"
+              aria-labelledby="posts-status-tabs-trigger-error"
+              className="sr-only"
+            />
           </Tabs>
 
           <span className="hidden flex-1 sm:inline" />

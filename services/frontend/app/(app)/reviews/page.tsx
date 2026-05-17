@@ -31,7 +31,7 @@ const REVIEWS_REFRESH_TIMEOUT_MS = 120_000;
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -281,7 +281,14 @@ export default function ReviewsPage() {
         {/* Filter bar — platform select + reply-status tabs. */}
         <div className="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-line bg-paper-raised px-4 py-3">
           <Select value={platform} onValueChange={setPlatform}>
-            <SelectTrigger className="h-9 w-[200px]">
+            {/* Explicit ASCII id pins the Radix-generated id on the trigger
+                so axe's `aria-valid-attr-value` (serious) never sees the
+                «…» chars React 18 useId() injects into Radix's auto-id. */}
+            <SelectTrigger
+              id="reviews-platform-select"
+              aria-label={tReviews('platformPlaceholder')}
+              className="h-9 w-[200px]"
+            >
               <SelectValue placeholder={tReviews('platformPlaceholder')} />
             </SelectTrigger>
             <SelectContent>
@@ -296,12 +303,52 @@ export default function ReviewsPage() {
             </SelectContent>
           </Select>
 
-          <Tabs value={replyStatus} onValueChange={setReplyStatus}>
+          {/* Explicit ASCII ids pin the Radix-generated id + aria-controls +
+              aria-labelledby on each <Tabs.Trigger>/<Tabs.Content> pair to
+              avoid React 18 useId()'s «…» chars (see /posts page for full
+              context). Empty TabsContent anchors keep the IDREFs live. */}
+          <Tabs id="reviews-status-tabs" value={replyStatus} onValueChange={setReplyStatus}>
             <TabsList>
-              <TabsTrigger value="all">{tReviews('tabs.all')}</TabsTrigger>
-              <TabsTrigger value="pending">{tReviews('tabs.pending')}</TabsTrigger>
-              <TabsTrigger value="replied">{tReviews('tabs.replied')}</TabsTrigger>
+              <TabsTrigger
+                value="all"
+                id="reviews-status-tabs-trigger-all"
+                aria-controls="reviews-status-tabs-content-all"
+              >
+                {tReviews('tabs.all')}
+              </TabsTrigger>
+              <TabsTrigger
+                value="pending"
+                id="reviews-status-tabs-trigger-pending"
+                aria-controls="reviews-status-tabs-content-pending"
+              >
+                {tReviews('tabs.pending')}
+              </TabsTrigger>
+              <TabsTrigger
+                value="replied"
+                id="reviews-status-tabs-trigger-replied"
+                aria-controls="reviews-status-tabs-content-replied"
+              >
+                {tReviews('tabs.replied')}
+              </TabsTrigger>
             </TabsList>
+            <TabsContent
+              value="all"
+              id="reviews-status-tabs-content-all"
+              aria-labelledby="reviews-status-tabs-trigger-all"
+              className="sr-only"
+            />
+            <TabsContent
+              value="pending"
+              id="reviews-status-tabs-content-pending"
+              aria-labelledby="reviews-status-tabs-trigger-pending"
+              className="sr-only"
+            />
+            <TabsContent
+              value="replied"
+              id="reviews-status-tabs-content-replied"
+              aria-labelledby="reviews-status-tabs-trigger-replied"
+              className="sr-only"
+            />
           </Tabs>
 
           <Button
