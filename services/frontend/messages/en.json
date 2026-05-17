@@ -734,6 +734,15 @@
       "avito": "Avito",
       "whatsapp": "WhatsApp"
     },
+    "description": {
+      "telegram": "Bot for your channel and notifications",
+      "vk": "Posts and comments",
+      "yandex_business": "Reviews and profile info",
+      "google_business": "Reviews and business profile info",
+      "2gis": "Coming soon",
+      "avito": "Coming soon",
+      "whatsapp": "Coming soon"
+    },
     "comingSoonWhen": "being evaluated",
     "comingSoonFallback": "soon"
   },

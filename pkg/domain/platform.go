@@ -26,10 +26,18 @@ const (
 // have an agent (snake_case, e.g. yandex_business, google_business);
 // coming-soon-only entries follow the same casing so the frontend can join
 // by id without normalisation.
+//
+// As of i18n Phase C2, Name and Description are no longer serialized over
+// the wire — the frontend resolves both via its messages/*.json bundles
+// (platforms.fullLabel.<id>, platforms.description.<id>). The fields are
+// kept on the Go struct as empty values so legacy in-process callers that
+// reference them keep compiling, but `json:"-"` ensures /api/v1/platforms
+// only ships id + status. Telegram clients (frontend, marketing landing)
+// pin the on-disk schema in services/frontend/lib/api/platforms.ts.
 type Platform struct {
 	ID          string         `json:"id"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
+	Name        string         `json:"-"`
+	Description string         `json:"-"`
 	Status      PlatformStatus `json:"status"`
 }
 
@@ -38,52 +46,22 @@ type Platform struct {
 // which credentials are present (typically the API platforms handler) are
 // expected to downgrade entries to PlatformStatusOAuthNotConfigured before
 // surfacing the list to clients.
+//
+// Name / Description left empty here on purpose (Phase C2): the wire
+// serialization drops them via `json:"-"` and the frontend renders both
+// from its i18n bundles. Adding new platforms is a one-line append in
+// frontend `messages/*.json` per locale.
 func Platforms() []Platform {
 	return []Platform{
-		{
-			ID:          "telegram",
-			Name:        "Telegram",
-			Description: "Бот для канала и уведомлений",
-			Status:      PlatformStatusActive,
-		},
-		{
-			ID:          "vk",
-			Name:        "ВКонтакте",
-			Description: "Публикации и комментарии",
-			Status:      PlatformStatusActive,
-		},
-		{
-			ID:          "yandex_business",
-			Name:        "Яндекс.Бизнес",
-			Description: "Отзывы и информация",
-			Status:      PlatformStatusActive,
-		},
-		{
-			// Google Business agent exists but is held back from MVP per
-			// product decision (Linen design v2 §5). Promote to Active once
-			// the marketing+support pipeline for Google is ready.
-			ID:          "google_business",
-			Name:        "Google Business",
-			Description: "Отзывы и информация о бизнесе",
-			Status:      PlatformStatusComingSoon,
-		},
-		{
-			ID:          "2gis",
-			Name:        "2ГИС",
-			Description: "Скоро",
-			Status:      PlatformStatusComingSoon,
-		},
-		{
-			ID:          "avito",
-			Name:        "Авито",
-			Description: "Скоро",
-			Status:      PlatformStatusComingSoon,
-		},
-		{
-			ID:          "whatsapp",
-			Name:        "WhatsApp",
-			Description: "Скоро",
-			Status:      PlatformStatusComingSoon,
-		},
+		{ID: "telegram", Status: PlatformStatusActive},
+		{ID: "vk", Status: PlatformStatusActive},
+		{ID: "yandex_business", Status: PlatformStatusActive},
+		// Google Business agent exists but is held back from MVP per
+		// product decision (Linen design v2 §5). Promote to Active once
+		// the marketing+support pipeline for Google is ready.
+		{ID: "google_business", Status: PlatformStatusComingSoon},
+		{ID: "2gis", Status: PlatformStatusComingSoon},
+		{ID: "avito", Status: PlatformStatusComingSoon},
+		{ID: "whatsapp", Status: PlatformStatusComingSoon},
 	}
 }
