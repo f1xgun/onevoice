@@ -60,7 +60,7 @@ export function ToolApprovalToggle({
           value={value}
           onChange={onChange}
           disabled={disabled}
-          aria-label={`Режим одобрения для ${label}`}
+          aria-label={t('modeAriaLabel', { label })}
         />
       )}
     </div>
@@ -78,9 +78,10 @@ function ApprovalSegmented({
   disabled?: boolean;
   'aria-label'?: string;
 }) {
+  const t = useTranslations('settings.toolApproval.modes');
   const opts: { id: ToolApprovalValue; label: string }[] = [
-    { id: 'manual', label: 'С вашего согласия' },
-    { id: 'auto', label: 'Сам' },
+    { id: 'manual', label: t('manual') },
+    { id: 'auto', label: t('auto') },
   ];
   return (
     <div

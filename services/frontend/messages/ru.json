@@ -452,6 +452,13 @@
       "telegram": "Telegram",
       "yandexBusiness": "Яндекс.Бизнес"
     },
+    "platformShort": {
+      "telegram": "Telegram",
+      "vk": "VK",
+      "yandex_business": "Яндекс"
+    },
+    "errorFallback": "Не удалось опубликовать. Проверьте подключение каналов и попробуйте ещё раз.",
+    "mediaFile": "файл {index}",
     "tabs": {
       "all": "Все · {count}",
       "published": "Опубликованы · {count}",
@@ -497,7 +504,7 @@
       "inProgress": "Сейчас в работе",
       "awaitingUser": "Ждут вашего шага",
       "doneEmptyHint": "пока ничего",
-      "doneSummary": "из них {success} успешно, {needsHelp} {needsHelpWord} вашего внимания",
+      "doneSummary": "из них {success} успешно, {needsHelp, plural, one {# требует} few {# требуют} many {# требуют} other {# требуют}} вашего внимания",
       "inProgressNone": "нет активных задач",
       "inProgressSome": "идёт прямо сейчас",
       "awaitingNone": "всё в порядке",
@@ -573,7 +580,20 @@
       "writeOwn": "Написать ответ",
       "draftFailed": "Не получилось подготовить образец. Можно ответить вручную.",
       "draftPending": "Образец ещё не подготовлен. Можно ответить вручную."
-    }
+    },
+    "ratingAria": "Оценка {rating} из 5",
+    "platformLabels": {
+      "yandex_business": "Яндекс.Бизнес",
+      "yandex": "Яндекс",
+      "google": "Google",
+      "google_business": "Google Business",
+      "2gis": "2ГИС",
+      "telegram": "Telegram",
+      "vk": "ВКонтакте"
+    },
+    "sendReplyError": "Не получилось отправить ответ",
+    "refreshSuccess": "Отзывы обновлены",
+    "refreshError": "Не удалось обновить отзывы"
   },
   "business": {
     "title": "Профиль бизнеса",
@@ -1169,11 +1189,20 @@
       "unsavedChanges": "Есть несохранённые изменения. Нажмите «Сохранить», чтобы применить.",
       "loadError": "Не удалось загрузить список инструментов. Обновите страницу или попробуйте позже.",
       "noTools": "Нет настраиваемых инструментов.",
-      "platform": "Платформа"
+      "platform": "Платформа",
+      "toolsCount": "{count, plural, one {# инструмент} few {# инструмента} many {# инструментов} other {# инструментов}}",
+      "saveSuccess": "Настройки сохранены",
+      "saveError": "Не удалось сохранить",
+      "saveRetry": "Попробуйте ещё раз."
     },
     "toolApproval": {
       "blocked": "Запрещено",
-      "blockedHint": "Этот инструмент нельзя разрешить настройками"
+      "blockedHint": "Этот инструмент нельзя разрешить настройками",
+      "modeAriaLabel": "Режим одобрения для {label}",
+      "modes": {
+        "manual": "С вашего согласия",
+        "auto": "Сам"
+      }
     }
   },
   "sidebar": {

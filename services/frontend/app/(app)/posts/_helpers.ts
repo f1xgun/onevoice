@@ -10,15 +10,15 @@ import { ru } from 'date-fns/locale';
 
 import type { Post } from '@/types/post';
 
-// Backend platform id → user-facing short label. Used by ChannelChip and
-// PlatformResultCard. The full names live in @/lib/platforms (CHANNEL_NAMES);
-// the abbreviation here is for in-line chips that would otherwise crowd
-// the row layout (e.g. yandex_business → "Яндекс").
-export const platformShort: Record<string, string> = {
-  telegram: 'Telegram',
-  vk: 'VK',
-  yandex_business: 'Яндекс',
-};
+// Backend platform ids that have a user-facing short label under
+// posts.platformShort.<id>. Consumers (ChannelChip, PlatformResultCard)
+// resolve the actual string via `useTranslations('posts.platformShort')`
+// and fall back to the raw id outside this set.
+export const PLATFORM_SHORT_KEYS: ReadonlySet<string> = new Set([
+  'telegram',
+  'vk',
+  'yandex_business',
+]);
 
 export function collectPlatforms(post: Post): string[] {
   if (post.platformResults) {
@@ -45,9 +45,8 @@ export function nextScheduledLabel(posts: Post[]): string {
   return format(upcoming[0], 'd MMM', { locale: ru });
 }
 
-export function friendlyTopLevelError(post: Post): string | null {
-  if (post.status !== 'error') return null;
-  // Backend doesn't currently return a top-level error string, so we offer a
-  // plain-Russian fallback that points the user at the next step.
-  return 'Не удалось опубликовать. Проверьте подключение каналов и попробуйте ещё раз.';
+export function topLevelErrorStatus(post: Post): boolean {
+  // Pure boolean — i18n-aware consumers render the fallback string from
+  // posts.errorFallback when this returns true.
+  return post.status === 'error';
 }

@@ -10,7 +10,6 @@ import { MonoLabel } from '@/components/ui/mono-label';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePlatformFullLabels } from '@/lib/platforms';
 import { useTools, groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
-import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import {
   useBusinessToolApprovals,
   useUpdateBusinessToolApprovals,
@@ -91,15 +90,15 @@ export function ToolsPageClient() {
   function handleSave() {
     updateMutation.mutate(draft, {
       onSuccess: () => {
-        toast.success('Настройки сохранены');
+        toast.success(tTools('saveSuccess'));
       },
       onError: (err) => {
         const msg =
           err instanceof Error && 'response' in err
             ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? '')
             : '';
-        toast.error('Не удалось сохранить', {
-          description: msg || 'Попробуйте ещё раз.',
+        toast.error(tTools('saveError'), {
+          description: msg || tTools('saveRetry'),
         });
       },
     });
@@ -158,7 +157,7 @@ export function ToolsPageClient() {
                       <h2 className="mt-1 text-base font-medium text-ink">{label}</h2>
                     </div>
                     <MonoLabel>
-                      {toolsForPlatform.length} {pluralizeTools(toolsForPlatform.length)}
+                      {tTools('toolsCount', { count: toolsForPlatform.length })}
                     </MonoLabel>
                   </header>
                   <div className="flex flex-col gap-2 p-4">
@@ -180,13 +179,4 @@ export function ToolsPageClient() {
       </div>
     </>
   );
-}
-
-function pluralizeTools(n: number): string {
-  const last = n % 10;
-  const lastTwo = n % 100;
-  if (lastTwo >= RU_PLURAL_TEEN_LOWER && lastTwo <= RU_PLURAL_TEEN_UPPER) return 'инструментов';
-  if (last === 1) return 'инструмент';
-  if (last >= 2 && last <= RU_PLURAL_PAUCAL_UPPER) return 'инструмента';
-  return 'инструментов';
 }
