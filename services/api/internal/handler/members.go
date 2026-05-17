@@ -171,6 +171,11 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if targetUserID == bc.UserID {
+		writeJSONError(w, http.StatusForbidden, "cannot_change_own_role")
+		return
+	}
+
 	var req updateMemberRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_body")
