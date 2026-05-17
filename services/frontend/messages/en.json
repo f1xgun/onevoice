@@ -1,4 +1,8 @@
 {
+  "metadata": {
+    "title": "OneVoice — manage your digital presence",
+    "description": "A multi-agent system that automates digital presence for small businesses"
+  },
   "businessGuard": {
     "loadFailed": "Couldn't load the list of organizations",
     "retry": "Try again",
