@@ -31,6 +31,7 @@ import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { useBusinessStore } from '@/lib/stores/business';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { Button } from '@/components/ui/button';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { PageHeader } from '@/components/ui/page-header';
@@ -76,6 +77,7 @@ export default function PostsPage() {
   const tPosts = useTranslations('posts');
   const tCommon = useTranslations('common');
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  const canCreate = usePermission('content.create').allowed;
 
   const { filters, setFilter, queryString } = useDataTableFilters<PostsFilters>({
     defaultValue: { status: 'all', platform: 'all' },
@@ -191,10 +193,12 @@ export default function PostsPage() {
         title={tPosts('title')}
         sub={tPosts('subtitle')}
         actions={
-          <Button variant="primary" size="md">
-            <Plus aria-hidden />
-            {tPosts('createPost')}
-          </Button>
+          canCreate ? (
+            <Button variant="primary" size="md">
+              <Plus aria-hidden />
+              {tPosts('createPost')}
+            </Button>
+          ) : undefined
         }
       />
 

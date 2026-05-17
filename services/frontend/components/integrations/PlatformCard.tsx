@@ -25,6 +25,7 @@ import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { cn } from '@/lib/utils';
 
 // Yandex.Business RPA refresh poll cadence (ms). After kicking off a
@@ -233,6 +234,7 @@ function ChannelList({
   const tCommon = useTranslations('common');
   const qc = useQueryClient();
   const refreshedRef = useRef<Set<string>>(new Set());
+  const canRefresh = usePermission('integrations.connect').allowed;
 
   // Lazy backfill of missing friendly names. The first time we see an
   // integration without its platform-specific name field, we POST to the
@@ -243,7 +245,7 @@ function ChannelList({
   //   - VK:               metadata.community_name (groups.getById, ~200ms)
   //   - yandex_business:  metadata.business_name  (agent get_info RPA, ~30s)
   useEffect(() => {
-    if (!activeBusinessId) return;
+    if (!activeBusinessId || !canRefresh) return;
     integrations.forEach((i) => {
       if (refreshedRef.current.has(i.id)) return;
       const md = (i.metadata as Record<string, unknown>) ?? {};
@@ -282,7 +284,7 @@ function ChannelList({
           // Best-effort; swallow.
         });
     });
-  }, [integrations, qc, activeBusinessId]);
+  }, [integrations, qc, activeBusinessId, canRefresh]);
 
   return (
     <div className="flex flex-col gap-2">

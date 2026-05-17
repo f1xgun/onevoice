@@ -108,7 +108,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={logoMutation.isPending}
+          disabled={logoMutation.isPending || !canEdit}
           className="hover:border-ochre/40 relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-paper-sunken text-ink-soft transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
           aria-label={tProfileForm('logoUploadAria')}
         >
@@ -164,6 +164,7 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
           accept="image/jpeg,image/png,image/webp,image/gif"
           className="hidden"
           onChange={handleFileChange}
+          disabled={!canEdit}
         />
       </div>
 
