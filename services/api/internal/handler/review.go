@@ -168,7 +168,7 @@ func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 

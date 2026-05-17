@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
+
+	"github.com/f1xgun/onevoice/pkg/i18n"
 )
 
 func derefString(s *string) string {
@@ -72,38 +74,56 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, ErrorResponse{Error: message})
 }
 
-// writeValidationError writes a validation error response with field-level details
-func writeValidationError(w http.ResponseWriter, err error) {
+// writeJSONErrorKey writes a JSON error response whose message is resolved
+// from pkg/i18n using the locale stored on the request context by the
+// LocaleResolver middleware. The catalog key MUST exist in pkg/i18n/catalog_ru.go;
+// fmt-style args are forwarded to i18n.Tr (so e.g. "connect.vk.invalid_token"
+// accepts a single %s arg with the VK-provided detail).
+//
+// Use this instead of writeJSONError for any user-visible string that was
+// previously a Russian literal in the handler.
+func writeJSONErrorKey(w http.ResponseWriter, r *http.Request, status int, key string, args ...any) {
+	writeJSON(w, status, ErrorResponse{Error: i18n.Tr(r.Context(), key, args...)})
+}
+
+// writeValidationError writes a validation error response with field-level
+// details. Field-level messages are localized via pkg/i18n keyed by
+// validation tag ("required" → "validation.required" etc.); the envelope
+// "error" field uses the "validation.failed" key.
+func writeValidationError(w http.ResponseWriter, r *http.Request, err error) {
 	fields := make(map[string]string)
+	ctx := r.Context()
 
 	if validationErrors, ok := err.(validator.ValidationErrors); ok {
 		for _, fieldErr := range validationErrors {
 			field := fieldErr.Field()
 			tag := fieldErr.Tag()
 
-			// Create human-readable error message based on validation tag
-			var message string
+			// Map validator/v10 tag → i18n catalog key. Unknown tags fall
+			// through to a generic "validation failed" message so a newly
+			// introduced struct tag never crashes the handler.
+			var key string
 			switch tag {
 			case "required":
-				message = "field is required"
+				key = "validation.required"
 			case "email":
-				message = "invalid email format"
+				key = "validation.invalid_email"
 			case "min":
-				message = "value is too short"
+				key = "validation.too_short"
 			case "max":
-				message = "value is too long"
+				key = "validation.too_long"
 			default:
-				message = "validation failed"
+				key = "validation.generic"
 			}
 
-			fields[field] = message
+			fields[field] = i18n.Tr(ctx, key)
 		}
 	} else {
 		slog.Warn("validation error is not of type validator.ValidationErrors", "error", err)
 	}
 
 	writeJSON(w, http.StatusBadRequest, ValidationErrorResponse{
-		Error:  "validation failed",
+		Error:  i18n.Tr(ctx, "validation.failed"),
 		Fields: fields,
 	})
 }

@@ -2,6 +2,7 @@ package connect
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -69,23 +70,34 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 	// gives us the canonical numeric id, name, screen_name, and avatar.
 	group, vkErr, transportErr := h.probeVKCommunityToken(r.Context(), req.AccessToken, req.GroupID)
 	if transportErr != nil {
+		// Domain-classified sentinel — the resolver step before the API
+		// call failed. Surface as 400 with a localized template.
+		if errors.Is(transportErr, ErrVKCommunityResolveFailed) {
+			// Underlying detail follows ": " after the sentinel name.
+			detail := strings.TrimPrefix(transportErr.Error(), ErrVKCommunityResolveFailed.Error()+": ")
+			writeJSONErrorKey(w, r, http.StatusBadRequest, "connect.vk.community_resolve_failed", detail)
+			return
+		}
 		slog.Error("VK token validation failed", "error", transportErr)
 		writeJSONError(w, http.StatusBadGateway, "failed to validate VK token")
 		return
 	}
 	if vkErr != "" {
-		writeJSONError(w, http.StatusBadRequest, "Невалидный токен: "+vkErr)
+		writeJSONErrorKey(w, r, http.StatusBadRequest, "connect.vk.invalid_token", vkErr)
 		return
 	}
 	if group == nil {
-		writeJSONError(w, http.StatusBadRequest,
-			"VK не вернул сообщество для этого токена — проверьте, что вы создали ключ в админке сообщества")
+		writeJSONErrorKey(w, r, http.StatusBadRequest, "connect.vk.community_unknown")
 		return
 	}
 
 	// Verify the token has `wall` scope. Without it, vk__reply_comment
 	// will fail at runtime — surface the issue at connect time instead.
 	if scopeErr := h.checkVKWallScope(r.Context(), req.AccessToken); scopeErr != nil {
+		if errors.Is(scopeErr, ErrVKWallPermissionMissing) {
+			writeJSONErrorKey(w, r, http.StatusBadRequest, "connect.vk.wall_permission_missing")
+			return
+		}
 		writeJSONError(w, http.StatusBadRequest, scopeErr.Error())
 		return
 	}

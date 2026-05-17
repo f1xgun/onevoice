@@ -3,6 +3,7 @@ package connect
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +13,20 @@ import (
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/vkapi"
+)
+
+// Connect-package sentinel errors. Internal English so the package stays
+// locale-agnostic; handlers map via errors.Is to pkg/i18n keys at the
+// response boundary.
+var (
+	// ErrVKCommunityResolveFailed surfaces when probeVKCommunityToken cannot
+	// resolve a screen-name/URL into a numeric group id. Wrapped with the
+	// underlying detail via fmt.Errorf("%w: %w", ...).
+	ErrVKCommunityResolveFailed = errors.New("connect: vk community resolve failed")
+	// ErrVKWallPermissionMissing means a community access token lacks the
+	// `wall` scope. Returned bare (no detail) because the localized template
+	// already names the exact missing permission.
+	ErrVKWallPermissionMissing = errors.New("connect: vk wall permission missing")
 )
 
 // vkURLPrefixes is the set of URL fragments stripped off user-pasted group
@@ -40,7 +55,11 @@ func (h *ConnectHandler) probeVKCommunityToken(
 	if strings.TrimSpace(rawGroupInput) != "" {
 		resolved, err := h.resolveVKGroupID(ctx, rawGroupInput)
 		if err != nil {
-			return nil, "не удалось распознать сообщество: " + err.Error(), nil
+			// Surface as transport-level error wrapped with sentinel so the
+			// handler can map to the localized "community resolve failed"
+			// template via errors.Is. vkErrMsg stays empty in this branch
+			// (no VK-side error yet — we never reached the API).
+			return nil, "", fmt.Errorf("%w: %w", ErrVKCommunityResolveFailed, err)
 		}
 		groupParam = resolved
 	}
@@ -125,9 +144,9 @@ func (h *ConnectHandler) checkVKWallScope(ctx context.Context, accessToken strin
 			return nil
 		}
 	}
-	return fmt.Errorf(
-		"токену не хватает прав на «Стену» — пересоздайте ключ в админке сообщества с галочкой «Стена»",
-	)
+	// Sentinel-only — the handler boundary maps this to the localized
+	// "wall permission missing" template via errors.Is.
+	return ErrVKWallPermissionMissing
 }
 
 // resolveVKGroupID turns user input (numeric id, screen_name, or full VK URL)
