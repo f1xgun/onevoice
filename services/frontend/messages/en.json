@@ -982,6 +982,21 @@
       "headline": "We support the channels your customers actually use.",
       "body": "In Russia — no compromises. We connect to the real channels, not their Western lookalikes."
     },
+    "platforms": {
+      "telegram": { "display": "Telegram", "meta": "Channels and bots" },
+      "vk": { "display": "VK", "meta": "Communities" },
+      "yandex_business": { "display": "Yandex.Business", "meta": "Map and reviews" },
+      "google_business": { "display": "Google Business", "meta": "Under review" },
+      "2gis": { "display": "2GIS", "meta": "Under review" },
+      "avito": { "display": "Avito", "meta": "Under review" },
+      "whatsapp": { "display": "WhatsApp", "meta": "Under review" },
+      "instagram": { "display": "Instagram", "meta": "Under review" },
+      "ok": { "display": "Odnoklassniki", "meta": "Under review" }
+    },
+    "platformStatus": {
+      "have": "live",
+      "soon": "soon"
+    },
     "footer": {
       "rights": "© {year} · All rights reserved",
       "contacts": "Contact",

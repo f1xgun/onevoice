@@ -982,6 +982,21 @@
       "headline": "Поддерживаем то, чем пользуются ваши клиенты.",
       "body": "В России — без компромиссов. Подключаем настоящие каналы, а не их западные аналоги."
     },
+    "platforms": {
+      "telegram": { "display": "Telegram", "meta": "Каналы и боты" },
+      "vk": { "display": "ВКонтакте", "meta": "Сообщества" },
+      "yandex_business": { "display": "Яндекс.Бизнес", "meta": "Карта и отзывы" },
+      "google_business": { "display": "Google Business", "meta": "Оценивается" },
+      "2gis": { "display": "2ГИС", "meta": "Оценивается" },
+      "avito": { "display": "Авито", "meta": "Оценивается" },
+      "whatsapp": { "display": "WhatsApp", "meta": "Оценивается" },
+      "instagram": { "display": "Instagram", "meta": "Оценивается" },
+      "ok": { "display": "Одноклассники", "meta": "Оценивается" }
+    },
+    "platformStatus": {
+      "have": "есть",
+      "soon": "скоро"
+    },
     "footer": {
       "rights": "© {year} · Все права защищены",
       "contacts": "Контакты",
