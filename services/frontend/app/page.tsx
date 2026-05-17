@@ -36,13 +36,15 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-paper text-ink">
       <SiteNav />
-      <Hero />
-      <Belief />
-      <Features />
-      <HowItWorks />
-      <Platforms />
-      <Quote />
-      {/* <Pricing /> — временно скрыто: продукт бесплатный */}
+      <main id="main-content">
+        <Hero />
+        <Belief />
+        <Features />
+        <HowItWorks />
+        <Platforms />
+        <Quote />
+        {/* <Pricing /> — временно скрыто: продукт бесплатный */}
+      </main>
       <SiteFooter />
     </div>
   );
