@@ -247,8 +247,6 @@ export default function ReviewsPage() {
       <PageHeader title={tReviews('title')} sub={tReviews('subtitle')} />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">
-        <h2 className="sr-only">{tReviews('title')}</h2>
-
         {/* Stat strip — three quiet metrics. No celebratory tone. */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatCell
