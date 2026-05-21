@@ -263,6 +263,9 @@
     "loading": "Загрузка…",
     "open": "Открыть",
     "edit": "Редактировать",
+    "toasts": {
+      "languageSwitchFailed": "Не удалось переключить язык — попробуйте ещё раз"
+    },
     "notFound": {
       "errorLabel": "ERROR · 404",
       "title": "Такого здесь нет",
