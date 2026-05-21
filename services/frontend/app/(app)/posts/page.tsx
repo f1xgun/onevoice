@@ -245,9 +245,6 @@ export default function PostsPage() {
             value={filters.platform}
             onValueChange={(v) => setFilter('platform', v as PlatformKey)}
           >
-            {/* Explicit ASCII id pins the Radix-generated id on the trigger
-                so axe's `aria-valid-attr-value` (serious) never sees the
-                «…» chars React 18 useId() injects into Radix's auto-id. */}
             <SelectTrigger
               id="posts-platform-select"
               aria-label={tCommon('allPlatforms')}
@@ -263,12 +260,6 @@ export default function PostsPage() {
             </SelectContent>
           </Select>
 
-          {/* Explicit ASCII ids pin the Radix-generated id + aria-controls +
-              aria-labelledby on each <Tabs.Trigger>/<Tabs.Content> pair. Same
-              useId() encoding bug as the Select above. We also render empty
-              <TabsContent> elements so the aria-controls IDREFs resolve to
-              live DOM nodes (axe fails on dangling references when the rule
-              format checks both attribute syntax + IDREF target presence). */}
           <Tabs
             id="posts-status-tabs"
             value={filters.status}
