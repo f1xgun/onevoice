@@ -121,10 +121,14 @@ func (h *ResumeHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		case orchestrator.EventToolCall:
 			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
+			sse.ToolDisplayName = event.ToolDisplayName
+			sse.ToolDisplayNameKey = event.ToolDisplayNameKey
 			sse.ToolArgs = event.ToolArgs
 		case orchestrator.EventToolResult:
 			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
+			sse.ToolDisplayName = event.ToolDisplayName
+			sse.ToolDisplayNameKey = event.ToolDisplayNameKey
 			sse.ToolResult = event.ToolResult
 			sse.ToolError = event.ToolError
 		case orchestrator.EventToolRejected:
