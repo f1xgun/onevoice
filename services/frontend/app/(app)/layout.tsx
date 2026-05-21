@@ -136,15 +136,23 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   >
                     <ProjectPane />
                   </Panel>
-                  {/* role="region" wrapper: the handle has an aria-label so axe
-                      treats it as labeled content and demands an enclosing landmark. */}
-                  <div role="region" aria-label={tSidebar('resizeAria')} className="h-full">
-                    <PanelResizeHandle
-                      id="project-pane-handle"
-                      aria-label={tSidebar('resizeAria')}
-                      className="h-full w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
-                    />
-                  </div>
+                  {/* PanelResizeHandle already renders role="separator" with
+                      aria-controls + aria-label, so it's a self-contained,
+                      focusable, labelled control. The earlier role="region"
+                      wrapper duplicated the announcement (axe M4 review):
+                      Tab would announce "region, Изменить ширину…" then
+                      "separator, Изменить ширину…". Drop the wrapper.
+                      aria-orientation="vertical" disambiguates the separator
+                      axis for AT and documents intent for axe's region rule —
+                      a 1-px separator between two landmarks is not itself a
+                      landmark, so the residual region-rule warning is a known
+                      false positive. */}
+                  <PanelResizeHandle
+                    id="project-pane-handle"
+                    aria-label={tSidebar('resizeAria')}
+                    aria-orientation="vertical"
+                    className="h-full w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
+                  />
                 </>
               )}
               <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
