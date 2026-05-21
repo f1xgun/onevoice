@@ -66,6 +66,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const tNav = useTranslations('nav');
+  const tSidebar = useTranslations('sidebar');
   const platformFullLabels = usePlatformFullLabels();
   const logout = useAuthStore((s) => s.logout);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
@@ -97,14 +98,9 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
 
   return (
     <TooltipProvider delayDuration={150}>
-      {/* Plain <div> wrapper — NOT <aside>. The rail mixes a BusinessSwitcher,
-          brand mark, a real <nav>, integration status, and logout. Wrapping
-          all of that in <aside> creates a second `complementary` landmark
-          around what is already a `navigation` landmark, so SR users in
-          landmark-navigation see two stops for one rail. The inner <nav>
-          below carries the only landmark the rail needs. */}
-      <div
+      <aside
         data-testid="nav-rail"
+        aria-label={tSidebar('railWrapperAria')}
         className="flex h-screen w-14 shrink-0 flex-col items-center border-r border-line bg-paper-raised py-2"
       >
         {/* BusinessSwitcher — visible payoff of the v2.0 multi-tenant model.
@@ -223,7 +219,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
           </TooltipTrigger>
           <TooltipContent side="right">{tNav('logout')}</TooltipContent>
         </Tooltip>
-      </div>
+      </aside>
     </TooltipProvider>
   );
 }
