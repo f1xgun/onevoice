@@ -7,7 +7,7 @@
 // hierarchy (REQUIREMENTS Out-of-Scope §"Hierarchical / wildcard").
 //
 // CHANGES TO THIS FILE MUST BE MIRRORED IN THE MIGRATION SEED.
-// migrations/postgres/000006_rbac_data_model.up.sql and
+// migrations/postgres/000007_rbac_data_model.up.sql and
 // services/api/migrations/000005_rbac_data_model.up.sql each carry a
 // hardcoded JSONB array per system role; drift is caught by
 // test/integration/system_roles_test.go (Plan H) which queries the

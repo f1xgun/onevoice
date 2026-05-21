@@ -16,6 +16,7 @@ import { useConversationsQuery, useCreateConversation } from '@/hooks/useConvers
 import { useProjectQuery } from '@/hooks/useProjects';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
 import type { Locale } from '@/lib/i18n/locales';
+import { usePermission } from '@/lib/hooks/usePermission';
 import { cn } from '@/lib/utils';
 import type { Conversation } from '@/lib/conversations';
 
@@ -31,6 +32,7 @@ export default function ProjectChatsPage() {
   const { data: project, isLoading: projectLoading } = useProjectQuery(id);
   const { data: conversations, isLoading: conversationsLoading } = useConversationsQuery();
   const createConversation = useCreateConversation();
+  const canCreate = usePermission('content.create').allowed;
 
   // Project-scoped slice. Pinned first, then most-recent-activity desc.
   // `lastMessageAt` is nullable on freshly-created chats (no messages yet);
@@ -58,7 +60,7 @@ export default function ProjectChatsPage() {
     }
   }
 
-  const newChatButton = (
+  const newChatButton = canCreate ? (
     <Button
       variant="primary"
       size="md"
@@ -68,7 +70,7 @@ export default function ProjectChatsPage() {
       <Plus size={16} aria-hidden />
       {tProjects('newChat')}
     </Button>
-  );
+  ) : null;
 
   const headerActions = (
     <div className="flex items-center gap-2">

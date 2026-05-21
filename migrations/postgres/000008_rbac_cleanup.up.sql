@@ -1,5 +1,5 @@
 -- Phase 6 v2.0 RBAC cleanup: drop legacy single-owner-per-business artifacts.
--- Phase 1 (migration 000006) seeded business_members; every business now has
+-- Phase 1 (migration 000007) seeded business_members; every business now has
 -- at least one owner member (verified by `make verify-rbac-backfill`). This
 -- migration removes the now-redundant businesses.user_id column and the
 -- now-unused users.role enum column.
