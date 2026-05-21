@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 )
 
 // Constants for conversation pagination
@@ -548,8 +549,11 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 	}
 
 	// Resolve destination name for the system note. Null / empty / absent
-	// projectId all map to "Без проекта".
-	destName := "Без проекта"
+	// projectId all map to the localized "no project" bucket label
+	// (RU: "Без проекта", EN: "No project"). The label is interpolated into
+	// the system note %s; persisted at write-time per the writer's locale
+	// — historic messages keep the language they were created in.
+	destName := i18n.Tr(r.Context(), "api.conversation.move.default_destination")
 	if req.ProjectID != nil && *req.ProjectID != "" {
 		projUUID, parseErr := uuid.Parse(*req.ProjectID)
 		if parseErr != nil {
@@ -579,13 +583,16 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Append the visible system note (byte-exact Russian copy).
-	// The LLM sees this on the NEXT turn of the chat
-	// so the prompt-layering transition is explicit (PITFALLS §11 Option A).
+	// Append the visible system note, localized at write-time using the
+	// writer's Accept-Language (planted on r.Context() by middleware.Locale).
+	// The LLM sees this on the NEXT turn of the chat so the prompt-layering
+	// transition is explicit (PITFALLS §11 Option A). Persisted to MongoDB —
+	// historic messages keep the language they were created in (we do NOT
+	// retroactively re-translate).
 	note := &domain.Message{
 		ConversationID: conversationID,
 		Role:           "system",
-		Content:        fmt.Sprintf("[Чат перемещён в «%s» — с этого момента применяется новая политика]", destName),
+		Content:        i18n.Tr(r.Context(), "api.conversation.move.system_message", destName),
 		CreatedAt:      time.Now(),
 	}
 	if err := h.messageRepo.Create(r.Context(), note); err != nil {

@@ -34,6 +34,19 @@ var en = map[string]string{
 	"yandex.cookies.invalid_sessionid": "Session_id value looks invalid — make sure you copied it completely",
 	"yandex.cookies.json_error":        "JSON error: %s",
 
+	// Chat proxy stream-error wrapper — EN form of the persisted assistant
+	// fallback rendered when the SSE stream errors out before producing text.
+	// %s carries the upstream error message.
+	"api.chat.stream_error_wrapper": "[Error: %s]",
+
+	// Move-conversation handler — EN equivalents of the system note copy.
+	// default_destination is the "no project" bucket label. system_message
+	// is the visible system note appended to the chat after a move; %s is
+	// the resolved destination name. See catalog_ru.go for the write-time
+	// localization contract (we do NOT retranslate historical messages).
+	"api.conversation.move.default_destination": "No project",
+	"api.conversation.move.system_message":      "[Chat moved to \"%s\" — the new policy applies from this point]",
+
 	// Validation messages.
 	"validation.failed":        "validation failed",
 	"validation.required":      "field is required",

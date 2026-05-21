@@ -37,6 +37,26 @@ var ru = map[string]string{
 	"yandex.cookies.invalid_sessionid": "значение Session_id выглядит некорректно — проверьте, что скопировали целиком",
 	"yandex.cookies.json_error":        "ошибка JSON: %s",
 
+	// Chat proxy stream-error wrapper
+	// (services/api/internal/handler/chat_proxy.go persistAfterStream).
+	// %s is the upstream error message captured from the orchestrator SSE
+	// "error" event; the wrapper becomes the persisted assistant message
+	// content when the stream ends without producing text.
+	"api.chat.stream_error_wrapper": "[Ошибка: %s]",
+
+	// Move-conversation handler
+	// (services/api/internal/handler/conversation.go MoveConversation).
+	// default_destination is the virtual bucket name used when projectId is
+	// null/absent (mirrors the FE "Без проекта" pseudo-project label).
+	// system_message is the visible system note appended to the chat after a
+	// move; %s is the resolved destination name (real project name or the
+	// default_destination value above). Localized at write-time per the
+	// writer's Accept-Language — the persisted string then renders in that
+	// language forever in chat history (we don't retroactively re-translate
+	// historical system messages, by design).
+	"api.conversation.move.default_destination": "Без проекта",
+	"api.conversation.move.system_message":      "[Чат перемещён в «%s» — с этого момента применяется новая политика]",
+
 	// Validation messages (services/api/internal/handler/response.go).
 	"validation.failed":        "validation failed",
 	"validation.required":      "field is required",

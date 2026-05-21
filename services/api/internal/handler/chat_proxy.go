@@ -337,7 +337,11 @@ func (h *ChatProxyHandler) persistAfterStream(
 	defer cancel()
 	content := state.assistantText.String()
 	if content == "" && state.streamErrContent != "" {
-		content = "[Ошибка: " + state.streamErrContent + "]"
+		// Localize at write-time using the locale captured in persistCtx
+		// (planted by the request edge from middleware.Locale). The wrapper
+		// is persisted to MongoDB so chat history renders in the writer's
+		// language forever — we don't retroactively re-translate.
+		content = i18n.Tr(saveCtx, "api.chat.stream_error_wrapper", state.streamErrContent)
 	}
 	assistantMsg := &domain.Message{
 		ID:             streamStartMessageID,
