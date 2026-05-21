@@ -1,6 +1,6 @@
 // Package domain — role.go
 //
-// Role is one row of the roles table created in migration 000006/000005.
+// Role is one row of the roles table created in migration 000007/000005.
 // BusinessID is nullable (NULL = system preset; non-NULL = business-custom
 // role). Permissions is the flat resource.action JSONB array (see
 // pkg/authz/permissions.go for the typed registry). IsSystem=true rows are

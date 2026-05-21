@@ -8,7 +8,7 @@
 // UPDATE with RowsAffected gating to deliver INVITE-08's single-use
 // guarantee under concurrent accept attempts. The partial index
 // idx_invitations_pending on the table is NOT a unique constraint
-// (verified in 000006_rbac_data_model.up.sql:62-64); the conditional UPDATE
+// (verified in 000007_rbac_data_model.up.sql:62-64); the conditional UPDATE
 // is the race-safe primitive. See 03-RESEARCH.md §"Accept-Flow Concurrency"
 // lines 96-178.
 package repository
