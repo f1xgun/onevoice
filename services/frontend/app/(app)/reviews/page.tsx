@@ -30,6 +30,7 @@ import { Badge } from '@/components/ui/badge';
 const REVIEWS_REFRESH_TIMEOUT_MS = 120_000;
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRadiogroupKeyboard } from '@/hooks/useRadiogroupKeyboard';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -90,6 +91,16 @@ function platformHasRating(id: string): boolean {
 // The badge record itself is built per-render via useReviewStatusBadges()
 // inside the consumer so a locale switch swaps the labels.
 type StatusKey = ReviewStatus;
+
+// Reply-status radiogroup option order — used both for rendering the chips
+// and for the arrow-key navigation hook (which walks this list to decide
+// which radio comes next).
+type ReplyStatusFilter = 'all' | 'pending' | 'replied';
+const REVIEWS_REPLY_STATUS_OPTIONS = [
+  'all',
+  'pending',
+  'replied',
+] as const satisfies readonly ReplyStatusFilter[];
 
 function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
   const tReviews = useTranslations('reviews');
@@ -158,10 +169,20 @@ export default function ReviewsPage() {
   const tReviews = useTranslations('reviews');
   const tCommon = useTranslations('common');
   const [platform, setPlatform] = useState<string>('all');
-  const [replyStatus, setReplyStatus] = useState<string>('all');
+  const [replyStatus, setReplyStatus] = useState<ReplyStatusFilter>('all');
   const [replyDialog, setReplyDialog] = useState<Review | null>(null);
   const [replyText, setReplyText] = useState('');
   const canReply = usePermission('content.update').allowed;
+
+  // Reply-status radiogroup keyboard handler — wires ArrowLeft/Right/Up/Down
+  // + Home/End so the `role="radiogroup"` chips below satisfy the
+  // WAI-ARIA radiogroup keyboard contract. Native <button role="radio">
+  // doesn't get this for free; only <input type="radio"> does.
+  const replyStatusRadio = useRadiogroupKeyboard<ReplyStatusFilter>({
+    options: REVIEWS_REPLY_STATUS_OPTIONS,
+    value: replyStatus,
+    onValueChange: setReplyStatus,
+  });
 
   const { data: reviews = [], isLoading } = useQuery<Review[]>({
     queryKey: ['businesses', activeBusinessId, 'reviews', platform, replyStatus],
@@ -302,6 +323,7 @@ export default function ReviewsPage() {
           <div
             role="radiogroup"
             aria-label={tReviews('replyStatusLabel')}
+            onKeyDown={replyStatusRadio.onKeyDown}
             className="inline-flex h-9 items-center justify-center gap-0.5 rounded-lg bg-muted p-1 text-muted-foreground"
           >
             {(
@@ -309,7 +331,7 @@ export default function ReviewsPage() {
                 ['all', tReviews('tabs.all')],
                 ['pending', tReviews('tabs.pending')],
                 ['replied', tReviews('tabs.replied')],
-              ] as [string, string][]
+              ] as [ReplyStatusFilter, string][]
             ).map(([key, label]) => {
               const active = replyStatus === key;
               return (
@@ -319,6 +341,7 @@ export default function ReviewsPage() {
                   role="radio"
                   aria-checked={active}
                   onClick={() => setReplyStatus(key)}
+                  {...replyStatusRadio.getRadioProps(key)}
                   className={cn(
                     'duration-[120ms] inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-[background,color,box-shadow] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                     active && 'bg-background text-foreground shadow'
