@@ -51,10 +51,18 @@ type entry struct {
 	// time when the request locale resolves to English. Empty means "no
 	// translation registered" — the RU description is used in both locales
 	// (safe fallback; matches pkg/i18n catalog lookup semantics).
-	descriptionEn  string
-	executor       Executor
-	floor          domain.ToolFloor
-	editableFields []string
+	descriptionEn string
+	// parameterDescriptionsEn maps each JSON-schema parameter name to its
+	// English description. The RU descriptions stay inline in
+	// def.Function.Parameters as the source of truth; the EN variant is
+	// swapped in by localizeDef when the request locale is English. Nil /
+	// empty means "no parameter translations" — the schema is returned
+	// verbatim with RU descriptions, preserving byte-compat for the legacy
+	// (RU-default) callers.
+	parameterDescriptionsEn map[string]string
+	executor                Executor
+	floor                   domain.ToolFloor
+	editableFields          []string
 }
 
 // Registry holds tool definitions and their executors.
@@ -160,6 +168,33 @@ func (r *Registry) SetDescriptionEn(name, text string) {
 	r.tools[name] = e
 }
 
+// SetParameterDescriptionsEn attaches a map of parameter-name -> English
+// description for the named tool. The map is copied defensively so subsequent
+// caller-side mutations cannot change registered behavior. No-op if the tool
+// is not registered. A nil or empty map is treated as "no translations" —
+// localizeDef leaves the schema verbatim, preserving byte-compat with legacy
+// (RU-default) callers.
+//
+// Closes the Phase D3 deferred TODO that left parameter descriptions RU-only;
+// see services/orchestrator/internal/wire/tools.go for the populated maps and
+// .planning/i18n-readiness/PLAN.md (D3 + AD-3) for the design rationale.
+func (r *Registry) SetParameterDescriptionsEn(name string, m map[string]string) {
+	e, ok := r.tools[name]
+	if !ok {
+		return
+	}
+	if len(m) == 0 {
+		e.parameterDescriptionsEn = nil
+	} else {
+		cp := make(map[string]string, len(m))
+		for k, v := range m {
+			cp[k] = v
+		}
+		e.parameterDescriptionsEn = cp
+	}
+	r.tools[name] = e
+}
+
 // Available returns tool definitions available for the given active integrations.
 // Tools named "{platform}__{action}" are included only if platform is active.
 // Tools without "__" are always included (internal tools).
@@ -189,28 +224,100 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 	return result
 }
 
-// localizeDef returns a llm.ToolDefinition with Description swapped to the
-// per-locale text. Only the Description field is mutated — the function name,
-// parameter schema, and parameter descriptions stay verbatim (parameter
-// descriptions are RU-only for now; see Phase D3 TODO below).
+// localizeDef returns a llm.ToolDefinition with the top-level Description and
+// nested parameter `properties.<name>.description` fields swapped to the
+// per-locale text. The function Name, the JSON-schema shape, parameter types,
+// `required` lists, and any non-`description` keys (`enum`, `default`, etc.)
+// remain verbatim.
 //
-// The original def is NOT mutated — we copy the Function struct value before
-// overwriting Description so concurrent callers and the registry's source-of-
-// truth shape are preserved.
+// Non-English locales (and the zero Tag) short-circuit and return the
+// registered def by value — preserving byte-identical output for the
+// RU-default callers that existed before Phase D3 / its follow-up. This
+// matters for the snapshot-style tests downstream that assert the exact
+// schema sent to the LLM in the legacy path.
 //
-// TODO(i18n): parameter property descriptions inside def.Function.Parameters
-// are still RU-only. Localizing them requires either inlining both languages
-// per tool spec or rebuilding the Parameters map at registration time per
-// locale. Deferred from Phase D3 to keep this commit atomic; tracked under
-// `.planning/i18n-readiness/PLAN.md` Phase D3 deviations.
+// For English locales, the original def is NOT mutated: the Function struct
+// is copied by value, the Parameters map is rebuilt via a deep walk that only
+// allocates new sub-maps along the property path being swapped, and parameters
+// without a registered EN description keep their RU description (graceful
+// degradation — never serve an empty description to the LLM).
 func (r *Registry) localizeDef(e entry, tag language.Tag) llm.ToolDefinition {
-	if tag != language.English || e.descriptionEn == "" {
+	if tag != language.English {
 		return e.def
 	}
+	// Nothing to localize for this entry — fast path matches legacy bytes.
+	if e.descriptionEn == "" && len(e.parameterDescriptionsEn) == 0 {
+		return e.def
+	}
+
 	out := e.def
-	out.Function = e.def.Function // copy struct by value
-	out.Function.Description = e.descriptionEn
+	out.Function = e.def.Function // copy Function struct by value
+	if e.descriptionEn != "" {
+		out.Function.Description = e.descriptionEn
+	}
+	if len(e.parameterDescriptionsEn) > 0 {
+		out.Function.Parameters = localizeParameters(e.def.Function.Parameters, e.parameterDescriptionsEn)
+	}
 	return out
+}
+
+// localizeParameters returns a deep-copied JSON-schema parameters map with
+// `properties.<name>.description` fields swapped to the EN values from
+// translations. Properties not listed in translations keep their original
+// (RU) descriptions, and any non-`description` keys under each property are
+// preserved by reference (they are immutable JSON values that we never mutate).
+//
+// The top-level map and the `properties` sub-map are always reallocated when
+// translations is non-empty so callers can compare maps by identity without
+// observing source mutation. Individual property entries are reallocated only
+// when their description is actually being swapped — this minimizes allocation
+// pressure on a hot path (this runs once per tool per chat request).
+//
+// If params is nil or has no `properties` key (zero-parameter tool), the
+// original map is returned by reference — there's nothing to localize and
+// reallocating an empty parent would just churn the GC.
+func localizeParameters(params map[string]interface{}, translations map[string]string) map[string]interface{} {
+	if params == nil {
+		return nil
+	}
+	propsRaw, ok := params["properties"]
+	if !ok {
+		return params
+	}
+	props, ok := propsRaw.(map[string]interface{})
+	if !ok || len(props) == 0 {
+		return params
+	}
+
+	// Shallow-clone the top-level params map (keeps `type`, `required` etc. by reference).
+	outParams := make(map[string]interface{}, len(params))
+	for k, v := range params {
+		outParams[k] = v
+	}
+	// Build a new `properties` map; per-property entries are cloned only when
+	// their description is actually being swapped.
+	outProps := make(map[string]interface{}, len(props))
+	for name, raw := range props {
+		propMap, ok := raw.(map[string]interface{})
+		if !ok {
+			outProps[name] = raw
+			continue
+		}
+		enDesc, hasEN := translations[name]
+		if !hasEN || enDesc == "" {
+			outProps[name] = raw
+			continue
+		}
+		// Clone this property so the source map is not mutated.
+		clone := make(map[string]interface{}, len(propMap))
+		for k, v := range propMap {
+			clone[k] = v
+		}
+		clone["description"] = enDesc
+		outProps[name] = clone
+	}
+	outParams["properties"] = outProps
+	return outParams
 }
 
 // AvailableForWhitelist applies a typed WhitelistMode filter on top
