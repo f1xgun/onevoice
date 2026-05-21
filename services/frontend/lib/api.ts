@@ -16,6 +16,19 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+// INVARIANT: this axios instance is CLIENT-ONLY.
+//
+// Server-rendered code paths (RSC, route handlers, server actions) MUST
+// NOT route through `lib/api.ts` — they have no access to `document`,
+// so `readClientLocale()` would silently fall back to DEFAULT_LOCALE
+// and ship the wrong user's locale to the backend. Server code should
+// construct its own fetcher (or use the next-intl server APIs) and
+// set `Accept-Language` from the incoming request's cookie / header.
+//
+// The SSR fallback below is defensive only. If it ever fires in
+// production, that indicates a server-side caller wrongly imported
+// this client module — fix the caller, not this fallback.
+
 // Read the locale cookie on the client. Server callers (RSC, route
 // handlers) hit this module only through code paths that don't reach
 // `document` — those should call the backend via their own server-side
