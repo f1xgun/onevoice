@@ -160,11 +160,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     activating the SkipLink moves keyboard focus here. Without
                     it, the hash navigation only scrolls; the next Tab would
                     advance from the link's DOM position (back into the
-                    sidebar). Doesn't add <main> to the tab order. */}
+                    sidebar). Doesn't add <main> to the tab order.
+                    focus-visible:outline-ink (keyboard-only, not mouse) gives
+                    a brief visible confirmation that focus actually moved
+                    here — required by WCAG 2.4.7 since the skip-link's only
+                    purpose is to transfer focus. */}
                 <main
                   id="main-content"
                   tabIndex={-1}
-                  className="h-full overflow-y-auto bg-background focus:outline-none"
+                  className="h-full overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                 >
                   {children}
                 </main>
@@ -177,11 +181,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <div className="flex h-screen flex-col">
             <Sidebar />
             {/* tabIndex={-1}: see desktop branch above — required for the
-                SkipLink to actually transfer keyboard focus into <main>. */}
+                SkipLink to actually transfer keyboard focus into <main>.
+                focus-visible outline mirrors the desktop branch — a brief
+                ink ring is the only cue that focus moved (WCAG 2.4.7). */}
             <main
               id="main-content"
               tabIndex={-1}
-              className="min-h-0 flex-1 overflow-y-auto bg-background focus:outline-none"
+              className="min-h-0 flex-1 overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
               {children}
             </main>

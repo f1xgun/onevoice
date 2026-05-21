@@ -38,9 +38,13 @@ export default function LandingPage() {
       <SiteNav />
       {/* tabIndex={-1}: makes <main> programmatically focusable so the
           SkipLink in app/layout.tsx can actually transfer keyboard focus
-          here. focus:outline-none suppresses the ring that would otherwise
-          appear when focus lands here from the SkipLink. */}
-      <main id="main-content" tabIndex={-1} className="focus:outline-none">
+          here. focus-visible:outline-ink (keyboard-only) gives a brief
+          visible cue that focus actually moved (WCAG 2.4.7). */}
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+      >
         <Hero />
         <Belief />
         <Features />
