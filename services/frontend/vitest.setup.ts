@@ -233,13 +233,14 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   (globalThis as any).ResizeObserver = ResizeObserverStub;
 }
 
-// matchMedia stub defaults matches=true so layout tests see desktop chrome
-// (data-testid="nav-rail", "project-pane"). Individual tests override per case.
+// matchMedia stub defaults matches=false (mobile-first), aligned with the
+// app shell's initial state. Tests that need desktop chrome (nav-rail,
+// project-pane) must call `setDesktopViewport()` from test-utils/viewport.
 if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: (query: string) => ({
-      matches: true,
+      matches: false,
       media: query,
       onchange: null,
       addListener: () => {},
