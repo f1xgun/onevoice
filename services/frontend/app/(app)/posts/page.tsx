@@ -247,7 +247,7 @@ export default function PostsPage() {
           >
             <SelectTrigger
               id="posts-platform-select"
-              aria-label={tCommon('allPlatforms')}
+              aria-label={tPosts('platformLabel')}
               className="h-8 w-full text-sm sm:w-[180px]"
             >
               <SelectValue placeholder={tCommon('allPlatforms')} />
