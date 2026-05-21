@@ -43,7 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SkeletonMetricStrip } from '@/components/states';
 import { DataTable, type Column } from '@/components/lists/DataTable';
 import { useDataTableFilters } from '@/hooks/useDataTableFilters';
@@ -261,71 +261,24 @@ export default function PostsPage() {
           </Select>
 
           <Tabs
-            id="posts-status-tabs"
             value={filters.status}
             onValueChange={(v) => setFilter('status', v as StatusKey)}
             className="-mx-1 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0"
           >
             <TabsList className="h-8 bg-paper-sunken">
-              <TabsTrigger
-                value="all"
-                id="posts-status-tabs-trigger-all"
-                aria-controls="posts-status-tabs-content-all"
-                className="h-7 text-[13px]"
-              >
+              <TabsTrigger value="all" className="h-7 text-[13px]">
                 {tPosts('tabs.all', { count: counts.total })}
               </TabsTrigger>
-              <TabsTrigger
-                value="published"
-                id="posts-status-tabs-trigger-published"
-                aria-controls="posts-status-tabs-content-published"
-                className="h-7 text-[13px]"
-              >
+              <TabsTrigger value="published" className="h-7 text-[13px]">
                 {tPosts('tabs.published', { count: counts.published })}
               </TabsTrigger>
-              <TabsTrigger
-                value="scheduled"
-                id="posts-status-tabs-trigger-scheduled"
-                aria-controls="posts-status-tabs-content-scheduled"
-                className="h-7 text-[13px]"
-              >
+              <TabsTrigger value="scheduled" className="h-7 text-[13px]">
                 {tPosts('tabs.scheduled', { count: counts.scheduled })}
               </TabsTrigger>
-              <TabsTrigger
-                value="error"
-                id="posts-status-tabs-trigger-error"
-                aria-controls="posts-status-tabs-content-error"
-                className="h-7 text-[13px]"
-              >
+              <TabsTrigger value="error" className="h-7 text-[13px]">
                 {tPosts('tabs.error', { count: counts.error })}
               </TabsTrigger>
             </TabsList>
-            {/* Empty TabsContent panels exist to anchor each TabsTrigger's
-                aria-controls IDREF; the actual content lives in the DataTable below. */}
-            <TabsContent
-              value="all"
-              id="posts-status-tabs-content-all"
-              aria-labelledby="posts-status-tabs-trigger-all"
-              className="sr-only"
-            />
-            <TabsContent
-              value="published"
-              id="posts-status-tabs-content-published"
-              aria-labelledby="posts-status-tabs-trigger-published"
-              className="sr-only"
-            />
-            <TabsContent
-              value="scheduled"
-              id="posts-status-tabs-content-scheduled"
-              aria-labelledby="posts-status-tabs-trigger-scheduled"
-              className="sr-only"
-            />
-            <TabsContent
-              value="error"
-              id="posts-status-tabs-content-error"
-              aria-labelledby="posts-status-tabs-trigger-error"
-              className="sr-only"
-            />
           </Tabs>
 
           <span className="hidden flex-1 sm:inline" />
