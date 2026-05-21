@@ -281,9 +281,6 @@ export default function ReviewsPage() {
         {/* Filter bar — platform select + reply-status tabs. */}
         <div className="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-line bg-paper-raised px-4 py-3">
           <Select value={platform} onValueChange={setPlatform}>
-            {/* Explicit ASCII id pins the Radix-generated id on the trigger
-                so axe's `aria-valid-attr-value` (serious) never sees the
-                «…» chars React 18 useId() injects into Radix's auto-id. */}
             <SelectTrigger
               id="reviews-platform-select"
               aria-label={tReviews('platformPlaceholder')}
@@ -303,10 +300,6 @@ export default function ReviewsPage() {
             </SelectContent>
           </Select>
 
-          {/* Explicit ASCII ids pin the Radix-generated id + aria-controls +
-              aria-labelledby on each <Tabs.Trigger>/<Tabs.Content> pair to
-              avoid React 18 useId()'s «…» chars (see /posts page for full
-              context). Empty TabsContent anchors keep the IDREFs live. */}
           <Tabs id="reviews-status-tabs" value={replyStatus} onValueChange={setReplyStatus}>
             <TabsList>
               <TabsTrigger
