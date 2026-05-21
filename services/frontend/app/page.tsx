@@ -36,7 +36,11 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-paper text-ink">
       <SiteNav />
-      <main id="main-content">
+      {/* tabIndex={-1}: makes <main> programmatically focusable so the
+          SkipLink in app/layout.tsx can actually transfer keyboard focus
+          here. focus:outline-none suppresses the ring that would otherwise
+          appear when focus lands here from the SkipLink. */}
+      <main id="main-content" tabIndex={-1} className="focus:outline-none">
         <Hero />
         <Belief />
         <Features />

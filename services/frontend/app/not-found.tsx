@@ -21,7 +21,8 @@ export default async function NotFound() {
   return (
     <main
       id="main-content"
-      className="flex min-h-screen w-full items-center justify-center bg-paper px-6 py-16"
+      tabIndex={-1}
+      className="flex min-h-screen w-full items-center justify-center bg-paper px-6 py-16 focus:outline-none"
     >
       <div className="flex w-full max-w-[480px] flex-col items-center gap-5 rounded-lg border border-line bg-paper-raised px-8 py-20 text-center shadow-ov-1">
         <MonoLabel className="text-ink-soft">{t('errorLabel')}</MonoLabel>
