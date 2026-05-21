@@ -148,7 +148,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </>
               )}
               <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
-                <main id="main-content" className="h-full overflow-y-auto bg-background">
+                {/* tabIndex={-1}: makes <main> programmatically focusable so
+                    activating the SkipLink moves keyboard focus here. Without
+                    it, the hash navigation only scrolls; the next Tab would
+                    advance from the link's DOM position (back into the
+                    sidebar). Doesn't add <main> to the tab order. */}
+                <main
+                  id="main-content"
+                  tabIndex={-1}
+                  className="h-full overflow-y-auto bg-background focus:outline-none"
+                >
                   {children}
                 </main>
               </Panel>
@@ -159,7 +168,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           // children (chat composer) collapse to 0 and drift to content end.
           <div className="flex h-screen flex-col">
             <Sidebar />
-            <main id="main-content" className="min-h-0 flex-1 overflow-y-auto bg-background">
+            {/* tabIndex={-1}: see desktop branch above — required for the
+                SkipLink to actually transfer keyboard focus into <main>. */}
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="min-h-0 flex-1 overflow-y-auto bg-background focus:outline-none"
+            >
               {children}
             </main>
           </div>

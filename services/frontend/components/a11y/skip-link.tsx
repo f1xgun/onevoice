@@ -7,7 +7,11 @@ export function SkipLink() {
   return (
     <a
       href="#main-content"
-      className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-paper focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-ink focus:shadow-lg focus:outline focus:outline-2 focus:outline-ink"
+      // focus-visible: shows ONLY on keyboard focus, so a mouse click on the
+      // link doesn't reveal it (axe H3 review). Pairs with tabIndex={-1} on
+      // every <main id="main-content"> so activating the link programmatically
+      // moves keyboard focus into <main> instead of just scrolling the hash.
+      className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-[100] focus-visible:rounded-md focus-visible:bg-paper focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-ink focus-visible:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink"
     >
       {t('skipToContent')}
     </a>
