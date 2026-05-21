@@ -43,8 +43,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SkeletonMetricStrip } from '@/components/states';
+import { cn } from '@/lib/utils';
 import { DataTable, type Column } from '@/components/lists/DataTable';
 import { useDataTableFilters } from '@/hooks/useDataTableFilters';
 import { useDataTableSearch } from '@/hooks/useDataTableSearch';
@@ -260,26 +260,43 @@ export default function PostsPage() {
             </SelectContent>
           </Select>
 
-          <Tabs
-            value={filters.status}
-            onValueChange={(v) => setFilter('status', v as StatusKey)}
-            className="-mx-1 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0"
+          {/* Status filter — rendered as a radiogroup of chip buttons rather
+              than Radix <Tabs>. Radix Tabs internally generates
+              aria-controls IDREFs pointing at TabsContent panels that don't
+              exist on this page, which trips axe-core's
+              aria-valid-attr-value. A radiogroup is the semantically correct
+              primitive for "pick one of N filters" and emits no IDREF attrs. */}
+          <div
+            role="radiogroup"
+            aria-label={tPosts('statusLabel')}
+            className="-mx-1 inline-flex h-8 items-center justify-center gap-0.5 overflow-x-auto rounded-lg bg-paper-sunken p-1 px-1 text-muted-foreground sm:mx-0 sm:overflow-visible sm:px-0"
           >
-            <TabsList className="h-8 bg-paper-sunken">
-              <TabsTrigger value="all" className="h-7 text-[13px]">
-                {tPosts('tabs.all', { count: counts.total })}
-              </TabsTrigger>
-              <TabsTrigger value="published" className="h-7 text-[13px]">
-                {tPosts('tabs.published', { count: counts.published })}
-              </TabsTrigger>
-              <TabsTrigger value="scheduled" className="h-7 text-[13px]">
-                {tPosts('tabs.scheduled', { count: counts.scheduled })}
-              </TabsTrigger>
-              <TabsTrigger value="error" className="h-7 text-[13px]">
-                {tPosts('tabs.error', { count: counts.error })}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+            {(
+              [
+                ['all', tPosts('tabs.all', { count: counts.total })],
+                ['published', tPosts('tabs.published', { count: counts.published })],
+                ['scheduled', tPosts('tabs.scheduled', { count: counts.scheduled })],
+                ['error', tPosts('tabs.error', { count: counts.error })],
+              ] as [StatusKey, string][]
+            ).map(([key, label]) => {
+              const active = filters.status === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setFilter('status', key)}
+                  className={cn(
+                    'duration-[120ms] inline-flex h-7 items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-[13px] font-medium ring-offset-background transition-[background,color,box-shadow] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    active && 'bg-background text-foreground shadow'
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
 
           <span className="hidden flex-1 sm:inline" />
 
