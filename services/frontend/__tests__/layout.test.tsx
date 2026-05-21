@@ -3,6 +3,7 @@ import { render, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import AppLayout from '@/app/(app)/layout';
+import { setDesktopViewport } from '@/test-utils/viewport';
 import type * as ConvHooks from '@/hooks/useConversations';
 import type * as ProjHooks from '@/hooks/useProjects';
 
@@ -116,6 +117,9 @@ function Wrapper({ children }: { children: ReactNode }) {
 describe('AppLayout route-conditional ProjectPane (D-14)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // AppLayout's nav-rail + project-pane only render under `isDesktop`.
+    // Global matchMedia stub defaults to mobile, so flip per-test.
+    setDesktopViewport();
   });
 
   it('renders both NavRail and ProjectPane on /chat', async () => {
