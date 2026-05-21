@@ -468,6 +468,7 @@
     "errorFallback": "Не удалось опубликовать. Проверьте подключение каналов и попробуйте ещё раз.",
     "mediaFile": "файл {index}",
     "platformLabel": "Платформа",
+    "statusLabel": "Статус",
     "tabs": {
       "all": "Все · {count}",
       "published": "Опубликованы · {count}",
@@ -601,6 +602,7 @@
       "pending": "Без ответа",
       "replied": "С ответом"
     },
+    "replyStatusLabel": "Статус ответа",
     "dialog": {
       "title": "Ответ на отзыв",
       "yourReply": "Ваш ответ"

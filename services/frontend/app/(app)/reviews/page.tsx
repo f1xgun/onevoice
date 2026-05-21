@@ -31,7 +31,6 @@ const REVIEWS_REFRESH_TIMEOUT_MS = 120_000;
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -294,13 +293,42 @@ export default function ReviewsPage() {
             </SelectContent>
           </Select>
 
-          <Tabs value={replyStatus} onValueChange={setReplyStatus}>
-            <TabsList>
-              <TabsTrigger value="all">{tReviews('tabs.all')}</TabsTrigger>
-              <TabsTrigger value="pending">{tReviews('tabs.pending')}</TabsTrigger>
-              <TabsTrigger value="replied">{tReviews('tabs.replied')}</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {/* Reply-status filter — radiogroup of chip buttons. We avoid
+              Radix <Tabs> here because it internally emits
+              aria-controls IDREFs that point at TabsContent panels we don't
+              render, which axe-core flags as aria-valid-attr-value. A
+              radiogroup is the correct semantic primitive for a one-of-N
+              filter and emits no IDREF attributes. */}
+          <div
+            role="radiogroup"
+            aria-label={tReviews('replyStatusLabel')}
+            className="inline-flex h-9 items-center justify-center gap-0.5 rounded-lg bg-muted p-1 text-muted-foreground"
+          >
+            {(
+              [
+                ['all', tReviews('tabs.all')],
+                ['pending', tReviews('tabs.pending')],
+                ['replied', tReviews('tabs.replied')],
+              ] as [string, string][]
+            ).map(([key, label]) => {
+              const active = replyStatus === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setReplyStatus(key)}
+                  className={cn(
+                    'duration-[120ms] inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-[background,color,box-shadow] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    active && 'bg-background text-foreground shadow'
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
 
           <Button
             type="button"
