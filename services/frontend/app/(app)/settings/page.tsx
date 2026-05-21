@@ -166,10 +166,12 @@ export default function SettingsPage() {
 
         {/* Right rail */}
         <aside
-          aria-label={tSettings('sectionsLabel')}
+          aria-labelledby="settings-rail-label"
           className="flex flex-col gap-3 lg:sticky lg:top-8 lg:self-start"
         >
-          <MonoLabel className="px-1">{tSettings('sectionsLabel')}</MonoLabel>
+          <MonoLabel id="settings-rail-label" className="px-1">
+            {tSettings('sectionsLabel')}
+          </MonoLabel>
           <RailTile
             href="/settings/tools"
             icon={<ShieldCheck size={18} aria-hidden />}
