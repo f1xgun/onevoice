@@ -11,7 +11,11 @@ import { useTranslations } from 'next-intl';
 // `createDefaultQuickActions(t)` is the underlying factory — call from
 // server-side code that already has a translator instance.
 
-type RawTranslator = { raw: (key: string) => unknown };
+// Minimal structural type that mirrors the `.raw()` method on next-intl's
+// `Translator`. We accept anything with this shape so the factory works
+// for both `useTranslations('quickActions')` results and for hand-built
+// stubs in tests, without casting through `unknown`.
+export type RawTranslator = { raw(key: string): unknown };
 
 export function createDefaultQuickActions(t: RawTranslator): readonly string[] {
   const rawDefaults = t.raw('defaults');
@@ -19,7 +23,11 @@ export function createDefaultQuickActions(t: RawTranslator): readonly string[] {
 }
 
 export function useDefaultQuickActions(): readonly string[] {
-  const t = useTranslations('quickActions') as unknown as RawTranslator;
+  // next-intl's `Translator` already exposes a `.raw()` method (returns
+  // `any`), so a plain narrowing cast to `RawTranslator` is sufficient —
+  // we no longer route through `unknown`, which would erase the nominal
+  // brand on the original translator.
+  const t = useTranslations('quickActions') as RawTranslator;
   return useMemo(() => createDefaultQuickActions(t), [t]);
 }
 
