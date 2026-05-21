@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -764,6 +765,49 @@ func TestRegistry_SetParameterDescriptionsEn_UnknownTool(t *testing.T) {
 	// Must not panic and must not register anything.
 	reg.SetParameterDescriptionsEn("ghost__missing", map[string]string{"text": "Message text"})
 	assert.False(t, reg.Has("ghost__missing"))
+}
+
+// TestRegistry_LocalizeDef_EnWithoutParamsKeepsMapIdentity locks the
+// no-allocation invariant on localizeDef's "descriptionEn-only" branch.
+// When an EN caller hits a tool that has SetDescriptionEn set but NO
+// SetParameterDescriptionsEn, localizeDef must return a definition whose
+// Function.Parameters is the SAME Go map (pointer-identical) as the
+// registered def. Without this invariant, a future field added to
+// FunctionDefinition that holds a reference type could turn the
+// description-only swap into an accidental shared-mutation footgun.
+//
+// Pointer-equality is asserted via reflect.ValueOf(...).Pointer() — same idiom
+// as the standard library's runtime tests for map identity. A simple
+// `if a == b` won't compile for maps; this gives us the underlying map header
+// address to compare.
+func TestRegistry_LocalizeDef_EnWithoutParamsKeepsMapIdentity(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	def := makeDefWithParams(
+		tools.TelegramSendChannelPost,
+		"RU desc",
+		map[string]map[string]interface{}{
+			"text": {"type": "string", "description": "Текст"},
+		},
+		[]string{"text"},
+	)
+	sourceParams := def.Function.Parameters
+	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
+	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "EN desc")
+	// Deliberately do NOT call SetParameterDescriptionsEn — only the
+	// top-level translation is set so localizeDef hits the descriptionEn-only
+	// branch (line 210-212 in registry.go).
+
+	en := i18n.WithLocale(context.Background(), language.English)
+	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
+	require.Len(t, defs, 1)
+	assert.Equal(t, "EN desc", defs[0].Function.Description,
+		"top-level description should still swap")
+
+	gotPtr := reflect.ValueOf(defs[0].Function.Parameters).Pointer()
+	wantPtr := reflect.ValueOf(sourceParams).Pointer()
+	if gotPtr != wantPtr {
+		t.Fatalf("expected Parameters map identity to be preserved when only descriptionEn is set; got map at %x, want %x", gotPtr, wantPtr)
+	}
 }
 
 // TestRegistry_LocalizeParameters_ZeroParamTool_NoOp verifies that a tool with
