@@ -25,7 +25,7 @@ func (f *fakeAgentTaskRepo) Create(_ context.Context, t *domain.AgentTask) error
 	return nil
 }
 
-// TestOnToolCall_PersistsDisplayNameKey — Phase D3: the i18n catalog key
+// TestOnToolCall_PersistsDisplayNameKey verifies the i18n catalog key
 // arriving on the orchestrator SSE frame must reach the agent_tasks document
 // so the FE can render the task title in the user's locale.
 func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
@@ -39,7 +39,7 @@ func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
 		"call-1",
 		tools.TelegramSendChannelPost,
 		"Отправить пост",                        // legacy display name
-		"tools.telegram.send_channel_post.name", // displayNameKey (Phase D3)
+		"tools.telegram.send_channel_post.name", // displayNameKey
 		map[string]interface{}{"text": "hi"},
 		idMap,
 	)
@@ -55,7 +55,7 @@ func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
 }
 
 // TestOnToolCall_EmptyDisplayNameKey_BackwardCompat — orchestrators predating
-// Phase D3 send no key; the task must still be persisted (FE falls back to
+// Events without a key still persist (FE falls back to
 // the legacy DisplayName field).
 func TestOnToolCall_EmptyDisplayNameKey_BackwardCompat(t *testing.T) {
 	repo := &fakeAgentTaskRepo{}

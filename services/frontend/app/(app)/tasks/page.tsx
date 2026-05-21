@@ -200,7 +200,7 @@ export default function TasksPage() {
 
 function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
   const tErrors = useTranslations('tasks.errors');
-  // agentTasks.displayName is the i18n Phase C3 namespace. Each task may
+  // agentTasks.displayName is the i18n namespace. Each task may
   // carry a `displayNameKey` like "sync.business_name" or
   // "tools.telegram.send_channel_post.name" — render the localized copy
   // when present, fall back to the legacy `displayName` for older rows.

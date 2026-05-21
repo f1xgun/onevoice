@@ -3,7 +3,7 @@ export interface AgentTask {
   businessId: string;
   type: string;
   /**
-   * Legacy Russian-only label written before i18n Phase C3. Still the
+   * Legacy Russian-only label written before i18n landed. Still the
    * fallback when displayNameKey is missing or the key is absent from
    * the active locale catalog.
    */

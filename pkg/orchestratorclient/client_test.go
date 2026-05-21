@@ -109,7 +109,7 @@ func TestListTools_ParsesEntries(t *testing.T) {
 	}
 }
 
-// TestListTools_ForwardsAcceptLanguage — Phase D3: the per-locale tools
+// TestListTools_ForwardsAcceptLanguage verifies the per-locale tools
 // projection round-trips correctly when the caller supplies a tag. The
 // orchestrator's middleware.Locale resolves Accept-Language to the per-locale
 // description; this test pins the wire contract from the API's cache side.

@@ -33,29 +33,12 @@ import (
 //
 // When in doubt, prefer manual + a narrow editable list (conservative default).
 type toolSpec struct {
-	def         llm.ToolDefinition
-	displayName string
-	// displayNameKey is the i18n catalog key (under
-	// `agentTasks.displayName.tools.<platform>.<action>.name` on the FE)
-	// that the frontend uses to render localized task titles. The legacy
-	// `displayName` stays as the source-of-truth literal — the FE renders
-	// `t(displayNameKey) || displayName`. Phase C3 added the field.
-	displayNameKey string
-	// descriptionEn is the English translation of def.Function.Description
-	// (which stays Russian as the source-of-truth literal). Resolved by
-	// Registry.AvailableForLocale / AllEntriesForLocale at call time based
-	// on the request's language tag (Phase D3 of `.planning/i18n-readiness/
-	// PLAN.md`).
-	descriptionEn string
-	// parameterDescriptionsEn maps each JSON-schema parameter name to its
-	// English description. The source-of-truth (Russian) description stays
-	// inline in def.Function.Parameters; the EN variant is swapped in by
-	// Registry.localizeDef when the request locale resolves to English
-	// (Phase D3 follow-up — closes the deferred TODO that left parameter
-	// descriptions RU-only). Missing entries fall back to the RU description
-	// (graceful degradation — no empty schemas reach the LLM).
+	def                     llm.ToolDefinition
+	displayName             string
+	displayNameKey          string
+	descriptionEn           string
 	parameterDescriptionsEn map[string]string
-	userDescription         string // end-user-facing copy for /settings/tools (NO tool-name refs, NO "используй X вместо Y" disambiguation).
+	userDescription         string
 	floor                   domain.ToolFloor
 	editable                []string
 }

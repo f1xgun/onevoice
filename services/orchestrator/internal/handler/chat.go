@@ -101,7 +101,7 @@ type chatRequest struct {
 //   - BatchID + Calls are set on tool_approval_required events.
 //   - ToolDisplayNameKey carries the i18n catalog key on tool_call and
 //     tool_result events so chat_proxy can stamp the agent_tasks document
-//     with a localizable key (Phase D3). omitempty so legacy events with
+//     with a localizable key. omitempty so legacy events with
 //     no key (older orchestrator deploys) remain byte-identical on the wire.
 type sseEvent struct {
 	Type               string                             `json:"type"`

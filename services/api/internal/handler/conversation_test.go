@@ -1297,10 +1297,6 @@ func TestMoveConversation_ToNullBezProyekta(t *testing.T) {
 	assert.Equal(t, "[Чат перемещён в «Без проекта» — с этого момента применяется новая политика]", capturedMsg.Content)
 }
 
-// TestMoveConversation_EnglishLocale_NullDestination mirrors the
-// null-projectId path under Accept-Language: en. The persisted system note
-// must use the EN catalog ("No project" + EN system_message template).
-// Guards the i18n.Tr(r.Context(), ...) wiring on conversation.go:553/591.
 func TestMoveConversation_EnglishLocale_NullDestination(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
@@ -1342,15 +1338,11 @@ func TestMoveConversation_EnglishLocale_NullDestination(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.NotNil(t, capturedMsg, "system note must be appended")
-	// EN catalog: default_destination + system_message templates.
 	assert.Equal(t,
 		"[Chat moved to \"No project\" — the new policy applies from this point]",
 		capturedMsg.Content)
 }
 
-// TestMoveConversation_EnglishLocale_RealProject confirms the EN system_message
-// template interpolates the project's real name (not the default_destination
-// label) when projectId resolves to an existing project.
 func TestMoveConversation_EnglishLocale_RealProject(t *testing.T) {
 	userID := uuid.New()
 	businessID := uuid.New()
@@ -1406,7 +1398,6 @@ func TestMoveConversation_EnglishLocale_RealProject(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.NotNil(t, capturedMsg)
-	// Project name "Reviews" interpolated into the EN system_message template.
 	assert.Equal(t,
 		"[Chat moved to \"Reviews\" — the new policy applies from this point]",
 		capturedMsg.Content)

@@ -238,7 +238,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			// Message.ToolCalls (the LLM's real call_id flows all
 			// the way through — no synthetic tc-N). DisplayName +
 			// DisplayNameKey populated so the AgentTask row created on
-			// the resume path also carries the i18n key (Phase D3) —
+			// the resume path also carries the i18n key —
 			// matches the fresh-turn path in dispatchToolCalls.
 			out <- Event{
 				Type:               EventToolCall,

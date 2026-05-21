@@ -37,28 +37,11 @@ func (f ExecutorFunc) Execute(ctx context.Context, args map[string]interface{}) 
 }
 
 type entry struct {
-	def             llm.ToolDefinition
-	displayName     string
-	userDescription string // human-readable description surfaced in settings UI (LLM-facing description stays in def.Function.Description).
-	// displayNameKey is the i18n catalog key the FE uses to render the
-	// agent_tasks task title (Phase C3/D3). Empty means "no key" — the FE
-	// falls back to the legacy displayName literal. Wired through
-	// SetDisplayNameKey from the toolSpec definitions in internal/wire.
-	displayNameKey string
-	// descriptionEn is the English translation of def.Function.Description.
-	// def.Function.Description stays RU (the source-of-truth literal); the
-	// EN variant is swapped in at AvailableForLocale / AllEntriesForLocale
-	// time when the request locale resolves to English. Empty means "no
-	// translation registered" — the RU description is used in both locales
-	// (safe fallback; matches pkg/i18n catalog lookup semantics).
-	descriptionEn string
-	// parameterDescriptionsEn maps each JSON-schema parameter name to its
-	// English description. The RU descriptions stay inline in
-	// def.Function.Parameters as the source of truth; the EN variant is
-	// swapped in by localizeDef when the request locale is English. Nil /
-	// empty means "no parameter translations" — the schema is returned
-	// verbatim with RU descriptions, preserving byte-compat for the legacy
-	// (RU-default) callers.
+	def                     llm.ToolDefinition
+	displayName             string
+	userDescription         string // human-readable description surfaced in settings UI (LLM-facing description stays in def.Function.Description).
+	displayNameKey          string
+	descriptionEn           string
 	parameterDescriptionsEn map[string]string
 	executor                Executor
 	floor                   domain.ToolFloor
@@ -131,10 +114,7 @@ func (r *Registry) SetUserDescription(name, text string) {
 }
 
 // SetDisplayNameKey attaches the i18n catalog key the frontend uses to render
-// localized task titles. No-op if the tool is not registered. Wired from the
-// toolSpec.displayNameKey field in internal/wire. Phase C3 introduced the
-// field; Phase D3 wires it through to the registry, SSE events, and the
-// AgentTask repo writes so the FE renders t(displayNameKey) || displayName.
+// localized task titles. No-op if the tool is not registered.
 func (r *Registry) SetDisplayNameKey(name, key string) {
 	e, ok := r.tools[name]
 	if !ok {
@@ -145,8 +125,7 @@ func (r *Registry) SetDisplayNameKey(name, key string) {
 }
 
 // DisplayNameKey returns the i18n catalog key for the given tool, or "" if
-// unknown / unset. Used by the orchestrator's tool-dispatch loop to populate
-// the ToolCall SSE event so chat_proxy can stamp it onto AgentTask writes.
+// unknown / unset.
 func (r *Registry) DisplayNameKey(name string) string {
 	e, ok := r.tools[name]
 	if !ok {
@@ -156,9 +135,7 @@ func (r *Registry) DisplayNameKey(name string) string {
 }
 
 // SetDescriptionEn attaches the English translation of the tool's LLM-facing
-// description. No-op if the tool is not registered. Used by Phase D3 to make
-// the LLM tools schema locale-aware — the orchestrator's chat handler and
-// the public /internal/tools endpoint both pick RU vs EN per request.
+// description. No-op if the tool is not registered.
 func (r *Registry) SetDescriptionEn(name, text string) {
 	e, ok := r.tools[name]
 	if !ok {
@@ -169,15 +146,8 @@ func (r *Registry) SetDescriptionEn(name, text string) {
 }
 
 // SetParameterDescriptionsEn attaches a map of parameter-name -> English
-// description for the named tool. The map is copied defensively so subsequent
-// caller-side mutations cannot change registered behavior. No-op if the tool
-// is not registered. A nil or empty map is treated as "no translations" —
-// localizeDef leaves the schema verbatim, preserving byte-compat with legacy
-// (RU-default) callers.
-//
-// Closes the Phase D3 deferred TODO that left parameter descriptions RU-only;
-// see services/orchestrator/internal/wire/tools.go for the populated maps and
-// .planning/i18n-readiness/PLAN.md (D3 + AD-3) for the design rationale.
+// description for the named tool. The map is copied defensively. No-op if the
+// tool is not registered; nil/empty map clears any previous translations.
 func (r *Registry) SetParameterDescriptionsEn(name string, m map[string]string) {
 	e, ok := r.tools[name]
 	if !ok {
@@ -224,34 +194,19 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 	return result
 }
 
-// localizeDef returns a llm.ToolDefinition with the top-level Description and
-// nested parameter `properties.<name>.description` fields swapped to the
-// per-locale text. The function Name, the JSON-schema shape, parameter types,
-// `required` lists, and any non-`description` keys (`enum`, `default`, etc.)
-// remain verbatim.
-//
-// Non-English locales (and the zero Tag) short-circuit and return the
-// registered def by value — preserving byte-identical output for the
-// RU-default callers that existed before Phase D3 / its follow-up. This
-// matters for the snapshot-style tests downstream that assert the exact
-// schema sent to the LLM in the legacy path.
-//
-// For English locales, the original def is NOT mutated: the Function struct
-// is copied by value, the Parameters map is rebuilt via a deep walk that only
-// allocates new sub-maps along the property path being swapped, and parameters
-// without a registered EN description keep their RU description (graceful
-// degradation — never serve an empty description to the LLM).
+// localizeDef returns a copy of e.def with Description and parameter
+// descriptions swapped to the per-locale text. Non-English locales (and the
+// zero Tag) return e.def by value, preserving byte-identical output.
 func (r *Registry) localizeDef(e entry, tag language.Tag) llm.ToolDefinition {
 	if tag != language.English {
 		return e.def
 	}
-	// Nothing to localize for this entry — fast path matches legacy bytes.
 	if e.descriptionEn == "" && len(e.parameterDescriptionsEn) == 0 {
 		return e.def
 	}
 
 	out := e.def
-	out.Function = e.def.Function // copy Function struct by value
+	out.Function = e.def.Function
 	if e.descriptionEn != "" {
 		out.Function.Description = e.descriptionEn
 	}
@@ -261,21 +216,10 @@ func (r *Registry) localizeDef(e entry, tag language.Tag) llm.ToolDefinition {
 	return out
 }
 
-// localizeParameters returns a deep-copied JSON-schema parameters map with
-// `properties.<name>.description` fields swapped to the EN values from
-// translations. Properties not listed in translations keep their original
-// (RU) descriptions, and any non-`description` keys under each property are
-// preserved by reference (they are immutable JSON values that we never mutate).
-//
-// The top-level map and the `properties` sub-map are always reallocated when
-// translations is non-empty so callers can compare maps by identity without
-// observing source mutation. Individual property entries are reallocated only
-// when their description is actually being swapped — this minimizes allocation
-// pressure on a hot path (this runs once per tool per chat request).
-//
-// If params is nil or has no `properties` key (zero-parameter tool), the
-// original map is returned by reference — there's nothing to localize and
-// reallocating an empty parent would just churn the GC.
+// localizeParameters returns a deep-copied parameters schema with
+// `properties.<name>.description` swapped to the EN values. Properties
+// without a translation keep their original description. Source map is never
+// mutated.
 func localizeParameters(params map[string]interface{}, translations map[string]string) map[string]interface{} {
 	if params == nil {
 		return nil
@@ -289,13 +233,10 @@ func localizeParameters(params map[string]interface{}, translations map[string]s
 		return params
 	}
 
-	// Shallow-clone the top-level params map (keeps `type`, `required` etc. by reference).
 	outParams := make(map[string]interface{}, len(params))
 	for k, v := range params {
 		outParams[k] = v
 	}
-	// Build a new `properties` map; per-property entries are cloned only when
-	// their description is actually being swapped.
 	outProps := make(map[string]interface{}, len(props))
 	for name, raw := range props {
 		propMap, ok := raw.(map[string]interface{})
@@ -308,7 +249,6 @@ func localizeParameters(params map[string]interface{}, translations map[string]s
 			outProps[name] = raw
 			continue
 		}
-		// Clone this property so the source map is not mutated.
 		clone := make(map[string]interface{}, len(propMap))
 		for k, v := range propMap {
 			clone[k] = v
@@ -351,10 +291,6 @@ func (r *Registry) AvailableForWhitelist(
 	mode domain.WhitelistMode,
 	allowed []string,
 ) []llm.ToolDefinition {
-	// Resolve locale from ctx once; localizeDef per-entry swaps the RU
-	// Description for the EN one when the request is English (Phase D3).
-	// LocaleFromContext never returns the zero Tag — defaults to i18n.DefaultTag
-	// (RU) — so the localization branch is a clean no-op for the legacy path.
 	tag := i18n.LocaleFromContext(ctx)
 	base := r.availableLocalized(activeIntegrations, tag)
 	switch mode {
@@ -504,7 +440,7 @@ func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 type RegistryEntry struct {
 	Name            string           `json:"name"`
 	DisplayName     string           `json:"displayName"`              // human-readable label (e.g., "Отправить пост") shown in settings UI; may be empty — frontend falls back to Name.
-	DisplayNameKey  string           `json:"displayNameKey,omitempty"` // i18n catalog key for the FE; Phase D3. Empty → FE falls back to DisplayName.
+	DisplayNameKey  string           `json:"displayNameKey,omitempty"` // i18n catalog key for the FE;. Empty → FE falls back to DisplayName.
 	Platform        string           `json:"platform"`                 // e.g., "telegram" — derived from {platform}__{action}
 	Floor           domain.ToolFloor `json:"floor"`
 	EditableFields  []string         `json:"editableFields"`
@@ -525,15 +461,9 @@ func (r *Registry) AllEntries() []RegistryEntry {
 	return r.AllEntriesForLocale(i18n.DefaultTag)
 }
 
-// AllEntriesForLocale returns the same projection as AllEntries but with the
-// per-tool Description resolved to the requested locale (Phase D3). Tools
-// without a descriptionEn fall back to def.Function.Description (RU) — the
-// frontend keeps showing the RU description rather than nothing.
-//
-// DisplayName + UserDescription are NOT swapped here — the frontend already
-// renders them via its own i18n catalog (using the displayNameKey field and
-// `tools.{platform}.{action}.description` keys respectively) and round-tripping
-// translations through the backend would duplicate the source of truth.
+// AllEntriesForLocale returns the projection of AllEntries with each tool's
+// Description resolved to tag. Tools without a descriptionEn fall back to
+// def.Function.Description.
 func (r *Registry) AllEntriesForLocale(tag language.Tag) []RegistryEntry {
 	out := make([]RegistryEntry, 0, len(r.tools))
 	for _, e := range r.tools {

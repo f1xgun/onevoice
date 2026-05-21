@@ -24,13 +24,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 export function ToolCard({ tool }: { tool: ToolCall }) {
   const tCard = useTranslations('chat.toolCard');
-  // Phase D3 follow-up: render the locale-aware tool label when the
-  // orchestrator stamped `displayNameKey` on the SSE frame. Mirrors the
-  // `app/(app)/tasks/page.tsx` pattern — keys live under
-  // `agentTasks.displayName.*` (e.g. `tools.telegram.send_channel_post.name`).
-  // next-intl returns the namespaced key verbatim when a key is missing, so
-  // a strict `resolved !== displayNameKey` comparison gives us the safe
-  // fallback to the raw `tool.name` without a `t.has()` round-trip.
   const tToolNames = useTranslations('agentTasks.displayName');
   const platform = getPlatform(tool.name);
   const color = PLATFORM_COLORS[platform] ?? '#6b7280';
@@ -41,11 +34,7 @@ export function ToolCard({ tool }: { tool: ToolCall }) {
   // banner above the history carries the primary "expired" signal.
   const borderLeftColor = tool.status === 'rejected' ? 'hsl(var(--destructive))' : color;
 
-  // Localized name resolution: prefer `t(displayNameKey)` when the key
-  // both exists and resolves to something distinct from the input key
-  // (next-intl's missing-key behavior). Falls back to the raw tool name
-  // (the existing contract) for older orchestrator deploys, unknown
-  // keys, or tools the catalog has not been updated for yet.
+  // next-intl returns the key verbatim on miss; treat that as "no translation".
   const displayName = (() => {
     if (!tool.displayNameKey) return tool.name;
     const resolved = tToolNames(tool.displayNameKey);

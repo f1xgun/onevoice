@@ -430,8 +430,6 @@ func TestRegistry_AllEntries_EditableFieldsCopy(t *testing.T) {
 	assert.Equal(t, "text", fresh[0].EditableFields[0])
 }
 
-// --- Phase D3: locale-aware tool descriptions + DisplayNameKey wiring ---
-
 func TestRegistry_DisplayNameKey_GetterReturnsSetValue(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	reg.Register(makeDef(tools.TelegramSendChannelPost), "Отправить пост", nil, domain.ToolFloorManual, []string{"text"})
@@ -506,11 +504,6 @@ func TestRegistry_AllEntriesForLocale_ResolvesDescriptionAndKey(t *testing.T) {
 	assert.Equal(t, "tools.telegram.send_channel_post.name", en[0].DisplayNameKey)
 }
 
-// --- Phase D3 follow-up: locale-aware parameter descriptions ---
-
-// makeDefWithParams builds a ToolDefinition whose Parameters JSON-schema
-// carries Russian `description` fields on each property. Used by the
-// parameter-localization tests to mirror the production wire/tools_*.go shape.
 func makeDefWithParams(name, descRu string, props map[string]map[string]interface{}, required []string) llm.ToolDefinition {
 	properties := make(map[string]interface{}, len(props))
 	for k, v := range props {
@@ -533,9 +526,6 @@ func makeDefWithParams(name, descRu string, props map[string]map[string]interfac
 	}
 }
 
-// propDescription pulls Parameters.properties.<name>.description from a
-// ToolDefinition for assertions. Returns "" if any step fails so the assertion
-// surfaces in a single Equal call rather than a panic.
 func propDescription(def llm.ToolDefinition, prop string) string {
 	props, ok := def.Function.Parameters["properties"].(map[string]interface{})
 	if !ok {
@@ -549,10 +539,6 @@ func propDescription(def llm.ToolDefinition, prop string) string {
 	return desc
 }
 
-// TestRegistry_LocalizeParameters_EnSwapsPropertyDescriptions verifies the
-// representative happy path for each MVP platform: requesting EN locale flips
-// every registered parameter description to its English variant while leaving
-// the schema shape (`type`, `required`, the property's `type`) untouched.
 func TestRegistry_LocalizeParameters_EnSwapsPropertyDescriptions(t *testing.T) {
 	tcs := []struct {
 		name       string
@@ -664,11 +650,6 @@ func TestRegistry_LocalizeParameters_EnSwapsPropertyDescriptions(t *testing.T) {
 	}
 }
 
-// TestRegistry_LocalizeParameters_RuReturnsByteIdenticalShape locks the
-// invariant that the RU / zero-Tag legacy path is untouched — the returned
-// Parameters map must be the exact same Go map (identity-equal) as the one
-// registered, not a deep-copied lookalike. This guards the snapshot-style
-// expectations of legacy callers that compare the schema byte-for-byte.
 func TestRegistry_LocalizeParameters_RuReturnsByteIdenticalShape(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	def := makeDefWithParams(
@@ -688,20 +669,16 @@ func TestRegistry_LocalizeParameters_RuReturnsByteIdenticalShape(t *testing.T) {
 		"channel_id": "Channel ID",
 	})
 
-	// RU (default tag) path — Parameters must NOT be reallocated.
 	ru := i18n.WithLocale(context.Background(), language.Russian)
 	defsRu := reg.AvailableForWhitelist(ru, []string{"telegram"}, "", nil)
 	require.Len(t, defsRu, 1)
 	assert.Equal(t, "Текст сообщения", propDescription(defsRu[0], "text"))
 	assert.Equal(t, "ID канала", propDescription(defsRu[0], "channel_id"))
 
-	// Zero Tag (no context locale) must behave like RU — DefaultTag = Russian.
 	defsBare := reg.AvailableForWhitelist(context.Background(), []string{"telegram"}, "", nil)
 	require.Len(t, defsBare, 1)
 	assert.Equal(t, "Текст сообщения", propDescription(defsBare[0], "text"))
 
-	// Source-of-truth Parameters map must remain unmodified across calls
-	// (defensive copy: EN walk allocates new maps, never mutates the source).
 	enCtx := i18n.WithLocale(context.Background(), language.English)
 	_ = reg.AvailableForWhitelist(enCtx, []string{"telegram"}, "", nil)
 	assert.Equal(t, "Текст сообщения",
@@ -709,11 +686,6 @@ func TestRegistry_LocalizeParameters_RuReturnsByteIdenticalShape(t *testing.T) {
 		"EN localization must not mutate the registered Parameters map")
 }
 
-// TestRegistry_LocalizeParameters_MissingEnEntryFallsBackToRu locks the
-// graceful-degradation contract: a parameter that has no EN entry in the
-// translations map keeps its source-of-truth (RU) description rather than
-// resolving to an empty string. The LLM never sees a parameter with an empty
-// description (which would degrade tool-arg reasoning).
 func TestRegistry_LocalizeParameters_MissingEnEntryFallsBackToRu(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	def := makeDefWithParams(
@@ -726,7 +698,6 @@ func TestRegistry_LocalizeParameters_MissingEnEntryFallsBackToRu(t *testing.T) {
 		[]string{"text"},
 	)
 	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
-	// Only `text` has an EN translation — channel_id intentionally missing.
 	reg.SetParameterDescriptionsEn(tools.TelegramSendChannelPost, map[string]string{
 		"text": "Message text",
 	})
@@ -741,10 +712,6 @@ func TestRegistry_LocalizeParameters_MissingEnEntryFallsBackToRu(t *testing.T) {
 		"channel_id has no EN entry — should keep RU description (graceful degradation)")
 }
 
-// TestRegistry_LocalizeParameters_EmptyEnDescriptionFallsBackToRu locks the
-// edge case where translations[name] is explicitly the empty string — we
-// treat it the same as "missing" rather than serving an empty description to
-// the LLM.
 func TestRegistry_LocalizeParameters_EmptyEnDescriptionFallsBackToRu(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	def := makeDefWithParams(
@@ -767,9 +734,6 @@ func TestRegistry_LocalizeParameters_EmptyEnDescriptionFallsBackToRu(t *testing.
 		"empty EN string should fall back to RU description")
 }
 
-// TestRegistry_SetParameterDescriptionsEn_DefensiveCopy verifies callers
-// cannot retroactively widen registered translations by mutating the map they
-// passed in. Mirrors the editableFields defensive-copy invariant.
 func TestRegistry_SetParameterDescriptionsEn_DefensiveCopy(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	def := makeDefWithParams(

@@ -56,7 +56,7 @@ type Event struct {
 	ToolName        string
 	ToolDisplayName string
 	// ToolDisplayNameKey is the i18n catalog key the frontend uses to render
-	// the agent_tasks task title in the user's locale (Phase D3). Populated
+	// the agent_tasks task title in the user's locale. Populated
 	// from toolregistry.Registry.DisplayNameKey at dispatch time. Empty when
 	// the tool has no registered key — the FE falls back to ToolDisplayName.
 	// Surfaces on EventToolCall + EventToolResult so chat_proxy can stamp
@@ -313,7 +313,7 @@ func (o *Orchestrator) dispatchToolCalls(
 // buildToolResultEvent wraps a tool outcome into the event emitted on the SSE
 // channel. Shaping it here keeps the goroutine body short and side-effect free.
 // displayNameKey is the i18n catalog key threaded through so chat_proxy can
-// stamp the AgentTask document with a localizable key — Phase D3.
+// stamp the AgentTask document with a localizable key.
 func buildToolResultEvent(tc llm.ToolCall, displayName, displayNameKey string, result interface{}, execErr error) Event {
 	payload := result
 	if execErr != nil {

@@ -50,7 +50,7 @@ func (c *Client) HTTPClient() *http.Client { return c.httpClient }
 // AllEntries output.
 //
 // DisplayNameKey is the i18n catalog key the frontend uses to render the
-// settings UI's tool label in the user's locale (Phase D3). Optional —
+// settings UI's tool label in the user's locale. Optional —
 // orchestrator deploys without the key send "" and the FE falls back to
 // DisplayName.
 type ToolEntry struct {
@@ -145,7 +145,7 @@ func (c *Client) StreamResume(ctx context.Context, conversationID, batchID strin
 // services/api/internal/service/hitl.go's ToolsRegistryCache.refresh.
 //
 // acceptLanguage is forwarded as the request's Accept-Language header so the
-// orchestrator's locale-aware projection (Phase D3) returns the description
+// orchestrator's locale-aware projection returns the description
 // in the caller's preferred language. Pass "" to use the orchestrator's
 // default (RU). Single-tag values ("en") and preference lists
 // ("en-US,en;q=0.9") are both accepted — the orchestrator parses with
