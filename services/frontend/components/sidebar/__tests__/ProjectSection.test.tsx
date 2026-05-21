@@ -173,11 +173,6 @@ describe('ProjectSection', () => {
     );
     const items = container.querySelectorAll('[data-roving-item]');
     expect(items.length).toBe(3);
-    // Plain navigation links — neither role="option" nor a parent
-    // role="listbox" are used; axe `aria-required-children` (critical) would
-    // fire if either appeared (per-row dropdown trigger buttons live in the
-    // same container, which is not a valid listbox child). Roving-tabindex
-    // still works via the data-roving-item attribute + onKeyDown handler.
     items.forEach((item) => {
       expect(item.getAttribute('role')).toBeNull();
     });
@@ -185,7 +180,6 @@ describe('ProjectSection', () => {
     expect(items[0].getAttribute('tabindex')).toBe('0');
     expect(items[1].getAttribute('tabindex')).toBe('-1');
     expect(items[2].getAttribute('tabindex')).toBe('-1');
-    // No listbox container — see WP4a.
     expect(container.querySelector('[role="listbox"]')).toBeNull();
   });
 
@@ -196,10 +190,8 @@ describe('ProjectSection', () => {
         <ProjectSection project={sampleProject} conversations={convs} />
       </Wrapper>
     );
-    // The collapse button has aria-label «Свернуть «Отзывы»» — it should
-    // NOT live inside the roving-tabindex container (separate Tab stop).
-    // Probe the container via the data-roving-item attribute since the
-    // semantic listbox role was dropped (see WP4a).
+    // The collapse button «Свернуть «Отзывы»» must live OUTSIDE the
+    // roving-tabindex container (separate Tab stop).
     const rovingItem = container.querySelector('[data-roving-item]');
     const rovingContainer = rovingItem?.parentElement?.parentElement ?? null;
     const collapseBtn = screen.getByRole('button', { name: /Свернуть «Отзывы»/ });

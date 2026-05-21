@@ -316,9 +316,6 @@ export default function IntegrationsPage() {
 }
 
 function SectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
-  // Rendered as <h2> so the document outline goes h1 (PageHeader) → h2
-  // (this section) → h3 (e.g. EmptyChannels → EmptyFrame). Without an h2
-  // here, axe-core reports a heading-order skip on /integrations.
   return (
     <h2 className={`mb-4 mt-2 flex items-center gap-3 ${className ?? ''}`}>
       <MonoLabel>{children}</MonoLabel>

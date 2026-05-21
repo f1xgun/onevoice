@@ -149,10 +149,6 @@ export default function TasksPage() {
     <div className="min-h-screen bg-paper">
       <PageHeader title={tHeader('title')} sub={tHeader('subtitle')} />
 
-      {/* Visually-hidden section heading so the document outline goes
-          h1 (PageHeader) → h2 (this) → h3 (EmptyFrame inside EmptyTasks).
-          Without it axe-core reports a heading-order skip when the empty
-          state renders. */}
       <h2 className="sr-only">{tHeader('title')}</h2>
 
       {/* BigStat tiles per v2 mock */}

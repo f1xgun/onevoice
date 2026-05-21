@@ -2,19 +2,6 @@
 
 import { useTranslations } from 'next-intl';
 
-// SkipLink — first focusable element on every page. Anchors to
-// `#main-content`, which is the id on the single `<main>` rendered by
-// both the authenticated `(app)/layout.tsx` and the public
-// `(public)/layout.tsx` shells.
-//
-// Hidden visually until focused (Tab as the first action on page load
-// reveals it). On focus it pops to the top-left with a paper background
-// and ink outline — high contrast so keyboard users can find it
-// regardless of page background.
-//
-// Mounted in the root `app/layout.tsx` as the first child of `<body>`
-// so it precedes every other tab stop, including the
-// `BusinessSwitcher` trigger that opens the desktop NavRail.
 export function SkipLink() {
   const t = useTranslations('nav');
   return (

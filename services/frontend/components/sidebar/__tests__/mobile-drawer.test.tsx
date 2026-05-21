@@ -144,8 +144,6 @@ describe('mobile drawer', () => {
     });
 
     // Click the chat-row Link → onNavigate → setOpen(false).
-    // Chat rows are plain navigation links (no role="option" — see WP4a
-    // a11y fix), so we query by `link`.
     await user.click(screen.getByRole('link', { name: /Первый чат/ }));
 
     // Radix unmounts the dialog from the DOM after close-state animation.

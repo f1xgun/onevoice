@@ -46,11 +46,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang={locale} className={`${sans.variable} ${mono.variable}`}>
       <body className="font-sans antialiased">
         <NextIntlClientProvider locale={locale} messages={messages}>
-          {/* SkipLink is the FIRST tab stop on every route. Anchors to the
-              `#main-content` id on the shared `<main>` (rendered by both
-              `(app)/layout.tsx` and `(public)/layout.tsx`). Keep this
-              BEFORE Providers so the order in DOM lines up with the
-              keyboard expectation — Tab → skip-link → page nav → content. */}
           <SkipLink />
           <Providers>{children}</Providers>
         </NextIntlClientProvider>

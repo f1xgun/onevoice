@@ -300,11 +300,8 @@ export default function PostsPage() {
                 {tPosts('tabs.error', { count: counts.error })}
               </TabsTrigger>
             </TabsList>
-            {/* Tabs on this page act as a filter chip group — the actual
-                content lives in the <DataTable> below, NOT in Tabs.Content.
-                But the ARIA tabs pattern requires aria-controls to resolve;
-                we render empty, hidden TabsContent panels purely to anchor
-                the IDREFs (and pin their ids to stable ASCII strings). */}
+            {/* Empty TabsContent panels exist to anchor each TabsTrigger's
+                aria-controls IDREF; the actual content lives in the DataTable below. */}
             <TabsContent
               value="all"
               id="posts-status-tabs-content-all"

@@ -109,8 +109,6 @@ describe('PinnedSection', () => {
         <PinnedSection conversations={convs} projectsById={{}} />
       </Wrapper>
     );
-    // Chat-row links are plain navigation links (NOT role="option") — see
-    // a11y WP4a fix. Query by `link` role to match the live DOM.
     const options = screen.getAllByRole('link');
     expect(options[0]).toHaveTextContent('Newer pinned');
     expect(options[1]).toHaveTextContent('Older pinned');
@@ -128,14 +126,10 @@ describe('PinnedSection', () => {
     );
     const items = container.querySelectorAll('[data-roving-item]');
     expect(items.length).toBe(2);
-    // Plain navigation links — role attribute is unset (defaults to "link"
-    // via the underlying <a>). axe `aria-required-children` fires if we put
-    // role="option" outside a role="listbox" parent, so neither is used.
     expect(items[0].getAttribute('role')).toBeNull();
     // Initial tabindex distribution: first=0, rest=-1.
     expect(items[0].getAttribute('tabindex')).toBe('0');
     expect(items[1].getAttribute('tabindex')).toBe('-1');
-    // No listbox container — see WP4a.
     expect(container.querySelector('[role="listbox"]')).toBeNull();
   });
 });

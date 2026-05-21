@@ -27,13 +27,7 @@ const buttonVariants = cva(
         primary:
           'bg-[var(--ov-ink)] text-[var(--ov-paper)] border border-[var(--ov-ink)] hover:bg-[oklch(0.28_0.012_60)]',
         // Terracotta — reserved for moments of emphasis (Connect, Publish).
-        // Text is ink (dark graphite) on the ochre fill: white-on-accent
-        // measured ~2.5:1 (under WCAG AA 4.5:1). Dark text on accent
-        // measures ~5.1:1 (passes), keeps the ochre fill saturated, and
-        // matches typical warning/highlight color treatment. Hover keeps
-        // the same accent fill (accent-deep with white text was ~3.9:1,
-        // also under AA) and uses the deep accent for the border ring as
-        // the press affordance.
+        // Dark text on ochre measures ~5.1:1 (AA); white-on-ochre fails at ~2.5:1.
         accent:
           'bg-[var(--ov-accent)] text-[var(--ov-ink)] border border-[var(--ov-accent-deep)] hover:border-[var(--ov-ink)]',
         secondary:

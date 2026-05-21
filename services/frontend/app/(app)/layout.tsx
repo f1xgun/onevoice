@@ -30,11 +30,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // Start as true so we always show a loading state until the effect has run
   // This prevents the brief flash of protected content
   const [ready, setReady] = useState(false);
-  // Mount-time viewport gate. The shell renders EXACTLY ONE variant — mobile
-  // OR desktop — so the DOM has exactly one `<main>` and one `<h1>` (axe
-  // a11y rules `landmark-one-main` + `heading-one`). Two-variant CSS
-  // toggling (`hidden md:flex`) used to leak both into the tree and trip
-  // both rules across every authenticated route.
   const isDesktop = useIsDesktop();
   const isMounted = useRef(true);
 
@@ -113,20 +108,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             shell but only after BusinessRequiredGuard resolves a valid
             activeBusinessId. Renders no DOM. */}
         <PermissionsCacheGuard />
-        {/* Render EXACTLY ONE variant. The DOM holds a single <main
-            id="main-content"> and the page's PageHeader child renders a
-            single <h1>. The previous `md:hidden` + `hidden md:flex` dual
-            tree leaked both into the DOM and tripped axe-core's
-            `landmark-one-main` + `heading-one` on every authenticated
-            route. `useIsDesktop` returns false on first paint (SSR-safe)
-            and promotes on mount, so the user briefly sees mobile chrome
-            on a wide screen pre-hydration — acceptable trade for a clean
-            landmark tree. */}
         {isDesktop ? (
-          // Desktop: NavRail (always) + PanelGroup hosting conditional
-          // ProjectPane and main content. autoSaveId persists the resized
-          // width to localStorage under
-          // `react-resizable-panels:onevoice:sidebar-width`.
           <div className="flex h-screen">
             <NavRail />
             <PanelGroup
@@ -154,14 +136,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   >
                     <ProjectPane />
                   </Panel>
-                  {/* The resize handle sits between two <Panel>s — outside
-                      both <aside> (ProjectPane) and <main>. axe-core's
-                      `region` rule flags it as content with no enclosing
-                      landmark (it has an aria-label, so axe's hasContent
-                      counts it as labeled content). Wrap in a thin
-                      role="region" landmark to satisfy the rule without
-                      moving the handle in the DOM (PanelGroup requires
-                      PanelResizeHandle as a descendant). */}
+                  {/* role="region" wrapper: the handle has an aria-label so axe
+                      treats it as labeled content and demands an enclosing landmark. */}
                   <div role="region" aria-label={tSidebar('resizeAria')} className="h-full">
                     <PanelResizeHandle
                       id="project-pane-handle"
@@ -179,12 +155,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </PanelGroup>
           </div>
         ) : (
-          // Mobile: top bar (Sidebar — renders the hamburger + Sheet drawer
-          // hosting NavRail + ProjectPane) + scrolling main content. The
-          // flex-column + h-screen pair gives <main> a real height so
-          // h-full layouts inside (chat composer at the bottom, etc.)
-          // actually work — without it h-full collapses to 0 and the
-          // composer drifts to wherever content ends.
+          // h-screen + flex-col gives <main> a real height — without it h-full
+          // children (chat composer) collapse to 0 and drift to content end.
           <div className="flex h-screen flex-col">
             <Sidebar />
             <main id="main-content" className="min-h-0 flex-1 overflow-y-auto bg-background">

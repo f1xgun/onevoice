@@ -119,12 +119,6 @@ export function ProjectSection({
         </p>
       )}
       {!collapsed && visible.length > 0 && (
-        // Plain navigation list — NOT a listbox. axe `aria-required-children`
-        // (critical) fires when role="listbox" hosts non-option children
-        // (per-row dropdown trigger buttons live here). Roving-tabindex still
-        // applies via the data-roving-item attribute + onKeyDown handler; the
-        // semantic role is dropped because these are navigation links, not a
-        // single-select widget. Active row is announced via aria-current="page".
         <div
           ref={containerRef as RefObject<HTMLDivElement>}
           onKeyDown={onKeyDown}
