@@ -48,6 +48,7 @@ import { cn } from '@/lib/utils';
 import { DataTable, type Column } from '@/components/lists/DataTable';
 import { useDataTableFilters } from '@/hooks/useDataTableFilters';
 import { useDataTableSearch } from '@/hooks/useDataTableSearch';
+import { useRadiogroupKeyboard } from '@/hooks/useRadiogroupKeyboard';
 import type { Post } from '@/types/post';
 
 import { ChannelChip } from './_components/ChannelChip';
@@ -71,6 +72,16 @@ interface PostsFilters extends Record<string, string> {
 
 const POSTS_GRID_TEMPLATE = '24px 1fr 140px 200px 160px 56px';
 const POSTS_MIN_WIDTH = '620px';
+
+// Status radiogroup option order — used both for rendering the chips and
+// for the arrow-key navigation hook (which walks this list to decide which
+// radio comes next).
+const POSTS_STATUS_OPTIONS = [
+  'all',
+  'published',
+  'scheduled',
+  'error',
+] as const satisfies readonly StatusKey[];
 
 // ─── Page ────────────────────────────────────────────────────────────
 
@@ -107,6 +118,16 @@ export default function PostsPage() {
   const { query, setQuery, visibleRows } = useDataTableSearch<Post>({
     rows: posts,
     searchableFields: (p) => [p.content],
+  });
+
+  // Status radiogroup keyboard handler — wires ArrowLeft/Right/Up/Down
+  // + Home/End so the `role="radiogroup"` chips below satisfy the
+  // WAI-ARIA radiogroup keyboard contract. Native <button role="radio">
+  // doesn't get this for free; only <input type="radio"> does.
+  const statusRadio = useRadiogroupKeyboard<StatusKey>({
+    options: POSTS_STATUS_OPTIONS,
+    value: filters.status,
+    onValueChange: (v) => setFilter('status', v),
   });
 
   // TODO(api): aggregates should come from a /posts/stats endpoint so the
@@ -269,6 +290,7 @@ export default function PostsPage() {
           <div
             role="radiogroup"
             aria-label={tPosts('statusLabel')}
+            onKeyDown={statusRadio.onKeyDown}
             className="-mx-1 inline-flex h-8 items-center justify-center gap-0.5 overflow-x-auto rounded-lg bg-paper-sunken p-1 px-1 text-muted-foreground sm:mx-0 sm:overflow-visible sm:px-0"
           >
             {(
@@ -287,6 +309,7 @@ export default function PostsPage() {
                   role="radio"
                   aria-checked={active}
                   onClick={() => setFilter('status', key)}
+                  {...statusRadio.getRadioProps(key)}
                   className={cn(
                     'duration-[120ms] inline-flex h-7 items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-[13px] font-medium ring-offset-background transition-[background,color,box-shadow] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                     active && 'bg-background text-foreground shadow'
