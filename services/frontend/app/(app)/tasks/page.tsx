@@ -149,8 +149,6 @@ export default function TasksPage() {
     <div className="min-h-screen bg-paper">
       <PageHeader title={tHeader('title')} sub={tHeader('subtitle')} />
 
-      <h2 className="sr-only">{tHeader('title')}</h2>
-
       {/* BigStat tiles per v2 mock */}
       <div className="grid grid-cols-1 gap-3 px-4 pb-6 sm:grid-cols-3 sm:px-12">
         <BigStat
