@@ -16,13 +16,17 @@
 //      pulling fresh messages without a full page reload.
 //   4. `useTransition` keeps the trigger interactive but disabled while
 //      the refresh is in flight, preventing double-clicks from racing.
+//   5. On fetch failure (network error or non-2xx response) we surface
+//      a sonner toast and revert the optimistic selection so the UI
+//      never silently desyncs from the persisted cookie.
 //
 // The aria-label is the literal "Language" — a language code identifier
 // is universally legible and a switcher caption doesn't need translation.
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { useLocale } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import {
   Select,
   SelectContent,
@@ -31,7 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { isLocale, SUPPORTED_LOCALES } from '@/lib/i18n/locales';
+import { isLocale, SUPPORTED_LOCALES, type Locale } from '@/lib/i18n/locales';
 
 export interface LanguageSwitcherProps {
   className?: string;
@@ -39,23 +43,41 @@ export interface LanguageSwitcherProps {
 
 export function LanguageSwitcher({ className }: LanguageSwitcherProps) {
   const locale = useLocale();
+  const tCommon = useTranslations('common');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  // Local override so we can show the picked value optimistically and
+  // revert it if /api/locale fails. When undefined, the trigger renders
+  // the value resolved from next-intl (server source of truth).
+  const [pendingValue, setPendingValue] = useState<Locale | undefined>(undefined);
 
   function handleChange(next: string) {
     if (!isLocale(next) || next === locale) return;
+    const previous = locale as Locale;
+    setPendingValue(next);
     startTransition(async () => {
-      await fetch('/api/locale', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locale: next }),
-      });
-      router.refresh();
+      try {
+        const res = await fetch('/api/locale', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locale: next }),
+        });
+        if (!res.ok) {
+          toast.error(tCommon('toasts.languageSwitchFailed'));
+          setPendingValue(previous);
+          return;
+        }
+        setPendingValue(undefined);
+        router.refresh();
+      } catch {
+        toast.error(tCommon('toasts.languageSwitchFailed'));
+        setPendingValue(previous);
+      }
     });
   }
 
   return (
-    <Select value={locale} onValueChange={handleChange} disabled={isPending}>
+    <Select value={pendingValue ?? locale} onValueChange={handleChange} disabled={isPending}>
       <SelectTrigger
         aria-label="Language"
         data-testid="language-switcher"

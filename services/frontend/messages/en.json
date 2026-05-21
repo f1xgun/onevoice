@@ -263,6 +263,9 @@
     "loading": "Loading…",
     "open": "Open",
     "edit": "Edit",
+    "toasts": {
+      "languageSwitchFailed": "Couldn't switch language — please try again"
+    },
     "notFound": {
       "errorLabel": "ERROR · 404",
       "title": "Nothing to see here",

@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
+import { toast } from 'sonner';
 
 // Mock next/navigation's useRouter so we can spy on `refresh()` and prove
 // the switcher re-runs the request config after the cookie is updated.
@@ -16,6 +17,11 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
+// Mock sonner so failure paths can assert toast.error was called.
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}));
+
 // vitest.setup.ts globally mocks 'next-intl' with useLocale: () => 'ru'.
 // That default is what we want here — clicking EN exercises the change
 // path. The setup mock is sufficient; no per-test override required.
@@ -25,6 +31,7 @@ describe('LanguageSwitcher', () => {
 
   beforeEach(() => {
     refreshMock.mockReset();
+    vi.mocked(toast.error).mockReset();
     fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
   });
 
@@ -65,6 +72,7 @@ describe('LanguageSwitcher', () => {
     await vi.waitFor(() => {
       expect(refreshMock).toHaveBeenCalled();
     });
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it('does NOT fire when the user "selects" the already-active locale', async () => {
@@ -79,6 +87,38 @@ describe('LanguageSwitcher', () => {
     // Radix may still fire onValueChange for the same value; the component
     // short-circuits when next === locale to avoid pointless round-trips.
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a sonner error and suppresses router.refresh when /api/locale returns 5xx', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 500 }));
+    const user = userEvent.setup();
+    render(<LanguageSwitcher />);
+
+    const trigger = screen.getByLabelText('Language');
+    await user.click(trigger);
+    const enOption = await screen.findByRole('option', { name: /en/i });
+    await user.click(enOption);
+
+    await vi.waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a sonner error and suppresses router.refresh when fetch rejects', async () => {
+    fetchSpy.mockRejectedValueOnce(new TypeError('network down'));
+    const user = userEvent.setup();
+    render(<LanguageSwitcher />);
+
+    const trigger = screen.getByLabelText('Language');
+    await user.click(trigger);
+    const enOption = await screen.findByRole('option', { name: /en/i });
+    await user.click(enOption);
+
+    await vi.waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
     expect(refreshMock).not.toHaveBeenCalled();
   });
 });
