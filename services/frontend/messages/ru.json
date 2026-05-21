@@ -1367,6 +1367,7 @@
     "paneAria": "Проекты и диалоги",
     "toggleAria": "Открыть боковое меню",
     "resizeAria": "Изменить ширину боковой панели",
+    "railHeaderAria": "Шапка навигации",
     "unassignedNewChatAria": "Новый чат без проекта",
     "unassignedNewChatTitle": "Новый чат без проекта",
     "unassignedSectionAria": "Чаты без проекта",
