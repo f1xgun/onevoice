@@ -247,10 +247,6 @@ export default function ReviewsPage() {
       <PageHeader title={tReviews('title')} sub={tReviews('subtitle')} />
 
       <div className="px-4 pb-10 sm:px-12 sm:pb-16">
-        {/* Visually-hidden section heading so the document outline goes
-            h1 (PageHeader) → h2 (this) → h3 (EmptyFrame inside EmptyReviews).
-            Without it axe-core reports a heading-order skip when the empty
-            state renders. */}
         <h2 className="sr-only">{tReviews('title')}</h2>
 
         {/* Stat strip — three quiet metrics. No celebratory tone. */}
