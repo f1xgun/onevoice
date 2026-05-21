@@ -32,10 +32,6 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
       name: event.tool_name as string,
       args: (event.tool_args as Record<string, unknown>) ?? {},
       status: 'pending',
-      // Phase D3: pass through the i18n catalog key the backend stamps
-      // on the SSE frame so the UI can render the task label per locale.
-      // Optional — older orchestrator deploys omit the field, in which
-      // case the FE falls back to the tool name.
       displayNameKey: (event.tool_display_name_key as string | undefined) || undefined,
     };
     return { ...msg, toolCalls: [...(msg.toolCalls ?? []), toolCall] };

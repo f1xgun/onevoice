@@ -122,8 +122,8 @@ type AgentTask struct {
 	ID         string `json:"id" bson:"_id,omitempty"`
 	BusinessID string `json:"businessId" bson:"business_id"`
 	Type       string `json:"type" bson:"type"`
-	// DisplayName is the legacy Russian-only label written before i18n
-	// Phase C3. Kept as the fallback for documents that have not yet been
+	// DisplayName is the legacy Russian-only label written before i18n landed
+	// Kept as the fallback for documents that have not yet been
 	// backfilled; new writes always populate DisplayNameKey in addition.
 	DisplayName string `json:"displayName,omitempty" bson:"display_name,omitempty"`
 	// DisplayNameKey is the i18n catalog key the frontend uses to render

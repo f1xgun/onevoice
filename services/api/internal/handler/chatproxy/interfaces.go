@@ -63,7 +63,7 @@ type ChatProxyRequest struct {
 // fields so chat_proxy can persist the paired assistant Message.
 //
 // ToolDisplayNameKey is the i18n catalog key the orchestrator stamps on
-// tool_call / tool_result events (Phase D3). PostalService propagates it
+// tool_call / tool_result events. PostalService propagates it
 // onto the AgentTask document so the FE renders the task title in any locale.
 // Empty when the orchestrator deploy predates D3 — FE falls back to
 // ToolDisplayName (the legacy behavior).

@@ -387,7 +387,7 @@ func missingCallIDs(calls []domain.PendingCall, decisions []DecisionInput) []str
 //     field as not-editable (safe default: fail-closed).
 //
 // ToolsRegistryCache keeps per-locale snapshots so the orchestrator's
-// locale-aware /internal/tools projection (Phase D3) round-trips correctly
+// locale-aware /internal/tools projection round-trips correctly
 // for both RU and EN users. Floor / EditableFields / Has are
 // locale-independent and read from whichever snapshot was loaded last.
 type ToolsRegistryCache struct {
@@ -416,7 +416,7 @@ type localeSnapshot struct {
 // (frontend) and by GET /internal/tools (internal — orchestrator-to-API).
 //
 // DisplayNameKey is the i18n catalog key the frontend uses to render the
-// tool label in the user's locale (Phase D3). Optional — older orchestrator
+// tool label in the user's locale. Optional — older orchestrator
 // deploys send "" and the FE falls back to DisplayName.
 type ToolsRegistryEntry struct {
 	Name            string           `json:"name"`

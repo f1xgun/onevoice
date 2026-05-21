@@ -4,16 +4,6 @@ import { render, screen } from '@testing-library/react';
 import { ToolCard } from '../ToolCard';
 import type { ToolCall } from '@/types/chat';
 
-// Phase D3 follow-up — covers the FE rendering of the i18n catalog key the
-// orchestrator stamps on tool_call / tool_result SSE frames. Contract:
-//   - When `displayNameKey` is present AND resolves under the
-//     `agentTasks.displayName.*` namespace, render the localized label.
-//   - When the key is missing OR resolves to the raw key (next-intl's
-//     missing-key behavior), fall back to the legacy `tool.name`.
-//   - When `displayNameKey` is undefined entirely (older orchestrator
-//     deploys), fall back to `tool.name`.
-//
-// The locale-switch hook `__setTestLocale` is wired in vitest.setup.ts.
 type SetLocale = (l: 'ru' | 'en') => void;
 declare const __setTestLocale: SetLocale;
 
@@ -32,9 +22,7 @@ describe('ToolCard — displayNameKey rendering', () => {
     render(
       <ToolCard tool={makePending({ displayNameKey: 'tools.telegram.send_channel_post.name' })} />
     );
-    // ru.json — agentTasks.displayName.tools.telegram.send_channel_post.name
     expect(screen.getByText('Отправить пост')).toBeInTheDocument();
-    // The raw tool name MUST NOT appear when the localized name was found.
     expect(screen.queryByText('telegram__send_channel_post')).not.toBeInTheDocument();
   });
 
@@ -43,7 +31,6 @@ describe('ToolCard — displayNameKey rendering', () => {
     render(
       <ToolCard tool={makePending({ displayNameKey: 'tools.telegram.send_channel_post.name' })} />
     );
-    // en.json — agentTasks.displayName.tools.telegram.send_channel_post.name
     expect(screen.getByText('Send post')).toBeInTheDocument();
     expect(screen.queryByText('telegram__send_channel_post')).not.toBeInTheDocument();
   });
@@ -54,9 +41,6 @@ describe('ToolCard — displayNameKey rendering', () => {
   });
 
   it('Z4: falls back to tool.name when displayNameKey is the empty string (defensive guard)', () => {
-    // Backend serializers occasionally surface `""` instead of dropping
-    // the field. The component's truthy guard treats that the same as
-    // undefined and renders the raw tool name.
     render(<ToolCard tool={makePending({ displayNameKey: '' })} />);
     expect(screen.getByText('telegram__send_channel_post')).toBeInTheDocument();
   });

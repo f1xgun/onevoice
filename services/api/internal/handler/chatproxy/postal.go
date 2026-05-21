@@ -85,7 +85,7 @@ func (s *PostalService) OnToolCall(
 		Type:       toolName[sep+2:],
 		Platform:   toolName[:sep],
 		// DisplayName stays as the source-of-truth literal (legacy fallback).
-		// DisplayNameKey is the i18n catalog key the FE prefers — Phase D3.
+		// DisplayNameKey is the i18n catalog key the FE prefers.
 		// When the orchestrator predates D3 the key is empty; FE falls back
 		// to DisplayName cleanly.
 		DisplayName:    displayName,

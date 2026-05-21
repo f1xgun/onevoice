@@ -76,7 +76,7 @@ func NewInternalToolsAllHandler(reg *toolregistry.Registry) *InternalToolsAllHan
 //
 // Description is locale-resolved from the request's Accept-Language (set by
 // middleware.Locale). The API caches per-locale snapshots in its
-// ToolsRegistryCache; cache misses re-fetch per locale (Phase D3).
+// ToolsRegistryCache; cache misses re-fetch per locale.
 func (h *InternalToolsAllHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tag := i18n.LocaleFromContext(r.Context())
 	entries := h.Registry.AllEntriesForLocale(tag)

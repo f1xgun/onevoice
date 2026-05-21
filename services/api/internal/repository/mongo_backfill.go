@@ -204,7 +204,7 @@ func BackfillConversationsV19(ctx context.Context, db *mongo.Database) error {
 }
 
 // agentTaskDisplayNameToKey is the canonical mapping from legacy
-// Russian-only `display_name` literals (written before i18n Phase C3) to
+// Russian-only `display_name` literals (written before i18n landed) to
 // the i18n catalog keys the frontend uses after the migration. Sourced
 // from services/api/internal/platform/syncer.go where every syncer-side
 // display_name is hardcoded — keep both sides in sync when new sync
