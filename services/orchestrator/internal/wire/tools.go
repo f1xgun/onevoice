@@ -45,12 +45,19 @@ type toolSpec struct {
 	// (which stays Russian as the source-of-truth literal). Resolved by
 	// Registry.AvailableForLocale / AllEntriesForLocale at call time based
 	// on the request's language tag (Phase D3 of `.planning/i18n-readiness/
-	// PLAN.md`). Parameter descriptions inside def.Function.Parameters stay
-	// RU-only for now — see deferred TODO note in Phase D3 plan.
-	descriptionEn   string
-	userDescription string // end-user-facing copy for /settings/tools (NO tool-name refs, NO "используй X вместо Y" disambiguation).
-	floor           domain.ToolFloor
-	editable        []string
+	// PLAN.md`).
+	descriptionEn string
+	// parameterDescriptionsEn maps each JSON-schema parameter name to its
+	// English description. The source-of-truth (Russian) description stays
+	// inline in def.Function.Parameters; the EN variant is swapped in by
+	// Registry.localizeDef when the request locale resolves to English
+	// (Phase D3 follow-up — closes the deferred TODO that left parameter
+	// descriptions RU-only). Missing entries fall back to the RU description
+	// (graceful degradation — no empty schemas reach the LLM).
+	parameterDescriptionsEn map[string]string
+	userDescription         string // end-user-facing copy for /settings/tools (NO tool-name refs, NO "используй X вместо Y" disambiguation).
+	floor                   domain.ToolFloor
+	editable                []string
 }
 
 // Tools constructs the live tool registry, dials NATS, and registers every
@@ -108,6 +115,9 @@ func RegisterPlatformTools(reg *toolregistry.Registry, nc *natslib.Conn) {
 			}
 			if spec.descriptionEn != "" {
 				reg.SetDescriptionEn(spec.def.Function.Name, spec.descriptionEn)
+			}
+			if len(spec.parameterDescriptionsEn) > 0 {
+				reg.SetParameterDescriptionsEn(spec.def.Function.Name, spec.parameterDescriptionsEn)
 			}
 		}
 	}
