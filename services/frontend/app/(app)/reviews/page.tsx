@@ -31,7 +31,7 @@ const REVIEWS_REFRESH_TIMEOUT_MS = 120_000;
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -294,48 +294,12 @@ export default function ReviewsPage() {
             </SelectContent>
           </Select>
 
-          <Tabs id="reviews-status-tabs" value={replyStatus} onValueChange={setReplyStatus}>
+          <Tabs value={replyStatus} onValueChange={setReplyStatus}>
             <TabsList>
-              <TabsTrigger
-                value="all"
-                id="reviews-status-tabs-trigger-all"
-                aria-controls="reviews-status-tabs-content-all"
-              >
-                {tReviews('tabs.all')}
-              </TabsTrigger>
-              <TabsTrigger
-                value="pending"
-                id="reviews-status-tabs-trigger-pending"
-                aria-controls="reviews-status-tabs-content-pending"
-              >
-                {tReviews('tabs.pending')}
-              </TabsTrigger>
-              <TabsTrigger
-                value="replied"
-                id="reviews-status-tabs-trigger-replied"
-                aria-controls="reviews-status-tabs-content-replied"
-              >
-                {tReviews('tabs.replied')}
-              </TabsTrigger>
+              <TabsTrigger value="all">{tReviews('tabs.all')}</TabsTrigger>
+              <TabsTrigger value="pending">{tReviews('tabs.pending')}</TabsTrigger>
+              <TabsTrigger value="replied">{tReviews('tabs.replied')}</TabsTrigger>
             </TabsList>
-            <TabsContent
-              value="all"
-              id="reviews-status-tabs-content-all"
-              aria-labelledby="reviews-status-tabs-trigger-all"
-              className="sr-only"
-            />
-            <TabsContent
-              value="pending"
-              id="reviews-status-tabs-content-pending"
-              aria-labelledby="reviews-status-tabs-trigger-pending"
-              className="sr-only"
-            />
-            <TabsContent
-              value="replied"
-              id="reviews-status-tabs-content-replied"
-              aria-labelledby="reviews-status-tabs-trigger-replied"
-              className="sr-only"
-            />
           </Tabs>
 
           <Button
