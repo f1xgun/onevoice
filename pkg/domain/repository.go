@@ -228,6 +228,42 @@ type InvitationRepository interface {
 	MarkAcceptedInTx(ctx context.Context, tx pgx.Tx, id, accepterUserID uuid.UUID) error
 }
 
+// AuditLogFilter is the typed filter set for AuditLogRepository.ListByBusiness.
+// Empty strings / nil pointers mean "no filter on this field". Cursor fields
+// (CursorTime + CursorID) are paired: both nil = first page; both set = page
+// after that (created_at, id) tuple. Limit is capped at 200 by the handler.
+type AuditLogFilter struct {
+	Category   string     // "" | "rbac" | "auth" | "integration" | "business" | "project"
+	Action     string     // "" | exact match e.g. "rbac.role_granted"
+	ActorID    *uuid.UUID // nil = any actor; set = exact user_id match
+	From       *time.Time // nil = no lower bound
+	To         *time.Time // nil = no upper bound
+	CursorTime *time.Time // tie-break by CursorID at the same created_at
+	CursorID   *uuid.UUID
+	Limit      int // handler enforces 1..200; default 50
+}
+
+// AuditLogRepository persists and queries audit_logs entries.
+//
+// Insert is the WRITE path used by pkg/audit goroutine writers. It must be
+// safe to call with AuditLog.BusinessID == nil and AuditLog.UserID == nil
+// (D-04b / D-31: failed-login entries).
+//
+// ListByBusiness is the READ path used by GET /businesses/{id}/audit-logs.
+// It always filters by businessID; the filter struct refines further.
+// Results are ORDER BY created_at DESC, id DESC. Caller passes the
+// (CursorTime, CursorID) tuple of the last row from the previous page to
+// fetch the next page; no rows match → []AuditLog{}.
+//
+// DeleteOlderThan is invoked by the retention sweep (Plan 19-03) inside the
+// pg_try_advisory_lock window. Returns the count of deleted rows for
+// observability.
+type AuditLogRepository interface {
+	Insert(ctx context.Context, log *AuditLog) error
+	ListByBusiness(ctx context.Context, businessID uuid.UUID, filter AuditLogFilter) ([]AuditLog, error)
+	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+}
+
 // MongoDB repositories
 
 type ConversationRepository interface {
