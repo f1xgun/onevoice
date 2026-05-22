@@ -174,7 +174,7 @@ func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 
@@ -256,7 +256,7 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 

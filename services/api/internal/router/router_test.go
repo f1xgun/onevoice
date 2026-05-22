@@ -55,6 +55,9 @@ func (stubUserService) GetByID(_ context.Context, _ uuid.UUID) (*domain.User, er
 func (stubUserService) ChangePassword(_ context.Context, _ uuid.UUID, _, _ string) error {
 	panic("not called in routing test")
 }
+func (stubUserService) UpdatePreferredLocale(_ context.Context, _ uuid.UUID, _ string) error {
+	panic("not called in routing test")
+}
 
 // buildTestHandlers constructs a Handlers struct with all required fields
 // populated with zero-value or stub handlers so the router can be built.

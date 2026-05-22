@@ -1,12 +1,32 @@
 import { describe, it, expect } from 'vitest';
 import type { AxiosError } from 'axios';
+import { createTranslator } from 'next-intl';
+import ruMessages from '@/messages/ru.json';
 import {
-  resolveErrorToRussian,
-  RESUME_STREAM_ERROR,
-  mapInviteError,
-  mapMemberError,
-  mapRoleError,
+  createMapInviteError,
+  createMapMemberError,
+  createMapRoleError,
+  createResolveErrorMap,
 } from '../resolveErrorMap';
+
+// We feed the request-scoped factories with the real `ru` bundle via
+// `createTranslator` (the same primitive the production helper uses).
+// The behavior under test is the BRANCH selection inside each
+// factory — the localized copy is asserted exactly to pin the contract
+// every consumer (toasts, refusal cards) currently relies on.
+function tFor(namespace: string) {
+  return createTranslator({ locale: 'ru', messages: ruMessages, namespace });
+}
+
+const { resolveError: resolveErrorToRussian, resumeStreamError: RESUME_STREAM_ERROR } =
+  createResolveErrorMap(tFor('common.errors') as (key: string) => string);
+
+const mapMemberError = createMapMemberError(tFor('team.errors') as (key: string) => string);
+const mapInviteError = createMapInviteError(
+  tFor('invite.accept.errors') as (key: string) => string,
+  tFor('team.invite.errors') as (key: string) => string
+);
+const mapRoleError = createMapRoleError(tFor('roles.errors') as (key: string) => string);
 
 function axiosErr(status: number, body?: { error?: string; reason?: string }): AxiosError {
   return {
@@ -77,7 +97,7 @@ describe('resolveErrorToRussian', () => {
     expect(resolveErrorToRussian(500, undefined)).toBe('Ошибка соединения — попробуйте ещё раз');
   });
 
-  it('exposes RESUME_STREAM_ERROR constant with the exact UI-SPEC string', () => {
+  it('exposes resumeStreamError value with the exact UI-SPEC string', () => {
     expect(RESUME_STREAM_ERROR).toBe('Ошибка продолжения — перезагрузите страницу');
   });
 

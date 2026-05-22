@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Manrope, JetBrains_Mono } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
-import { getLocale, getMessages } from 'next-intl/server';
+import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import './globals.css';
 import { Providers } from '@/components/providers';
 
@@ -21,10 +21,17 @@ const mono = JetBrains_Mono({
   display: 'swap',
 });
 
-export const metadata: Metadata = {
-  title: 'OneVoice — управление цифровым присутствием',
-  description: 'Мультиагентная система для автоматизации SMB',
-};
+// `generateMetadata` runs per-request on the server so the document
+// title and description follow whichever locale the resolver in
+// `lib/i18n/request.ts` selected (cookie → Accept-Language → 'ru').
+// Strings live under the `metadata` namespace in `messages/{ru,en}.json`.
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('metadata');
+  return {
+    title: t('title'),
+    description: t('description'),
+  };
+}
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // next-intl resolves both the locale and message bundle from

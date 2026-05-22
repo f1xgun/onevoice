@@ -6,7 +6,10 @@ import (
 	"log/slog"
 	"strings"
 
+	"golang.org/x/text/language"
+
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
@@ -34,12 +37,15 @@ func (f ExecutorFunc) Execute(ctx context.Context, args map[string]interface{}) 
 }
 
 type entry struct {
-	def             llm.ToolDefinition
-	displayName     string
-	userDescription string // human-readable description surfaced in settings UI (LLM-facing description stays in def.Function.Description).
-	executor        Executor
-	floor           domain.ToolFloor
-	editableFields  []string
+	def                     llm.ToolDefinition
+	displayName             string
+	userDescription         string // human-readable description surfaced in settings UI (LLM-facing description stays in def.Function.Description).
+	displayNameKey          string
+	descriptionEn           string
+	parameterDescriptionsEn map[string]string
+	executor                Executor
+	floor                   domain.ToolFloor
+	editableFields          []string
 }
 
 // Registry holds tool definitions and their executors.
@@ -107,9 +113,64 @@ func (r *Registry) SetUserDescription(name, text string) {
 	r.tools[name] = e
 }
 
+// SetDisplayNameKey attaches the i18n catalog key the frontend uses to render
+// localized task titles. No-op if the tool is not registered.
+func (r *Registry) SetDisplayNameKey(name, key string) {
+	e, ok := r.tools[name]
+	if !ok {
+		return
+	}
+	e.displayNameKey = key
+	r.tools[name] = e
+}
+
+// DisplayNameKey returns the i18n catalog key for the given tool, or "" if
+// unknown / unset.
+func (r *Registry) DisplayNameKey(name string) string {
+	e, ok := r.tools[name]
+	if !ok {
+		return ""
+	}
+	return e.displayNameKey
+}
+
+// SetDescriptionEn attaches the English translation of the tool's LLM-facing
+// description. No-op if the tool is not registered.
+func (r *Registry) SetDescriptionEn(name, text string) {
+	e, ok := r.tools[name]
+	if !ok {
+		return
+	}
+	e.descriptionEn = text
+	r.tools[name] = e
+}
+
+// SetParameterDescriptionsEn attaches a map of parameter-name -> English
+// description for the named tool. The map is copied defensively. No-op if the
+// tool is not registered; nil/empty map clears any previous translations.
+func (r *Registry) SetParameterDescriptionsEn(name string, m map[string]string) {
+	e, ok := r.tools[name]
+	if !ok {
+		return
+	}
+	if len(m) == 0 {
+		e.parameterDescriptionsEn = nil
+	} else {
+		cp := make(map[string]string, len(m))
+		for k, v := range m {
+			cp[k] = v
+		}
+		e.parameterDescriptionsEn = cp
+	}
+	r.tools[name] = e
+}
+
 // Available returns tool definitions available for the given active integrations.
 // Tools named "{platform}__{action}" are included only if platform is active.
 // Tools without "__" are always included (internal tools).
+//
+// Descriptions are returned in the registry's source-of-truth language (RU).
+// Use AvailableForWhitelist (ctx-aware) for the locale-resolved variant.
 func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 	active := make(map[string]bool, len(activeIntegrations))
 	for _, p := range activeIntegrations {
@@ -131,6 +192,72 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 		}
 	}
 	return result
+}
+
+// localizeDef returns a copy of e.def with Description and parameter
+// descriptions swapped to the per-locale text. Non-English locales (and the
+// zero Tag) return e.def by value, preserving byte-identical output.
+func (r *Registry) localizeDef(e entry, tag language.Tag) llm.ToolDefinition {
+	if tag != language.English {
+		return e.def
+	}
+	if e.descriptionEn == "" && len(e.parameterDescriptionsEn) == 0 {
+		return e.def
+	}
+
+	out := e.def
+	out.Function = e.def.Function
+	if e.descriptionEn != "" {
+		out.Function.Description = e.descriptionEn
+	}
+	if len(e.parameterDescriptionsEn) > 0 {
+		out.Function.Parameters = localizeParameters(e.def.Function.Parameters, e.parameterDescriptionsEn)
+	}
+	return out
+}
+
+// localizeParameters returns a deep-copied parameters schema with
+// `properties.<name>.description` swapped to the EN values. Properties
+// without a translation keep their original description. Source map is never
+// mutated.
+func localizeParameters(params map[string]interface{}, translations map[string]string) map[string]interface{} {
+	if params == nil {
+		return nil
+	}
+	propsRaw, ok := params["properties"]
+	if !ok {
+		return params
+	}
+	props, ok := propsRaw.(map[string]interface{})
+	if !ok || len(props) == 0 {
+		return params
+	}
+
+	outParams := make(map[string]interface{}, len(params))
+	for k, v := range params {
+		outParams[k] = v
+	}
+	outProps := make(map[string]interface{}, len(props))
+	for name, raw := range props {
+		propMap, ok := raw.(map[string]interface{})
+		if !ok {
+			outProps[name] = raw
+			continue
+		}
+		enDesc, hasEN := translations[name]
+		if !hasEN || enDesc == "" {
+			outProps[name] = raw
+			continue
+		}
+		clone := make(map[string]interface{}, len(propMap))
+		for k, v := range propMap {
+			clone[k] = v
+		}
+		clone["description"] = enDesc
+		outProps[name] = clone
+	}
+	outParams["properties"] = outProps
+	return outParams
 }
 
 // AvailableForWhitelist applies a typed WhitelistMode filter on top
@@ -164,7 +291,8 @@ func (r *Registry) AvailableForWhitelist(
 	mode domain.WhitelistMode,
 	allowed []string,
 ) []llm.ToolDefinition {
-	base := r.Available(activeIntegrations)
+	tag := i18n.LocaleFromContext(ctx)
+	base := r.availableLocalized(activeIntegrations, tag)
 	switch mode {
 	case "", domain.WhitelistModeInherit, domain.WhitelistModeAll:
 		return base
@@ -199,6 +327,31 @@ func (r *Registry) AvailableForWhitelist(
 		)
 		return base
 	}
+}
+
+// availableLocalized is the locale-aware twin of Available. Returns the same
+// set of tools, with Description swapped to the requested locale for entries
+// that registered a translation. Internal: callers should use
+// AvailableForWhitelist (the public surface that also enforces whitelist
+// rules).
+func (r *Registry) availableLocalized(activeIntegrations []string, tag language.Tag) []llm.ToolDefinition {
+	active := make(map[string]bool, len(activeIntegrations))
+	for _, p := range activeIntegrations {
+		active[p] = true
+	}
+	result := make([]llm.ToolDefinition, 0, len(r.tools))
+	for _, e := range r.tools {
+		name := e.def.Function.Name
+		idx := strings.Index(name, "__")
+		if idx == -1 {
+			result = append(result, r.localizeDef(e, tag))
+			continue
+		}
+		if active[name[:idx]] {
+			result = append(result, r.localizeDef(e, tag))
+		}
+	}
+	return result
 }
 
 // Execute runs the registered executor for the named tool.
@@ -286,29 +439,47 @@ func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 // Kept in the tools package so the API handler can import a typed shape.
 type RegistryEntry struct {
 	Name            string           `json:"name"`
-	DisplayName     string           `json:"displayName"` // human-readable label (e.g., "Отправить пост") shown in settings UI; may be empty — frontend falls back to Name.
-	Platform        string           `json:"platform"`    // e.g., "telegram" — derived from {platform}__{action}
+	DisplayName     string           `json:"displayName"`              // human-readable label (e.g., "Отправить пост") shown in settings UI; may be empty — frontend falls back to Name.
+	DisplayNameKey  string           `json:"displayNameKey,omitempty"` // i18n catalog key for the FE;. Empty → FE falls back to DisplayName.
+	Platform        string           `json:"platform"`                 // e.g., "telegram" — derived from {platform}__{action}
 	Floor           domain.ToolFloor `json:"floor"`
 	EditableFields  []string         `json:"editableFields"`
-	Description     string           `json:"description"`     // LLM-facing description — includes tool-name references and disambiguation rules.
+	Description     string           `json:"description"`     // LLM-facing description — includes tool-name references and disambiguation rules. Locale-resolved when fetched via AllEntriesForLocale.
 	UserDescription string           `json:"userDescription"` // end-user-facing description shown in settings UI; never references other tool names.
 }
 
 // AllEntries returns a snapshot of (name, displayName, platform, floor, editable, description)
-// for every registered tool. Feeds GET /api/v1/tools as well as
-// the cluster-internal /internal/tools/names endpoint used
-// by the startup validation sweep.
+// for every registered tool. Description is returned in the registry's
+// source-of-truth language (RU). Feeds GET /api/v1/tools as well as the
+// cluster-internal /internal/tools/names endpoint used by the startup
+// validation sweep.
+//
+// Callers that need locale-aware descriptions (the live /internal/tools
+// endpoint reached from the API on every cache miss) should use
+// AllEntriesForLocale.
 func (r *Registry) AllEntries() []RegistryEntry {
+	return r.AllEntriesForLocale(i18n.DefaultTag)
+}
+
+// AllEntriesForLocale returns the projection of AllEntries with each tool's
+// Description resolved to tag. Tools without a descriptionEn fall back to
+// def.Function.Description.
+func (r *Registry) AllEntriesForLocale(tag language.Tag) []RegistryEntry {
 	out := make([]RegistryEntry, 0, len(r.tools))
 	for _, e := range r.tools {
 		platform := toolPlatform(e.def.Function.Name)
+		desc := e.def.Function.Description
+		if tag == language.English && e.descriptionEn != "" {
+			desc = e.descriptionEn
+		}
 		out = append(out, RegistryEntry{
 			Name:            e.def.Function.Name,
 			DisplayName:     e.displayName,
+			DisplayNameKey:  e.displayNameKey,
 			Platform:        platform,
 			Floor:           e.floor,
 			EditableFields:  append([]string(nil), e.editableFields...),
-			Description:     e.def.Function.Description,
+			Description:     desc,
 			UserDescription: e.userDescription,
 		})
 	}

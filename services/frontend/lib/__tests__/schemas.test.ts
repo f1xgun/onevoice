@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { loginSchema, registerSchema } from '../schemas';
+import { createLoginSchema, createRegisterSchema } from '../schemas';
+
+// Stub translator — see businessSchema.test.ts for the rationale.
+const t = (key: string) => key;
+const loginSchema = createLoginSchema(t);
+const registerSchema = createRegisterSchema(t);
 
 describe('loginSchema', () => {
   it('rejects empty email', () => {

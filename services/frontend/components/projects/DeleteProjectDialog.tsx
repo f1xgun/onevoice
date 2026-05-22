@@ -13,7 +13,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { chatsPluralRu } from '@/lib/plural';
 
 interface DeleteProjectDialogProps {
   open: boolean;
@@ -34,10 +33,12 @@ export function DeleteProjectDialog({
   const tDelete = useTranslations('projects.deleteDialog');
   const [pending, setPending] = useState(false);
 
+  // Description switches on chatCount — ICU pluralizes the chat count for
+  // the non-zero variant (one/few/many/other in RU, one/other in EN).
   const description =
     chatCount > 0
-      ? `Будет также удалено ${chatCount} ${chatsPluralRu(chatCount)}. Это действие нельзя отменить.`
-      : 'Проект будет удалён. Это действие нельзя отменить.';
+      ? tDelete('descriptionWithChats', { count: chatCount })
+      : tDelete('descriptionEmpty');
 
   const handleConfirm = async () => {
     setPending(true);
@@ -45,8 +46,8 @@ export function DeleteProjectDialog({
       await onConfirm();
       onOpenChange(false);
     } catch {
-      toast.error('Не удалось удалить проект', {
-        description: 'Попробуйте ещё раз.',
+      toast.error(tDelete('toastError'), {
+        description: tDelete('toastRetry'),
       });
     } finally {
       setPending(false);
@@ -57,7 +58,7 @@ export function DeleteProjectDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{`Удалить проект «${projectName}»?`}</AlertDialogTitle>
+          <AlertDialogTitle>{tDelete('title', { name: projectName })}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

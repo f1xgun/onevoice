@@ -1,0 +1,1430 @@
+{
+  "metadata": {
+    "title": "OneVoice — manage your digital presence",
+    "description": "A multi-agent system that automates digital presence for small businesses"
+  },
+  "businessGuard": {
+    "loadFailed": "Couldn't load the list of organizations",
+    "retry": "Try again",
+    "loading": "Loading"
+  },
+  "invite": {
+    "accept": {
+      "kicker": "invitation",
+      "expiry": "Expires {date}",
+      "cta": "Accept invitation",
+      "accepting": "Accepting…",
+      "cancel": "Cancel",
+      "errors": {
+        "gone": {
+          "title": "This link is no longer valid",
+          "body": "The link may have expired or been revoked. Ask for a fresh one.",
+          "cta": "Go back"
+        },
+        "alreadyMember": {
+          "title": "You're already in this organization",
+          "body": "Open the dashboard and pick it from the organization switcher at the top.",
+          "cta": "Open {businessName}"
+        },
+        "generic": "Couldn't process the invitation. Please try again."
+      }
+    }
+  },
+  "onboarding": {
+    "title": "Welcome to OneVoice",
+    "sub": "Start by creating an organization or accepting an invitation.",
+    "createOrg": {
+      "title": "Create an organization",
+      "body": "Set up a new team and invite people.",
+      "cta": "Create"
+    },
+    "haveInvite": {
+      "title": "I have an invitation",
+      "body": "Paste the link and we'll open the invitation.",
+      "label": "Invitation link",
+      "placeholder": "Paste the link",
+      "cta": "Open invitation",
+      "errors": {
+        "invalidFormat": "Invalid link format"
+      }
+    }
+  },
+  "team": {
+    "page": {
+      "title": "Team",
+      "sub": "Manage members and invitations. What you can do depends on your role.",
+      "invite": "Invite",
+      "tabsAria": "Team — sections",
+      "tabs": {
+        "members": "Members",
+        "invitations": "Invitations"
+      }
+    },
+    "switcher": {
+      "triggerAria": "{name}, switch organization",
+      "kicker": "organizations",
+      "empty": "no organizations",
+      "create": "+ Create organization",
+      "selectedAnnounce": "Active organization: {name}"
+    },
+    "roles": {
+      "owner": "owner",
+      "admin": "admin",
+      "editor": "editor",
+      "viewer": "viewer"
+    },
+    "members": {
+      "kicker": "members",
+      "count": "{count, plural, one {# member} other {# members}}",
+      "cols": {
+        "name": "name",
+        "email": "email",
+        "role": "role",
+        "joined": "joined",
+        "actions": "actions"
+      },
+      "actions": {
+        "changeRole": "Change role",
+        "remove": "Remove member",
+        "leave": "Leave organization",
+        "disabledHint": "Not enough permissions",
+        "menuAria": "Actions for member {name}"
+      },
+      "loadError": "Couldn't load members. Try refreshing the page.",
+      "remove": {
+        "title": "Remove this member?",
+        "body": "{name} will lose access to the organization. This can't be undone — you'd need to re-invite them via a link.",
+        "confirm": "Remove",
+        "toastSuccess": "Member removed",
+        "toastError": "Couldn't remove member"
+      },
+      "leave": {
+        "title": "Leave this organization?",
+        "body": "You'll lose access to {businessName}. To come back, you'll need a new invitation.",
+        "confirm": "Leave"
+      },
+      "changeRole": {
+        "toastSuccess": "Role updated",
+        "toastError": "Couldn't update role"
+      }
+    },
+    "invitations": {
+      "kicker": "invitations",
+      "count": "{count, plural, one {# invitation} other {# invitations}}",
+      "cols": {
+        "role": "role",
+        "expiry": "expires",
+        "creator": "created by",
+        "actions": "actions"
+      },
+      "linkUnavailable": "The link is only available right after creation",
+      "actions": {
+        "copyLink": "Copy link",
+        "revoke": "Revoke"
+      },
+      "revoke": {
+        "title": "Revoke this invitation?",
+        "body": "The link will stop working. If you've already sent it, the recipient will see an error. You can create a new invitation anytime.",
+        "confirm": "Revoke",
+        "toastSuccess": "Invitation revoked",
+        "toastError": "Couldn't revoke invitation"
+      },
+      "empty": {
+        "title": "No pending invitations",
+        "body": "Create an invitation to add someone to the team.",
+        "cta": "Invite"
+      },
+      "loadError": "Couldn't load invitations. Try refreshing the page.",
+      "expiry": {
+        "relative": "in {duration}"
+      }
+    },
+    "invite": {
+      "modal": {
+        "title": "Invite a member",
+        "description": "Create a link. Copy it and send it however you like — email, Telegram, whatever works."
+      },
+      "fields": {
+        "role": "Role",
+        "roleHelper": "What the new member will be able to do",
+        "expiry": "Expires in"
+      },
+      "expiryOptions": {
+        "1h": "1 hour",
+        "1d": "1 day",
+        "7d": "7 days",
+        "30d": "30 days"
+      },
+      "cancel": "Cancel",
+      "submit": "Create link",
+      "submitting": "Creating…",
+      "errors": {
+        "tooManyPending": "You've hit the limit — 20 pending invitations per organization. Revoke an old one to create a new invitation.",
+        "generic": "Couldn't create invitation. Please try again.",
+        "invalidRole": "Pick a role"
+      },
+      "copy": {
+        "title": "Link is ready",
+        "description": "Send it to the invitee. The link is valid for {duration}.",
+        "inputAria": "Invitation link",
+        "button": "Copy",
+        "buttonAria": "Copy link",
+        "warning": "This link is shown only once — close this window and you won't be able to recover it.",
+        "toastSuccess": "Link copied",
+        "toastError": "Couldn't copy the link. Copy it manually from the field above.",
+        "autoCopyFallback": "Click \"Copy\" to copy the link",
+        "done": "Done"
+      }
+    },
+    "errors": {
+      "lastOwner": "You can't remove the last owner. Assign a new owner first.",
+      "selfLockout": "You can't take away your own permission to manage roles.",
+      "systemRoleImmutable": "System roles can't be modified.",
+      "staleBusiness": "This organization is no longer available",
+      "generic": "Couldn't complete the action."
+    }
+  },
+  "roles": {
+    "title": "Roles",
+    "list": {
+      "systemSection": "System roles",
+      "customSection": "Custom roles",
+      "addRole": "New role",
+      "noCustom": "No custom roles yet",
+      "noCustomCta": "Create your first role with a custom set of permissions.",
+      "membersCount": "{count, plural, one {# member} other {# members}}",
+      "permsCount": "{count, plural, one {# permission} other {# permissions}}",
+      "allPerms": "all permissions",
+      "systemBadge": "system",
+      "loadError": "Couldn't load roles. Try refreshing the page.",
+      "retry": "Try again",
+      "menuAria": "Actions for role {name}",
+      "actions": {
+        "duplicate": "Duplicate",
+        "delete": "Delete"
+      },
+      "systemLabels": {
+        "owner": "Owner",
+        "admin": "Admin",
+        "editor": "Editor",
+        "viewer": "Viewer"
+      }
+    },
+    "editor": {
+      "newTitle": "New role",
+      "editTitle": "Edit role",
+      "nameLabel": "Name",
+      "namePlaceholder": "For example, \"Marketing manager\"",
+      "nameRequired": "Enter a role name",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Short description of what this role can do",
+      "permissionsLabel": "Permissions",
+      "save": "Save",
+      "cancel": "Cancel",
+      "back": "Back to list",
+      "cloneNamePrefix": "Copy — {sourceName}",
+      "unsavedPrompt": "You have unsaved changes. Leave this page?",
+      "createSuccess": "Role created",
+      "updateSuccess": "Changes saved"
+    },
+    "delete": {
+      "title": "Delete role \"{name}\"?",
+      "simpleBody": "This can't be undone.",
+      "pickerBody": "Members are assigned to this role ({count}). Pick another role to move them to.",
+      "pickerLabel": "Move members to:",
+      "confirm": "Delete",
+      "cancel": "Cancel",
+      "toastSuccess": "Role deleted"
+    },
+    "permissionTree": {
+      "disabledTooltip": "You don't have this permission",
+      "groupCount": "{selected} / {total}"
+    },
+    "errors": {
+      "cannotGrantUnowned": "You can't grant permissions you don't have. Uncheck the grayed-out boxes.",
+      "selfLockout": "You can't take away your own permission to edit roles — you'd lose access to this page.",
+      "systemRoleImmutable": "System roles can't be modified.",
+      "roleInUse": "Members are assigned to this role. Pick another role to move them to.",
+      "lastOwnerOnDelete": "Can't delete this role — the organization wouldn't have any owners left.",
+      "saveGeneric": "Couldn't save the role. Please try again.",
+      "deleteGeneric": "Couldn't delete the role. Please try again."
+    }
+  },
+  "common": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "back": "Back",
+    "next": "Next",
+    "save": "Save",
+    "close": "Close",
+    "rename": "Rename",
+    "connectionError": "Connection error",
+    "allPlatforms": "All platforms",
+    "loading": "Loading…",
+    "open": "Open",
+    "edit": "Edit",
+    "toasts": {
+      "languageSwitchFailed": "Couldn't switch language — please try again"
+    },
+    "notFound": {
+      "errorLabel": "ERROR · 404",
+      "title": "Nothing to see here",
+      "body": "The link may be out of date or this section was moved. Try starting from the top — the home page is always there.",
+      "homeLink": "Go home"
+    },
+    "errors": {
+      "connectionRetry": "Connection error — please try again",
+      "resumeStream": "Couldn't resume — reload the page",
+      "alreadyHandled": "Error: this action was already handled",
+      "outOfScope": "Denied: this action is outside your business scope",
+      "policyRevoked": "Denied: this tool is blocked by current policy"
+    },
+    "approvalSwitch": {
+      "recommendedTitle": "recommended mode",
+      "defaultAriaLabel": "Approval mode",
+      "modes": {
+        "off": "Never",
+        "manual": "With your approval",
+        "auto-with-review": "On its own, but shows you",
+        "auto": "Fully automatic"
+      }
+    }
+  },
+  "validation": {
+    "email": "Invalid email",
+    "url": "Invalid URL",
+    "phone": "Invalid phone number",
+    "passwordsMismatch": "Passwords don't match",
+    "minChars": "Minimum {count, plural, one {# character} other {# characters}}",
+    "maxChars": "Maximum {count, plural, one {# character} other {# characters}}",
+    "businessCategoryRequired": "Pick a category",
+    "projectNameRequired": "Enter a project name.",
+    "projectSystemPromptMax": "System prompt is too long (max {max, plural, one {# character} other {# characters}}).",
+    "projectAllowedToolsRequired": "Pick at least one tool, or switch the mode to \"None\"."
+  },
+  "chat": {
+    "heading": "Chats",
+    "newConversation": "New chat",
+    "noConversations": "No chats",
+    "newConversationCta": "Start a new chat with the AI assistant",
+    "deleteConversationTitle": "Delete this chat?",
+    "deleteConversationDescription": "This can't be undone. All messages will be permanently deleted.",
+    "rowMenu": {
+      "rename": "Rename",
+      "regenerateTitle": "Regenerate title",
+      "delete": "Delete",
+      "renameDialogTitle": "Rename chat",
+      "renameDialogDescription": "The new name will appear everywhere this chat is shown.",
+      "renamePlaceholder": "Chat name",
+      "renameError": "Couldn't rename the chat",
+      "deleteError": "Couldn't delete the chat"
+    },
+    "window": {
+      "helpPrompt": "How can I help?",
+      "moveError": "Couldn't move the chat",
+      "messagePlaceholder": "Type a message...",
+      "sendAria": "Send",
+      "typingAria": "OneVoice is typing"
+    },
+    "header": {
+      "menuAria": "Chat menu",
+      "menuTitle": "Actions",
+      "pinAria": "Pin chat",
+      "unpinAria": "Unpin chat"
+    },
+    "pinMenu": {
+      "pin": "Pin",
+      "unpin": "Unpin",
+      "pinError": "Couldn't pin the chat",
+      "unpinError": "Couldn't unpin the chat"
+    },
+    "projectChip": {
+      "unlinkedAria": "This chat isn't linked to a project",
+      "openProjectAria": "Open project \"{name}\""
+    },
+    "moveMenu": {
+      "trigger": "Move to…",
+      "noProjects": "No other projects yet.",
+      "unassignedLabel": "Unassigned",
+      "movedTo": "Chat moved to \"{name}\"",
+      "undo": "Undo",
+      "moveError": "Couldn't move the chat"
+    },
+    "expiredBanner": {
+      "message": "This action expired — send a new message to continue.",
+      "dismissLabel": "Dismiss message"
+    },
+    "projectPicker": {
+      "currentLabel": "Project: {name}",
+      "menuLabel": "Where should we save this chat?"
+    },
+    "toolCalls": {
+      "showActions": "Show actions ({count})",
+      "hideActions": "Hide actions ({count})",
+      "doneCount": "✓ {done}/{total}"
+    },
+    "toolCard": {
+      "running": "Running",
+      "done": "Done",
+      "error": "Error",
+      "aborted": "Aborted",
+      "abortedTooltip": "Aborted — no result was returned",
+      "abortedNote": "Aborted — no result was returned",
+      "rejectedBadge": "Rejected by user",
+      "rejectedReason": "Reason: {reason}",
+      "expiredBadge": "Expired",
+      "editedTooltip": "Arguments edited by user",
+      "nothingFound": "Nothing found",
+      "sent": "Sent",
+      "gotCount": "Received: {count}",
+      "gotReviews": "Received: {count, plural, one {# review} other {# reviews}}",
+      "gotComments": "Received: {count, plural, one {# comment} other {# comments}}",
+      "gotPosts": "Received: {count, plural, one {# post} other {# posts}}",
+      "gotMessages": "Received: {count, plural, one {# message} other {# messages}}",
+      "gotItems": "Received: {count, plural, one {# item} other {# items}}"
+    },
+    "toolNeedsHelp": {
+      "badge": "needs help",
+      "helpAction": "Help",
+      "contextAction": "Add context"
+    },
+    "toolApproval": {
+      "argsHeading": "Arguments",
+      "editableSectionHeading": "Editable",
+      "lockedSectionHeading": "Locked",
+      "lockedHint": "These values can't be edited — they're filled in automatically.",
+      "noEditableFields": "This action has no editable parameters.",
+      "noArgs": "This action has no parameters.",
+      "rejectPlaceholder": "Reason (optional)",
+      "rejectAriaLabel": "Reason for rejection",
+      "triggerExpand": "expand",
+      "triggerCollapse": "collapse",
+      "booleanYes": "Yes",
+      "booleanNo": "No",
+      "fieldFallback": "Parameter \"{key}\"",
+      "card": {
+        "titleWithCount": "Awaiting confirmation ({count})",
+        "subtitle": "Review the arguments before running",
+        "submitIdle": "Confirm",
+        "submitLoading": "Sending…",
+        "submitHelper": "Pick an action for every task"
+      },
+      "actions": {
+        "approve": "Approve",
+        "edit": "Edit",
+        "reject": "Reject",
+        "groupAria": "Actions for {toolName}",
+        "approveAria": "Approve {toolName}",
+        "editAria": "Edit {toolName}",
+        "rejectAria": "Reject {toolName}"
+      },
+      "fields": {
+        "text": "Text",
+        "caption": "Caption",
+        "description": "Description",
+        "hours": "Business hours",
+        "channel_id": "Channel ID",
+        "chat_id": "Chat ID",
+        "message_id": "Message ID",
+        "photo_url": "Image URL",
+        "group_id": "Community ID",
+        "publish_date": "Publish date",
+        "post_id": "Post ID",
+        "comment_id": "Comment ID",
+        "phone": "Phone",
+        "website": "Website",
+        "category": "Category",
+        "review_id": "Review ID",
+        "review_name": "Review",
+        "count": "Count",
+        "limit": "Limit",
+        "parse_mode": "Markup format"
+      }
+    }
+  },
+  "posts": {
+    "title": "Posts",
+    "subtitle": "All your publications across connected channels. One post — everywhere at once.",
+    "emptyState": "No posts yet",
+    "retry": "Retry",
+    "retryUnavailable": "Soon — not available yet",
+    "createPost": "Create post",
+    "status": {
+      "draft": "Draft",
+      "scheduled": "Scheduled",
+      "published": "Published",
+      "error": "Error"
+    },
+    "platforms": {
+      "telegram": "Telegram",
+      "yandexBusiness": "Yandex.Business"
+    },
+    "platformShort": {
+      "telegram": "Telegram",
+      "vk": "VK",
+      "yandex_business": "Yandex"
+    },
+    "errorFallback": "Couldn't publish. Check your channel connections and try again.",
+    "mediaFile": "file {index}",
+    "tabs": {
+      "all": "All · {count}",
+      "published": "Published · {count}",
+      "scheduled": "Scheduled · {count}",
+      "error": "Errors · {count}"
+    },
+    "table": {
+      "content": "Content",
+      "status": "Status",
+      "platforms": "Platforms",
+      "date": "Date",
+      "results": "Results"
+    },
+    "shortcut": "⌘K",
+    "emptyHint": "Create your first post — OneVoice will publish it to every connected channel.",
+    "more": "⋯",
+    "noStats": "No stats yet",
+    "duplicate": "Duplicate",
+    "openLink": "Open",
+    "searchPlaceholder": "Search by content…",
+    "stats": {
+      "publishedLabel": "Published",
+      "publishedHint": "all time",
+      "scheduledLabel": "Scheduled",
+      "scheduledHintNext": "next — {label}",
+      "scheduledHintNone": "none scheduled",
+      "errorLabel": "With errors",
+      "errorHintSome": "need attention",
+      "errorHintNone": "all clear"
+    }
+  },
+  "tasks": {
+    "title": "What's been done",
+    "subtitle": "Here you'll see everything OneVoice has done on your behalf. You don't have to click anything — we'll retry on our own if something didn't go through.",
+    "status": {
+      "pending": "Scheduled",
+      "running": "In progress",
+      "done": "Done",
+      "error": "Needs help"
+    },
+    "stats": {
+      "done": "Done",
+      "inProgress": "In progress now",
+      "awaitingUser": "Waiting on you",
+      "doneEmptyHint": "nothing yet",
+      "doneSummary": "of those {success} succeeded, {needsHelp, plural, one {# needs} other {# need}} your attention",
+      "inProgressNone": "no active tasks",
+      "inProgressSome": "running right now",
+      "awaitingNone": "all good",
+      "awaitingSome": "needs your attention"
+    },
+    "errors": {
+      "tokenVk": "Looks like access to the VK community expired. This happens once every couple of weeks — you'll need to reconnect the channel, takes about a minute.",
+      "tokenTelegram": "Telegram no longer accepts our token — the bot may have been removed from the channel. You'll need to reconnect it.",
+      "tokenGeneric": "Access to the platform expired. Reconnect the channel so we can keep going.",
+      "reconnectVk": "Reconnect VK",
+      "reconnect": "Reconnect",
+      "rateLimit": "The platform asked us to wait — we'll try again in a few minutes automatically.",
+      "transient": "The service was temporarily unreachable. We've already tried a few times — we'll retry on the next sync.",
+      "notFound": "Channel not found. Check that it's still connected and accessible.",
+      "openIntegrations": "Open channels",
+      "media": "Couldn't upload the image — the file may be too large or the platform rejected it.",
+      "fallback": "Something went wrong. We'll try again on the next sync.",
+      "autoRetryHint": "You don't have to click anything — we'll try again on our own."
+    }
+  },
+  "agentTasks": {
+    "displayName": {
+      "sync": {
+        "business_name": "Sync business name",
+        "business_description": "Sync description",
+        "photo": "Sync photo",
+        "data": "Sync data",
+        "hours": "Sync hours"
+      },
+      "tools": {
+        "telegram": {
+          "send_channel_post": { "name": "Send post" },
+          "send_channel_photo": { "name": "Send photo" },
+          "send_notification": { "name": "Owner notification" },
+          "get_reviews": { "name": "Fetch reviews" },
+          "reply_to_comment": { "name": "Reply to comment" }
+        },
+        "vk": {
+          "publish_post": { "name": "Publish post" },
+          "post_photo": { "name": "Publish photo" },
+          "schedule_post": { "name": "Schedule post" },
+          "update_group_info": { "name": "Update community info" },
+          "get_comments": { "name": "Fetch comments" },
+          "reply_comment": { "name": "Reply to comment" },
+          "delete_comment": { "name": "Delete comment" },
+          "get_community_info": { "name": "Fetch community info" },
+          "get_wall_posts": { "name": "Fetch wall posts" }
+        },
+        "yandex_business": {
+          "get_info": { "name": "Fetch business profile" },
+          "update_hours": { "name": "Update business hours" },
+          "update_info": { "name": "Update business info" },
+          "get_reviews": { "name": "Fetch Yandex reviews" },
+          "reply_review": { "name": "Reply to Yandex review" },
+          "upload_photo": { "name": "Upload photo" },
+          "create_post": { "name": "Publish Yandex Business post" }
+        },
+        "google_business": {
+          "get_reviews": { "name": "Fetch Google reviews" },
+          "reply_review": { "name": "Reply to Google review" }
+        }
+      }
+    }
+  },
+  "reviews": {
+    "title": "Reviews",
+    "subtitle": "Customer reviews from your connected channels show up here. OneVoice will suggest a draft reply — you decide whether to send it.",
+    "status": {
+      "pending": "Awaiting reply",
+      "replied": "Reply sent",
+      "error": "Send failed",
+      "read": "Read"
+    },
+    "replyToast": "Reply sent",
+    "platformOptions": {
+      "all": "All platforms",
+      "yandexBusiness": "Yandex.Business",
+      "google": "Google",
+      "twoGis": "2GIS",
+      "telegram": "Telegram",
+      "vk": "VK"
+    },
+    "tabs": {
+      "all": "All",
+      "pending": "Unanswered",
+      "replied": "Answered"
+    },
+    "dialog": {
+      "title": "Reply to review",
+      "yourReply": "Your reply"
+    },
+    "sentReply": "Reply sent",
+    "platformPlaceholder": "Platform",
+    "replyPlaceholder": "Write a reply to the customer…",
+    "refreshTitle": "Pull fresh reviews from connected platforms",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "send": "Send",
+    "sending": "Sending…",
+    "stats": {
+      "pendingLabel": "Awaiting reply",
+      "pendingHintNone": "none open",
+      "pendingHintSome": "need a decision",
+      "totalLabel": "Total in selection",
+      "totalHint": "for the current filters",
+      "avgLabel": "Average rating",
+      "avgHintEmpty": "no data",
+      "avgHintOutOf": "out of 5",
+      "avgEmpty": "—"
+    },
+    "aiSample": {
+      "label": "AI draft reply",
+      "hint": "Send as-is or edit",
+      "edit": "Edit",
+      "preparing": "Preparing a draft reply…",
+      "replyNow": "Reply now",
+      "writeOwn": "Write your own",
+      "draftFailed": "Couldn't prepare a draft. You can reply manually.",
+      "draftPending": "Draft isn't ready yet. You can reply manually."
+    },
+    "ratingAria": "Rating: {rating} out of 5",
+    "platformLabels": {
+      "yandex_business": "Yandex.Business",
+      "yandex": "Yandex",
+      "google": "Google",
+      "google_business": "Google Business",
+      "2gis": "2GIS",
+      "telegram": "Telegram",
+      "vk": "VK"
+    },
+    "sendReplyError": "Couldn't send the reply",
+    "refreshSuccess": "Reviews refreshed",
+    "refreshError": "Couldn't refresh the reviews"
+  },
+  "business": {
+    "title": "Business profile",
+    "createTitle": "Create your business profile",
+    "subtitle": "The more you tell us about yourself, the better the AI will sound like you.",
+    "createSubtitle": "Fill in \"Basics\" and the other sections will appear. OneVoice uses this whenever it writes on your behalf.",
+    "errorLoad": "Couldn't load the data. Try refreshing the page.",
+    "sections": {
+      "profile": {
+        "caption": "Basics",
+        "title": "About the business",
+        "sub": "Name, contacts, and a description for the AI assistant."
+      },
+      "voice": {
+        "caption": "Voice",
+        "title": "Voice and tone",
+        "sub": "How the AI should sound when speaking for you."
+      },
+      "hours": {
+        "caption": "Hours",
+        "title": "Business hours",
+        "sub": "Used when customers ask \"are you open?\"."
+      },
+      "specialDates": {
+        "caption": "Special dates",
+        "title": "Holidays and special schedules",
+        "sub": "What the AI should know about — holidays, renovations, private events."
+      }
+    },
+    "aiSummary": {
+      "sample": "Sample",
+      "sampleBody": "This is how OneVoice describes you to customers when answering questions or writing posts. If it doesn't sound right, tweak \"Basics\" or your tone.",
+      "tips": "Tips",
+      "tip1": "Mention your neighborhood — customers will recognize you by it.",
+      "tip2": "Note parking or a landmark: people ask about this all the time.",
+      "tip3": "Leave one detail in the description that's distinctly you."
+    },
+    "profileForm": {
+      "logoBadge": "logo",
+      "logoLabel": "Logo",
+      "logoHint": "JPEG, PNG, WebP — up to 5 MB. Square, at least 256 px.",
+      "uploadLogo": "Upload",
+      "removeLogo": "Remove",
+      "saved": "Saved",
+      "saveError": "Couldn't save",
+      "logoUpdated": "Logo updated",
+      "logoUploadError": "Couldn't upload the logo",
+      "logoUploadAria": "Upload logo",
+      "logoAlt": "Logo",
+      "namePlaceholder": "Mint Coffee Shop",
+      "categoryPlaceholder": "Pick a category",
+      "addressPlaceholder": "123 Main St, Springfield",
+      "descriptionPlaceholder": "A small coffee shop by the subway. Specialty coffee, croissants baked fresh every morning.",
+      "fields": {
+        "name": "Name",
+        "category": "Category",
+        "address": "City / address",
+        "phone": "Phone",
+        "website": "Website",
+        "description": "Description"
+      },
+      "descriptionHint": "What you do and who you do it for. OneVoice uses this when replying to customers and writing posts.",
+      "saving": "Saving…"
+    },
+    "scheduleForm": {
+      "noSpecialDates": "Nothing marked yet. Add dates the AI should know about — holidays, renovations, private events.",
+      "addDate": "Add date",
+      "closed": "Closed",
+      "specialMode": "Special hours",
+      "hoursSaved": "Business hours saved",
+      "datesSaved": "Special dates saved",
+      "saveError": "Couldn't save",
+      "saving": "Saving…",
+      "saveHours": "Save hours",
+      "saveDates": "Save dates",
+      "open": "open",
+      "closedShort": "closed"
+    },
+    "voiceTone": {
+      "saved": "Voice saved",
+      "saveError": "Couldn't save",
+      "saving": "Saving…",
+      "saveButton": "Save voice",
+      "noneHint": "Nothing selected — that's fine too, OneVoice will pick a neutral tone.",
+      "selectedHint": "{count} selected — you can add more or none.",
+      "options": {
+        "warm": "Warm",
+        "calm": "Calm",
+        "friendly": "Friendly",
+        "professional": "Professional",
+        "playful": "Playful",
+        "businesslike": "Businesslike"
+      }
+    },
+    "categories": {
+      "cafe": "Café / Restaurant",
+      "retail": "Retail",
+      "service": "Services",
+      "beauty": "Beauty and wellness",
+      "education": "Education",
+      "other": "Other"
+    },
+    "categoriesShort": {
+      "cafe": "coffee shop",
+      "retail": "shop",
+      "service": "service studio",
+      "beauty": "beauty studio",
+      "education": "learning center",
+      "other": "local business"
+    },
+    "daysOfWeek": {
+      "mon": "Monday",
+      "tue": "Tuesday",
+      "wed": "Wednesday",
+      "thu": "Thursday",
+      "fri": "Friday",
+      "sat": "Saturday",
+      "sun": "Sunday"
+    },
+    "aiSummaryRail": {
+      "placeholder": "Fill in the basics and OneVoice will describe your business here — so you can see how it'll sound to customers.",
+      "nameFallback": "Your business",
+      "describes": "OneVoice describes you as a {kind}{hasName, select, true { \"{name}\"} other {}}{hasWhere, select, true { — {where}} other {}}.",
+      "toneLine": "Tone — {list}."
+    }
+  },
+  "platforms": {
+    "fullLabel": {
+      "telegram": "Telegram",
+      "vk": "VK",
+      "yandex_business": "Yandex.Business",
+      "google_business": "Google Business",
+      "2gis": "2GIS",
+      "avito": "Avito",
+      "whatsapp": "WhatsApp"
+    },
+    "description": {
+      "telegram": "Bot for your channel and notifications",
+      "vk": "Posts and comments",
+      "yandex_business": "Reviews and profile info",
+      "google_business": "Reviews and business profile info",
+      "2gis": "Coming soon",
+      "avito": "Coming soon",
+      "whatsapp": "Coming soon"
+    },
+    "comingSoonWhen": "being evaluated",
+    "comingSoonFallback": "soon"
+  },
+  "quickActions": {
+    "defaults": ["Check reviews", "Update business hours", "Publish a post"]
+  },
+  "integrations": {
+    "title": "Integrations",
+    "subtitle": "Connect the channels your customers use to reach you. OneVoice will receive messages and publish posts through them.",
+    "vkConnected": "VK community connected",
+    "googleConnected": "Google Business Profile connected",
+    "telegramConnected": "Telegram channel connected!",
+    "telegramConnectModalTitle": "Connect Telegram",
+    "telegramStep1Intro": "To connect a Telegram channel, add the OneVoice bot to your channel as an administrator.",
+    "telegramStep1Item1": "Open your Telegram channel",
+    "telegramStep1Item2": "Go to channel settings → Administrators",
+    "telegramStep1Item3Prefix": "Add the bot",
+    "telegramStep1Item4": "Grant the bot permission to post messages",
+    "telegramStep2IntroBefore": "Enter your channel's ID or username (for example,",
+    "telegramStep2IntroOr": "or",
+    "telegramStep2IntroAfter": "):",
+    "telegramStep2Placeholder": "@channel or -100...",
+    "telegramConnectFail": "Connection failed. Make sure the bot has been added as an admin to the channel.",
+    "telegramSubmit": "Connect",
+    "telegramChecking": "Checking...",
+    "telegramBot": "@OneVoiceBot",
+    "telegramExampleChannel": "@mychannel",
+    "page": {
+      "connected": "Connected",
+      "comingSoon": "Coming soon",
+      "missingPlatform": "Can't find your channel?",
+      "missingPlatformBody": "Drop us a line — we'll add it in an upcoming release.",
+      "requestChannel": "Request a channel",
+      "subscribe": "Subscribe",
+      "channelDisconnected": "Channel disconnected",
+      "disconnectFailed": "Couldn't disconnect",
+      "googleAuthFailed": "Couldn't open Google sign-in"
+    },
+    "platformCard": {
+      "connected": "Connected",
+      "notConnected": "Not connected",
+      "channels": "Channels",
+      "addChannel": "+ Add channel",
+      "connect": "Connect",
+      "connecting": "Connecting...",
+      "addBotToGroupTitle": "Add the bot to the discussion group",
+      "addBotToGroupBody": "This channel has a linked discussion group for comments, but the bot isn't in it — so comments on posts aren't being collected. Open the discussion group → members → invite the bot.",
+      "close": "Close",
+      "disconnect": "Disconnect",
+      "disconnectTitle": "Disconnect {name}?",
+      "disconnectBody": "Message history will stay in the archive. To start receiving messages from {name} again, you'll need to reconnect the channel.",
+      "botMissingAria": "Bot isn't in the discussion group",
+      "botMissingTooltip": "Bot isn't in the discussion group — comments aren't being collected",
+      "botRecheck": "I added the bot — check again",
+      "botRechecking": "Checking…",
+      "status": {
+        "active": "Connected",
+        "inactive": "Disconnected",
+        "error": "Error",
+        "pending_cookies": "Awaiting input",
+        "token_expired": "Token expired"
+      },
+      "linkedGroupOk": "The bot is in the discussion group — comments will be collected.",
+      "linkedGroupMissing": "The bot still isn't in the discussion group.",
+      "linkedGroupCheckFailed": "Couldn't check the status"
+    },
+    "vkCommunity": {
+      "title": "Connect VK community",
+      "tokenIntro": "Where to get the key",
+      "step1": "Open your VK community → \"Manage\" → \"API usage\".",
+      "step2Prefix": "On the \"Access tokens\" tab, click ",
+      "step2Highlight": "\"Create token\"",
+      "step2Suffix": ".",
+      "warningPrefix": "",
+      "warningHighlight": "Don't pick an app",
+      "warningSuffix": " — otherwise the token will inherit VK Mini App restrictions and won't be able to reply to comments.",
+      "permissionsPrefix": "Enable these permissions: ",
+      "permWall": "\"Wall\"",
+      "permMessages": "\"Community messages\"",
+      "permManage": "\"Community management\"",
+      "permSeparator": ", ",
+      "step5": "Copy the token you receive and paste it here.",
+      "tokenLabel": "Community access token",
+      "tokenPlaceholder": "vk1.a.…",
+      "tokenFooter": "OneVoice will verify the token, find the linked community, and save the integration. Nothing leaves this app except calls to the VK API itself.",
+      "cancel": "Cancel",
+      "connect": "Connect",
+      "connecting": "Connecting…",
+      "connected": "VK community connected",
+      "connectFailed": "Couldn't connect the community"
+    },
+    "yandexBusiness": {
+      "title": "Connect Yandex.Business",
+      "whyCookies": "Why cookies?",
+      "whyCookiesBody": "Yandex.Business doesn't have a public API for managing reviews and company info, so OneVoice works through your session — as if you'd opened the site yourself. Cookies are stored encrypted and only used by our RPA agent.",
+      "howToCopy": "How to copy cookies",
+      "step1Prefix": "Install the ",
+      "step1Link": "Cookie-Editor",
+      "step1Browsers": "extension (Chrome / Edge / Firefox).",
+      "step2Prefix": "Open ",
+      "step2Domain": "business.yandex.ru",
+      "step2Suffix": " and sign in to the right account.",
+      "step3Prefix": "Click the extension icon → ",
+      "step3Export": "Export",
+      "step3Arrow": " → ",
+      "step3ExportJson": "Export as JSON",
+      "step3Suffix": " — the JSON will be copied to your clipboard automatically.",
+      "step4": "Paste it into the field below.",
+      "alternativePrefix": "Alternatively: you can paste just the ",
+      "alternativeSession": "Session_id",
+      "alternativeSuffix": " value or the raw Cookie header from DevTools → Network → Request Headers.",
+      "cancel": "Cancel",
+      "next": "Next",
+      "searching": "Looking up your organizations on Yandex…",
+      "searchingBody": "This may take up to a minute. We're opening Yandex.Business on your behalf to fetch the list.",
+      "pastePlaceholder": "Paste here: a JSON array, a \"Cookie:\" header, or Session_id=...",
+      "formatLabels": {
+        "json": "JSON array (Cookie-Editor)",
+        "cookie_header": "Cookie header",
+        "session_id_value": "Session_id value",
+        "generic": "format"
+      },
+      "found": "Found {count, plural, one {# organization} other {# organizations}}. Which one should we connect to OneVoice?",
+      "back": "Back",
+      "connect": "Connect",
+      "connecting": "Connecting…",
+      "checking": "Checking…",
+      "formatNotRecognized": "Format not recognized",
+      "formatRecognized": "✓ Format recognized ({format})",
+      "loggedInAs": " — signed in as ",
+      "sessionActive": " — session active",
+      "sessionExpired": "⚠ Session looks expired — you may need to sign back into Yandex and copy the cookies again. You can still connect and check; the error will surface on the first action.",
+      "sessionUnchecked": "We couldn't verify the session from our side (Yandex anti-bot). The session will be checked on the first request.",
+      "probeError": "✗ {error}",
+      "probeFailed": "Couldn't verify — please try again",
+      "noOrgs": "This Yandex account has no organizations.",
+      "unnamedOrg": "Unnamed",
+      "fetchOrgsFailed": "Couldn't fetch the list of organizations. Please try again.",
+      "connectFailed": "Couldn't connect",
+      "connectedToast": "Connected: {name}"
+    },
+    "googleLocation": {
+      "title": "Pick a location",
+      "description": "Your Google account has several business locations. Pick one to connect.",
+      "sessionExpired": "Your session has expired. Please reconnect Google.",
+      "noLocations": "No locations found.",
+      "cancel": "Cancel",
+      "connect": "Connect",
+      "connecting": "Connecting...",
+      "connectFailed": "Couldn't connect the location"
+    },
+    "whitelistWarning": {
+      "title": "New integration won't be added to project whitelists",
+      "body": "These projects use an explicit whitelist and don't include {platform} tools: {names}. Open a project to add the tools.",
+      "dismissAria": "Got it",
+      "closeAria": "Dismiss warning"
+    },
+    "oauthErrors": {
+      "missingParams": "Couldn't sign in: missing parameters",
+      "invalidState": "Couldn't sign in: session expired",
+      "tokenExchange": "Couldn't exchange the token",
+      "connectFailed": "Couldn't connect",
+      "noCommunityToken": "Couldn't get the community token",
+      "internal": "Something went wrong. Please try again.",
+      "noRefreshToken": "Google didn't return a refresh token. Try connecting again.",
+      "noLocations": "This Google account has no business locations.",
+      "fallback": "Couldn't connect: {error}"
+    }
+  },
+  "nav": {
+    "chat": "Chat",
+    "integrations": "Integrations",
+    "business": "Business profile",
+    "reviews": "Reviews",
+    "posts": "Posts",
+    "tasks": "Tasks",
+    "settings": "Settings",
+    "logout": "Log out",
+    "platformsGroup": "Platforms"
+  },
+  "noConnection": {
+    "heading": "Can't reach OneVoice",
+    "body": "Looks like the issue is on our side. Wait a moment and try again.",
+    "retry": "Try again",
+    "openStatus": "Open status page",
+    "codeLabel": "code:"
+  },
+  "landing": {
+    "quote": {
+      "label": "Illustration",
+      "body": "In the morning — one inbox, not five tabs. OneVoice has already answered the simple questions; for the hard ones it asks for your sign-off.",
+      "note": "This is what a normal day can look like once all your channels are connected."
+    },
+    "nav": {
+      "features": "Features",
+      "channels": "Channels",
+      "login": "Log in",
+      "tryIt": "Try it",
+      "logoMark": "OV",
+      "wordmark": "OneVoice"
+    },
+    "hero": {
+      "kicker": "One Voice · v 0.9 · open beta",
+      "headlineLine1": "One conversation",
+      "headlineLine2Prefix": "for every channel ",
+      "headlinePunctuation": ".",
+      "wordmark": "OneVoice",
+      "body": "Telegram, VK, Yandex.Business — all in one inbox. OneVoice drafts replies, prepares posts for every channel, and keeps reviews in plain sight while you focus on your work.",
+      "cta": "Try it",
+      "secondary": "See how it works"
+    },
+    "preview": {
+      "url": "onevoice.app/inbox",
+      "today": "Today",
+      "waiting": "3 awaiting reply",
+      "composing": "OneVoice is drafting a reply for Alena",
+      "eta": "~4 sec"
+    },
+    "belief": {
+      "kicker": "How we see it",
+      "headlinePrefix": "Small businesses don't lose because they do bad work. They lose because ",
+      "headlineHighlight": "they can't reply fast enough.",
+      "body": "A coffee shop, a salon, a workshop — ten channels and one pair of hands. OneVoice doesn't replace you. It replies first so you have time to reply better."
+    },
+    "features": {
+      "kicker": "Features",
+      "headline": "Four things you usually don't have time for.",
+      "items": {
+        "0": {
+          "kicker": "01 · One inbox",
+          "title": "Every channel in one list",
+          "body": "Messages, reviews, and comments from Telegram, VK, and Yandex.Business land in a single stream. No tab-hopping, no forgotten threads."
+        },
+        "1": {
+          "kicker": "02 · Drafts",
+          "title": "A reply in seconds, yours in minutes",
+          "body": "OneVoice knows your hours, menu, and tone. It prepares a draft. You send, tweak, or ask for another try."
+        },
+        "2": {
+          "kicker": "03 · Posts",
+          "title": "One post — every channel at once",
+          "body": "Write it once — it publishes everywhere, tuned for each platform's format. Schedule it for when your audience is reading."
+        },
+        "3": {
+          "kicker": "04 · Reviews",
+          "title": "Reviews under calm watch",
+          "body": "Every review in plain sight. Low ratings rise to the top. High ones get a thank-you in your tone of voice."
+        }
+      }
+    },
+    "demo": {
+      "yandexLabel": "Yandex",
+      "inboxRows": {
+        "0": { "name": "Alena K.", "message": "Are you open on Sunday?", "label": "draft ready" },
+        "1": {
+          "name": "Mikhail P.",
+          "message": "Gave you five stars — thanks for the attention",
+          "label": "replied"
+        },
+        "2": {
+          "name": "Olga · comment",
+          "message": "Do you make cappuccinos with oat milk?",
+          "label": "new"
+        }
+      },
+      "sampleInbox": {
+        "0": { "message": "Are you open tomorrow?", "ago": "1 min" },
+        "1": { "message": "Where can I find you?", "ago": "12 min" },
+        "2": { "message": "Thanks, all set — five stars", "ago": "1 h" }
+      },
+      "sampleReviews": {
+        "0": { "name": "Mikhail P.", "text": "Best flat white in the neighborhood. I'll be back." },
+        "1": { "name": "Anna", "text": "The cappuccino is ordinary, but the staff is polite." }
+      }
+    },
+    "sample": {
+      "from": "from: Alena K.",
+      "ago": "4 min ago",
+      "question": "Are you open on Sunday?",
+      "answer": "Yes, on Sundays we're open from 10:00 to 20:00 — we'd love to see you.",
+      "send": "Send",
+      "fix": "Tweak",
+      "tryAgain": "Try another",
+      "postContent": "Tomorrow until 11 a.m. — all cappuccinos for 200 ₽. Come by.",
+      "publishTo": "publish to:",
+      "scheduledTime": "tomorrow, 09:00",
+      "schedule": "Schedule",
+      "repliedByOneVoice": "answered by OneVoice",
+      "draftReady": "draft ready · needs your yes"
+    },
+    "howItWorks": {
+      "kicker": "How it works",
+      "headline": "Three steps. Half an hour of your time.",
+      "steps": {
+        "0": {
+          "title": "Connect",
+          "body": "Telegram, VK, Yandex.Business — one link at a time. No API keys, no fiddly settings."
+        },
+        "1": {
+          "title": "Tell us",
+          "body": "Share your menu, hours, and tone. OneVoice remembers and writes in your words."
+        },
+        "2": {
+          "title": "Receive",
+          "body": "Customer replies, posts across every channel, a reviews digest. You have the final word, always."
+        }
+      }
+    },
+    "channels": {
+      "kicker": "Channels",
+      "headline": "We support the channels your customers actually use.",
+      "body": "In Russia — no compromises. We connect to the real channels, not their Western lookalikes."
+    },
+    "platforms": {
+      "telegram": { "display": "Telegram", "meta": "Channels and bots" },
+      "vk": { "display": "VK", "meta": "Communities" },
+      "yandex_business": { "display": "Yandex.Business", "meta": "Map and reviews" },
+      "google_business": { "display": "Google Business", "meta": "Under review" },
+      "2gis": { "display": "2GIS", "meta": "Under review" },
+      "avito": { "display": "Avito", "meta": "Under review" },
+      "whatsapp": { "display": "WhatsApp", "meta": "Under review" },
+      "instagram": { "display": "Instagram", "meta": "Under review" },
+      "ok": { "display": "Odnoklassniki", "meta": "Under review" }
+    },
+    "platformStatus": {
+      "have": "live",
+      "soon": "soon"
+    },
+    "footer": {
+      "rights": "© {year} · All rights reserved",
+      "contacts": "Contact",
+      "logoMark": "OV",
+      "wordmark": "OneVoice"
+    }
+  },
+  "projects": {
+    "fallbackTitle": "Project",
+    "newChat": "New chat",
+    "settings": "Configure",
+    "errorLoad": "Couldn't load the project. Refresh the page or try again later.",
+    "errorCreateChat": "Couldn't create the chat",
+    "chats": {
+      "sectionLabel": "Project chats",
+      "empty": {
+        "title": "No chats in this project yet",
+        "body": "Start the first one — it'll inherit this project's system prompt and whitelist."
+      }
+    },
+    "form": {
+      "tabBasics": "Basics",
+      "tabPrompt": "Prompt",
+      "tabTools": "Tools",
+      "tabQuickActions": "Quick actions",
+      "name": "Name",
+      "namePlaceholder": "For example: Reviews",
+      "description": "Description",
+      "descriptionPlaceholder": "Short description — who this project is for.",
+      "optional": "(optional)",
+      "systemPrompt": "System prompt",
+      "systemPromptPlaceholder": "You're a review assistant. Reply politely and to the point…",
+      "systemPromptDescription": "Describes the AI's role and limits. Added to the business context with every message.",
+      "promptCounter": "{current} / {max} characters",
+      "tools": "Available tools",
+      "toolsDescription": "Which actions are allowed at all in this project.",
+      "toolsList": "Tool list",
+      "approval": "Tool approval",
+      "approvalDescription": "Which actions the AI runs on its own, and which need your approval. \"Same as business\" — use the shared setting from \"Settings → Tool approval\".",
+      "loadingTools": "Loading tool list…",
+      "quickActions": "Quick actions",
+      "quickActionsDescription": "Prompt buttons that appear above the input in a new chat.",
+      "creationFooter": "You can set the system prompt, available tools, and quick actions after the project is created.",
+      "cancel": "Cancel",
+      "saveSuccess": "Project saved",
+      "deleteProject": "Delete project",
+      "saveError": "Couldn't save the project",
+      "saveErrorRetry": "Please try again. {detail}",
+      "deletedSuccess": "Project deleted",
+      "save": "Save",
+      "create": "Create project"
+    },
+    "approvalOverrides": {
+      "auto": "Automatic",
+      "manual": "Manual",
+      "inherit": "\"same as business\"",
+      "businessTag": "Business: {label}",
+      "noTools": "No tools require approval — everything runs automatically.",
+      "businessDefault": {
+        "auto": "Automatic",
+        "manual": "Manual"
+      }
+    },
+    "whitelist": {
+      "options": {
+        "inherit": {
+          "label": "Same as business",
+          "helper": "Use the business-level settings (by default, every available tool)."
+        },
+        "all": {
+          "label": "All tools",
+          "helper": "Any tool from an active integration is available to the LLM."
+        },
+        "explicit": {
+          "label": "Selected",
+          "helper": "Only allow the tools checked below."
+        },
+        "none": {
+          "label": "None",
+          "helper": "The LLM can reply but won't take any actions."
+        }
+      }
+    },
+    "quickActions": {
+      "hint": "Up to 6 short phrases — they appear as buttons in an empty chat.",
+      "add": "Add",
+      "placeholder": "For example: Check reviews",
+      "itemAria": "Quick action {index}",
+      "deleteAria": "Delete quick action {index}"
+    },
+    "toolCheckboxes": {
+      "noIntegrations": "No active integrations — no tools available either.",
+      "loading": "Loading tool list…"
+    },
+    "deleteDialog": {
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "deleting": "Deleting…",
+      "title": "Delete project \"{name}\"?",
+      "descriptionEmpty": "The project will be deleted. This can't be undone.",
+      "descriptionWithChats": "{count, plural, one {# chat will also be deleted} other {# chats will also be deleted}}. This can't be undone.",
+      "toastError": "Couldn't delete the project",
+      "toastRetry": "Please try again."
+    },
+    "editPage": {
+      "title": "Edit project",
+      "sub": "Changes apply to new messages. Existing chats keep their history.",
+      "savedToast": "Project saved"
+    },
+    "newPage": {
+      "title": "New project",
+      "sub": "Give the project a name — we'll set up the rest later.",
+      "createdToast": "Project \"{name}\" created",
+      "createdDescription": "Now you can set up the prompt and tools."
+    }
+  },
+  "auth": {
+    "login": {
+      "illustration": {
+        "label": "Illustration",
+        "body": "One inbox in the morning. The AI drafts replies — you decide what to send.",
+        "note": "This is what a normal day can look like once all your channels are connected."
+      },
+      "eyebrow": "Log in",
+      "title": "Welcome back.",
+      "description": "Enter your email and password to open the shared inbox.",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "noAccount": "Don't have an account yet?",
+      "register": "Sign up",
+      "submit": "Log in",
+      "submitting": "Logging in…",
+      "invalidCredentials": "Invalid email or password"
+    },
+    "register": {
+      "nameLabel": "What should we call you",
+      "namePlaceholder": "Alina",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "confirmPasswordLabel": "Confirm",
+      "haveAccount": "Already have an account?",
+      "login": "Log in",
+      "eyebrow": "Create account",
+      "title": "Let's get started.",
+      "description": "A minute to sign up — then we'll connect your channels and talk about your business voice.",
+      "submit": "Create account",
+      "submitting": "Creating account…",
+      "benefitsLabel": "What you'll get",
+      "benefitsBody": "After signing up we'll connect channels (Telegram, VK, Yandex…). You can finish in a couple of minutes or come back later.",
+      "benefits": {
+        "channelsTitle": "One conversation — every channel",
+        "channelsBody": "Telegram, VK, Yandex.Business reply with one command, no jumping between tabs.",
+        "voiceTitle": "AI in your voice",
+        "voiceBody": "Describe the tone once — to \"Hello, it's quiet on Wednesdays\" it won't reply \"Hey! 👋\".",
+        "calmTitle": "Calmer mornings",
+        "calmBody": "Nothing slips through: AI prepares drafts, you sip coffee and approve with one click."
+      },
+      "emailExists": "A user with this email already exists",
+      "genericError": "Sign-up failed. Check your details."
+    },
+    "shell": {
+      "wordmark": "OneVoice",
+      "footer": "© {year} OneVoice"
+    }
+  },
+  "settings": {
+    "page": {
+      "title": "Settings",
+      "sub": "Account, security, and OneVoice behavior.",
+      "accountKicker": "Account",
+      "accountTitle": "About you",
+      "nameLabel": "Name",
+      "emailLabel": "Email",
+      "securityKicker": "Security",
+      "securityTitle": "Change password",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm",
+      "submit": "Change password",
+      "submitting": "Saving…",
+      "passwordChanged": "Password changed",
+      "passwordChangeError": "Couldn't change the password. Check your current one.",
+      "currentPasswordRequired": "Enter your current password",
+      "newPasswordMinChars": "At least 8 characters",
+      "passwordsMismatch": "Passwords don't match",
+      "sectionsLabel": "Sections",
+      "rail": {
+        "toolsTitle": "What the AI is allowed to do",
+        "toolsDescription": "Which actions run automatically and which need your approval."
+      },
+      "fallbackEmpty": "—"
+    },
+    "nav": {
+      "profile": "Profile",
+      "tools": "Tools",
+      "team": "Team",
+      "roles": "Roles",
+      "navAria": "Settings — sections"
+    },
+    "tools": {
+      "title": "What the AI is allowed to do",
+      "sub": "OneVoice runs some actions on its own and asks first for others. Blocked tools can't be enabled from here.",
+      "save": "Save",
+      "saving": "Saving…",
+      "unsavedChanges": "You have unsaved changes. Click \"Save\" to apply them.",
+      "loadError": "Couldn't load the tool list. Refresh the page or try again later.",
+      "noTools": "No configurable tools.",
+      "platform": "Platform",
+      "toolsCount": "{count, plural, one {# tool} other {# tools}}",
+      "saveSuccess": "Settings saved",
+      "saveError": "Couldn't save",
+      "saveRetry": "Please try again."
+    },
+    "toolApproval": {
+      "blocked": "Blocked",
+      "blockedHint": "This tool can't be enabled from settings",
+      "modeAriaLabel": "Approval mode for {label}",
+      "modes": {
+        "manual": "With your approval",
+        "auto": "On its own"
+      }
+    }
+  },
+  "sidebar": {
+    "menuLabel": "Side menu",
+    "menuDescription": "App navigation and project list",
+    "wordmark": "OneVoice",
+    "pinned": "Pinned",
+    "moreCount": "…and {count} more",
+    "newProject": "+ New project",
+    "noChatsInProject": "No chats in this project yet",
+    "matchCount": "+{count} matches",
+    "scopeAllBusiness": "Across the whole business",
+    "noResults": "Try a shorter query or change the date range.",
+    "unassigned": "No project",
+    "unassignedChats": "Chats without a project",
+    "toggleAria": "Open side menu",
+    "resizeAria": "Resize side panel",
+    "unassignedNewChatAria": "New chat without a project",
+    "unassignedNewChatTitle": "New chat without a project",
+    "unassignedSectionAria": "Chats without a project",
+    "pinnedSectionAria": "Pinned chats",
+    "expandUnassigned": "Expand \"No project\"",
+    "collapseUnassigned": "Collapse \"No project\"",
+    "expandPinned": "Expand \"Pinned\"",
+    "collapsePinned": "Collapse \"Pinned\"",
+    "chatRowMenuAria": "Menu for chat \"{title}\"",
+    "search": {
+      "resultsAria": "Search results",
+      "stateAria": "Search state",
+      "placeholder": "Search... {os, select, mac {⌘K} other {Ctrl-K}}",
+      "noResultsByQuery": "Nothing found for \"{query}\""
+    },
+    "project": {
+      "expandAria": "Expand \"{name}\"",
+      "collapseAria": "Collapse \"{name}\"",
+      "newChatAria": "New chat in project \"{name}\"",
+      "newChatTitle": "New chat in project \"{name}\"",
+      "chatsAria": "Chats in project \"{name}\""
+    }
+  },
+  "states": {
+    "channelConnectProgress": "in progress",
+    "emptyChannels": {
+      "connect": "Connect a channel",
+      "viewDemo": "View demo",
+      "title": "Connect your first channel",
+      "body": "Telegram, VK, or Yandex.Business — your choice. Messages and reviews will land in your shared inbox."
+    },
+    "emptyInbox": {
+      "openArchive": "Open archive",
+      "title": "Inbox empty",
+      "body": "Nothing's waiting for a reply. New messages will show up here automatically."
+    },
+    "emptyTasks": {
+      "title": "All done for today",
+      "body": "Take a breath. If something new comes in, OneVoice will let you know."
+    },
+    "emptyReviews": {
+      "lookBack": "Last week →",
+      "all": {
+        "title": "No reviews this week",
+        "body": "New reviews will appear when customers leave them."
+      },
+      "pending": {
+        "title": "No open reviews",
+        "body": "Everything's handled. OneVoice will let you know as soon as a new one comes in."
+      },
+      "replied": {
+        "title": "Nothing to show",
+        "body": "No answered reviews in this selection. Clear the filter to see the rest."
+      }
+    },
+    "emptySearch": {
+      "noResultsPrefix": "Nothing matched ",
+      "queryFormat": "\"{query}\"",
+      "resetFilters": "Reset filters",
+      "defaultBody": "Try a shorter query or change the date range."
+    },
+    "skeleton": {
+      "channels": "Loading connected channels",
+      "inbox": "Loading list",
+      "chat": "Loading conversation",
+      "metricStrip": "Loading metrics"
+    },
+    "stickyAlert": {
+      "dismissAria": "Dismiss notification"
+    }
+  }
+}

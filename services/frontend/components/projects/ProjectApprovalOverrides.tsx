@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
-import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
+import { usePlatformFullLabels } from '@/lib/platforms';
 import { groupByPlatform, TOOL_PLATFORM_ORDER } from '@/lib/hooks/useTools';
 import {
   toolLabel,
@@ -67,13 +67,6 @@ function applySelection(
   return { ...current, [toolName]: selection };
 }
 
-function businessDefaultLabel(value: ToolApprovalValue | undefined): string {
-  if (value === 'auto') return 'Автоматически';
-  // Backend default for an unset key is effectively "manual"
-  // (no explicit entry ⇒ manual-floor tools require approval).
-  return 'Вручную';
-}
-
 function ToolRow({
   tool,
   value,
@@ -90,6 +83,12 @@ function ToolRow({
   const autoId = `po-auto-${tool.name}`;
   const manualId = `po-manual-${tool.name}`;
   const inheritId = `po-inherit-${tool.name}`;
+  // Backend default for an unset key is effectively "manual" (no explicit
+  // entry ⇒ manual-floor tools require approval). Routed through i18n via
+  // projects.approvalOverrides.businessDefault.<auto|manual>.
+  const businessDefaultLabel = tOver(
+    `businessDefault.${businessDefault === 'auto' ? 'auto' : 'manual'}`
+  );
 
   return (
     <div className="space-y-2 rounded-md border p-3">
@@ -126,9 +125,9 @@ function ToolRow({
               'rounded-md border px-2 py-0.5 text-xs text-muted-foreground',
               selection === SELECTION_INHERIT ? 'border-primary/40 bg-accent/40' : 'border-border'
             )}
-            aria-label={tOver('businessTag', { label: businessDefaultLabel(businessDefault) })}
+            aria-label={tOver('businessTag', { label: businessDefaultLabel })}
           >
-            {tOver('businessTag', { label: businessDefaultLabel(businessDefault) })}
+            {tOver('businessTag', { label: businessDefaultLabel })}
           </span>
         </div>
       </RadioGroup>
@@ -143,6 +142,7 @@ export function ProjectApprovalOverrides({
   onChange,
 }: ProjectApprovalOverridesProps) {
   const tOverMain = useTranslations('projects.approvalOverrides');
+  const platformFullLabels = usePlatformFullLabels();
   // Only manual-floor tools get a 3-way toggle. Forbidden tools can never
   // be enabled; auto-floor tools bypass HITL — neither is
   // meaningful here.
@@ -159,7 +159,7 @@ export function ProjectApprovalOverrides({
       {platforms.map((platform) => {
         const list = buckets[platform];
         if (list.length === 0) return null;
-        const label = PLATFORM_FULL_LABELS[platform] ?? platform;
+        const label = platformFullLabels[platform] ?? platform;
         return (
           <Card key={platform}>
             <CardHeader>

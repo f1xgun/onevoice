@@ -9,7 +9,7 @@
 // ids ("businesslike"). normalizeStoredTones() rewrites them on load; the
 // next save flushes the canonical-id form to the backend.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -20,7 +20,7 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
 import { cn } from '@/lib/utils';
-import { TONE_OPTIONS, type ToneId, toneLabel } from '@/lib/tones';
+import { createToneLabel, createToneOptions, type ToneId } from '@/lib/tones';
 
 export type { ToneId };
 
@@ -35,6 +35,12 @@ export interface VoiceToneSectionProps {
 
 export function VoiceToneSection({ initial, onChange }: VoiceToneSectionProps) {
   const tVoice = useTranslations('business.voiceTone');
+  const tToneOptions = useTranslations('business.voiceTone.options');
+  // Request-scoped tone options/labels (B1). The factory output gets a
+  // stable identity per translator-render so consumers that close over
+  // `toneLabel` don't tear when the locale switches.
+  const TONE_OPTIONS = useMemo(() => createToneOptions(tToneOptions), [tToneOptions]);
+  const toneLabel = useMemo(() => createToneLabel(tToneOptions), [tToneOptions]);
   const [selected, setSelected] = useState<Set<ToneId>>(new Set(initial ?? []));
   const [dirty, setDirty] = useState(false);
   const qc = useQueryClient();

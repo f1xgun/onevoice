@@ -71,14 +71,22 @@ type TaskPublisher interface {
 const syncBusinessTimeout = 30 * time.Second
 
 // capabilityDispatch describes a per-capability dispatch entry: the AgentTask
-// type, its Russian display name, an input-builder that may differ between
-// the success and error branches (matching the verbatim shape of the prior
-// switch-based dispatch), and the function that executes the call.
+// type, its Russian display name + i18n key, an input-builder that may
+// differ between the success and error branches (matching the verbatim
+// shape of the prior switch-based dispatch), and the function that
+// executes the call.
+//
+// displayName is the legacy RU literal kept on AgentTask.DisplayName for
+// backwards compatibility (consumers that haven't migrated to the key
+// fall back to the literal). displayNameKey is the
+// `agentTasks.displayName.<key>` segment under which the frontend
+// resolves the localized title via next-intl.
 type capabilityDispatch struct {
-	taskType    string
-	displayName string
-	input       func(err error) map[string]string
-	fn          func(ctx context.Context, b *domain.Business, integ domain.Integration) error
+	taskType       string
+	displayName    string
+	displayNameKey string
+	input          func(err error) map[string]string
+	fn             func(ctx context.Context, b *domain.Business, integ domain.Integration) error
 }
 
 // Syncer fans business updates out to every active platform integration via
@@ -145,10 +153,13 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, integ domain.Integration, platImpl any) {
 	if t, ok := platImpl.(TitleSyncer); ok {
 		// Error branch records only channel_id; done branch additionally
-		// records name.
+		// records name. displayNameKey lets the FE render localized text
+		// while displayName remains the source-of-truth literal that the
+		// backfill maps to the same key for legacy rows.
 		s.runWithTask(ctx, b, integ, capabilityDispatch{
-			taskType:    "sync_title",
-			displayName: "Синхронизация названия",
+			taskType:       "sync_title",
+			displayName:    "Синхронизация названия",
+			displayNameKey: "sync.business_name",
 			input: func(err error) map[string]string {
 				if err != nil {
 					return map[string]string{"channel_id": integ.ExternalID}
@@ -160,27 +171,30 @@ func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, i
 	}
 	if d, ok := platImpl.(DescriptionSyncer); ok {
 		s.runWithTask(ctx, b, integ, capabilityDispatch{
-			taskType:    "sync_description",
-			displayName: "Синхронизация описания",
-			input:       func(error) map[string]string { return map[string]string{"channel_id": integ.ExternalID} },
-			fn:          d.SyncDescription,
+			taskType:       "sync_description",
+			displayName:    "Синхронизация описания",
+			displayNameKey: "sync.business_description",
+			input:          func(error) map[string]string { return map[string]string{"channel_id": integ.ExternalID} },
+			fn:             d.SyncDescription,
 		})
 	}
 	if p, ok := platImpl.(PhotoSyncer); ok && b.LogoURL != "" {
 		s.runWithTask(ctx, b, integ, capabilityDispatch{
-			taskType:    "sync_photo",
-			displayName: "Синхронизация фото",
-			input:       func(error) map[string]string { return map[string]string{"channel_id": integ.ExternalID} },
-			fn:          p.SyncPhoto,
+			taskType:       "sync_photo",
+			displayName:    "Синхронизация фото",
+			displayNameKey: "sync.photo",
+			input:          func(error) map[string]string { return map[string]string{"channel_id": integ.ExternalID} },
+			fn:             p.SyncPhoto,
 		})
 	}
 	if i, ok := platImpl.(InfoSyncer); ok {
 		input := vkInfoInput(b, integ)
 		s.runWithTask(ctx, b, integ, capabilityDispatch{
-			taskType:    "sync_info",
-			displayName: "Синхронизация данных",
-			input:       func(error) map[string]string { return input },
-			fn:          i.SyncInfo,
+			taskType:       "sync_info",
+			displayName:    "Синхронизация данных",
+			displayNameKey: "sync.data",
+			input:          func(error) map[string]string { return input },
+			fn:             i.SyncInfo,
 		})
 	}
 	if sch, ok := platImpl.(ScheduleSyncer); ok {
@@ -193,10 +207,11 @@ func (s *Syncer) dispatchCapabilities(ctx context.Context, b *domain.Business, i
 		if hours != "" {
 			input := map[string]string{"permalink": integ.ExternalID, "hours": hours}
 			s.runWithTask(ctx, b, integ, capabilityDispatch{
-				taskType:    "sync_hours",
-				displayName: "Синхронизация часов работы",
-				input:       func(error) map[string]string { return input },
-				fn:          sch.SyncSchedule,
+				taskType:       "sync_hours",
+				displayName:    "Синхронизация часов работы",
+				displayNameKey: "sync.hours",
+				input:          func(error) map[string]string { return input },
+				fn:             sch.SyncSchedule,
 			})
 		}
 	}
@@ -214,29 +229,33 @@ func (s *Syncer) runWithTask(ctx context.Context, b *domain.Business, integ doma
 		status = "error"
 		errMsg = err.Error()
 	}
-	s.recordTask(ctx, b.ID, integ.Platform, dispatch.taskType, dispatch.displayName, status, dispatch.input(err), errMsg, started)
+	s.recordTask(ctx, b.ID, integ.Platform, dispatch.taskType, dispatch.displayName, dispatch.displayNameKey, status, dispatch.input(err), errMsg, started)
 }
 
 // recordTask creates an AgentTask record (if a recorder is configured) for a
 // sync operation that has already completed. startedAt is captured before the
-// operation so the stored duration is meaningful. displayName is the human
-// label shown on the Tasks page — callers pass the Russian string directly.
-func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform, taskType, displayName, status string, input interface{}, errMsg string, startedAt time.Time) {
+// operation so the stored duration is meaningful. displayName is the legacy
+// Russian literal shown on the Tasks page when the FE has no i18n catalog
+// entry for displayNameKey; the key is the canonical id under
+// `agentTasks.displayName.*` in messages/*.json and the FE renders
+// `t(displayNameKey) || displayName`.
+func (s *Syncer) recordTask(ctx context.Context, businessID uuid.UUID, platform, taskType, displayName, displayNameKey, status string, input interface{}, errMsg string, startedAt time.Time) {
 	if s.tasks == nil {
 		return
 	}
 	completedAt := time.Now()
 	task := &domain.AgentTask{
-		BusinessID:  businessID.String(),
-		Type:        taskType,
-		DisplayName: displayName,
-		Status:      status,
-		Platform:    platform,
-		Input:       input,
-		StartedAt:   &startedAt,
-		CompletedAt: &completedAt,
-		CreatedAt:   completedAt,
-		Error:       errMsg,
+		BusinessID:     businessID.String(),
+		Type:           taskType,
+		DisplayName:    displayName,
+		DisplayNameKey: displayNameKey,
+		Status:         status,
+		Platform:       platform,
+		Input:          input,
+		StartedAt:      &startedAt,
+		CompletedAt:    &completedAt,
+		CreatedAt:      completedAt,
+		Error:          errMsg,
 	}
 	if err := s.tasks.Create(ctx, task); err != nil {
 		slog.ErrorContext(ctx, "platform sync: failed to record task", "error", err)

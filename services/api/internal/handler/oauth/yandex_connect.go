@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/yandexcookies"
@@ -58,20 +59,26 @@ func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Reques
 
 	var req yandexProbeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusOK, yandexProbeResponse{Ok: false, Error: "Некорректное тело запроса"})
+		writeJSON(w, http.StatusOK, yandexProbeResponse{
+			Ok:    false,
+			Error: i18n.Tr(r.Context(), "oauth.yandex.invalid_body"),
+		})
 		return
 	}
 
 	parsed, err := yandexcookies.Parse(req.Cookies)
 	if err != nil {
-		writeJSON(w, http.StatusOK, yandexProbeResponse{Ok: false, Error: err.Error()})
+		writeJSON(w, http.StatusOK, yandexProbeResponse{
+			Ok:    false,
+			Error: yandexCookiesErrorMessage(r, err),
+		})
 		return
 	}
 
 	resp := yandexProbeResponse{
 		Ok:       true,
 		Format:   parsed.Format,
-		Warnings: cookieWarnings(parsed.Cookies),
+		Warnings: cookieWarnings(r, parsed.Cookies),
 	}
 
 	// Best-effort live probe. We never block on this; a 2s timeout means
@@ -126,7 +133,7 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 
 	parsed, err := yandexcookies.Parse(req.Cookies)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		writeJSONError(w, http.StatusBadRequest, yandexCookiesErrorMessage(r, err))
 		return
 	}
 
@@ -203,7 +210,7 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 	}
 	parsed, err := yandexcookies.Parse(req.Cookies)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		writeJSONError(w, http.StatusBadRequest, yandexCookiesErrorMessage(r, err))
 		return
 	}
 
@@ -216,7 +223,7 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 	resp, callErr := h.taskPublisher.RequestTool(r.Context(), a2a.Subject(a2a.AgentYandexBusiness), toolReq, yandexListCompaniesTimeout)
 	if callErr != nil {
 		slog.Info("yandex list companies: agent call failed", "business_id", bc.BusinessID, "error", callErr)
-		writeJSONError(w, http.StatusBadGateway, "не удалось получить список организаций — попробуйте ещё раз")
+		writeJSONErrorKey(w, r, http.StatusBadGateway, "oauth.yandex.list_orgs_failed")
 		return
 	}
 	if resp == nil || resp.Error != "" {
@@ -388,20 +395,47 @@ func (h *OAuthHandler) runYandexListCompaniesRefresh(
 // cookieWarnings flags missing-but-recommended cookies. Session_id alone
 // authenticates most Yandex.Business reads, but writes (reply review,
 // upload photo) need sessionid2 and Yandex's anti-CSRF flow expects the
-// `yandexuid` / `yandex_login` pair to be present.
-func cookieWarnings(cookies []yandexcookies.Cookie) []string {
+// `yandexuid` / `yandex_login` pair to be present. The request is threaded
+// in so the warning copy can be localized via pkg/i18n.
+func cookieWarnings(r *http.Request, cookies []yandexcookies.Cookie) []string {
 	have := map[string]bool{}
 	for _, c := range cookies {
 		have[strings.ToLower(c.Name)] = true
 	}
 	var warnings []string
 	if !have["sessionid2"] {
-		warnings = append(warnings, "Не найден sessionid2 — может потребоваться для записи (ответы на отзывы, загрузка фото)")
+		warnings = append(warnings, i18n.Tr(r.Context(), "oauth.yandex.missing_sessionid2"))
 	}
 	if !have["yandex_login"] {
-		warnings = append(warnings, "Не найден yandex_login — рекомендуется добавить для стабильной авторизации")
+		warnings = append(warnings, i18n.Tr(r.Context(), "oauth.yandex.missing_yandex_login"))
 	}
 	return warnings
+}
+
+// yandexCookiesErrorMessage maps a yandexcookies.Parse error to its
+// localized message via pkg/i18n. Unknown errors surface as the literal
+// Error() string so anything not pre-classified still reaches the user.
+// errors.Is is used so wrapped errors (e.g. ErrJSONUnmarshal wrapping the
+// underlying json.SyntaxError) match.
+func yandexCookiesErrorMessage(r *http.Request, err error) string {
+	ctx := r.Context()
+	switch {
+	case errors.Is(err, yandexcookies.ErrEmpty):
+		return i18n.Tr(ctx, "yandex.cookies.empty")
+	case errors.Is(err, yandexcookies.ErrNoSessionID):
+		return i18n.Tr(ctx, "yandex.cookies.missing_sessionid")
+	case errors.Is(err, yandexcookies.ErrInvalidJSON):
+		return i18n.Tr(ctx, "yandex.cookies.invalid_format")
+	case errors.Is(err, yandexcookies.ErrSessionIDInvalid):
+		return i18n.Tr(ctx, "yandex.cookies.invalid_sessionid")
+	case errors.Is(err, yandexcookies.ErrJSONUnmarshal):
+		// Strip the "yandexcookies: json parse failed: " prefix to surface
+		// just the underlying json error detail in the localized template.
+		detail := strings.TrimPrefix(err.Error(), yandexcookies.ErrJSONUnmarshal.Error()+": ")
+		return i18n.Tr(ctx, "yandex.cookies.json_error", detail)
+	default:
+		return err.Error()
+	}
 }
 
 // probeYandexSession determines whether the supplied cookies represent a

@@ -2,6 +2,7 @@ package yandexcookies
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -45,7 +46,7 @@ func TestParse_JSONArray_DefaultsDomainAndPath(t *testing.T) {
 func TestParse_JSONArray_MissingSessionID(t *testing.T) {
 	input := `[{"name":"yandex_login","value":"someuser"}]`
 	_, err := Parse(input)
-	if err != ErrNoSessionID {
+	if !errors.Is(err, ErrNoSessionID) {
 		t.Errorf("err = %v, want ErrNoSessionID", err)
 	}
 }
@@ -112,7 +113,7 @@ func TestParse_BareSessionIDValue(t *testing.T) {
 
 func TestParse_Empty(t *testing.T) {
 	for _, in := range []string{"", "   ", "\n\t  \n"} {
-		if _, err := Parse(in); err != ErrEmpty {
+		if _, err := Parse(in); !errors.Is(err, ErrEmpty) {
 			t.Errorf("Parse(%q) err = %v, want ErrEmpty", in, err)
 		}
 	}
@@ -143,7 +144,7 @@ func TestParse_JSONArray_InvalidShape(t *testing.T) {
 func TestParse_JSONArray_SessionIDInvalidValue(t *testing.T) {
 	input := `[{"name":"Session_id","value":"shortbad"}]`
 	_, err := Parse(input)
-	if err != ErrSessionIDInvalid {
+	if !errors.Is(err, ErrSessionIDInvalid) {
 		t.Errorf("err = %v, want ErrSessionIDInvalid", err)
 	}
 }

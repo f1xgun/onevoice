@@ -64,7 +64,7 @@ func NewPostalService(posts domain.PostRepository, reviews domain.ReviewReposito
 // on the receiver).
 func (s *PostalService) OnToolCall(
 	ctx context.Context,
-	businessID, toolCallID, toolName, displayName string,
+	businessID, toolCallID, toolName, displayName, displayNameKey string,
 	args map[string]interface{},
 	idMap map[string]string,
 ) {
@@ -81,13 +81,18 @@ func (s *PostalService) OnToolCall(
 	}
 	now := time.Now()
 	task := &domain.AgentTask{
-		BusinessID:  businessID,
-		Type:        toolName[sep+2:],
-		Platform:    toolName[:sep],
-		DisplayName: displayName,
-		Status:      "running",
-		Input:       args,
-		StartedAt:   &now,
+		BusinessID: businessID,
+		Type:       toolName[sep+2:],
+		Platform:   toolName[:sep],
+		// DisplayName stays as the source-of-truth literal (legacy fallback).
+		// DisplayNameKey is the i18n catalog key the FE prefers.
+		// When the orchestrator predates D3 the key is empty; FE falls back
+		// to DisplayName cleanly.
+		DisplayName:    displayName,
+		DisplayNameKey: displayNameKey,
+		Status:         "running",
+		Input:          args,
+		StartedAt:      &now,
 	}
 	if err := s.tasks.Create(ctx, task); err != nil {
 		slog.ErrorContext(ctx, "failed to create agent task record", "tool", toolName, "error", err)

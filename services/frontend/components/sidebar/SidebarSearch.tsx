@@ -27,16 +27,19 @@ const MIN_QUERY = 2;
 const RESULT_LIMIT = 20;
 
 /**
- * UA-detected placeholder — Mac shows ⌘K, others Ctrl-K. SSR fallback is the
- * non-Mac variant (matches the sidebar rail's static label convention).
+ * UA-detected OS variant — Mac shows ⌘K, others Ctrl-K. SSR fallback is
+ * the non-Mac variant (matches the sidebar rail's static label
+ * convention). The actual i18n string is resolved via the
+ * `sidebar.search.placeholder` ICU select template ({os}) so a locale
+ * switch retranslates without touching this helper.
  */
-function detectPlaceholder(): string {
-  if (typeof navigator === 'undefined') return 'Поиск... Ctrl-K';
+function detectPlaceholderOS(): 'mac' | 'other' {
+  if (typeof navigator === 'undefined') return 'other';
   const platform = navigator.platform ?? '';
   const userAgent = navigator.userAgent ?? '';
-  if (/Mac|iPhone|iPad|iPod/.test(platform)) return 'Поиск... ⌘K';
-  if (/Mac OS X|iPhone|iPad/.test(userAgent)) return 'Поиск... ⌘K';
-  return 'Поиск... Ctrl-K';
+  if (/Mac|iPhone|iPad|iPod/.test(platform)) return 'mac';
+  if (/Mac OS X|iPhone|iPad/.test(userAgent)) return 'mac';
+  return 'other';
 }
 
 export function SidebarSearch() {
@@ -134,7 +137,7 @@ export function SidebarSearch() {
               setIsOpen(true);
             }}
             onKeyDown={onKeyDown}
-            placeholder={detectPlaceholder()}
+            placeholder={tSide('search.placeholder', { os: detectPlaceholderOS() })}
             className="w-full rounded-md border border-line bg-paper-sunken py-1 pl-7 pr-7 text-sm text-ink placeholder:text-ink-faint focus:border-ochre focus:outline-none"
           />
           {isFetching && (
@@ -177,13 +180,12 @@ export function SidebarSearch() {
           {results.length === 0 && !isFetching && (
             // Compact inline empty — visual retuned to match mock-states.jsx
             // "Поиск не нашёл совпадений" (lines 126–135): ink-mid lead +
-            // ink-soft hint. Phrasing preserved verbatim
-            // ("Ничего не найдено по «{query}»") because it's covered by
-            // SidebarSearch test contract; we keep the literal as one text
-            // node so RTL `getByText` regex matching keeps working.
+            // ink-soft hint. Phrasing preserved verbatim via
+            // sidebar.search.noResultsByQuery (covered by SidebarSearch
+            // test contract); the helper hint comes from sidebar.noResults.
             <div className="px-3 py-3">
               <div className="text-[13px] leading-relaxed text-ink-mid">
-                {`Ничего не найдено по «${debounced}»`}
+                {tSide('search.noResultsByQuery', { query: debounced })}
               </div>
               <div className="mt-1 text-[12px] text-ink-soft">{tSide('noResults')}</div>
             </div>

@@ -66,6 +66,11 @@ func (m *MockUserService) ChangePassword(ctx context.Context, userID uuid.UUID, 
 	return args.Error(0)
 }
 
+func (m *MockUserService) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
+	args := m.Called(ctx, userID, locale)
+	return args.Error(0)
+}
+
 func TestRegister(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -929,6 +934,200 @@ func TestMe(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			handler.Me(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			tt.checkResponse(t, w)
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+// TestMe_ReturnsPreferredLocale verifies that the /me response shape exposes
+// preferred_locale via the json:"preferred_locale" tag on domain.User added in
+// i18n Phase A3. The FE reads this on login to seed the locale cookie when
+// no cookie is set, so the wire format is load-bearing.
+func TestMe_ReturnsPreferredLocale(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+
+	mockService := new(MockUserService)
+	mockService.On("GetByID", mock.Anything, testUserID).
+		Return(&domain.User{
+			ID:              testUserID,
+			Email:           "user@example.com",
+			PreferredLocale: "en",
+			CreatedAt:       time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			UpdatedAt:       time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		}, nil)
+
+	handler, _ := NewAuthHandler(mockService, false)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", http.NoBody)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, testUserID)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.Me(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Decode into a map (not domain.User) to assert the wire-format field
+	// name explicitly — guards against accidental json tag drift.
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "en", resp["preferred_locale"], "preferred_locale must be exposed in /me response")
+	mockService.AssertExpectations(t)
+}
+
+// TestUpdatePreferredLocale covers PATCH /api/v1/auth/locale.
+// Auth gating is enforced by the middleware.Auth chain in router.go — the
+// 401-without-auth case is therefore the handler-level "no userID in ctx"
+// branch (the handler is never reached without a userID in production).
+func TestUpdatePreferredLocale(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+
+	tests := []struct {
+		name          string
+		setupContext  func(*http.Request) *http.Request
+		requestBody   string
+		mockSetup     func(*MockUserService)
+		wantStatus    int
+		checkResponse func(t *testing.T, w *httptest.ResponseRecorder)
+	}{
+		{
+			name: "successful update to en",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"locale":"en"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("UpdatePreferredLocale", mock.Anything, testUserID, "en").Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Empty(t, w.Body.String(), "204 No Content must have empty body")
+			},
+		},
+		{
+			name: "successful update to ru",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"locale":"ru"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("UpdatePreferredLocale", mock.Anything, testUserID, "ru").Return(nil)
+			},
+			wantStatus: http.StatusNoContent,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Empty(t, w.Body.String())
+			},
+		},
+		{
+			name: "invalid locale (fr) returns 400",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"locale":"fr"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Locale"`)
+			},
+		},
+		{
+			name: "empty locale returns 400",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"locale":""}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"Locale"`)
+			},
+		},
+		{
+			name: "missing userID in context returns 401",
+			setupContext: func(r *http.Request) *http.Request {
+				return r
+			},
+			requestBody: `{"locale":"en"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusUnauthorized,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"unauthorized"`)
+			},
+		},
+		{
+			name: "invalid JSON body returns 400",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{not-json`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"invalid request body"`)
+			},
+		},
+		{
+			name: "user not found returns 404",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"locale":"en"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("UpdatePreferredLocale", mock.Anything, testUserID, "en").
+					Return(domain.ErrUserNotFound)
+			},
+			wantStatus: http.StatusNotFound,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				assert.Contains(t, w.Body.String(), `"error":"user not found"`)
+			},
+		},
+		{
+			name: "internal error returns 500 without leaking",
+			setupContext: func(r *http.Request) *http.Request {
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, testUserID)
+				return r.WithContext(ctx)
+			},
+			requestBody: `{"locale":"en"}`,
+			mockSetup: func(m *MockUserService) {
+				m.On("UpdatePreferredLocale", mock.Anything, testUserID, "en").
+					Return(errors.New("postgres connection refused"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"error":"internal server error"`)
+				assert.NotContains(t, body, "postgres") // no internal detail leak
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockUserService)
+			tt.mockSetup(mockService)
+
+			handler, _ := NewAuthHandler(mockService, false)
+
+			req := httptest.NewRequest(http.MethodPatch, "/api/v1/auth/locale", bytes.NewBufferString(tt.requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			req = tt.setupContext(req)
+			w := httptest.NewRecorder()
+
+			handler.UpdatePreferredLocale(w, req)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
 			tt.checkResponse(t, w)

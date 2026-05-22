@@ -15,12 +15,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 import { useAuthStore } from '@/lib/auth';
 import { useBusinessStore } from '@/lib/stores/business';
 import { API_BASE_URL, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
-import { getTranslator } from '@/lib/i18n/translator';
 import { consumeSSEStream } from '@/lib/sse';
-import { resolveErrorToRussian, RESUME_STREAM_ERROR } from '@/lib/resolveErrorMap';
+import { useResolveErrorMap } from '@/lib/resolveErrorMap';
 import type { ApprovalDecision, PendingApproval } from '@/types/chat';
 
 // Business-scoped URL builders (RBAC plan 02-09). Falls back to the legacy
@@ -47,14 +47,6 @@ function chatResumeUrl(
     : API_STREAM_PATHS.CHAT_RESUME(conversationId, batchId);
 }
 
-// Module-level translator. Mirror of useChat.ts — both hooks need
-// resolve / resume error toasts in their respective error branches and the
-// rest of the project uses this idiom outside React (see lib/resolveErrorMap.ts
-// and lib/i18n/translator.ts header comment). Duplicating the constant here
-// (Decision D-AM-01) keeps both hook files self-contained; centralising
-// would have saved one line at the cost of a new shared module.
-const tCommonErrors = getTranslator('common.errors');
-
 // Defensive cap: we never echo more than 500 chars of free-form reject
 // reason to the server — a server-side cap exists too, but the trust
 // boundary is mirrored here.
@@ -78,6 +70,12 @@ export function usePendingApprovalFlow({
   const abortRef = useRef<AbortController | null>(null);
   const accessToken = useAuthStore((s) => s.accessToken);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
+  // Request-scoped error map (Phase B1). useChat keeps its own
+  // `connectionError` lookup; the resolve/resume branches here used to
+  // import resolveErrorToRussian + RESUME_STREAM_ERROR from a module
+  // that pinned ru.json at load time.
+  const tCommonErrors = useTranslations('common.errors');
+  const { resolveError, resumeStreamError } = useResolveErrorMap();
 
   // onResumeEventRef keeps a fresh reference to the current resume-event
   // handler so the SSE consumer below can dispatch via a stable function
@@ -150,9 +148,9 @@ export function usePendingApprovalFlow({
         try {
           errBody = await resolveRes.json();
         } catch {
-          // ignore parse failure — resolveErrorToRussian handles null body
+          // ignore parse failure — resolveError handles null body
         }
-        toast.error(resolveErrorToRussian(resolveRes.status, errBody));
+        toast.error(resolveError(resolveRes.status, errBody));
         // card stays open; ToolApprovalCard re-enables Submit.
         isResolvingRef.current = false;
         setIsResolving(false);
@@ -211,7 +209,7 @@ export function usePendingApprovalFlow({
         });
       } catch (err: unknown) {
         if ((err as Error).name === 'AbortError') return;
-        toast.error(RESUME_STREAM_ERROR);
+        toast.error(resumeStreamError);
       } finally {
         // Clear pendingApproval whether resume completed or errored. The
         // persisted batch on the server is the source of truth; a reload
@@ -227,7 +225,15 @@ export function usePendingApprovalFlow({
         setIsResolving(false);
       }
     },
-    [conversationId, accessToken, activeBusinessId, pendingApproval]
+    [
+      conversationId,
+      accessToken,
+      activeBusinessId,
+      pendingApproval,
+      tCommonErrors,
+      resolveError,
+      resumeStreamError,
+    ]
   );
 
   return {

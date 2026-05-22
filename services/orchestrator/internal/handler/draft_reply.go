@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/language"
 
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
@@ -91,7 +93,12 @@ func (h *DraftReplyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	messages := buildDraftReplyPrompt(req)
+	// Locale is resolved from the request ctx (set by middleware.Locale).
+	// The orchestrator middleware reads Accept-Language; in production the
+	// API forwards the cookie-driven header so reviews drafted while the
+	// owner has EN selected get an EN draft. Phase D2.
+	tag := i18n.LocaleFromContext(r.Context())
+	messages := buildDraftReplyPrompt(req, tag)
 
 	chatReq := llm.ChatRequest{
 		// uuid.Nil → system-level call (skips per-user rate limiting in router).
@@ -133,8 +140,58 @@ func (h *DraftReplyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Few-shot pairs are encoded as alternating user/assistant turns so the model
 // learns the owner's tone from the actual replies they wrote, not from a
 // description of them.
-func buildDraftReplyPrompt(req DraftReplyRequest) []llm.Message {
+//
+// tag drives the system-prompt language AND the few-shot framing labels
+// ("Отзыв (N/5):" vs "Review (N/5):"). The reply itself is generated in the
+// matching language because the framing primes it — every example pair
+// the model sees uses the same locale. Phase D2.
+func buildDraftReplyPrompt(req DraftReplyRequest, tag language.Tag) []llm.Message {
+	sys := draftReplySystemPrompt(req, tag)
+
+	msgs := make([]llm.Message, 0, 2+2*len(req.Examples))
+	msgs = append(msgs, llm.Message{Role: "system", Content: sys})
+
+	for _, ex := range req.Examples {
+		if strings.TrimSpace(ex.ReviewText) == "" || strings.TrimSpace(ex.ReplyText) == "" {
+			continue
+		}
+		msgs = append(msgs, llm.Message{Role: "user", Content: formatExampleReview(ex.ReviewText, ex.Rating, tag)})
+		msgs = append(msgs, llm.Message{Role: "assistant", Content: ex.ReplyText})
+	}
+
+	msgs = append(msgs, llm.Message{Role: "user", Content: formatExampleReview(req.ReviewText, req.Rating, tag)})
+	return msgs
+}
+
+// draftReplySystemPrompt builds the per-locale system instruction + business
+// header block. The two language paths carry the same constraints (don't
+// invent facts, don't greet unless examples greet, output bare text) so
+// behavior stays consistent across locales.
+func draftReplySystemPrompt(req DraftReplyRequest, tag language.Tag) string {
 	var sys strings.Builder
+	if tag == language.English {
+		sys.WriteString("You are an assistant that writes short replies to customer reviews on behalf of the business owner. ")
+		sys.WriteString("Preserve the tone and style shown in the examples below. ")
+		sys.WriteString("Do not invent facts, promises, or discounts not present in the examples. ")
+		sys.WriteString("Do not use greetings like 'Hello' if the examples don't use them. ")
+		sys.WriteString("Reply with the response text only — no prefixes like 'Reply:' or quotes.\n\n")
+
+		if req.BusinessName != "" {
+			sys.WriteString("Business: " + req.BusinessName)
+			if req.BusinessCategory != "" {
+				sys.WriteString(" (" + req.BusinessCategory + ")")
+			}
+			sys.WriteString(".\n")
+		}
+		if req.BusinessDescription != "" {
+			sys.WriteString("Description: " + req.BusinessDescription + "\n")
+		}
+		if req.Platform != "" {
+			sys.WriteString("Review platform: " + req.Platform + ".\n")
+		}
+		return sys.String()
+	}
+
 	sys.WriteString("Ты — ассистент, который пишет короткие ответы на отзывы клиентов от лица владельца бизнеса. ")
 	sys.WriteString("Сохраняй тон и манеру ответов, которые видны в примерах ниже. ")
 	sys.WriteString("Не придумывай факты, не давай скидок и обещаний, которых не было в примерах. ")
@@ -154,25 +211,20 @@ func buildDraftReplyPrompt(req DraftReplyRequest) []llm.Message {
 	if req.Platform != "" {
 		sys.WriteString("Платформа отзыва: " + req.Platform + ".\n")
 	}
-
-	msgs := make([]llm.Message, 0, 2+2*len(req.Examples))
-	msgs = append(msgs, llm.Message{Role: "system", Content: sys.String()})
-
-	for _, ex := range req.Examples {
-		if strings.TrimSpace(ex.ReviewText) == "" || strings.TrimSpace(ex.ReplyText) == "" {
-			continue
-		}
-		msgs = append(msgs, llm.Message{Role: "user", Content: formatExampleReview(ex.ReviewText, ex.Rating)})
-		msgs = append(msgs, llm.Message{Role: "assistant", Content: ex.ReplyText})
-	}
-
-	msgs = append(msgs, llm.Message{Role: "user", Content: formatExampleReview(req.ReviewText, req.Rating)})
-	return msgs
+	return sys.String()
 }
 
 // formatExampleReview wraps a review text with its rating so the model can
 // see the relationship between sentiment (stars) and the owner's reply style.
-func formatExampleReview(text string, rating int) string {
+// Per-locale prefix matches the system prompt's language so the few-shot
+// framing primes the model uniformly. Phase D2.
+func formatExampleReview(text string, rating int, tag language.Tag) string {
+	if tag == language.English {
+		if rating > 0 {
+			return fmt.Sprintf("Review (%d/5): %s", rating, text)
+		}
+		return "Review: " + text
+	}
 	if rating > 0 {
 		return fmt.Sprintf("Отзыв (%d/5): %s", rating, text)
 	}

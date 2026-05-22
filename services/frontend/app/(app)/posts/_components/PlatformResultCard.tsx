@@ -7,7 +7,7 @@ import { ChannelMark } from '@/components/ui/channel-mark';
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import type { Post } from '@/types/post';
 
-import { platformShort } from '../_helpers';
+import { PLATFORM_SHORT_KEYS } from '../_helpers';
 
 export function PlatformResultCard({
   platform,
@@ -17,9 +17,10 @@ export function PlatformResultCard({
   result: NonNullable<Post['platformResults']>[string];
 }) {
   const tPosts = useTranslations('posts');
+  const tShort = useTranslations('posts.platformShort');
+  const shortLabel = PLATFORM_SHORT_KEYS.has(platform) ? tShort(platform) : platform;
   const ok = !result.error && (result.status === 'published' || result.status === 'ok');
-  const display =
-    CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? platformShort[platform] ?? platform;
+  const display = CHANNEL_NAMES[platform as keyof typeof CHANNEL_NAMES] ?? shortLabel;
   return (
     <div className="flex items-center gap-2.5 rounded-sm border border-line-soft bg-paper px-3 py-2">
       <ChannelMark name={display} size={20} />
@@ -27,7 +28,7 @@ export function PlatformResultCard({
         {ok
           ? result.url
             ? tPosts('stats.publishedLabel')
-            : (platformShort[platform] ?? display)
+            : shortLabel
           : (result.error ?? result.status)}
       </span>
       <span

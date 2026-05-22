@@ -19,12 +19,12 @@ interface Props {
   currentProjectId: string | null;
 }
 
-const UNASSIGNED_LABEL = 'Без проекта';
-
 export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
   const tMove = useTranslations('chat.moveMenu');
   const { data: projects } = useProjectsQuery();
   const move = useMoveConversation();
+
+  const unassignedLabel = tMove('unassignedLabel');
 
   const sortedProjects: Project[] = [...(projects ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name, 'ru')
@@ -35,10 +35,10 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
       { id: conversationId, projectId: destId, previousProjectId: currentProjectId },
       {
         onSuccess: () => {
-          toast.success(`Чат перемещён в «${destName}»`, {
+          toast.success(tMove('movedTo', { name: destName }), {
             duration: 5000,
             action: {
-              label: 'Отменить',
+              label: tMove('undo'),
               onClick: () => {
                 move.mutate({
                   id: conversationId,
@@ -56,7 +56,7 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
               : err instanceof Error
                 ? err.message
                 : '';
-          toast.error('Не удалось переместить чат', { description: message });
+          toast.error(tMove('moveError'), { description: message });
         },
       }
     );
@@ -84,11 +84,11 @@ export function MoveChatMenuItem({ conversationId, currentProjectId }: Props) {
                 disabled={unassignedDisabled}
                 onSelect={(e) => {
                   e.preventDefault();
-                  handleMove(null, UNASSIGNED_LABEL);
+                  handleMove(null, unassignedLabel);
                 }}
                 className={cn('italic text-muted-foreground')}
               >
-                {UNASSIGNED_LABEL}
+                {unassignedLabel}
               </DropdownMenuItem>
               {otherProjects.map((p) => (
                 <DropdownMenuItem

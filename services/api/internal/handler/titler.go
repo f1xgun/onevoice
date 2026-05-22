@@ -11,6 +11,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -109,11 +110,14 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// manual is sovereign — verbatim Russian copy locked in CONTEXT.md.
+	// manual is sovereign — RU copy locked in CONTEXT.md, surfaced via
+	// pkg/i18n key "api.title.conflict.manual_rename" (catalog keeps the
+	// verbatim byte sequence). Tests assert the byte-exact RU string when
+	// no Accept-Language is supplied (default tag = ru).
 	if conv.TitleStatus == domain.TitleStatusManual {
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error":   "title_is_manual",
-			"message": "Нельзя регенерировать — вы уже переименовали чат вручную",
+			"message": i18n.Tr(r.Context(), "api.title.conflict.manual_rename"),
 		})
 		return
 	}
@@ -130,7 +134,7 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		time.Since(conv.UpdatedAt) < stuckPendingThreshold {
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error":   "title_in_flight",
-			"message": "Заголовок уже генерируется",
+			"message": i18n.Tr(r.Context(), "api.title.conflict.in_progress"),
 		})
 		return
 	}
@@ -143,7 +147,7 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		if errors.Is(err, domain.ErrConversationNotFound) {
 			writeJSON(w, http.StatusConflict, map[string]string{
 				"error":   "title_state_changed",
-				"message": "Заголовок изменился — обновите страницу",
+				"message": i18n.Tr(r.Context(), "api.title.conflict.stale"),
 			})
 			return
 		}
@@ -173,8 +177,11 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 
 	// Pitfall 2 / Landmine 5: fresh detached ctx with 30s timeout — r.Context()
 	// is canceled at HTTP response close and the cheap-LLM call takes 3-8s.
-	// The goroutine owns the cancel so the timer releases when it exits.
+	// The goroutine owns the cancel so the timer releases when it exits. Locale
+	// copied off the request ctx (set by middleware.Locale) so the cheap-LLM
+	// prompt matches the user's chosen language — Phase D2.
 	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	spawnCtx = i18n.WithLocale(spawnCtx, i18n.LocaleFromContext(r.Context()))
 	// The acceptance grep requires the literal `go h.titler.GenerateAndSave(spawnCtx`
 	// — wrap the call so the closure forwards every arg verbatim AND cancels the
 	// timeout when the spawned work completes (vet would flag a discarded cancel).

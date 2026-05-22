@@ -10,7 +10,8 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
+import type { Locale } from '@/lib/i18n/locales';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { bizApi } from '@/lib/api/business-api';
@@ -19,8 +20,8 @@ import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
+import { useReviewStatusBadges, type ReviewStatus } from '@/lib/constants/statuses';
 import { usePermission } from '@/lib/hooks/usePermission';
-import { REVIEW_STATUS_BADGES, type ReviewStatus } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
 
 // Manual refresh fan-out budget. The backend caps total work at 90s; the
@@ -52,22 +53,25 @@ import { ChannelMark } from '@/components/ui/channel-mark';
 import { cn } from '@/lib/utils';
 import type { Review } from '@/types/review';
 
-// Platform id → display label + ChannelMark name. Reviews can land from
-// any connected channel — Telegram/VK forward DMs that read as feedback,
-// Yandex.Business is the canonical reviews surface.
-const platformMeta: Record<string, { label: string; channel: string }> = {
-  yandex_business: { label: 'Яндекс.Бизнес', channel: 'Yandex.Business' },
-  yandex: { label: 'Яндекс', channel: 'Yandex' },
-  google: { label: 'Google', channel: 'Google' },
-  google_business: { label: 'Google Business', channel: 'Google' },
-  '2gis': { label: '2ГИС', channel: '2GIS' },
-  telegram: { label: 'Telegram', channel: 'Telegram' },
-  vk: { label: 'ВКонтакте', channel: 'VK' },
+// ChannelMark `name` map (icon hint, EN-only — these are brand icon ids,
+// not user-facing copy). The user-facing display label is resolved
+// per-render through `reviews.platformLabels.<id>` inside the consumer
+// so a locale switch retitles the row without remounting.
+const PLATFORM_CHANNEL_MARK: Record<string, string> = {
+  yandex_business: 'Yandex.Business',
+  yandex: 'Yandex',
+  google: 'Google',
+  google_business: 'Google',
+  '2gis': '2GIS',
+  telegram: 'Telegram',
+  vk: 'VK',
 };
 
-function platformInfo(id: string): { label: string; channel: string } {
-  return platformMeta[id] ?? { label: id, channel: id };
-}
+// Whitelist of platform ids that have a translation key under
+// reviews.platformLabels. Anything outside this set falls back to the
+// raw platform id (defensive against backend adding new sources before
+// the FE has copy ready).
+const PLATFORM_LABEL_KEYS: ReadonlySet<string> = new Set(Object.keys(PLATFORM_CHANNEL_MARK));
 
 // Telegram channels and VK comments don't carry a 0–5 rating — the
 // platform simply has no concept of one. Showing zero stars is misleading
@@ -84,12 +88,14 @@ function platformHasRating(id: string): boolean {
 }
 
 // Reply status → tone-mapped badge config — see lib/constants/statuses.
+// The badge record itself is built per-render via useReviewStatusBadges()
+// inside the consumer so a locale switch swaps the labels.
 type StatusKey = ReviewStatus;
-const statusBadge = REVIEW_STATUS_BADGES;
 
 function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
+  const tReviews = useTranslations('reviews');
   return (
-    <div className="flex items-center gap-0.5" aria-label={`Оценка ${rating} из 5`}>
+    <div className="flex items-center gap-0.5" aria-label={tReviews('ratingAria', { rating })}>
       {Array.from({ length: 5 }, (_, i) => (
         <Star
           key={i}
@@ -124,11 +130,24 @@ function ReviewSkeleton() {
   );
 }
 
-// Format YYYY-MM-DD-ish ISO into "23 апр" style for the timestamp slot.
-function formatReviewDate(iso: string): string {
+// BCP-47 locale tag for Intl.DateTimeFormat. We map the in-app `Locale`
+// values to the canonical regional tags (`ru-RU`, `en-US`) so the
+// month-abbreviation form matches what the rest of the dashboard renders.
+const INTL_LOCALE_TAG: Record<Locale, string> = {
+  ru: 'ru-RU',
+  en: 'en-US',
+};
+
+// Format YYYY-MM-DD-ish ISO into "23 апр" / "Apr 23" style for the
+// timestamp slot. The locale comes from the consumer so a language
+// switch reformats existing rows without a remount.
+function formatReviewDate(iso: string, locale: Locale): string {
   try {
     const d = new Date(iso);
-    return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(d);
+    return new Intl.DateTimeFormat(INTL_LOCALE_TAG[locale], {
+      day: 'numeric',
+      month: 'short',
+    }).format(d);
   } catch {
     return iso;
   }
@@ -176,7 +195,7 @@ export default function ReviewsPage() {
       setReplyDialog(null);
       setReplyText('');
     },
-    onError: () => toast.error('Не получилось отправить ответ'),
+    onError: () => toast.error(tReviews('sendReplyError')),
   });
 
   // Manual refresh — POSTs to /reviews/refresh which synchronously fans
@@ -188,9 +207,9 @@ export default function ReviewsPage() {
       api.post(API_PATHS.REVIEWS.REFRESH, undefined, { timeout: REVIEWS_REFRESH_TIMEOUT_MS }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_REVIEWS(activeBusinessId) });
-      toast.success('Отзывы обновлены');
+      toast.success(tReviews('refreshSuccess'));
     },
-    onError: () => toast.error('Не удалось обновить отзывы'),
+    onError: () => toast.error(tReviews('refreshError')),
   });
 
   // Stats are computed from the loaded slice — they reflect what the
@@ -333,7 +352,10 @@ export default function ReviewsPage() {
             <div className="space-y-4">
               <div className="rounded-md border border-line-soft bg-paper-sunken px-4 py-3">
                 <div className="mb-1.5 flex items-center gap-2">
-                  <ChannelMark name={platformInfo(replyDialog.platform).channel} size={20} />
+                  <ChannelMark
+                    name={PLATFORM_CHANNEL_MARK[replyDialog.platform] ?? replyDialog.platform}
+                    size={20}
+                  />
                   <span className="text-sm font-medium text-ink">{replyDialog.authorName}</span>
                   {platformHasRating(replyDialog.platform) && (
                     <StarRating rating={replyDialog.rating} size={14} />
@@ -411,7 +433,18 @@ function ReviewCard({
   canReply: boolean;
 }) {
   const tReviews = useTranslations('reviews');
-  const meta = platformInfo(review.platform);
+  const tPlatformLabels = useTranslations('reviews.platformLabels');
+  const statusBadge = useReviewStatusBadges();
+  const locale = useLocale() as Locale;
+  // ChannelMark icon hint is EN/brand-id; display label resolves via i18n
+  // platformLabels.<id> so a locale switch retitles the row.
+  const channelMark = PLATFORM_CHANNEL_MARK[review.platform] ?? review.platform;
+  const meta = {
+    channel: channelMark,
+    label: PLATFORM_LABEL_KEYS.has(review.platform)
+      ? tPlatformLabels(review.platform)
+      : review.platform,
+  };
   const status =
     (review.replyStatus as StatusKey) in statusBadge ? (review.replyStatus as StatusKey) : 'read';
   const badge = statusBadge[status];
@@ -439,7 +472,7 @@ function ReviewCard({
         <span className="text-xs text-ink-soft">{meta.label}</span>
         {platformHasRating(review.platform) && <StarRating rating={review.rating} />}
         <span className="ml-auto flex items-center gap-3">
-          <MonoLabel>{formatReviewDate(review.createdAt)}</MonoLabel>
+          <MonoLabel>{formatReviewDate(review.createdAt, locale)}</MonoLabel>
           <Badge tone={badge.tone} dot>
             {badge.label}
           </Badge>

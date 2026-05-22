@@ -1,27 +1,62 @@
-// Module-level translator for non-React contexts (Zod schemas, error
-// maps, plain utility functions). React components should keep using
-// `useTranslations` — this exists only for places where hooks aren't
-// available, like a schema declaration that runs once at module load.
+// Server-side translator helper for non-React contexts.
 //
-// Mirrors `DEFAULT_LOCALE` from `lib/i18n/request.ts` but pulls
-// `next-intl`'s client-safe entry point so this module ships in client
-// bundles too. Keep the literal in sync if/when the request config
-// changes.
+// React components MUST use `useTranslations` from `next-intl` directly.
+// `getServerTranslator(namespace, locale?)` exists for code paths where
+// hooks aren't available: route handlers, server components that aren't
+// already using `getTranslations`, and any helper that needs
+// request-scoped strings.
 //
-// `getTranslator` is overloaded to accept any of next-intl's typed
-// `NamespaceKeys` plus the no-namespace form. This relays next-intl's
-// own key-validation through to call-sites — `getTranslator('validation')`
-// is checked against ru.json keys exactly as `useTranslations` would be.
+// Locale resolution: if `locale` is omitted the function calls
+// `getLocale()` from `next-intl/server`, which reads the request config
+// from `lib/i18n/request.ts` (cookie → Accept-Language → default).
+//
+// History: the previous module-level `getTranslator(ns)` shim — which
+// pinned ru.json + hardcoded `LOCALE = 'ru'` at module load and broke
+// the Phase A2 runtime locale switch — was removed in Phase B1 after
+// all in-tree consumers migrated. The static `ru.json` import is gone;
+// nothing in this module ships locale-bound strings into the client
+// bundle anymore.
 
 import { createTranslator } from 'next-intl';
+import { getLocale } from 'next-intl/server';
 import type { NamespaceKeys, NestedKeyOf } from 'next-intl';
-import messages from '@/messages/ru.json';
+import type ruMessagesType from '@/messages/ru.json';
+import { DEFAULT_LOCALE, isLocale, type Locale } from '@/lib/i18n/locales';
 
-type Messages = typeof messages;
+// Type-only import of `ru.json` keeps the next-intl `NamespaceKeys`
+// type-validation intact without dragging the bundle into client code.
+type Messages = typeof ruMessagesType;
 type Namespaces = NamespaceKeys<Messages, NestedKeyOf<Messages>>;
 
-const LOCALE = 'ru';
+async function loadMessages(locale: Locale): Promise<Messages> {
+  // The webpack/turbopack JSON loader resolves these as ESM with `default`.
+  const mod = await import(`@/messages/${locale}.json`);
+  return (mod.default ?? mod) as Messages;
+}
 
-export function getTranslator<N extends Namespaces>(namespace: N) {
-  return createTranslator({ locale: LOCALE, messages, namespace });
+/**
+ * Async translator for non-React server-side contexts (route handlers,
+ * server components that aren't already using `getTranslations`, and
+ * any helper that needs request-scoped strings).
+ *
+ * If `locale` is omitted the function calls `getLocale()` from
+ * `next-intl/server`, which reads the request config from
+ * `lib/i18n/request.ts` (cookie → Accept-Language → default).
+ */
+export async function getServerTranslator<N extends Namespaces>(namespace: N, locale?: Locale) {
+  const resolvedLocale: Locale = locale ?? (await resolveServerLocale());
+  const messages = await loadMessages(resolvedLocale);
+  return createTranslator({ locale: resolvedLocale, messages, namespace });
+}
+
+async function resolveServerLocale(): Promise<Locale> {
+  try {
+    const detected = await getLocale();
+    if (isLocale(detected)) return detected;
+  } catch {
+    // `getLocale()` throws when called outside a request scope (e.g.
+    // during static analysis or a test harness). Fall through to the
+    // default locale rather than crashing.
+  }
+  return DEFAULT_LOCALE;
 }

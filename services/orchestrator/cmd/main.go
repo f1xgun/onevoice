@@ -24,6 +24,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/middleware"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/wire"
 )
@@ -120,6 +121,11 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wi
 			next.ServeHTTP(w, req.WithContext(rctx))
 		})
 	})
+	// LocaleResolver runs after correlation but before logger/recoverer so
+	// the resolved language.Tag is available to every downstream handler
+	// (chat / draft-reply / tool list) for prompt-builder localization.
+	// See pkg/i18n + Phase A1 of `.planning/i18n-readiness/PLAN.md`.
+	r.Use(middleware.Locale)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(metrics.HTTPMiddleware)

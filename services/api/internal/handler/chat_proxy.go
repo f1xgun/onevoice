@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/chatproxy"
@@ -158,11 +159,16 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	conversationID := chi.URLParam(r, "conversationID")
 
 	corrID := logger.CorrelationIDFromContext(r.Context())
+	// Capture locale once at the request edge so every persist op + the
+	// auto-titler spawn ctx (Phase D2) sees the same language tag the user
+	// is chatting in. Resolved from middleware.Locale → i18n.LocaleFromContext.
+	reqLocale := i18n.LocaleFromContext(r.Context())
 	persistCtx := func() (context.Context, context.CancelFunc) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if corrID != "" {
 			ctx = logger.WithCorrelationID(ctx, corrID)
 		}
+		ctx = i18n.WithLocale(ctx, reqLocale)
 		return ctx, cancel
 	}
 
@@ -226,7 +232,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cancelTaskOps()
 
-	orchBody, _ := json.Marshal(h.buildOrchRequest(bc.UserID, enriched, req))
+	orchBody, _ := json.Marshal(h.buildOrchRequest(r.Context(), bc.UserID, enriched, req))
 	streamErr := h.proxy.StreamChat(r.Context(), w, conversationID, orchBody, nil, func(ev chatproxy.SSEPayload) {
 		h.dispatchSSEEvent(taskOpsCtx, enriched.Business.ID.String(), state, idMap, ev)
 	})
@@ -259,7 +265,7 @@ func (h *ChatProxyHandler) dispatchSSEEvent(taskOpsCtx context.Context, business
 			Name:      ev.ToolName,
 			Arguments: ev.ToolArgs,
 		})
-		h.postal.OnToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolArgs, idMap)
+		h.postal.OnToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, idMap)
 	case "tool_result":
 		var content map[string]interface{}
 		if m, ok := ev.ToolResult.(map[string]interface{}); ok {
@@ -331,7 +337,11 @@ func (h *ChatProxyHandler) persistAfterStream(
 	defer cancel()
 	content := state.assistantText.String()
 	if content == "" && state.streamErrContent != "" {
-		content = "[Ошибка: " + state.streamErrContent + "]"
+		// Localize at write-time using the locale captured in persistCtx
+		// (planted by the request edge from middleware.Locale). The wrapper
+		// is persisted to MongoDB so chat history renders in the writer's
+		// language forever — we don't retroactively re-translate.
+		content = i18n.Tr(saveCtx, "api.chat.stream_error_wrapper", state.streamErrContent)
 	}
 	assistantMsg := &domain.Message{
 		ID:             streamStartMessageID,
@@ -353,8 +363,12 @@ func (h *ChatProxyHandler) persistAfterStream(
 
 // buildOrchRequest assembles the JSON body forwarded to /chat/{id}. Field
 // set is byte-identical to the legacy inline builder so the orchestrator
-// continues to receive the exact same shape (no contract change).
-func (h *ChatProxyHandler) buildOrchRequest(userID uuid.UUID, enriched *chatproxy.EnrichmentResult, req chatproxy.ChatProxyRequest) map[string]interface{} {
+// continues to receive the exact same shape (no contract change), with the
+// single addition of the `locale` field (Phase D1): the resolved per-request
+// language tag, sourced from i18n.LocaleFromContext(ctx). The locale is what
+// flips the orchestrator's prompt builder between RU and EN templates, which
+// in turn flips the LLM's reply language.
+func (h *ChatProxyHandler) buildOrchRequest(ctx context.Context, userID uuid.UUID, enriched *chatproxy.EnrichmentResult, req chatproxy.ChatProxyRequest) map[string]interface{} {
 	business := enriched.Business
 	return map[string]interface{}{
 		"model":                      req.Model,
@@ -379,6 +393,12 @@ func (h *ChatProxyHandler) buildOrchRequest(userID uuid.UUID, enriched *chatprox
 		"tier":                       "",
 		"business_approvals":         enriched.BusinessApprovals,
 		"project_approval_overrides": enriched.ProjectOverrides,
+		// Locale resolved from the API request — the middleware.Locale chain
+		// parses Accept-Language (set by the frontend axios interceptor from
+		// the NEXT_LOCALE cookie). Emitted as the canonical BCP-47 string
+		// ("ru", "en") so the orchestrator's MatchAcceptLanguage on the other
+		// side handles both single-tag and preference-list inputs uniformly.
+		"locale": i18n.LocaleFromContext(ctx).String(),
 	}
 }
 

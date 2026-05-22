@@ -119,18 +119,27 @@ type ToolResult struct {
 }
 
 type AgentTask struct {
-	ID          string      `json:"id" bson:"_id,omitempty"`
-	BusinessID  string      `json:"businessId" bson:"business_id"`
-	Type        string      `json:"type" bson:"type"`
-	DisplayName string      `json:"displayName,omitempty" bson:"display_name,omitempty"`
-	Status      string      `json:"status" bson:"status"`
-	Platform    string      `json:"platform" bson:"platform"`
-	Input       interface{} `json:"input,omitempty" bson:"input,omitempty"`
-	Output      interface{} `json:"output,omitempty" bson:"output,omitempty"`
-	Error       string      `json:"error,omitempty" bson:"error,omitempty"`
-	StartedAt   *time.Time  `json:"startedAt,omitempty" bson:"started_at,omitempty"`
-	CompletedAt *time.Time  `json:"completedAt,omitempty" bson:"completed_at,omitempty"`
-	CreatedAt   time.Time   `json:"createdAt" bson:"created_at"`
+	ID         string `json:"id" bson:"_id,omitempty"`
+	BusinessID string `json:"businessId" bson:"business_id"`
+	Type       string `json:"type" bson:"type"`
+	// DisplayName is the legacy Russian-only label written before i18n landed
+	// Kept as the fallback for documents that have not yet been
+	// backfilled; new writes always populate DisplayNameKey in addition.
+	DisplayName string `json:"displayName,omitempty" bson:"display_name,omitempty"`
+	// DisplayNameKey is the i18n catalog key the frontend uses to render
+	// the task title (e.g. "sync.business_name", "tools.telegram.send_channel_post.name").
+	// The FE prefers t(displayNameKey) and falls back to DisplayName when
+	// the key is missing. New code MUST set this whenever it writes
+	// DisplayName so the document can be rendered in any locale.
+	DisplayNameKey string      `json:"displayNameKey,omitempty" bson:"display_name_key,omitempty"`
+	Status         string      `json:"status" bson:"status"`
+	Platform       string      `json:"platform" bson:"platform"`
+	Input          interface{} `json:"input,omitempty" bson:"input,omitempty"`
+	Output         interface{} `json:"output,omitempty" bson:"output,omitempty"`
+	Error          string      `json:"error,omitempty" bson:"error,omitempty"`
+	StartedAt      *time.Time  `json:"startedAt,omitempty" bson:"started_at,omitempty"`
+	CompletedAt    *time.Time  `json:"completedAt,omitempty" bson:"completed_at,omitempty"`
+	CreatedAt      time.Time   `json:"createdAt" bson:"created_at"`
 }
 
 type Review struct {

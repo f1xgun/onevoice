@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
@@ -8,7 +8,6 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { getTranslator } from '@/lib/i18n/translator';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
@@ -32,35 +31,39 @@ export const MAX_SYSTEM_PROMPT_CHARS = 4000;
 const PROJECT_NAME_MAX_LEN = 200;
 const PROJECT_DESCRIPTION_MAX_LEN = 2000;
 
-// Schema-time messages — module-level translator (no React context at
-// declaration time). Same pattern as `lib/schemas.ts`.
-const tValidation = getTranslator('validation');
+// Schema factory — request-scoped (Phase B1). Called inside the hook
+// body via useMemo so a locale switch swaps the validation copy. The
+// `params` slot matches next-intl's `RichTranslationValues` shape so
+// the structural compatibility round-trips both directions.
+function createProjectFormSchema(
+  tValidation: (key: string, params?: Record<string, string | number | Date>) => string
+) {
+  return z
+    .object({
+      name: z.string().trim().min(1, tValidation('projectNameRequired')).max(PROJECT_NAME_MAX_LEN),
+      description: z.string().max(PROJECT_DESCRIPTION_MAX_LEN),
+      systemPrompt: z
+        .string()
+        .max(
+          MAX_SYSTEM_PROMPT_CHARS,
+          tValidation('projectSystemPromptMax', { max: MAX_SYSTEM_PROMPT_CHARS })
+        ),
+      whitelistMode: z.enum(['inherit', 'all', 'explicit', 'none']),
+      allowedTools: z.array(z.string()),
+      // approvalOverrides. Zod-typed as a map of
+      // tool-name → "auto"|"manual". Absence = inherit (Overview invariant
+      // #8); the UI never produces a key whose value is the string
+      // "inherit".
+      approvalOverrides: z.record(z.string(), z.enum(['auto', 'manual'])),
+      quickActions: z.array(z.string().trim().min(1)).max(MAX_QUICK_ACTIONS),
+    })
+    .refine((d) => d.whitelistMode !== 'explicit' || d.allowedTools.length > 0, {
+      path: ['allowedTools'],
+      message: tValidation('projectAllowedToolsRequired'),
+    });
+}
 
-const schema = z
-  .object({
-    name: z.string().trim().min(1, tValidation('projectNameRequired')).max(PROJECT_NAME_MAX_LEN),
-    description: z.string().max(PROJECT_DESCRIPTION_MAX_LEN),
-    systemPrompt: z
-      .string()
-      .max(
-        MAX_SYSTEM_PROMPT_CHARS,
-        tValidation('projectSystemPromptMax', { max: MAX_SYSTEM_PROMPT_CHARS })
-      ),
-    whitelistMode: z.enum(['inherit', 'all', 'explicit', 'none']),
-    allowedTools: z.array(z.string()),
-    // approvalOverrides. Zod-typed as a map of
-    // tool-name → "auto"|"manual". Absence = inherit (Overview invariant
-    // #8); the UI never produces a key whose value is the string
-    // "inherit".
-    approvalOverrides: z.record(z.string(), z.enum(['auto', 'manual'])),
-    quickActions: z.array(z.string().trim().min(1)).max(MAX_QUICK_ACTIONS),
-  })
-  .refine((d) => d.whitelistMode !== 'explicit' || d.allowedTools.length > 0, {
-    path: ['allowedTools'],
-    message: tValidation('projectAllowedToolsRequired'),
-  });
-
-export type FormValues = z.infer<typeof schema>;
+export type FormValues = z.infer<ReturnType<typeof createProjectFormSchema>>;
 
 interface Integration {
   platform: string;
@@ -91,6 +94,12 @@ export function useProjectForm(
 ): UseProjectFormResult {
   const router = useRouter();
   const tForm = useTranslations('projects.form');
+  const tValidation = useTranslations('validation');
+  // Memoize on translator identity (B1). react-hook-form passes the
+  // resolver reference into its internal cache, so rebuilding the schema
+  // on every render would defeat that cache; rebuilding ONLY on a
+  // locale-driven translator swap is the right granularity.
+  const schema = useMemo(() => createProjectFormSchema(tValidation), [tValidation]);
   const isEdit = !!project;
 
   const form = useForm<FormValues>({

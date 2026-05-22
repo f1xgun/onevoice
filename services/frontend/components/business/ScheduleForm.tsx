@@ -9,19 +9,19 @@
 // each section sends its slice alongside the other section's current value
 // to avoid clobbering. Parent owns the source of truth.
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import { CalendarIcon, X } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
-import { getTranslator } from '@/lib/i18n/translator';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
@@ -40,18 +40,23 @@ const DEFAULT_SCHEDULE: ScheduleDay[] = [
   { day: 'sun', open: '10:00', close: '20:00', closed: true },
 ];
 
-// Day-of-week labels for the weekly hours grid. Resolved once at module
-// load via the module-level translator — same pattern as lib/tones.ts.
-const tDays = getTranslator('business.daysOfWeek');
-const DAY_LABELS: Record<ScheduleDay['day'], string> = {
-  mon: tDays('mon'),
-  tue: tDays('tue'),
-  wed: tDays('wed'),
-  thu: tDays('thu'),
-  fri: tDays('fri'),
-  sat: tDays('sat'),
-  sun: tDays('sun'),
-};
+// Day-of-week labels for the weekly hours grid. Built inside each
+// consumer via useDayLabels() so a locale switch swaps the row labels.
+function useDayLabels(): Record<ScheduleDay['day'], string> {
+  const tDays = useTranslations('business.daysOfWeek');
+  return useMemo(
+    () => ({
+      mon: tDays('mon'),
+      tue: tDays('tue'),
+      wed: tDays('wed'),
+      thu: tDays('thu'),
+      fri: tDays('fri'),
+      sat: tDays('sat'),
+      sun: tDays('sun'),
+    }),
+    [tDays]
+  );
+}
 
 interface SchedulePayload {
   schedule: ScheduleDay[];
@@ -96,6 +101,7 @@ interface HoursFormProps {
 
 export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormProps) {
   const tSchedule = useTranslations('business.scheduleForm');
+  const dayLabels = useDayLabels();
   const { schedule, setSchedule, specialDates } = useSchedule(initialSchedule, initialSpecialDates);
   const mutation = useScheduleMutation(tSchedule('hoursSaved'), tSchedule('saveError'));
   const canEdit = usePermission('business.update').allowed;
@@ -110,7 +116,7 @@ export function HoursForm({ initialSchedule, initialSpecialDates }: HoursFormPro
         {schedule.map((day, index) => (
           <DayRow
             key={day.day}
-            label={DAY_LABELS[day.day]}
+            label={dayLabels[day.day]}
             day={day}
             onChange={(updates) => updateDay(index, updates)}
           />
@@ -210,6 +216,7 @@ interface SpecialDatesFormProps {
 
 export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: SpecialDatesFormProps) {
   const tSchedule = useTranslations('business.scheduleForm');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const { schedule, specialDates, setSpecialDates } = useSchedule(
     initialSchedule,
     initialSpecialDates
@@ -261,7 +268,11 @@ export function SpecialDatesForm({ initialSchedule, initialSpecialDates }: Speci
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
-            <Calendar mode="single" onSelect={(date) => date && addSpecialDate(date)} locale={ru} />
+            <Calendar
+              mode="single"
+              onSelect={(date) => date && addSpecialDate(date)}
+              locale={dateFnsLocale}
+            />
           </PopoverContent>
         </Popover>
 
@@ -289,8 +300,9 @@ function SpecialDateRow({
   onRemove: () => void;
 }) {
   const tSchedule = useTranslations('business.scheduleForm');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const closed = date.closed;
-  const formatted = format(parseISO(date.date), 'd MMMM · yyyy', { locale: ru });
+  const formatted = format(parseISO(date.date), 'd MMMM · yyyy', { locale: dateFnsLocale });
   return (
     <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-line-soft bg-paper px-4 py-3 sm:grid-cols-[180px_1fr_auto_auto]">
       <MonoLabel tone="ink" className="text-[13px] normal-case tracking-normal">

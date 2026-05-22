@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 )
 
 // Constants for conversation pagination
@@ -154,7 +155,7 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 
 	// Validate request
 	if err := validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 
@@ -323,7 +324,7 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 		return
 	}
 	if err := validate.Struct(req); err != nil {
-		writeValidationError(w, err)
+		writeValidationError(w, r, err)
 		return
 	}
 
@@ -547,9 +548,7 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Resolve destination name for the system note. Null / empty / absent
-	// projectId all map to "Без проекта".
-	destName := "Без проекта"
+	destName := i18n.Tr(r.Context(), "api.conversation.move.default_destination")
 	if req.ProjectID != nil && *req.ProjectID != "" {
 		projUUID, parseErr := uuid.Parse(*req.ProjectID)
 		if parseErr != nil {
@@ -579,13 +578,11 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Append the visible system note (byte-exact Russian copy).
-	// The LLM sees this on the NEXT turn of the chat
-	// so the prompt-layering transition is explicit (PITFALLS §11 Option A).
+	// Persisted in the writer's locale — history is not retroactively re-translated.
 	note := &domain.Message{
 		ConversationID: conversationID,
 		Role:           "system",
-		Content:        fmt.Sprintf("[Чат перемещён в «%s» — с этого момента применяется новая политика]", destName),
+		Content:        i18n.Tr(r.Context(), "api.conversation.move.system_message", destName),
 		CreatedAt:      time.Now(),
 	}
 	if err := h.messageRepo.Create(r.Context(), note); err != nil {

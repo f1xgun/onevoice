@@ -124,3 +124,37 @@ func TestPlatformsHandler_PreservesDisplayOrder(t *testing.T) {
 		assert.Equal(t, wantOrder[i], p.ID, "position %d", i)
 	}
 }
+
+// TestPlatformsHandler_WireOmitsNameAndDescription pins the i18n Phase C2
+// invariant: the JSON response does NOT include the `name` and `description`
+// fields. The frontend resolves both via its messages/*.json bundles
+// (platforms.fullLabel.<id>, platforms.description.<id>). Re-introducing
+// either field on the wire would silently revert clients that have
+// migrated to the i18n flow.
+func TestPlatformsHandler_WireOmitsNameAndDescription(t *testing.T) {
+	h := NewPlatformsHandler(PlatformAvailability{
+		Telegram: true, VK: true, YandexBusiness: true, GoogleBusiness: true,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/platforms", http.NoBody)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Inspect the raw JSON envelope so we catch the case where Go would
+	// have serialized an empty string field (json:"name") even with a
+	// zero value — `json:"-"` drops the key entirely.
+	var raw []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
+	require.NotEmpty(t, raw)
+	for _, entry := range raw {
+		_, hasName := entry["name"]
+		assert.False(t, hasName, "platform %v: response must not include `name` key", entry["id"])
+		_, hasDesc := entry["description"]
+		assert.False(t, hasDesc, "platform %v: response must not include `description` key", entry["id"])
+		// Status + id remain.
+		assert.Contains(t, entry, "id")
+		assert.Contains(t, entry, "status")
+	}
+}

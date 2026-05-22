@@ -16,7 +16,7 @@ import { useRoles, useCreateRole, useUpdateRole } from '@/lib/hooks/useRoles';
 import { getMyPermissions } from '@/lib/api/permissions';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useUnsavedChangesPrompt } from '@/lib/hooks/useUnsavedChangesPrompt';
-import { mapRoleError } from '@/lib/resolveErrorMap';
+import { useMapRoleError } from '@/lib/resolveErrorMap';
 import { PermissionTree } from '@/components/permission-tree/PermissionTree';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Card } from '@/components/ui/card';
@@ -33,14 +33,14 @@ import { Label } from '@/components/ui/label';
 // schema stays in module scope (no React hook context).
 //
 // NIT-01 (Phase 5 review): the codes-then-map convention here is DELIBERATE
-// and differs from `lib/schemas.ts` where `getTranslator('validation')` feeds
-// pre-localized strings directly into zod. The reason: this schema is
-// defined at module scope (outside any React component), so it cannot call
-// `useTranslations()` to localize at schema build time. Lifting the schema
-// inside the component would re-create it on every render — defeating
-// react-hook-form's `resolver` identity stability. The codes-then-map
-// indirection trades one extra render-time switch for stable schema
-// identity. Adding a new code → add a branch to `nameErrorMessage` below.
+// and differs from `lib/schemas.ts` (Phase B1) which now exposes
+// `createXxxSchema(t)` factories that React consumers wrap in `useMemo`
+// inside the component body. The reason this schema stays at module scope:
+// lifting it inside the component used to re-create it on every render and
+// defeat react-hook-form's `resolver` identity stability. The
+// codes-then-map indirection trades one extra render-time switch for that
+// stable schema identity. Adding a new code → add a branch to
+// `nameErrorMessage` below.
 const roleEditorSchema = z.object({
   name: z.string().trim().min(1, { message: 'name_required' }),
   description: z.string(),
@@ -93,6 +93,7 @@ export interface RoleEditorFormProps {
  */
 export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProps) {
   const t = useTranslations('roles.editor');
+  const mapRoleError = useMapRoleError();
   const router = useRouter();
   const businessId = useBusinessStore((s) => s.activeBusinessId);
 

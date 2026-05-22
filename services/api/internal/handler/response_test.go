@@ -157,11 +157,12 @@ func TestWriteValidationError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
 
 			err := validate.Struct(tt.input)
 			require.Error(t, err)
 
-			writeValidationError(w, err)
+			writeValidationError(w, r, err)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))

@@ -33,11 +33,14 @@ import (
 //
 // When in doubt, prefer manual + a narrow editable list (conservative default).
 type toolSpec struct {
-	def             llm.ToolDefinition
-	displayName     string
-	userDescription string // end-user-facing copy for /settings/tools (NO tool-name refs, NO "используй X вместо Y" disambiguation).
-	floor           domain.ToolFloor
-	editable        []string
+	def                     llm.ToolDefinition
+	displayName             string
+	displayNameKey          string
+	descriptionEn           string
+	parameterDescriptionsEn map[string]string
+	userDescription         string
+	floor                   domain.ToolFloor
+	editable                []string
 }
 
 // Tools constructs the live tool registry, dials NATS, and registers every
@@ -89,6 +92,15 @@ func RegisterPlatformTools(reg *toolregistry.Registry, nc *natslib.Conn) {
 			reg.Register(spec.def, spec.displayName, exec, spec.floor, spec.editable)
 			if spec.userDescription != "" {
 				reg.SetUserDescription(spec.def.Function.Name, spec.userDescription)
+			}
+			if spec.displayNameKey != "" {
+				reg.SetDisplayNameKey(spec.def.Function.Name, spec.displayNameKey)
+			}
+			if spec.descriptionEn != "" {
+				reg.SetDescriptionEn(spec.def.Function.Name, spec.descriptionEn)
+			}
+			if len(spec.parameterDescriptionsEn) > 0 {
+				reg.SetParameterDescriptionsEn(spec.def.Function.Name, spec.parameterDescriptionsEn)
 			}
 		}
 	}
