@@ -15,6 +15,14 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	Update(ctx context.Context, user *User) error
+	// UpdatePreferredLocale persists the user's UI language choice
+	// ('ru' | 'en'). Used by PATCH /auth/locale to sync the
+	// cookie-side choice into the row so the value survives across devices.
+	// Returns ErrUserNotFound when no row matched (defense-in-depth on top of
+	// the authenticated route — the JWT subject *should* always resolve to an
+	// existing user, but we surface the row-missing case explicitly rather
+	// than silently 204'ing).
+	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
 }
 
 type BusinessRepository interface {

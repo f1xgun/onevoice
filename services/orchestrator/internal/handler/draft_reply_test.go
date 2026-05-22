@@ -11,8 +11,18 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/text/language"
+
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
+
+// i18nWithEnglish is a thin test helper: attach language.English to ctx so
+// handler-level tests can drive the locale path without spinning up the full
+// middleware chain.
+func i18nWithEnglish(ctx context.Context) context.Context {
+	return i18n.WithLocale(ctx, language.English)
+}
 
 type fakeChatter struct {
 	resp *llm.ChatResponse
@@ -140,7 +150,7 @@ func TestBuildDraftReplyPrompt_DropsEmptyExamples(t *testing.T) {
 			{ReviewText: "no-reply", ReplyText: ""},
 			{ReviewText: "  ", ReplyText: "whitespace-only"},
 		},
-	})
+	}, language.Russian)
 	// system + 1 valid pair (×2) + final user = 4 messages
 	if len(msgs) != 4 {
 		t.Errorf("messages = %d, want 4: %+v", len(msgs), msgs)
@@ -148,11 +158,124 @@ func TestBuildDraftReplyPrompt_DropsEmptyExamples(t *testing.T) {
 }
 
 func TestFormatExampleReview_RatingPrefix(t *testing.T) {
-	if got := formatExampleReview("hi", 4); !strings.HasPrefix(got, "Отзыв (4/5)") {
+	if got := formatExampleReview("hi", 4, language.Russian); !strings.HasPrefix(got, "Отзыв (4/5)") {
 		t.Errorf("rating prefix missing: %q", got)
 	}
-	if got := formatExampleReview("hi", 0); !strings.HasPrefix(got, "Отзыв:") {
+	if got := formatExampleReview("hi", 0, language.Russian); !strings.HasPrefix(got, "Отзыв:") {
 		t.Errorf("zero rating should drop /5: %q", got)
+	}
+}
+
+// --- Phase D2: locale-aware draft-reply prompt ---
+
+func TestFormatExampleReview_EnglishLocale(t *testing.T) {
+	if got := formatExampleReview("hi", 4, language.English); !strings.HasPrefix(got, "Review (4/5)") {
+		t.Errorf("EN rating prefix missing: %q", got)
+	}
+	if got := formatExampleReview("hi", 0, language.English); !strings.HasPrefix(got, "Review:") {
+		t.Errorf("EN zero-rating prefix missing: %q", got)
+	}
+}
+
+func TestBuildDraftReplyPrompt_EnglishLocale_SystemAndFraming(t *testing.T) {
+	msgs := buildDraftReplyPrompt(DraftReplyRequest{
+		BusinessName:        "Acme",
+		BusinessCategory:    "café",
+		BusinessDescription: "Cozy café",
+		Platform:            "google_business",
+		ReviewText:          "great place",
+		Rating:              5,
+		Examples: []DraftReplyExample{
+			{ReviewText: "ok", ReplyText: "thanks", Rating: 4},
+		},
+	}, language.English)
+
+	// system + 1 valid pair (×2) + final user = 4 messages
+	if len(msgs) != 4 {
+		t.Fatalf("messages = %d, want 4", len(msgs))
+	}
+	sys := msgs[0].Content
+	// Sample lock-in: EN-only phrases that must appear.
+	for _, want := range []string{
+		"You are an assistant",
+		"Preserve the tone",
+		"Do not invent facts",
+		"Business: Acme (café)",
+		"Description: Cozy café",
+		"Review platform: google_business",
+	} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("EN system prompt missing %q\nfull:\n%s", want, sys)
+		}
+	}
+	for _, leak := range []string{
+		"Ты — ассистент",
+		"Бизнес:",
+		"Платформа отзыва:",
+		"Отзыв",
+	} {
+		if strings.Contains(sys, leak) {
+			t.Errorf("EN system prompt leaked RU: %q", leak)
+		}
+	}
+
+	// Final user message uses EN framing.
+	last := msgs[len(msgs)-1].Content
+	if !strings.HasPrefix(last, "Review (5/5):") {
+		t.Errorf("EN final user framing missing: %q", last)
+	}
+}
+
+func TestDraftReplyHandler_EnglishLocale_E2E(t *testing.T) {
+	// Drive the full handler with a request ctx carrying language.English to
+	// verify the locale → system prompt → LLM call wiring end-to-end. The
+	// LLM (fakeChatter) records the prompt it received; we assert on English
+	// framing in the captured request.
+	chatter := &fakeChatter{
+		resp: &llm.ChatResponse{Content: "Thanks for the review!", Provider: "openrouter"},
+	}
+	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini")
+
+	body, _ := json.Marshal(DraftReplyRequest{
+		BusinessID:   "b1",
+		BusinessName: "Cozy Café",
+		ReviewText:   "Great coffee!",
+		Rating:       5,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/internal/draft-reply", bytes.NewReader(body))
+	req = req.WithContext(i18nWithEnglish(req.Context()))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	if got := chatter.gotReq.Messages[0].Content; !strings.Contains(got, "You are an assistant") {
+		t.Errorf("system prompt should be English, got: %q", got)
+	}
+	final := chatter.gotReq.Messages[len(chatter.gotReq.Messages)-1].Content
+	if !strings.HasPrefix(final, "Review (5/5):") {
+		t.Errorf("final user message should use EN framing: %q", final)
+	}
+}
+
+func TestBuildDraftReplyPrompt_RussianLocale_PreservesLegacyShape(t *testing.T) {
+	// Byte-compat regression: a RU-locale draft must contain every legacy
+	// substring tests + production rely on.
+	msgs := buildDraftReplyPrompt(DraftReplyRequest{
+		BusinessName: "Кофейня",
+		ReviewText:   "хороший кофе",
+		Rating:       5,
+	}, language.Russian)
+	sys := msgs[0].Content
+	for _, want := range []string{
+		"Ты — ассистент",
+		"Сохраняй тон",
+		"Не придумывай факты",
+		"Бизнес: Кофейня",
+	} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("RU system prompt missing %q\nfull:\n%s", want, sys)
+		}
 	}
 }
 

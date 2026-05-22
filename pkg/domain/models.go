@@ -10,8 +10,15 @@ type User struct {
 	ID           uuid.UUID `json:"id" db:"id"`
 	Email        string    `json:"email" db:"email"`
 	PasswordHash string    `json:"-" db:"password_hash"`
-	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
+	// PreferredLocale is the user's chosen UI language ('ru' | 'en').
+	// Persisted in users.preferred_locale (migration 000008 — i18n Phase A3).
+	// DB default 'ru'; CHECK constraint enforces the two-value enum. The frontend
+	// reads this on /auth/me to seed the locale cookie and writes it via
+	// PATCH /auth/locale. Snake-case json tag mirrors the DB column name so the
+	// existing /me response shape exposes it without a custom serializer.
+	PreferredLocale string    `json:"preferred_locale" db:"preferred_locale"`
+	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 type Business struct {

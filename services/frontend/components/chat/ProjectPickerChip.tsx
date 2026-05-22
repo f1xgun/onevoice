@@ -19,17 +19,15 @@ interface Props {
   onChange: (projectId: string | null) => void;
 }
 
-const UNASSIGNED_LABEL = 'Без проекта';
-
 export function ProjectPickerChip({ value, onChange }: Props) {
   const tPicker = useTranslations('chat.projectPicker');
+  const tMove = useTranslations('chat.moveMenu');
+  const unassignedLabel = tMove('unassignedLabel');
   const { data: projects } = useProjectsQuery();
   const sorted = [...(projects ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
   const currentName =
-    value == null
-      ? UNASSIGNED_LABEL
-      : (sorted.find((p) => p.id === value)?.name ?? UNASSIGNED_LABEL);
+    value == null ? unassignedLabel : (sorted.find((p) => p.id === value)?.name ?? unassignedLabel);
 
   return (
     <DropdownMenu>
@@ -56,7 +54,7 @@ export function ProjectPickerChip({ value, onChange }: Props) {
           }}
           className={cn('italic text-muted-foreground')}
         >
-          {UNASSIGNED_LABEL}
+          {unassignedLabel}
         </DropdownMenuItem>
         {sorted.map((p) => (
           <DropdownMenuItem

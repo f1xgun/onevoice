@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { BusinessSwitcher } from '@/components/business-switcher/BusinessSwitcher';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/auth';
@@ -23,7 +24,7 @@ import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
-import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
+import { usePlatformFullLabels } from '@/lib/platforms';
 import { queryClient } from '@/lib/queryClient';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 
@@ -65,6 +66,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const tNav = useTranslations('nav');
+  const platformFullLabels = usePlatformFullLabels();
   const logout = useAuthStore((s) => s.logout);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
 
@@ -188,13 +190,18 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
                         connected ? 'bg-success' : 'bg-ink-faint'
                       )}
                     />
-                    {PLATFORM_FULL_LABELS[platform]}
+                    {platformFullLabels[platform]}
                   </li>
                 );
               })}
             </ul>
           </TooltipContent>
         </Tooltip>
+
+        {/* Language switcher — compact 40 px wide select that fits the
+            56 px rail. Sits directly above logout so locale + identity
+            controls live in the same footer cluster. */}
+        <LanguageSwitcher className="mb-2 h-8 w-10 px-1" />
 
         {/* Logout */}
         <Tooltip>

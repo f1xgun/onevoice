@@ -32,6 +32,7 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
       name: event.tool_name as string,
       args: (event.tool_args as Record<string, unknown>) ?? {},
       status: 'pending',
+      displayNameKey: (event.tool_display_name_key as string | undefined) || undefined,
     };
     return { ...msg, toolCalls: [...(msg.toolCalls ?? []), toolCall] };
   }

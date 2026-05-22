@@ -17,19 +17,19 @@
 
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import Link from 'next/link';
 import { bizApi } from '@/lib/api/business-api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 import { useBusinessStore } from '@/lib/stores/business';
-import { RU_PLURAL_PAUCAL_UPPER, RU_PLURAL_TEEN_LOWER, RU_PLURAL_TEEN_UPPER } from '@/lib/plural';
 import {
   TASK_STATUS_DOT_CLASSES,
-  TASK_STATUS_LABELS,
+  useTaskStatusLabels,
   type TaskStatus,
 } from '@/lib/constants/statuses';
 import { CHANNEL_NAMES } from '@/lib/platforms';
@@ -160,7 +160,6 @@ export default function TasksPage() {
               : tStats('doneSummary', {
                   success: doneToday,
                   needsHelp,
-                  needsHelpWord: needsHelpPlural(needsHelp),
                 })
           }
           tone="default"
@@ -201,6 +200,13 @@ export default function TasksPage() {
 
 function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
   const tErrors = useTranslations('tasks.errors');
+  // agentTasks.displayName is the i18n namespace. Each task may
+  // carry a `displayNameKey` like "sync.business_name" or
+  // "tools.telegram.send_channel_post.name" — render the localized copy
+  // when present, fall back to the legacy `displayName` for older rows.
+  const tAgentTaskNames = useTranslations('agentTasks.displayName');
+  const taskStatusLabels = useTaskStatusLabels();
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const status = (task.status as TaskStatus) ?? 'pending';
   const platformName = CHANNEL_NAMES[task.platform as keyof typeof CHANNEL_NAMES] ?? task.platform;
   const titleClass =
@@ -208,6 +214,17 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
       ? 'text-sm font-medium text-[var(--ov-danger-ink)] tracking-[-0.005em]'
       : 'text-sm font-medium text-ink tracking-[-0.005em]';
   const human = status === 'error' ? explainError(task) : null;
+
+  // Prefer localized name from the catalog; fall back to legacy DB literal
+  // then to the bare task type if neither is populated. tAgentTaskNames
+  // returns the key itself when missing (next-intl's default-missing
+  // behavior), so we guard explicitly.
+  const localizedName = (() => {
+    if (!task.displayNameKey) return null;
+    const resolved = tAgentTaskNames(task.displayNameKey);
+    return resolved && resolved !== task.displayNameKey ? resolved : null;
+  })();
+  const titleText = localizedName ?? task.displayName ?? task.type;
 
   return (
     <div className={cn(!last && 'border-b border-line-soft')}>
@@ -225,7 +242,7 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
             On mobile, platform + when fold underneath the title as a single
             meta line so the row never exceeds the viewport width. */}
         <div className="min-w-0 flex-1">
-          <div className={titleClass}>{task.displayName || task.type}</div>
+          <div className={titleClass}>{titleText}</div>
           {status === 'done' &&
             typeof task.output === 'string' &&
             task.output.trim().length > 0 && (
@@ -237,9 +254,11 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
               {platformName}
             </span>
             <span aria-hidden>·</span>
-            <span>{format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}</span>
+            <span>
+              {format(new Date(task.createdAt), 'd MMM HH:mm', { locale: dateFnsLocale })}
+            </span>
             <span aria-hidden>·</span>
-            <span>{TASK_STATUS_LABELS[status]}</span>
+            <span>{taskStatusLabels[status]}</span>
           </div>
         </div>
 
@@ -252,9 +271,9 @@ function TaskRow({ task, last }: { task: AgentTask; last: boolean }) {
         {/* Desktop-only: when · status label column */}
         <div className="hidden items-center justify-between gap-3 sm:flex">
           <span className="text-[13px] text-ink-mid">
-            {format(new Date(task.createdAt), 'd MMM HH:mm', { locale: ru })}
+            {format(new Date(task.createdAt), 'd MMM HH:mm', { locale: dateFnsLocale })}
           </span>
-          <span className="text-xs text-ink-soft">{TASK_STATUS_LABELS[status]}</span>
+          <span className="text-xs text-ink-soft">{taskStatusLabels[status]}</span>
         </div>
       </div>
 
@@ -321,15 +340,6 @@ function BigStat({
       <span className="text-[13px] leading-relaxed text-ink-mid">{hint}</span>
     </div>
   );
-}
-
-function needsHelpPlural(n: number): string {
-  const last = n % 10;
-  const lastTwo = n % 100;
-  if (lastTwo >= RU_PLURAL_TEEN_LOWER && lastTwo <= RU_PLURAL_TEEN_UPPER) return 'требуют';
-  if (last === 1) return 'требует';
-  if (last >= 2 && last <= RU_PLURAL_PAUCAL_UPPER) return 'требуют';
-  return 'требуют';
 }
 
 // ─── Loading skeleton ───────────────────────────────────────────────

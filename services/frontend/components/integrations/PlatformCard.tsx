@@ -61,13 +61,16 @@ interface Props {
   canDisconnect?: boolean;
 }
 
-const statusLabels: Record<string, string> = {
-  active: 'Подключено',
-  inactive: 'Отключено',
-  error: 'Ошибка',
-  pending_cookies: 'Ожидание',
-  token_expired: 'Токен истёк',
-};
+// Status label keys live under integrations.platformCard.status (RU+EN) —
+// the rendered string comes from `tCard('status.<id>')` inside ChannelList
+// so a locale switch retitles the badges without component-side state.
+const STATUS_LABEL_KEYS = [
+  'active',
+  'inactive',
+  'error',
+  'pending_cookies',
+  'token_expired',
+] as const;
 
 // Linen Badge tones — replaces the old default/secondary/destructive variants.
 const statusTones: Record<string, 'success' | 'neutral' | 'danger' | 'warning'> = {
@@ -113,15 +116,15 @@ export function PlatformCard({
         { channel_id: i.externalId }
       );
       if (data.linked_group_status === 'ok') {
-        toast.success('Бот в группе обсуждений — комментарии будут собираться.');
+        toast.success(tCard('linkedGroupOk'));
       } else {
-        toast.warning('Бот всё ещё не в группе обсуждений.');
+        toast.warning(tCard('linkedGroupMissing'));
       }
       qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        'Не удалось проверить статус';
+        tCard('linkedGroupCheckFailed');
       toast.error(msg);
     } finally {
       setRefreshingID(null);
@@ -290,7 +293,9 @@ function ChannelList({
     <div className="flex flex-col gap-2">
       {integrations.map((i) => {
         const tone = statusTones[i.status] ?? 'neutral';
-        const statusLabel = statusLabels[i.status] ?? i.status;
+        const statusLabel = (STATUS_LABEL_KEYS as readonly string[]).includes(i.status)
+          ? tCard(`status.${i.status}`)
+          : i.status;
         const display = getIntegrationDisplay(i, platformLabel);
         const showLinkedGroupWarn =
           platform === 'telegram' &&
@@ -366,7 +371,9 @@ function ChannelList({
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>{`Отключить ${display.name}?`}</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        {tCard('disconnectTitle', { name: display.name })}
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
                         {tCard('disconnectBody', { name: display.name })}
                       </AlertDialogDescription>

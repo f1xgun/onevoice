@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
@@ -426,4 +429,415 @@ func TestRegistry_AllEntries_EditableFieldsCopy(t *testing.T) {
 
 	fresh := reg.AllEntries()
 	assert.Equal(t, "text", fresh[0].EditableFields[0])
+}
+
+func TestRegistry_DisplayNameKey_GetterReturnsSetValue(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	reg.Register(makeDef(tools.TelegramSendChannelPost), "Отправить пост", nil, domain.ToolFloorManual, []string{"text"})
+	reg.SetDisplayNameKey(tools.TelegramSendChannelPost, "tools.telegram.send_channel_post.name")
+
+	assert.Equal(t, "tools.telegram.send_channel_post.name", reg.DisplayNameKey(tools.TelegramSendChannelPost))
+	assert.Equal(t, "", reg.DisplayNameKey("unknown__tool"))
+}
+
+func TestRegistry_SetDescriptionEn_AvailableForWhitelist_LocaleAware(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	// Russian source-of-truth Description on def.
+	def := llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "Публикует пост в Telegram"},
+	}
+	reg.Register(def, "Отправить пост", nil, domain.ToolFloorManual, []string{"text"})
+	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "Publishes a post to Telegram")
+
+	// RU ctx (default) → RU description.
+	ru := i18n.WithLocale(context.Background(), language.Russian)
+	defsRu := reg.AvailableForWhitelist(ru, []string{"telegram"}, "", nil)
+	require.Len(t, defsRu, 1)
+	assert.Equal(t, "Публикует пост в Telegram", defsRu[0].Function.Description)
+
+	// EN ctx → EN description.
+	en := i18n.WithLocale(context.Background(), language.English)
+	defsEn := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
+	require.Len(t, defsEn, 1)
+	assert.Equal(t, "Publishes a post to Telegram", defsEn[0].Function.Description)
+
+	// Source def must not be mutated by either call (defensive copy).
+	defsRu2 := reg.AvailableForWhitelist(ru, []string{"telegram"}, "", nil)
+	assert.Equal(t, "Публикует пост в Telegram", defsRu2[0].Function.Description)
+}
+
+func TestRegistry_AvailableForWhitelist_NoDescriptionEn_FallsBackToRu(t *testing.T) {
+	// A tool without descriptionEn must serve its RU description in BOTH locales —
+	// the fallback prevents an unset EN translation from showing as an empty
+	// description to the LLM (which would degrade reasoning).
+	reg := toolregistry.NewRegistry()
+	def := llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.VKPublishPost, Description: "Публикует пост ВКонтакте"},
+	}
+	reg.Register(def, "", nil, domain.ToolFloorAuto, nil)
+
+	en := i18n.WithLocale(context.Background(), language.English)
+	defs := reg.AvailableForWhitelist(en, []string{"vk"}, "", nil)
+	require.Len(t, defs, 1)
+	assert.Equal(t, "Публикует пост ВКонтакте", defs[0].Function.Description)
+}
+
+func TestRegistry_AllEntriesForLocale_ResolvesDescriptionAndKey(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	def := llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "RU desc"},
+	}
+	reg.Register(def, "DisplayRu", nil, domain.ToolFloorManual, []string{"text"})
+	reg.SetDisplayNameKey(tools.TelegramSendChannelPost, "tools.telegram.send_channel_post.name")
+	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "EN desc")
+
+	ru := reg.AllEntriesForLocale(language.Russian)
+	require.Len(t, ru, 1)
+	assert.Equal(t, "RU desc", ru[0].Description)
+	assert.Equal(t, "tools.telegram.send_channel_post.name", ru[0].DisplayNameKey, "DisplayNameKey must be exposed regardless of locale (locale-independent)")
+
+	en := reg.AllEntriesForLocale(language.English)
+	require.Len(t, en, 1)
+	assert.Equal(t, "EN desc", en[0].Description)
+	assert.Equal(t, "tools.telegram.send_channel_post.name", en[0].DisplayNameKey)
+}
+
+func makeDefWithParams(name, descRu string, props map[string]map[string]interface{}, required []string) llm.ToolDefinition {
+	properties := make(map[string]interface{}, len(props))
+	for k, v := range props {
+		properties[k] = v
+	}
+	params := map[string]interface{}{
+		"type":       "object",
+		"properties": properties,
+	}
+	if len(required) > 0 {
+		params["required"] = required
+	}
+	return llm.ToolDefinition{
+		Type: llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{
+			Name:        name,
+			Description: descRu,
+			Parameters:  params,
+		},
+	}
+}
+
+func propDescription(def llm.ToolDefinition, prop string) string {
+	props, ok := def.Function.Parameters["properties"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	p, ok := props[prop].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	desc, _ := p["description"].(string)
+	return desc
+}
+
+func TestRegistry_LocalizeParameters_EnSwapsPropertyDescriptions(t *testing.T) {
+	tcs := []struct {
+		name       string
+		toolName   string
+		props      map[string]map[string]interface{}
+		required   []string
+		paramsEn   map[string]string
+		assertions map[string]string // property name → expected EN description
+	}{
+		{
+			name:     "telegram_send_channel_post",
+			toolName: tools.TelegramSendChannelPost,
+			props: map[string]map[string]interface{}{
+				"text":       {"type": "string", "description": "Текст сообщения"},
+				"channel_id": {"type": "string", "description": "ID канала"},
+			},
+			required: []string{"text"},
+			paramsEn: map[string]string{
+				"text":       "Message text",
+				"channel_id": "Channel ID",
+			},
+			assertions: map[string]string{
+				"text":       "Message text",
+				"channel_id": "Channel ID",
+			},
+		},
+		{
+			name:     "vk_publish_post",
+			toolName: tools.VKPublishPost,
+			props: map[string]map[string]interface{}{
+				"text":     {"type": "string", "description": "Текст поста"},
+				"group_id": {"type": "string", "description": "ID сообщества"},
+			},
+			required: []string{"text"},
+			paramsEn: map[string]string{
+				"text":     "Post text",
+				"group_id": "Community ID",
+			},
+			assertions: map[string]string{
+				"text":     "Post text",
+				"group_id": "Community ID",
+			},
+		},
+		{
+			name:     "yandex_business_reply_review",
+			toolName: tools.YandexBusinessReplyReview,
+			props: map[string]map[string]interface{}{
+				"review_id": {"type": "string", "description": "ID отзыва"},
+				"text":      {"type": "string", "description": "Текст ответа"},
+			},
+			required: []string{"review_id", "text"},
+			paramsEn: map[string]string{
+				"review_id": "Review ID",
+				"text":      "Reply text",
+			},
+			assertions: map[string]string{
+				"review_id": "Review ID",
+				"text":      "Reply text",
+			},
+		},
+		{
+			name:     "google_business_reply_review",
+			toolName: tools.GoogleBusinessReplyReview,
+			props: map[string]map[string]interface{}{
+				"review_name": {"type": "string", "description": "Полное имя ресурса отзыва"},
+				"text":        {"type": "string", "description": "Текст ответа на отзыв"},
+			},
+			required: []string{"review_name", "text"},
+			paramsEn: map[string]string{
+				"review_name": "Full review resource name",
+				"text":        "Review reply text",
+			},
+			assertions: map[string]string{
+				"review_name": "Full review resource name",
+				"text":        "Review reply text",
+			},
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			platform := strings.SplitN(tc.toolName, "__", 2)[0]
+			reg := toolregistry.NewRegistry()
+			reg.Register(
+				makeDefWithParams(tc.toolName, "RU desc", tc.props, tc.required),
+				"",
+				nil,
+				domain.ToolFloorManual,
+				nil,
+			)
+			reg.SetDescriptionEn(tc.toolName, "EN desc")
+			reg.SetParameterDescriptionsEn(tc.toolName, tc.paramsEn)
+
+			en := i18n.WithLocale(context.Background(), language.English)
+			defs := reg.AvailableForWhitelist(en, []string{platform}, "", nil)
+			require.Len(t, defs, 1)
+
+			for prop, expected := range tc.assertions {
+				assert.Equal(t, expected, propDescription(defs[0], prop),
+					"property %q should expose EN description", prop)
+			}
+
+			// Schema shape must be preserved verbatim.
+			assert.Equal(t, "object", defs[0].Function.Parameters["type"])
+			if len(tc.required) > 0 {
+				assert.Equal(t, tc.required, defs[0].Function.Parameters["required"])
+			}
+		})
+	}
+}
+
+func TestRegistry_LocalizeParameters_RuReturnsByteIdenticalShape(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	def := makeDefWithParams(
+		tools.TelegramSendChannelPost,
+		"Публикует текстовое сообщение в Telegram-канал",
+		map[string]map[string]interface{}{
+			"text":       {"type": "string", "description": "Текст сообщения"},
+			"channel_id": {"type": "string", "description": "ID канала"},
+		},
+		[]string{"text"},
+	)
+	originalParams := def.Function.Parameters
+	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
+	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "EN desc")
+	reg.SetParameterDescriptionsEn(tools.TelegramSendChannelPost, map[string]string{
+		"text":       "Message text",
+		"channel_id": "Channel ID",
+	})
+
+	ru := i18n.WithLocale(context.Background(), language.Russian)
+	defsRu := reg.AvailableForWhitelist(ru, []string{"telegram"}, "", nil)
+	require.Len(t, defsRu, 1)
+	assert.Equal(t, "Текст сообщения", propDescription(defsRu[0], "text"))
+	assert.Equal(t, "ID канала", propDescription(defsRu[0], "channel_id"))
+
+	defsBare := reg.AvailableForWhitelist(context.Background(), []string{"telegram"}, "", nil)
+	require.Len(t, defsBare, 1)
+	assert.Equal(t, "Текст сообщения", propDescription(defsBare[0], "text"))
+
+	enCtx := i18n.WithLocale(context.Background(), language.English)
+	_ = reg.AvailableForWhitelist(enCtx, []string{"telegram"}, "", nil)
+	assert.Equal(t, "Текст сообщения",
+		originalParams["properties"].(map[string]interface{})["text"].(map[string]interface{})["description"],
+		"EN localization must not mutate the registered Parameters map")
+}
+
+func TestRegistry_LocalizeParameters_MissingEnEntryFallsBackToRu(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	def := makeDefWithParams(
+		tools.TelegramSendChannelPost,
+		"RU desc",
+		map[string]map[string]interface{}{
+			"text":       {"type": "string", "description": "Текст сообщения"},
+			"channel_id": {"type": "string", "description": "ID канала"},
+		},
+		[]string{"text"},
+	)
+	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
+	reg.SetParameterDescriptionsEn(tools.TelegramSendChannelPost, map[string]string{
+		"text": "Message text",
+	})
+
+	en := i18n.WithLocale(context.Background(), language.English)
+	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
+	require.Len(t, defs, 1)
+
+	assert.Equal(t, "Message text", propDescription(defs[0], "text"),
+		"text has EN entry — should swap")
+	assert.Equal(t, "ID канала", propDescription(defs[0], "channel_id"),
+		"channel_id has no EN entry — should keep RU description (graceful degradation)")
+}
+
+func TestRegistry_LocalizeParameters_EmptyEnDescriptionFallsBackToRu(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	def := makeDefWithParams(
+		tools.TelegramSendChannelPost,
+		"RU desc",
+		map[string]map[string]interface{}{
+			"text": {"type": "string", "description": "Текст сообщения"},
+		},
+		[]string{"text"},
+	)
+	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
+	reg.SetParameterDescriptionsEn(tools.TelegramSendChannelPost, map[string]string{
+		"text": "", // explicit empty
+	})
+
+	en := i18n.WithLocale(context.Background(), language.English)
+	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
+	require.Len(t, defs, 1)
+	assert.Equal(t, "Текст сообщения", propDescription(defs[0], "text"),
+		"empty EN string should fall back to RU description")
+}
+
+func TestRegistry_SetParameterDescriptionsEn_DefensiveCopy(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	def := makeDefWithParams(
+		tools.TelegramSendChannelPost,
+		"RU desc",
+		map[string]map[string]interface{}{
+			"text": {"type": "string", "description": "Текст сообщения"},
+		},
+		[]string{"text"},
+	)
+	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
+
+	caller := map[string]string{"text": "Message text"}
+	reg.SetParameterDescriptionsEn(tools.TelegramSendChannelPost, caller)
+	caller["text"] = "TAMPERED" // post-registration mutation
+
+	en := i18n.WithLocale(context.Background(), language.English)
+	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
+	require.Len(t, defs, 1)
+	assert.Equal(t, "Message text", propDescription(defs[0], "text"),
+		"registry must not observe post-Set mutations of the caller's map")
+}
+
+// TestRegistry_SetParameterDescriptionsEn_UnknownTool locks the no-op contract
+// for unknown tools (matches the other Set* methods on the registry).
+func TestRegistry_SetParameterDescriptionsEn_UnknownTool(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	// Must not panic and must not register anything.
+	reg.SetParameterDescriptionsEn("ghost__missing", map[string]string{"text": "Message text"})
+	assert.False(t, reg.Has("ghost__missing"))
+}
+
+// TestRegistry_LocalizeDef_EnWithoutParamsKeepsMapIdentity locks the
+// no-allocation invariant on localizeDef's "descriptionEn-only" branch.
+// When an EN caller hits a tool that has SetDescriptionEn set but NO
+// SetParameterDescriptionsEn, localizeDef must return a definition whose
+// Function.Parameters is the SAME Go map (pointer-identical) as the
+// registered def. Without this invariant, a future field added to
+// FunctionDefinition that holds a reference type could turn the
+// description-only swap into an accidental shared-mutation footgun.
+//
+// Pointer-equality is asserted via reflect.ValueOf(...).Pointer() — same idiom
+// as the standard library's runtime tests for map identity. A simple
+// `if a == b` won't compile for maps; this gives us the underlying map header
+// address to compare.
+func TestRegistry_LocalizeDef_EnWithoutParamsKeepsMapIdentity(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	def := makeDefWithParams(
+		tools.TelegramSendChannelPost,
+		"RU desc",
+		map[string]map[string]interface{}{
+			"text": {"type": "string", "description": "Текст"},
+		},
+		[]string{"text"},
+	)
+	sourceParams := def.Function.Parameters
+	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
+	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "EN desc")
+	// Deliberately do NOT call SetParameterDescriptionsEn — only the
+	// top-level translation is set so localizeDef hits the descriptionEn-only
+	// branch (line 210-212 in registry.go).
+
+	en := i18n.WithLocale(context.Background(), language.English)
+	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
+	require.Len(t, defs, 1)
+	assert.Equal(t, "EN desc", defs[0].Function.Description,
+		"top-level description should still swap")
+
+	gotPtr := reflect.ValueOf(defs[0].Function.Parameters).Pointer()
+	wantPtr := reflect.ValueOf(sourceParams).Pointer()
+	if gotPtr != wantPtr {
+		t.Fatalf("expected Parameters map identity to be preserved when only descriptionEn is set; got map at %x, want %x", gotPtr, wantPtr)
+	}
+}
+
+// TestRegistry_LocalizeParameters_ZeroParamTool_NoOp verifies that a tool with
+// an empty `properties` map and no parameter translations short-circuits
+// cleanly — the registered Parameters map is returned by reference and no
+// reallocation churns the GC.
+func TestRegistry_LocalizeParameters_ZeroParamTool_NoOp(t *testing.T) {
+	reg := toolregistry.NewRegistry()
+	def := llm.ToolDefinition{
+		Type: llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{
+			Name:        tools.YandexBusinessGetInfo,
+			Description: "RU desc",
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+	}
+	reg.Register(def, "", nil, domain.ToolFloorAuto, nil)
+	reg.SetDescriptionEn(tools.YandexBusinessGetInfo, "EN desc")
+	// Deliberately do NOT call SetParameterDescriptionsEn — zero-param tools
+	// don't need it.
+
+	en := i18n.WithLocale(context.Background(), language.English)
+	defs := reg.AvailableForWhitelist(en, []string{"yandex_business"}, "", nil)
+	require.Len(t, defs, 1)
+	assert.Equal(t, "EN desc", defs[0].Function.Description,
+		"top-level description should still swap")
+	props, ok := defs[0].Function.Parameters["properties"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Empty(t, props, "properties should remain empty (no walk needed)")
 }

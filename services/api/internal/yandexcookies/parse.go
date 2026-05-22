@@ -52,12 +52,18 @@ func (p Parsed) JSON() string {
 	return string(b)
 }
 
-// Errors surfaced to the user verbatim.
+// Sentinel errors. Internal language is English so the package stays
+// locale-agnostic; HTTP handlers map these via errors.Is to i18n keys at the
+// response boundary (yandex.cookies.* in pkg/i18n).
 var (
-	ErrEmpty            = errors.New("вставьте cookies из браузера")
-	ErrNoSessionID      = errors.New("не найдено значение Session_id — это главный cookie для входа в Яндекс")
-	ErrInvalidJSON      = errors.New("не удалось распознать формат: это не JSON, не Cookie-заголовок и не значение Session_id")
-	ErrSessionIDInvalid = errors.New("значение Session_id выглядит некорректно — проверьте, что скопировали целиком")
+	ErrEmpty            = errors.New("yandexcookies: empty input")
+	ErrNoSessionID      = errors.New("yandexcookies: missing Session_id")
+	ErrInvalidJSON      = errors.New("yandexcookies: invalid format")
+	ErrSessionIDInvalid = errors.New("yandexcookies: invalid Session_id value")
+	// ErrJSONUnmarshal wraps the underlying encoding/json error. Use
+	// errors.Is(err, ErrJSONUnmarshal) at the handler boundary to map to
+	// the localized "JSON error" message.
+	ErrJSONUnmarshal = errors.New("yandexcookies: json parse failed")
 )
 
 // Parse normalizes a user-supplied cookies string. It tries the three
@@ -111,7 +117,10 @@ func Parse(input string) (Parsed, error) {
 func parseJSONArray(input string) ([]Cookie, error) {
 	var raw []map[string]any
 	if err := json.Unmarshal([]byte(input), &raw); err != nil {
-		return nil, fmt.Errorf("ошибка JSON: %w", err)
+		// Wrap ErrJSONUnmarshal so the handler boundary can map it to a
+		// localized message via errors.Is; the underlying json error stays
+		// reachable for slog diagnostics.
+		return nil, fmt.Errorf("%w: %w", ErrJSONUnmarshal, err)
 	}
 	cookies := make([]Cookie, 0, len(raw))
 	for i, c := range raw {

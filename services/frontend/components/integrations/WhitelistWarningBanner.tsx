@@ -5,7 +5,7 @@ import { AlertTriangle, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { useProjectsQuery } from '@/hooks/useProjects';
-import { PLATFORM_FULL_LABELS } from '@/lib/platforms';
+import { usePlatformFullLabels } from '@/lib/platforms';
 import { useTools, toolNamesForPlatform } from '@/lib/hooks/useTools';
 import type { Project } from '@/types/project';
 
@@ -20,6 +20,7 @@ const DISMISS_KEY_PREFIX = 'projects:whitelistWarning:';
 
 export function WhitelistWarningBanner({ integrationId, businessId, platform }: Props) {
   const tWarn = useTranslations('integrations.whitelistWarning');
+  const platformFullLabels = usePlatformFullLabels();
   const dismissKey = `${DISMISS_KEY_PREFIX}${businessId}:${integrationId}`;
   const [dismissed, setDismissed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
@@ -50,7 +51,7 @@ export function WhitelistWarningBanner({ integrationId, businessId, platform }: 
 
   if (excluded.length === 0) return null;
 
-  const platformLabel = PLATFORM_FULL_LABELS[platform] ?? platform;
+  const platformLabel = platformFullLabels[platform] ?? platform;
   const names = excluded.join(', ');
 
   function onDismiss() {

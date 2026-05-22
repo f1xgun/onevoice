@@ -2,11 +2,14 @@
 // posts table.
 //
 // Extracted from posts/page.tsx as part of Phase 19 / 19-12.
-import { POST_STATUS_LABELS } from '@/lib/constants/statuses';
+'use client';
+
+import { usePostStatusLabels } from '@/lib/constants/statuses';
 import { Badge } from '@/components/ui/badge';
 
 export function StatusBadge({ status }: { status: string }) {
-  const label = POST_STATUS_LABELS[status as keyof typeof POST_STATUS_LABELS] ?? status;
+  const labels = usePostStatusLabels();
+  const label = labels[status as keyof typeof labels] ?? status;
   switch (status) {
     case 'published':
       return (

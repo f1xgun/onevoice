@@ -10,8 +10,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/security"
 )
@@ -33,12 +35,35 @@ const (
 	// producing varied wording for diverse chats).
 	titleTemperature = 0.3
 
-	// titleSystemPrompt is the locked Russian instruction. Cheap-model target
-	// audience: business owners chatting in Russian. "Без кавычек и точек в
-	// конце" pre-empts most of what sanitizeTitle would otherwise have to
-	// strip.
-	titleSystemPrompt = "Сформулируй короткий заголовок (3–6 слов) для этого диалога. Без кавычек и точек в конце."
+	// titleSystemPromptRu / titleSystemPromptEn are the cheap-model instructions.
+	// "Без кавычек и точек в конце" / "No quotes or trailing punctuation"
+	// pre-empts most of what sanitizeTitle would otherwise have to strip.
+	// Length-target ("3–6 слов" / "3–6 words") is kept identical across
+	// locales so output budgets behave the same way.
+	titleSystemPromptRu = "Сформулируй короткий заголовок (3–6 слов) для этого диалога. Без кавычек и точек в конце."
+	titleSystemPromptEn = "Write a short title (3–6 words) for this conversation. No quotes or trailing punctuation."
 )
+
+// titleSystemPrompt returns the cheap-model instruction in the requested
+// locale (Phase D2). EN for language.English, RU otherwise — matches the
+// catalog default in pkg/i18n.lookup.
+func titleSystemPrompt(tag language.Tag) string {
+	if tag == language.English {
+		return titleSystemPromptEn
+	}
+	return titleSystemPromptRu
+}
+
+// userTemplate returns the per-locale "Пользователь: …\n\nАссистент: …" /
+// "User: …\n\nAssistant: …" framing for the cheap-LLM input. Same shape as
+// the system prompt above — kept inline rather than catalog-based because it
+// is a positional fmt.Sprintf template, not a translatable user-facing string.
+func userTemplate(tag language.Tag) string {
+	if tag == language.English {
+		return "User: %s\n\nAssistant: %s"
+	}
+	return "Пользователь: %s\n\nАссистент: %s"
+}
 
 // chatCaller is the canonical mocking seam for the LLM-call dependency the
 // Titler holds. It is package-private (intentionally lowercase) and exists
@@ -111,6 +136,13 @@ func NewTitler(router chatCaller, repo domain.ConversationRepository, model stri
 func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID, userMsg, assistantMsg string) {
 	metricStart := time.Now()
 
+	// Locale resolved from request context (set by middleware.Locale earlier
+	// in the chain). Drives the cheap-model system prompt AND the PII-reject
+	// terminal fallback. ctx carries the request's Accept-Language all the way
+	// here because chat_proxy spawns the titler with a detached-but-correlated
+	// ctx that includes the i18n key.
+	tag := i18n.LocaleFromContext(ctx)
+
 	// Pre-redact. The cheap LLM never sees raw PII.
 	redactedUser := security.RedactPII(userMsg)
 	redactedAssistant := security.RedactPII(assistantMsg)
@@ -120,8 +152,8 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 		UserID: uuid.Nil, // system-level call, no rate-limit attribution
 		Model:  t.model,
 		Messages: []llm.Message{
-			{Role: "system", Content: titleSystemPrompt},
-			{Role: "user", Content: fmt.Sprintf("Пользователь: %s\n\nАссистент: %s", redactedUser, redactedAssistant)},
+			{Role: "system", Content: titleSystemPrompt(tag)},
+			{Role: "user", Content: fmt.Sprintf(userTemplate(tag), redactedUser, redactedAssistant)},
 		},
 		MaxTokens:   titleMaxOutputTokens,
 		Temperature: titleTemperature,
@@ -160,7 +192,7 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 
 	// post-hoc PII gate. Match → terminal fallback.
 	if class, hit := security.ContainsPIIClass(title); hit {
-		terminalTitle := untitledChatRussian(time.Now())
+		terminalTitle := untitledChatLocalized(time.Now(), tag)
 		slog.WarnContext(ctx, "auto-title: pii rejected",
 			"conversation_id", conversationID,
 			"business_id", businessID,
@@ -262,10 +294,34 @@ func sanitizeTitle(raw string) string {
 // short form, e.g. "Untitled chat 26 апреля". Go's time.Format is English-only
 // for month names; we look up the Russian genitive month name from a fixed
 // 12-element table.
+//
+// Kept for direct-call test compatibility; new code calls untitledChatLocalized.
 func untitledChatRussian(t time.Time) string {
 	months := [12]string{
 		"января", "февраля", "марта", "апреля", "мая", "июня",
 		"июля", "августа", "сентября", "октября", "ноября", "декабря",
 	}
 	return fmt.Sprintf("Untitled chat %d %s", t.Day(), months[t.Month()-1])
+}
+
+// untitledChatEnglish returns the terminal-fallback title in English
+// short form, e.g. "Untitled chat April 26". Day after the month so the
+// reader doesn't have to mentally swap the order vs the RU form.
+func untitledChatEnglish(t time.Time) string {
+	months := [12]string{
+		"January", "February", "March", "April", "May", "June",
+		"July", "August", "September", "October", "November", "December",
+	}
+	return fmt.Sprintf("Untitled chat %s %d", months[t.Month()-1], t.Day())
+}
+
+// untitledChatLocalized dispatches to the per-locale fallback (Phase D2). The
+// "Untitled chat" prefix stays English in both branches because it's the
+// universally-recognized empty-state marker the FE renders as a placeholder
+// (matches the frontend i18n key chats.untitledFallback shape).
+func untitledChatLocalized(t time.Time, tag language.Tag) string {
+	if tag == language.English {
+		return untitledChatEnglish(t)
+	}
+	return untitledChatRussian(t)
 }

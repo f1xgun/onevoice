@@ -16,7 +16,13 @@ func telegramTools() []toolSpec {
 		// editable; channel_id pinned from integration.
 		{
 			displayName:     "Отправить пост",
+			displayNameKey:  "tools.telegram.send_channel_post.name",
 			userDescription: "Публикует текстовое сообщение в Telegram-канале.",
+			descriptionEn:   "Publishes a text message to a Telegram channel (no photo). If you need to publish a post with a photo, use telegram__send_channel_photo instead.",
+			parameterDescriptionsEn: map[string]string{
+				"text":       "Message text",
+				"channel_id": "Channel ID",
+			},
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramSendChannelPost,
 				Description: "Публикует текстовое сообщение в Telegram-канал (без фото). Если нужно опубликовать пост с фото — используй telegram__send_channel_photo вместо этого.",
@@ -37,7 +43,14 @@ func telegramTools() []toolSpec {
 		// time would be a footgun).
 		{
 			displayName:     "Отправить фото",
+			displayNameKey:  "tools.telegram.send_channel_photo.name",
 			userDescription: "Публикует фото с подписью в Telegram-канале.",
+			descriptionEn:   "Publishes a photo with a text caption to a Telegram channel. Use this function instead of send_channel_post when you need to publish a post that includes an image.",
+			parameterDescriptionsEn: map[string]string{
+				"photo_url":  "Public image URL",
+				"caption":    "Photo caption",
+				"channel_id": "Channel ID",
+			},
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramSendChannelPhoto,
 				Description: "Публикует пост с фото и текстовой подписью в Telegram-канал. Используй эту функцию вместо send_channel_post когда нужно опубликовать пост с изображением.",
@@ -58,7 +71,12 @@ func telegramTools() []toolSpec {
 		// from the integration (never editable).
 		{
 			displayName:     "Уведомление владельцу",
+			displayNameKey:  "tools.telegram.send_notification.name",
 			userDescription: "Отправляет личное уведомление владельцу бизнеса в Telegram.",
+			descriptionEn:   "Sends a private notification to the business owner via Telegram.",
+			parameterDescriptionsEn: map[string]string{
+				"text": "Notification text",
+			},
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramSendNotification,
 				Description: "Отправляет личное уведомление владельцу бизнеса в Telegram",
@@ -76,7 +94,12 @@ func telegramTools() []toolSpec {
 		// Read-only query of recent messages. Auto, no edit needed.
 		{
 			displayName:     "Загрузить отзывы",
+			displayNameKey:  "tools.telegram.get_reviews.name",
 			userDescription: "Загружает комментарии и реакции из Telegram-канала.",
+			descriptionEn:   "Fetches the most recent messages/reviews sent to the bot or channel through Telegram. Each message has message_id and chat_id fields — use them to reply via telegram__reply_to_comment.",
+			parameterDescriptionsEn: map[string]string{
+				"limit": "Number of messages (max 100)",
+			},
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramGetReviews,
 				Description: "Получает последние сообщения/отзывы, отправленные боту или в канал через Telegram. Каждое сообщение содержит поля message_id и chat_id — используй их для ответа через telegram__reply_to_comment.",
@@ -95,7 +118,15 @@ func telegramTools() []toolSpec {
 		// would redirect the reply to an unrelated conversation).
 		{
 			displayName:     "Ответить на комментарий",
+			displayNameKey:  "tools.telegram.reply_to_comment.name",
 			userDescription: "Отвечает на комментарий к посту в Telegram-канале.",
+			descriptionEn:   "Replies to a specific comment or message in Telegram. Use this function when you need to reply to a comment — DO NOT use telegram__send_channel_post for comment replies.",
+			parameterDescriptionsEn: map[string]string{
+				"message_id": "ID of the message/comment being replied to (the message_id field from telegram__get_reviews)",
+				"chat_id":    "ID of the chat/discussion group where the comment lives (the chat_id field from telegram__get_reviews)",
+				"text":       "Reply text",
+				"channel_id": "Channel ID (optional, used to select the integration)",
+			},
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.TelegramReplyToComment,
 				Description: "Отвечает на конкретный комментарий или сообщение в Telegram. Используй эту функцию когда нужно ответить на комментарий — НЕ используй telegram__send_channel_post для ответов на комментарии.",

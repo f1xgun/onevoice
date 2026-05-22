@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import { MessageCircle, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
@@ -38,6 +39,8 @@ export function ConversationItem({
   onRegenerateTitle: () => void;
 }) {
   const tRow = useTranslations('chat.rowMenu');
+  const tChat = useTranslations('chat');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(conv.title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -61,9 +64,12 @@ export function ConversationItem({
 
   // Placeholder when title is empty
   // OR an auto-title job is in flight. NO shimmer / skeleton / animation —
-  // pins the literal Russian copy for Sidebar Pending UX.
+  // pins the literal Russian copy for Sidebar Pending UX (resolved via i18n
+  // chat.newConversation; same key used by sidebar rows).
   const displayTitle =
-    conv.title === '' || conv.titleStatus === 'auto_pending' ? 'Новый диалог' : conv.title;
+    conv.title === '' || conv.titleStatus === 'auto_pending'
+      ? tChat('newConversation')
+      : conv.title;
 
   return (
     <div className="group flex items-center gap-3 rounded-lg border border-line p-4 transition-colors hover:bg-paper-sunken">
@@ -92,7 +98,7 @@ export function ConversationItem({
             <p className="text-sm text-ink-soft">
               {formatDistanceToNow(new Date(conv.createdAt), {
                 addSuffix: true,
-                locale: ru,
+                locale: dateFnsLocale,
               })}
             </p>
           </button>

@@ -88,6 +88,104 @@ func TestResumeHandler_StreamsEventsAsSSE(t *testing.T) {
 	}
 }
 
+// TestResumeHandler_StreamsToolDisplayNameAndKey — the orchestrator's
+// dispatchApprovedCalls populates ToolDisplayName + ToolDisplayNameKey on the
+// Event channel for both EventToolCall and EventToolResult so chat_proxy can
+// stamp the AgentTask row with a localizable key. The Resume handler must
+// copy those two fields onto the outgoing SSE frame; otherwise every
+// HITL-approved tool call lands in MongoDB with empty display labels.
+// Regression guard for the resume-path drop fixed alongside this test.
+func TestResumeHandler_StreamsToolDisplayNameAndKey(t *testing.T) {
+	h := handler.NewResumeHandler(&stubResumer{fn: func(_ context.Context, _ orchestrator.ResumeRequest) (<-chan orchestrator.Event, error) {
+		ch := make(chan orchestrator.Event, 3)
+		ch <- orchestrator.Event{
+			Type:               orchestrator.EventToolCall,
+			ToolCallID:         "toolu_abc",
+			ToolName:           tools.TelegramSendChannelPost,
+			ToolDisplayName:    "Publish Telegram post",
+			ToolDisplayNameKey: "tools.telegram.send_channel_post.display_name",
+			ToolArgs:           map[string]interface{}{"channel_id": "@x", "text": "hello"},
+		}
+		ch <- orchestrator.Event{
+			Type:               orchestrator.EventToolResult,
+			ToolCallID:         "toolu_abc",
+			ToolName:           tools.TelegramSendChannelPost,
+			ToolDisplayName:    "Publish Telegram post",
+			ToolDisplayNameKey: "tools.telegram.send_channel_post.display_name",
+			ToolResult:         map[string]interface{}{"ok": true},
+		}
+		ch <- orchestrator.Event{Type: orchestrator.EventDone}
+		close(ch)
+		return ch, nil
+	}})
+
+	req := httptest.NewRequest(http.MethodPost, "/chat/conv1/resume?batch_id=b1", http.NoBody)
+	rec := httptest.NewRecorder()
+	h.Resume(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	// Parse each `data: {...}` SSE frame back into a generic map so we can
+	// assert the JSON field names match the chat.go canonical shape exactly
+	// (tool_display_name / tool_display_name_key).
+	frames := parseSSEFrames(t, rec.Body.String())
+	var toolCall, toolResult map[string]interface{}
+	for _, f := range frames {
+		switch f["type"] {
+		case "tool_call":
+			toolCall = f
+		case "tool_result":
+			toolResult = f
+		}
+	}
+
+	if toolCall == nil {
+		t.Fatalf("body missing tool_call event: %q", rec.Body.String())
+	}
+	if got := toolCall["tool_display_name"]; got != "Publish Telegram post" {
+		t.Errorf("tool_call.tool_display_name = %v, want %q", got, "Publish Telegram post")
+	}
+	if got := toolCall["tool_display_name_key"]; got != "tools.telegram.send_channel_post.display_name" {
+		t.Errorf("tool_call.tool_display_name_key = %v, want %q", got, "tools.telegram.send_channel_post.display_name")
+	}
+
+	if toolResult == nil {
+		t.Fatalf("body missing tool_result event: %q", rec.Body.String())
+	}
+	if got := toolResult["tool_display_name"]; got != "Publish Telegram post" {
+		t.Errorf("tool_result.tool_display_name = %v, want %q", got, "Publish Telegram post")
+	}
+	if got := toolResult["tool_display_name_key"]; got != "tools.telegram.send_channel_post.display_name" {
+		t.Errorf("tool_result.tool_display_name_key = %v, want %q", got, "tools.telegram.send_channel_post.display_name")
+	}
+}
+
+// parseSSEFrames extracts each `data: {json}\n\n` SSE frame body into a
+// decoded map. Used by SSE-shape assertions where field-name precision matters
+// (a `strings.Contains` test would not catch a typo'd JSON tag).
+func parseSSEFrames(t *testing.T, body string) []map[string]interface{} {
+	t.Helper()
+	var out []map[string]interface{}
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" {
+			continue
+		}
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &m); err != nil {
+			t.Fatalf("parseSSEFrames: failed to decode %q: %v", payload, err)
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
 // TestResumeHandler_ForwardsFreshApprovalMaps — the body carries business +
 // project approval maps; the handler must pass them through verbatim in the
 // ResumeRequest.

@@ -16,6 +16,8 @@ export interface ToolCall {
   // HITL additions (non-breaking):
   rejectReason?: string; // populated when status === 'rejected'
   wasEdited?: boolean; // true when user edited args before approving (UI-SPEC §Post-submit)
+  // Optional i18n catalog key; FE falls back to the tool name if absent.
+  displayNameKey?: string;
 }
 
 export interface Message {

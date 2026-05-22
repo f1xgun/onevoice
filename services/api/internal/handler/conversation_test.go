@@ -15,9 +15,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -1293,6 +1295,112 @@ func TestMoveConversation_ToNullBezProyekta(t *testing.T) {
 	require.NotNil(t, capturedMsg)
 	assert.Equal(t, "system", capturedMsg.Role)
 	assert.Equal(t, "[Чат перемещён в «Без проекта» — с этого момента применяется новая политика]", capturedMsg.Content)
+}
+
+func TestMoveConversation_EnglishLocale_NullDestination(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	convID := "507f1f77bcf86cd7994390e1"
+
+	var capturedMsg *domain.Message
+	getByIDCall := 0
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			getByIDCall++
+			if getByIDCall == 1 {
+				return &domain.Conversation{ID: convID, UserID: userID.String(), ProjectID: ptr("old-proj")}, nil
+			}
+			return &domain.Conversation{ID: convID, UserID: userID.String(), ProjectID: nil}, nil
+		},
+		UpdateProjectAssignmentFunc: func(_ context.Context, _ string, _ *string) error {
+			return nil
+		},
+	}
+	msgRepo := &MockMessageRepository{
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			capturedMsg = m
+			return nil
+		},
+	}
+	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{})
+	require.NoError(t, err)
+
+	body := []byte(`{"projectId":null}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID+"/move", bytes.NewReader(body))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", convID)
+	ctx := context.WithValue(convBizCtx(businessID, userID), chi.RouteCtxKey, rctx)
+	ctx = i18n.WithLocale(ctx, language.English)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, capturedMsg, "system note must be appended")
+	assert.Equal(t,
+		"[Chat moved to \"No project\" — the new policy applies from this point]",
+		capturedMsg.Content)
+}
+
+func TestMoveConversation_EnglishLocale_RealProject(t *testing.T) {
+	userID := uuid.New()
+	businessID := uuid.New()
+	projectID := uuid.New()
+	convID := "507f1f77bcf86cd7994390e2"
+
+	convAfterMove := &domain.Conversation{
+		ID:         convID,
+		UserID:     userID.String(),
+		BusinessID: businessID.String(),
+		ProjectID:  ptr(projectID.String()),
+	}
+
+	getByIDCall := 0
+	var capturedMsg *domain.Message
+
+	mockRepo := &MockConversationRepository{
+		GetByIDFunc: func(_ context.Context, _ string) (*domain.Conversation, error) {
+			getByIDCall++
+			if getByIDCall == 1 {
+				return &domain.Conversation{ID: convID, UserID: userID.String(), BusinessID: businessID.String()}, nil
+			}
+			return convAfterMove, nil
+		},
+		UpdateProjectAssignmentFunc: func(_ context.Context, _ string, _ *string) error {
+			return nil
+		},
+	}
+	msgRepo := &MockMessageRepository{
+		CreateFunc: func(_ context.Context, m *domain.Message) error {
+			capturedMsg = m
+			return nil
+		},
+	}
+	proj := &noopProjectService{
+		GetByIDFunc: func(_ context.Context, _, _ uuid.UUID) (*domain.Project, error) {
+			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Reviews"}, nil
+		},
+	}
+	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, proj, &MockPendingToolCallRepository{})
+	require.NoError(t, err)
+
+	pid := projectID.String()
+	body, _ := json.Marshal(MoveConversationRequest{ProjectID: &pid})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID+"/move", bytes.NewReader(body))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", convID)
+	ctx := context.WithValue(convBizCtx(businessID, userID), chi.RouteCtxKey, rctx)
+	ctx = i18n.WithLocale(ctx, language.English)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.MoveConversation(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, capturedMsg)
+	assert.Equal(t,
+		"[Chat moved to \"Reviews\" — the new policy applies from this point]",
+		capturedMsg.Content)
 }
 
 // TestMoveConversation_ProjectCrossBusiness covers Behavior 6.

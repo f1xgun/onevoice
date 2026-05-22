@@ -42,6 +42,7 @@ export function ProjectSection({
   onNavigate,
 }: Props) {
   const tSide = useTranslations('sidebar');
+  const tSideProject = useTranslations('sidebar.project');
   const tProjects = useTranslations('projects');
   const tChat = useTranslations('chat');
   const [collapsed, setCollapsed] = useState(false);
@@ -79,7 +80,11 @@ export function ProjectSection({
           onClick={() => setCollapsed((v) => !v)}
           className="shrink-0 text-ink-faint hover:text-ink"
           aria-expanded={!collapsed}
-          aria-label={collapsed ? `Развернуть «${project.name}»` : `Свернуть «${project.name}»`}
+          aria-label={
+            collapsed
+              ? tSideProject('expandAria', { name: project.name })
+              : tSideProject('collapseAria', { name: project.name })
+          }
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </button>
@@ -97,8 +102,8 @@ export function ProjectSection({
             type="button"
             onClick={handleCreate}
             disabled={createConversation.isPending}
-            aria-label={`Новый чат в проекте «${project.name}»`}
-            title={`Новый чат в проекте «${project.name}»`}
+            aria-label={tSideProject('newChatAria', { name: project.name })}
+            title={tSideProject('newChatTitle', { name: project.name })}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-soft opacity-0 transition-opacity hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100 md:h-8 md:w-8"
           >
             <Plus size={14} />
@@ -118,7 +123,7 @@ export function ProjectSection({
           ref={containerRef as RefObject<HTMLDivElement>}
           onKeyDown={onKeyDown}
           role="listbox"
-          aria-label={`Чаты проекта «${project.name}»`}
+          aria-label={tSideProject('chatsAria', { name: project.name })}
           className="ml-5 mt-0.5 space-y-0.5"
         >
           {visible.map((conv, i) => {

@@ -15,7 +15,12 @@ func googleTools() []toolSpec {
 		// Read-only. Auto.
 		{
 			displayName:     "Загрузить отзывы Google",
+			displayNameKey:  "tools.google_business.get_reviews.name",
 			userDescription: "Загружает отзывы клиентов из Google Business Profile.",
+			descriptionEn:   "Fetches reviews for the location from Google Business Profile. Returns a list of reviews with ratings, comments, and owner replies.",
+			parameterDescriptionsEn: map[string]string{
+				"limit": "Number of reviews (max 50)",
+			},
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.GoogleBusinessGetReviews,
 				Description: "Получает отзывы о локации из Google Business Profile. Возвращает список отзывов с рейтингами, комментариями и ответами владельца.",
@@ -32,7 +37,13 @@ func googleTools() []toolSpec {
 		// Mutating public: review reply. text editable; review_name pinned.
 		{
 			displayName:     "Ответить на отзыв Google",
+			displayNameKey:  "tools.google_business.reply_review.name",
 			userDescription: "Отвечает на отзыв клиента в Google Business Profile.",
+			descriptionEn:   "Replies to a review on Google Business Profile on behalf of the business owner.",
+			parameterDescriptionsEn: map[string]string{
+				"review_name": "Full review resource name (the name field from google_business__get_reviews)",
+				"text":        "Review reply text",
+			},
 			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.GoogleBusinessReplyReview,
 				Description: "Отвечает на отзыв в Google Business Profile от имени владельца бизнеса.",

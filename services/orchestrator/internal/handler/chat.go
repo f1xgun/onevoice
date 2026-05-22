@@ -11,9 +11,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
@@ -77,6 +79,16 @@ type chatRequest struct {
 	Tier                     string                      `json:"tier"`
 	BusinessApprovals        map[string]domain.ToolFloor `json:"business_approvals"`
 	ProjectApprovalOverrides map[string]domain.ToolFloor `json:"project_approval_overrides"`
+
+	// Locale is the per-chat language tag (e.g. "ru", "en") forwarded by the
+	// API's chat_proxy from i18n.LocaleFromContext(r.Context()). Drives the
+	// orchestrator prompt builder's locale-aware templates (Phase D1). Empty
+	// or invalid values fall back to the orchestrator's own Accept-Language
+	// resolution from middleware.Locale → i18n.LocaleFromContext, then
+	// finally to i18n.DefaultTag. The body field takes precedence over the
+	// header-derived ctx tag so the chat-conversation owner's preference
+	// wins even when an intermediate proxy strips/rewrites Accept-Language.
+	Locale string `json:"locale,omitempty"`
 }
 
 // sseEvent matches the JSON shape written to the SSE stream.
@@ -87,17 +99,22 @@ type chatRequest struct {
 //     tool_result / tool_rejected events so chat_proxy can persist the
 //     Message.ToolCalls with the real ID (no synthetic "tc-N").
 //   - BatchID + Calls are set on tool_approval_required events.
+//   - ToolDisplayNameKey carries the i18n catalog key on tool_call and
+//     tool_result events so chat_proxy can stamp the agent_tasks document
+//     with a localizable key. omitempty so legacy events with
+//     no key (older orchestrator deploys) remain byte-identical on the wire.
 type sseEvent struct {
-	Type            string                             `json:"type"`
-	Content         string                             `json:"content,omitempty"`
-	ToolCallID      string                             `json:"tool_call_id,omitempty"`
-	ToolName        string                             `json:"tool_name,omitempty"`
-	ToolDisplayName string                             `json:"tool_display_name,omitempty"`
-	ToolArgs        map[string]interface{}             `json:"tool_args,omitempty"`
-	ToolResult      interface{}                        `json:"result,omitempty"`
-	ToolError       string                             `json:"error,omitempty"`
-	BatchID         string                             `json:"batch_id,omitempty"`
-	Calls           []orchestrator.ApprovalCallSummary `json:"calls,omitempty"`
+	Type               string                             `json:"type"`
+	Content            string                             `json:"content,omitempty"`
+	ToolCallID         string                             `json:"tool_call_id,omitempty"`
+	ToolName           string                             `json:"tool_name,omitempty"`
+	ToolDisplayName    string                             `json:"tool_display_name,omitempty"`
+	ToolDisplayNameKey string                             `json:"tool_display_name_key,omitempty"`
+	ToolArgs           map[string]interface{}             `json:"tool_args,omitempty"`
+	ToolResult         interface{}                        `json:"result,omitempty"`
+	ToolError          string                             `json:"error,omitempty"`
+	BatchID            string                             `json:"batch_id,omitempty"`
+	Calls              []orchestrator.ApprovalCallSummary `json:"calls,omitempty"`
 }
 
 // Chat handles POST /chat/{conversationID} and streams SSE events.
@@ -131,6 +148,25 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := a2a.WithBusinessID(r.Context(), req.BusinessID)
+	if corrID := r.Header.Get("X-Correlation-ID"); corrID != "" {
+		ctx = logger.WithCorrelationID(ctx, corrID)
+	}
+
+	// Resolve locale for the prompt builder. Two sources:
+	//   1. req.Locale  — set explicitly by the API's chat_proxy from the
+	//      browser cookie (NEXT_LOCALE) → propagated as a JSON field so the
+	//      chat-conversation owner's preference wins.
+	//   2. ctx tag    — set by middleware.Locale from this request's
+	//      Accept-Language header; the fallback when the body field is empty
+	//      or invalid.
+	// The body field takes precedence so that intermediate proxies that
+	// strip / rewrite Accept-Language can't silently flip the LLM's reply
+	// language out from under the user. See pkg/i18n + Phase D1 of
+	// `.planning/i18n-readiness/PLAN.md`.
+	locale := resolveChatLocale(ctx, req.Locale)
+	ctx = i18n.WithLocale(ctx, locale)
+
 	biz := prompt.BusinessContext{
 		Name:               req.BusinessName,
 		Category:           req.BusinessCategory,
@@ -138,14 +174,10 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Phone:              req.BusinessPhone,
 		Website:            req.BusinessWebsite,
 		Description:        req.BusinessDesc,
-		Tone:               joinTone(req.BusinessVoiceTone),
+		Tone:               joinTone(req.BusinessVoiceTone, locale),
 		ActiveIntegrations: req.ActiveIntegrations,
 		Now:                time.Now(),
-	}
-
-	ctx := a2a.WithBusinessID(r.Context(), req.BusinessID)
-	if corrID := r.Header.Get("X-Correlation-ID"); corrID != "" {
-		ctx = logger.WithCorrelationID(ctx, corrID)
+		Locale:             locale,
 	}
 
 	// Deserialise whitelist mode. Empty string means "inherit" (v1.3 = all).
@@ -225,11 +257,13 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
 			sse.ToolDisplayName = event.ToolDisplayName
+			sse.ToolDisplayNameKey = event.ToolDisplayNameKey
 			sse.ToolArgs = event.ToolArgs
 		case orchestrator.EventToolResult:
 			sse.ToolCallID = event.ToolCallID
 			sse.ToolName = event.ToolName
 			sse.ToolDisplayName = event.ToolDisplayName
+			sse.ToolDisplayNameKey = event.ToolDisplayNameKey
 			sse.ToolResult = event.ToolResult
 			sse.ToolError = event.ToolError
 		case orchestrator.EventToolRejected:
@@ -265,6 +299,30 @@ func writeSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, 
 	flusher.Flush()
 }
 
+// resolveChatLocale picks the language tag for the prompt builder. Precedence:
+//
+//  1. bodyLocale — explicit string from the chat request body (set by the
+//     API's chat_proxy from the per-user cookie). Parsed via
+//     i18n.MatchAcceptLanguage so unsupported / malformed values fall back to
+//     i18n.DefaultTag rather than producing a zero Tag.
+//  2. ctx tag    — populated by middleware.Locale earlier in the chain from
+//     this request's Accept-Language header. Used only when bodyLocale is
+//     empty.
+//
+// Body-over-header is deliberate: a backend cookie value flips the orchestrator
+// language even when an intermediate proxy strips/rewrites Accept-Language. An
+// empty body field is the no-opinion signal that defers to the header path.
+func resolveChatLocale(ctx context.Context, bodyLocale string) language.Tag {
+	if bodyLocale != "" {
+		// MatchAcceptLanguage handles single-tag input ("en") and multi-tag
+		// preference lists ("en-US,en;q=0.9") uniformly, and returns
+		// i18n.DefaultTag on parse failure — so we never propagate a zero Tag
+		// downstream.
+		return i18n.MatchAcceptLanguage(bodyLocale)
+	}
+	return i18n.LocaleFromContext(ctx)
+}
+
 // toneIDToRu maps stable enum ids (frontend lib/tones.ts) to the Russian
 // adjective the prompt builder injects. Keep in sync with lib/tones.ts —
 // id strings are the contract between FE and prompt-time vocabulary.
@@ -277,9 +335,26 @@ var toneIDToRu = map[string]string{
 	"businesslike": "деловой",
 }
 
+// toneIDToEn is the EN parallel of toneIDToRu (Phase D2). Same key set so a
+// missing English value is a compile-time inconsistency, not a silent fallback
+// to the literal id. Adjectives chosen to match the frontend lib/tones.ts
+// English labels word-for-word.
+var toneIDToEn = map[string]string{
+	"warm":         "warm",
+	"calm":         "calm",
+	"friendly":     "friendly",
+	"professional": "professional",
+	"playful":      "playful",
+	"businesslike": "businesslike",
+}
+
 // Legacy Russian display labels that pre-migration records may still hold
 // in business.settings.voiceTone. Recognized so older businesses keep
 // influencing the prompt until the next save flushes the canonical id form.
+//
+// EN locale also routes legacy RU labels through this map first (so we can
+// recognize them) then translates the recognized id via toneIDToEn — see
+// toneLabel below.
 var toneLegacyRuToRu = map[string]string{
 	"тёплый":           "тёплый",
 	"теплый":           "тёплый",
@@ -290,31 +365,70 @@ var toneLegacyRuToRu = map[string]string{
 	"деловой":          "деловой",
 }
 
+// toneLegacyRuToID maps legacy RU labels back to canonical IDs so the EN path
+// can find an English adjective for a business that still has Russian text in
+// settings.voiceTone. Direct id maps for forward-compat; legacy-text-only
+// records still translate cleanly.
+var toneLegacyRuToID = map[string]string{
+	"тёплый":           "warm",
+	"теплый":           "warm",
+	"спокойный":        "calm",
+	"дружеский":        "friendly",
+	"профессиональный": "professional",
+	"игривый":          "playful",
+	"деловой":          "businesslike",
+}
+
+// toneLabel translates a single tone token (canonical id or legacy RU label)
+// into the per-locale adjective. Returns "" if the token is unknown — the
+// caller filters those.
+//
+// EN path: first try direct id → toneIDToEn, then legacy RU → id → toneIDToEn.
+// RU path: kept verbatim — toneIDToRu for ids, toneLegacyRuToRu for legacy.
+func toneLabel(token string, tag language.Tag) (string, bool) {
+	key := strings.ToLower(strings.TrimSpace(token))
+	if key == "" {
+		return "", false
+	}
+	if tag == language.English {
+		if v, ok := toneIDToEn[key]; ok {
+			return v, true
+		}
+		if id, ok := toneLegacyRuToID[key]; ok {
+			return toneIDToEn[id], true
+		}
+		return "", false
+	}
+	if v, ok := toneIDToRu[key]; ok {
+		return v, true
+	}
+	if v, ok := toneLegacyRuToRu[key]; ok {
+		return v, true
+	}
+	return "", false
+}
+
 // joinTone resolves a list of stored tone identifiers (or legacy Russian
-// labels) into a single comma-separated Russian phrase suitable for the
-// "Тон общения: …" line in the system prompt. Unknown / empty entries are
-// dropped — when nothing remains, returns "" so the prompt builder falls
-// back to its default ("профессиональный").
-func joinTone(tags []string) string {
+// labels) into a single comma-separated phrase in the requested locale,
+// suitable for the "Тон общения: …" / "Tone: …" line in the system prompt.
+// Unknown / empty entries are dropped — when nothing remains, returns "" so
+// the prompt builder falls back to its locale-appropriate default.
+//
+// tag drives the output language; the input format is locale-agnostic (ids
+// like "warm" or legacy RU labels like "тёплый" both translate cleanly).
+func joinTone(tags []string, tag language.Tag) string {
 	out := make([]string, 0, len(tags))
 	seen := make(map[string]struct{}, len(tags))
 	for _, t := range tags {
-		key := strings.ToLower(strings.TrimSpace(t))
-		if key == "" {
-			continue
-		}
-		ru, ok := toneIDToRu[key]
-		if !ok {
-			ru, ok = toneLegacyRuToRu[key]
-		}
+		label, ok := toneLabel(t, tag)
 		if !ok {
 			continue
 		}
-		if _, dup := seen[ru]; dup {
+		if _, dup := seen[label]; dup {
 			continue
 		}
-		seen[ru] = struct{}{}
-		out = append(out, ru)
+		seen[label] = struct{}{}
+		out = append(out, label)
 	}
 	return strings.Join(out, ", ")
 }

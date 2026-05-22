@@ -3,25 +3,28 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { format, parseISO } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInvitationPreview, useAcceptInvitation } from '@/lib/hooks/useInvitations';
-import { mapInviteError } from '@/lib/resolveErrorMap';
+import { useMapInviteError } from '@/lib/resolveErrorMap';
 import { RolePill } from '@/components/business-switcher/RolePill';
 import { RefusalCard } from '@/components/invite/RefusalCard';
 import { useAuthStore } from '@/lib/auth';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
+import { getDateFnsLocale } from '@/lib/dateFnsLocale';
+import type { Locale } from '@/lib/i18n/locales';
 
 export default function AcceptInvitePage() {
   const { token } = useParams<{ token: string }>();
   const router = useRouter();
   const tInvite = useTranslations('invite.accept');
+  const dateFnsLocale = getDateFnsLocale(useLocale() as Locale);
+  const mapInviteError = useMapInviteError();
 
   const isAuthed = useAuthStore((s) => s.isAuthenticated);
 
@@ -95,7 +98,7 @@ export default function AcceptInvitePage() {
             <p className="text-sm text-ink-mid">
               {tInvite('expiry', {
                 date: format(parseISO(preview.data.expires_at), 'd MMMM yyyy, HH:mm', {
-                  locale: ru,
+                  locale: dateFnsLocale,
                 }),
               })}
             </p>

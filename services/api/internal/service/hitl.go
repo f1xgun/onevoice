@@ -31,6 +31,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	pkghitl "github.com/f1xgun/onevoice/pkg/hitl"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/toolvalidation"
 )
@@ -384,21 +385,43 @@ func missingCallIDs(calls []domain.PendingCall, decisions []DecisionInput) []str
 //   - On first-ever load failure, the cache returns empty — every tool then
 //     has nil EditableFields which causes edit validation to reject every
 //     field as not-editable (safe default: fail-closed).
+//
+// ToolsRegistryCache keeps per-locale snapshots so the orchestrator's
+// locale-aware /internal/tools projection round-trips correctly
+// for both RU and EN users. Floor / EditableFields / Has are
+// locale-independent and read from whichever snapshot was loaded last.
 type ToolsRegistryCache struct {
 	orch *orchestratorclient.Client // nil when orchestratorURL was empty (test/seed-only mode)
 	ttl  time.Duration
 
-	mu       sync.RWMutex
+	mu sync.RWMutex
+	// byLocale stores one snapshot per language tag (".String()" keyed —
+	// "ru", "en", "" for unspecified). Each snapshot independently tracks
+	// its own loadedAt so the TTL works per-locale.
+	byLocale map[string]localeSnapshot
+	inFlight map[string]chan struct{} // refresh-in-flight guard, per locale
+	// latestEntries is the most recently loaded snapshot, used for the
+	// locale-agnostic Floor/EditableFields/Has lookups. Updated on every
+	// successful refresh — Floor data is identical across locales so any
+	// locale's entries are equivalent for those callers.
+	latestEntries []ToolsRegistryEntry
+}
+
+type localeSnapshot struct {
 	entries  []ToolsRegistryEntry
 	loadedAt time.Time
-	inFlight chan struct{} // closed when the current refresh completes
 }
 
 // ToolsRegistryEntry is the per-tool projection returned by GET /api/v1/tools
 // (frontend) and by GET /internal/tools (internal — orchestrator-to-API).
+//
+// DisplayNameKey is the i18n catalog key the frontend uses to render the
+// tool label in the user's locale. Optional — older orchestrator
+// deploys send "" and the FE falls back to DisplayName.
 type ToolsRegistryEntry struct {
 	Name            string           `json:"name"`
 	DisplayName     string           `json:"displayName"`
+	DisplayNameKey  string           `json:"displayNameKey,omitempty"`
 	Platform        string           `json:"platform"`
 	Floor           domain.ToolFloor `json:"floor"`
 	EditableFields  []string         `json:"editableFields"`
@@ -419,7 +442,9 @@ func NewToolsRegistryCache(orchestratorURL string, httpClient *http.Client, ttl 
 		ttl = defaultToolsRegistryCacheTTL
 	}
 	c := &ToolsRegistryCache{
-		ttl: ttl,
+		ttl:      ttl,
+		byLocale: make(map[string]localeSnapshot),
+		inFlight: make(map[string]chan struct{}),
 	}
 	if orchestratorURL != "" {
 		c.orch = orchestratorclient.New(orchestratorURL, httpClient)
@@ -428,34 +453,47 @@ func NewToolsRegistryCache(orchestratorURL string, httpClient *http.Client, ttl 
 }
 
 // Seed pre-populates the cache with a static snapshot. Used by tests to avoid
-// HTTP round-trips against the orchestrator.
+// HTTP round-trips against the orchestrator. The seeded snapshot satisfies
+// every locale — tests typically don't care about the description language.
 func (c *ToolsRegistryCache) Seed(entries []ToolsRegistryEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries = append([]ToolsRegistryEntry(nil), entries...)
-	c.loadedAt = time.Now()
+	copied := append([]ToolsRegistryEntry(nil), entries...)
+	c.latestEntries = copied
+	// Seed every supported tag so List(ctx) returns the seeded data
+	// regardless of the caller's locale.
+	now := time.Now()
+	c.byLocale[""] = localeSnapshot{entries: copied, loadedAt: now}
+	c.byLocale["ru"] = localeSnapshot{entries: copied, loadedAt: now}
+	c.byLocale["en"] = localeSnapshot{entries: copied, loadedAt: now}
 }
 
-// List returns the cached entries, refreshing if TTL elapsed. Safe for
-// concurrent callers.
+// List returns the cached entries for the requested locale, refreshing if the
+// per-locale TTL elapsed. Safe for concurrent callers. Locale resolved from
+// ctx via i18n.LocaleFromContext (set by middleware.Locale earlier in the
+// HTTP chain).
 func (c *ToolsRegistryCache) List(ctx context.Context) []ToolsRegistryEntry {
+	tag := i18n.LocaleFromContext(ctx)
+	key := tag.String()
 	c.mu.RLock()
-	fresh := !c.loadedAt.IsZero() && time.Since(c.loadedAt) < c.ttl
+	snap, ok := c.byLocale[key]
+	fresh := ok && !snap.loadedAt.IsZero() && time.Since(snap.loadedAt) < c.ttl
 	if fresh {
 		defer c.mu.RUnlock()
-		out := make([]ToolsRegistryEntry, len(c.entries))
-		copy(out, c.entries)
+		out := make([]ToolsRegistryEntry, len(snap.entries))
+		copy(out, snap.entries)
 		return out
 	}
 	c.mu.RUnlock()
 
 	// Refresh (best-effort; stale-on-error).
-	c.refresh(ctx)
+	c.refresh(ctx, key)
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	out := make([]ToolsRegistryEntry, len(c.entries))
-	copy(out, c.entries)
+	snap = c.byLocale[key]
+	out := make([]ToolsRegistryEntry, len(snap.entries))
+	copy(out, snap.entries)
 	return out
 }
 
@@ -463,11 +501,12 @@ func (c *ToolsRegistryCache) List(ctx context.Context) []ToolsRegistryEntry {
 // absent). Refreshes on stale. The method is hot-path (called per decision in
 // the resolve loop) so the entries search is a linear scan rather than a
 // preallocated map — 20-30 tools total in v1.3, a loop beats a map's pointer
-// chase and GC pressure.
+// chase and GC pressure. Floor is locale-independent so we use whichever
+// snapshot was loaded most recently.
 func (c *ToolsRegistryCache) Floor(toolName string) domain.ToolFloor {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	for _, e := range c.entries {
+	for _, e := range c.latestEntries {
 		if e.Name == toolName {
 			return e.Floor
 		}
@@ -480,7 +519,7 @@ func (c *ToolsRegistryCache) Floor(toolName string) domain.ToolFloor {
 func (c *ToolsRegistryCache) EditableFields(toolName string) []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	for _, e := range c.entries {
+	for _, e := range c.latestEntries {
 		if e.Name == toolName {
 			out := make([]string, len(e.EditableFields))
 			copy(out, e.EditableFields)
@@ -495,7 +534,7 @@ func (c *ToolsRegistryCache) EditableFields(toolName string) []string {
 func (c *ToolsRegistryCache) Has(toolName string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	for _, e := range c.entries {
+	for _, e := range c.latestEntries {
 		if e.Name == toolName {
 			return true
 		}
@@ -503,14 +542,14 @@ func (c *ToolsRegistryCache) Has(toolName string) bool {
 	return false
 }
 
-// refresh fetches a fresh snapshot from GET {orchestratorURL}/internal/tools.
-// On failure, preserves existing entries (stale-safe) and logs at WARN.
-// Single-in-flight dedupes concurrent refresh attempts.
-func (c *ToolsRegistryCache) refresh(ctx context.Context) {
+// refresh fetches a fresh snapshot from GET {orchestratorURL}/internal/tools
+// for the given locale key (passed as Accept-Language). On failure, preserves
+// existing entries (stale-safe). Single-in-flight per-locale dedupes
+// concurrent refresh attempts for the same locale.
+func (c *ToolsRegistryCache) refresh(ctx context.Context, localeKey string) {
 	c.mu.Lock()
-	if c.inFlight != nil {
-		// Another goroutine is refreshing; wait for it to finish.
-		ch := c.inFlight
+	if ch, ok := c.inFlight[localeKey]; ok {
+		// Another goroutine is refreshing this locale; wait for it.
 		c.mu.Unlock()
 		select {
 		case <-ch:
@@ -519,12 +558,12 @@ func (c *ToolsRegistryCache) refresh(ctx context.Context) {
 		return
 	}
 	done := make(chan struct{})
-	c.inFlight = done
+	c.inFlight[localeKey] = done
 	c.mu.Unlock()
 
 	defer func() {
 		c.mu.Lock()
-		c.inFlight = nil
+		delete(c.inFlight, localeKey)
 		close(done)
 		c.mu.Unlock()
 	}()
@@ -536,7 +575,7 @@ func (c *ToolsRegistryCache) refresh(ctx context.Context) {
 
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	entries, err := c.orch.ListTools(reqCtx)
+	entries, err := c.orch.ListTools(reqCtx, localeKey)
 	if err != nil {
 		return
 	}
@@ -545,6 +584,7 @@ func (c *ToolsRegistryCache) refresh(ctx context.Context) {
 		fresh[i] = ToolsRegistryEntry{
 			Name:            e.Name,
 			DisplayName:     e.DisplayName,
+			DisplayNameKey:  e.DisplayNameKey,
 			Platform:        e.Platform,
 			Floor:           domain.ToolFloor(e.Floor),
 			EditableFields:  e.EditableFields,
@@ -553,7 +593,7 @@ func (c *ToolsRegistryCache) refresh(ctx context.Context) {
 		}
 	}
 	c.mu.Lock()
-	c.entries = fresh
-	c.loadedAt = time.Now()
+	c.byLocale[localeKey] = localeSnapshot{entries: fresh, loadedAt: time.Now()}
+	c.latestEntries = fresh
 	c.mu.Unlock()
 }

@@ -5,20 +5,11 @@
 // based on what the owner has filled in, plus quiet tips. Read-only —
 // the owner verifies, then keeps editing the form.
 
+import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { MonoLabel } from '@/components/ui/mono-label';
 import type { Business } from '@/types/business';
-import { getTranslator } from '@/lib/i18n/translator';
-import { toneLabel, type ToneId } from '@/lib/tones';
-
-// Module-level translators for `buildSummary` (a plain helper, not a
-// hook). Two namespaces:
-//   business.categoriesShort.* — short kind labels for the summary
-//     ("кофейня", "магазин"); distinct from business.categories.* which
-//     drives the form select.
-//   business.aiSummaryRail.*   — the assembled-summary copy.
-const tCategoriesShort = getTranslator('business.categoriesShort');
-const tRail = getTranslator('business.aiSummaryRail');
+import { createToneLabel, type ToneId } from '@/lib/tones';
 
 // Truncation thresholds for the AI summary preview. We only truncate
 // when the description exceeds DESCRIPTION_PREVIEW_MAX_LEN, and we slice
@@ -29,45 +20,6 @@ const DESCRIPTION_PREVIEW_TRIM_LEN = 117;
 
 const KNOWN_CATEGORIES = new Set(['cafe', 'retail', 'service', 'beauty', 'education', 'other']);
 
-function buildSummary(business: Partial<Business> | undefined, tones: ToneId[]): string {
-  if (!business) {
-    return tRail('placeholder');
-  }
-  const name = business.name?.trim() || tRail('nameFallback');
-  const kind =
-    business.category && KNOWN_CATEGORIES.has(business.category)
-      ? tCategoriesShort(business.category as Parameters<typeof tCategoriesShort>[0])
-      : tCategoriesShort('other');
-  const where = business.address?.split(',')[0]?.trim();
-  const description = business.description?.trim();
-
-  const parts: string[] = [];
-  // ICU select keeps the optional name/where fragments out of TS — the
-  // `hasName`/`hasWhere` boolean params drive whether the brace block is
-  // emitted, so the message stays a single key without four variants.
-  parts.push(
-    tRail('describes', {
-      kind,
-      hasName: name ? 'true' : 'false',
-      name,
-      hasWhere: where ? 'true' : 'false',
-      where: where ?? '',
-    })
-  );
-  if (description) {
-    const short =
-      description.length > DESCRIPTION_PREVIEW_MAX_LEN
-        ? `${description.slice(0, DESCRIPTION_PREVIEW_TRIM_LEN).trim()}…`
-        : description;
-    parts.push(short);
-  }
-  if (tones.length > 0) {
-    const list = tones.map((id) => toneLabel(id).toLowerCase()).join(', ');
-    parts.push(tRail('toneLine', { list }));
-  }
-  return parts.join(' ');
-}
-
 export interface AISummaryRailProps {
   business?: Partial<Business>;
   tones: ToneId[];
@@ -75,7 +27,55 @@ export interface AISummaryRailProps {
 
 export function AISummaryRail({ business, tones }: AISummaryRailProps) {
   const t = useTranslations('business.aiSummary');
-  const summary = buildSummary(business, tones);
+  // Request-scoped translators (B1). The summary text used to be assembled
+  // at module load via getTranslator; that pinned the copy to `ru`.
+  // Two namespaces are needed:
+  //   business.categoriesShort.* — short kind labels ("кофейня", "магазин")
+  //     distinct from business.categories.* which drives the form select.
+  //   business.aiSummaryRail.*   — the assembled-summary copy.
+  const tCategoriesShort = useTranslations('business.categoriesShort');
+  const tRail = useTranslations('business.aiSummaryRail');
+  const tToneOptions = useTranslations('business.voiceTone.options');
+  const toneLabel = useMemo(() => createToneLabel(tToneOptions), [tToneOptions]);
+
+  const summary = useMemo(() => {
+    if (!business) {
+      return tRail('placeholder');
+    }
+    const name = business.name?.trim() || tRail('nameFallback');
+    const kind =
+      business.category && KNOWN_CATEGORIES.has(business.category)
+        ? tCategoriesShort(business.category as Parameters<typeof tCategoriesShort>[0])
+        : tCategoriesShort('other');
+    const where = business.address?.split(',')[0]?.trim();
+    const description = business.description?.trim();
+
+    const parts: string[] = [];
+    // ICU select keeps the optional name/where fragments out of TS — the
+    // `hasName`/`hasWhere` boolean params drive whether the brace block is
+    // emitted, so the message stays a single key without four variants.
+    parts.push(
+      tRail('describes', {
+        kind,
+        hasName: name ? 'true' : 'false',
+        name,
+        hasWhere: where ? 'true' : 'false',
+        where: where ?? '',
+      })
+    );
+    if (description) {
+      const short =
+        description.length > DESCRIPTION_PREVIEW_MAX_LEN
+          ? `${description.slice(0, DESCRIPTION_PREVIEW_TRIM_LEN).trim()}…`
+          : description;
+      parts.push(short);
+    }
+    if (tones.length > 0) {
+      const list = tones.map((id) => toneLabel(id).toLowerCase()).join(', ');
+      parts.push(tRail('toneLine', { list }));
+    }
+    return parts.join(' ');
+  }, [business, tones, tRail, tCategoriesShort, toneLabel]);
 
   return (
     <aside className="flex flex-col gap-3 lg:sticky lg:top-8 lg:self-start">

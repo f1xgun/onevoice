@@ -43,6 +43,12 @@ type UserService interface {
 	Logout(ctx context.Context, refreshToken string) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
+	// UpdatePreferredLocale persists the user's UI language choice
+	// (i18n Phase A3). Validation of `locale` against the allow-list happens
+	// at the handler boundary so HTTP-layer responses can return field-level
+	// 400s; this method delegates straight to the repo so DB constraint
+	// violations still surface (defense-in-depth).
+	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
 }
 
 type userService struct {
@@ -255,6 +261,20 @@ func (s *userService) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, 
 	}
 
 	return sanitizeUser(user), nil
+}
+
+// UpdatePreferredLocale delegates straight to the repo. We don't re-validate
+// the locale value here because the handler already enforces the allow-list
+// (validator tag oneof=ru en) — duplicating it here would only drift. The DB
+// CHECK constraint added in migration 000008 is the safety net.
+func (s *userService) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
+	if err := s.repo.UpdatePreferredLocale(ctx, userID, locale); err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return err
+		}
+		return fmt.Errorf("update preferred locale: %w", err)
+	}
+	return nil
 }
 
 // ChangePassword validates current password and updates to new password

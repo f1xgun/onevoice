@@ -8,8 +8,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
@@ -285,5 +289,98 @@ func TestGenerateAndSave_PreRedact(t *testing.T) {
 	}
 	if !strings.Contains(userPromptContent, "[Скрыто]") {
 		t.Fatalf("Pre-redact failed: expected [Скрыто] placeholder in prompt, got: %q", userPromptContent)
+	}
+}
+
+// --- Phase D2: locale-aware title prompt ---
+
+// TestGenerateAndSave_EnglishLocale_UsesEnglishPrompt: when the ctx carries
+// language.English, both the system instruction and the user-template
+// framing switch to English.
+func TestGenerateAndSave_EnglishLocale_UsesEnglishPrompt(t *testing.T) {
+	captureLogs(t)
+
+	router := &fakeRouter{returnContent: "Plan a post"}
+	repo := &fakeConvRepo{}
+	tt := NewTitler(router, repo, "test-model")
+
+	ctx := i18n.WithLocale(context.Background(), language.English)
+	tt.GenerateAndSave(ctx, "biz-1", "conv-1", "help me", "of course")
+
+	if router.lastReq == nil {
+		t.Fatal("router.Chat was not invoked")
+	}
+	var sys, user string
+	for _, m := range router.lastReq.Messages {
+		switch m.Role {
+		case "system":
+			sys = m.Content
+		case "user":
+			user = m.Content
+		}
+	}
+	if !strings.HasPrefix(sys, "Write a short title") {
+		t.Errorf("system prompt should be English, got: %q", sys)
+	}
+	if strings.Contains(sys, "Сформулируй") {
+		t.Errorf("system prompt leaked RU: %q", sys)
+	}
+	if !strings.HasPrefix(user, "User:") {
+		t.Errorf("user message should use EN framing, got: %q", user)
+	}
+	if strings.Contains(user, "Пользователь:") {
+		t.Errorf("user message leaked RU framing: %q", user)
+	}
+}
+
+func TestGenerateAndSave_RussianLocale_KeepsRussianPrompt(t *testing.T) {
+	// Byte-compat: explicit RU locale (and the empty-ctx default) must
+	// produce the legacy RU prompt verbatim — otherwise existing
+	// production businesses suffer a silent shift on deploy.
+	captureLogs(t)
+
+	router := &fakeRouter{returnContent: "Заголовок"}
+	repo := &fakeConvRepo{}
+	tt := NewTitler(router, repo, "test-model")
+
+	ctx := i18n.WithLocale(context.Background(), language.Russian)
+	tt.GenerateAndSave(ctx, "biz-1", "conv-1", "помоги", "конечно")
+
+	if router.lastReq == nil {
+		t.Fatal("router.Chat was not invoked")
+	}
+	var sys, user string
+	for _, m := range router.lastReq.Messages {
+		switch m.Role {
+		case "system":
+			sys = m.Content
+		case "user":
+			user = m.Content
+		}
+	}
+	if !strings.HasPrefix(sys, "Сформулируй") {
+		t.Errorf("system prompt should be RU, got: %q", sys)
+	}
+	if !strings.HasPrefix(user, "Пользователь:") {
+		t.Errorf("user message should use RU framing, got: %q", user)
+	}
+}
+
+func TestUntitledChatLocalized(t *testing.T) {
+	// Both fallback formats are stable across deploys — pin them so a typo
+	// in either months table doesn't quietly change persisted titles.
+	d := time.Date(2026, time.April, 26, 0, 0, 0, 0, time.UTC)
+	if got := untitledChatLocalized(d, language.Russian); got != "Untitled chat 26 апреля" {
+		t.Errorf("RU fallback got=%q", got)
+	}
+	if got := untitledChatLocalized(d, language.English); got != "Untitled chat April 26" {
+		t.Errorf("EN fallback got=%q", got)
+	}
+	// Zero Tag and unsupported locale fall through to RU.
+	if got := untitledChatLocalized(d, language.Tag{}); got != "Untitled chat 26 апреля" {
+		t.Errorf("zero-tag fallback got=%q", got)
+	}
+	if got := untitledChatLocalized(d, language.French); got != "Untitled chat 26 апреля" {
+		t.Errorf("unsupported-locale fallback got=%q", got)
 	}
 }

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { createTranslator } from 'next-intl';
 import { toast } from 'sonner';
 import { API_BASE_URL, API_PATHS, API_STREAM_PATHS } from '@/lib/constants/apiPaths';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
@@ -7,7 +8,7 @@ import type { User } from './auth';
 import { useBusinessStore } from '@/lib/stores/business';
 import { queryClient } from '@/lib/queryClient';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
-import { getTranslator } from '@/lib/i18n/translator';
+import { DEFAULT_LOCALE, isLocale, type Locale, LOCALE_COOKIE } from '@/lib/i18n/locales';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -15,12 +16,47 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-// Attach access token to every request
+// INVARIANT: this axios instance is CLIENT-ONLY.
+//
+// Server-rendered code paths (RSC, route handlers, server actions) MUST
+// NOT route through `lib/api.ts` — they have no access to `document`,
+// so `readClientLocale()` would silently fall back to DEFAULT_LOCALE
+// and ship the wrong user's locale to the backend. Server code should
+// construct its own fetcher (or use the next-intl server APIs) and
+// set `Accept-Language` from the incoming request's cookie / header.
+//
+// The SSR fallback below is defensive only. If it ever fires in
+// production, that indicates a server-side caller wrongly imported
+// this client module — fix the caller, not this fallback.
+
+// Read the locale cookie on the client. Server callers (RSC, route
+// handlers) hit this module only through code paths that don't reach
+// `document` — those should call the backend via their own server-side
+// fetcher. On the client we read it cookie-first so the value can't go
+// stale between renders (React state would). Falls back to DEFAULT_LOCALE
+// when running outside the browser or when the cookie isn't set yet.
+function readClientLocale(): string {
+  if (typeof document === 'undefined') return DEFAULT_LOCALE;
+  const raw = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${LOCALE_COOKIE}=`));
+  if (!raw) return DEFAULT_LOCALE;
+  const value = decodeURIComponent(raw.slice(LOCALE_COOKIE.length + 1));
+  return isLocale(value) ? value : DEFAULT_LOCALE;
+}
+
+// Attach access token + Accept-Language to every request.
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Always inject Accept-Language so the Go backend's locale middleware
+  // (Phase A1 / pkg/i18n) can pick the right catalog. Cookie wins over
+  // browser preference because the user's explicit toggle in
+  // <LanguageSwitcher> is the source of truth.
+  config.headers['Accept-Language'] = readClientLocale();
   return config;
 });
 
@@ -138,10 +174,26 @@ api.interceptors.response.use(
     ) {
       useBusinessStore.getState().clear();
       queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
-      // Re-create translator per call so a future locale switch picks it up.
-      toast.warning(getTranslator('team.errors')('staleBusiness'));
+      // Locale-aware toast (Phase B1). The interceptor runs outside the
+      // React tree, so we resolve the current locale from the cookie
+      // (same source the request interceptor above uses) and dynamically
+      // import the matching bundle. Dynamic import + a tiny inline
+      // createTranslator avoids pinning ru.json at module load.
+      void showStaleBusinessToast();
     }
 
     return Promise.reject(error);
   }
 );
+
+async function showStaleBusinessToast() {
+  const locale = readClientLocale() as Locale;
+  try {
+    const messages = (await import(`@/messages/${locale}.json`)).default;
+    const t = createTranslator({ locale, messages, namespace: 'team.errors' });
+    toast.warning(t('staleBusiness'));
+  } catch {
+    // Bundle load failed — silent fall-through. The 404 itself is the
+    // primary signal; a missing toast is acceptable degradation.
+  }
+}
