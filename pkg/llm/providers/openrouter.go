@@ -141,9 +141,8 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req llm.ChatRequest) (*ll
 			OutputTokens: resp.Usage.CompletionTokens,
 			TotalTokens:  resp.Usage.TotalTokens,
 		},
-		Latency:     time.Since(start),
-		RawResponse: resp,
-		Provider:    "openrouter",
+		Latency:  time.Since(start),
+		Provider: "openrouter",
 	}, nil
 }
 
