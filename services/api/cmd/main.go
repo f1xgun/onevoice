@@ -68,6 +68,15 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// shared *orchestratorclient.Client is reused.
 	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, svcs.OrchClient, cfg.OrchestratorFetchTimeout)
 
+	// Phase 19 Wave 3: audit-log retention sweep. Application-level
+	// replacement for pg_cron (NOT available in postgres:16-alpine —
+	// CONTEXT D-17 REVISED). Ticks every 24h, acquires
+	// pg_try_advisory_lock(hashtext('audit_logs_retention')::bigint) to
+	// serialize across replicas, then DELETEs audit_logs rows older than
+	// 365d. Non-blocking: spawns its own goroutine and returns. Lifecycle
+	// is bound to ctx (SIGTERM cancels the sweep).
+	wire.StartRetentionSweep(ctx, handles.PG, repos.AuditLog)
+
 	handlers, err := wire.Handlers(cfg, svcs, repos, handles)
 	if err != nil {
 		return err

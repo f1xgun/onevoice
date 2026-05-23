@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
@@ -56,6 +57,13 @@ type Services struct {
 	// (Phase 2 v2.0 RBAC). Non-nil — the middleware panics on a nil cache
 	// at request time.
 	AuthzCache *authz.Cache
+
+	// AuditLogger is the fire-and-forget async writer for audit_logs
+	// (Phase 19 Wave 2). Constructed once here and injected into every
+	// service / handler that records security-sensitive mutations
+	// (wiring done in Plan 19-04). Safe to call from any goroutine; never
+	// blocks the request path.
+	AuditLogger audit.Logger
 
 	// reviewSyncerCancel is captured so Close() can stop the background
 	// ticker goroutine. nil when ReviewSyncer is nil.
@@ -111,6 +119,11 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s := &Services{
 		TaskHub:    taskhub.New(),
 		OrchClient: orchClient,
+		// Phase 19 Wave 2: audit logger constructed once here and shared
+		// across every service / handler that records security-sensitive
+		// mutations. Async + bounded retry + metric-on-failure live inside
+		// pkg/audit; consumers just call AuditLogger.Log(ctx, entry).
+		AuditLogger: audit.NewLogger(repos.AuditLog),
 	}
 
 	// Auto-titler LLM Router wiring.
