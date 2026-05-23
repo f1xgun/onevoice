@@ -19,7 +19,11 @@ import { MonoLabel } from '@/components/ui/mono-label';
 export default async function NotFound() {
   const t = await getTranslations('common.notFound');
   return (
-    <main className="flex min-h-screen w-full items-center justify-center bg-paper px-6 py-16">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="flex min-h-screen w-full items-center justify-center bg-paper px-6 py-16 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+    >
       <div className="flex w-full max-w-[480px] flex-col items-center gap-5 rounded-lg border border-line bg-paper-raised px-8 py-20 text-center shadow-ov-1">
         <MonoLabel className="text-ink-soft">{t('errorLabel')}</MonoLabel>
         <div

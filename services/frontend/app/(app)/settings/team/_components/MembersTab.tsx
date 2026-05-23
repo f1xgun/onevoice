@@ -148,7 +148,13 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span tabIndex={-1} aria-disabled="true">
-                            <Button variant="ghost" size="icon" disabled className="h-8 w-8">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled
+                              aria-label={tActions('menuAria', { name: m.user.email })}
+                              className="h-8 w-8"
+                            >
                               <MoreHorizontal size={16} aria-hidden />
                             </Button>
                           </span>

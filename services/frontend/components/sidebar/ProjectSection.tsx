@@ -95,7 +95,7 @@ export function ProjectSection({
         >
           <FolderOpen size={12} className="shrink-0 text-ink-faint" />
           <span className="flex-1 truncate">{project.name}</span>
-          <span className="text-xs text-ink-faint">· {count}</span>
+          <span className="text-xs text-ink-soft">· {count}</span>
         </Link>
         {canCreate && (
           <button
@@ -122,8 +122,6 @@ export function ProjectSection({
         <div
           ref={containerRef as RefObject<HTMLDivElement>}
           onKeyDown={onKeyDown}
-          role="listbox"
-          aria-label={tSideProject('chatsAria', { name: project.name })}
           className="ml-5 mt-0.5 space-y-0.5"
         >
           {visible.map((conv, i) => {
@@ -135,8 +133,7 @@ export function ProjectSection({
                   onClick={onNavigate}
                   data-roving-item
                   tabIndex={i === 0 ? 0 : -1}
-                  role="option"
-                  aria-selected={conv.id === activeConversationId}
+                  aria-current={conv.id === activeConversationId ? 'page' : undefined}
                   className={cn(
                     'flex flex-1 items-center gap-1 truncate rounded-md px-2 py-1 text-xs transition-colors',
                     conv.id === activeConversationId

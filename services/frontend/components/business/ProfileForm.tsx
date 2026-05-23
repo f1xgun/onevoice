@@ -190,7 +190,12 @@ export function ProfileForm({ defaultValues }: { defaultValues?: Partial<Busines
             name="category"
             render={({ field }) => (
               <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                <SelectTrigger id="category" onBlur={field.onBlur} ref={field.ref}>
+                <SelectTrigger
+                  id="category"
+                  aria-label={tProfileForm('fields.category')}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                >
                   <SelectValue placeholder={tProfileForm('categoryPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>

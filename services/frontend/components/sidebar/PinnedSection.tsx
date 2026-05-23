@@ -80,15 +80,13 @@ export function PinnedSection({
         )}
         <Bookmark size={12} className="shrink-0 text-yellow-400" />
         <span className="flex-1 truncate text-left">{tSide('pinned')}</span>
-        <span className="text-xs text-ink-faint">· {count}</span>
+        <span className="text-xs text-ink-soft">· {count}</span>
       </button>
 
       {!collapsed && (
         <div
           ref={containerRef as RefObject<HTMLDivElement>}
           onKeyDown={onKeyDown}
-          role="listbox"
-          aria-label={tSide('pinnedSectionAria')}
           className="ml-5 mt-0.5 space-y-0.5"
         >
           {visible.map((conv, i) => {
@@ -100,8 +98,7 @@ export function PinnedSection({
                   onClick={onNavigate}
                   data-roving-item
                   tabIndex={i === 0 ? 0 : -1}
-                  role="option"
-                  aria-selected={conv.id === activeConversationId}
+                  aria-current={conv.id === activeConversationId ? 'page' : undefined}
                   className={cn(
                     'flex flex-1 items-center gap-1 truncate rounded-md px-2 py-1 text-xs transition-colors',
                     conv.id === activeConversationId

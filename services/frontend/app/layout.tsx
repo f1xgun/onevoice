@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import './globals.css';
 import { Providers } from '@/components/providers';
+import { SkipLink } from '@/components/a11y/skip-link';
 
 // Manrope is the cyrillic-supporting fallback for Mona Sans (the design spec's
 // preferred sans). Mona Sans on Google Fonts ships latin only — see
@@ -45,6 +46,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang={locale} className={`${sans.variable} ${mono.variable}`}>
       <body className="font-sans antialiased">
         <NextIntlClientProvider locale={locale} messages={messages}>
+          <SkipLink />
           <Providers>{children}</Providers>
         </NextIntlClientProvider>
       </body>

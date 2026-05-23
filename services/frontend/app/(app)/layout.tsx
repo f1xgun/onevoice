@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
 import { trackEvent } from '@/lib/telemetry';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Sidebar } from '@/components/sidebar';
 import { NavRail } from '@/components/sidebar/NavRail';
 import { ProjectPane } from '@/components/sidebar/ProjectPane';
@@ -29,6 +30,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // Start as true so we always show a loading state until the effect has run
   // This prevents the brief flash of protected content
   const [ready, setReady] = useState(false);
+  const isDesktop = useIsDesktop();
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -106,56 +108,91 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             shell but only after BusinessRequiredGuard resolves a valid
             activeBusinessId. Renders no DOM. */}
         <PermissionsCacheGuard />
-        {/* Mobile: keep the existing Sheet-based drawer (Sidebar) which
-            renders top bar + drawer with the full nav + project tree.
-            The flex-column + h-screen pair gives <main> a real height so
-            h-full layouts inside (chat composer at the bottom, etc.)
-            actually work — without it h-full collapses to 0 and the
-            composer drifts to wherever content ends. */}
-        <div className="flex h-screen flex-col md:hidden">
-          <Sidebar />
-          <main className="min-h-0 flex-1 overflow-y-auto bg-background">{children}</main>
-        </div>
-
-        {/* Desktop: NavRail (always) + PanelGroup hosting conditional
-            ProjectPane and main content. autoSaveId persists the resized
-            width to localStorage under
-            `react-resizable-panels:onevoice:sidebar-width`. */}
-        <div className="hidden h-screen md:flex">
-          <NavRail />
-          <PanelGroup direction="horizontal" autoSaveId="onevoice:sidebar-width" className="flex-1">
-            {showProjectPane && (
-              <>
-                {/* defaultSize=22 ≈ 280 px on a 1280 px viewport
-                    (default 280 px). minSize=12 / maxSize=35 cover the
-                    locked 200–480 px range without clipping.
-                    Explicit id+order keep the panel registry stable when
-                    showProjectPane toggles between routes — without them
-                    react-resizable-panels v3 re-keys panels on remount and
-                    the resize handle ends up reporting deltas against the
-                    wrong neighbour, inverting the drag direction. */}
-                <Panel
-                  id="project-pane"
-                  order={1}
-                  defaultSize={22}
-                  minSize={12}
-                  maxSize={35}
-                  className="motion-reduce:transition-none"
+        {isDesktop ? (
+          <div className="flex h-screen">
+            <NavRail />
+            <PanelGroup
+              direction="horizontal"
+              autoSaveId="onevoice:sidebar-width"
+              className="flex-1"
+            >
+              {showProjectPane && (
+                <>
+                  {/* defaultSize=22 ≈ 280 px on a 1280 px viewport
+                      (default 280 px). minSize=12 / maxSize=35 cover the
+                      locked 200–480 px range without clipping.
+                      Explicit id+order keep the panel registry stable when
+                      showProjectPane toggles between routes — without them
+                      react-resizable-panels v3 re-keys panels on remount and
+                      the resize handle ends up reporting deltas against the
+                      wrong neighbour, inverting the drag direction. */}
+                  <Panel
+                    id="project-pane"
+                    order={1}
+                    defaultSize={22}
+                    minSize={12}
+                    maxSize={35}
+                    className="motion-reduce:transition-none"
+                  >
+                    <ProjectPane />
+                  </Panel>
+                  {/* PanelResizeHandle already renders role="separator" with
+                      aria-controls + aria-label, so it's a self-contained,
+                      focusable, labelled control. The earlier role="region"
+                      wrapper duplicated the announcement (axe M4 review):
+                      Tab would announce "region, Изменить ширину…" then
+                      "separator, Изменить ширину…". Drop the wrapper.
+                      aria-orientation="vertical" disambiguates the separator
+                      axis for AT and documents intent for axe's region rule —
+                      a 1-px separator between two landmarks is not itself a
+                      landmark, so the residual region-rule warning is a known
+                      false positive. */}
+                  <PanelResizeHandle
+                    id="project-pane-handle"
+                    aria-label={tSidebar('resizeAria')}
+                    aria-orientation="vertical"
+                    className="h-full w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
+                  />
+                </>
+              )}
+              <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
+                {/* tabIndex={-1}: makes <main> programmatically focusable so
+                    activating the SkipLink moves keyboard focus here. Without
+                    it, the hash navigation only scrolls; the next Tab would
+                    advance from the link's DOM position (back into the
+                    sidebar). Doesn't add <main> to the tab order.
+                    focus-visible:outline-ink (keyboard-only, not mouse) gives
+                    a brief visible confirmation that focus actually moved
+                    here — required by WCAG 2.4.7 since the skip-link's only
+                    purpose is to transfer focus. */}
+                <main
+                  id="main-content"
+                  tabIndex={-1}
+                  className="h-full overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                 >
-                  <ProjectPane />
-                </Panel>
-                <PanelResizeHandle
-                  id="project-pane-handle"
-                  aria-label={tSidebar('resizeAria')}
-                  className="w-px bg-[var(--ov-line)] transition-colors hover:bg-[var(--ov-ink-faint)]"
-                />
-              </>
-            )}
-            <Panel id="main" order={2} defaultSize={78} className="motion-reduce:transition-none">
-              <main className="h-full overflow-y-auto bg-background">{children}</main>
-            </Panel>
-          </PanelGroup>
-        </div>
+                  {children}
+                </main>
+              </Panel>
+            </PanelGroup>
+          </div>
+        ) : (
+          // h-screen + flex-col gives <main> a real height — without it h-full
+          // children (chat composer) collapse to 0 and drift to content end.
+          <div className="flex h-screen flex-col">
+            <Sidebar />
+            {/* tabIndex={-1}: see desktop branch above — required for the
+                SkipLink to actually transfer keyboard focus into <main>.
+                focus-visible outline mirrors the desktop branch — a brief
+                ink ring is the only cue that focus moved (WCAG 2.4.7). */}
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="min-h-0 flex-1 overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              {children}
+            </main>
+          </div>
+        )}
       </>
     </BusinessRequiredGuard>
   );

@@ -70,6 +70,7 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
   return (
     <aside
       data-testid="project-pane"
+      aria-label={tSide('paneAria')}
       className="flex h-full flex-col gap-2 overflow-y-auto bg-paper-raised px-2 py-2 text-ink"
     >
       {/* SidebarSearch. The data-testid wrapper is preserved so earlier
@@ -110,7 +111,7 @@ export function ProjectPane({ onNavigate }: ProjectPaneProps = {}) {
       <Link
         href="/projects/new"
         onClick={onNavigate}
-        className="mt-1 block px-2 py-1 text-xs text-ink-faint hover:text-ink"
+        className="mt-1 block px-2 py-1 text-xs text-ink-soft hover:text-ink"
       >
         {tSide('newProject')}
       </Link>

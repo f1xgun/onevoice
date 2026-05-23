@@ -30,8 +30,8 @@ import { Badge } from '@/components/ui/badge';
 const REVIEWS_REFRESH_TIMEOUT_MS = 120_000;
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRadiogroupKeyboard } from '@/hooks/useRadiogroupKeyboard';
 import { EmptyReviews, type ReviewsEmptyMode } from '@/components/states';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -91,6 +91,16 @@ function platformHasRating(id: string): boolean {
 // The badge record itself is built per-render via useReviewStatusBadges()
 // inside the consumer so a locale switch swaps the labels.
 type StatusKey = ReviewStatus;
+
+// Reply-status radiogroup option order — used both for rendering the chips
+// and for the arrow-key navigation hook (which walks this list to decide
+// which radio comes next).
+type ReplyStatusFilter = 'all' | 'pending' | 'replied';
+const REVIEWS_REPLY_STATUS_OPTIONS = [
+  'all',
+  'pending',
+  'replied',
+] as const satisfies readonly ReplyStatusFilter[];
 
 function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
   const tReviews = useTranslations('reviews');
@@ -159,10 +169,20 @@ export default function ReviewsPage() {
   const tReviews = useTranslations('reviews');
   const tCommon = useTranslations('common');
   const [platform, setPlatform] = useState<string>('all');
-  const [replyStatus, setReplyStatus] = useState<string>('all');
+  const [replyStatus, setReplyStatus] = useState<ReplyStatusFilter>('all');
   const [replyDialog, setReplyDialog] = useState<Review | null>(null);
   const [replyText, setReplyText] = useState('');
   const canReply = usePermission('content.update').allowed;
+
+  // Reply-status radiogroup keyboard handler — wires ArrowLeft/Right/Up/Down
+  // + Home/End so the `role="radiogroup"` chips below satisfy the
+  // WAI-ARIA radiogroup keyboard contract. Native <button role="radio">
+  // doesn't get this for free; only <input type="radio"> does.
+  const replyStatusRadio = useRadiogroupKeyboard<ReplyStatusFilter>({
+    options: REVIEWS_REPLY_STATUS_OPTIONS,
+    value: replyStatus,
+    onValueChange: setReplyStatus,
+  });
 
   const { data: reviews = [], isLoading } = useQuery<Review[]>({
     queryKey: ['businesses', activeBusinessId, 'reviews', platform, replyStatus],
@@ -275,7 +295,11 @@ export default function ReviewsPage() {
         {/* Filter bar — platform select + reply-status tabs. */}
         <div className="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-line bg-paper-raised px-4 py-3">
           <Select value={platform} onValueChange={setPlatform}>
-            <SelectTrigger className="h-9 w-[200px]">
+            <SelectTrigger
+              id="reviews-platform-select"
+              aria-label={tReviews('platformPlaceholder')}
+              className="h-9 w-[200px]"
+            >
               <SelectValue placeholder={tReviews('platformPlaceholder')} />
             </SelectTrigger>
             <SelectContent>
@@ -290,13 +314,44 @@ export default function ReviewsPage() {
             </SelectContent>
           </Select>
 
-          <Tabs value={replyStatus} onValueChange={setReplyStatus}>
-            <TabsList>
-              <TabsTrigger value="all">{tReviews('tabs.all')}</TabsTrigger>
-              <TabsTrigger value="pending">{tReviews('tabs.pending')}</TabsTrigger>
-              <TabsTrigger value="replied">{tReviews('tabs.replied')}</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {/* Reply-status filter — radiogroup of chip buttons. We avoid
+              Radix <Tabs> here because it internally emits
+              aria-controls IDREFs that point at TabsContent panels we don't
+              render, which axe-core flags as aria-valid-attr-value. A
+              radiogroup is the correct semantic primitive for a one-of-N
+              filter and emits no IDREF attributes. */}
+          <div
+            role="radiogroup"
+            aria-label={tReviews('replyStatusLabel')}
+            onKeyDown={replyStatusRadio.onKeyDown}
+            className="inline-flex h-9 items-center justify-center gap-0.5 rounded-lg bg-muted p-1 text-muted-foreground"
+          >
+            {(
+              [
+                ['all', tReviews('tabs.all')],
+                ['pending', tReviews('tabs.pending')],
+                ['replied', tReviews('tabs.replied')],
+              ] as [ReplyStatusFilter, string][]
+            ).map(([key, label]) => {
+              const active = replyStatus === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setReplyStatus(key)}
+                  {...replyStatusRadio.getRadioProps(key)}
+                  className={cn(
+                    'duration-[120ms] inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-[background,color,box-shadow] ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    active && 'bg-background text-foreground shadow'
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
 
           <Button
             type="button"

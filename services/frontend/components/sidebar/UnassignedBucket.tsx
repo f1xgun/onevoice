@@ -81,7 +81,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
             <span className="min-w-0 flex-1 truncate italic text-ink-soft">
               {tSide('unassigned')}
             </span>
-            <span className="shrink-0 text-xs text-ink-faint">· {count}</span>
+            <span className="shrink-0 text-xs text-ink-soft">· {count}</span>
           </span>
         </button>
         {canCreate && (
@@ -109,8 +109,6 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
         <div
           ref={containerRef as RefObject<HTMLDivElement>}
           onKeyDown={onKeyDown}
-          role="listbox"
-          aria-label={tSide('unassignedSectionAria')}
           className="ml-5 mt-0.5 space-y-0.5"
         >
           {visible.map((conv, i) => {
@@ -122,8 +120,7 @@ export function UnassignedBucket({ conversations, activeConversationId, onNaviga
                   onClick={onNavigate}
                   data-roving-item
                   tabIndex={i === 0 ? 0 : -1}
-                  role="option"
-                  aria-selected={conv.id === activeConversationId}
+                  aria-current={conv.id === activeConversationId ? 'page' : undefined}
                   className={cn(
                     'flex flex-1 items-center gap-1 truncate rounded-md px-2 py-1 text-xs transition-colors',
                     conv.id === activeConversationId

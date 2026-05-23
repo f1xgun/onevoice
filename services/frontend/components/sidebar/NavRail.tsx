@@ -66,6 +66,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const tNav = useTranslations('nav');
+  const tSidebar = useTranslations('sidebar');
   const platformFullLabels = usePlatformFullLabels();
   const logout = useAuthStore((s) => s.logout);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
@@ -99,6 +100,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
     <TooltipProvider delayDuration={150}>
       <aside
         data-testid="nav-rail"
+        aria-label={tSidebar('railWrapperAria')}
         className="flex h-screen w-14 shrink-0 flex-col items-center border-r border-line bg-paper-raised py-2"
       >
         {/* BusinessSwitcher — visible payoff of the v2.0 multi-tenant model.
@@ -120,7 +122,7 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
         {/* Vertical nav-list. Active state: ink icon + 2px ochre left bar
             (no background change). Idle: ink-soft → ink on hover with
             paper-sunken wash. */}
-        <nav className="flex flex-1 flex-col gap-1">
+        <nav aria-label={tNav('railAria')} className="flex flex-1 flex-col gap-1">
           {navItems.map(({ href, labelKey, icon: Icon }) => {
             const isActive = pathname.startsWith(href);
             const label = tNav(labelKey);

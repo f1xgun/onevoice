@@ -144,9 +144,7 @@ describe('mobile drawer', () => {
     });
 
     // Click the chat-row Link → onNavigate → setOpen(false).
-    // Note: chat-row links carry role="option" (listbox
-    // pattern), so we query by `option`, not `link`.
-    await user.click(screen.getByRole('option', { name: /Первый чат/ }));
+    await user.click(screen.getByRole('link', { name: /Первый чат/ }));
 
     // Radix unmounts the dialog from the DOM after close-state animation.
     await waitFor(() => {
