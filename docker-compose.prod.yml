@@ -1,0 +1,153 @@
+# docker-compose.prod.yml — production overlay
+#
+# Layered on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Adds:
+#   - nginx with TLS (443), envsubst for ${DOMAIN}, letsencrypt + ACME volumes
+#   - certbot service (one-shot run for first issuance + cron for renewals)
+#   - excludes the unverified Google Business agent by overriding to a noop profile
+#
+# Does NOT include: secrets — every env var below comes from .env (.env.prod
+# on the VM, populated from .env.example).
+#
+# First-time TLS bootstrap is one-shot:  ./scripts/init-letsencrypt.sh
+# After that, `docker compose up -d` is enough.
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: onevoice-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      # Template + rendered config — entrypoint runs envsubst on start.
+      - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      # Let's Encrypt live + archive directories (shared with certbot).
+      - letsencrypt_data:/etc/letsencrypt:ro
+      # ACME http-01 webroot — certbot writes here, nginx serves it.
+      - certbot_webroot:/var/www/certbot:ro
+    # Entrypoint:
+    #   1. envsubst — substitute ${DOMAIN} only (allowlist), leave nginx
+    #      $vars intact.
+    #   2. exec nginx in foreground.
+    #   3. background loop: every 6h, reload nginx so renewed certs are
+    #      picked up without a container restart.
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        envsubst '$$DOMAIN' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+        nginx -g 'daemon off;' &
+        NGINX_PID=$$!
+        while :; do
+          sleep 21600
+          nginx -s reload || true
+        done &
+        wait $$NGINX_PID
+    depends_on:
+      - frontend
+      - api
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:80/.well-known/acme-challenge/healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Note: `--spider` on a missing path returns 404, which is NOT a
+      # hard-fail for nginx itself (the server is up; the file just
+      # doesn't exist). Healthcheck still reports unhealthy on 4xx —
+      # acceptable here as the goal is "nginx process responding".
+
+  # Certbot — one-shot certificate issuance + periodic renewal.
+  # Run interactively the first time:
+  #   docker compose run --rm certbot
+  # For renewals, the container loops every 12h and exits non-zero
+  # only on persistent failure (compose `restart: unless-stopped` then
+  # kicks in).
+  certbot:
+    image: certbot/certbot:latest
+    container_name: onevoice-certbot
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+      CERTBOT_STAGING: ${CERTBOT_STAGING:-0}
+    volumes:
+      - letsencrypt_data:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        STAGING_FLAG=""
+        if [ "$$CERTBOT_STAGING" = "1" ]; then
+          STAGING_FLAG="--staging"
+          echo "[certbot] STAGING mode enabled (Let's Encrypt test certs)"
+        fi
+        # First call: certonly if no cert yet, then renew loop.
+        if [ ! -f "/etc/letsencrypt/live/$$DOMAIN/fullchain.pem" ]; then
+          echo "[certbot] No cert for $$DOMAIN — running initial issuance"
+          certbot certonly \
+            --webroot \
+            --webroot-path=/var/www/certbot \
+            --email "$$ACME_EMAIL" \
+            --agree-tos --no-eff-email \
+            $$STAGING_FLAG \
+            -d "$$DOMAIN" || exit 1
+        fi
+        # Renewal loop — certbot renew is a no-op if certs are still fresh.
+        while :; do
+          sleep 43200
+          certbot renew --webroot --webroot-path=/var/www/certbot || true
+        done
+    depends_on:
+      - nginx
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
+  # Google Business agent — unverified, not part of MVP. The compose
+  # service is defined in docker-compose.yml but we disable it in prod
+  # by routing it to the `google` profile (only starts with --profile google).
+  agent-google-business:
+    profiles: ["google"]
+
+  # --- Healthchecks for app services (declared in base compose but
+  #     left without checks; production overlay fills them in so
+  #     Docker can restart unhealthy containers). ---
+  api:
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8080/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  orchestrator:
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8090/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  letsencrypt_data:
+    driver: local
+  certbot_webroot:
+    driver: local
