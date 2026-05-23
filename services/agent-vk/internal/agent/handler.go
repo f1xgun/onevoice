@@ -41,7 +41,8 @@ type VKClient interface {
 // VKClientFactory creates a VK client from an access token.
 type VKClientFactory func(accessToken string) VKClient
 
-// Handler implements a2a.Handler for the VK agent.
+// Handler is the VK agent's per-request processor. Its Handle method
+// satisfies a2a.Exec and is wired into a2a.NewAgent from cmd/main.go.
 type Handler struct {
 	tokens        TokenFetcher
 	clientFactory VKClientFactory

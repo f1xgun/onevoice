@@ -52,7 +52,7 @@ func run() error {
 	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyYandexError))
 	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool}, dispatcher)
 	transport := a2a.NewNATSTransport(nc)
-	ag := a2a.NewAgent(a2a.AgentYandexBusiness, transport, handler)
+	ag := a2a.NewAgent(a2a.AgentYandexBusiness, transport, handler.Handle)
 
 	// Health server
 	hc := health.New()
