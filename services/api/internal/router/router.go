@@ -11,6 +11,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/health"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
@@ -92,7 +93,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 	// metrics / auth so even unauthenticated error responses can be localized
 	// off the Accept-Language header. See pkg/i18n + Phase A1 of
 	// `.planning/i18n-readiness/PLAN.md`.
-	r.Use(middleware.Locale)
+	r.Use(i18n.LocaleMiddleware)
 	r.Use(middleware.SecurityHeaders())
 	r.Use(metrics.HTTPMiddleware)
 
@@ -320,7 +321,7 @@ func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.CorrelationID())
-	r.Use(middleware.Locale)
+	r.Use(i18n.LocaleMiddleware)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 
