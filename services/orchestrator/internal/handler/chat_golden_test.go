@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/sse"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/handler"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 )
@@ -63,7 +64,7 @@ func TestChatHandler_WireGolden(t *testing.T) {
 		{
 			Type:    orchestrator.EventToolApprovalRequired,
 			BatchID: "batch-1",
-			Calls: []orchestrator.ApprovalCallSummary{
+			Calls: []sse.ApprovalCall{
 				{
 					CallID:         "tc-3",
 					ToolName:       "vk__post_to_wall",

@@ -71,17 +71,12 @@ type Event struct {
 	// endpoint with the same identifier at approval time.
 	BatchID string
 	// Calls is set on EventToolApprovalRequired events with one entry per
-	// manual-floor tool call bundled into the batch.
-	Calls []ApprovalCallSummary
+	// manual-floor tool call bundled into the batch. sse.ApprovalCall lives in
+	// pkg/sse so the same shape is consumed by the api's HITL coordinator and
+	// the implicit-resume re-emit path — single source of truth for the
+	// tool_approval_required wire contract.
+	Calls []sse.ApprovalCall
 }
-
-// ApprovalCallSummary is the per-call projection bundled into a
-// tool_approval_required event. It is an alias for the canonical
-// pkg/sse.ApprovalCall type so the orchestrator's internal callers
-// (step.go's summarizeManualCalls, etc.) keep their existing identifier
-// while the wire shape lives in one place. The alias means no copy / no
-// drift — same struct, same JSON tags.
-type ApprovalCallSummary = sse.ApprovalCall
 
 // LLMClient abstracts the Router for testability.
 type LLMClient interface {
