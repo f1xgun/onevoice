@@ -1,9 +1,10 @@
-package repository
+package hitlstore_test
 
 import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,14 +16,15 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/hitlstore"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // setupPendingToolCallDB returns a fresh isolated Mongo database for a single
-// pending-tool-call test and ensures the indexes are created before tests
-// interact with the collection. Skips the whole test if MONGO_TEST_URI is
-// not set — CI runs without Mongo and the integration-style tests must not
-// fail there. Matches the pattern established by mongo_backfill_test.go.
+// pending-tool-call test. Skips the whole test if MONGO_TEST_URI is not set —
+// CI runs without Mongo and these integration-style tests must not fail
+// there. Matches the pattern established by mongo_backfill_test.go in
+// services/api.
 func setupPendingToolCallDB(t *testing.T, name string) *mongo.Database {
 	t.Helper()
 
@@ -38,7 +40,7 @@ func setupPendingToolCallDB(t *testing.T, name string) *mongo.Database {
 		t.Skipf("MongoDB not reachable: %v", pingErr)
 	}
 
-	db := client.Database("test_phase16_pending_" + name)
+	db := client.Database("test_hitlstore_pending_" + name)
 	t.Cleanup(func() {
 		if err := db.Drop(ctx); err != nil {
 			t.Logf("warning: drop test database: %v", err)
@@ -61,10 +63,9 @@ func TestPendingToolCall_EnsureIndexes_Idempotent(t *testing.T) {
 	db := setupPendingToolCallDB(t, "ensure_idempotent")
 	ctx := context.Background()
 
-	// First run — creates indexes.
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
 	// Second run — must be a no-op.
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
 
 	specs, err := db.Collection("pending_tool_calls").Indexes().ListSpecifications(ctx)
 	require.NoError(t, err)
@@ -78,11 +79,201 @@ func TestPendingToolCall_EnsureIndexes_Idempotent(t *testing.T) {
 	assert.True(t, names["pending_tool_calls_business"], "business_id index must exist")
 }
 
+// TestInsertPreparing_DoesNotSetExpiresAt proves the TTL guard: if
+// InsertPreparing set expires_at = now+24h immediately, a
+// crash-before-PromoteToPending followed by a delayed reconciliation sweep
+// could still leave the row ticking toward TTL deletion. The crash-recovery
+// path (ReconcileOrphanPreparing) requires that preparing rows do NOT carry
+// expires_at so the TTL index ignores them, and the sweep (not the TTL) is
+// the single reaper.
+func TestInsertPreparing_DoesNotSetExpiresAt(t *testing.T) {
+	db := setupPendingToolCallDB(t, "insert_no_expires")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	batch := &domain.PendingToolCallBatch{
+		ID:             "prep-1",
+		ConversationID: "conv-1",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+		Calls: []domain.PendingCall{
+			{CallID: "c1", ToolName: tools.TelegramSendChannelPost, Arguments: map[string]interface{}{"text": "hi"}},
+		},
+	}
+	require.NoError(t, repo.InsertPreparing(ctx, batch))
+
+	got, err := repo.GetByBatchID(ctx, "prep-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "preparing", got.Status, "InsertPreparing must write status=preparing")
+	assert.True(t, got.ExpiresAt.IsZero(), "ExpiresAt MUST be zero on a preparing row (prevents premature TTL fire)")
+	assert.False(t, got.CreatedAt.IsZero(), "CreatedAt must be set")
+	assert.False(t, got.UpdatedAt.IsZero(), "UpdatedAt must be set")
+}
+
+// TestPromoteToPending_SetsExpiresAt24h proves the TTL window is exactly 24h
+// after PromoteToPending. The [23h55m, 24h05m] tolerance window absorbs
+// wall-clock drift between the repo write and the test's time.Now()
+// comparison.
+func TestPromoteToPending_SetsExpiresAt24h(t *testing.T) {
+	db := setupPendingToolCallDB(t, "promote_24h")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	batch := &domain.PendingToolCallBatch{
+		ID:             "prep-2",
+		ConversationID: "conv-1",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+	}
+	require.NoError(t, repo.InsertPreparing(ctx, batch))
+
+	before := time.Now().UTC()
+	require.NoError(t, repo.PromoteToPending(ctx, "prep-2"))
+
+	got, err := repo.GetByBatchID(ctx, "prep-2")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "pending", got.Status)
+
+	lowerBound := before.Add(23*time.Hour + 55*time.Minute)
+	upperBound := time.Now().UTC().Add(24*time.Hour + 5*time.Minute)
+	assert.True(t, got.ExpiresAt.After(lowerBound),
+		"ExpiresAt %v must be after lower bound %v", got.ExpiresAt, lowerBound)
+	assert.True(t, got.ExpiresAt.Before(upperBound),
+		"ExpiresAt %v must be before upper bound %v", got.ExpiresAt, upperBound)
+}
+
+// TestInsertPreparing_RejectsEmptyConversationID is the regression guard for
+// the empty-ID bug. Pre-fix, the orchestrator HTTP handler defaulted
+// RunRequest.ConversationID = "" because chi.URLParam was never read, and
+// the API proxy omitted the message_id / user_id forwards entirely. Every
+// pending_tool_calls Mongo row then carried "" for all four identity fields,
+// breaking pending-batch hydration (filter is {conversation_id, status:"pending"})
+// and the resolve-time business-scoped auth check (always compared "" == X).
+//
+// The repository must fail LOUD at insert time so any future regression of
+// either chat.go or chat_proxy.go cannot silently write empty IDs again.
+func TestInsertPreparing_RejectsEmptyConversationID(t *testing.T) {
+	db := setupPendingToolCallDB(t, "reject_empty_conv")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	batch := &domain.PendingToolCallBatch{
+		ID:             "guard-empty-conv-1",
+		ConversationID: "",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+	}
+
+	err := repo.InsertPreparing(ctx, batch)
+	require.Error(t, err, "InsertPreparing must reject empty conversation_id")
+	assert.True(t,
+		strings.Contains(err.Error(), "conversation_id"),
+		"error must mention conversation_id, got: %v", err)
+
+	count, countErr := db.Collection("pending_tool_calls").CountDocuments(ctx, bson.M{"_id": "guard-empty-conv-1"})
+	require.NoError(t, countErr)
+	assert.Equal(t, int64(0), count, "rejected batch must NOT be persisted")
+}
+
+// TestInsertPreparing_RejectsEmptyBusinessID covers the other half of the
+// structural floor. Without a non-empty business_id, the resolve-time auth
+// check (`batch.BusinessID == requesterBusinessID`) is a no-op and any user
+// could resolve any batch — a security regression.
+func TestInsertPreparing_RejectsEmptyBusinessID(t *testing.T) {
+	db := setupPendingToolCallDB(t, "reject_empty_biz")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	batch := &domain.PendingToolCallBatch{
+		ID:             "guard-empty-biz-1",
+		ConversationID: "conv-1",
+		BusinessID:     "",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+	}
+
+	err := repo.InsertPreparing(ctx, batch)
+	require.Error(t, err, "InsertPreparing must reject empty business_id")
+	assert.True(t,
+		strings.Contains(err.Error(), "business_id"),
+		"error must mention business_id, got: %v", err)
+
+	count, countErr := db.Collection("pending_tool_calls").CountDocuments(ctx, bson.M{"_id": "guard-empty-biz-1"})
+	require.NoError(t, countErr)
+	assert.Equal(t, int64(0), count, "rejected batch must NOT be persisted")
+}
+
+// TestInsertPreparing_HappyPath baseline — a fully-populated batch inserts
+// successfully. Pairs with the two rejection tests above so the guard's
+// failure mode and success mode are both exercised in the same package.
+func TestInsertPreparing_HappyPath(t *testing.T) {
+	db := setupPendingToolCallDB(t, "happy_path_full_ids")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	batch := &domain.PendingToolCallBatch{
+		ID:             "guard-happy-1",
+		ConversationID: "conv-1",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+	}
+
+	require.NoError(t, repo.InsertPreparing(ctx, batch), "fully-populated batch must insert successfully")
+
+	got, getErr := repo.GetByBatchID(ctx, "guard-happy-1")
+	require.NoError(t, getErr)
+	require.NotNil(t, got)
+	assert.Equal(t, "preparing", got.Status)
+	assert.Equal(t, "conv-1", got.ConversationID)
+	assert.Equal(t, "biz-1", got.BusinessID)
+}
+
+// TestPromoteToPending_OnAlreadyPending_Returns_ErrBatchNotFound guards
+// idempotency: a double-promote must NOT double-set expires_at or otherwise
+// mutate the row. The filter {_id, status:"preparing"} rejects anything that
+// already advanced, and the repo returns ErrBatchNotFound so callers can
+// distinguish "never existed" from "already progressed" via a follow-up
+// GetByBatchID if they care.
+func TestPromoteToPending_OnAlreadyPending_Returns_ErrBatchNotFound(t *testing.T) {
+	db := setupPendingToolCallDB(t, "promote_already_pending")
+	ctx := context.Background()
+	repo := hitlstore.NewPendingToolCallRepository(db)
+
+	batch := &domain.PendingToolCallBatch{
+		ID:             "prep-3",
+		ConversationID: "conv-1",
+		BusinessID:     "biz-1",
+		UserID:         "user-1",
+		MessageID:      "msg-1",
+	}
+	require.NoError(t, repo.InsertPreparing(ctx, batch))
+	require.NoError(t, repo.PromoteToPending(ctx, "prep-3"))
+
+	firstGet, err := repo.GetByBatchID(ctx, "prep-3")
+	require.NoError(t, err)
+	firstExpires := firstGet.ExpiresAt
+
+	err = repo.PromoteToPending(ctx, "prep-3")
+	assert.True(t, errors.Is(err, domain.ErrBatchNotFound),
+		"double PromoteToPending must return ErrBatchNotFound (filter rejects non-preparing), got %v", err)
+
+	secondGet, err := repo.GetByBatchID(ctx, "prep-3")
+	require.NoError(t, err)
+	assert.Equal(t, firstExpires, secondGet.ExpiresAt,
+		"ExpiresAt must not mutate on idempotent-rejected double-promote")
+}
+
 func TestPendingToolCall_GetByBatchID_LazyExpiration(t *testing.T) {
 	db := setupPendingToolCallDB(t, "lazy_expire")
 	ctx := context.Background()
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
-	repo := NewPendingToolCallRepository(db)
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
 
 	now := time.Now().UTC()
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
@@ -94,7 +285,7 @@ func TestPendingToolCall_GetByBatchID_LazyExpiration(t *testing.T) {
 		Status:         "pending",
 		CreatedAt:      now.Add(-25 * time.Hour),
 		UpdatedAt:      now.Add(-25 * time.Hour),
-		ExpiresAt:      now.Add(-1 * time.Hour), // already expired
+		ExpiresAt:      now.Add(-1 * time.Hour),
 	})
 
 	got, err := repo.GetByBatchID(ctx, "batch-lazy-1")
@@ -107,8 +298,8 @@ func TestPendingToolCall_GetByBatchID_LazyExpiration(t *testing.T) {
 func TestPendingToolCall_GetByBatchID_NotFound(t *testing.T) {
 	db := setupPendingToolCallDB(t, "get_notfound")
 	ctx := context.Background()
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
-	repo := NewPendingToolCallRepository(db)
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
 
 	got, err := repo.GetByBatchID(ctx, "does-not-exist")
 	assert.Nil(t, got)
@@ -118,8 +309,8 @@ func TestPendingToolCall_GetByBatchID_NotFound(t *testing.T) {
 func TestPendingToolCall_AtomicTransitionToResolving_Happy(t *testing.T) {
 	db := setupPendingToolCallDB(t, "atomic_happy")
 	ctx := context.Background()
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
-	repo := NewPendingToolCallRepository(db)
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
 
 	now := time.Now().UTC()
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
@@ -139,7 +330,6 @@ func TestPendingToolCall_AtomicTransitionToResolving_Happy(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "resolving", got.Status)
 
-	// Confirm DB state matches.
 	var raw bson.M
 	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "batch-happy"}).Decode(&raw))
 	assert.Equal(t, "resolving", raw["status"])
@@ -148,8 +338,8 @@ func TestPendingToolCall_AtomicTransitionToResolving_Happy(t *testing.T) {
 func TestPendingToolCall_AtomicTransitionToResolving_AlreadyResolved_Returns_ErrBatchNotPending(t *testing.T) {
 	db := setupPendingToolCallDB(t, "atomic_already")
 	ctx := context.Background()
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
-	repo := NewPendingToolCallRepository(db)
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
 
 	now := time.Now().UTC()
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
@@ -158,7 +348,7 @@ func TestPendingToolCall_AtomicTransitionToResolving_AlreadyResolved_Returns_Err
 		BusinessID:     "biz-1",
 		UserID:         "user-1",
 		MessageID:      "msg-1",
-		Status:         "resolving", // already progressed
+		Status:         "resolving",
 		CreatedAt:      now,
 		UpdatedAt:      now,
 		ExpiresAt:      now.Add(24 * time.Hour),
@@ -173,8 +363,8 @@ func TestPendingToolCall_AtomicTransitionToResolving_AlreadyResolved_Returns_Err
 func TestPendingToolCall_AtomicTransitionToResolving_Missing_Returns_ErrBatchNotFound(t *testing.T) {
 	db := setupPendingToolCallDB(t, "atomic_missing")
 	ctx := context.Background()
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
-	repo := NewPendingToolCallRepository(db)
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
 
 	got, err := repo.AtomicTransitionToResolving(ctx, "nonexistent-batch")
 	assert.Nil(t, got)
@@ -182,17 +372,17 @@ func TestPendingToolCall_AtomicTransitionToResolving_Missing_Returns_ErrBatchNot
 		"want ErrBatchNotFound for missing batch, got %v", err)
 }
 
-// TestPendingToolCall_ConcurrentResolve_ExactlyOneWins is the mandatory
-// race test: two goroutines race AtomicTransitionToResolving on the same
-// pending batch. Exactly one must win (status → resolving, err == nil) and
-// exactly one must lose with ErrBatchNotPending. Proves the findOneAndUpdate
-// filter {_id, status:"pending"} is the atomicity primitive. Must run with
-// -race for meaningful coverage.
+// TestPendingToolCall_ConcurrentResolve_ExactlyOneWins is the mandatory race
+// test: two goroutines race AtomicTransitionToResolving on the same pending
+// batch. Exactly one must win (status → resolving, err == nil) and exactly
+// one must lose with ErrBatchNotPending. Proves the findOneAndUpdate filter
+// {_id, status:"pending"} is the atomicity primitive. Must run with -race
+// for meaningful coverage.
 func TestPendingToolCall_ConcurrentResolve_ExactlyOneWins(t *testing.T) {
 	db := setupPendingToolCallDB(t, "concurrent_resolve")
 	ctx := context.Background()
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
-	repo := NewPendingToolCallRepository(db)
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
 
 	now := time.Now().UTC()
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
@@ -219,7 +409,7 @@ func TestPendingToolCall_ConcurrentResolve_ExactlyOneWins(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		go func() {
 			defer wg.Done()
-			<-start // release both goroutines together to maximize contention
+			<-start
 			b, err := repo.AtomicTransitionToResolving(ctx, "batch-race")
 			results <- outcome{batch: b, err: err}
 		}()
@@ -249,11 +439,10 @@ func TestPendingToolCall_ConcurrentResolve_ExactlyOneWins(t *testing.T) {
 func TestPendingToolCall_ReconcileOrphanPreparing(t *testing.T) {
 	db := setupPendingToolCallDB(t, "reconcile")
 	ctx := context.Background()
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
-	repo := NewPendingToolCallRepository(db)
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
 
 	now := time.Now().UTC()
-	// Fresh preparing — must NOT be reconciled.
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
 		ID:             "prep-fresh",
 		ConversationID: "conv-1",
@@ -264,7 +453,6 @@ func TestPendingToolCall_ReconcileOrphanPreparing(t *testing.T) {
 		CreatedAt:      now.Add(-1 * time.Minute),
 		UpdatedAt:      now.Add(-1 * time.Minute),
 	})
-	// Old preparing — must be reconciled to expired.
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
 		ID:             "prep-old",
 		ConversationID: "conv-2",
@@ -275,7 +463,6 @@ func TestPendingToolCall_ReconcileOrphanPreparing(t *testing.T) {
 		CreatedAt:      now.Add(-10 * time.Minute),
 		UpdatedAt:      now.Add(-10 * time.Minute),
 	})
-	// Old resolving — must NOT be touched (only "preparing" is orphan).
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
 		ID:             "resolving-old",
 		ConversationID: "conv-3",
@@ -291,7 +478,6 @@ func TestPendingToolCall_ReconcileOrphanPreparing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), count, "exactly one old-preparing doc must be reconciled")
 
-	// Verify exact status transitions.
 	var freshDoc, oldDoc, resolvingDoc bson.M
 	require.NoError(t, db.Collection("pending_tool_calls").FindOne(ctx, bson.M{"_id": "prep-fresh"}).Decode(&freshDoc))
 	assert.Equal(t, "preparing", freshDoc["status"], "fresh preparing untouched")
@@ -304,8 +490,8 @@ func TestPendingToolCall_ReconcileOrphanPreparing(t *testing.T) {
 func TestPendingToolCall_MarkDispatched_PositionalUpdate(t *testing.T) {
 	db := setupPendingToolCallDB(t, "markdispatched")
 	ctx := context.Background()
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
-	repo := NewPendingToolCallRepository(db)
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
 
 	now := time.Now().UTC()
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
@@ -330,7 +516,6 @@ func TestPendingToolCall_MarkDispatched_PositionalUpdate(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got.Calls, 2)
 
-	// Calls are keyed by call_id, not by slice index — assert by id.
 	byID := map[string]domain.PendingCall{}
 	for _, c := range got.Calls {
 		byID[c.CallID] = c
@@ -343,8 +528,8 @@ func TestPendingToolCall_MarkDispatched_PositionalUpdate(t *testing.T) {
 func TestPendingToolCall_ListPendingByConversation_FiltersStatuses(t *testing.T) {
 	db := setupPendingToolCallDB(t, "list_filter")
 	ctx := context.Background()
-	require.NoError(t, EnsurePendingToolCallsIndexes(ctx, db))
-	repo := NewPendingToolCallRepository(db)
+	require.NoError(t, hitlstore.EnsurePendingToolCallsIndexes(ctx, db))
+	repo := hitlstore.NewPendingToolCallRepository(db)
 
 	now := time.Now().UTC()
 	seed := func(id, status string, created time.Time) {
@@ -365,7 +550,6 @@ func TestPendingToolCall_ListPendingByConversation_FiltersStatuses(t *testing.T)
 	seed("b-resolved", "resolved", now.Add(-1*time.Minute))
 	seed("b-expired", "expired", now.Add(-4*time.Minute))
 	seed("b-preparing", "preparing", now.Add(-5*time.Minute))
-	// Different conversation — must be filtered out.
 	mustInsertBatch(t, db, &domain.PendingToolCallBatch{
 		ID: "b-other-conv", ConversationID: "other", BusinessID: "biz-1",
 		UserID: "u", MessageID: "m", Status: "pending",

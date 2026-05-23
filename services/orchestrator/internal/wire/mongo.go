@@ -10,8 +10,8 @@ import (
 	mongoopts "go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/hitlstore"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/repository"
 )
 
 // mongoConnectTimeout bounds the Connect+Ping handshake at boot. Kept local
@@ -49,5 +49,5 @@ func Mongo(ctx context.Context, log *slog.Logger, cfg *config.Config) (*mongo.Da
 
 	db := client.Database(cfg.MongoDB)
 	log.Info("orchestrator: connected to mongo", "uri", cfg.RedactMongoURI(), "db", cfg.MongoDB)
-	return db, repository.NewPendingToolCallRepository(db), nil
+	return db, hitlstore.NewPendingToolCallRepository(db), nil
 }
