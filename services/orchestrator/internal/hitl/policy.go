@@ -16,6 +16,7 @@ package hitl
 import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	pkghitl "github.com/f1xgun/onevoice/pkg/hitl"
+	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
 // Resolve delegates to pkg/hitl.Resolve — see that package for the full
@@ -28,4 +29,17 @@ func Resolve(
 	toolName string,
 ) domain.ToolFloor {
 	return pkghitl.Resolve(floor, businessPolicy, projectOverride, toolName)
+}
+
+// Bucket delegates to pkg/hitl.Bucket — see that package for the full
+// contract. Local shim kept symmetric with Resolve so stepRun / Resume can
+// continue importing the orchestrator-internal package without a churn of
+// callsite imports.
+func Bucket(
+	floorOf pkghitl.FloorOf,
+	businessPolicy map[string]domain.ToolFloor,
+	projectOverride map[string]domain.ToolFloor,
+	calls []llm.ToolCall,
+) (auto, manual, forbidden []llm.ToolCall) {
+	return pkghitl.Bucket(floorOf, businessPolicy, projectOverride, calls)
 }

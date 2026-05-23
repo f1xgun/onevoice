@@ -135,31 +135,16 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			ToolCalls: resp.ToolCalls,
 		})
 
-		// 4. Classify every LLM-proposed tool call through hitl.Resolve,
-		//    bucketing into auto / manual / forbidden. This is the single
-		//    point where policy resolution happens at pause time
-		//    (the resolve path re-runs the same function at resolve time for
-		//    TOCTOU safety).
-		var autoCalls []llm.ToolCall
-		var manualCalls []llm.ToolCall
-		var forbiddenCalls []llm.ToolCall
-
-		for _, tc := range resp.ToolCalls {
-			floor := o.tools.Floor(tc.Function.Name)
-			effective := hitl.Resolve(floor, state.BusinessApprovals, state.ProjectApprovalOverrides, tc.Function.Name)
-			switch effective {
-			case domain.ToolFloorAuto:
-				autoCalls = append(autoCalls, tc)
-			case domain.ToolFloorManual:
-				manualCalls = append(manualCalls, tc)
-			case domain.ToolFloorForbidden:
-				forbiddenCalls = append(forbiddenCalls, tc)
-			default:
-				// Unknown tool → Registry.Floor returns Forbidden by default;
-				// unknown Resolve result falls through here defensively.
-				forbiddenCalls = append(forbiddenCalls, tc)
-			}
-		}
+		// 4. Classify every LLM-proposed tool call through hitl.Bucket,
+		//    bucketing into auto / manual / forbidden. hitl.Bucket folds the
+		//    registry-floor lookup + Resolve into one pure call so this loop
+		//    body and the resolve-path TOCTOU re-check cannot diverge.
+		autoCalls, manualCalls, forbiddenCalls := hitl.Bucket(
+			o.tools.Floor,
+			state.BusinessApprovals,
+			state.ProjectApprovalOverrides,
+			resp.ToolCalls,
+		)
 
 		// 5. Forbidden calls → synthesize rejection message, emit
 		//    tool_rejected event, DO NOT dispatch. The LLM sees the
