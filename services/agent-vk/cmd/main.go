@@ -56,7 +56,7 @@ func run() error {
 		return vk.New(token)
 	}, serviceKey, dispatcher)
 	transport := a2a.NewNATSTransport(nc)
-	ag := a2a.NewAgent(a2a.AgentVK, transport, handler)
+	ag := a2a.NewAgent(a2a.AgentVK, transport, handler.Handle)
 
 	// Health server
 	hc := health.New()

@@ -48,7 +48,7 @@ func TestAgent_DispatchesToHandler(t *testing.T) {
 	var called atomic.Bool
 	replyCh := make(chan []byte, 1)
 
-	handler := a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	handler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 		called.Store(true)
 		return &a2a.ToolResponse{
 			TaskID:  req.TaskID,
@@ -87,7 +87,7 @@ func TestAgent_HandlerError_ReturnsErrorResponse(t *testing.T) {
 	transport := &fakeTransport{}
 	replyCh := make(chan []byte, 1)
 
-	handler := a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	handler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 		return nil, fmt.Errorf("platform down")
 	})
 
@@ -118,7 +118,7 @@ func TestAgent_Stop_WaitsForInflight(t *testing.T) {
 	transport := &fakeTransport{}
 	var called atomic.Int32
 
-	handler := a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	handler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 		time.Sleep(200 * time.Millisecond)
 		called.Add(1)
 		return &a2a.ToolResponse{TaskID: req.TaskID, Success: true}, nil
@@ -141,7 +141,7 @@ func TestAgent_Stop_WaitsForInflight(t *testing.T) {
 
 func TestAgent_Stop_NoInflight(t *testing.T) {
 	transport := &fakeTransport{}
-	handler := a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	handler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 		return &a2a.ToolResponse{TaskID: req.TaskID, Success: true}, nil
 	})
 
