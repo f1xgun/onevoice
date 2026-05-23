@@ -23,6 +23,7 @@ type Repos struct {
 	AgentTask          domain.AgentTaskRepository
 	Project            domain.ProjectRepository
 	Invitation         domain.InvitationRepository
+	AuditLog           domain.AuditLogRepository
 
 	// MembershipLoader backs the authz cache (Phase 2 v2.0 RBAC). Same
 	// query surface as BusinessMembership but exposed as the typed
@@ -48,6 +49,7 @@ func Repositories(h *DBHandles) *Repos {
 		AgentTask:          repository.NewAgentTaskRepository(h.Mongo),
 		Project:            repository.NewProjectRepository(h.PG, h.Mongo),
 		Invitation:         repository.NewInvitationRepository(h.PG),
+		AuditLog:           repository.NewAuditLogRepository(h.PG),
 		MembershipLoader:   repository.NewMembershipLoader(h.PG),
 	}
 }
