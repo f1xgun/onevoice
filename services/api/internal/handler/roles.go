@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -52,14 +53,20 @@ type RolesHandler struct {
 	membershipRepo domain.BusinessMembershipRepository
 	pool           poolBeginner
 	invalidator    roleCacheInvalidator
+	audit          audit.Logger
 }
 
 // NewRolesHandler constructs a RolesHandler. All dependencies are required.
+//
+// Phase 19 Wave 4 (19-04): adds `auditLogger` so role CRUD endpoints emit
+// rbac.role_created / role_updated / role_deleted audit events AFTER
+// tx.Commit succeeds.
 func NewRolesHandler(
 	rr domain.RoleRepository,
 	mr domain.BusinessMembershipRepository,
 	pool poolBeginner,
 	inv roleCacheInvalidator,
+	auditLogger audit.Logger,
 ) (*RolesHandler, error) {
 	if rr == nil {
 		return nil, fmt.Errorf("NewRolesHandler: roleRepo cannot be nil")
@@ -73,11 +80,15 @@ func NewRolesHandler(
 	if inv == nil {
 		return nil, fmt.Errorf("NewRolesHandler: invalidator cannot be nil")
 	}
+	if auditLogger == nil {
+		return nil, fmt.Errorf("NewRolesHandler: auditLogger cannot be nil")
+	}
 	return &RolesHandler{
 		roleRepo:       rr,
 		membershipRepo: mr,
 		pool:           pool,
 		invalidator:    inv,
+		audit:          auditLogger,
 	}, nil
 }
 
@@ -244,6 +255,10 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// No InvalidateRole on Create — no existing memberships reference this
 	// brand-new role, so no cache entry can be stale.
 
+	// Phase 19 audit (D-29/D-30): emit rbac.role_created AFTER tx.Commit.
+	// role.Permissions is the deduplicated slice persisted to JSONB.
+	audit.LogRoleCreated(r.Context(), h.audit, bc.BusinessID, bc.UserID, role.ID, role.Name, role.Permissions)
+
 	slog.InfoContext(r.Context(), "role created",
 		"business_id", bc.BusinessID,
 		"actor_user_id", bc.UserID,
@@ -379,6 +394,11 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// RESEARCH Pitfall 2 — InvalidateRole AFTER commit only. The role-perms
 	// cache entry would otherwise serve stale permissions for up to TTL (~30s).
 	h.invalidator.InvalidateRole(bc.BusinessID, roleID)
+
+	// Phase 19 audit (D-29/D-30): emit rbac.role_updated AFTER tx.Commit +
+	// cache invalidation. existing.Permissions is the post-update deduplicated
+	// slice (mutated above before the tx).
+	audit.LogRoleUpdated(r.Context(), h.audit, bc.BusinessID, bc.UserID, roleID, existing.Name, existing.Permissions)
 
 	slog.InfoContext(r.Context(), "role updated",
 		"business_id", bc.BusinessID,
@@ -550,6 +570,11 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	for _, uid := range affectedUserIDs {
 		h.invalidator.InvalidateMember(bc.BusinessID, uid)
 	}
+
+	// Phase 19 audit (D-29/D-30): emit rbac.role_deleted AFTER tx.Commit +
+	// cache invalidation. Captures blast-radius (memberCount) and where
+	// members were reassigned (nil if no members held the role).
+	audit.LogRoleDeleted(r.Context(), h.audit, bc.BusinessID, bc.UserID, roleID, existing.Name, reassignTo, memberCount)
 
 	slog.InfoContext(r.Context(), "role deleted",
 		"business_id", bc.BusinessID,
