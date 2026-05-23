@@ -20,8 +20,10 @@ import (
 // it is the single string that flips the LLM's output language. Phase D of
 // `.planning/i18n-readiness/PLAN.md` documents the rationale.
 //
-// Empty Tag = legacy callers (no i18n in scope) → defaults to Russian via
-// resolveLocale below, preserving the byte-for-byte pre-i18n output.
+// Locale may be any language.Tag, including the zero Tag — Build normalizes
+// it via i18n.NormalizeToSupported before any internal helper sees it, so
+// "anything that isn't English" produces the Russian template (preserving
+// byte-for-byte pre-i18n output for legacy callers that leave Locale unset).
 type BusinessContext struct {
 	Name               string
 	Category           string
@@ -37,29 +39,6 @@ type BusinessContext struct {
 	// per-request body's `locale` field or, as a fallback, from
 	// i18n.LocaleFromContext(r.Context()) (LocaleResolver middleware).
 	Locale language.Tag
-}
-
-// resolveLocale collapses the BusinessContext.Locale tag down to a base
-// language we have a template for. Any tag that doesn't reduce to "en"
-// (and isn't the zero Tag — see below) falls through to Russian, which
-// matches the catalog lookup semantics in pkg/i18n.lookup() so a single
-// unknown-locale value can't produce inconsistent output between section
-// labels and language-steering directives.
-//
-// Edge case: a zero language.Tag has base "en" (golang.org/x/text default).
-// Treat the zero Tag as "unset" and resolve to the catalog default (RU) so
-// legacy callers that never populate Locale keep their byte-for-byte RU
-// output — critical for backward compatibility with the pre-i18n shape and
-// for the existing snapshot tests.
-func resolveLocale(tag language.Tag) language.Tag {
-	if tag == (language.Tag{}) {
-		return i18n.DefaultTag
-	}
-	base, _ := tag.Base()
-	if base.String() == "en" {
-		return language.English
-	}
-	return i18n.DefaultTag
 }
 
 // ProjectContext carries the optional project prompt layer that is appended
@@ -85,12 +64,16 @@ type ProjectContext struct {
 // "## Project: {Name}" block (per locale) after the business rules and before
 // the history.
 //
-// Locale is read from ctx.Locale; zero Tag = Russian (legacy callers preserved
-// byte-for-byte).
+// Locale handling: ctx.Locale is normalized once via i18n.NormalizeToSupported
+// and the resulting tag is passed down to internal helpers as an explicit
+// argument. Helpers therefore trust their tag and never re-normalize — the
+// "collapse arbitrary tag → Russian|English" rule lives in pkg/i18n alongside
+// MatchAcceptLanguage, not scattered through prompt/.
 func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []llm.Message {
-	system := buildSystemContent(ctx)
+	tag := i18n.NormalizeToSupported(ctx.Locale)
+	system := buildSystemContent(ctx, tag)
 	if proj != nil {
-		system = appendProjectBlock(system, proj, ctx.Locale)
+		system = appendProjectBlock(system, proj, tag)
 	}
 	msgs := make([]llm.Message, 0, 1+len(history))
 	msgs = append(msgs, llm.Message{Role: "system", Content: system})
@@ -108,10 +91,11 @@ func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []l
 // refuse/explain unavailable-platform requests instead of silently
 // substituting the closest allowed tool.
 //
-// Locale steers section labels and the explanatory phrasing; the tool name
-// list itself is rendered as-is (LLM tool names are not localized).
+// tag must already be one of i18n.Supported (Russian or English) — Build
+// normalizes ctx.Locale before invoking this helper. Section labels and
+// explanatory phrasing follow tag; the tool name list itself is rendered
+// as-is (LLM tool names are not localized).
 func appendProjectBlock(base string, proj *ProjectContext, tag language.Tag) string {
-	tag = resolveLocale(tag)
 	var sb strings.Builder
 	sb.WriteString(base)
 	if !strings.HasSuffix(base, "\n") {
@@ -197,8 +181,11 @@ func restrictionsAllowedOnly(tag language.Tag, allowed []string) string {
 // line ("Общайся на русском языке" / "Respond in English") is the single
 // load-bearing string that flips the LLM's reply language — section headers
 // alone are insufficient. See Phase D of `.planning/i18n-readiness/PLAN.md`.
-func buildSystemContent(ctx BusinessContext) string {
-	if resolveLocale(ctx.Locale) == language.English {
+//
+// tag must already be one of i18n.Supported (Russian or English) — Build
+// normalizes ctx.Locale before invoking this helper.
+func buildSystemContent(ctx BusinessContext, tag language.Tag) string {
+	if tag == language.English {
 		return buildSystemContentEn(ctx)
 	}
 	return buildSystemContentRu(ctx)

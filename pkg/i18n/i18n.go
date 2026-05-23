@@ -119,6 +119,36 @@ func lookup(tag language.Tag, key string) (string, bool) {
 	}
 }
 
+// NormalizeToSupported collapses an arbitrary language.Tag down to one of
+// Supported (currently Russian or English) — the locale-tag equivalent of
+// lookup()'s catalog selection. Use it when downstream code needs a Tag
+// (not a catalog string) and the input could be a regional variant
+// ("en-US"), an unsupported language ("fr"), or the zero Tag from test
+// fixtures or unset BusinessContext.Locale fields.
+//
+// Resolution rules:
+//   - zero Tag             → DefaultTag (Russian). The zero Tag's base
+//     ("und") reports as "en" via golang.org/x/text, so treating it as
+//     English would silently flip the LLM output language for any caller
+//     that forgets to populate Locale. The zero Tag is interpreted as
+//     "unset" instead.
+//   - base.String() == "en" → English
+//   - everything else      → DefaultTag (Russian)
+//
+// Sibling of MatchAcceptLanguage: that one normalizes a string header,
+// this one normalizes a Tag value. Together they cover every entry point
+// where untrusted locale data crosses into the backend.
+func NormalizeToSupported(tag language.Tag) language.Tag {
+	if tag == (language.Tag{}) {
+		return DefaultTag
+	}
+	base, _ := tag.Base()
+	if base.String() == "en" {
+		return language.English
+	}
+	return DefaultTag
+}
+
 // MatchAcceptLanguage parses an HTTP Accept-Language header and returns the
 // best Supported tag. Returns DefaultTag on:
 //   - empty header (nothing to match)
