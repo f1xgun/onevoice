@@ -652,6 +652,14 @@
     "subtitle": "The more you tell us about yourself, the better the AI will sound like you.",
     "createSubtitle": "Fill in \"Basics\" and the other sections will appear. OneVoice uses this whenever it writes on your behalf.",
     "errorLoad": "Couldn't load the data. Try refreshing the page.",
+    "newPage": {
+      "title": "New organization",
+      "sub": "Fill in the basics — you can add hours, a logo, and the team after it's created.",
+      "submit": "Create",
+      "submitting": "Creating…",
+      "createdToast": "Organization \"{name}\" created",
+      "createError": "Couldn't create the organization"
+    },
     "sections": {
       "profile": {
         "caption": "Basics",

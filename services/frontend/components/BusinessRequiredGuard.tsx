@@ -7,7 +7,9 @@ import { useTranslations } from 'next-intl';
 import { useBusinessStore } from '@/lib/stores/business';
 import { useBusinessList } from '@/lib/hooks/useBusinessList';
 
-const BYPASS_PATHS = ['/login', '/register', '/onboarding'];
+// `/business/new` is the create-org page — reaching it with zero businesses
+// is the legitimate entry from /onboarding, so we must not bounce back.
+const BYPASS_PATHS = ['/login', '/register', '/onboarding', '/business/new'];
 
 export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -16,8 +18,10 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const setActive = useBusinessStore((s) => s.setActive);
   const { data: businesses, isLoading, error, refetch } = useBusinessList();
+  const isBypass = BYPASS_PATHS.some((p) => pathname.startsWith(p));
 
   useEffect(() => {
+    if (isBypass) return;
     if (!businesses) return;
     if (businesses.length === 0) {
       if (activeBusinessId !== null) {
@@ -30,9 +34,9 @@ export function BusinessRequiredGuard({ children }: { children: ReactNode }) {
     if (!activeBusinessId || !validIds.has(activeBusinessId)) {
       setActive(businesses[0].id);
     }
-  }, [businesses, activeBusinessId, setActive, router]);
+  }, [businesses, activeBusinessId, setActive, router, isBypass]);
 
-  if (BYPASS_PATHS.some((p) => pathname.startsWith(p))) {
+  if (isBypass) {
     return <>{children}</>;
   }
 
