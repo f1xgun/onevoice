@@ -3,7 +3,7 @@ module github.com/f1xgun/onevoice/test/integration
 go 1.25.0
 
 require (
-	github.com/f1xgun/onevoice/pkg v0.0.0-20260511163830-0c2c8332c83c
+	github.com/f1xgun/onevoice/pkg v0.0.0-20260522050122-0de177028e56
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/redis/go-redis/v9 v9.17.3
