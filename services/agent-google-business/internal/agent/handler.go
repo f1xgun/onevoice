@@ -30,7 +30,9 @@ type GBPClient interface {
 // GBPClientFactory creates a GBP client from an access token.
 type GBPClientFactory func(accessToken string) GBPClient
 
-// Handler implements a2a.Handler for the Google Business agent.
+// Handler is the Google Business agent's per-request processor. Its
+// Handle method satisfies a2a.Exec and is wired into a2a.NewAgent from
+// cmd/main.go.
 type Handler struct {
 	tokens        TokenFetcher
 	clientFactory GBPClientFactory

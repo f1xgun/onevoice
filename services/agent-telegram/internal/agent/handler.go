@@ -33,7 +33,8 @@ type Sender interface {
 // SenderFactory creates a Sender from a bot token.
 type SenderFactory func(botToken string) (Sender, error)
 
-// Handler implements a2a.Handler for the Telegram agent.
+// Handler is the Telegram agent's per-request processor. Its Handle method
+// satisfies a2a.Exec and is wired into a2a.NewAgent from cmd/main.go.
 type Handler struct {
 	tokens        TokenFetcher
 	senderFactory SenderFactory
