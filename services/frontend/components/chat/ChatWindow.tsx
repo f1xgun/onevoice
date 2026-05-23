@@ -14,8 +14,7 @@ import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SkeletonChat } from '@/components/states';
-import { useChat } from '@/hooks/useChat';
-import { usePendingApprovalFlow } from '@/hooks/usePendingApprovalFlow';
+import { useConversationFlow } from '@/hooks/useConversationFlow';
 import { useProjectsQuery } from '@/hooks/useProjects';
 import { useMoveConversation, conversationsQueryKey } from '@/hooks/useConversations';
 import { useDefaultQuickActions } from '@/lib/quick-actions';
@@ -24,7 +23,6 @@ import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
 import type { Conversation } from '@/lib/conversations';
-import type { PendingApproval } from '@/types/chat';
 
 interface ChatWindowProps {
   conversationId: string;
@@ -36,27 +34,15 @@ interface ChatWindowProps {
 
 export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindowProps) {
   const tChat = useTranslations('chat.window');
-  // Sibling hooks (Phase 19, plan 19-10, decision D-19): `useChat` owns
-  // messages + streaming, `usePendingApprovalFlow` owns the approval slice.
-  // Wiring forms a tight loop:
-  //   chat.onApprovalRequired → approvalFlow.setPending      (SSE arrival)
-  //   approvalFlow.onResumeEvent → chat.appendSSEEvent       (resume frames)
-  // Both directions are read at dispatch time via internal refs, so the
-  // forward-reference between the two hook calls is safe in practice.
-  const approvalFlowRef = useRef<{ setPending: (a: PendingApproval) => void } | null>(null);
-  const chat = useChat({
-    conversationId,
-    onApprovalRequired: (approval) => approvalFlowRef.current?.setPending(approval),
-  });
-  const approvalFlow = usePendingApprovalFlow({
-    conversationId,
-    onResumeEvent: chat.appendSSEEvent,
-  });
-  useEffect(() => {
-    approvalFlowRef.current = approvalFlow;
-  });
-  const { messages, isLoading, isStreaming, sendMessage } = chat;
-  const { pendingApproval, resolveApproval } = approvalFlow;
+  // Single conversation state machine — formerly split into useChat +
+  // usePendingApprovalFlow with bidirectional callbacks and a ref-trick
+  // to break the forward-reference between two hook calls. Phase 19 D-19
+  // was the original split; it was reverted in favor of a single hook
+  // when production experience showed the two halves were always co-owned
+  // by this component and the "single writer for messages" invariant was
+  // already being broken indirectly by the approval flow's resume frames.
+  const { messages, isLoading, isStreaming, sendMessage, pendingApproval, resolveApproval } =
+    useConversationFlow({ conversationId });
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
