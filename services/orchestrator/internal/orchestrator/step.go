@@ -10,6 +10,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/sse"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/hitl"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
@@ -309,8 +310,8 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 // emitted on the tool_approval_required SSE event. EditableFields comes from
 // the tool registry; Floor is always ToolFloorManual because
 // these are the calls that triggered the pause.
-func summarizeManualCalls(reg *toolregistry.Registry, calls []llm.ToolCall) []ApprovalCallSummary {
-	out := make([]ApprovalCallSummary, 0, len(calls))
+func summarizeManualCalls(reg *toolregistry.Registry, calls []llm.ToolCall) []sse.ApprovalCall {
+	out := make([]sse.ApprovalCall, 0, len(calls))
 	for _, tc := range calls {
 		var args map[string]interface{}
 		if tc.Function.Arguments != "" {
@@ -318,7 +319,7 @@ func summarizeManualCalls(reg *toolregistry.Registry, calls []llm.ToolCall) []Ap
 				args = map[string]interface{}{"raw": tc.Function.Arguments}
 			}
 		}
-		out = append(out, ApprovalCallSummary{
+		out = append(out, sse.ApprovalCall{
 			CallID:         tc.ID,
 			ToolName:       tc.Function.Name,
 			Args:           args,

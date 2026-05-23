@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	"github.com/f1xgun/onevoice/pkg/sse"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/chatproxy"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
@@ -138,7 +139,7 @@ type streamState struct {
 	assistantText    strings.Builder
 	toolCalls        []domain.ToolCall
 	toolResults      []domain.ToolResult
-	pauseEvent       *chatproxy.SSEPayload
+	pauseEvent       *sse.Event
 	streamErrContent string
 }
 
@@ -233,7 +234,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	defer cancelTaskOps()
 
 	orchBody, _ := json.Marshal(h.buildOrchRequest(r.Context(), bc.UserID, enriched, req))
-	streamErr := h.proxy.StreamChat(r.Context(), w, conversationID, orchBody, nil, func(ev chatproxy.SSEPayload) {
+	streamErr := h.proxy.StreamChat(r.Context(), w, conversationID, orchBody, nil, func(ev sse.Event) {
 		h.dispatchSSEEvent(taskOpsCtx, enriched.Business.ID.String(), state, idMap, ev)
 	})
 	if streamErr != nil && state.pauseEvent == nil && state.streamErrContent == "" &&
@@ -254,7 +255,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 // dispatchSSEEvent routes a single parsed SSE frame into the per-stream state
 // + collaborator side effects. Per-stream state is owned by the caller.
-func (h *ChatProxyHandler) dispatchSSEEvent(taskOpsCtx context.Context, businessID string, state *streamState, idMap map[string]string, ev chatproxy.SSEPayload) {
+func (h *ChatProxyHandler) dispatchSSEEvent(taskOpsCtx context.Context, businessID string, state *streamState, idMap map[string]string, ev sse.Event) {
 	switch ev.Type {
 	case "text":
 		state.assistantText.WriteString(ev.Content)
