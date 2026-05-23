@@ -13,6 +13,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/pkg/sse"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
@@ -70,21 +71,11 @@ type Event struct {
 	// endpoint with the same identifier at approval time.
 	BatchID string
 	// Calls is set on EventToolApprovalRequired events with one entry per
-	// manual-floor tool call bundled into the batch.
-	Calls []ApprovalCallSummary
-}
-
-// ApprovalCallSummary is the per-call projection the frontend receives on a
-// tool_approval_required event. EditableFields drives the UI's per-field
-// read-only enforcement; Floor is always ToolFloorManual
-// for batched calls (forbidden calls never appear in a batch — they get
-// synthetic rejections instead).
-type ApprovalCallSummary struct {
-	CallID         string                 `json:"call_id"`
-	ToolName       string                 `json:"tool_name"`
-	Args           map[string]interface{} `json:"args"`
-	EditableFields []string               `json:"editable_fields"`
-	Floor          domain.ToolFloor       `json:"floor"`
+	// manual-floor tool call bundled into the batch. sse.ApprovalCall lives in
+	// pkg/sse so the same shape is consumed by the api's HITL coordinator and
+	// the implicit-resume re-emit path — single source of truth for the
+	// tool_approval_required wire contract.
+	Calls []sse.ApprovalCall
 }
 
 // LLMClient abstracts the Router for testability.

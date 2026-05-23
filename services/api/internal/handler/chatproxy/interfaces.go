@@ -57,31 +57,6 @@ type ChatProxyRequest struct {
 	Message string `json:"message"`
 }
 
-// SSEPayload is the shape of the JSON we decode from orchestrator SSE `data:`
-// frames. Extends this with ToolCallID / BatchID / Calls to carry
-// HITL events without synthetic IDs and with the approval-batch
-// fields so chat_proxy can persist the paired assistant Message.
-//
-// ToolDisplayNameKey is the i18n catalog key the orchestrator stamps on
-// tool_call / tool_result events. PostalService propagates it
-// onto the AgentTask document so the FE renders the task title in any locale.
-// Empty when the orchestrator deploy predates D3 — FE falls back to
-// ToolDisplayName (the legacy behavior).
-type SSEPayload struct {
-	Type               string                 `json:"type"`
-	Content            string                 `json:"content"`
-	ToolCallID         string                 `json:"tool_call_id"`
-	ToolName           string                 `json:"tool_name"`
-	ToolDisplayName    string                 `json:"tool_display_name"`
-	ToolDisplayNameKey string                 `json:"tool_display_name_key"`
-	ToolArgs           map[string]interface{} `json:"tool_args"`
-	ToolResult         interface{}            `json:"result"`
-	ToolError          string                 `json:"error"`
-	// pause-event fields.
-	BatchID string                   `json:"batch_id"`
-	Calls   []map[string]interface{} `json:"calls"`
-}
-
 // ResumeBatchHeader is the HTTP header chat_proxy inspects to detect an
 // explicit HITL resume. When set, chat_proxy rejoins the in-flight turn via
 // the orchestrator's resume endpoint instead of starting a fresh LLM turn.

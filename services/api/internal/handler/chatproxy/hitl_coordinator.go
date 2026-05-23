@@ -13,6 +13,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	"github.com/f1xgun/onevoice/pkg/sse"
 )
 
 // GateAction enumerates the four outcomes of HITLCoordinator.GateOnRequest.
@@ -156,22 +157,21 @@ func (c *HITLCoordinator) ReemitApprovalEvent(w http.ResponseWriter, batch *doma
 		return
 	}
 
-	calls := make([]map[string]interface{}, 0, len(batch.Calls))
+	calls := make([]sse.ApprovalCall, 0, len(batch.Calls))
 	for _, call := range batch.Calls {
-		calls = append(calls, map[string]interface{}{
-			"call_id":         call.CallID,
-			"tool_name":       call.ToolName,
-			"args":            call.Arguments,
-			"editable_fields": []string{},
-			"floor":           "manual",
+		calls = append(calls, sse.ApprovalCall{
+			CallID:         call.CallID,
+			ToolName:       call.ToolName,
+			Args:           call.Arguments,
+			EditableFields: []string{},
+			Floor:          domain.ToolFloorManual,
 		})
 	}
-	payload := map[string]interface{}{
-		"type":     "tool_approval_required",
-		"batch_id": batch.ID,
-		"calls":    calls,
-	}
-	data, _ := json.Marshal(payload)
+	data, _ := sse.Marshal(sse.Event{
+		Type:    "tool_approval_required",
+		BatchID: batch.ID,
+		Calls:   calls,
+	})
 	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
 }
@@ -190,8 +190,7 @@ func (c *HITLCoordinator) SSEInlineError(w http.ResponseWriter, reason string) {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
-	payload := map[string]interface{}{"type": sseEventError, "content": reason}
-	data, _ := json.Marshal(payload)
+	data, _ := sse.Marshal(sse.Event{Type: sseEventError, Content: reason})
 	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
 }
@@ -271,8 +270,8 @@ func (c *HITLCoordinator) StreamResume(
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		var ev SSEPayload
-		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
+		ev, err := sse.Unmarshal([]byte(line[6:]))
+		if err != nil {
 			continue
 		}
 		switch ev.Type {
