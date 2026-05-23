@@ -115,6 +115,37 @@ func TestMatchAcceptLanguage(t *testing.T) {
 	}
 }
 
+// TestNormalizeToSupported locks every branch of the Tag-to-Tag collapse
+// rule consumed by prompt.Build (and any future locale-aware module that
+// needs a normalized Tag, not a catalog string).
+//
+// The zero-Tag case is the most subtle: golang.org/x/text reports a zero
+// Tag's Base() as "en", so a naive base-comparison would silently flip
+// every legacy (Locale-unset) caller into the English branch — the
+// reverse of the catalog default. Hence the explicit zero-Tag guard.
+func TestNormalizeToSupported(t *testing.T) {
+	tests := []struct {
+		name string
+		in   language.Tag
+		want language.Tag
+	}{
+		{name: "zero Tag → DefaultTag (RU)", in: language.Tag{}, want: i18n.DefaultTag},
+		{name: "Russian unchanged", in: language.Russian, want: language.Russian},
+		{name: "English unchanged", in: language.English, want: language.English},
+		{name: "AmericanEnglish collapses to English", in: language.AmericanEnglish, want: language.English},
+		{name: "BritishEnglish collapses to English", in: language.BritishEnglish, want: language.English},
+		{name: "unsupported French falls back to DefaultTag", in: language.French, want: i18n.DefaultTag},
+		{name: "unsupported German falls back to DefaultTag", in: language.German, want: i18n.DefaultTag},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := i18n.NormalizeToSupported(tt.in)
+			assert.Equal(t, tt.want, got,
+				"NormalizeToSupported(%v) = %v, want %v", tt.in, got, tt.want)
+		})
+	}
+}
+
 func TestMatchAcceptLanguage_NeverPanics(t *testing.T) {
 	// Adversarial inputs must not panic — this is the worst-case smoke test.
 	inputs := []string{
