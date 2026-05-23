@@ -233,6 +233,25 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   (globalThis as any).ResizeObserver = ResizeObserverStub;
 }
 
+// matchMedia stub defaults matches=false (mobile-first), aligned with the
+// app shell's initial state. Tests that need desktop chrome (nav-rail,
+// project-pane) must call `setDesktopViewport()` from test-utils/viewport.
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 // hasPointerCapture / releasePointerCapture / scrollIntoView — jsdom stubs
 // used by Radix primitives. Only install if missing.
 if (typeof (globalThis as unknown as { Element?: typeof Element }).Element !== 'undefined') {

@@ -26,9 +26,10 @@ const buttonVariants = cva(
         // Graphite — the default action. Calm, confident.
         primary:
           'bg-[var(--ov-ink)] text-[var(--ov-paper)] border border-[var(--ov-ink)] hover:bg-[oklch(0.28_0.012_60)]',
-        // Terracotta — reserved for moments of emphasis (Connect, Publish)
+        // Terracotta — reserved for moments of emphasis (Connect, Publish).
+        // Dark text on ochre measures ~5.1:1 (AA); white-on-ochre fails at ~2.5:1.
         accent:
-          'bg-[var(--ov-accent)] text-[oklch(0.99_0_0)] border border-[var(--ov-accent-deep)] hover:bg-[var(--ov-accent-deep)]',
+          'bg-[var(--ov-accent)] text-[var(--ov-ink)] border border-[var(--ov-accent-deep)] hover:border-[var(--ov-ink)]',
         secondary:
           'bg-[var(--ov-paper-raised)] text-[var(--ov-ink)] border border-[var(--ov-line)] hover:bg-[var(--ov-paper-sunken)]',
         ghost:

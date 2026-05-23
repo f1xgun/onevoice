@@ -63,9 +63,9 @@ export function EmptyFrame({
         />
       )}
       <div className="max-w-[380px]">
-        <h3 className="text-[19px] font-medium leading-snug tracking-[-0.005em] text-ink">
+        <h2 className="text-[19px] font-medium leading-snug tracking-[-0.005em] text-ink">
           {title}
-        </h3>
+        </h2>
         {body && <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{body}</p>}
       </div>
       {action && <div className="flex flex-wrap items-center justify-center gap-2">{action}</div>}

@@ -109,15 +109,12 @@ describe('PinnedSection', () => {
         <PinnedSection conversations={convs} projectsById={{}} />
       </Wrapper>
     );
-    // chat-row links carry role="option" (they
-    // are children of a role="listbox" container, per the ARIA listbox
-    // pattern). Query by `option` role to match the live DOM.
-    const options = screen.getAllByRole('option');
+    const options = screen.getAllByRole('link');
     expect(options[0]).toHaveTextContent('Newer pinned');
     expect(options[1]).toHaveTextContent('Older pinned');
   });
 
-  it('chat-row options have data-roving-item AND role="option"', () => {
+  it('chat-row links carry data-roving-item and roving tabindex (no listbox role)', () => {
     const convs = [
       makeConv('c-1', 'First', null, '2026-04-27T12:00:00Z'),
       makeConv('c-2', 'Second', null, '2026-04-26T12:00:00Z'),
@@ -129,11 +126,10 @@ describe('PinnedSection', () => {
     );
     const items = container.querySelectorAll('[data-roving-item]');
     expect(items.length).toBe(2);
-    expect(items[0].getAttribute('role')).toBe('option');
+    expect(items[0].getAttribute('role')).toBeNull();
     // Initial tabindex distribution: first=0, rest=-1.
     expect(items[0].getAttribute('tabindex')).toBe('0');
     expect(items[1].getAttribute('tabindex')).toBe('-1');
-    // The roving container itself has role="listbox".
-    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
   });
 });

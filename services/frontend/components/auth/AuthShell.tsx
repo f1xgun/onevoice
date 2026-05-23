@@ -65,7 +65,10 @@ export function AuthShell({ eyebrow, title, description, children, aside }: Auth
       </div>
 
       {/* Editorial column — hidden below md per spec. paper-sunken backdrop, line border on the inside edge. */}
-      <aside className="hidden border-l border-line bg-paper-sunken px-12 py-12 md:flex md:flex-col md:justify-between lg:px-16">
+      <aside
+        aria-label={tShell('illustrationAria')}
+        className="hidden border-l border-line bg-paper-sunken px-12 py-12 md:flex md:flex-col md:justify-between lg:px-16"
+      >
         {aside}
       </aside>
     </div>

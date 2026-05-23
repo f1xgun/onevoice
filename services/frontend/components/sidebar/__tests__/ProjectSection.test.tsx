@@ -160,7 +160,7 @@ describe('ProjectSection', () => {
   });
 
   // Roving-tabindex chat-list contract.
-  it('chat-row links carry data-roving-item, role="option", and roving tabindex', () => {
+  it('chat-row links carry data-roving-item and roving tabindex (no listbox role)', () => {
     const convs = [
       makeConv('c-1', 'First chat'),
       makeConv('c-2', 'Second chat'),
@@ -174,14 +174,13 @@ describe('ProjectSection', () => {
     const items = container.querySelectorAll('[data-roving-item]');
     expect(items.length).toBe(3);
     items.forEach((item) => {
-      expect(item.getAttribute('role')).toBe('option');
+      expect(item.getAttribute('role')).toBeNull();
     });
     // Initial tabindex distribution: first=0, rest=-1 (single Tab stop).
     expect(items[0].getAttribute('tabindex')).toBe('0');
     expect(items[1].getAttribute('tabindex')).toBe('-1');
     expect(items[2].getAttribute('tabindex')).toBe('-1');
-    // The roving container itself has role="listbox".
-    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
   });
 
   it('project-header expand/collapse button is OUTSIDE the roving container (separate Tab stop)', () => {
@@ -191,11 +190,12 @@ describe('ProjectSection', () => {
         <ProjectSection project={sampleProject} conversations={convs} />
       </Wrapper>
     );
-    // The collapse button has aria-label «Свернуть «Отзывы»» — it should
-    // NOT live inside the role="listbox" container (separate Tab stop).
-    const listbox = container.querySelector('[role="listbox"]');
+    // The collapse button «Свернуть «Отзывы»» must live OUTSIDE the
+    // roving-tabindex container (separate Tab stop).
+    const rovingItem = container.querySelector('[data-roving-item]');
+    const rovingContainer = rovingItem?.parentElement?.parentElement ?? null;
     const collapseBtn = screen.getByRole('button', { name: /Свернуть «Отзывы»/ });
-    expect(listbox).not.toBeNull();
-    expect(listbox?.contains(collapseBtn)).toBe(false);
+    expect(rovingContainer).not.toBeNull();
+    expect(rovingContainer?.contains(collapseBtn)).toBe(false);
   });
 });

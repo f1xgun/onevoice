@@ -317,10 +317,10 @@ export default function IntegrationsPage() {
 
 function SectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`mb-4 mt-2 flex items-center gap-3 ${className ?? ''}`}>
+    <h2 className={`mb-4 mt-2 flex items-center gap-3 ${className ?? ''}`}>
       <MonoLabel>{children}</MonoLabel>
       <span aria-hidden className="h-px flex-1 bg-line-soft" />
-    </div>
+    </h2>
   );
 }
 

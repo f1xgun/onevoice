@@ -36,13 +36,23 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-paper text-ink">
       <SiteNav />
-      <Hero />
-      <Belief />
-      <Features />
-      <HowItWorks />
-      <Platforms />
-      <Quote />
-      {/* <Pricing /> — временно скрыто: продукт бесплатный */}
+      {/* tabIndex={-1}: makes <main> programmatically focusable so the
+          SkipLink in app/layout.tsx can actually transfer keyboard focus
+          here. focus-visible:outline-ink (keyboard-only) gives a brief
+          visible cue that focus actually moved (WCAG 2.4.7). */}
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+      >
+        <Hero />
+        <Belief />
+        <Features />
+        <HowItWorks />
+        <Platforms />
+        <Quote />
+        {/* <Pricing /> — временно скрыто: продукт бесплатный */}
+      </main>
       <SiteFooter />
     </div>
   );
