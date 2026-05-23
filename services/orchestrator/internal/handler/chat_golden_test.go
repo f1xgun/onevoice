@@ -18,7 +18,7 @@ import (
 
 // cannedRunner emits a fixed event sequence regardless of the RunRequest.
 // Used by the wire-golden tests so the SSE codec refactor can verify
-// byte-identity against the legacy hand-rolled marshalling.
+// byte-identity against the legacy hand-rolled marshaling.
 type cannedRunner struct{ events []orchestrator.Event }
 
 func (c *cannedRunner) Run(_ context.Context, _ orchestrator.RunRequest) (<-chan orchestrator.Event, error) {
@@ -31,7 +31,7 @@ func (c *cannedRunner) Run(_ context.Context, _ orchestrator.RunRequest) (<-chan
 }
 
 // TestChatHandler_WireGolden pins the byte-exact SSE output the orchestrator
-// produces for every event type. Refactors of the marshalling path must keep
+// produces for every event type. Refactors of the marshaling path must keep
 // this test green so the api proxy + frontend keep parsing identical bytes.
 //
 // Field ordering in the expected output mirrors the struct's declaration order
