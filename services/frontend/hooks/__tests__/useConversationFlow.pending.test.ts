@@ -1,37 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import React, { useEffect, useRef } from 'react';
-import { useChat } from '../useChat';
-import { usePendingApprovalFlow } from '../usePendingApprovalFlow';
+import React from 'react';
+import { useConversationFlow } from '../useConversationFlow';
 import { useAuthStore } from '@/lib/auth';
 import { mockSSEResponse, sseLine } from '@/test-utils/sse-mock';
-import type { PendingApproval } from '@/types/chat';
 
-// Phase 19 split (plan 19-10, D-19): pendingApproval state moved out of
-// useChat into the sibling `usePendingApprovalFlow` hook. This test wraps
-// both hooks with the canonical ChatWindow wiring so the original
-// "useChat — SSE tool_approval_required arrival" assertions can stay
-// byte-identical (D-16: wiring-only test changes).
-function useChatWithApprovalFlow(conversationId: string) {
-  const approvalFlowRef = useRef<{ setPending: (a: PendingApproval) => void } | null>(null);
-  const chat = useChat({
-    conversationId,
-    onApprovalRequired: (approval) => approvalFlowRef.current?.setPending(approval),
-  });
-  const approvalFlow = usePendingApprovalFlow({
-    conversationId,
-    onResumeEvent: chat.appendSSEEvent,
-  });
-  useEffect(() => {
-    approvalFlowRef.current = approvalFlow;
-  });
-  return {
-    ...chat,
-    pendingApproval: approvalFlow.pendingApproval,
-    resolveApproval: approvalFlow.resolveApproval,
-  };
-}
+// useConversationFlow (replaces the previous useChat + usePendingApprovalFlow
+// split, Phase 19 D-19). The pendingApproval state, resolveApproval action,
+// and live chat stream all live in one hook now, so these tests target the
+// single hook directly instead of the previous useChatWithApprovalFlow
+// wrapper that bridged the two siblings.
 
 // Mock sonner so we can assert on toast-free pending arrival.
 vi.mock('sonner', () => ({
@@ -43,8 +22,8 @@ vi.mock('@/lib/stores/business', () => ({
     selector({ activeBusinessId: 'biz-test' }),
 }));
 
-// useChat now consumes useQueryClient() so it can invalidate
-// ['conversations'] on chat SSE 'done'. All renderHook calls now wrap a
+// useConversationFlow consumes useQueryClient() so it can invalidate
+// ['conversations'] on chat SSE 'done'. All renderHook calls wrap a
 // QueryClientProvider — the React Query cache is unused by these test
 // scenarios (they cover SSE pause / resume / hydration paths) but the hook
 // requires the context.
@@ -54,7 +33,7 @@ function makeQCWrapper() {
     React.createElement(QueryClientProvider, { client: qc }, children);
 }
 
-describe('useChat — SSE tool_approval_required arrival', () => {
+describe('useConversationFlow — SSE tool_approval_required arrival', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({
@@ -102,7 +81,7 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChatWithApprovalFlow('cid-1'), {
+    const { result } = renderHook(() => useConversationFlow({ conversationId: 'cid-1' }), {
       wrapper: makeQCWrapper(),
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -160,7 +139,7 @@ describe('useChat — SSE tool_approval_required arrival', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useChatWithApprovalFlow('cid-2'), {
+    const { result } = renderHook(() => useConversationFlow({ conversationId: 'cid-2' }), {
       wrapper: makeQCWrapper(),
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
