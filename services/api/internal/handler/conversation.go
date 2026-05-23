@@ -105,9 +105,12 @@ type PendingApprovalSummary struct {
 	ExpiresAt time.Time             `json:"expiresAt"`
 }
 
-// ApprovalCallSummary mirrors orchestrator.ApprovalCallSummary but scoped to
-// the HTTP/JSON contract the frontend consumes. Keeping a local type avoids a
-// cross-service import and keeps the api handler decoupled from orchestrator.
+// ApprovalCallSummary is the api → frontend (camelCase) projection of an
+// approval batch element. Distinct from pkg/sse.ApprovalCall, which is the
+// orchestrator → api wire (snake_case) shape: the two consumers have
+// different naming conventions and slightly different field sets (no Floor
+// here because the FE has its own tools cache for that), so two types
+// serve two contracts.
 type ApprovalCallSummary struct {
 	CallID         string                 `json:"callId"`
 	ToolName       string                 `json:"toolName"`

@@ -14,7 +14,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/sse"
 )
 
 // BusinessService is the strict subset of *service.BusinessService that
@@ -57,19 +56,6 @@ type ChatProxyRequest struct {
 	Model   string `json:"model"`
 	Message string `json:"message"`
 }
-
-// SSEPayload is the api-side name for the wire-level pkg/sse.Event. Aliased
-// (not redefined) so the shape stays single-source-of-truth in pkg/sse and
-// every chatproxy reference resolves to the canonical type. Going through the
-// alias keeps existing identifier sites (chat_proxy.go's streamState.pauseEvent,
-// dispatchSSEEvent's parameter) untouched during the migration; the final
-// cleanup commit drops the alias once nothing internal references the old
-// name.
-//
-// Field semantics — Type / Content / ToolCallID / ToolName / ToolDisplayName /
-// ToolDisplayNameKey / ToolArgs / ToolResult / ToolError / BatchID / Calls —
-// match the orchestrator's emit side. See pkg/sse/event.go for tags + omitempty.
-type SSEPayload = sse.Event
 
 // ResumeBatchHeader is the HTTP header chat_proxy inspects to detect an
 // explicit HITL resume. When set, chat_proxy rejoins the in-flight turn via

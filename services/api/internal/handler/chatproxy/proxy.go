@@ -58,7 +58,7 @@ const sseEventError = "error"
 // The function returns the upstream error (orchestrator unreachable / build
 // request failure). Per-frame parse errors are logged but do not abort the
 // stream — they are the same best-effort tolerance the legacy code had.
-func (p *OrchestrationProxy) StreamChat(parentCtx context.Context, w http.ResponseWriter, conversationID string, body []byte, headers map[string]string, onEvent func(SSEPayload)) error {
+func (p *OrchestrationProxy) StreamChat(parentCtx context.Context, w http.ResponseWriter, conversationID string, body []byte, headers map[string]string, onEvent func(sse.Event)) error {
 	corrID := logger.CorrelationIDFromContext(parentCtx)
 	orchCtx, orchCancel := context.WithTimeout(context.Background(), streamBudget)
 	if corrID != "" {
