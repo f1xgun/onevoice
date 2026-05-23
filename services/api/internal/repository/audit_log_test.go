@@ -267,7 +267,7 @@ func newAuditLogRepoConcreteMock(t *testing.T) (pgxmock.PgxPoolIface, *auditLogR
 	return mock, &auditLogRepository{pool: mock, sb: newStatementBuilder()}
 }
 
-// LEFT JOIN happy path: user row exists, COALESCE(u.email, '') returns the
+// LEFT JOIN happy path: user row exists, COALESCE(u.email, ”) returns the
 // real email. Verifies the JOIN shape ("LEFT JOIN users u ON u.id = al.user_id"
 // regex) plus actor_email column population from the scan target.
 func TestAuditLogRepository_ListByBusinessWithActors_EnrichesEmail(t *testing.T) {
@@ -294,7 +294,7 @@ func TestAuditLogRepository_ListByBusinessWithActors_EnrichesEmail(t *testing.T)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// LEFT JOIN with NULL user_id (failed-login row): COALESCE returns ''; the
+// LEFT JOIN with NULL user_id (failed-login row): COALESCE returns ”; the
 // scan target stays a plain string, no nil deref. ActorID on the domain
 // struct remains nil — frontend renders "Неизвестен ({email})" by reading
 // details.attempted_email.
@@ -317,7 +317,7 @@ func TestAuditLogRepository_ListByBusinessWithActors_NullUserBecomesEmptyEmail(t
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	require.Equal(t, "", rows[0].ActorEmail) // COALESCE → '' for unmatched JOIN
-	require.Nil(t, rows[0].UserID)            // domain row keeps the NULL user_id
+	require.Nil(t, rows[0].UserID)           // domain row keeps the NULL user_id
 	require.Equal(t, "auth.login_failed", rows[0].Action)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

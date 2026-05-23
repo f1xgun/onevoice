@@ -1,7 +1,8 @@
 // Package handler — audit_log.go
 //
 // AuditLogHandler serves the Phase 19 read path:
-//   GET /api/v1/businesses/{id}/audit-logs
+//
+//	GET /api/v1/businesses/{id}/audit-logs
 //
 // Wave 5 (Plan 19-05). Backed by repository.AuditLogRepository's new
 // ListByBusinessWithActors method (Wave 5 too) which does the LEFT JOIN
@@ -102,27 +103,27 @@ type AuditLogListResponse struct {
 // and the failure mode is explicit (400 invalid_action) which catches
 // frontend typos at the boundary.
 var knownActions = map[string]struct{}{
-	audit.ActionRoleGranted:               {},
-	audit.ActionMemberRemoved:             {},
-	audit.ActionRoleCreated:               {},
-	audit.ActionRoleUpdated:               {},
-	audit.ActionRoleDeleted:               {},
-	audit.ActionInvitationCreated:         {},
-	audit.ActionInvitationRevoked:         {},
-	audit.ActionInvitationAccepted:        {},
-	audit.ActionLoginSuccess:              {},
-	audit.ActionLoginFailed:               {},
-	audit.ActionLogout:                    {},
-	audit.ActionPasswordChanged:           {},
-	audit.ActionUserRegistered:            {},
-	audit.ActionIntegrationConnected:      {},
-	audit.ActionIntegrationDisconnected:   {},
-	audit.ActionIntegrationTokenRotated:   {},
-	audit.ActionBusinessCreated:           {},
-	audit.ActionBusinessUpdated:           {},
-	audit.ActionProjectCreated:            {},
-	audit.ActionProjectUpdated:            {},
-	audit.ActionProjectDeleted:            {},
+	audit.ActionRoleGranted:             {},
+	audit.ActionMemberRemoved:           {},
+	audit.ActionRoleCreated:             {},
+	audit.ActionRoleUpdated:             {},
+	audit.ActionRoleDeleted:             {},
+	audit.ActionInvitationCreated:       {},
+	audit.ActionInvitationRevoked:       {},
+	audit.ActionInvitationAccepted:      {},
+	audit.ActionLoginSuccess:            {},
+	audit.ActionLoginFailed:             {},
+	audit.ActionLogout:                  {},
+	audit.ActionPasswordChanged:         {},
+	audit.ActionUserRegistered:          {},
+	audit.ActionIntegrationConnected:    {},
+	audit.ActionIntegrationDisconnected: {},
+	audit.ActionIntegrationTokenRotated: {},
+	audit.ActionBusinessCreated:         {},
+	audit.ActionBusinessUpdated:         {},
+	audit.ActionProjectCreated:          {},
+	audit.ActionProjectUpdated:          {},
+	audit.ActionProjectDeleted:          {},
 }
 
 // knownCategories is the closed set the frontend tab filter uses. Matches
@@ -150,14 +151,14 @@ const (
 // List handles GET /api/v1/businesses/{id}/audit-logs.
 //
 // Order of operations:
-//   1. BusinessContext from ctx (500 if missing — programmer error: route
-//      registered outside /businesses/{id} subtree)
-//   2. authz.Can(PermAuditRead) (403 forbidden if absent)
-//   3. Parse + validate query params (400 with code-specific error body)
-//   4. Repo call (single LEFT JOIN, no N+1)
-//   5. DTO build (ActorEmail "" → nil pointer so JSON emits null)
-//   6. Cursor build (only when page is full)
-//   7. 200 with {items, next_cursor}
+//  1. BusinessContext from ctx (500 if missing — programmer error: route
+//     registered outside /businesses/{id} subtree)
+//  2. authz.Can(PermAuditRead) (403 forbidden if absent)
+//  3. Parse + validate query params (400 with code-specific error body)
+//  4. Repo call (single LEFT JOIN, no N+1)
+//  5. DTO build (ActorEmail "" → nil pointer so JSON emits null)
+//  6. Cursor build (only when page is full)
+//  7. 200 with {items, next_cursor}
 //
 // On repo error: 500 internal_server_error + slog.Error with biz_id +
 // the raw error. NEVER leak repo error details to the client (it could
