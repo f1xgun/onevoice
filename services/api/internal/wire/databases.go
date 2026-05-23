@@ -22,6 +22,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/hitlstore"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
@@ -160,7 +161,7 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	//      row then crashed before PromoteToPending). Runs async so the
 	//      HTTP server can bind immediately.
 	indexesCtx, indexesCancel := context.WithTimeout(ctx, startupTimeout)
-	if err := repository.EnsurePendingToolCallsIndexes(indexesCtx, h.Mongo); err != nil {
+	if err := hitlstore.EnsurePendingToolCallsIndexes(indexesCtx, h.Mongo); err != nil {
 		indexesCancel()
 		slog.ErrorContext(indexesCtx, "failed to ensure pending_tool_calls indexes", "error", err)
 		h.Close()
@@ -203,7 +204,7 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	}
 	indexesCancel3()
 
-	h.PendingToolCallRepo = repository.NewPendingToolCallRepository(h.Mongo)
+	h.PendingToolCallRepo = hitlstore.NewPendingToolCallRepository(h.Mongo)
 	go runOrphanReconcile(h.PendingToolCallRepo)
 
 	// Redis
