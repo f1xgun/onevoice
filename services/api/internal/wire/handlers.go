@@ -191,6 +191,23 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create invitations handler: %w", err)
 	}
 
+	// Phase 19 Wave 5 (19-05): audit-log read handler. repos.AuditLog is
+	// typed as the domain interface (Insert/ListByBusiness/DeleteOlderThan)
+	// which does NOT include ListByBusinessWithActors — that method
+	// returns a repository-package AuditLogRow type that intentionally
+	// stays out of the domain layer. Type-assert here to bridge: the
+	// underlying value IS the concrete *auditLogRepository, which
+	// satisfies handler.AuditLogLister. The assertion is checked (panic
+	// at boot if Repos ever swaps in a non-concrete impl) rather than the
+	// silent comma-ok form because a missing reader at request time would
+	// be a 500 with no telemetry — the boot panic surfaces wiring drift
+	// loud and early.
+	auditLister, ok := repos.AuditLog.(handler.AuditLogLister)
+	if !ok {
+		return nil, fmt.Errorf("wire: AuditLog repo does not satisfy handler.AuditLogLister (impl drift)")
+	}
+	auditLogHandler := handler.NewAuditLogHandler(auditLister)
+
 	return &router.Handlers{
 		Auth:          authHandler,
 		Business:      businessHandler,
@@ -215,6 +232,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Roles:   rolesHandler,
 		// Phase 3 v2.0 RBAC: invitation lifecycle (Create/ListPending/Revoke/Preview/Accept).
 		Invitations: invitationsHandler,
+		// Phase 19 Wave 5 (19-05): audit-log read handler. Bound to
+		// GET /businesses/{id}/audit-logs via router.Setup.
+		AuditLog: auditLogHandler,
 		// Telemetry handler is zero-dep; constructed inline.
 		Telemetry: &handler.TelemetryHandler{},
 	}, nil
