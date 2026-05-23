@@ -252,6 +252,121 @@ func TestAuditLogRepository_ListByBusiness_QueryError(t *testing.T) {
 	require.Contains(t, err.Error(), "query audit_log list")
 }
 
+// --- ListByBusinessWithActors (Plan 19-05 — LEFT JOIN users enrichment) ---
+
+// newAuditLogRepoConcreteMock returns the underlying *auditLogRepository so
+// tests can call ListByBusinessWithActors — which is NOT on
+// domain.AuditLogRepository (it returns a repo-package type, AuditLogRow).
+// The handler's narrow auditLogLister interface is satisfied by this same
+// concrete value at wire time.
+func newAuditLogRepoConcreteMock(t *testing.T) (pgxmock.PgxPoolIface, *auditLogRepository) {
+	t.Helper()
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	t.Cleanup(func() { mock.Close() })
+	return mock, &auditLogRepository{pool: mock, sb: newStatementBuilder()}
+}
+
+// LEFT JOIN happy path: user row exists, COALESCE(u.email, '') returns the
+// real email. Verifies the JOIN shape ("LEFT JOIN users u ON u.id = al.user_id"
+// regex) plus actor_email column population from the scan target.
+func TestAuditLogRepository_ListByBusinessWithActors_EnrichesEmail(t *testing.T) {
+	mock, repo := newAuditLogRepoConcreteMock(t)
+	biz, actor := uuid.New(), uuid.New()
+
+	mock.ExpectQuery(`LEFT JOIN users u ON u.id = al.user_id`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"actor_email", "actor_display_name",
+		}).AddRow(
+			uuid.New(), &biz, &actor, "rbac.role_granted", "role",
+			json.RawMessage(`{}`), time.Now().UTC(),
+			"viewer@test.local", "",
+		))
+
+	rows, err := repo.ListByBusinessWithActors(context.Background(), biz, domain.AuditLogFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "viewer@test.local", rows[0].ActorEmail)
+	require.Equal(t, "", rows[0].ActorDisplayName)
+	require.Equal(t, "rbac.role_granted", rows[0].Action)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// LEFT JOIN with NULL user_id (failed-login row): COALESCE returns ''; the
+// scan target stays a plain string, no nil deref. ActorID on the domain
+// struct remains nil — frontend renders "Неизвестен ({email})" by reading
+// details.attempted_email.
+func TestAuditLogRepository_ListByBusinessWithActors_NullUserBecomesEmptyEmail(t *testing.T) {
+	mock, repo := newAuditLogRepoConcreteMock(t)
+	biz := uuid.New()
+
+	mock.ExpectQuery(`LEFT JOIN users u ON u.id = al.user_id`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"actor_email", "actor_display_name",
+		}).AddRow(
+			uuid.New(), &biz, (*uuid.UUID)(nil), "auth.login_failed", "user",
+			json.RawMessage(`{"attempted_email":"a@b.c"}`), time.Now().UTC(),
+			"", "",
+		))
+
+	rows, err := repo.ListByBusinessWithActors(context.Background(), biz, domain.AuditLogFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "", rows[0].ActorEmail) // COALESCE → '' for unmatched JOIN
+	require.Nil(t, rows[0].UserID)            // domain row keeps the NULL user_id
+	require.Equal(t, "auth.login_failed", rows[0].Action)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// Filter / cursor threading: the new method must apply the same filter set
+// as ListByBusiness. We don't re-test every combination (covered exhaustively
+// for ListByBusiness above); a single all-filters case + a half-cursor
+// negative pin the JOIN's filter parity in place.
+func TestAuditLogRepository_ListByBusinessWithActors_AppliesAllFilters(t *testing.T) {
+	mock, repo := newAuditLogRepoConcreteMock(t)
+	biz, actor := uuid.New(), uuid.New()
+	from := time.Now().Add(-7 * 24 * time.Hour).UTC()
+	to := time.Now().UTC()
+	cursorT := time.Now().Add(-1 * time.Hour).UTC()
+	cursorID := uuid.New()
+
+	// Arg order mirrors WHERE-clause build order in ListByBusinessWithActors:
+	//   al.business_id, al.action LIKE, al.action =, al.user_id =,
+	//   al.created_at >=, al.created_at <, cursorTime, cursorID
+	mock.ExpectQuery(`FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id WHERE`).
+		WithArgs(
+			pgxmock.AnyArg(),
+			"rbac.%",
+			"rbac.role_granted",
+			pgxmock.AnyArg(),
+			from,
+			to,
+			cursorT,
+			pgxmock.AnyArg(),
+		).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"actor_email", "actor_display_name",
+		}))
+
+	_, err := repo.ListByBusinessWithActors(context.Background(), biz, domain.AuditLogFilter{
+		Category:   "rbac",
+		Action:     "rbac.role_granted",
+		ActorID:    &actor,
+		From:       &from,
+		To:         &to,
+		CursorTime: &cursorT,
+		CursorID:   &cursorID,
+		Limit:      50,
+	})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // --- DeleteOlderThan ---
 
 func TestAuditLogRepository_DeleteOlderThan_HappyPath(t *testing.T) {

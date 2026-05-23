@@ -171,6 +171,118 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 	return out, nil
 }
 
+// AuditLogRow carries an audit_logs row enriched with the actor's email and
+// display name from a single LEFT JOIN users in ListByBusinessWithActors.
+// The frontend wants both columns so the page renders without a second
+// round-trip (D-21b); the JOIN lives in the repo (per RESEARCH §"DTO
+// Enrichment Strategy") so the handler does NOT implement a per-row
+// fan-out into UserRepository.GetByID (avoids N+1).
+//
+// ActorEmail is "" when audit_logs.user_id IS NULL (failed-login rows per
+// D-31) or when LEFT JOIN found no matching users row (unlikely but
+// defensive against deleted users). The handler maps "" → nil pointer so
+// the JSON contract surfaces actor_email: null which the frontend renders
+// as "Неизвестен ({attempted_email})" by reading details.attempted_email.
+//
+// ActorDisplayName is "" today because the users table has no
+// display_name column. The field is preserved for forward compatibility
+// so adding the column later is a single repo edit, not an API contract
+// change.
+type AuditLogRow struct {
+	domain.AuditLog
+	ActorEmail       string // "" when user_id IS NULL or LEFT JOIN found no users row
+	ActorDisplayName string // "" today (users.display_name does not exist yet)
+}
+
+// ListByBusinessWithActors mirrors ListByBusiness but joins users on
+// audit_logs.user_id = users.id (LEFT — failed-login rows have NULL
+// user_id and must still be returned). actor_email / actor_display_name
+// are populated via COALESCE so a missing JOIN result becomes "" instead
+// of a NULL scan target.
+//
+// This method intentionally returns the repository-package AuditLogRow
+// type rather than a domain type — the JOIN-enriched columns are an
+// implementation detail of the read path. The handler depends on the
+// concrete repository via a narrow interface (auditLogLister in
+// services/api/internal/handler/audit_log.go) so unit tests can stub the
+// method without spinning up Postgres.
+//
+// All filter semantics (category prefix, action equality, actor pin,
+// from/to bounds, cursor tuple, limit clamping) match ListByBusiness
+// byte-for-byte — see that method's docstring for the cursor / limit
+// contract. The JOIN is the only divergence.
+func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, businessID uuid.UUID, f domain.AuditLogFilter) ([]AuditLogRow, error) {
+	limit := f.Limit
+	if limit <= 0 {
+		limit = defaultListLimit
+	}
+	if limit > maxListLimit {
+		limit = maxListLimit
+	}
+
+	q := r.sb.
+		Select(
+			"al.id", "al.business_id", "al.user_id",
+			"al.action", "al.resource", "al.details", "al.created_at",
+			"COALESCE(u.email, '') AS actor_email",
+			// users table has no display_name column today; emit '' so
+			// the scanner has a non-NULL string and the column stays in
+			// the SELECT list for forward compat with a future migration.
+			"'' AS actor_display_name",
+		).
+		From("audit_logs al").
+		LeftJoin("users u ON u.id = al.user_id").
+		Where(squirrel.Eq{"al.business_id": businessID})
+
+	if f.Category != "" {
+		q = q.Where(squirrel.Like{"al.action": f.Category + ".%"})
+	}
+	if f.Action != "" {
+		q = q.Where(squirrel.Eq{"al.action": f.Action})
+	}
+	if f.ActorID != nil {
+		q = q.Where(squirrel.Eq{"al.user_id": *f.ActorID})
+	}
+	if f.From != nil {
+		q = q.Where(squirrel.GtOrEq{"al.created_at": *f.From})
+	}
+	if f.To != nil {
+		q = q.Where(squirrel.Lt{"al.created_at": *f.To})
+	}
+	if f.CursorTime != nil && f.CursorID != nil {
+		q = q.Where("(al.created_at, al.id) < (?, ?)", *f.CursorTime, *f.CursorID)
+	}
+
+	q = q.OrderBy("al.created_at DESC", "al.id DESC").Limit(uint64(limit))
+
+	sql, args, err := q.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build list-with-actors audit_log: %w", err)
+	}
+	rows, err := r.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query audit_log list-with-actors: %w", err)
+	}
+	defer rows.Close()
+
+	var out []AuditLogRow
+	for rows.Next() {
+		var row AuditLogRow
+		if err := rows.Scan(
+			&row.ID, &row.BusinessID, &row.UserID,
+			&row.Action, &row.Resource, &row.Details, &row.CreatedAt,
+			&row.ActorEmail, &row.ActorDisplayName,
+		); err != nil {
+			return nil, fmt.Errorf("scan audit_log-with-actors row: %w", err)
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate audit_log-with-actors rows: %w", err)
+	}
+	return out, nil
+}
+
 // DeleteOlderThan removes every audit_logs row with created_at strictly
 // older than the supplied cutoff and returns the affected row count for
 // observability (audit_logs_retention_deleted_total counter, Plan 19-03
