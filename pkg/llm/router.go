@@ -24,9 +24,14 @@ type RateLimitChecker interface {
 	CheckLimit(ctx context.Context, userID uuid.UUID, tier string, tokens int) (bool, error)
 }
 
-// Router selects and calls LLM providers based on routing strategy.
+// Router calls LLM providers selected by a Selector seam (pkg/llm/selector.go).
+// Router itself owns the cross-cutting concerns that bracket every call —
+// rate limiting, billing, prometheus metrics — and delegates "which
+// provider for this model?" to Selector so neither concern has to reason
+// about the other.
 type Router struct {
 	registry    *Registry
+	selector    Selector
 	rateLimiter RateLimitChecker
 	billing     BillingRepository
 	providers   map[string]Provider
@@ -66,7 +71,18 @@ func WithCommission(cfg CommissionConfig) RouterOption {
 	return func(r *Router) { r.commission = cfg }
 }
 
+// WithSelector injects a Selector. Production callers don't need this:
+// NewRouter auto-wraps a defaultSelector from the registry and the
+// providers registered via WithProvider. Tests use this option to skip
+// the registry+entries dance — a fake Selector answers Pick directly.
+func WithSelector(s Selector) RouterOption {
+	return func(r *Router) { r.selector = s }
+}
+
 // NewRouter creates a Router with the given registry and options.
+// If no Selector is injected via WithSelector, a defaultSelector is
+// constructed over `registry` and the providers registered via
+// WithProvider so existing call sites don't need to change.
 func NewRouter(registry *Registry, opts ...RouterOption) *Router {
 	r := &Router{
 		registry:  registry,
@@ -75,78 +91,10 @@ func NewRouter(registry *Registry, opts ...RouterOption) *Router {
 	for _, o := range opts {
 		o(r)
 	}
+	if r.selector == nil {
+		r.selector = NewSelector(registry, r.providers)
+	}
 	return r
-}
-
-// pickProvider selects the best healthy, enabled, registered provider for model.
-func (r *Router) pickProvider(model string, strategy Strategy) (*ModelProviderEntry, Provider, error) {
-	entries := r.registry.GetModelProviders(model)
-
-	var best *ModelProviderEntry
-	var bestProvider Provider
-
-	for _, e := range entries {
-		if e.HealthStatus != "healthy" || !e.Enabled {
-			continue
-		}
-		p, ok := r.providers[e.Provider]
-		if !ok {
-			continue
-		}
-
-		if best == nil {
-			best = e
-			bestProvider = p
-			continue
-		}
-
-		if strategy == StrategyCost {
-			if avgCost(e) < avgCost(best) {
-				best = e
-				bestProvider = p
-			}
-		} else {
-			if betterLatency(e, best) {
-				best = e
-				bestProvider = p
-			}
-		}
-	}
-
-	if best == nil {
-		// Fallback: if all providers are unhealthy, try the first enabled one anyway
-		// to avoid permanent deadlock when a single provider recovers.
-		for _, e := range entries {
-			if !e.Enabled {
-				continue
-			}
-			p, ok := r.providers[e.Provider]
-			if !ok {
-				continue
-			}
-			return e, p, nil
-		}
-		return nil, nil, ErrNoProvider
-	}
-	return best, bestProvider, nil
-}
-
-// avgCost returns the average of input and output cost per 1M tokens.
-func avgCost(e *ModelProviderEntry) float64 {
-	const ioPair = 2.0
-	return (e.InputCostPer1MTok + e.OutputCostPer1MTok) / ioPair
-}
-
-// betterLatency returns true if candidate has a lower non-zero latency than current.
-// Zero latency means no data and is ranked last.
-func betterLatency(candidate, current *ModelProviderEntry) bool {
-	if candidate.AvgLatencyMs == 0 {
-		return false
-	}
-	if current.AvgLatencyMs == 0 {
-		return true
-	}
-	return candidate.AvgLatencyMs < current.AvgLatencyMs
 }
 
 // tierFromRequest returns the effective tier for rate limiting.
@@ -170,7 +118,7 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		}
 	}
 
-	entry, provider, err := r.pickProvider(req.Model, req.Strategy)
+	entry, provider, err := r.selector.Pick(req.Model, req.Strategy)
 	if err != nil {
 		return nil, err
 	}
@@ -178,13 +126,13 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 	start := time.Now()
 	resp, err := provider.Chat(ctx, req)
 	if err != nil {
-		r.registry.RecordFailure(entry.Provider, req.Model)
+		r.selector.Record(entry, Outcome{Success: false})
 		metrics.RecordLLMRequest(req.Model, entry.Provider, "error", time.Since(start))
 		return nil, err
 	}
 
 	metrics.RecordLLMRequest(req.Model, entry.Provider, "success", time.Since(start))
-	r.registry.RecordSuccess(entry.Provider, req.Model, resp.Latency)
+	r.selector.Record(entry, Outcome{Success: true, Latency: resp.Latency})
 	resp.Provider = entry.Provider
 
 	if r.billing != nil {
@@ -195,6 +143,9 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 }
 
 // ChatStream performs a streaming LLM chat request using the selected provider.
+// The channel-open latency is not the user-perceived latency so we report
+// success with a zero Latency — the rolling window stays untouched for
+// streaming starts (defaultSelector skips zero-latency samples by design).
 func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error) {
 	if r.rateLimiter != nil && req.UserID != uuid.Nil {
 		tier := tierFromRequest(req)
@@ -207,7 +158,7 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 		}
 	}
 
-	entry, provider, err := r.pickProvider(req.Model, req.Strategy)
+	entry, provider, err := r.selector.Pick(req.Model, req.Strategy)
 	if err != nil {
 		return nil, err
 	}
@@ -215,15 +166,13 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 	start := time.Now()
 	ch, err := provider.ChatStream(ctx, req)
 	if err != nil {
-		r.registry.RecordFailure(entry.Provider, req.Model)
+		r.selector.Record(entry, Outcome{Success: false})
 		metrics.RecordLLMRequest(req.Model, entry.Provider, "error", time.Since(start))
 		return nil, err
 	}
 
 	metrics.RecordLLMRequest(req.Model, entry.Provider, "success", time.Since(start))
-	// RecordSuccess with 0 latency — streaming latency is not available at channel-open time.
-	// Latency tracking for streaming must be handled at a higher layer.
-	r.registry.RecordSuccess(entry.Provider, req.Model, 0)
+	r.selector.Record(entry, Outcome{Success: true, Latency: 0})
 	return ch, nil
 }
 

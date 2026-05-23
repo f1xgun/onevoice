@@ -354,6 +354,12 @@ func TestRouter_Billing_NotCalledWhenNil(t *testing.T) {
 }
 
 func TestRouter_FailureRecorded_WhenProviderErrors(t *testing.T) {
+	// Drives the Router with a failing provider 6 times — Router must
+	// call Selector.Record(Success:false) on each error, which the
+	// default Selector accumulates into a failure rate > 50% (down).
+	// Pre-refactor this test reached past Router and called
+	// registry.RecordFailure manually; the seam now makes the recording
+	// path observable end-to-end.
 	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
 	registry := newTestRegistry(entry)
 
@@ -364,15 +370,14 @@ func TestRouter_FailureRecorded_WhenProviderErrors(t *testing.T) {
 		}),
 	)
 
-	_, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
-	assert.Error(t, err)
-	assert.NotErrorIs(t, err, llm.ErrNoProvider)
-
 	for i := 0; i < 6; i++ {
-		registry.RecordFailure("openai", "gpt-4")
+		_, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, llm.ErrNoProvider)
 	}
 	providers := registry.GetModelProviders("gpt-4")
-	assert.Equal(t, "down", providers[0].HealthStatus)
+	assert.Equal(t, "down", providers[0].HealthStatus,
+		"Router must thread provider errors through to Selector.Record")
 }
 
 func TestRouter_SuccessRecorded_UpdatesLatency(t *testing.T) {
