@@ -1,0 +1,108 @@
+# nginx.conf.template — OneVoice production
+#
+# This file is rendered with envsubst at container start
+# (see docker-compose.prod.yml → nginx.entrypoint). Only ${DOMAIN}
+# is expanded; nginx-native $variables are escaped via the envsubst
+# allowlist so the template stays valid.
+#
+# Two-server setup:
+#   :80  — ACME http-01 challenge + 301 redirect to HTTPS.
+#   :443 — TLS termination, then reverse proxy.
+#
+# Bootstrap (first time only): scripts/init-letsencrypt.sh
+# Renewals are handled automatically by the certbot container, which
+# touches /etc/letsencrypt/live/${DOMAIN}/fullchain.pem and signals
+# nginx via the deploy hook.
+
+events { worker_connections 1024; }
+
+http {
+  resolver 127.0.0.11 valid=10s ipv6=off;
+
+  # SSE / chat endpoints — long-lived streams must not buffer or time out.
+  proxy_http_version 1.1;
+  proxy_buffering    off;
+  proxy_cache        off;
+  proxy_read_timeout 300s;
+
+  proxy_set_header Host              $host;
+  proxy_set_header X-Real-IP         $remote_addr;
+  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header Connection        '';
+
+  # ===================================================================
+  # :80 — ACME challenge + HTTPS redirect
+  # ===================================================================
+  server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    # Let's Encrypt http-01 challenge files — served verbatim.
+    location ^~ /.well-known/acme-challenge/ {
+      root /var/www/certbot;
+      default_type "text/plain";
+      try_files $uri =404;
+    }
+
+    location / {
+      return 301 https://$host$request_uri;
+    }
+  }
+
+  # ===================================================================
+  # :443 — TLS termination
+  # ===================================================================
+  server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+    # Mozilla "intermediate" 2024 profile.
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # HSTS — comment out for the first 24h after a new domain switch.
+    add_header Strict-Transport-Security "max-age=15768000; includeSubDomains" always;
+    add_header X-Content-Type-Options    "nosniff"  always;
+    add_header X-Frame-Options           "DENY"     always;
+    add_header Referrer-Policy           "no-referrer-when-downgrade" always;
+
+    # Logo uploads — cap at 10 MB.
+    client_max_body_size 10m;
+
+    location /api/v1/ {
+      set $api_upstream http://api:8080;
+      proxy_pass $api_upstream;
+    }
+
+    location /media/ {
+      set $minio_upstream http://minio:9000;
+      rewrite ^/media/(.*)$ /onevoice/$1 break;
+      proxy_pass $minio_upstream;
+    }
+
+    location /health/ {
+      set $api_upstream http://api:8080;
+      proxy_pass $api_upstream;
+    }
+    location /metrics {
+      set $api_upstream http://api:8080;
+      proxy_pass $api_upstream;
+    }
+
+    location / {
+      set $frontend_upstream http://frontend:3000;
+      proxy_pass $frontend_upstream;
+    }
+  }
+}
