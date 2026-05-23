@@ -42,7 +42,9 @@ type BrowserPool interface {
 	ForBusiness(businessID, cookiesJSON, permalink string) YandexBrowser
 }
 
-// Handler implements a2a.Handler for the Yandex.Business RPA agent.
+// Handler is the Yandex.Business RPA agent's per-request processor. Its
+// Handle method satisfies a2a.Exec and is wired into a2a.NewAgent from
+// cmd/main.go.
 type Handler struct {
 	tokens     TokenFetcher
 	pool       BrowserPool

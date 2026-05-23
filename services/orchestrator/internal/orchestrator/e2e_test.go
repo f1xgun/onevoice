@@ -59,7 +59,7 @@ func TestE2E_OrchestratorNATSAgentRoundTrip(t *testing.T) {
 
 	// --- Mock VK agent ---
 	agentNC := connectNATS(t, natsURL)
-	mockHandler := a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	mockHandler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 		return &a2a.ToolResponse{
 			TaskID:  req.TaskID,
 			Success: true,
@@ -174,7 +174,7 @@ func TestE2E_AgentError(t *testing.T) {
 
 	// Agent that returns an error
 	agentNC := connectNATS(t, natsURL)
-	errHandler := a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+	errHandler := a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 		return &a2a.ToolResponse{
 			TaskID:  req.TaskID,
 			Success: false,
@@ -242,7 +242,7 @@ func TestE2E_MultipleAgents(t *testing.T) {
 	// --- Telegram agent ---
 	tgNC := connectNATS(t, natsURL)
 	tgAgent := a2a.NewAgent(a2a.AgentTelegram, a2a.NewNATSTransport(tgNC),
-		a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 			return &a2a.ToolResponse{
 				TaskID:  req.TaskID,
 				Success: true,
@@ -255,7 +255,7 @@ func TestE2E_MultipleAgents(t *testing.T) {
 	// --- VK agent ---
 	vkNC := connectNATS(t, natsURL)
 	vkAgent := a2a.NewAgent(a2a.AgentVK, a2a.NewNATSTransport(vkNC),
-		a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 			return &a2a.ToolResponse{
 				TaskID:  req.TaskID,
 				Success: true,
@@ -343,7 +343,7 @@ func TestE2E_BusinessIDPropagation(t *testing.T) {
 	capturedBizID := make(chan string, 1)
 	agentNC := connectNATS(t, natsURL)
 	agent := a2a.NewAgent(a2a.AgentVK, a2a.NewNATSTransport(agentNC),
-		a2a.HandlerFunc(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		a2a.Exec(func(_ context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
 			capturedBizID <- req.BusinessID
 			return &a2a.ToolResponse{TaskID: req.TaskID, Success: true, Result: map[string]interface{}{"ok": true}}, nil
 		}),

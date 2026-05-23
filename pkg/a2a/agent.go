@@ -17,30 +17,36 @@ type Transport interface {
 	Close()
 }
 
-// Handler processes an incoming ToolRequest and returns a ToolResponse.
-type Handler interface {
-	Handle(ctx context.Context, req ToolRequest) (*ToolResponse, error)
-}
-
-// HandlerFunc is a function adapter for Handler.
-type HandlerFunc func(ctx context.Context, req ToolRequest) (*ToolResponse, error)
-
-func (f HandlerFunc) Handle(ctx context.Context, req ToolRequest) (*ToolResponse, error) {
-	return f(ctx, req)
-}
+// Exec is the per-request processing function that Agent invokes for every
+// ToolRequest popped off the NATS subject. It returns the ToolResponse (or
+// nil + error — Agent wraps a non-nil error into a Success:false response on
+// the wire so callers never need to do that themselves).
+//
+// Each platform agent's main() typically composes Exec from an
+// agentbase.Dispatcher and the platform's tool-routing switch:
+//
+//	exec := func(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
+//	    return dispatcher.Dispatch(ctx, req, handler.RouteTool)
+//	}
+//	ag := a2a.NewAgent(id, transport, exec)
+//
+// Methods on a Handler struct with the matching signature can also be
+// passed directly — Go converts method values to a named function type
+// when the underlying signature matches.
+type Exec func(ctx context.Context, req ToolRequest) (*ToolResponse, error)
 
 // Agent is the base for all platform agents.
-// It subscribes to NATS and dispatches incoming ToolRequests to a Handler.
+// It subscribes to NATS and dispatches incoming ToolRequests to an Exec.
 type Agent struct {
 	id        AgentID
 	transport Transport
-	handler   Handler
+	exec      Exec
 	wg        sync.WaitGroup
 }
 
 // NewAgent creates a new Agent.
-func NewAgent(id AgentID, transport Transport, handler Handler) *Agent {
-	return &Agent{id: id, transport: transport, handler: handler}
+func NewAgent(id AgentID, transport Transport, exec Exec) *Agent {
+	return &Agent{id: id, transport: transport, exec: exec}
 }
 
 // Start subscribes to the agent's NATS subject and begins processing requests.
@@ -75,7 +81,7 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 	log.Info("a2a: tool request received")
 	start := time.Now()
 
-	resp, err := a.handler.Handle(ctx, req)
+	resp, err := a.exec(ctx, req)
 	duration := time.Since(start)
 
 	if err != nil {
