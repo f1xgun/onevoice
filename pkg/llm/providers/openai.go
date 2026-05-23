@@ -138,9 +138,8 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.Ch
 			OutputTokens: resp.Usage.CompletionTokens,
 			TotalTokens:  resp.Usage.TotalTokens,
 		},
-		Latency:     time.Since(start),
-		RawResponse: resp,
-		Provider:    "openai",
+		Latency:  time.Since(start),
+		Provider: "openai",
 	}, nil
 }
 

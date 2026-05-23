@@ -176,7 +176,6 @@ func TestChatResponse_Fields(t *testing.T) {
 			FinishReason: "stop",
 			Usage:        usage,
 			Latency:      100 * 1000 * 1000, // 100ms in nanoseconds
-			RawResponse:  map[string]interface{}{"raw": "data"},
 		}
 
 		assert.Equal(t, "Hello", resp.Content)
@@ -184,7 +183,6 @@ func TestChatResponse_Fields(t *testing.T) {
 		assert.Equal(t, "stop", resp.FinishReason)
 		assert.Equal(t, 100, resp.Usage.InputTokens)
 		assert.Equal(t, 100*1000*1000, int(resp.Latency))
-		assert.NotNil(t, resp.RawResponse)
 	})
 }
 

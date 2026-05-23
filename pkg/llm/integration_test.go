@@ -85,12 +85,22 @@ default_pricing:
 	assert.True(t, registry.ModelExists("gpt-4-turbo"))
 	assert.False(t, registry.ModelExists("gpt-3.5-turbo")) // Not in whitelist
 
-	// Simulate successful requests and track metrics
-	registry.RecordSuccess("openrouter", "claude-3.5-sonnet", 1200*time.Millisecond)
-	registry.RecordSuccess("openrouter", "claude-3.5-sonnet", 1100*time.Millisecond)
-	registry.RecordSuccess("openai", "gpt-4-turbo", 2000*time.Millisecond)
+	// Simulate successful requests and track metrics. Recording lives on
+	// the Selector after the round-2 architecture refactor (RecordSuccess/
+	// RecordFailure were moved off Registry — the seam is exercised here
+	// to keep this integration test covering the same end-to-end path).
+	sel := llm.NewSelector(registry, nil)
+	claudeEntries := registry.GetModelProviders("claude-3.5-sonnet")
+	require.Len(t, claudeEntries, 1)
+	sel.Record(claudeEntries[0], llm.Outcome{Success: true, Latency: 1200 * time.Millisecond})
+	sel.Record(claudeEntries[0], llm.Outcome{Success: true, Latency: 1100 * time.Millisecond})
 
-	// Verify metrics updated
+	gptEntries := registry.GetModelProviders("gpt-4-turbo")
+	require.Len(t, gptEntries, 1)
+	sel.Record(gptEntries[0], llm.Outcome{Success: true, Latency: 2000 * time.Millisecond})
+
+	// Verify metrics updated (read through registry — Selector mirrors
+	// state onto the entry pointer for admin / status consumers).
 	claudeProviders := registry.GetModelProviders("claude-3.5-sonnet")
 	require.Len(t, claudeProviders, 1)
 	assert.Equal(t, 1150, claudeProviders[0].AvgLatencyMs) // Average of 1200 and 1100

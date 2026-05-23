@@ -130,9 +130,8 @@ func (p *SelfHostedProvider) Chat(ctx context.Context, req llm.ChatRequest) (*ll
 			OutputTokens: resp.Usage.CompletionTokens,
 			TotalTokens:  resp.Usage.TotalTokens,
 		},
-		Latency:     time.Since(start),
-		RawResponse: resp,
-		Provider:    p.name,
+		Latency:  time.Since(start),
+		Provider: p.name,
 	}, nil
 }
 
