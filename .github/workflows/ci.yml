@@ -16,8 +16,71 @@ env:
   PNPM_VERSION: "9"
 
 jobs:
+  # Detect which subtree(s) changed so backend-only PRs don't spend CI minutes
+  # on frontend tooling and vice versa. Cross-cutting paths (this workflow
+  # file, Makefile, root linter config, go.work) trigger BOTH sides — touching
+  # them is a cross-cutting change.
+  #
+  # Required-check note: when a downstream job is skipped via `if:` against
+  # these outputs, GitHub treats the skipped status as PASSING for branch
+  # protection — gating jobs this way does not break required-check rules.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend-docker: ${{ steps.filter.outputs.backend-docker }}
+      frontend-docker: ${{ steps.filter.outputs.frontend-docker }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'pkg/**'
+              - 'services/api/**'
+              - 'services/orchestrator/**'
+              - 'services/agent-telegram/**'
+              - 'services/agent-vk/**'
+              - 'services/agent-yandex-business/**'
+              - 'services/agent-google-business/**'
+              - 'tools/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - '.golangci.yml'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'services/frontend/**'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+            backend-docker:
+              - 'pkg/**'
+              - 'services/api/**'
+              - 'services/orchestrator/**'
+              - 'services/agent-telegram/**'
+              - 'services/agent-vk/**'
+              - 'services/agent-yandex-business/**'
+              - 'services/agent-google-business/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'Dockerfile'
+              - 'Dockerfile.orchestrator'
+              - 'Dockerfile.agent-telegram'
+              - 'Dockerfile.agent-vk'
+              - 'Dockerfile.agent-yandex-business'
+              - '.github/workflows/ci.yml'
+            frontend-docker:
+              - 'services/frontend/**'
+              - '.github/workflows/ci.yml'
+
   go-lint:
     name: Go Lint & Security
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,6 +186,8 @@ jobs:
 
   go-test:
     name: Go Tests
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -188,6 +253,8 @@ jobs:
 
   frontend:
     name: Frontend Build & Test
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -227,8 +294,14 @@ jobs:
         run: pnpm audit --audit-level=high
         continue-on-error: true
 
-  docker-build:
+  # Split the original `docker-build` matrix into two jobs so each side can
+  # be gated independently. The matrix `name:` strings are preserved
+  # ("Docker Build (api)" .. "Docker Build (frontend)") so any existing
+  # branch protection rule pinned to a specific check name keeps matching.
+  docker-build-go:
     name: Docker Build (${{ matrix.image }})
+    needs: changes
+    if: needs.changes.outputs.backend-docker == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -249,9 +322,6 @@ jobs:
           - image: agent-yandex-business
             context: .
             file: Dockerfile.agent-yandex-business
-          - image: frontend
-            context: services/frontend
-            file: services/frontend/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -264,6 +334,24 @@ jobs:
           push: false
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  docker-build-frontend:
+    name: Docker Build (frontend)
+    needs: changes
+    if: needs.changes.outputs.frontend-docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/frontend
+          file: services/frontend/Dockerfile
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
   pr-meta:
     name: PR Labels & Size Check
