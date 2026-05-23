@@ -4,22 +4,23 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // yandexTools returns the Yandex.Business agent's tool specs. Verbatim copy
 // of the Yandex block from the historical registerPlatformTools (services/
 // orchestrator/cmd/main.go:560-695) — split into its own file so wire/tools.go
 // stays under SC-01's 500-LOC budget.
-func yandexTools() []toolSpec {
-	return []toolSpec{
+func yandexTools() []toolregistry.ToolSpec {
+	return []toolregistry.ToolSpec{
 		// Read-only. Auto.
 		{
-			displayName:     "Загрузить карточку организации",
-			displayNameKey:  "tools.yandex_business.get_info.name",
-			userDescription: "Загружает карточку организации из Яндекс.Бизнеса.",
-			descriptionEn:   "Fetches the current organization info from Yandex Business: name, phone, email, business hours, address, status.",
+			DisplayName:     "Загрузить карточку организации",
+			DisplayNameKey:  "tools.yandex_business.get_info.name",
+			UserDescription: "Загружает карточку организации из Яндекс.Бизнеса.",
+			DescriptionEn:   "Fetches the current organization info from Yandex Business: name, phone, email, business hours, address, status.",
 			// No parameters — no parameterDescriptionsEn map needed.
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessGetInfo,
 				Description: "Получает текущую информацию об организации в Яндекс Бизнес: название, телефон, email, часы работы, адрес, статус.",
 				Parameters: map[string]interface{}{
@@ -27,19 +28,19 @@ func yandexTools() []toolSpec {
 					"properties": map[string]interface{}{},
 				},
 			}},
-			floor:    domain.ToolFloorAuto,
-			editable: nil,
+			Floor:          domain.ToolFloorAuto,
+			EditableFields: nil,
 		},
 		// Mutating public: hours. hours editable (text payload).
 		{
-			displayName:     "Обновить часы работы",
-			displayNameKey:  "tools.yandex_business.update_hours.name",
-			userDescription: "Обновляет часы работы организации в Яндекс.Бизнесе.",
-			descriptionEn:   "Updates business hours in Yandex Business. Accepts a free-form schedule description.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Обновить часы работы",
+			DisplayNameKey:  "tools.yandex_business.update_hours.name",
+			UserDescription: "Обновляет часы работы организации в Яндекс.Бизнесе.",
+			DescriptionEn:   "Updates business hours in Yandex Business. Accepts a free-form schedule description.",
+			ParameterDescriptionsEn: map[string]string{
 				"hours": "Business hours in JSON format",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessUpdateHours,
 				Description: "Обновляет часы работы в Яндекс Бизнес. Принимает описание расписания в свободном формате.",
 				Parameters: map[string]interface{}{
@@ -50,24 +51,24 @@ func yandexTools() []toolSpec {
 					"required": []string{"hours"},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: []string{"hours"},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"hours"},
 		},
 		// Mutating public: business-profile text fields. description
 		// editable. phone + website pinned (dialing/URL redirection is
 		// a high-impact mutation; operator confirms via UI toggle before
 		// any tool call rather than post-hoc edit).
 		{
-			displayName:     "Обновить данные организации",
-			displayNameKey:  "tools.yandex_business.update_info.name",
-			userDescription: "Изменяет описание, телефон и сайт организации в Яндекс.Бизнесе.",
-			descriptionEn:   "Updates contact info in Yandex Business (phone, website, description).",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Обновить данные организации",
+			DisplayNameKey:  "tools.yandex_business.update_info.name",
+			UserDescription: "Изменяет описание, телефон и сайт организации в Яндекс.Бизнесе.",
+			DescriptionEn:   "Updates contact info in Yandex Business (phone, website, description).",
+			ParameterDescriptionsEn: map[string]string{
 				"phone":       "Phone number",
 				"website":     "Website URL",
 				"description": "Organization description",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessUpdateInfo,
 				Description: "Обновляет контактную информацию в Яндекс Бизнес (телефон, сайт, описание)",
 				Parameters: map[string]interface{}{
@@ -79,19 +80,19 @@ func yandexTools() []toolSpec {
 					},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: []string{"description"},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"description"},
 		},
 		// Read-only. Auto.
 		{
-			displayName:     "Загрузить отзывы Яндекса",
-			displayNameKey:  "tools.yandex_business.get_reviews.name",
-			userDescription: "Загружает отзывы клиентов с Яндекс.Бизнеса.",
-			descriptionEn:   "Fetches reviews of the organization from Yandex Business.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Загрузить отзывы Яндекса",
+			DisplayNameKey:  "tools.yandex_business.get_reviews.name",
+			UserDescription: "Загружает отзывы клиентов с Яндекс.Бизнеса.",
+			DescriptionEn:   "Fetches reviews of the organization from Yandex Business.",
+			ParameterDescriptionsEn: map[string]string{
 				"limit": "Number of reviews (max 50)",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessGetReviews,
 				Description: "Получает отзывы об организации из Яндекс Бизнес",
 				Parameters: map[string]interface{}{
@@ -101,20 +102,20 @@ func yandexTools() []toolSpec {
 					},
 				},
 			}},
-			floor:    domain.ToolFloorAuto,
-			editable: nil,
+			Floor:          domain.ToolFloorAuto,
+			EditableFields: nil,
 		},
 		// Mutating public: review reply. text editable; review_id pinned.
 		{
-			displayName:     "Ответить на отзыв Яндекса",
-			displayNameKey:  "tools.yandex_business.reply_review.name",
-			userDescription: "Отвечает на отзыв клиента в Яндекс.Бизнесе.",
-			descriptionEn:   "Publishes a reply to a review on Yandex Business.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Ответить на отзыв Яндекса",
+			DisplayNameKey:  "tools.yandex_business.reply_review.name",
+			UserDescription: "Отвечает на отзыв клиента в Яндекс.Бизнесе.",
+			DescriptionEn:   "Publishes a reply to a review on Yandex Business.",
+			ParameterDescriptionsEn: map[string]string{
 				"review_id": "Review ID",
 				"text":      "Reply text",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessReplyReview,
 				Description: "Публикует ответ на отзыв в Яндекс Бизнес",
 				Parameters: map[string]interface{}{
@@ -126,22 +127,22 @@ func yandexTools() []toolSpec {
 					"required": []string{"review_id", "text"},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: []string{"text"},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"text"},
 		},
 		// Mutating public: upload photo. Nothing editable (category
 		// and photo_url are both semantic — editing either changes
 		// what the operator sees in the card vs what actually uploads).
 		{
-			displayName:     "Загрузить фото",
-			displayNameKey:  "tools.yandex_business.upload_photo.name",
-			userDescription: "Добавляет фото в галерею карточки организации в Яндекс.Бизнесе.",
-			descriptionEn:   "Uploads a photo to Yandex Business. Categories: general, logo, services, interior, exterior, enter (entrance), goods.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Загрузить фото",
+			DisplayNameKey:  "tools.yandex_business.upload_photo.name",
+			UserDescription: "Добавляет фото в галерею карточки организации в Яндекс.Бизнесе.",
+			DescriptionEn:   "Uploads a photo to Yandex Business. Categories: general, logo, services, interior, exterior, enter (entrance), goods.",
+			ParameterDescriptionsEn: map[string]string{
 				"photo_url": "Public image URL to upload",
 				"category":  "Photo category: general, logo, services, interior, exterior, enter, goods",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessUploadPhoto,
 				Description: "Загружает фото в Яндекс Бизнес. Категория: general (общее), logo (логотип), services, interior, exterior, enter (вход), goods (товары).",
 				Parameters: map[string]interface{}{
@@ -153,19 +154,19 @@ func yandexTools() []toolSpec {
 					"required": []string{"photo_url"},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: nil,
+			Floor:          domain.ToolFloorManual,
+			EditableFields: nil,
 		},
 		// Mutating public: publication. text editable.
 		{
-			displayName:     "Опубликовать пост в Яндекс Бизнес",
-			displayNameKey:  "tools.yandex_business.create_post.name",
-			userDescription: "Публикует пост в Яндекс.Бизнесе.",
-			descriptionEn:   "Creates a publication (post) on Yandex Business. The post appears in Yandex Search and Yandex Maps.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Опубликовать пост в Яндекс Бизнес",
+			DisplayNameKey:  "tools.yandex_business.create_post.name",
+			UserDescription: "Публикует пост в Яндекс.Бизнесе.",
+			DescriptionEn:   "Creates a publication (post) on Yandex Business. The post appears in Yandex Search and Yandex Maps.",
+			ParameterDescriptionsEn: map[string]string{
 				"text": "Publication text",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.YandexBusinessCreatePost,
 				Description: "Создаёт публикацию (пост) в Яндекс Бизнес. Публикация появится в Поиске Яндекса и Яндекс Картах.",
 				Parameters: map[string]interface{}{
@@ -176,8 +177,8 @@ func yandexTools() []toolSpec {
 					"required": []string{"text"},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: []string{"text"},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"text"},
 		},
 	}
 }

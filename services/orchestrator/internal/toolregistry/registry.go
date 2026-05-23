@@ -58,33 +58,75 @@ func NewRegistry() *Registry {
 	return &Registry{tools: make(map[string]entry)}
 }
 
-// Register adds a tool definition with its executor (may be nil for stub tools),
-// the human-readable displayName surfaced on the Tasks page, the ToolFloor
-// baseline, and the per-tool EditableFields allowlist for HITL
-// edit-args validation.
+// ToolSpec is the declarative description of a tool — everything the registry
+// needs to know about a tool at registration time, in one atomic shape. The
+// runtime executor is passed separately to Register so the spec can stay pure
+// data (per-platform spec builders in services/orchestrator/internal/wire/
+// don't have to thread the NATS connection through).
 //
-// The caller MUST pass all five arguments explicitly — every registration site
-// in services/orchestrator/cmd/main.go must deliberately choose a floor and an
-// edit allowlist. There is no default so that a newly-added tool can never
-// silently inherit an unsafe policy. EditableFields is copied defensively so
-// subsequent caller-side mutations cannot change registered behavior.
+// Policy guidelines for choosing Floor:
+//   - ToolFloorAuto      — read-only / safe queries (no external side effects).
+//   - ToolFloorManual    — any public mutation (post, reply, update, schedule,
+//     upload). EditableFields covers ONLY human-facing
+//     text fields (text/caption/description); ids,
+//     recipients, URLs, dates, categories, and
+//     quantities are pinned at pause time.
+//   - ToolFloorForbidden — reserved for actions that must NEVER be lifted via
+//     settings (e.g., a future "wipe all posts"). Kept
+//     registered so the LLM sees it exists but
+//     policy.Resolve always denies. Destructive-but-
+//     legitimate operations (comment moderation, etc.)
+//     belong under Manual, not Forbidden — users with a
+//     valid use-case can opt into auto-approval.
 //
-// Convention: EditableFields is always lowercase_with_underscore
-// matching the tool's JSON arguments schema keys. The comparison performed by
+// When in doubt, prefer Manual + a narrow EditableFields list (conservative
+// default). EditableFields is always lowercase_with_underscore matching the
+// tool's JSON arguments schema keys; the comparison performed by
 // ValidateEditArgs is case-sensitive.
-func (r *Registry) Register(
-	def llm.ToolDefinition,
-	displayName string,
-	exec Executor,
-	floor domain.ToolFloor,
-	editableFields []string,
-) {
-	r.tools[def.Function.Name] = entry{
-		def:            def,
-		displayName:    displayName,
-		executor:       exec,
-		floor:          floor,
-		editableFields: append([]string(nil), editableFields...),
+//
+// All fields except Def and Floor are optional. DisplayNameKey, DescriptionEn,
+// and ParameterDescriptionsEn power frontend localization (catalog key + EN
+// fallback for the LLM-facing description). UserDescription is the short
+// user-facing blurb rendered in /settings/tools (the LLM-facing description on
+// Def.Function.Description may reference other tool names and disambiguation
+// rules that would confuse end users).
+type ToolSpec struct {
+	Def                     llm.ToolDefinition
+	DisplayName             string
+	DisplayNameKey          string
+	UserDescription         string
+	DescriptionEn           string
+	ParameterDescriptionsEn map[string]string
+	Floor                   domain.ToolFloor
+	EditableFields          []string
+}
+
+// Register stores spec under spec.Def.Function.Name and binds exec as the
+// executor (nil is legal for stub tools — e.g., when NATS is unavailable, the
+// registry still answers metadata queries but Execute returns an error).
+//
+// EditableFields and ParameterDescriptionsEn are copied defensively so
+// subsequent caller-side mutations cannot change registered behavior. There is
+// no default Floor — every registration site must deliberately choose so a
+// newly-added tool cannot silently inherit an unsafe policy.
+func (r *Registry) Register(spec ToolSpec, exec Executor) {
+	var paramsEn map[string]string
+	if len(spec.ParameterDescriptionsEn) > 0 {
+		paramsEn = make(map[string]string, len(spec.ParameterDescriptionsEn))
+		for k, v := range spec.ParameterDescriptionsEn {
+			paramsEn[k] = v
+		}
+	}
+	r.tools[spec.Def.Function.Name] = entry{
+		def:                     spec.Def,
+		displayName:             spec.DisplayName,
+		userDescription:         spec.UserDescription,
+		displayNameKey:          spec.DisplayNameKey,
+		descriptionEn:           spec.DescriptionEn,
+		parameterDescriptionsEn: paramsEn,
+		executor:                exec,
+		floor:                   spec.Floor,
+		editableFields:          append([]string(nil), spec.EditableFields...),
 	}
 }
 
@@ -98,32 +140,6 @@ func (r *Registry) DisplayName(name string) string {
 	return e.displayName
 }
 
-// SetUserDescription attaches a short user-facing description to a
-// previously-registered tool. This is what renders in /settings/tools and the
-// project approval overrides; the LLM-facing description (kept on
-// def.Function.Description) may reference other tool names and disambiguation
-// rules that would be confusing to surface in the UI. No-op if the tool is
-// not registered.
-func (r *Registry) SetUserDescription(name, text string) {
-	e, ok := r.tools[name]
-	if !ok {
-		return
-	}
-	e.userDescription = text
-	r.tools[name] = e
-}
-
-// SetDisplayNameKey attaches the i18n catalog key the frontend uses to render
-// localized task titles. No-op if the tool is not registered.
-func (r *Registry) SetDisplayNameKey(name, key string) {
-	e, ok := r.tools[name]
-	if !ok {
-		return
-	}
-	e.displayNameKey = key
-	r.tools[name] = e
-}
-
 // DisplayNameKey returns the i18n catalog key for the given tool, or "" if
 // unknown / unset.
 func (r *Registry) DisplayNameKey(name string) string {
@@ -132,37 +148,6 @@ func (r *Registry) DisplayNameKey(name string) string {
 		return ""
 	}
 	return e.displayNameKey
-}
-
-// SetDescriptionEn attaches the English translation of the tool's LLM-facing
-// description. No-op if the tool is not registered.
-func (r *Registry) SetDescriptionEn(name, text string) {
-	e, ok := r.tools[name]
-	if !ok {
-		return
-	}
-	e.descriptionEn = text
-	r.tools[name] = e
-}
-
-// SetParameterDescriptionsEn attaches a map of parameter-name -> English
-// description for the named tool. The map is copied defensively. No-op if the
-// tool is not registered; nil/empty map clears any previous translations.
-func (r *Registry) SetParameterDescriptionsEn(name string, m map[string]string) {
-	e, ok := r.tools[name]
-	if !ok {
-		return
-	}
-	if len(m) == 0 {
-		e.parameterDescriptionsEn = nil
-	} else {
-		cp := make(map[string]string, len(m))
-		for k, v := range m {
-			cp[k] = v
-		}
-		e.parameterDescriptionsEn = cp
-	}
-	r.tools[name] = e
 }
 
 // Available returns tool definitions available for the given active integrations.

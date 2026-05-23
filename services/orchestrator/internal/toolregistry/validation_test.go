@@ -21,20 +21,16 @@ import (
 // can map each error shape to a 400 body without needing further branching.
 func TestValidateEditArgs(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(
-		makeDef(tools.TelegramSendChannelPost),
-		"",
-		nil,
-		domain.ToolFloorManual,
-		[]string{"text", "parse_mode"},
-	)
-	reg.Register(
-		makeDef("multi_scalar"),
-		"",
-		nil,
-		domain.ToolFloorAuto,
-		[]string{"a", "b", "c"},
-	)
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef(tools.TelegramSendChannelPost),
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text", "parse_mode"},
+	}, nil)
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef("multi_scalar"),
+		Floor:          domain.ToolFloorAuto,
+		EditableFields: []string{"a", "b", "c"},
+	}, nil)
 
 	cases := []struct {
 		name       string
@@ -179,13 +175,11 @@ func TestValidateEditArgs(t *testing.T) {
 // confusing way; locking them here gives early warning.
 func TestValidateEditArgs_ErrorMessagesIncludeContext(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(
-		makeDef(tools.TelegramSendChannelPost),
-		"",
-		nil,
-		domain.ToolFloorManual,
-		[]string{"text"},
-	)
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef(tools.TelegramSendChannelPost),
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text"},
+	}, nil)
 
 	err := reg.ValidateEditArgs(tools.TelegramSendChannelPost, map[string]interface{}{"channel_id": "x"})
 	if err == nil {

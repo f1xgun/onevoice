@@ -260,9 +260,9 @@ func TestResumeHandler_EmptyBody_UsesZeroValues(t *testing.T) {
 // the endpoint the API's GET /api/v1/tools passthrough consumes.
 func TestInternalToolsAll_ReturnsFullProjection(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef(tools.VKPublishPost), "", nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("get_reviews"), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(toolregistry.ToolSpec{Def: makeDef(tools.TelegramSendChannelPost), DisplayName: "", Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, nil)
+	reg.Register(toolregistry.ToolSpec{Def: makeDef(tools.VKPublishPost), DisplayName: "", Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, nil)
+	reg.Register(toolregistry.ToolSpec{Def: makeDef("get_reviews"), DisplayName: "", Floor: domain.ToolFloorAuto, EditableFields: nil}, nil)
 
 	h := handler.NewInternalToolsAllHandler(reg)
 	req := httptest.NewRequest(http.MethodGet, "/internal/tools", http.NoBody)

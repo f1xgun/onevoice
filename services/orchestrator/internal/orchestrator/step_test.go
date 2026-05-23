@@ -135,7 +135,7 @@ func newRegistryWithFloor(name string, floor domain.ToolFloor, exec toolregistry
 			return map[string]interface{}{"ok": true}, nil
 		})
 	}
-	reg.Register(def, "", exec, floor, []string{"text"})
+	reg.Register(toolregistry.ToolSpec{Def: def, Floor: floor, EditableFields: []string{"text"}}, exec)
 	return reg
 }
 
@@ -362,18 +362,18 @@ func TestStepRun_ForbiddenTool_SynthesizesRejection_AndContinues(t *testing.T) {
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "forbidden_tool", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorForbidden, EditableFields: nil}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, errors.New("must not be called")
-	}), domain.ToolFloorForbidden, nil)
-	reg.Register(llm.ToolDefinition{
+	}))
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "auto_tool", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
-	}), domain.ToolFloorAuto, nil)
+	}))
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -412,18 +412,18 @@ func TestStepRun_MixedAutoAndManual_PausesAfterAutoComplete(t *testing.T) {
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "auto_t", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
-	}), domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{
+	}))
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "manual_t", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
-	}), domain.ToolFloorManual, []string{"text"})
+	}))
 
 	repo := newMockPendingRepo()
 	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
@@ -505,18 +505,18 @@ func TestBuildPendingBatch_PopulatesFloorAtPauseManual(t *testing.T) {
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "telegram_post", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
-	}), domain.ToolFloorManual, []string{"text"})
-	reg.Register(llm.ToolDefinition{
+	}))
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "vk_post", Description: "x", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
-	}), domain.ToolFloorManual, []string{"text"})
+	}))
 
 	repo := newMockPendingRepo()
 	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
