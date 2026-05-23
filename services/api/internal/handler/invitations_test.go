@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
@@ -144,6 +145,7 @@ func newInvitationFixture(t *testing.T) *invitationTestFixture {
 		businessRepo:   f.bizRepo,
 		pool:           mockPool,
 		invalidator:    f.inv,
+		audit:          audit.Nop(),
 		now:            func() time.Time { return f.now },
 	}
 	return f

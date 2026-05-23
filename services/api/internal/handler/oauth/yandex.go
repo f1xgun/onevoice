@@ -97,6 +97,7 @@ func (h *OAuthHandler) YandexCallback(w http.ResponseWriter, r *http.Request) {
 
 	_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:   stateData.BusinessID,
+		ActorID:      stateData.UserID,
 		Platform:     a2a.AgentYandexBusiness,
 		ExternalID:   "default",
 		AccessToken:  tokenResp.AccessToken,

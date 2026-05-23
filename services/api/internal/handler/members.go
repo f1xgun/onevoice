@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -42,15 +43,21 @@ type MembersHandler struct {
 	userRepo       domain.UserRepository
 	pool           poolBeginner
 	invalidator    memberCacheInvalidator
+	audit          audit.Logger
 }
 
 // NewMembersHandler constructs a MembersHandler. All dependencies are required.
+//
+// Phase 19 Wave 4 (19-04): adds `auditLogger` so PATCH/DELETE member endpoints
+// can emit rbac.role_granted / rbac.member_removed audit events AFTER the
+// underlying transaction commits.
 func NewMembersHandler(
 	mr domain.BusinessMembershipRepository,
 	rr domain.RoleRepository,
 	ur domain.UserRepository,
 	pool poolBeginner,
 	inv memberCacheInvalidator,
+	auditLogger audit.Logger,
 ) (*MembersHandler, error) {
 	if mr == nil {
 		return nil, fmt.Errorf("NewMembersHandler: membershipRepo cannot be nil")
@@ -67,12 +74,16 @@ func NewMembersHandler(
 	if inv == nil {
 		return nil, fmt.Errorf("NewMembersHandler: invalidator cannot be nil")
 	}
+	if auditLogger == nil {
+		return nil, fmt.Errorf("NewMembersHandler: auditLogger cannot be nil")
+	}
 	return &MembersHandler{
 		membershipRepo: mr,
 		roleRepo:       rr,
 		userRepo:       ur,
 		pool:           pool,
 		invalidator:    inv,
+		audit:          auditLogger,
 	}, nil
 }
 
@@ -252,6 +263,18 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 	// SPEC AUTHZ-04 + MEMBER-05: invalidate AFTER commit, never before.
 	h.invalidator.InvalidateMember(bc.BusinessID, targetUserID)
 
+	// Phase 19 audit (D-29/D-30): emit rbac.role_granted AFTER successful
+	// commit + cache invalidation. Fire-and-forget — Logger spawns its own
+	// goroutine; never blocks the response.
+	//
+	// v1.0: oldRoleID is intentionally nil. Capturing it would require either
+	// (a) a pre-commit SELECT (race window: another admin could change the
+	// row between SELECT and the actual UpdateRoleInTx) or (b) an
+	// `UpdateRoleInTx` repo signature that returns the previous role_id.
+	// Both are deferred — the audit row still captures actor, target, and
+	// the new role which is the load-bearing forensic data.
+	audit.LogRoleGranted(r.Context(), h.audit, bc.BusinessID, bc.UserID, targetUserID, req.RoleID, nil)
+
 	slog.InfoContext(r.Context(), "member role updated",
 		"business_id", bc.BusinessID,
 		"actor_user_id", bc.UserID,
@@ -346,6 +369,10 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 
 	// SPEC AUTHZ-04 + MEMBER-05: invalidate AFTER commit, never before.
 	h.invalidator.InvalidateMember(bc.BusinessID, targetUserID)
+
+	// Phase 19 audit (D-29/D-30): emit rbac.member_removed AFTER successful
+	// commit. selfRemoval=true distinguishes "left the org" from "kicked".
+	audit.LogMemberRemoved(r.Context(), h.audit, bc.BusinessID, bc.UserID, targetUserID, targetUserID == bc.UserID)
 
 	slog.InfoContext(r.Context(), "member removed",
 		"business_id", bc.BusinessID,

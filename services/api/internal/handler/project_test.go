@@ -22,17 +22,17 @@ import (
 // --- mocks -----------------------------------------------------------------
 
 type mockProjectService struct {
-	createFunc             func(ctx context.Context, businessID uuid.UUID, input service.CreateProjectInput) (*domain.Project, error)
+	createFunc             func(ctx context.Context, businessID, actorID uuid.UUID, input service.CreateProjectInput) (*domain.Project, error)
 	getByIDFunc            func(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error)
 	listByBusinessIDFunc   func(ctx context.Context, businessID uuid.UUID) ([]domain.Project, error)
-	updateFunc             func(ctx context.Context, businessID, id uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error)
-	deleteCascadeFunc      func(ctx context.Context, businessID, id uuid.UUID) (int, int, error)
+	updateFunc             func(ctx context.Context, businessID, id, actorID uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error)
+	deleteCascadeFunc      func(ctx context.Context, businessID, id, actorID uuid.UUID) (int, int, error)
 	countConversationsFunc func(ctx context.Context, businessID, id uuid.UUID) (int, error)
 }
 
-func (m *mockProjectService) Create(ctx context.Context, businessID uuid.UUID, input service.CreateProjectInput) (*domain.Project, error) {
+func (m *mockProjectService) Create(ctx context.Context, businessID, actorID uuid.UUID, input service.CreateProjectInput) (*domain.Project, error) {
 	if m.createFunc != nil {
-		return m.createFunc(ctx, businessID, input)
+		return m.createFunc(ctx, businessID, actorID, input)
 	}
 	return nil, nil
 }
@@ -48,15 +48,15 @@ func (m *mockProjectService) ListByBusinessID(ctx context.Context, businessID uu
 	}
 	return []domain.Project{}, nil
 }
-func (m *mockProjectService) Update(ctx context.Context, businessID, id uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error) {
+func (m *mockProjectService) Update(ctx context.Context, businessID, id, actorID uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error) {
 	if m.updateFunc != nil {
-		return m.updateFunc(ctx, businessID, id, input)
+		return m.updateFunc(ctx, businessID, id, actorID, input)
 	}
 	return nil, nil
 }
-func (m *mockProjectService) DeleteCascade(ctx context.Context, businessID, id uuid.UUID) (deletedConversations, deletedMessages int, err error) {
+func (m *mockProjectService) DeleteCascade(ctx context.Context, businessID, id, actorID uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	if m.deleteCascadeFunc != nil {
-		return m.deleteCascadeFunc(ctx, businessID, id)
+		return m.deleteCascadeFunc(ctx, businessID, id, actorID)
 	}
 	return 0, 0, nil
 }
@@ -118,7 +118,7 @@ func TestProjectHandler_Create_Success(t *testing.T) {
 	projectID := uuid.New()
 
 	ps := &mockProjectService{
-		createFunc: func(_ context.Context, bid uuid.UUID, input service.CreateProjectInput) (*domain.Project, error) {
+		createFunc: func(_ context.Context, bid uuid.UUID, _ uuid.UUID, input service.CreateProjectInput) (*domain.Project, error) {
 			assert.Equal(t, businessID, bid)
 			assert.Equal(t, "Reviews", input.Name)
 			assert.Equal(t, domain.WhitelistModeAll, input.WhitelistMode)
@@ -196,7 +196,7 @@ func TestProjectHandler_Create_ValidationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ps := &mockProjectService{
-				createFunc: func(_ context.Context, _ uuid.UUID, _ service.CreateProjectInput) (*domain.Project, error) {
+				createFunc: func(_ context.Context, _, _ uuid.UUID, _ service.CreateProjectInput) (*domain.Project, error) {
 					return nil, tt.serviceErr
 				},
 			}
@@ -274,7 +274,7 @@ func TestProjectHandler_Update_Success(t *testing.T) {
 	projectID := uuid.New()
 
 	ps := &mockProjectService{
-		updateFunc: func(_ context.Context, bid uuid.UUID, id uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error) {
+		updateFunc: func(_ context.Context, bid uuid.UUID, id uuid.UUID, _ uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error) {
 			assert.Equal(t, businessID, bid)
 			assert.Equal(t, projectID, id)
 			assert.Equal(t, "NewName", input.Name)
@@ -304,7 +304,7 @@ func TestProjectHandler_Delete_ReturnsCounts(t *testing.T) {
 	projectID := uuid.New()
 
 	ps := &mockProjectService{
-		deleteCascadeFunc: func(_ context.Context, _, _ uuid.UUID) (int, int, error) {
+		deleteCascadeFunc: func(_ context.Context, _, _, _ uuid.UUID) (int, int, error) {
 			return 5, 42, nil
 		},
 	}

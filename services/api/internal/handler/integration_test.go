@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -76,7 +77,7 @@ func TestListIntegrations_Success(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return(integrations, nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -111,7 +112,7 @@ func TestListIntegrations_EmptyList(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -143,7 +144,7 @@ func TestListIntegrations_EmptyList(t *testing.T) {
 // TestListIntegrations_NoBusinessContext tests 500 when no BusinessContext in ctx (middleware misconfiguration)
 func TestListIntegrations_NoBusinessContext(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,7 +166,7 @@ func TestListIntegrations_Forbidden(t *testing.T) {
 	userID := uuid.New()
 
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -190,7 +191,7 @@ func TestListIntegrations_IntegrationServiceError(t *testing.T) {
 	mockIntegrationService := new(MockIntegrationService)
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration(nil), errors.New("database query failed"))
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -234,7 +235,7 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	}, nil)
 	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -261,7 +262,7 @@ func TestDeleteIntegration_Success(t *testing.T) {
 func TestDeleteIntegration_NoBusinessContext(t *testing.T) {
 	integrationID := uuid.New()
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -287,7 +288,7 @@ func TestDeleteIntegration_Forbidden(t *testing.T) {
 	integrationID := uuid.New()
 
 	mockIntegrationService := new(MockIntegrationService)
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -318,7 +319,7 @@ func TestDeleteIntegration_IntegrationNotFound(t *testing.T) {
 	// Return empty list — integration not in this business
 	mockIntegrationService.On("ListByBusinessID", mock.Anything, businessID).Return([]domain.Integration{}, nil)
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -353,7 +354,7 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 	}, nil)
 	mockIntegrationService.On("Delete", mock.Anything, integrationID).Return(errors.New("redis deletion failed"))
 
-	h, err := NewIntegrationHandler(mockIntegrationService, nil)
+	h, err := NewIntegrationHandler(mockIntegrationService, nil, audit.Nop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -392,7 +393,7 @@ func TestDeleteIntegration_DeleteServiceError(t *testing.T) {
 
 // TestNewIntegrationHandler_NilIntegrationService tests error when integration service is nil
 func TestNewIntegrationHandler_NilIntegrationService(t *testing.T) {
-	h, err := NewIntegrationHandler(nil, nil)
+	h, err := NewIntegrationHandler(nil, nil, audit.Nop())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

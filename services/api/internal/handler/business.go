@@ -33,7 +33,9 @@ var allowedMimeTypes = map[string]string{
 type BusinessService interface {
 	Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
-	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
+	// Update applies a business profile edit; actorUserID is threaded through
+	// for the Phase 19 service-layer audit emission (D-29/D-30).
+	Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error)
 	// ListMembershipsByUser powers GET /api/v1/businesses.
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]service.MembershipSummary, error)
 	// Tool-approval methods. Permission enforcement (PermBusinessRead /
@@ -279,7 +281,7 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 	business.Description = req.Description
 	business.UpdatedAt = time.Now()
 
-	updatedBusiness, err := h.businessService.Update(r.Context(), business)
+	updatedBusiness, err := h.businessService.Update(r.Context(), business, bc.UserID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "failed to update business", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -337,7 +339,7 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	}
 	business.UpdatedAt = time.Now()
 
-	updated, err := h.businessService.Update(r.Context(), business)
+	updated, err := h.businessService.Update(r.Context(), business, bc.UserID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "failed to update schedule", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -392,7 +394,7 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 	business.Settings["voiceTone"] = req.Tones
 	business.UpdatedAt = time.Now()
 
-	updated, err := h.businessService.Update(r.Context(), business)
+	updated, err := h.businessService.Update(r.Context(), business, bc.UserID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "failed to update voice tone", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
@@ -574,7 +576,7 @@ func (h *BusinessHandler) UploadLogo(w http.ResponseWriter, r *http.Request) {
 
 	business.LogoURL = h.storage.PublicURL(key)
 	business.UpdatedAt = time.Now()
-	updatedBusiness, err := h.businessService.Update(r.Context(), business)
+	updatedBusiness, err := h.businessService.Update(r.Context(), business, bc.UserID)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "upload logo: update business failed", "error", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")

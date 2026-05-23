@@ -6,13 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/auth"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
@@ -35,17 +40,38 @@ type AuthHandler struct {
 	userService   UserService
 	validate      *validator.Validate
 	secureCookies bool
+	// Phase 19 v2.0 audit: AuditLogger is fire-and-forget; nil-safe via
+	// audit.Logger interface — wire/handlers.go injects the shared
+	// svcs.AuditLogger.
+	audit audit.Logger
+	// jwtSecret is used for parsing refresh-token claims during Logout so
+	// the audit entry can record userID BEFORE the Redis invalidation removes
+	// the token-id binding (T-19-19 mitigation).
+	jwtSecret []byte
 }
 
-// NewAuthHandler creates a new auth handler instance
-func NewAuthHandler(userService UserService, secureCookies bool) (*AuthHandler, error) {
+// NewAuthHandler creates a new auth handler instance.
+//
+// Phase 19 Wave 4 (19-04): adds `auditLogger` and `jwtSecret` parameters so
+// the handler can emit auth.* audit events (login_success / login_failed /
+// logout / password_changed / user_registered) and extract userID from the
+// refresh-token claims before Logout invalidates the token in Redis.
+func NewAuthHandler(userService UserService, secureCookies bool, auditLogger audit.Logger, jwtSecret []byte) (*AuthHandler, error) {
 	if userService == nil {
 		return nil, fmt.Errorf("NewAuthHandler: userService cannot be nil")
+	}
+	if auditLogger == nil {
+		return nil, fmt.Errorf("NewAuthHandler: auditLogger cannot be nil")
+	}
+	if len(jwtSecret) < auth.JWTSecretMinLen {
+		return nil, fmt.Errorf("NewAuthHandler: jwtSecret must be at least %d bytes", auth.JWTSecretMinLen)
 	}
 	return &AuthHandler{
 		userService:   userService,
 		validate:      validate,
 		secureCookies: secureCookies,
+		audit:         auditLogger,
+		jwtSecret:     jwtSecret,
 	}, nil
 }
 
@@ -167,6 +193,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.setRefreshTokenCookie(w, refreshToken)
+
+	// Phase 19 audit: registration emits auth.user_registered AFTER the
+	// auto-login cookies are set so we record the IP/UA that actually
+	// completed the flow. Fire-and-forget — Logger spawns its own goroutine.
+	audit.LogUserRegistered(r.Context(), h.audit, user.ID, user.Email, clientIP(r), r.UserAgent())
+
 	writeJSON(w, http.StatusCreated, LoginResponse{
 		User:        user,
 		AccessToken: accessToken,
@@ -199,6 +231,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 				slog.String("remote_addr", r.RemoteAddr),
 				slog.String("user_agent", r.UserAgent()),
 			)
+			// Phase 19 audit (D-31): user_id intentionally nil — we do NOT look
+			// up the attempted email against the users table. The attempted
+			// email is captured in Details for brute-force analysis.
+			audit.LogLoginFailed(r.Context(), h.audit, req.Email, clientIP(r), r.UserAgent(), "invalid_credentials")
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
@@ -208,6 +244,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.setRefreshTokenCookie(w, refreshToken)
+
+	// Phase 19 audit: login_success fired AFTER the refresh-token cookie is
+	// set so the request fully succeeded. Async fire-and-forget.
+	audit.LogLoginSuccess(r.Context(), h.audit, user.ID, clientIP(r), r.UserAgent())
+
 	writeJSON(w, http.StatusOK, LoginResponse{
 		User:        user,
 		AccessToken: accessToken,
@@ -241,13 +282,35 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Logout handles user logout by invalidating refresh token
+// Logout handles user logout by invalidating refresh token.
+//
+// Phase 19 audit (T-19-19 mitigation): the user_id is extracted from the
+// refresh-token claims BEFORE the service invalidates the token in Redis.
+// If we waited until after invalidation we'd have nothing to attribute the
+// audit row to.
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := h.readRefreshTokenCookie(r)
 	if err != nil {
 		// No cookie = already logged out, return success
 		writeJSON(w, http.StatusNoContent, nil)
 		return
+	}
+
+	// Phase 19: parse the refresh-token claims locally (independent of the
+	// service's own validation) so we capture user_id even when the service
+	// later reports an invalid token. The parse uses the same secret + claim
+	// validators as user.Service.Logout — mismatched / unsigned tokens fall
+	// through to userID == uuid.Nil and we skip the audit emission below.
+	var auditUserID uuid.UUID
+	if tok, perr := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return h.jwtSecret, nil
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(auth.TokenIssuer), jwt.WithAudience(auth.TokenAudience)); perr == nil {
+		if claims, ok := tok.Claims.(*auth.RefreshTokenClaims); ok && tok.Valid {
+			auditUserID = claims.UserID
+		}
 	}
 
 	err = h.userService.Logout(r.Context(), refreshToken)
@@ -263,6 +326,13 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.clearRefreshTokenCookie(w)
+
+	// Phase 19 audit: fired AFTER the service invalidates the token in Redis,
+	// but with userID captured BEFORE invalidation (see comment above).
+	if auditUserID != uuid.Nil {
+		audit.LogLogout(r.Context(), h.audit, auditUserID)
+	}
+
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
@@ -324,6 +394,10 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Phase 19 audit: fired AFTER successful password change. NO old / new
+	// password content in details (D-14 — only IP + UA for forensics).
+	audit.LogPasswordChanged(r.Context(), h.audit, userID, clientIP(r), r.UserAgent())
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -366,4 +440,32 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// clientIP returns the client IP from r.RemoteAddr, stripping the port. If
+// the trusted-proxy X-Forwarded-For header is present, the FIRST entry (the
+// original client) is returned instead. IPv6 addresses come back without
+// brackets — net.SplitHostPort handles the bracketed form.
+//
+// T-19-18 disposition: when not behind a trusted proxy, the X-Forwarded-For
+// header is attacker-controllable. Audit IP is best-effort forensic data,
+// not auth — accepted risk per the threat model.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i > 0 {
+			return strings.TrimSpace(xff[:i])
+		}
+		return strings.TrimSpace(xff)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	// net.SplitHostPort already strips IPv6 brackets ([::1]:8080 -> "::1").
+	// Validate the host is parseable IP — fall back to the raw value
+	// otherwise to preserve forensic value when the source isn't an IP.
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
+	}
+	return host
 }

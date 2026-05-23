@@ -15,9 +15,15 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
+
+// testJWTSecret is a 32-byte stub secret used by handler tests to satisfy
+// NewAuthHandler's jwtSecret minimum-length check. Not used for crypto
+// verification in tests that don't exercise the Logout claims-parse path.
+var testJWTSecret = []byte("test-jwt-secret-32-bytes-padding-zz")
 
 // MockUserService is a mock implementation of the user service interface
 type MockUserService struct {
@@ -207,7 +213,7 @@ func TestRegister(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler, _ := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
@@ -341,7 +347,7 @@ func TestLogin(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler, _ := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
@@ -462,7 +468,7 @@ func TestRefreshToken(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler, _ := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", http.NoBody)
 			if tt.cookie != nil {
@@ -553,7 +559,7 @@ func TestLogout(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler, _ := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", http.NoBody)
 			if tt.cookie != nil {
@@ -572,7 +578,7 @@ func TestLogout(t *testing.T) {
 }
 
 func TestNewAuthHandler_NilService(t *testing.T) {
-	handler, err := NewAuthHandler(nil, false)
+	handler, err := NewAuthHandler(nil, false, audit.Nop(), testJWTSecret)
 	assert.Nil(t, handler)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "userService cannot be nil")
@@ -719,7 +725,7 @@ func TestChangePassword(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler, _ := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
 			req := httptest.NewRequest(http.MethodPut, "/api/v1/auth/password", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")
@@ -747,7 +753,7 @@ func TestSecureCookies(t *testing.T) {
 				UpdatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			}, "access-token", "refresh-token", nil)
 
-		handler, err := NewAuthHandler(mockService, true)
+		handler, err := NewAuthHandler(mockService, true, audit.Nop(), testJWTSecret)
 		require.NoError(t, err)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"user@example.com","password":"password123"}`))
@@ -782,7 +788,7 @@ func TestSecureCookies(t *testing.T) {
 				Email: "user@example.com",
 			}, "new-access", "new-refresh", nil)
 
-		handler, err := NewAuthHandler(mockService, true)
+		handler, err := NewAuthHandler(mockService, true, audit.Nop(), testJWTSecret)
 		require.NoError(t, err)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", http.NoBody)
@@ -803,7 +809,7 @@ func TestSecureCookies(t *testing.T) {
 				Email: "user@example.com",
 			}, "new-access", "new-refresh", nil)
 
-		handler, err := NewAuthHandler(mockService, true)
+		handler, err := NewAuthHandler(mockService, true, audit.Nop(), testJWTSecret)
 		require.NoError(t, err)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", http.NoBody)
@@ -827,7 +833,7 @@ func TestRegister_AutoLoginFailure(t *testing.T) {
 	mockService.On("Login", mock.Anything, "user@example.com", "password123").
 		Return(nil, "", "", errors.New("auto-login failed"))
 
-	handler, _ := NewAuthHandler(mockService, false)
+	handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"user@example.com","password":"password123"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -927,7 +933,7 @@ func TestMe(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler, _ := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", http.NoBody)
 			req = tt.setupContext(req)
@@ -960,7 +966,7 @@ func TestMe_ReturnsPreferredLocale(t *testing.T) {
 			UpdatedAt:       time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		}, nil)
 
-	handler, _ := NewAuthHandler(mockService, false)
+	handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", http.NoBody)
 	ctx := context.WithValue(req.Context(), middleware.UserIDKey, testUserID)
@@ -1120,7 +1126,7 @@ func TestUpdatePreferredLocale(t *testing.T) {
 			mockService := new(MockUserService)
 			tt.mockSetup(mockService)
 
-			handler, _ := NewAuthHandler(mockService, false)
+			handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
 			req := httptest.NewRequest(http.MethodPatch, "/api/v1/auth/locale", bytes.NewBufferString(tt.requestBody))
 			req.Header.Set("Content-Type", "application/json")

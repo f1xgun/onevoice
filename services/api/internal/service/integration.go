@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -21,9 +22,15 @@ type TokenRefresher interface {
 	RefreshToken(ctx context.Context, refreshToken string) (accessToken string, newRefreshToken string, expiresIn int64, err error)
 }
 
-// ConnectParams holds parameters for connecting a new platform integration
+// ConnectParams holds parameters for connecting a new platform integration.
+//
+// Phase 19 Wave 4 (19-04): ActorID is the user_id of whoever is performing
+// the connect, threaded through so the service can emit a single
+// integration.connected audit row with the correct attribution instead of
+// scattering audit calls across the 6 handler-layer Connect call sites.
 type ConnectParams struct {
 	BusinessID       uuid.UUID
+	ActorID          uuid.UUID
 	Platform         string
 	ExternalID       string
 	AccessToken      string
@@ -64,6 +71,7 @@ type integrationService struct {
 	enc       *crypto.Encryptor
 	refreshMu sync.Map       // map[uuid.UUID]*sync.Mutex — per-integration refresh lock
 	refresher TokenRefresher // nil for platforms that don't need refresh
+	audit     audit.Logger
 }
 
 // Compile-time check that integrationService implements IntegrationService
@@ -71,11 +79,19 @@ var _ IntegrationService = (*integrationService)(nil)
 
 // NewIntegrationService creates a new integration service instance.
 // refresher can be nil for platforms that don't use token refresh.
-func NewIntegrationService(repo domain.IntegrationRepository, enc *crypto.Encryptor, refresher TokenRefresher) IntegrationService {
+//
+// Phase 19 Wave 4 (19-04): auditLogger receives integration.connected and
+// integration.token_rotated events. nil-safe via audit.Nop() at the caller
+// but production wiring always passes svcs.AuditLogger.
+func NewIntegrationService(repo domain.IntegrationRepository, enc *crypto.Encryptor, refresher TokenRefresher, auditLogger audit.Logger) IntegrationService {
+	if auditLogger == nil {
+		auditLogger = audit.Nop()
+	}
 	return &integrationService{
 		repo:      repo,
 		enc:       enc,
 		refresher: refresher,
+		audit:     auditLogger,
 	}
 }
 
@@ -267,6 +283,13 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, err
 	}
 
+	// Phase 19 audit (D-14, D-29/D-30): emit integration.connected AFTER
+	// the repo write succeeds. Details carry platform + external_id only —
+	// NEVER token material. Fire-and-forget — Logger spawns its own goroutine.
+	// ActorID may be uuid.Nil for legacy/system flows; the audit row still
+	// records business_id + platform for forensics.
+	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID)
+
 	return integration, nil
 }
 
@@ -354,6 +377,12 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 			if err := s.repo.Update(ctx, integration); err != nil {
 				return nil, fmt.Errorf("persist refreshed tokens: %w", err)
 			}
+
+			// Phase 19 audit (D-29/D-30): emit integration.token_rotated AFTER
+			// repo.Update succeeds. user_id is intentionally nil — this is a
+			// background system event with no human actor (the builder records
+			// user_id=NULL).
+			audit.LogIntegrationTokenRotated(ctx, s.audit, integration.BusinessID, integration.ID, integration.Platform)
 
 			slog.InfoContext(ctx, "token refreshed successfully",
 				"integration_id", integration.ID,

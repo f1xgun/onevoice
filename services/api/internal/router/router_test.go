@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/health"
@@ -21,6 +22,10 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 )
+
+// routerTestJWTSecret is a 32-byte stub secret used by router tests so
+// NewAuthHandler's jwtSecret minimum-length check passes.
+var routerTestJWTSecret = []byte("test-jwt-secret-32-bytes-padding-zz")
 
 // fakeLoader implements authz.MembershipLoader for constructing a test Cache.
 type fakeLoader struct{}
@@ -63,7 +68,7 @@ func (stubUserService) UpdatePreferredLocale(_ context.Context, _ uuid.UUID, _ s
 // populated with zero-value or stub handlers so the router can be built.
 // Handler bodies are never invoked during chi.Walk or 404-probe tests.
 func buildTestHandlers() *router.Handlers {
-	authH, err := handler.NewAuthHandler(stubUserService{}, false)
+	authH, err := handler.NewAuthHandler(stubUserService{}, false, audit.Nop(), routerTestJWTSecret)
 	if err != nil {
 		panic("buildTestHandlers: " + err.Error())
 	}

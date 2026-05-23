@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -71,13 +72,24 @@ type Subscription struct {
 	UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
 }
 
+// AuditLog is the persisted record of a security-sensitive mutation.
+//
+// BusinessID is nullable for system-wide events (e.g. failed login before
+// the user is known). UserID is nullable for the same reason: a failed
+// login attempt against a non-existent or wrong-password account has no
+// resolvable user (D-31).
+//
+// Details is stored as raw JSONB; typed constructors live in pkg/audit and
+// marshal their own typed Details structs into this field. Callers must
+// not write map[string]interface{} (D-10).
 type AuditLog struct {
-	ID        uuid.UUID              `json:"id" db:"id"`
-	UserID    uuid.UUID              `json:"userId" db:"user_id"`
-	Action    string                 `json:"action" db:"action"`
-	Resource  string                 `json:"resource" db:"resource"`
-	Details   map[string]interface{} `json:"details" db:"details"`
-	CreatedAt time.Time              `json:"createdAt" db:"created_at"`
+	ID         uuid.UUID       `json:"id" db:"id"`
+	BusinessID *uuid.UUID      `json:"businessId" db:"business_id"`
+	UserID     *uuid.UUID      `json:"userId" db:"user_id"`
+	Action     string          `json:"action" db:"action"`
+	Resource   string          `json:"resource" db:"resource"`
+	Details    json.RawMessage `json:"details" db:"details"`
+	CreatedAt  time.Time       `json:"createdAt" db:"created_at"`
 }
 
 type RefreshToken struct {
