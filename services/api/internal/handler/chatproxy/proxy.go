@@ -3,7 +3,6 @@ package chatproxy
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	"github.com/f1xgun/onevoice/pkg/sse"
 )
 
 // OrchestrationProxy opens the orchestrator chat stream, forwards SSE bytes
@@ -114,8 +114,8 @@ func (p *OrchestrationProxy) StreamChat(parentCtx context.Context, w http.Respon
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		var ev SSEPayload
-		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
+		ev, err := sse.Unmarshal([]byte(line[6:]))
+		if err != nil {
 			slog.WarnContext(parentCtx, "chat proxy: malformed SSE event",
 				"error", err, "line", line[:min(len(line), logLineMaxBytes)])
 			continue

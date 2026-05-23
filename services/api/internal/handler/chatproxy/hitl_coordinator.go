@@ -13,6 +13,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	"github.com/f1xgun/onevoice/pkg/sse"
 )
 
 // GateAction enumerates the four outcomes of HITLCoordinator.GateOnRequest.
@@ -271,8 +272,8 @@ func (c *HITLCoordinator) StreamResume(
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		var ev SSEPayload
-		if err := json.Unmarshal([]byte(line[6:]), &ev); err != nil {
+		ev, err := sse.Unmarshal([]byte(line[6:]))
+		if err != nil {
 			continue
 		}
 		switch ev.Type {
