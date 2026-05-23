@@ -1,4 +1,4 @@
-package middleware_test
+package i18n_test
 
 import (
 	"net/http"
@@ -9,10 +9,14 @@ import (
 	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/i18n"
-	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
-func TestLocale_InjectsResolvedTagIntoContext(t *testing.T) {
+// TestLocaleMiddleware_InjectsResolvedTagIntoContext mirrors the table the
+// api + orchestrator middleware tests used before consolidation. Keeping the
+// cases here means the deletion of those two stub tests does not shrink
+// coverage — every Accept-Language variant is still exercised end-to-end
+// against the canonical shared middleware.
+func TestLocaleMiddleware_InjectsResolvedTagIntoContext(t *testing.T) {
 	tests := []struct {
 		name           string
 		acceptLanguage string
@@ -29,7 +33,7 @@ func TestLocale_InjectsResolvedTagIntoContext(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var captured language.Tag
 
-			handler := middleware.Locale(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := i18n.LocaleMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				captured = i18n.LocaleFromContext(r.Context())
 				w.WriteHeader(http.StatusOK)
 			}))
@@ -51,12 +55,13 @@ func TestLocale_InjectsResolvedTagIntoContext(t *testing.T) {
 	}
 }
 
-func TestLocale_DoesNotMutateOriginalContext(t *testing.T) {
-	// Defensive: the middleware must call r.WithContext(...) — verify the
-	// downstream request actually has a different ctx pointer.
-	handler := middleware.Locale(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// LocaleFromContext returns DefaultTag on a bare ctx; getting
-		// language.English here proves the new ctx was wired through.
+// TestLocaleMiddleware_PassesContextThrough — defensive check that the
+// middleware actually rewires the request ctx (via r.WithContext) instead of
+// silently dropping the tag. LocaleFromContext on a bare ctx returns
+// DefaultTag (Russian), so observing language.English proves the new ctx
+// reached the wrapped handler.
+func TestLocaleMiddleware_PassesContextThrough(t *testing.T) {
+	handler := i18n.LocaleMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := i18n.LocaleFromContext(r.Context())
 		assert.Equal(t, language.English, got)
 		w.WriteHeader(http.StatusOK)
