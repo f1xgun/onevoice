@@ -1319,6 +1319,7 @@
       "tools": "Инструменты",
       "team": "Команда",
       "roles": "Роли",
+      "audit": "Журнал событий",
       "navAria": "Настройки — разделы"
     },
     "tools": {
@@ -1343,6 +1344,74 @@
         "manual": "С вашего согласия",
         "auto": "Сам"
       }
+    }
+  },
+  "audit": {
+    "title": "Журнал событий",
+    "subtitle": "Все изменения ролей, входы, подключение интеграций и операции с организацией.",
+    "filters": {
+      "categoryLabel": "Категория",
+      "categoryAll": "Все",
+      "categoryRbac": "Доступы",
+      "categoryAuth": "Авторизация",
+      "categoryIntegration": "Интеграции",
+      "categoryBusiness": "Бизнес",
+      "categoryProject": "Проекты",
+      "actionLabel": "Действие",
+      "actionAny": "Любое",
+      "dateLabel": "Период",
+      "datePreset24h": "24 часа",
+      "datePreset7d": "7 дней",
+      "datePreset30d": "30 дней",
+      "datePresetCustom": "Свой период",
+      "actorLabel": "Автор",
+      "actorAny": "Любой",
+      "actorUnknown": "Неизвестен ({email})"
+    },
+    "table": {
+      "colTime": "Время",
+      "colActor": "Автор",
+      "colAction": "Действие",
+      "colResource": "Объект",
+      "loadMore": "Загрузить ещё",
+      "loading": "Загрузка…",
+      "empty": "Событий за выбранный период пока нет.",
+      "relJustNow": "только что",
+      "relMinutes": "{m} мин назад",
+      "relHours": "{h} ч назад",
+      "relDays": "{d} дн назад"
+    },
+    "panel": {
+      "actor": "Автор",
+      "resource": "Объект",
+      "rawDetails": "Детали (JSON)"
+    },
+    "errors": {
+      "loadFailed": "Не удалось загрузить журнал. Попробуйте позже.",
+      "forbidden": "У вашей роли нет доступа к журналу событий."
+    },
+    "actions": {
+      "rbac_role_granted": "Назначена роль",
+      "rbac_member_removed": "Участник удалён",
+      "rbac_role_created": "Создана пользовательская роль",
+      "rbac_role_updated": "Изменена пользовательская роль",
+      "rbac_role_deleted": "Удалена пользовательская роль",
+      "rbac_invitation_created": "Создано приглашение",
+      "rbac_invitation_revoked": "Приглашение отозвано",
+      "rbac_invitation_accepted": "Приглашение принято",
+      "auth_login_success": "Вход выполнен",
+      "auth_login_failed": "Неудачная попытка входа",
+      "auth_logout": "Выход",
+      "auth_password_changed": "Сменён пароль",
+      "auth_user_registered": "Регистрация",
+      "integration_connected": "Интеграция подключена",
+      "integration_disconnected": "Интеграция отключена",
+      "integration_token_rotated": "Обновлён токен интеграции",
+      "business_created": "Организация создана",
+      "business_updated": "Организация изменена",
+      "project_created": "Проект создан",
+      "project_updated": "Проект изменён",
+      "project_deleted": "Проект удалён"
     }
   },
   "sidebar": {
