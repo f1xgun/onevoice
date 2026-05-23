@@ -128,9 +128,8 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm
 			OutputTokens: int(resp.Usage.OutputTokens),
 			TotalTokens:  int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
 		},
-		Latency:     time.Since(start),
-		RawResponse: resp,
-		Provider:    "anthropic",
+		Latency:  time.Since(start),
+		Provider: "anthropic",
 	}, nil
 }
 
