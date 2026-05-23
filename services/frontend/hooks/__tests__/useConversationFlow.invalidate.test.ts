@@ -3,7 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 
-import { useChat } from '../useChat';
+import { useConversationFlow } from '../useConversationFlow';
 import { useAuthStore } from '@/lib/auth';
 import { mockSSEResponse, sseLine } from '@/test-utils/sse-mock';
 
@@ -12,21 +12,21 @@ vi.mock('@/lib/stores/business', () => ({
     selector({ activeBusinessId: 'biz-test' }),
 }));
 
-// useChat invalidates ['conversations'] EXACTLY ONCE on chat SSE 'done'.
-// Title arrival is OUT-OF-BAND from the chat stream — never muxed into
-// the chat SSE event types.
+// useConversationFlow invalidates ['conversations'] EXACTLY ONCE on chat
+// SSE 'done'. Title arrival is OUT-OF-BAND from the chat stream — never
+// muxed into the chat SSE event types.
 //
 // The test exercises the hook through the SAME SSE consumption path
 // production uses (fetch with a mocked streaming Response body — the hook
 // does NOT use the global EventSource constructor). NO test-only export
-// from useChat.ts (the test-only escape hatch is forbidden). The fetch
-// stream mock is the canonical pattern from `test-utils/sse-mock.ts`.
+// from useConversationFlow.ts (the test-only escape hatch is forbidden).
+// The fetch stream mock is the canonical pattern from `test-utils/sse-mock.ts`.
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
+describe("useConversationFlow — invalidation on SSE 'done' (fetch-stream mock)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({
@@ -74,7 +74,9 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client: queryClient }, children);
 
-    const { result } = renderHook(() => useChat({ conversationId: 'cid-d10' }), { wrapper });
+    const { result } = renderHook(() => useConversationFlow({ conversationId: 'cid-d10' }), {
+      wrapper,
+    });
 
     // Wait for the hydration fetch to finish.
     await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -120,7 +122,9 @@ describe("useChat — invalidation on SSE 'done' (fetch-stream mock)", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client: queryClient }, children);
 
-    const { result } = renderHook(() => useChat({ conversationId: 'cid-no-done' }), { wrapper });
+    const { result } = renderHook(() => useConversationFlow({ conversationId: 'cid-no-done' }), {
+      wrapper,
+    });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
