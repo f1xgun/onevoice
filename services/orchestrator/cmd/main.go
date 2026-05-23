@@ -21,10 +21,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/f1xgun/onevoice/pkg/health"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/middleware"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/wire"
 )
@@ -125,7 +125,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wi
 	// the resolved language.Tag is available to every downstream handler
 	// (chat / draft-reply / tool list) for prompt-builder localization.
 	// See pkg/i18n + Phase A1 of `.planning/i18n-readiness/PLAN.md`.
-	r.Use(middleware.Locale)
+	r.Use(i18n.LocaleMiddleware)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(metrics.HTTPMiddleware)
