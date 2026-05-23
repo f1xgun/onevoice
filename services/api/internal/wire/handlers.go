@@ -67,7 +67,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create business handler: %w", err)
 	}
-	integrationHandler, err := handler.NewIntegrationHandler(svcs.Integration, svcs.Business)
+	// Phase 19 Wave 4 (19-04): + svcs.AuditLogger for integration.disconnected
+	// audit events from the handler-level Delete path.
+	integrationHandler, err := handler.NewIntegrationHandler(svcs.Integration, svcs.Business, svcs.AuditLogger)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create integration handler: %w", err)
 	}

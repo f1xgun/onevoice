@@ -169,7 +169,7 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := h.projectService.Create(r.Context(), bc.BusinessID, req.toInput(overrides))
+	project, err := h.projectService.Create(r.Context(), bc.BusinessID, bc.UserID, req.toInput(overrides))
 	if err != nil {
 		h.mapProjectError(r.Context(), w, err, "create")
 		return
@@ -251,7 +251,7 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := h.projectService.Update(r.Context(), bc.BusinessID, id, req.toInput(overrides))
+	project, err := h.projectService.Update(r.Context(), bc.BusinessID, id, bc.UserID, req.toInput(overrides))
 	if err != nil {
 		h.mapProjectError(r.Context(), w, err, "update")
 		return
@@ -278,7 +278,7 @@ func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	convs, msgs, err := h.projectService.DeleteCascade(r.Context(), bc.BusinessID, id)
+	convs, msgs, err := h.projectService.DeleteCascade(r.Context(), bc.BusinessID, id, bc.UserID)
 	if err != nil {
 		h.mapProjectError(r.Context(), w, err, "delete")
 		return

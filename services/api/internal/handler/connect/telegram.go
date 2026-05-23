@@ -204,6 +204,7 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  bc.BusinessID,
+		ActorID:     bc.UserID,
 		Platform:    a2a.AgentTelegram,
 		ExternalID:  req.ChannelID,
 		AccessToken: h.cfg.TelegramBotToken,

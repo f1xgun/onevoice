@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
@@ -158,7 +159,7 @@ func TestBusinessService_Create(t *testing.T) {
 		pool.ExpectBegin()
 		pool.ExpectCommit()
 
-		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 		business := &domain.Business{
 			Name:        "Test Coffee Shop",
 			Category:    "cafe",
@@ -204,7 +205,7 @@ func TestBusinessService_Create(t *testing.T) {
 		pool.ExpectBegin()
 		pool.ExpectCommit()
 
-		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 		business := &domain.Business{
 			Name: "Minimal Business",
 		}
@@ -234,7 +235,7 @@ func TestBusinessService_Create(t *testing.T) {
 		pool.ExpectBegin()
 		pool.ExpectCommit()
 
-		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 		business := &domain.Business{
 			Name:     "Business with nil settings",
 			Settings: nil,
@@ -252,7 +253,7 @@ func TestBusinessService_Create(t *testing.T) {
 		repo := &mockBusinessRepository{}
 		memRepo := &mockBusinessMembershipRepository{}
 		pool := newTestPool(t)
-		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 
 		business := &domain.Business{
 			Name: "",
@@ -269,7 +270,7 @@ func TestBusinessService_Create(t *testing.T) {
 		repo := &mockBusinessRepository{}
 		memRepo := &mockBusinessMembershipRepository{}
 		pool := newTestPool(t)
-		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 
 		business := &domain.Business{
 			Name: "Test Business",
@@ -293,7 +294,7 @@ func TestBusinessService_Create(t *testing.T) {
 		pool.ExpectBegin()
 		pool.ExpectRollback()
 
-		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 		business := &domain.Business{
 			Name: "Test Business",
 		}
@@ -317,7 +318,7 @@ func TestBusinessService_Create(t *testing.T) {
 		pool.ExpectBegin()
 		pool.ExpectRollback()
 
-		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+		svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 		business := &domain.Business{
 			Name: "Test Business",
 		}
@@ -359,7 +360,7 @@ func TestBusinessService_Create_Success_DualWrite(t *testing.T) {
 	pool.ExpectBegin()
 	pool.ExpectCommit()
 
-	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 	business := &domain.Business{Name: "Atomic Co"}
 
 	result, err := svc.Create(ctx, business, userID)
@@ -402,7 +403,7 @@ func TestBusinessService_Create_BusinessInsertFails(t *testing.T) {
 	pool.ExpectBegin()
 	pool.ExpectRollback()
 
-	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 	business := &domain.Business{Name: "Will Fail"}
 
 	result, err := svc.Create(ctx, business, uuid.New())
@@ -435,7 +436,7 @@ func TestBusinessService_Create_MembershipInsertFails(t *testing.T) {
 	pool.ExpectBegin()
 	pool.ExpectRollback()
 
-	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 	business := &domain.Business{Name: "Half-written Co"}
 
 	result, err := svc.Create(ctx, business, uuid.New())
@@ -466,7 +467,7 @@ func TestBusinessService_Create_MembershipDuplicate(t *testing.T) {
 	pool.ExpectBegin()
 	pool.ExpectCommit()
 
-	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool)
+	svc := NewBusinessService(repo, memRepo, &mockRoleRepository{}, pool, audit.Nop())
 	business := &domain.Business{Name: "Already-backfilled Co"}
 
 	result, err := svc.Create(ctx, business, uuid.New())
@@ -490,7 +491,7 @@ func TestBusinessService_Create_NilDeps(t *testing.T) {
 			require.NotNil(t, r)
 			assert.Contains(t, fmt.Sprint(r), "repo cannot be nil")
 		}()
-		_ = NewBusinessService(nil, memRepo, roleRepo, pool)
+		_ = NewBusinessService(nil, memRepo, roleRepo, pool, audit.Nop())
 	})
 
 	t.Run("nil membershipRepo panics", func(t *testing.T) {
@@ -499,7 +500,7 @@ func TestBusinessService_Create_NilDeps(t *testing.T) {
 			require.NotNil(t, r)
 			assert.Contains(t, fmt.Sprint(r), "membershipRepo cannot be nil")
 		}()
-		_ = NewBusinessService(repo, nil, roleRepo, pool)
+		_ = NewBusinessService(repo, nil, roleRepo, pool, audit.Nop())
 	})
 
 	t.Run("nil roleRepo panics", func(t *testing.T) {
@@ -508,7 +509,7 @@ func TestBusinessService_Create_NilDeps(t *testing.T) {
 			require.NotNil(t, r)
 			assert.Contains(t, fmt.Sprint(r), "roleRepo cannot be nil")
 		}()
-		_ = NewBusinessService(repo, memRepo, nil, pool)
+		_ = NewBusinessService(repo, memRepo, nil, pool, audit.Nop())
 	})
 
 	t.Run("nil pool panics", func(t *testing.T) {
@@ -517,7 +518,7 @@ func TestBusinessService_Create_NilDeps(t *testing.T) {
 			require.NotNil(t, r)
 			assert.Contains(t, fmt.Sprint(r), "pool cannot be nil")
 		}()
-		_ = NewBusinessService(repo, memRepo, roleRepo, nil)
+		_ = NewBusinessService(repo, memRepo, roleRepo, nil, audit.Nop())
 	})
 }
 
@@ -548,7 +549,7 @@ func TestBusinessService_GetByID(t *testing.T) {
 			},
 		}
 
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
+		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t), audit.Nop())
 		result, err := svc.GetByID(ctx, businessID)
 
 		require.NoError(t, err)
@@ -564,7 +565,7 @@ func TestBusinessService_GetByID(t *testing.T) {
 			},
 		}
 
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
+		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t), audit.Nop())
 		result, err := svc.GetByID(ctx, uuid.New())
 
 		assert.ErrorIs(t, err, domain.ErrBusinessNotFound)
@@ -579,7 +580,7 @@ func TestBusinessService_GetByID(t *testing.T) {
 			},
 		}
 
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
+		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t), audit.Nop())
 		result, err := svc.GetByID(ctx, uuid.New())
 
 		assert.Error(t, err)
@@ -605,7 +606,7 @@ func TestBusinessService_Update(t *testing.T) {
 			},
 		}
 
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
+		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t), audit.Nop())
 		business := &domain.Business{
 			ID:          businessID,
 			Name:        "Updated Coffee Shop",
@@ -617,7 +618,7 @@ func TestBusinessService_Update(t *testing.T) {
 			Settings:    map[string]interface{}{"theme": "light"},
 		}
 
-		result, err := svc.Update(ctx, business)
+		result, err := svc.Update(ctx, business, uuid.Nil)
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -646,7 +647,7 @@ func TestBusinessService_Update(t *testing.T) {
 			},
 		}
 
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
+		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t), audit.Nop())
 		business := &domain.Business{
 			ID:          businessID,
 			Name:        "Business Name",
@@ -658,7 +659,7 @@ func TestBusinessService_Update(t *testing.T) {
 			Settings:    nil,
 		}
 
-		result, err := svc.Update(ctx, business)
+		result, err := svc.Update(ctx, business, uuid.Nil)
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -672,14 +673,14 @@ func TestBusinessService_Update(t *testing.T) {
 
 	t.Run("error - empty name", func(t *testing.T) {
 		repo := &mockBusinessRepository{}
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
+		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t), audit.Nop())
 
 		business := &domain.Business{
 			ID:   uuid.New(),
 			Name: "",
 		}
 
-		result, err := svc.Update(ctx, business)
+		result, err := svc.Update(ctx, business, uuid.Nil)
 
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -688,14 +689,14 @@ func TestBusinessService_Update(t *testing.T) {
 
 	t.Run("error - nil business id", func(t *testing.T) {
 		repo := &mockBusinessRepository{}
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
+		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t), audit.Nop())
 
 		business := &domain.Business{
 			ID:   uuid.Nil,
 			Name: "Test Business",
 		}
 
-		result, err := svc.Update(ctx, business)
+		result, err := svc.Update(ctx, business, uuid.Nil)
 
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -709,13 +710,13 @@ func TestBusinessService_Update(t *testing.T) {
 			},
 		}
 
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
+		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t), audit.Nop())
 		business := &domain.Business{
 			ID:   uuid.New(),
 			Name: "Test Business",
 		}
 
-		result, err := svc.Update(ctx, business)
+		result, err := svc.Update(ctx, business, uuid.Nil)
 
 		assert.ErrorIs(t, err, domain.ErrBusinessNotFound)
 		assert.Nil(t, result)
@@ -729,13 +730,13 @@ func TestBusinessService_Update(t *testing.T) {
 			},
 		}
 
-		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t))
+		svc := NewBusinessService(repo, &mockBusinessMembershipRepository{}, &mockRoleRepository{}, newTestPool(t), audit.Nop())
 		business := &domain.Business{
 			ID:   uuid.New(),
 			Name: "Test Business",
 		}
 
-		result, err := svc.Update(ctx, business)
+		result, err := svc.Update(ctx, business, uuid.Nil)
 
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -856,7 +857,7 @@ func TestBusinessService_ListMembershipsByUser(t *testing.T) {
 		}
 
 		pool := newTestPool(t)
-		svc := NewBusinessService(bizRepo, mbrRepo, roleRepo, pool)
+		svc := NewBusinessService(bizRepo, mbrRepo, roleRepo, pool, audit.Nop())
 		result, err := svc.ListMembershipsByUser(ctx, userID)
 
 		require.NoError(t, err)
@@ -875,7 +876,7 @@ func TestBusinessService_ListMembershipsByUser(t *testing.T) {
 		roleRepo := &mockRoleRepository{}
 		pool := newTestPool(t)
 
-		svc := NewBusinessService(bizRepo, mbrRepo, roleRepo, pool)
+		svc := NewBusinessService(bizRepo, mbrRepo, roleRepo, pool, audit.Nop())
 		result, err := svc.ListMembershipsByUser(ctx, uuid.New())
 
 		require.NoError(t, err)
@@ -909,7 +910,7 @@ func TestBusinessService_ListMembershipsByUser(t *testing.T) {
 		}
 		pool := newTestPool(t)
 
-		svc := NewBusinessService(bizRepo, mbrRepo, roleRepo, pool)
+		svc := NewBusinessService(bizRepo, mbrRepo, roleRepo, pool, audit.Nop())
 		result, err := svc.ListMembershipsByUser(ctx, userID)
 
 		require.NoError(t, err)
@@ -926,7 +927,7 @@ func TestBusinessService_ListMembershipsByUser(t *testing.T) {
 		roleRepo := &mockRoleRepository{}
 		pool := newTestPool(t)
 
-		svc := NewBusinessService(bizRepo, mbrRepo, roleRepo, pool)
+		svc := NewBusinessService(bizRepo, mbrRepo, roleRepo, pool, audit.Nop())
 		result, err := svc.ListMembershipsByUser(ctx, uuid.New())
 
 		assert.Nil(t, result)

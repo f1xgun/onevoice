@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
@@ -84,8 +85,8 @@ func TestProjectService_Create(t *testing.T) {
 	businessID := uuid.New()
 
 	t.Run("error - empty name returns ErrProjectNameRequired", func(t *testing.T) {
-		svc := NewProjectService(&mockProjectRepository{})
-		_, err := svc.Create(ctx, businessID, CreateProjectInput{
+		svc := NewProjectService(&mockProjectRepository{}, audit.Nop())
+		_, err := svc.Create(ctx, businessID, uuid.Nil, CreateProjectInput{
 			Name:          "",
 			WhitelistMode: domain.WhitelistModeAll,
 		})
@@ -93,8 +94,8 @@ func TestProjectService_Create(t *testing.T) {
 	})
 
 	t.Run("error - system_prompt too long returns ErrProjectSystemPromptTooLong", func(t *testing.T) {
-		svc := NewProjectService(&mockProjectRepository{})
-		_, err := svc.Create(ctx, businessID, CreateProjectInput{
+		svc := NewProjectService(&mockProjectRepository{}, audit.Nop())
+		_, err := svc.Create(ctx, businessID, uuid.Nil, CreateProjectInput{
 			Name:          "X",
 			SystemPrompt:  strings.Repeat("a", domain.MaxProjectSystemPromptChars+1),
 			WhitelistMode: domain.WhitelistModeAll,
@@ -103,8 +104,8 @@ func TestProjectService_Create(t *testing.T) {
 	})
 
 	t.Run("error - explicit mode with empty allowed_tools returns ErrProjectWhitelistEmpty", func(t *testing.T) {
-		svc := NewProjectService(&mockProjectRepository{})
-		_, err := svc.Create(ctx, businessID, CreateProjectInput{
+		svc := NewProjectService(&mockProjectRepository{}, audit.Nop())
+		_, err := svc.Create(ctx, businessID, uuid.Nil, CreateProjectInput{
 			Name:          "X",
 			WhitelistMode: domain.WhitelistModeExplicit,
 			AllowedTools:  nil,
@@ -113,8 +114,8 @@ func TestProjectService_Create(t *testing.T) {
 	})
 
 	t.Run("error - invalid whitelist_mode returns ErrProjectWhitelistMode", func(t *testing.T) {
-		svc := NewProjectService(&mockProjectRepository{})
-		_, err := svc.Create(ctx, businessID, CreateProjectInput{
+		svc := NewProjectService(&mockProjectRepository{}, audit.Nop())
+		_, err := svc.Create(ctx, businessID, uuid.Nil, CreateProjectInput{
 			Name:          "X",
 			WhitelistMode: domain.WhitelistMode("bogus"),
 		})
@@ -130,9 +131,9 @@ func TestProjectService_Create(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewProjectService(repo)
+		svc := NewProjectService(repo, audit.Nop())
 
-		got, err := svc.Create(ctx, businessID, CreateProjectInput{
+		got, err := svc.Create(ctx, businessID, uuid.Nil, CreateProjectInput{
 			Name:          "Reviews",
 			SystemPrompt:  "you reply",
 			WhitelistMode: domain.WhitelistModeAll,
@@ -156,8 +157,8 @@ func TestProjectService_Create(t *testing.T) {
 		repo := &mockProjectRepository{
 			createFunc: func(ctx context.Context, p *domain.Project) error { return nil },
 		}
-		svc := NewProjectService(repo)
-		got, err := svc.Create(ctx, businessID, CreateProjectInput{
+		svc := NewProjectService(repo, audit.Nop())
+		got, err := svc.Create(ctx, businessID, uuid.Nil, CreateProjectInput{
 			Name:          "X",
 			WhitelistMode: domain.WhitelistModeExplicit,
 			AllowedTools:  []string{tools.TelegramSendChannelPost},
@@ -179,7 +180,7 @@ func TestProjectService_GetByID(t *testing.T) {
 				return nil, domain.ErrProjectNotFound
 			},
 		}
-		svc := NewProjectService(repo)
+		svc := NewProjectService(repo, audit.Nop())
 		_, err := svc.GetByID(ctx, ownBusinessID, projectID)
 		assert.ErrorIs(t, err, domain.ErrProjectNotFound)
 	})
@@ -190,7 +191,7 @@ func TestProjectService_GetByID(t *testing.T) {
 				return &domain.Project{ID: projectID, BusinessID: otherBusinessID}, nil
 			},
 		}
-		svc := NewProjectService(repo)
+		svc := NewProjectService(repo, audit.Nop())
 		_, err := svc.GetByID(ctx, ownBusinessID, projectID)
 		assert.ErrorIs(t, err, domain.ErrProjectNotFound)
 	})
@@ -201,7 +202,7 @@ func TestProjectService_GetByID(t *testing.T) {
 				return &domain.Project{ID: projectID, BusinessID: ownBusinessID, Name: "X"}, nil
 			},
 		}
-		svc := NewProjectService(repo)
+		svc := NewProjectService(repo, audit.Nop())
 		got, err := svc.GetByID(ctx, ownBusinessID, projectID)
 		require.NoError(t, err)
 		assert.Equal(t, "X", got.Name)
@@ -221,8 +222,8 @@ func TestProjectService_Update(t *testing.T) {
 				return nil, nil
 			},
 		}
-		svc := NewProjectService(repo)
-		_, err := svc.Update(ctx, ownBusinessID, projectID, UpdateProjectInput{
+		svc := NewProjectService(repo, audit.Nop())
+		_, err := svc.Update(ctx, ownBusinessID, projectID, uuid.Nil, UpdateProjectInput{
 			Name:          "",
 			WhitelistMode: domain.WhitelistModeAll,
 		})
@@ -239,8 +240,8 @@ func TestProjectService_Update(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewProjectService(repo)
-		_, err := svc.Update(ctx, ownBusinessID, projectID, UpdateProjectInput{
+		svc := NewProjectService(repo, audit.Nop())
+		_, err := svc.Update(ctx, ownBusinessID, projectID, uuid.Nil, UpdateProjectInput{
 			Name:          "X",
 			WhitelistMode: domain.WhitelistModeAll,
 		})
@@ -260,8 +261,8 @@ func TestProjectService_Update(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewProjectService(repo)
-		got, err := svc.Update(ctx, ownBusinessID, projectID, UpdateProjectInput{
+		svc := NewProjectService(repo, audit.Nop())
+		got, err := svc.Update(ctx, ownBusinessID, projectID, uuid.Nil, UpdateProjectInput{
 			Name:          "New",
 			WhitelistMode: domain.WhitelistModeExplicit,
 			AllowedTools:  []string{tools.VKPublishPost},
@@ -288,8 +289,8 @@ func TestProjectService_DeleteCascade(t *testing.T) {
 				return 0, 0, nil
 			},
 		}
-		svc := NewProjectService(repo)
-		_, _, err := svc.DeleteCascade(ctx, ownBusinessID, projectID)
+		svc := NewProjectService(repo, audit.Nop())
+		_, _, err := svc.DeleteCascade(ctx, ownBusinessID, projectID, uuid.Nil)
 		assert.ErrorIs(t, err, domain.ErrProjectNotFound)
 	})
 
@@ -302,8 +303,8 @@ func TestProjectService_DeleteCascade(t *testing.T) {
 				return 3, 17, nil
 			},
 		}
-		svc := NewProjectService(repo)
-		convs, msgs, err := svc.DeleteCascade(ctx, ownBusinessID, projectID)
+		svc := NewProjectService(repo, audit.Nop())
+		convs, msgs, err := svc.DeleteCascade(ctx, ownBusinessID, projectID, uuid.Nil)
 		require.NoError(t, err)
 		assert.Equal(t, 3, convs)
 		assert.Equal(t, 17, msgs)
@@ -322,7 +323,7 @@ func TestProjectService_CountConversations(t *testing.T) {
 				return &domain.Project{ID: id, BusinessID: otherBusinessID}, nil
 			},
 		}
-		svc := NewProjectService(repo)
+		svc := NewProjectService(repo, audit.Nop())
 		_, err := svc.CountConversations(ctx, ownBusinessID, projectID)
 		assert.ErrorIs(t, err, domain.ErrProjectNotFound)
 	})
@@ -336,7 +337,7 @@ func TestProjectService_CountConversations(t *testing.T) {
 				return 42, nil
 			},
 		}
-		svc := NewProjectService(repo)
+		svc := NewProjectService(repo, audit.Nop())
 		count, err := svc.CountConversations(ctx, ownBusinessID, projectID)
 		require.NoError(t, err)
 		assert.Equal(t, 42, count)

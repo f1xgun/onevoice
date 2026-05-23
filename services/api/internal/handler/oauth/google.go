@@ -148,6 +148,7 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 		_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
 			BusinessID:   stateData.BusinessID,
+			ActorID:      stateData.UserID,
 			Platform:     a2a.AgentGoogleBusiness,
 			ExternalID:   loc.LocationName,
 			AccessToken:  tokenResp.AccessToken,
@@ -331,6 +332,7 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 	expiresAt := time.Now().Add(time.Duration(tempData.ExpiresIn) * time.Second)
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:   bc.BusinessID,
+		ActorID:      bc.UserID,
 		Platform:     a2a.AgentGoogleBusiness,
 		ExternalID:   req.LocationID,
 		AccessToken:  tempData.AccessToken,
