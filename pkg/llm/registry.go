@@ -5,89 +5,73 @@ import (
 	"time"
 )
 
-// Provider health states emitted via ModelProviderEntry.HealthStatus.
+// Provider health states surfaced via ModelProviderEntry.HealthStatus.
+// The transitions between these states live in pkg/llm/selector.go on
+// defaultSelector — Registry only stores config.
 const (
 	HealthStatusHealthy  = "healthy"
 	HealthStatusDegraded = "degraded"
 	HealthStatusDown     = "down"
 )
 
-// Provider health metrics tuning.
-const (
-	latencyWindow            = 100 // rolling latency samples retained per provider
-	healthDegradedRate       = 0.2 // failure rate above which provider is "degraded"
-	healthDownRate           = 0.5 // failure rate above which provider is "down"
-	healthRecoverySuccessMin = 3   // consecutive successes to recover from down/degraded
-)
-
-// ModelProviderEntry represents a model-provider pair with metadata
+// ModelProviderEntry is the config record for a single model+provider
+// pairing: pricing, priority, enabled flag, and the policy state that the
+// Selector mirrors back onto it (HealthStatus, AvgLatencyMs,
+// LastCheckedAt). The fields the Selector writes are mutated through the
+// pointer Registry.GetModelProviders hands out so admin / status callers
+// can read live state off the entry without going through the Selector.
 type ModelProviderEntry struct {
 	Model              string
 	Provider           string
 	InputCostPer1MTok  float64
 	OutputCostPer1MTok float64
 	AvgLatencyMs       int
-	HealthStatus       string // one of HealthStatus* constants
+	HealthStatus       string // one of HealthStatus* constants; mutated by Selector
 	Enabled            bool
 	Priority           int
 	LastCheckedAt      time.Time
 }
 
-// ProviderMetrics tracks provider performance
-type ProviderMetrics struct {
-	TotalRequests   int64
-	SuccessCount    int64
-	FailureCount    int64
-	AvgLatencyMs    int
-	LastLatencies   []int64 // Rolling window of last 100
-	LastHealthCheck time.Time
-	HealthStatus    string
-}
-
-// Registry maintains model-provider mappings
+// Registry is the config store for model → providers. It no longer owns
+// runtime metrics (rolling latency window, success/failure counts, health
+// transitions) — those concerns moved to pkg/llm/selector.go where the
+// pick algorithm that consumes them also lives. This keeps Registry as a
+// pure data layer: callers register entries at boot, the Selector
+// consults them per request.
 type Registry struct {
 	mu      sync.RWMutex
-	entries map[string][]*ModelProviderEntry // Key: model name
-	metrics map[string]*ProviderMetrics      // Key: "provider:model"
+	entries map[string][]*ModelProviderEntry // key: model name
 }
 
-// NewRegistry creates a new registry
+// NewRegistry creates an empty Registry.
 func NewRegistry() *Registry {
 	return &Registry{
 		entries: make(map[string][]*ModelProviderEntry),
-		metrics: make(map[string]*ProviderMetrics),
 	}
 }
 
-// RegisterModelProvider adds or updates a model-provider pair
+// RegisterModelProvider adds or updates the entry for a (model, provider)
+// pair. If an entry already exists for that pair the slot is overwritten
+// in place — the same pointer is preserved so any Selector holding a
+// reference to it (via a prior Pick) keeps seeing the new config.
 func (r *Registry) RegisterModelProvider(entry *ModelProviderEntry) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	entries := r.entries[entry.Model]
-
-	// Check if already exists (update)
 	for i, e := range entries {
 		if e.Provider == entry.Provider {
 			entries[i] = entry
 			return
 		}
 	}
-
-	// Add new
 	r.entries[entry.Model] = append(entries, entry)
-
-	// Initialize metrics
-	key := entry.Provider + ":" + entry.Model
-	if _, exists := r.metrics[key]; !exists {
-		r.metrics[key] = &ProviderMetrics{
-			HealthStatus:  HealthStatusHealthy,
-			LastLatencies: make([]int64, 0, latencyWindow),
-		}
-	}
 }
 
-// GetModelProviders returns all providers supporting a model
+// GetModelProviders returns a defensive copy of the slice of entries for
+// `model`. The pointers inside are NOT copied — they point to the same
+// entries the Selector mutates so callers reading HealthStatus etc. see
+// live state.
 func (r *Registry) GetModelProviders(model string) []*ModelProviderEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -95,100 +79,12 @@ func (r *Registry) GetModelProviders(model string) []*ModelProviderEntry {
 	entries := r.entries[model]
 	result := make([]*ModelProviderEntry, len(entries))
 	copy(result, entries)
-
 	return result
 }
 
-// ModelExists checks if model is registered
+// ModelExists reports whether any provider is registered for `model`.
 func (r *Registry) ModelExists(model string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
 	return len(r.entries[model]) > 0
-}
-
-// RecordSuccess updates metrics after successful request
-func (r *Registry) RecordSuccess(provider, model string, latency time.Duration) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	key := provider + ":" + model
-	metrics := r.metrics[key]
-	if metrics == nil {
-		return
-	}
-
-	metrics.TotalRequests++
-	metrics.SuccessCount++
-
-	// Update latency rolling window
-	latencyMs := latency.Milliseconds()
-	metrics.LastLatencies = append(metrics.LastLatencies, latencyMs)
-	if len(metrics.LastLatencies) > latencyWindow {
-		metrics.LastLatencies = metrics.LastLatencies[1:]
-	}
-
-	// Recalculate average
-	var sum int64
-	for _, l := range metrics.LastLatencies {
-		sum += l
-	}
-	metrics.AvgLatencyMs = int(sum / int64(len(metrics.LastLatencies)))
-
-	// Update health status
-	if metrics.HealthStatus == HealthStatusDown || metrics.HealthStatus == HealthStatusDegraded {
-		if metrics.SuccessCount >= healthRecoverySuccessMin {
-			metrics.HealthStatus = HealthStatusHealthy
-		}
-	}
-
-	// Update entry in registry
-	for _, entry := range r.entries[model] {
-		if entry.Provider == provider {
-			entry.AvgLatencyMs = metrics.AvgLatencyMs
-			entry.HealthStatus = metrics.HealthStatus
-			entry.LastCheckedAt = time.Now()
-			break
-		}
-	}
-}
-
-// RecordFailure updates metrics after failed request
-func (r *Registry) RecordFailure(provider, model string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	key := provider + ":" + model
-	metrics := r.metrics[key]
-	if metrics == nil {
-		return
-	}
-
-	metrics.TotalRequests++
-	metrics.FailureCount++
-
-	// Calculate failure rate
-	failureRate := float64(metrics.FailureCount) / float64(metrics.TotalRequests)
-
-	// Update health status based on failure rate
-	var newStatus string
-	switch {
-	case failureRate > healthDownRate:
-		newStatus = HealthStatusDown
-	case failureRate > healthDegradedRate:
-		newStatus = HealthStatusDegraded
-	default:
-		newStatus = HealthStatusHealthy
-	}
-
-	metrics.HealthStatus = newStatus
-
-	// Update entry in registry
-	for _, entry := range r.entries[model] {
-		if entry.Provider == provider {
-			entry.HealthStatus = newStatus
-			entry.LastCheckedAt = time.Now()
-			break
-		}
-	}
 }
