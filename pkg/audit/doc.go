@@ -16,11 +16,15 @@
 //     it. There is no map[string]any escape hatch (D-10).
 //
 //   - PII rules (D-13/D-14/D-15/D-16):
+//
 //   - Auth events store IP + User-Agent + email (never password).
+//
 //   - Integration events store platform + external_id (NEVER token,
 //     secret, cookie, or session material).
+//
 //   - RBAC events store target user_id + role_id (names resolved at
 //     read time, not snapshotted).
+//
 //   - No request body / form data is logged.
 //
 // The single public Logger interface lets call sites accept a Logger by
