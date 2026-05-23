@@ -36,18 +36,18 @@ func TestRun_MultipleToolCallsInSingleResponse(t *testing.T) {
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "d", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"message_id": "tg_42", "platform": "telegram"}, nil
-	}), domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{
+	}))
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: tools.VKPublishPost, Description: "d", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(_ context.Context, args map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"post_id": "vk_99", "platform": "vk"}, nil
-	}), domain.ToolFloorAuto, nil)
+	}))
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -110,12 +110,12 @@ func TestRun_ToolExecutionError_ContinuesLoop(t *testing.T) {
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "failing_tool", Description: "d", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, context.DeadlineExceeded
-	}), domain.ToolFloorAuto, nil)
+	}))
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{

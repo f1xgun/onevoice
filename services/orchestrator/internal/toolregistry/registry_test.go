@@ -26,6 +26,13 @@ func makeDef(name string) llm.ToolDefinition {
 	}
 }
 
+// registerAuto is a tiny call-site helper: registers the named tool with
+// Floor=Auto and no executor. Cuts the ToolSpec literal noise in tests that
+// only care about the active-integration filter.
+func registerAuto(reg *toolregistry.Registry, name string) {
+	reg.Register(toolregistry.ToolSpec{Def: makeDef(name), Floor: domain.ToolFloorAuto}, nil)
+}
+
 // newCaptureLogger swaps the default slog logger for one backed by a buffer
 // so tests can assert slog.WarnContext output. The original logger is
 // restored via t.Cleanup.
@@ -41,10 +48,10 @@ func newCaptureLogger(t *testing.T) *bytes.Buffer {
 
 func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_post"), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef(tools.VKPublishPost), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("google_business__update_hours"), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil) // internal tool, always available
+	registerAuto(reg, "telegram__send_post")
+	registerAuto(reg, tools.VKPublishPost)
+	registerAuto(reg, "google_business__update_hours")
+	registerAuto(reg, "get_business_info") // internal tool, always available
 
 	active := []string{"telegram"}
 	defs := reg.Available(active)
@@ -61,8 +68,8 @@ func TestRegistry_FilterByActiveIntegrations(t *testing.T) {
 
 func TestRegistry_NoActiveIntegrations_OnlyInternalTools(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef("telegram__send_post"), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
+	registerAuto(reg, "telegram__send_post")
+	registerAuto(reg, "get_business_info")
 
 	defs := reg.Available(nil)
 
@@ -77,7 +84,10 @@ func TestRegistry_Execute_CallsExecutor(t *testing.T) {
 		called = true
 		return map[string]interface{}{"ok": true}, nil
 	})
-	reg.Register(makeDef("telegram__send_post"), "", executor, domain.ToolFloorAuto, nil)
+	reg.Register(toolregistry.ToolSpec{
+		Def:   makeDef("telegram__send_post"),
+		Floor: domain.ToolFloorAuto,
+	}, executor)
 
 	result, err := reg.Execute(context.Background(), "telegram__send_post", map[string]interface{}{})
 	require.NoError(t, err)
@@ -101,24 +111,28 @@ func toolNames(defs []llm.ToolDefinition) []string {
 }
 
 // fixtureRegistry returns a registry populated with a realistic mix of
-// Manual-floor write tools (matches services/orchestrator/cmd/main.go's
-// production registrations) plus Auto-floor read toolregistry. The Auto/Manual
+// Manual-floor write tools (matches services/orchestrator/internal/wire/'s
+// production registrations) plus Auto-floor read tools. The Auto/Manual
 // split is the basis for "auto-floor read tools always available under
 // ModeExplicit" — see AvailableForWhitelist's docstring.
 func fixtureRegistry() *toolregistry.Registry {
 	reg := toolregistry.NewRegistry()
 	// Write tools — Manual floor, fully gated by whitelist + HITL.
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, nil)
-	reg.Register(makeDef(tools.TelegramSendNotification), "", nil, domain.ToolFloorManual, nil)
-	reg.Register(makeDef(tools.VKPublishPost), "", nil, domain.ToolFloorManual, nil)
+	for _, name := range []string{
+		tools.TelegramSendChannelPost,
+		tools.TelegramSendNotification,
+		tools.VKPublishPost,
+	} {
+		reg.Register(toolregistry.ToolSpec{Def: makeDef(name), Floor: domain.ToolFloorManual}, nil)
+	}
 	// Read tools — Auto floor, always available under ModeExplicit so the
 	// LLM can fetch context (Pitfall: clicking "Проверить отзывы" with only
 	// a write tool in whitelist made the LLM publish posts ABOUT checking
 	// reviews instead of fetching them).
-	reg.Register(makeDef(tools.TelegramGetReviews), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef(tools.VKGetComments), "", nil, domain.ToolFloorAuto, nil)
+	registerAuto(reg, tools.TelegramGetReviews)
+	registerAuto(reg, tools.VKGetComments)
 	// Internal — no platform prefix, always available.
-	reg.Register(makeDef("get_business_info"), "", nil, domain.ToolFloorAuto, nil)
+	registerAuto(reg, "get_business_info")
 	return reg
 }
 
@@ -293,7 +307,7 @@ func TestRegistry_AvailableForWhitelist_ModeExplicit_AutoFloorAlwaysIncluded(t *
 // locks the absolute-stop semantics of WhitelistModeNone: when the operator
 // explicitly says "no tools at all", we honor it — auto-floor read tools
 // do NOT bypass this. The exemption only applies under ModeExplicit, where
-// the whitelist is a positive allowlist for write toolregistry.
+// the whitelist is a positive allowlist for write tools.
 func TestRegistry_AvailableForWhitelist_ModeNone_BlocksEverythingIncludingAuto(t *testing.T) {
 	reg := fixtureRegistry()
 	got := reg.AvailableForWhitelist(
@@ -307,8 +321,12 @@ func TestRegistry_AvailableForWhitelist_ModeNone_BlocksEverythingIncludingAuto(t
 
 func TestRegistry_Floor_RegisteredReturnsFloor(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef(tools.TelegramGetReviews), "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef(tools.TelegramSendChannelPost),
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text"},
+	}, nil)
+	registerAuto(reg, tools.TelegramGetReviews)
 
 	assert.Equal(t, domain.ToolFloorManual, reg.Floor(tools.TelegramSendChannelPost))
 	assert.Equal(t, domain.ToolFloorAuto, reg.Floor(tools.TelegramGetReviews))
@@ -320,7 +338,7 @@ func TestRegistry_Floor_RegisteredReturnsFloor(t *testing.T) {
 // approval of tools that no longer exist.
 func TestRegistry_Floor_UnknownReturnsForbidden(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorAuto, nil)
+	registerAuto(reg, tools.TelegramSendChannelPost)
 
 	assert.Equal(t, domain.ToolFloorForbidden, reg.Floor("ghost__missing"))
 	assert.Equal(t, domain.ToolFloorForbidden, reg.Floor(""))
@@ -328,13 +346,11 @@ func TestRegistry_Floor_UnknownReturnsForbidden(t *testing.T) {
 
 func TestRegistry_EditableFields_RegisteredReturnsList(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(
-		makeDef(tools.TelegramSendChannelPost),
-		"",
-		nil,
-		domain.ToolFloorManual,
-		[]string{"text", "parse_mode"},
-	)
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef(tools.TelegramSendChannelPost),
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text", "parse_mode"},
+	}, nil)
 	got := reg.EditableFields(tools.TelegramSendChannelPost)
 	assert.ElementsMatch(t, []string{"text", "parse_mode"}, got)
 }
@@ -351,7 +367,11 @@ func TestRegistry_EditableFields_UnknownReturnsNil(t *testing.T) {
 func TestRegistry_EditableFields_Defensive(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	original := []string{"text", "parse_mode"}
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, original)
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef(tools.TelegramSendChannelPost),
+		Floor:          domain.ToolFloorManual,
+		EditableFields: original,
+	}, nil)
 
 	// Mutate the caller's slice after Register — registry should not observe the change.
 	original[0] = "channel_id"
@@ -366,7 +386,10 @@ func TestRegistry_EditableFields_Defensive(t *testing.T) {
 
 func TestRegistry_Has(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, nil)
+	reg.Register(toolregistry.ToolSpec{
+		Def:   makeDef(tools.TelegramSendChannelPost),
+		Floor: domain.ToolFloorManual,
+	}, nil)
 
 	assert.True(t, reg.Has(tools.TelegramSendChannelPost))
 	assert.False(t, reg.Has("ghost__missing"))
@@ -375,9 +398,16 @@ func TestRegistry_Has(t *testing.T) {
 
 func TestRegistry_AllFloors(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef(tools.TelegramGetReviews), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("dangerous__delete"), "", nil, domain.ToolFloorForbidden, nil)
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef(tools.TelegramSendChannelPost),
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text"},
+	}, nil)
+	registerAuto(reg, tools.TelegramGetReviews)
+	reg.Register(toolregistry.ToolSpec{
+		Def:   makeDef("dangerous__delete"),
+		Floor: domain.ToolFloorForbidden,
+	}, nil)
 
 	got := reg.AllFloors()
 	assert.Equal(t, domain.ToolFloorManual, got[tools.TelegramSendChannelPost])
@@ -394,9 +424,16 @@ func TestRegistry_AllFloors(t *testing.T) {
 //   - "__weird"                     → "" (leading separator = no platform)
 func TestRegistry_AllEntries_SplitsPlatform(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
-	reg.Register(makeDef("bare_internal"), "", nil, domain.ToolFloorAuto, nil)
-	reg.Register(makeDef("__weird"), "", nil, domain.ToolFloorForbidden, nil)
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef(tools.TelegramSendChannelPost),
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text"},
+	}, nil)
+	registerAuto(reg, "bare_internal")
+	reg.Register(toolregistry.ToolSpec{
+		Def:   makeDef("__weird"),
+		Floor: domain.ToolFloorForbidden,
+	}, nil)
 
 	byName := make(map[string]toolregistry.RegistryEntry)
 	for _, e := range reg.AllEntries() {
@@ -419,7 +456,11 @@ func TestRegistry_AllEntries_SplitsPlatform(t *testing.T) {
 // registered allowlist by mutating the slice they received from AllEntries().
 func TestRegistry_AllEntries_EditableFieldsCopy(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "", nil, domain.ToolFloorManual, []string{"text"})
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef(tools.TelegramSendChannelPost),
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text"},
+	}, nil)
 
 	entries := reg.AllEntries()
 	if len(entries) != 1 {
@@ -431,24 +472,34 @@ func TestRegistry_AllEntries_EditableFieldsCopy(t *testing.T) {
 	assert.Equal(t, "text", fresh[0].EditableFields[0])
 }
 
-func TestRegistry_DisplayNameKey_GetterReturnsSetValue(t *testing.T) {
+func TestRegistry_DisplayNameKey_ReturnsSpecValue(t *testing.T) {
 	reg := toolregistry.NewRegistry()
-	reg.Register(makeDef(tools.TelegramSendChannelPost), "Отправить пост", nil, domain.ToolFloorManual, []string{"text"})
-	reg.SetDisplayNameKey(tools.TelegramSendChannelPost, "tools.telegram.send_channel_post.name")
+	reg.Register(toolregistry.ToolSpec{
+		Def:            makeDef(tools.TelegramSendChannelPost),
+		DisplayName:    "Отправить пост",
+		DisplayNameKey: "tools.telegram.send_channel_post.name",
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text"},
+	}, nil)
 
 	assert.Equal(t, "tools.telegram.send_channel_post.name", reg.DisplayNameKey(tools.TelegramSendChannelPost))
 	assert.Equal(t, "", reg.DisplayNameKey("unknown__tool"))
 }
 
-func TestRegistry_SetDescriptionEn_AvailableForWhitelist_LocaleAware(t *testing.T) {
+func TestRegistry_DescriptionEn_AvailableForWhitelist_LocaleAware(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	// Russian source-of-truth Description on def.
 	def := llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "Публикует пост в Telegram"},
 	}
-	reg.Register(def, "Отправить пост", nil, domain.ToolFloorManual, []string{"text"})
-	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "Publishes a post to Telegram")
+	reg.Register(toolregistry.ToolSpec{
+		Def:            def,
+		DisplayName:    "Отправить пост",
+		DescriptionEn:  "Publishes a post to Telegram",
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text"},
+	}, nil)
 
 	// RU ctx (default) → RU description.
 	ru := i18n.WithLocale(context.Background(), language.Russian)
@@ -468,7 +519,7 @@ func TestRegistry_SetDescriptionEn_AvailableForWhitelist_LocaleAware(t *testing.
 }
 
 func TestRegistry_AvailableForWhitelist_NoDescriptionEn_FallsBackToRu(t *testing.T) {
-	// A tool without descriptionEn must serve its RU description in BOTH locales —
+	// A tool without DescriptionEn must serve its RU description in BOTH locales —
 	// the fallback prevents an unset EN translation from showing as an empty
 	// description to the LLM (which would degrade reasoning).
 	reg := toolregistry.NewRegistry()
@@ -476,7 +527,7 @@ func TestRegistry_AvailableForWhitelist_NoDescriptionEn_FallsBackToRu(t *testing
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: tools.VKPublishPost, Description: "Публикует пост ВКонтакте"},
 	}
-	reg.Register(def, "", nil, domain.ToolFloorAuto, nil)
+	reg.Register(toolregistry.ToolSpec{Def: def, Floor: domain.ToolFloorAuto}, nil)
 
 	en := i18n.WithLocale(context.Background(), language.English)
 	defs := reg.AvailableForWhitelist(en, []string{"vk"}, "", nil)
@@ -490,9 +541,14 @@ func TestRegistry_AllEntriesForLocale_ResolvesDescriptionAndKey(t *testing.T) {
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost, Description: "RU desc"},
 	}
-	reg.Register(def, "DisplayRu", nil, domain.ToolFloorManual, []string{"text"})
-	reg.SetDisplayNameKey(tools.TelegramSendChannelPost, "tools.telegram.send_channel_post.name")
-	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "EN desc")
+	reg.Register(toolregistry.ToolSpec{
+		Def:            def,
+		DisplayName:    "DisplayRu",
+		DisplayNameKey: "tools.telegram.send_channel_post.name",
+		DescriptionEn:  "EN desc",
+		Floor:          domain.ToolFloorManual,
+		EditableFields: []string{"text"},
+	}, nil)
 
 	ru := reg.AllEntriesForLocale(language.Russian)
 	require.Len(t, ru, 1)
@@ -623,15 +679,12 @@ func TestRegistry_LocalizeParameters_EnSwapsPropertyDescriptions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			platform := strings.SplitN(tc.toolName, "__", 2)[0]
 			reg := toolregistry.NewRegistry()
-			reg.Register(
-				makeDefWithParams(tc.toolName, "RU desc", tc.props, tc.required),
-				"",
-				nil,
-				domain.ToolFloorManual,
-				nil,
-			)
-			reg.SetDescriptionEn(tc.toolName, "EN desc")
-			reg.SetParameterDescriptionsEn(tc.toolName, tc.paramsEn)
+			reg.Register(toolregistry.ToolSpec{
+				Def:                     makeDefWithParams(tc.toolName, "RU desc", tc.props, tc.required),
+				DescriptionEn:           "EN desc",
+				ParameterDescriptionsEn: tc.paramsEn,
+				Floor:                   domain.ToolFloorManual,
+			}, nil)
 
 			en := i18n.WithLocale(context.Background(), language.English)
 			defs := reg.AvailableForWhitelist(en, []string{platform}, "", nil)
@@ -663,12 +716,15 @@ func TestRegistry_LocalizeParameters_RuReturnsByteIdenticalShape(t *testing.T) {
 		[]string{"text"},
 	)
 	originalParams := def.Function.Parameters
-	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
-	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "EN desc")
-	reg.SetParameterDescriptionsEn(tools.TelegramSendChannelPost, map[string]string{
-		"text":       "Message text",
-		"channel_id": "Channel ID",
-	})
+	reg.Register(toolregistry.ToolSpec{
+		Def:           def,
+		DescriptionEn: "EN desc",
+		ParameterDescriptionsEn: map[string]string{
+			"text":       "Message text",
+			"channel_id": "Channel ID",
+		},
+		Floor: domain.ToolFloorManual,
+	}, nil)
 
 	ru := i18n.WithLocale(context.Background(), language.Russian)
 	defsRu := reg.AvailableForWhitelist(ru, []string{"telegram"}, "", nil)
@@ -698,10 +754,13 @@ func TestRegistry_LocalizeParameters_MissingEnEntryFallsBackToRu(t *testing.T) {
 		},
 		[]string{"text"},
 	)
-	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
-	reg.SetParameterDescriptionsEn(tools.TelegramSendChannelPost, map[string]string{
-		"text": "Message text",
-	})
+	reg.Register(toolregistry.ToolSpec{
+		Def: def,
+		ParameterDescriptionsEn: map[string]string{
+			"text": "Message text",
+		},
+		Floor: domain.ToolFloorManual,
+	}, nil)
 
 	en := i18n.WithLocale(context.Background(), language.English)
 	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
@@ -723,10 +782,13 @@ func TestRegistry_LocalizeParameters_EmptyEnDescriptionFallsBackToRu(t *testing.
 		},
 		[]string{"text"},
 	)
-	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
-	reg.SetParameterDescriptionsEn(tools.TelegramSendChannelPost, map[string]string{
-		"text": "", // explicit empty
-	})
+	reg.Register(toolregistry.ToolSpec{
+		Def: def,
+		ParameterDescriptionsEn: map[string]string{
+			"text": "", // explicit empty
+		},
+		Floor: domain.ToolFloorManual,
+	}, nil)
 
 	en := i18n.WithLocale(context.Background(), language.English)
 	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
@@ -735,7 +797,11 @@ func TestRegistry_LocalizeParameters_EmptyEnDescriptionFallsBackToRu(t *testing.
 		"empty EN string should fall back to RU description")
 }
 
-func TestRegistry_SetParameterDescriptionsEn_DefensiveCopy(t *testing.T) {
+// TestRegistry_ParameterDescriptionsEn_Register_DefensiveCopy verifies that
+// Register clones the spec's ParameterDescriptionsEn map. A caller cannot
+// alter a tool's registered EN parameter descriptions by mutating the map
+// after registration.
+func TestRegistry_ParameterDescriptionsEn_Register_DefensiveCopy(t *testing.T) {
 	reg := toolregistry.NewRegistry()
 	def := makeDefWithParams(
 		tools.TelegramSendChannelPost,
@@ -745,32 +811,26 @@ func TestRegistry_SetParameterDescriptionsEn_DefensiveCopy(t *testing.T) {
 		},
 		[]string{"text"},
 	)
-	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
 
 	caller := map[string]string{"text": "Message text"}
-	reg.SetParameterDescriptionsEn(tools.TelegramSendChannelPost, caller)
+	reg.Register(toolregistry.ToolSpec{
+		Def:                     def,
+		ParameterDescriptionsEn: caller,
+		Floor:                   domain.ToolFloorManual,
+	}, nil)
 	caller["text"] = "TAMPERED" // post-registration mutation
 
 	en := i18n.WithLocale(context.Background(), language.English)
 	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
 	require.Len(t, defs, 1)
 	assert.Equal(t, "Message text", propDescription(defs[0], "text"),
-		"registry must not observe post-Set mutations of the caller's map")
-}
-
-// TestRegistry_SetParameterDescriptionsEn_UnknownTool locks the no-op contract
-// for unknown tools (matches the other Set* methods on the registry).
-func TestRegistry_SetParameterDescriptionsEn_UnknownTool(t *testing.T) {
-	reg := toolregistry.NewRegistry()
-	// Must not panic and must not register anything.
-	reg.SetParameterDescriptionsEn("ghost__missing", map[string]string{"text": "Message text"})
-	assert.False(t, reg.Has("ghost__missing"))
+		"registry must not observe post-Register mutations of the caller's map")
 }
 
 // TestRegistry_LocalizeDef_EnWithoutParamsKeepsMapIdentity locks the
 // no-allocation invariant on localizeDef's "descriptionEn-only" branch.
-// When an EN caller hits a tool that has SetDescriptionEn set but NO
-// SetParameterDescriptionsEn, localizeDef must return a definition whose
+// When an EN caller hits a tool that has DescriptionEn set but NO
+// ParameterDescriptionsEn, localizeDef must return a definition whose
 // Function.Parameters is the SAME Go map (pointer-identical) as the
 // registered def. Without this invariant, a future field added to
 // FunctionDefinition that holds a reference type could turn the
@@ -791,11 +851,13 @@ func TestRegistry_LocalizeDef_EnWithoutParamsKeepsMapIdentity(t *testing.T) {
 		[]string{"text"},
 	)
 	sourceParams := def.Function.Parameters
-	reg.Register(def, "", nil, domain.ToolFloorManual, nil)
-	reg.SetDescriptionEn(tools.TelegramSendChannelPost, "EN desc")
-	// Deliberately do NOT call SetParameterDescriptionsEn — only the
-	// top-level translation is set so localizeDef hits the descriptionEn-only
-	// branch (line 210-212 in registry.go).
+	// Deliberately omit ParameterDescriptionsEn — only the top-level
+	// translation is set so localizeDef hits the descriptionEn-only branch.
+	reg.Register(toolregistry.ToolSpec{
+		Def:           def,
+		DescriptionEn: "EN desc",
+		Floor:         domain.ToolFloorManual,
+	}, nil)
 
 	en := i18n.WithLocale(context.Background(), language.English)
 	defs := reg.AvailableForWhitelist(en, []string{"telegram"}, "", nil)
@@ -806,7 +868,7 @@ func TestRegistry_LocalizeDef_EnWithoutParamsKeepsMapIdentity(t *testing.T) {
 	gotPtr := reflect.ValueOf(defs[0].Function.Parameters).Pointer()
 	wantPtr := reflect.ValueOf(sourceParams).Pointer()
 	if gotPtr != wantPtr {
-		t.Fatalf("expected Parameters map identity to be preserved when only descriptionEn is set; got map at %x, want %x", gotPtr, wantPtr)
+		t.Fatalf("expected Parameters map identity to be preserved when only DescriptionEn is set; got map at %x, want %x", gotPtr, wantPtr)
 	}
 }
 
@@ -827,10 +889,12 @@ func TestRegistry_LocalizeParameters_ZeroParamTool_NoOp(t *testing.T) {
 			},
 		},
 	}
-	reg.Register(def, "", nil, domain.ToolFloorAuto, nil)
-	reg.SetDescriptionEn(tools.YandexBusinessGetInfo, "EN desc")
-	// Deliberately do NOT call SetParameterDescriptionsEn — zero-param tools
-	// don't need it.
+	// Deliberately omit ParameterDescriptionsEn — zero-param tools don't need it.
+	reg.Register(toolregistry.ToolSpec{
+		Def:           def,
+		DescriptionEn: "EN desc",
+		Floor:         domain.ToolFloorAuto,
+	}, nil)
 
 	en := i18n.WithLocale(context.Background(), language.English)
 	defs := reg.AvailableForWhitelist(en, []string{"yandex_business"}, "", nil)
