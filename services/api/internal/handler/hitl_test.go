@@ -146,7 +146,7 @@ func (s *hitlBusinessService) GetByID(_ context.Context, _ uuid.UUID) (*domain.B
 	}
 	return s.biz, nil
 }
-func (s *hitlBusinessService) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
+func (s *hitlBusinessService) Update(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
 }
 func (s *hitlBusinessService) GetToolApprovals(_ context.Context, _ uuid.UUID) (map[string]domain.ToolFloor, error) {

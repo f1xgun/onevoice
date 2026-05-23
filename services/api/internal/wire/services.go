@@ -175,7 +175,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.User = userService
 	// Phase 1 v2.0 RBAC (DATA-06): BusinessService dual-writes
 	// businesses + business_members(role_id=owner) inside a single tx.
-	s.Business = service.NewBusinessService(repos.Business, repos.BusinessMembership, repos.Role, h.PG)
+	// Phase 19 Wave 4 (19-04): + AuditLogger emits business.created/updated
+	// AFTER tx.Commit succeeds (D-29/D-30).
+	s.Business = service.NewBusinessService(repos.Business, repos.BusinessMembership, repos.Role, h.PG, s.AuditLogger)
 
 	// Phase 2 v2.0 RBAC: authz cache backs the RequireBusinessAccess
 	// middleware. The MembershipLoader queries (user_id, business_id) →
@@ -195,11 +197,13 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 			&http.Client{Timeout: cfg.OrchestratorFetchTimeout},
 		)
 	}
-	s.Integration = service.NewIntegrationService(repos.Integration, h.Enc, refresher)
+	// Phase 19 Wave 4 (19-04): IntegrationService emits integration.connected
+	// and integration.token_rotated. ProjectService emits project.* events.
+	s.Integration = service.NewIntegrationService(repos.Integration, h.Enc, refresher, s.AuditLogger)
 	s.OAuth = service.NewOAuthService(h.Redis)
 	s.Post = service.NewPostService(repos.Post, s.Business)
 	s.AgentTask = service.NewAgentTaskService(repos.AgentTask, s.Business)
-	s.Project = service.NewProjectService(repos.Project)
+	s.Project = service.NewProjectService(repos.Project, s.AuditLogger)
 
 	// Initialize object storage (MinIO / S3) for user uploads
 	objectStorage, err := storage.NewMinioClient(ctx, storage.Config{

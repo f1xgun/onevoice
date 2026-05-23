@@ -105,6 +105,7 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 	groupIDStr := strconv.FormatInt(group.ID, 10)
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  bc.BusinessID,
+		ActorID:     bc.UserID,
 		Platform:    a2a.AgentVK,
 		ExternalID:  groupIDStr,
 		AccessToken: req.AccessToken,

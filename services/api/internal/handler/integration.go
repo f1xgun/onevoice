@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -23,15 +24,25 @@ type IntegrationService interface {
 // IntegrationHandler handles integration endpoints
 type IntegrationHandler struct {
 	integrationService IntegrationService
+	audit              audit.Logger
 }
 
-// NewIntegrationHandler creates a new integration handler instance
-func NewIntegrationHandler(integrationService IntegrationService, _ BusinessService) (*IntegrationHandler, error) {
+// NewIntegrationHandler creates a new integration handler instance.
+//
+// Phase 19 Wave 4 (19-04): auditLogger receives the integration.disconnected
+// event emitted from DeleteIntegration. Connected + token_rotated are emitted
+// from the service layer (one call site per action — D-29). nil-safe via
+// audit.Nop() so existing handler tests that pass nil still work.
+func NewIntegrationHandler(integrationService IntegrationService, _ BusinessService, auditLogger audit.Logger) (*IntegrationHandler, error) {
 	if integrationService == nil {
 		return nil, fmt.Errorf("NewIntegrationHandler: integrationService cannot be nil")
 	}
+	if auditLogger == nil {
+		auditLogger = audit.Nop()
+	}
 	return &IntegrationHandler{
 		integrationService: integrationService,
+		audit:              auditLogger,
 	}, nil
 }
 
@@ -83,7 +94,9 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Verify integration belongs to this business
+	// Verify integration belongs to this business. Also captures the platform
+	// for the audit emission below — the service-layer Delete only has the
+	// integration_id, so we capture platform HERE before the row is gone.
 	integrations, err := h.integrationService.ListByBusinessID(r.Context(), bc.BusinessID)
 	if err != nil {
 		slog.Error("failed to list integrations", "error", err)
@@ -91,14 +104,14 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	found := false
-	for _, i := range integrations {
-		if i.ID == integrationID {
-			found = true
+	var target *domain.Integration
+	for i := range integrations {
+		if integrations[i].ID == integrationID {
+			target = &integrations[i]
 			break
 		}
 	}
-	if !found {
+	if target == nil {
 		writeJSONError(w, http.StatusNotFound, "integration not found")
 		return
 	}
@@ -110,6 +123,11 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+
+	// Phase 19 audit (D-14, D-29/D-30): emit integration.disconnected AFTER
+	// the row is deleted. We captured platform from the pre-delete fetch above
+	// so the audit row records what was disconnected. Fire-and-forget.
+	audit.LogIntegrationDisconnected(r.Context(), h.audit, bc.BusinessID, bc.UserID, integrationID, target.Platform)
 
 	// Return 204 No Content
 	writeJSON(w, http.StatusNoContent, nil)

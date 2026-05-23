@@ -155,6 +155,7 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  bc.BusinessID,
+		ActorID:     bc.UserID,
 		Platform:    a2a.AgentYandexBusiness,
 		ExternalID:  externalID,
 		AccessToken: parsed.JSON(),

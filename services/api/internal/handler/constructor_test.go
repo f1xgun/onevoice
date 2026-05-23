@@ -69,7 +69,7 @@ func TestNewBusinessHandler_NilService_ReturnsError(t *testing.T) {
 }
 
 func TestNewIntegrationHandler_NilIntegrationService_ReturnsError(t *testing.T) {
-	h, err := NewIntegrationHandler(nil, nil)
+	h, err := NewIntegrationHandler(nil, nil, audit.Nop())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
