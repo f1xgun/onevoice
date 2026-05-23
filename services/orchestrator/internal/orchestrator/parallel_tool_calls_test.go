@@ -75,9 +75,9 @@ func TestRun_ParallelToolCalls_WallTime(t *testing.T) {
 			return nil, ctx.Err()
 		}
 	})
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.YandexBusinessGetReviews}}, "", slow, domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.TelegramGetReviews}}, "", slow, domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.VKGetComments}}, "", slow, domain.ToolFloorAuto, nil)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.YandexBusinessGetReviews}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, slow)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.TelegramGetReviews}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, slow)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.VKGetComments}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, slow)
 
 	orch := orchestrator.New(stub, reg)
 
@@ -155,24 +155,22 @@ func TestRun_ParallelToolCalls_ResultsEmitAsTheyFinish(t *testing.T) {
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "slow_tool"}}, "",
-		toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
-			select {
-			case <-time.After(slowDelay):
-				return map[string]interface{}{"ok": true}, nil
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-		}), domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "fast_tool"}}, "",
-		toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
-			select {
-			case <-time.After(fastDelay):
-				return map[string]interface{}{"ok": true}, nil
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-		}), domain.ToolFloorAuto, nil)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "slow_tool"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+		select {
+		case <-time.After(slowDelay):
+			return map[string]interface{}{"ok": true}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}))
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "fast_tool"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+		select {
+		case <-time.After(fastDelay):
+			return map[string]interface{}{"ok": true}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}))
 
 	orch := orchestrator.New(stub, reg)
 
@@ -236,9 +234,9 @@ func TestRun_ParallelToolCalls_OneFailsOthersSucceed(t *testing.T) {
 	failExec := toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return nil, errors.New("boom")
 	})
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_ok_a"}}, "", okExec, domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_fail"}}, "", failExec, domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_ok_b"}}, "", okExec, domain.ToolFloorAuto, nil)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_ok_a"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, okExec)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_fail"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, failExec)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "tool_ok_b"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, okExec)
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -287,7 +285,7 @@ func TestRun_DuplicateToolName_CorrelatesByID(t *testing.T) {
 	})
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost}}, "", exec, domain.ToolFloorAuto, nil)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: tools.TelegramSendChannelPost}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, exec)
 
 	orch := orchestrator.New(stub, reg)
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
@@ -346,15 +344,13 @@ func TestRun_PerToolTimeout_BoundsSingleTool(t *testing.T) {
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "hang"}}, "",
-		toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
-			<-ctx.Done()
-			return nil, ctx.Err()
-		}), domain.ToolFloorAuto, nil)
-	reg.Register(llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "fast"}}, "",
-		toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
-			return map[string]interface{}{"ok": true}, nil
-		}), domain.ToolFloorAuto, nil)
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "hang"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}))
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{Type: llm.ToolCallTypeFunction, Function: llm.FunctionDefinition{Name: "fast"}}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+		return map[string]interface{}{"ok": true}, nil
+	}))
 
 	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{
 		MaxIterations:   3,

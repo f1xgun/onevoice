@@ -6,42 +6,10 @@ import (
 	natslib "github.com/nats-io/nats.go"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
-	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/natsexec"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
-
-// toolSpec binds a tool definition to its ToolFloor baseline and
-// per-tool EditableFields allowlist.
-//
-// Policy guidelines for choosing a floor:
-//   - ToolFloorAuto       — read-only / safe queries (no external side effects).
-//   - ToolFloorManual     — any public mutation (post, reply, update, schedule,
-//     upload). Editable allowlist covers ONLY
-//     human-facing text fields (text/caption/description);
-//     ids, recipients, URLs, dates, categories, and
-//     quantities are pinned at pause time.
-//   - ToolFloorForbidden  — reserved for actions that must NEVER be lifted
-//     via settings (e.g., a future "wipe all posts").
-//     Kept registered so the LLM sees it exists but
-//     policy.Resolve always denies. Destructive-but-
-//     legitimate operations (comment moderation, etc.)
-//     belong under Manual, not Forbidden — users with
-//     a valid use-case can opt into auto-approval.
-//
-// When in doubt, prefer manual + a narrow editable list (conservative default).
-type toolSpec struct {
-	def                     llm.ToolDefinition
-	displayName             string
-	displayNameKey          string
-	descriptionEn           string
-	parameterDescriptionsEn map[string]string
-	userDescription         string
-	floor                   domain.ToolFloor
-	editable                []string
-}
 
 // Tools constructs the live tool registry, dials NATS, and registers every
 // MVP platform tool. NATS unreachable is non-fatal: the registry is returned
@@ -71,13 +39,12 @@ func Tools(log *slog.Logger, cfg *config.Config) (*toolregistry.Registry, *natsl
 // tools_{platform}.go file to keep individual files under the 500-LOC
 // budget; this dispatcher is the single registration entry point.
 //
-// Every tool registration is explicit — Register takes floor + editableFields
-// as required arguments so a newly-added tool can never silently inherit
-// ToolFloorAuto. See toolSpec above for the policy rubric used below.
+// Floor + EditableFields live on each spec — see toolregistry.ToolSpec for
+// the policy rubric.
 func RegisterPlatformTools(reg *toolregistry.Registry, nc *natslib.Conn) {
 	agents := []struct {
 		id    a2a.AgentID
-		tools []toolSpec
+		tools []toolregistry.ToolSpec
 	}{
 		{id: a2a.AgentTelegram, tools: telegramTools()},
 		{id: a2a.AgentVK, tools: vkTools()},
@@ -88,20 +55,8 @@ func RegisterPlatformTools(reg *toolregistry.Registry, nc *natslib.Conn) {
 	conn := natsexec.NewNATSConn(nc)
 	for _, a := range agents {
 		for _, spec := range a.tools {
-			exec := natsexec.New(a.id, spec.def.Function.Name, conn)
-			reg.Register(spec.def, spec.displayName, exec, spec.floor, spec.editable)
-			if spec.userDescription != "" {
-				reg.SetUserDescription(spec.def.Function.Name, spec.userDescription)
-			}
-			if spec.displayNameKey != "" {
-				reg.SetDisplayNameKey(spec.def.Function.Name, spec.displayNameKey)
-			}
-			if spec.descriptionEn != "" {
-				reg.SetDescriptionEn(spec.def.Function.Name, spec.descriptionEn)
-			}
-			if len(spec.parameterDescriptionsEn) > 0 {
-				reg.SetParameterDescriptionsEn(spec.def.Function.Name, spec.parameterDescriptionsEn)
-			}
+			exec := natsexec.New(a.id, spec.Def.Function.Name, conn)
+			reg.Register(spec, exec)
 		}
 	}
 }
