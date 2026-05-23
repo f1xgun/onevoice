@@ -10,7 +10,9 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/sse"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/sseevent"
 )
 
 // Resumer is the narrow interface consumed by ResumeHandler. Implemented by
@@ -111,41 +113,17 @@ func (h *ResumeHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	events, err := h.resumer.Resume(ctx, resumeReq)
 	if err != nil {
-		writeSSE(ctx, w, flusher, sseEvent{Type: "error", Content: err.Error()})
+		writeSSE(ctx, w, flusher, sse.Event{Type: "error", Content: err.Error()})
 		return
 	}
 
 	for event := range events {
-		sse := sseEvent{Type: string(event.Type), Content: event.Content}
-		switch event.Type {
-		case orchestrator.EventToolCall:
-			sse.ToolCallID = event.ToolCallID
-			sse.ToolName = event.ToolName
-			sse.ToolDisplayName = event.ToolDisplayName
-			sse.ToolDisplayNameKey = event.ToolDisplayNameKey
-			sse.ToolArgs = event.ToolArgs
-		case orchestrator.EventToolResult:
-			sse.ToolCallID = event.ToolCallID
-			sse.ToolName = event.ToolName
-			sse.ToolDisplayName = event.ToolDisplayName
-			sse.ToolDisplayNameKey = event.ToolDisplayNameKey
-			sse.ToolResult = event.ToolResult
-			sse.ToolError = event.ToolError
-		case orchestrator.EventToolRejected:
-			sse.ToolCallID = event.ToolCallID
-			sse.ToolName = event.ToolName
-		case orchestrator.EventToolApprovalRequired:
-			// Resume typically does NOT re-emit approval events (the batch is
-			// already resolved by the time Resume is called). Surface it
-			// anyway for defense-in-depth — if a resumed turn hits ANOTHER
-			// manual-floor tool on the next iteration, we want the client to
-			// see the new pause event.
-			sse.BatchID = event.BatchID
-			sse.Calls = event.Calls
-		case orchestrator.EventText, orchestrator.EventError, orchestrator.EventDone:
-			// No additional fields beyond Type + Content.
-		}
-		writeSSE(ctx, w, flusher, sse)
+		// sseevent.FromEvent owns the per-EventType field copy — same
+		// projection as chat.go. Approval events on the resume path are
+		// defense-in-depth (a resumed turn may hit another manual-floor
+		// tool on the next iteration); the builder forwards BatchID + Calls
+		// in that case.
+		writeSSE(ctx, w, flusher, sseevent.FromEvent(event))
 	}
 }
 
