@@ -29,6 +29,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
@@ -52,10 +53,14 @@ type InvitationsHandler struct {
 	businessRepo   domain.BusinessRepository
 	pool           poolBeginner
 	invalidator    memberCacheInvalidator
+	audit          audit.Logger
 	now            func() time.Time // clock seam for test determinism
 }
 
 // NewInvitationsHandler — every dep is required.
+//
+// Phase 19 Wave 4 (19-04): adds `auditLogger` so Create/Revoke/Accept emit
+// rbac.invitation_* audit events AFTER the transaction commits.
 func NewInvitationsHandler(
 	ir domain.InvitationRepository,
 	mr domain.BusinessMembershipRepository,
@@ -64,6 +69,7 @@ func NewInvitationsHandler(
 	br domain.BusinessRepository,
 	pool poolBeginner,
 	inv memberCacheInvalidator,
+	auditLogger audit.Logger,
 ) (*InvitationsHandler, error) {
 	if ir == nil {
 		return nil, fmt.Errorf("NewInvitationsHandler: invitationRepo cannot be nil")
@@ -86,6 +92,9 @@ func NewInvitationsHandler(
 	if inv == nil {
 		return nil, fmt.Errorf("NewInvitationsHandler: invalidator cannot be nil")
 	}
+	if auditLogger == nil {
+		return nil, fmt.Errorf("NewInvitationsHandler: auditLogger cannot be nil")
+	}
 	return &InvitationsHandler{
 		invitationRepo: ir,
 		membershipRepo: mr,
@@ -94,6 +103,7 @@ func NewInvitationsHandler(
 		businessRepo:   br,
 		pool:           pool,
 		invalidator:    inv,
+		audit:          auditLogger,
 		now:            time.Now,
 	}, nil
 }
@@ -303,6 +313,11 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"role_id", inv.RoleID,
 	)
 
+	// Phase 19 audit (D-14, D-29/D-30): emit rbac.invitation_created AFTER
+	// tx.Commit. Details capture invitation_id + role_id + expires_at only —
+	// NEVER the raw token or token_hash (T-19-16 mitigation).
+	audit.LogInvitationCreated(r.Context(), h.audit, bc.BusinessID, bc.UserID, inv.ID, inv.RoleID, inv.ExpiresAt)
+
 	writeJSON(w, http.StatusCreated, createInvitationResponse{
 		ID:        inv.ID,
 		Token:     rawToken, // INVITE-01 / D-08: the ONLY response that includes the raw token
@@ -382,6 +397,10 @@ func (h *InvitationsHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		writeRevokeError(w, err)
 		return
 	}
+
+	// Phase 19 audit (D-29/D-30): emit rbac.invitation_revoked AFTER successful
+	// repo update.
+	audit.LogInvitationRevoked(r.Context(), h.audit, bc.BusinessID, bc.UserID, invID)
 
 	slog.InfoContext(r.Context(), "invitation revoked",
 		"business_id", bc.BusinessID,
@@ -564,6 +583,10 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 
 	// Step 7: AFTER commit, NEVER before — INVITE-11 / CONTEXT D-15 step 7.
 	h.invalidator.InvalidateMember(inv.BusinessID, userID)
+
+	// Phase 19 audit (D-29/D-30): emit rbac.invitation_accepted AFTER
+	// commit + cache invalidation. accepterUserID == granted member.
+	audit.LogInvitationAccepted(r.Context(), h.audit, inv.BusinessID, userID, inv.ID, inv.RoleID)
 
 	// SECURITY (T-03-02): no token/hash in the slog line.
 	slog.InfoContext(r.Context(), "invitation accepted",

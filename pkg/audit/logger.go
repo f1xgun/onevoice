@@ -111,3 +111,12 @@ func (l *loggerImpl) fail(reqCtx context.Context, e Entry, lastErr error) {
 func jitter() time.Duration {
 	return time.Duration(rand.Int64N(int64(time.Second))) //nolint:gosec // weak random is intentional for backoff jitter (parity with services/agent-yandex-business humanDelay)
 }
+
+// Nop returns a Logger that discards every entry. Intended for unit tests
+// that exercise handlers / services through the audit-injection seam without
+// asserting on audit emission. Production wiring MUST use NewLogger(repo).
+func Nop() Logger { return nopLogger{} }
+
+type nopLogger struct{}
+
+func (nopLogger) Log(context.Context, Entry) {}

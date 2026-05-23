@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -230,7 +231,8 @@ func businessContextWith(ctx context.Context, businessID, userID uuid.UUID, perm
 }
 
 // newMembersHandlerForTest constructs a MembersHandler with the given dependencies
-// using the mockable pool interface.
+// using the mockable pool interface. Phase 19: audit defaults to audit.Nop()
+// so existing tests don't have to thread a logger through every call site.
 func newMembersHandlerForTest(
 	mr domain.BusinessMembershipRepository,
 	rr domain.RoleRepository,
@@ -244,6 +246,7 @@ func newMembersHandlerForTest(
 		userRepo:       ur,
 		pool:           pool,
 		invalidator:    inv,
+		audit:          audit.Nop(),
 	}
 }
 
@@ -732,23 +735,27 @@ func TestMembersHandler_NewMembersHandler_NilChecks(t *testing.T) {
 	mockPool, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	validInv := &MockCacheInvalidator{}
+	validAudit := audit.Nop()
 
-	_, err = NewMembersHandler(nil, validRR, validUR, mockPool, validInv)
+	_, err = NewMembersHandler(nil, validRR, validUR, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, nil, validUR, mockPool, validInv)
+	_, err = NewMembersHandler(validMR, nil, validUR, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, nil, mockPool, validInv)
+	_, err = NewMembersHandler(validMR, validRR, nil, mockPool, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, validUR, nil, validInv)
+	_, err = NewMembersHandler(validMR, validRR, validUR, nil, validInv, validAudit)
 	assert.Error(t, err)
 
-	_, err = NewMembersHandler(validMR, validRR, validUR, mockPool, nil)
+	_, err = NewMembersHandler(validMR, validRR, validUR, mockPool, nil, validAudit)
 	assert.Error(t, err)
 
-	h, err := NewMembersHandler(validMR, validRR, validUR, mockPool, validInv)
+	_, err = NewMembersHandler(validMR, validRR, validUR, mockPool, validInv, nil)
+	assert.Error(t, err)
+
+	h, err := NewMembersHandler(validMR, validRR, validUR, mockPool, validInv, validAudit)
 	require.NoError(t, err)
 	assert.NotNil(t, h)
 }
