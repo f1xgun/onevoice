@@ -62,6 +62,7 @@ type Handlers struct {
 	Members       *handler.MembersHandler     // RBAC: member management
 	Roles         *handler.RolesHandler       // RBAC: role listing
 	Invitations   *handler.InvitationsHandler // RBAC: invitation lifecycle (Phase 3)
+	AuditLog      *handler.AuditLogHandler    // Phase 19 Wave 5: audit-log read endpoint
 }
 
 // Setup creates and configures the Chi router with all routes and middleware.
@@ -293,6 +294,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 					r.Post("/invitations", handlers.Invitations.Create)
 					r.Get("/invitations", handlers.Invitations.ListPending)
 					r.Delete("/invitations/{inviteId}", handlers.Invitations.Revoke)
+				}
+
+				// Phase 19 Wave 5: audit log read endpoint. Gated by
+				// PermAuditRead inside the handler (Owner+Admin via Phase 6
+				// seed). RequireBusinessAccess (above) handles the membership
+				// + business-id validation; the handler handles the
+				// permission check + cursor/filter validation.
+				if handlers.AuditLog != nil {
+					r.Get("/audit-logs", handlers.AuditLog.List)
 				}
 			})
 		})

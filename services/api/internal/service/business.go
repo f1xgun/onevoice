@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
@@ -33,7 +34,11 @@ type BusinessService interface {
 	// id explicitly as a third arg.
 	Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
-	Update(ctx context.Context, business *domain.Business) (*domain.Business, error)
+	// Update applies a business profile edit. Phase 19 Wave 4 added actorUserID
+	// so the service can emit business.updated AFTER the repo write succeeds
+	// without a handler-side audit call. actorUserID is the JWT-validated user
+	// (bc.UserID) performing the edit.
+	Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error)
 	// ListMembershipsByUser returns the businesses a user has membership in,
 	// hydrated with business name + role name. Powers BIZ-02 GET /api/v1/businesses.
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipSummary, error)
@@ -71,6 +76,7 @@ type businessService struct {
 	membershipRepo domain.BusinessMembershipRepository
 	roleRepo       domain.RoleRepository
 	pool           PgxBeginner
+	audit          audit.Logger
 }
 
 // Compile-time check that businessService implements BusinessService
@@ -95,6 +101,7 @@ func NewBusinessService(
 	membershipRepo domain.BusinessMembershipRepository,
 	roleRepo domain.RoleRepository,
 	pool PgxBeginner,
+	auditLogger audit.Logger,
 ) BusinessService {
 	if repo == nil {
 		panic("repo cannot be nil")
@@ -108,11 +115,18 @@ func NewBusinessService(
 	if pool == nil {
 		panic("pool cannot be nil")
 	}
+	// Phase 19 Wave 4: auditLogger is nil-safe via audit.Nop() so existing
+	// tests that pre-date the audit threading continue to construct services
+	// without churn.
+	if auditLogger == nil {
+		auditLogger = audit.Nop()
+	}
 	return &businessService{
 		repo:           repo,
 		membershipRepo: membershipRepo,
 		roleRepo:       roleRepo,
 		pool:           pool,
+		audit:          auditLogger,
 	}
 }
 
@@ -199,6 +213,11 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business,
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		return nil, fmt.Errorf("commit business+membership: %w", commitErr)
 	}
+
+	// Phase 19 audit (D-29/D-30): emit business.created AFTER tx.Commit. The
+	// owner_user_id is recorded so the trail captures who provisioned the org.
+	audit.LogBusinessCreated(ctx, s.audit, business.ID, ownerUserID, business.Name)
+
 	return business, nil
 }
 
@@ -285,8 +304,14 @@ func (s *businessService) UpdateToolApprovals(ctx context.Context, businessID uu
 	return s.repo.UpdateToolApprovals(ctx, businessID, approvals)
 }
 
-// Update updates a business profile
-func (s *businessService) Update(ctx context.Context, business *domain.Business) (*domain.Business, error) {
+// Update updates a business profile.
+//
+// Phase 19 Wave 4 (19-04): actorUserID identifies the user performing the
+// edit so the service can emit a business.updated audit row AFTER the
+// successful repo write. actorUserID may be uuid.Nil for legacy/system
+// callers — the audit row still records business_id which is the load-bearing
+// forensic data.
+func (s *businessService) Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error) {
 	// Check context
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -314,6 +339,10 @@ func (s *businessService) Update(ctx context.Context, business *domain.Business)
 		}
 		return nil, fmt.Errorf("update business: %w", err)
 	}
+
+	// Phase 19 audit (D-29/D-30): emit business.updated AFTER the successful
+	// repo write. v1 ships without per-field diff (Assumption A3).
+	audit.LogBusinessUpdated(ctx, s.audit, business.ID, actorUserID)
 
 	return business, nil
 }

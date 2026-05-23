@@ -60,7 +60,7 @@ func (s *stubBusinessServiceForApprovals) GetByID(_ context.Context, _ uuid.UUID
 	}
 	return s.bizByID, nil
 }
-func (s *stubBusinessServiceForApprovals) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
+func (s *stubBusinessServiceForApprovals) Update(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
 }
 func (s *stubBusinessServiceForApprovals) GetToolApprovals(ctx context.Context, biz uuid.UUID) (map[string]domain.ToolFloor, error) {

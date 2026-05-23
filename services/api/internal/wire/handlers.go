@@ -56,7 +56,10 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 
 	internalTokenHandler := handler.NewInternalTokenHandler(svcs.Integration)
 
-	authHandler, err := handler.NewAuthHandler(svcs.User, cfg.SecureCookies)
+	// Phase 19 Wave 4 (19-04): AuthHandler gains audit + jwtSecret args so it
+	// can emit auth.* audit events and extract userID from refresh-token
+	// claims before Redis invalidation during Logout.
+	authHandler, err := handler.NewAuthHandler(svcs.User, cfg.SecureCookies, svcs.AuditLogger, []byte(cfg.JWTSecret))
 	if err != nil {
 		return nil, fmt.Errorf("wire: create auth handler: %w", err)
 	}
@@ -64,7 +67,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create business handler: %w", err)
 	}
-	integrationHandler, err := handler.NewIntegrationHandler(svcs.Integration, svcs.Business)
+	// Phase 19 Wave 4 (19-04): + svcs.AuditLogger for integration.disconnected
+	// audit events from the handler-level Delete path.
+	integrationHandler, err := handler.NewIntegrationHandler(svcs.Integration, svcs.Business, svcs.AuditLogger)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create integration handler: %w", err)
 	}
@@ -148,18 +153,22 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	})
 
 	// Phase 2 v2.0 RBAC handlers — members, roles, permissions registry.
-	membersHandler, err := handler.NewMembersHandler(repos.BusinessMembership, repos.Role, repos.User, h.PG, svcs.AuthzCache)
+	// Phase 19 Wave 4 (19-04): MembersHandler gains svcs.AuditLogger so
+	// rbac.role_granted + rbac.member_removed audit events fire AFTER tx.Commit.
+	membersHandler, err := handler.NewMembersHandler(repos.BusinessMembership, repos.Role, repos.User, h.PG, svcs.AuthzCache, svcs.AuditLogger)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create members handler: %w", err)
 	}
 	// Phase 5 — extended signature: + membership repo (Delete fanout target
 	// lookup) + pool (RepeatableRead tx for Create/Update/Delete) + invalidator
 	// (InvalidateRole AFTER commit + InvalidateMember fanout per reassigned user).
+	// Phase 19 Wave 4 (19-04): + svcs.AuditLogger for rbac.role_* audit events.
 	rolesHandler, err := handler.NewRolesHandler(
 		repos.Role,
 		repos.BusinessMembership,
 		h.PG,
 		svcs.AuthzCache,
+		svcs.AuditLogger,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create roles handler: %w", err)
@@ -167,6 +176,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 
 	// Phase 3 v2.0 RBAC: invitations handler — 5 endpoints (3 business-scoped,
 	// 1 auth-only token, 1 public token). See plan 03-04 / 03-05.
+	// Phase 19 Wave 4 (19-04): + svcs.AuditLogger for rbac.invitation_* audit events.
 	invitationsHandler, err := handler.NewInvitationsHandler(
 		repos.Invitation,
 		repos.BusinessMembership,
@@ -175,10 +185,28 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		repos.Business,
 		h.PG,
 		svcs.AuthzCache,
+		svcs.AuditLogger,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create invitations handler: %w", err)
 	}
+
+	// Phase 19 Wave 5 (19-05): audit-log read handler. repos.AuditLog is
+	// typed as the domain interface (Insert/ListByBusiness/DeleteOlderThan)
+	// which does NOT include ListByBusinessWithActors — that method
+	// returns a repository-package AuditLogRow type that intentionally
+	// stays out of the domain layer. Type-assert here to bridge: the
+	// underlying value IS the concrete *auditLogRepository, which
+	// satisfies handler.AuditLogLister. The assertion is checked (panic
+	// at boot if Repos ever swaps in a non-concrete impl) rather than the
+	// silent comma-ok form because a missing reader at request time would
+	// be a 500 with no telemetry — the boot panic surfaces wiring drift
+	// loud and early.
+	auditLister, ok := repos.AuditLog.(handler.AuditLogLister)
+	if !ok {
+		return nil, fmt.Errorf("wire: AuditLog repo does not satisfy handler.AuditLogLister (impl drift)")
+	}
+	auditLogHandler := handler.NewAuditLogHandler(auditLister)
 
 	return &router.Handlers{
 		Auth:          authHandler,
@@ -204,6 +232,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Roles:   rolesHandler,
 		// Phase 3 v2.0 RBAC: invitation lifecycle (Create/ListPending/Revoke/Preview/Accept).
 		Invitations: invitationsHandler,
+		// Phase 19 Wave 5 (19-05): audit-log read handler. Bound to
+		// GET /businesses/{id}/audit-logs via router.Setup.
+		AuditLog: auditLogHandler,
 		// Telemetry handler is zero-dep; constructed inline.
 		Telemetry: &handler.TelemetryHandler{},
 	}, nil

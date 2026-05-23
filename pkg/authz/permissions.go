@@ -75,6 +75,9 @@ const (
 	// billing.*
 	PermBillingRead   Permission = "billing.read"
 	PermBillingUpdate Permission = "billing.update"
+
+	// audit.*
+	PermAuditRead Permission = "audit.read"
 )
 
 // AllPermissions returns the registry grouped by resource, in the order
@@ -118,6 +121,9 @@ func AllPermissions() []PermissionGroup {
 		{Resource: "billing", Permissions: []PermissionMeta{
 			{Name: PermBillingRead, Description: "Видеть тариф, счета, использование лимитов."},
 			{Name: PermBillingUpdate, Description: "Менять тариф, реквизиты, способ оплаты."},
+		}},
+		{Resource: "audit", Permissions: []PermissionMeta{
+			{Name: PermAuditRead, Description: "Видеть журнал событий — изменения ролей, входы, подключение интеграций."},
 		}},
 	}
 }

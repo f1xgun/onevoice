@@ -10,7 +10,7 @@ var permNameRegex = regexp.MustCompile(`^[a-z_]+\.[a-z_]+$`)
 func TestAllPermissions_GroupsAndCounts(t *testing.T) {
 	groups := AllPermissions()
 
-	wantOrder := []string{"business", "members", "roles", "integrations", "content", "billing"}
+	wantOrder := []string{"business", "members", "roles", "integrations", "content", "billing", "audit"}
 	if len(groups) != len(wantOrder) {
 		t.Fatalf("AllPermissions(): got %d groups, want %d", len(groups), len(wantOrder))
 	}
@@ -23,6 +23,7 @@ func TestAllPermissions_GroupsAndCounts(t *testing.T) {
 	wantCounts := map[string]int{
 		"business": 4, "members": 4, "roles": 4,
 		"integrations": 3, "content": 4, "billing": 2,
+		"audit": 1,
 	}
 	totalCount := 0
 	for _, g := range groups {
@@ -31,8 +32,8 @@ func TestAllPermissions_GroupsAndCounts(t *testing.T) {
 		}
 		totalCount += len(g.Permissions)
 	}
-	if totalCount != 21 {
-		t.Errorf("total permissions = %d, want 21", totalCount)
+	if totalCount != 22 {
+		t.Errorf("total permissions = %d, want 22", totalCount)
 	}
 }
 
@@ -61,6 +62,7 @@ func TestPermissionConstantsExist(t *testing.T) {
 		PermIntegrationsRead, PermIntegrationsConnect, PermIntegrationsDisconnect,
 		PermContentRead, PermContentCreate, PermContentUpdate, PermContentDelete,
 		PermBillingRead, PermBillingUpdate,
+		PermAuditRead,
 	}
 }
 

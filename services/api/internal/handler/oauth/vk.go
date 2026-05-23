@@ -336,6 +336,7 @@ func (h *OAuthHandler) VKCommunityCallback(w http.ResponseWriter, r *http.Reques
 	}
 	_, err = h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  stateData.BusinessID,
+		ActorID:     stateData.UserID,
 		Platform:    a2a.AgentVK,
 		ExternalID:  groupIDStr,
 		AccessToken: group.AccessToken,

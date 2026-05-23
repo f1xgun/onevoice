@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -70,6 +71,8 @@ func withRoleIDParam(r *http.Request, roleID string) *http.Request {
 }
 
 // newRolesHandlerForTest constructs a RolesHandler from test mocks.
+// Phase 19: audit defaults to audit.Nop() so existing tests don't have to
+// thread a logger through every call site.
 func newRolesHandlerForTest(
 	rr domain.RoleRepository,
 	mr domain.BusinessMembershipRepository,
@@ -81,6 +84,7 @@ func newRolesHandlerForTest(
 		membershipRepo: mr,
 		pool:           pool,
 		invalidator:    inv,
+		audit:          audit.Nop(),
 	}
 }
 
@@ -97,13 +101,15 @@ func ownerRoleUUID(t *testing.T) uuid.UUID {
 
 func TestRolesHandler_NewRolesHandler_NilCheck(t *testing.T) {
 	t.Parallel()
-	_, err := NewRolesHandler(nil, &MockBusinessMembershipRepository{}, mustPool(t), &recordingInvalidator{})
+	_, err := NewRolesHandler(nil, &MockBusinessMembershipRepository{}, mustPool(t), &recordingInvalidator{}, audit.Nop())
 	assert.Error(t, err)
-	_, err = NewRolesHandler(&MockRoleRepository{}, nil, mustPool(t), &recordingInvalidator{})
+	_, err = NewRolesHandler(&MockRoleRepository{}, nil, mustPool(t), &recordingInvalidator{}, audit.Nop())
 	assert.Error(t, err)
-	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, nil, &recordingInvalidator{})
+	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, nil, &recordingInvalidator{}, audit.Nop())
 	assert.Error(t, err)
-	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, mustPool(t), nil)
+	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, mustPool(t), nil, audit.Nop())
+	assert.Error(t, err)
+	_, err = NewRolesHandler(&MockRoleRepository{}, &MockBusinessMembershipRepository{}, mustPool(t), &recordingInvalidator{}, nil)
 	assert.Error(t, err)
 }
 

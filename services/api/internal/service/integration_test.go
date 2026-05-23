@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
@@ -135,7 +136,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 		result, err := svc.ListByBusinessID(ctx, businessID)
 
 		require.NoError(t, err)
@@ -153,7 +154,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 		result, err := svc.ListByBusinessID(ctx, businessID)
 
 		require.NoError(t, err)
@@ -163,7 +164,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 
 	t.Run("error - nil business id", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
 		result, err := svc.ListByBusinessID(ctx, uuid.Nil)
 
@@ -177,7 +178,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 		cancel()
 
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
 		result, err := svc.ListByBusinessID(cancelledCtx, uuid.New())
 
@@ -194,7 +195,7 @@ func TestIntegrationService_ListByBusinessID(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 		result, err := svc.ListByBusinessID(ctx, uuid.New())
 
 		assert.Error(t, err)
@@ -230,7 +231,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 		result, err := svc.GetByBusinessAndPlatform(ctx, businessID, platform)
 
 		require.NoError(t, err)
@@ -248,7 +249,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 		result, err := svc.GetByBusinessAndPlatform(ctx, uuid.New(), "google")
 
 		assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
@@ -257,7 +258,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 
 	t.Run("error - nil business id", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
 		result, err := svc.GetByBusinessAndPlatform(ctx, uuid.Nil, "google")
 
@@ -268,7 +269,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 
 	t.Run("error - empty platform", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
 		result, err := svc.GetByBusinessAndPlatform(ctx, uuid.New(), "")
 
@@ -282,7 +283,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 		cancel()
 
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
 		result, err := svc.GetByBusinessAndPlatform(cancelledCtx, uuid.New(), "google")
 
@@ -299,7 +300,7 @@ func TestIntegrationService_GetByBusinessAndPlatform(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 		result, err := svc.GetByBusinessAndPlatform(ctx, uuid.New(), "google")
 
 		assert.Error(t, err)
@@ -322,7 +323,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 		err := svc.Delete(ctx, integrationID)
 
 		require.NoError(t, err)
@@ -336,7 +337,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 		err := svc.Delete(ctx, uuid.New())
 
 		assert.ErrorIs(t, err, domain.ErrIntegrationNotFound)
@@ -344,7 +345,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 
 	t.Run("error - nil integration id", func(t *testing.T) {
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
 		err := svc.Delete(ctx, uuid.Nil)
 
@@ -357,7 +358,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 		cancel()
 
 		repo := &mockIntegrationRepository{}
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 
 		err := svc.Delete(cancelledCtx, uuid.New())
 
@@ -373,7 +374,7 @@ func TestIntegrationService_Delete(t *testing.T) {
 			},
 		}
 
-		svc := NewIntegrationService(repo, testEncryptor(t), nil)
+		svc := NewIntegrationService(repo, testEncryptor(t), nil, audit.Nop())
 		err := svc.Delete(ctx, uuid.New())
 
 		assert.Error(t, err)
@@ -398,7 +399,7 @@ func TestConnect_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	params := ConnectParams{
 		BusinessID:  businessID,
 		Platform:    "telegram",
@@ -436,7 +437,7 @@ func TestConnect_Duplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	params := ConnectParams{
 		BusinessID:  uuid.New(),
 		Platform:    "telegram",
@@ -454,7 +455,7 @@ func TestConnect_MissingBusinessID(t *testing.T) {
 	enc := testEncryptor(t)
 
 	repo := &mockIntegrationRepository{}
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	params := ConnectParams{
 		BusinessID:  uuid.Nil,
 		Platform:    "telegram",
@@ -473,7 +474,7 @@ func TestConnect_MissingPlatform(t *testing.T) {
 	enc := testEncryptor(t)
 
 	repo := &mockIntegrationRepository{}
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	params := ConnectParams{
 		BusinessID:  uuid.New(),
 		Platform:    "",
@@ -519,7 +520,7 @@ func TestGetDecryptedToken_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
 
 	require.NoError(t, err)
@@ -540,7 +541,7 @@ func TestGetDecryptedToken_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	resp, err := svc.GetDecryptedToken(ctx, uuid.New(), "telegram", "ext_999")
 
 	assert.Nil(t, resp)
@@ -574,7 +575,7 @@ func TestGetDecryptedToken_Expired(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
 
 	assert.Nil(t, resp)
@@ -613,7 +614,7 @@ func TestListByBusinessAndPlatform_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	result, err := svc.ListByBusinessAndPlatform(ctx, businessID, platform)
 
 	require.NoError(t, err)
@@ -627,7 +628,7 @@ func TestListByBusinessAndPlatform_NilBusinessID(t *testing.T) {
 	enc := testEncryptor(t)
 
 	repo := &mockIntegrationRepository{}
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 
 	result, err := svc.ListByBusinessAndPlatform(ctx, uuid.Nil, "telegram")
 
@@ -705,7 +706,7 @@ func TestGetDecryptedToken_RefreshesExpiredGoogleToken(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc, refresher)
+	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
 	resp, err := svc.GetDecryptedToken(ctx, businessID, platform, externalID)
 
 	require.NoError(t, err)
@@ -772,7 +773,7 @@ func TestGetDecryptedToken_RefreshRotatesRefreshToken(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc, refresher)
+	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
 	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "locations/99")
 
 	require.NoError(t, err)
@@ -816,7 +817,7 @@ func TestGetDecryptedToken_ExpiredNoRefresher_ReturnsError(t *testing.T) {
 	}
 
 	// nil refresher
-	svc := NewIntegrationService(repo, enc, nil)
+	svc := NewIntegrationService(repo, enc, nil, audit.Nop())
 	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
 
 	assert.Nil(t, resp)
@@ -848,7 +849,7 @@ func TestGetDecryptedToken_ExpiredNoRefreshToken_ReturnsError(t *testing.T) {
 	}
 
 	refresher := &mockTokenRefresher{}
-	svc := NewIntegrationService(repo, enc, refresher)
+	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
 	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")
 
 	assert.Nil(t, resp)
@@ -884,7 +885,7 @@ func TestGetDecryptedToken_NotExpired_NoRefresh(t *testing.T) {
 	}
 
 	refresher := &mockTokenRefresher{}
-	svc := NewIntegrationService(repo, enc, refresher)
+	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
 	resp, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/2")
 
 	require.NoError(t, err)
@@ -965,7 +966,7 @@ func TestGetDecryptedToken_ConcurrentRefresh_OnlyOneCall(t *testing.T) {
 		},
 	}
 
-	svc := NewIntegrationService(repo, enc, refresher)
+	svc := NewIntegrationService(repo, enc, refresher, audit.Nop())
 
 	// Make two sequential calls (serialized by mutex)
 	resp1, err := svc.GetDecryptedToken(ctx, businessID, "google_business", "loc/1")

@@ -232,7 +232,7 @@ func (s *noopBusinessService) GetByID(ctx context.Context, id uuid.UUID) (*domai
 	}
 	return nil, domain.ErrBusinessNotFound
 }
-func (s *noopBusinessService) Update(_ context.Context, _ *domain.Business) (*domain.Business, error) {
+func (s *noopBusinessService) Update(_ context.Context, _ *domain.Business, _ uuid.UUID) (*domain.Business, error) {
 	return nil, nil
 }
 func (s *noopBusinessService) GetToolApprovals(_ context.Context, _ uuid.UUID) (map[string]domain.ToolFloor, error) {
@@ -251,7 +251,7 @@ type noopProjectService struct {
 	GetByIDFunc func(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error)
 }
 
-func (s *noopProjectService) Create(_ context.Context, _ uuid.UUID, _ service.CreateProjectInput) (*domain.Project, error) {
+func (s *noopProjectService) Create(_ context.Context, _, _ uuid.UUID, _ service.CreateProjectInput) (*domain.Project, error) {
 	return nil, nil
 }
 func (s *noopProjectService) GetByID(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error) {
@@ -263,10 +263,10 @@ func (s *noopProjectService) GetByID(ctx context.Context, businessID, id uuid.UU
 func (s *noopProjectService) ListByBusinessID(_ context.Context, _ uuid.UUID) ([]domain.Project, error) {
 	return []domain.Project{}, nil
 }
-func (s *noopProjectService) Update(_ context.Context, _, _ uuid.UUID, _ service.UpdateProjectInput) (*domain.Project, error) {
+func (s *noopProjectService) Update(_ context.Context, _, _, _ uuid.UUID, _ service.UpdateProjectInput) (*domain.Project, error) {
 	return nil, nil
 }
-func (s *noopProjectService) DeleteCascade(_ context.Context, _, _ uuid.UUID) (deletedConversations, deletedMessages int, err error) {
+func (s *noopProjectService) DeleteCascade(_ context.Context, _, _, _ uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	return 0, 0, nil
 }
 func (s *noopProjectService) CountConversations(_ context.Context, _, _ uuid.UUID) (int, error) {

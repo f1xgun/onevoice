@@ -3,12 +3,18 @@ module github.com/f1xgun/onevoice/test/integration
 go 1.25.0
 
 require (
-	github.com/f1xgun/onevoice/pkg v0.0.0-20260511163830-0c2c8332c83c
+	github.com/f1xgun/onevoice/pkg v0.0.0-20260522050122-0de177028e56
+	github.com/f1xgun/onevoice/pkg/audit v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/stretchr/testify v1.11.1
 	go.mongodb.org/mongo-driver v1.17.9
+)
+
+replace (
+	github.com/f1xgun/onevoice/pkg => ../../pkg
+	github.com/f1xgun/onevoice/pkg/audit => ../../pkg/audit
 )
 
 require (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
@@ -48,7 +49,7 @@ func (s *stubConversationRepo) ScopedConversationIDs(_ context.Context, _, _ str
 // --- Tests ---
 
 func TestNewAuthHandler_NilService_ReturnsError(t *testing.T) {
-	h, err := NewAuthHandler(nil, false)
+	h, err := NewAuthHandler(nil, false, audit.Nop(), testJWTSecret)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -68,7 +69,7 @@ func TestNewBusinessHandler_NilService_ReturnsError(t *testing.T) {
 }
 
 func TestNewIntegrationHandler_NilIntegrationService_ReturnsError(t *testing.T) {
-	h, err := NewIntegrationHandler(nil, nil)
+	h, err := NewIntegrationHandler(nil, nil, audit.Nop())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

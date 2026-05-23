@@ -23,17 +23,17 @@ import (
 // stubProjectSvc captures the approvalOverrides passed to Update, so tests
 // can verify the inherit→absence translation.
 type stubProjectSvc struct {
-	UpdateFn func(ctx context.Context, bid, id uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error)
-	CreateFn func(ctx context.Context, bid uuid.UUID, input service.CreateProjectInput) (*domain.Project, error)
+	UpdateFn func(ctx context.Context, bid, id, actorID uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error)
+	CreateFn func(ctx context.Context, bid, actorID uuid.UUID, input service.CreateProjectInput) (*domain.Project, error)
 
 	UpdateInput *service.UpdateProjectInput
 	CreateInput *service.CreateProjectInput
 }
 
-func (s *stubProjectSvc) Create(ctx context.Context, bid uuid.UUID, input service.CreateProjectInput) (*domain.Project, error) {
+func (s *stubProjectSvc) Create(ctx context.Context, bid, actorID uuid.UUID, input service.CreateProjectInput) (*domain.Project, error) {
 	s.CreateInput = &input
 	if s.CreateFn != nil {
-		return s.CreateFn(ctx, bid, input)
+		return s.CreateFn(ctx, bid, actorID, input)
 	}
 	return &domain.Project{ID: uuid.New(), BusinessID: bid, Name: input.Name}, nil
 }
@@ -43,14 +43,14 @@ func (s *stubProjectSvc) GetByID(_ context.Context, _, _ uuid.UUID) (*domain.Pro
 func (s *stubProjectSvc) ListByBusinessID(_ context.Context, _ uuid.UUID) ([]domain.Project, error) {
 	return nil, nil
 }
-func (s *stubProjectSvc) Update(ctx context.Context, bid, id uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error) {
+func (s *stubProjectSvc) Update(ctx context.Context, bid, id, actorID uuid.UUID, input service.UpdateProjectInput) (*domain.Project, error) {
 	s.UpdateInput = &input
 	if s.UpdateFn != nil {
-		return s.UpdateFn(ctx, bid, id, input)
+		return s.UpdateFn(ctx, bid, id, actorID, input)
 	}
 	return &domain.Project{ID: id, BusinessID: bid, Name: input.Name, ApprovalOverrides: input.ApprovalOverrides}, nil
 }
-func (s *stubProjectSvc) DeleteCascade(_ context.Context, _, _ uuid.UUID) (convs, msgs int, err error) {
+func (s *stubProjectSvc) DeleteCascade(_ context.Context, _, _, _ uuid.UUID) (convs, msgs int, err error) {
 	return 0, 0, nil
 }
 func (s *stubProjectSvc) CountConversations(_ context.Context, _, _ uuid.UUID) (int, error) {

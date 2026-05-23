@@ -44,8 +44,8 @@ func (m *MockBusinessService) GetByID(ctx context.Context, id uuid.UUID) (*domai
 	return args.Get(0).(*domain.Business), args.Error(1)
 }
 
-func (m *MockBusinessService) Update(ctx context.Context, business *domain.Business) (*domain.Business, error) {
-	args := m.Called(ctx, business)
+func (m *MockBusinessService) Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error) {
+	args := m.Called(ctx, business, actorUserID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -378,7 +378,7 @@ func TestBusinessHandler_UpdateBusiness(t *testing.T) {
 			Return(&domain.Business{ID: testBusinessID, Name: "Old Name"}, nil)
 		mockSvc.On("Update", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
 			return b.Name == "New Name"
-		})).Return(&domain.Business{ID: testBusinessID, Name: "New Name"}, nil)
+		}), mock.Anything).Return(&domain.Business{ID: testBusinessID, Name: "New Name"}, nil)
 
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
 		require.NoError(t, err)
@@ -479,7 +479,7 @@ func TestBusinessHandler_UpdateSchedule(t *testing.T) {
 		mockSvc.On("Update", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
 			captured = b
 			return true
-		})).Return(&domain.Business{
+		}), mock.Anything).Return(&domain.Business{
 			ID:       testBusinessID,
 			Name:     "Cafe",
 			Settings: map[string]interface{}{},
@@ -552,7 +552,7 @@ func TestBusinessHandler_UpdateSchedule(t *testing.T) {
 	t.Run("nil syncer is allowed (skip dispatch)", func(t *testing.T) {
 		mockSvc := new(MockBusinessService)
 		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(existing(), nil)
-		mockSvc.On("Update", mock.Anything, mock.Anything).Return(existing(), nil)
+		mockSvc.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(existing(), nil)
 
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
 		require.NoError(t, err)
@@ -575,7 +575,7 @@ func TestBusinessHandler_UpdateVoiceTone(t *testing.T) {
 		mockSvc := new(MockBusinessService)
 		existing := &domain.Business{ID: testBusinessID, Settings: map[string]interface{}{}}
 		mockSvc.On("GetByID", mock.Anything, testBusinessID).Return(existing, nil)
-		mockSvc.On("Update", mock.Anything, mock.Anything).Return(existing, nil)
+		mockSvc.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(existing, nil)
 
 		h, err := NewBusinessHandler(mockSvc, nil, nil)
 		require.NoError(t, err)
@@ -671,7 +671,7 @@ func TestBusinessHandler_UploadLogo(t *testing.T) {
 
 		mockSvc.On("Update", mock.Anything, mock.MatchedBy(func(b *domain.Business) bool {
 			return b.LogoURL == "/media/businesses/x/logo.png"
-		})).Return(&domain.Business{
+		}), mock.Anything).Return(&domain.Business{
 			ID:      testBusinessID,
 			Name:    "Cafe",
 			LogoURL: "/media/businesses/x/logo.png",
