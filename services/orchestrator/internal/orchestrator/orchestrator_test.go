@@ -75,12 +75,12 @@ func TestRun_ToolCall_ExecutesToolAndLoops(t *testing.T) {
 	}}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "get info", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"name": "Кофейня Уют"}, nil
-	}), domain.ToolFloorAuto, nil)
+	}))
 
 	biz := prompt.BusinessContext{Name: "Кофейня"}
 	orch := orchestrator.New(stub, reg)
@@ -134,12 +134,12 @@ func TestRun_MaxIterations_Stops(t *testing.T) {
 	}
 
 	reg := toolregistry.NewRegistry()
-	reg.Register(llm.ToolDefinition{
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
 		Type:     llm.ToolCallTypeFunction,
 		Function: llm.FunctionDefinition{Name: "get_business_info", Description: "d", Parameters: map[string]interface{}{}},
-	}, "", toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	}, Floor: domain.ToolFloorAuto, EditableFields: nil}, toolregistry.ExecutorFunc(func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
 		return map[string]interface{}{"ok": true}, nil
-	}), domain.ToolFloorAuto, nil)
+	}))
 
 	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{MaxIterations: 3})
 	req := orchestrator.RunRequest{

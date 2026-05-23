@@ -4,25 +4,26 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
 // vkTools returns the VK agent's tool specs. Verbatim copy of the VK block
 // from the historical registerPlatformTools (services/orchestrator/cmd/main.go
 // :372-559) — split into its own file so wire/tools.go stays under SC-01's
 // 500-LOC budget.
-func vkTools() []toolSpec {
-	return []toolSpec{
+func vkTools() []toolregistry.ToolSpec {
+	return []toolregistry.ToolSpec{
 		// Mutating public: publishes wall post. text editable; group_id pinned.
 		{
-			displayName:     "Опубликовать пост",
-			displayNameKey:  "tools.vk.publish_post.name",
-			userDescription: "Публикует пост на стене сообщества ВКонтакте.",
-			descriptionEn:   "Publishes a text post (no photo) to a VK community wall. If you need to publish a post with a photo, use vk__post_photo instead.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Опубликовать пост",
+			DisplayNameKey:  "tools.vk.publish_post.name",
+			UserDescription: "Публикует пост на стене сообщества ВКонтакте.",
+			DescriptionEn:   "Publishes a text post (no photo) to a VK community wall. If you need to publish a post with a photo, use vk__post_photo instead.",
+			ParameterDescriptionsEn: map[string]string{
 				"text":     "Post text",
 				"group_id": "Community ID",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKPublishPost,
 				Description: "Публикует текстовый пост (без фото) на стену сообщества ВКонтакте. Если нужно опубликовать пост с фото — используй vk__post_photo вместо этого.",
 				Parameters: map[string]interface{}{
@@ -34,21 +35,21 @@ func vkTools() []toolSpec {
 					"required": []string{"text"},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: []string{"text"},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"text"},
 		},
 		// Mutating public: photo + caption. caption editable; photo_url + group_id pinned.
 		{
-			displayName:     "Опубликовать фото",
-			displayNameKey:  "tools.vk.post_photo.name",
-			userDescription: "Публикует пост с фото на стене сообщества ВКонтакте.",
-			descriptionEn:   "Publishes a post with a photo and text caption to a VK community wall. Use this function instead of publish_post when you need to publish a post that includes an image.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Опубликовать фото",
+			DisplayNameKey:  "tools.vk.post_photo.name",
+			UserDescription: "Публикует пост с фото на стене сообщества ВКонтакте.",
+			DescriptionEn:   "Publishes a post with a photo and text caption to a VK community wall. Use this function instead of publish_post when you need to publish a post that includes an image.",
+			ParameterDescriptionsEn: map[string]string{
 				"photo_url": "Public image URL to upload",
 				"caption":   "Photo caption text",
 				"group_id":  "VK community ID",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKPostPhoto,
 				Description: "Публикует пост с фото и текстовой подписью на стену сообщества ВКонтакте. Используй эту функцию вместо publish_post когда нужно опубликовать пост с изображением.",
 				Parameters: map[string]interface{}{
@@ -61,23 +62,23 @@ func vkTools() []toolSpec {
 					"required": []string{"photo_url"},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: []string{"caption"},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"caption"},
 		},
 		// Mutating public w/ scheduled release. text editable;
 		// publish_date NOT editable (changing a scheduled time is a
 		// semantic change — a separate tool call makes intent explicit).
 		{
-			displayName:     "Запланировать пост",
-			displayNameKey:  "tools.vk.schedule_post.name",
-			userDescription: "Планирует отложенную публикацию на стене ВКонтакте.",
-			descriptionEn:   "Schedules a delayed post on a VK community wall. The post will be automatically published by VK at the specified time.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Запланировать пост",
+			DisplayNameKey:  "tools.vk.schedule_post.name",
+			UserDescription: "Планирует отложенную публикацию на стене ВКонтакте.",
+			DescriptionEn:   "Schedules a delayed post on a VK community wall. The post will be automatically published by VK at the specified time.",
+			ParameterDescriptionsEn: map[string]string{
 				"text":         "Post text",
 				"publish_date": "Publish date and time (Unix timestamp or ISO 8601 format, e.g. 2026-03-20T12:00:00Z)",
 				"group_id":     "VK community ID",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKSchedulePost,
 				Description: "Планирует отложенный пост на стене сообщества ВКонтакте. Пост будет автоматически опубликован ВКонтакте в указанное время.",
 				Parameters: map[string]interface{}{
@@ -90,22 +91,22 @@ func vkTools() []toolSpec {
 					"required": []string{"text", "publish_date"},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: []string{"text"},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"text"},
 		},
 		// Mutating public: group meta update. description editable;
 		// group_id pinned. Contacts/links intentionally omitted from
 		// edit-allowlist until the LLM's JSON schema exposes them.
 		{
-			displayName:     "Обновить данные сообщества",
-			displayNameKey:  "tools.vk.update_group_info.name",
-			userDescription: "Изменяет название, описание и контакты сообщества ВКонтакте.",
-			descriptionEn:   "Updates VK community info (description, links, contacts). If group_id is not provided, uses the community from the active VK integration.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Обновить данные сообщества",
+			DisplayNameKey:  "tools.vk.update_group_info.name",
+			UserDescription: "Изменяет название, описание и контакты сообщества ВКонтакте.",
+			DescriptionEn:   "Updates VK community info (description, links, contacts). If group_id is not provided, uses the community from the active VK integration.",
+			ParameterDescriptionsEn: map[string]string{
 				"group_id":    "Numeric VK community ID. Optional — taken from the active integration if omitted.",
 				"description": "New description",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKUpdateGroupInfo,
 				Description: "Обновляет информацию о сообществе ВКонтакте (описание, ссылки, контакты). Если group_id не указан, используется сообщество из активной VK-интеграции.",
 				Parameters: map[string]interface{}{
@@ -117,21 +118,21 @@ func vkTools() []toolSpec {
 					"required": []string{},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: []string{"description"},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"description"},
 		},
 		// Read-only. Auto.
 		{
-			displayName:     "Загрузить комментарии",
-			displayNameKey:  "tools.vk.get_comments.name",
-			userDescription: "Загружает комментарии к посту ВКонтакте.",
-			descriptionEn:   "Fetches comments for a specific post on a VK community wall. If post_id is not provided, returns comments for the most recent post.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Загрузить комментарии",
+			DisplayNameKey:  "tools.vk.get_comments.name",
+			UserDescription: "Загружает комментарии к посту ВКонтакте.",
+			DescriptionEn:   "Fetches comments for a specific post on a VK community wall. If post_id is not provided, returns comments for the most recent post.",
+			ParameterDescriptionsEn: map[string]string{
 				"post_id":  "Wall post ID. If omitted — the most recent post is used.",
 				"group_id": "Numeric VK community ID. Optional — taken from the active integration if omitted.",
 				"count":    "Number of comments (max 100)",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKGetComments,
 				Description: "Получает комментарии к конкретному посту на стене сообщества ВКонтакте. Если post_id не указан, возвращает комментарии к последнему посту.",
 				Parameters: map[string]interface{}{
@@ -144,22 +145,22 @@ func vkTools() []toolSpec {
 					"required": []string{},
 				},
 			}},
-			floor:    domain.ToolFloorAuto,
-			editable: nil,
+			Floor:          domain.ToolFloorAuto,
+			EditableFields: nil,
 		},
 		// Mutating public: comment reply. text editable; ids pinned.
 		{
-			displayName:     "Ответить на комментарий",
-			displayNameKey:  "tools.vk.reply_comment.name",
-			userDescription: "Отвечает на комментарий ВКонтакте.",
-			descriptionEn:   "Replies to a comment on a post on a VK community wall. Creates a reply in the discussion thread.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Ответить на комментарий",
+			DisplayNameKey:  "tools.vk.reply_comment.name",
+			UserDescription: "Отвечает на комментарий ВКонтакте.",
+			DescriptionEn:   "Replies to a comment on a post on a VK community wall. Creates a reply in the discussion thread.",
+			ParameterDescriptionsEn: map[string]string{
 				"post_id":    "Wall post ID",
 				"comment_id": "ID of the comment to reply to",
 				"text":       "Comment reply text",
 				"group_id":   "VK community ID",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKReplyComment,
 				Description: "Отвечает на комментарий к посту на стене сообщества ВКонтакте. Создает ответ в ветке обсуждения.",
 				Parameters: map[string]interface{}{
@@ -173,8 +174,8 @@ func vkTools() []toolSpec {
 					"required": []string{"post_id", "comment_id", "text"},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: []string{"text"},
+			Floor:          domain.ToolFloorManual,
+			EditableFields: []string{"text"},
 		},
 		// Destructive: hard-deletes a comment. Manual-floor — legitimate
 		// moderation use-case (spam, abuse). Default behavior is
@@ -183,15 +184,15 @@ func vkTools() []toolSpec {
 		// comment_id is a hard ID that users must not override at
 		// approval time (redirect-delete attack).
 		{
-			displayName:     "Удалить комментарий",
-			displayNameKey:  "tools.vk.delete_comment.name",
-			userDescription: "Удаляет комментарий под постом ВКонтакте.",
-			descriptionEn:   "Deletes a comment on a post on a VK community wall. Requires administrator or moderator permissions for the community.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Удалить комментарий",
+			DisplayNameKey:  "tools.vk.delete_comment.name",
+			UserDescription: "Удаляет комментарий под постом ВКонтакте.",
+			DescriptionEn:   "Deletes a comment on a post on a VK community wall. Requires administrator or moderator permissions for the community.",
+			ParameterDescriptionsEn: map[string]string{
 				"comment_id": "ID of the comment to delete",
 				"group_id":   "VK community ID",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKDeleteComment,
 				Description: "Удаляет комментарий к посту на стене сообщества ВКонтакте. Требуются права администратора или модератора сообщества.",
 				Parameters: map[string]interface{}{
@@ -203,19 +204,19 @@ func vkTools() []toolSpec {
 					"required": []string{"comment_id"},
 				},
 			}},
-			floor:    domain.ToolFloorManual,
-			editable: nil,
+			Floor:          domain.ToolFloorManual,
+			EditableFields: nil,
 		},
 		// Read-only. Auto.
 		{
-			displayName:     "Загрузить данные сообщества",
-			displayNameKey:  "tools.vk.get_community_info.name",
-			userDescription: "Загружает карточку сообщества ВКонтакте.",
-			descriptionEn:   "Fetches VK community info: name, description, subscriber count, status, links. Use to answer questions about the community.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Загрузить данные сообщества",
+			DisplayNameKey:  "tools.vk.get_community_info.name",
+			UserDescription: "Загружает карточку сообщества ВКонтакте.",
+			DescriptionEn:   "Fetches VK community info: name, description, subscriber count, status, links. Use to answer questions about the community.",
+			ParameterDescriptionsEn: map[string]string{
 				"group_id": "VK community ID. If omitted, the community from the active VK integration is used.",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKGetCommunityInfo,
 				Description: "Получает информацию о сообществе ВКонтакте: название, описание, количество подписчиков, статус, ссылки. Используй для ответа на вопросы о сообществе.",
 				Parameters: map[string]interface{}{
@@ -226,20 +227,20 @@ func vkTools() []toolSpec {
 					"required": []string{},
 				},
 			}},
-			floor:    domain.ToolFloorAuto,
-			editable: nil,
+			Floor:          domain.ToolFloorAuto,
+			EditableFields: nil,
 		},
 		// Read-only. Auto.
 		{
-			displayName:     "Загрузить посты",
-			displayNameKey:  "tools.vk.get_wall_posts.name",
-			userDescription: "Загружает посты со стены сообщества ВКонтакте.",
-			descriptionEn:   "Fetches the most recent posts from a VK community wall, with stats for likes, comments, reposts, and views.",
-			parameterDescriptionsEn: map[string]string{
+			DisplayName:     "Загрузить посты",
+			DisplayNameKey:  "tools.vk.get_wall_posts.name",
+			UserDescription: "Загружает посты со стены сообщества ВКонтакте.",
+			DescriptionEn:   "Fetches the most recent posts from a VK community wall, with stats for likes, comments, reposts, and views.",
+			ParameterDescriptionsEn: map[string]string{
 				"group_id": "VK community ID. If omitted, the community from the active VK integration is used.",
 				"count":    "Number of posts (default 10, max 100)",
 			},
-			def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
+			Def: llm.ToolDefinition{Type: "function", Function: llm.FunctionDefinition{
 				Name:        tools.VKGetWallPosts,
 				Description: "Получает последние посты со стены сообщества ВКонтакте с данными о лайках, комментариях, репостах и просмотрах.",
 				Parameters: map[string]interface{}{
@@ -251,8 +252,8 @@ func vkTools() []toolSpec {
 					"required": []string{},
 				},
 			}},
-			floor:    domain.ToolFloorAuto,
-			editable: nil,
+			Floor:          domain.ToolFloorAuto,
+			EditableFields: nil,
 		},
 	}
 }
