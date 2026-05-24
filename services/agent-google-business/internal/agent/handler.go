@@ -32,42 +32,36 @@ type GBPClientFactory func(accessToken string) GBPClient
 
 // Handler is the Google Business agent's per-request processor. Its
 // Handle method satisfies a2a.Exec and is wired into a2a.NewAgent from
-// cmd/main.go.
+// cmd/main.go. The dispatch chain (dispatcher fallback + per-tool routing +
+// "unknown tool" error) lives in agentbase.NewRouter.
 type Handler struct {
 	tokens        TokenFetcher
 	clientFactory GBPClientFactory
-	dispatcher    agentbase.Dispatcher
+	exec          agentbase.ToolExec
 }
 
 // NewHandler creates a Handler with per-request token fetching and an
 // agentbase.Dispatcher (HITL dedupe gate + error classification). A nil
-// dispatcher disables HITL and applies classification directly — used by
-// unit tests and dev-local environments without Redis.
+// dispatcher disables HITL — on that path the router applies ClassifyGBPError
+// as the fallback classifier.
 func NewHandler(tokens TokenFetcher, factory GBPClientFactory, dispatcher agentbase.Dispatcher) *Handler {
-	return &Handler{tokens: tokens, clientFactory: factory, dispatcher: dispatcher}
+	h := &Handler{tokens: tokens, clientFactory: factory}
+	h.exec = agentbase.NewRouter(h.routes(), dispatcher, agentbase.FuncClassifier(ClassifyGBPError))
+	return h
 }
 
-// Handle routes the ToolRequest to the appropriate GBP API operation via the
-// agentbase.Dispatcher. When dispatcher is nil we route directly through
-// routeTool and apply ClassifyGBPError once.
+// Handle is the a2a.Exec entry point — a thin shim over the router built in
+// NewHandler.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	if h.dispatcher == nil {
-		resp, err := h.routeTool(ctx, req)
-		return resp, ClassifyGBPError(err)
-	}
-	return h.dispatcher.Dispatch(ctx, req, h.routeTool)
+	return h.exec(ctx, req)
 }
 
-// routeTool dispatches a ToolRequest to the per-tool implementation. The
-// dispatcher (in Handle) handles dedupe + classification around this exec.
-func (h *Handler) routeTool(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	switch req.Tool {
-	case tools.GoogleBusinessGetReviews:
-		return h.getReviews(ctx, req)
-	case tools.GoogleBusinessReplyReview:
-		return h.replyReview(ctx, req)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
+// routes binds the Google Business tool catalog to the Handler's per-tool
+// methods.
+func (h *Handler) routes() map[string]agentbase.ToolExec {
+	return map[string]agentbase.ToolExec{
+		tools.GoogleBusinessGetReviews:  h.getReviews,
+		tools.GoogleBusinessReplyReview: h.replyReview,
 	}
 }
 
