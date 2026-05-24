@@ -77,6 +77,19 @@ func (t *Turn) persistAssistantUpdate(ctx context.Context, msg *domain.Message) 
 //     language as the chat (Phase D2).
 //   - cancel is wired through a watcher goroutine so vet doesn't flag a
 //     discarded cancel and the timer goroutine cannot leak.
+// FireAutoTitleIfPending is the public entry point for legacy handler-side
+// tests that exercise the gate predicate directly. Production callers should
+// not need this — Turn.Run calls fireAutoTitleIfPending internally.
+func (t *Turn) FireAutoTitleIfPending(parentCtx context.Context, conversationID, businessID, userText, assistantText string) {
+	t.fireAutoTitleIfPending(parentCtx, conversationID, businessID, userText, assistantText)
+}
+
+// FireAutoTitleIfPendingResume mirrors FireAutoTitleIfPending for the resume
+// path.
+func (t *Turn) FireAutoTitleIfPendingResume(parentCtx context.Context, conversationID string, assistantMsg *domain.Message) {
+	t.fireAutoTitleIfPendingResume(parentCtx, conversationID, assistantMsg)
+}
+
 func (t *Turn) fireAutoTitleIfPending(parentCtx context.Context, conversationID, businessID, userText, assistantText string) {
 	if t.deps.Titler == nil {
 		return // graceful no-op when titling is disabled

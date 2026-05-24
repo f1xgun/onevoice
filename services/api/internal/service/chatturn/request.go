@@ -81,6 +81,14 @@ const (
 	// OutcomeInlineError covers the "turn already in flight, no batch
 	// header" inline-error branch from the gate.
 	OutcomeInlineError
+
+	// OutcomeMissingMessage is returned from the Fresh branch when
+	// TurnRequest.Message is empty. The handler maps to 400. Surfaced via
+	// Turn (not pre-checked in the handler) because the gate may route a
+	// fresh-looking request to streamResume / reemitApprovalEvent before
+	// any body validation should fire — the legacy code's
+	// "message is required" check only ran on the Fresh path.
+	OutcomeMissingMessage
 )
 
 // String is for log lines; the value names are part of the
@@ -99,6 +107,8 @@ func (o TurnOutcome) String() string {
 		return "rejoined_resume"
 	case OutcomeOrchestratorUnavailable:
 		return "orchestrator_unavailable"
+	case OutcomeMissingMessage:
+		return "missing_message"
 	case OutcomeBusinessNotFound:
 		return "business_not_found"
 	case OutcomeInlineError:
