@@ -80,6 +80,65 @@ export const COPY: Record<string, ErrorEntry> = {
     i18nKey: 'auth.verifyEmail.errors.taken',
     type: 'inline',
   },
+
+  // Phase 21-04 (ACCT-03) — account deletion lifecycle.
+  // 21-CROSS-PLAN-CONTRACTS.md §4. The i18n keys live under
+  // account.deletion.errors.* in messages/{ru,en}.json. Do not change
+  // the entry shape — fixed by §4.
+  sole_owner_of_businesses: {
+    // Triggers the SoleOwnerBlockedModal via the delete-confirm
+    // submit handler. The 'modal' type is the canonical render hint
+    // for fallback toast surfaces.
+    i18nKey: 'account.deletion.errors.soleOwner',
+    type: 'modal',
+  },
+  account_pending_deletion: {
+    // 423 from the grace-gate middleware. Body carries deletionDate
+    // for the toast interpolation; the persistent banner mounted in
+    // (app)/layout.tsx separately shows the date from /auth/me.
+    i18nKey: 'account.deletion.errors.pendingDeletion',
+    type: 'banner',
+    toastTone: 'destructive',
+    actionLabel: 'account.deletion.errors.pendingDeletionAction',
+    actionHref: '/settings/account',
+  },
+  account_deleted: {
+    i18nKey: 'account.deletion.errors.accountDeleted',
+    type: 'toast',
+  },
+  password_invalid: {
+    // 401 from DELETE /users/me with wrong password. Inline field
+    // error under the password input on the delete-confirm modal.
+    i18nKey: 'account.deletion.errors.passwordInvalid',
+    type: 'inline',
+  },
+  deletion_too_old: {
+    // 410 from POST /users/me/restore past the 30d grace window.
+    // Toast + redirect to /login.
+    i18nKey: 'account.deletion.errors.tooOld',
+    type: 'toast',
+    toastTone: 'destructive',
+  },
+  restore_window_expired: {
+    // Alias for deletion_too_old surfaced via a different code on
+    // some legacy paths — kept for backward-compat.
+    i18nKey: 'account.deletion.errors.tooOld',
+    type: 'toast',
+    toastTone: 'destructive',
+  },
+  no_deletion_pending: {
+    // 404 from POST /users/me/restore when no pending deletion.
+    // Usually only reached via stale UI — toast + reload.
+    i18nKey: 'account.deletion.errors.noPending',
+    type: 'toast',
+  },
+  origin_not_allowed: {
+    // 403 from POST /users/me/restore CSRF guard. Should not happen
+    // from the dashboard; toast for visibility.
+    i18nKey: 'account.deletion.errors.originNotAllowed',
+    type: 'toast',
+    toastTone: 'destructive',
+  },
 };
 
 const FALLBACK: ErrorEntry = {
