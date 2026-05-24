@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/hitl"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/sse"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/hitl"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 

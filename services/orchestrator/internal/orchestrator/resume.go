@@ -9,8 +9,8 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/hitl"
 	"github.com/f1xgun/onevoice/pkg/llm"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/hitl"
 )
 
 // ResumeRequest carries the fresh state passed to Resume at approval-resolution
