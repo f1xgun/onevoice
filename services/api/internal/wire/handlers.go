@@ -95,7 +95,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 
 	// Conversation handler depends on business + project services for
 	// create-conversation scoping and the /move endpoint system-note append.
-	conversationHandler, err := handler.NewConversationHandler(repos.Conversation, repos.Message, svcs.Business, svcs.Project, h.PendingToolCallRepo)
+	conversationHandler, err := handler.NewConversationHandler(repos.Conversation, repos.Message, svcs.Business, svcs.Project, h.PendingToolCallRepo, svcs.Conversation)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create conversation handler: %w", err)
 	}
