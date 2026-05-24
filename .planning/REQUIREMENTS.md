@@ -24,15 +24,18 @@ Phase 21 — Account Lifecycle
 - [ ] **ACCT-03**: User can request account deletion via `DELETE /users/me`; data soft-deleted with 30-day grace window per 152-ФЗ Art. 21; sole-ownership businesses cascade per existing DB trigger
 - [ ] **ACCT-04**: Transactional email infrastructure (provider + retry queue + audit log) deployed and sends from a verified domain
 - [ ] **ACCT-05**: Password-reset and email-verify flows audit-logged via existing `pkg/audit` infrastructure
+- [ ] **ACCT-06**: `audit_log.user_id` FK migrated from `ON DELETE CASCADE` to `ON DELETE SET NULL`; `audit_log` rows gain `user_email_at_event` column so account deletion preserves 5-year forensic trail (per research PITFALLS §3.4)
 
 ### Legal Compliance (LEGAL)
 
 Phase 22 — Legal Compliance Scaffolding
 
-- [ ] **LEGAL-01**: `/legal/privacy` and `/legal/terms` pages published in Russian, version-stamped, linked in every-page footer
-- [ ] **LEGAL-02**: Registration form has consent checkbox referencing Privacy Policy; consent captured to `user_consents (user_id, policy_version, accepted_at)` table
-- [ ] **LEGAL-03**: Data-controller block (legal name, ИНН, contact email for ПДн requests) rendered in Privacy Policy and `/legal/contact` page
-- [ ] **LEGAL-04**: `docs/roskomnadzor-notification.md` checklist for filing `Уведомление об обработке ПДн` written (operator action, not code) and linked from operator runbook
+- [ ] **LEGAL-01**: `/legal/privacy`, `/legal/terms`, and **separate** `/legal/consent` pages published in Russian, version-stamped with `policy_sha256`, linked in every-page footer
+- [ ] **LEGAL-02**: Registration form has **two minimum** consent checkboxes per 1 Sept 2025 separate-document rule — combined ToS+Privacy on one (required), `Согласие на обработку ПДн` on its own URL (required); optional marketing-consent third checkbox. `user_consents (user_id, purpose, policy_version, policy_sha256, accepted_at)` with `purpose` enum (`service_operation` | `cross_border_transfer_llm` | `marketing_email`)
+- [ ] **LEGAL-03**: Data-controller block (legal name, ИНН, contact email `pdn@onevoice.app`) rendered in Privacy Policy and `/legal/contact` page; 15-day data-subject-request SLA documented in `docs/runbook-pdn-request.md`
+- [ ] **LEGAL-04**: `docs/roskomnadzor-notification.md` checklist for filing standard `Уведомление об обработке ПДн` written and linked from operator runbook
+- [ ] **LEGAL-05**: Separate РКН cross-border transfer notification (`Уведомление о трансграничной передаче ПДн`) naming Anthropic PBC and/or OpenAI L.L.C. as US recipients — filed at **start** of Phase 22 to absorb 30-day РКН processing window (per 152-ФЗ Art. 12 amended)
+- [ ] **LEGAL-06**: Retroactive-consent interstitial modal for pre-v1.4 users — blocks on first login post-launch with 30/60-day deadline → read-only → soft-delete progression
 
 ### Operational Hardening (OPS)
 
@@ -43,6 +46,8 @@ Phase 23 — Operational Hardening
 - [ ] **OPS-03**: `health.AddCheck` calls registered for PG, Mongo, Redis, NATS in `services/api/internal/wire/databases.go`; `/health/ready` returns 503 when any dependency is down
 - [ ] **OPS-04**: Login endpoint gains account lockout (15-min after 10 failed attempts per email) OR captcha challenge after 3 failures, configurable via env
 - [ ] **OPS-05**: English error strings in `services/api/internal/handler/auth.go` lines 183, 191, 273, 323, 355, 393, 437 replaced with error codes mapped through `error_mapping.go` pattern; frontend renders localized Russian
+- [ ] **OPS-06**: Backup encryption key managed via Yandex KMS (not stored on host) — `yc kms symmetric-crypto encrypt` for restic password; key-recovery path documented in `docs/runbook-restore.md` (per 152-ФЗ Art. 19 §2(2))
+- [ ] **OPS-07**: `pkg/health/health.go::ReadyHandler` refactored to run dependency checks **concurrently** via `sync.WaitGroup` — current serial loop times out (4 deps × 2s timeout exceeds 5s budget)
 
 ### LLM Quality (LLMQ)
 
@@ -67,6 +72,7 @@ Phase 25 — LLM Cost Guards & Billing Substrate
 - [ ] **LLMC-07**: Per-conversation token cap (default 50k input + 10k output) in `orchestrator/step.go` — stops loop and emits friendly SSE error before runaway
 - [ ] **LLMC-08**: `MaxTokens` set on agent-loop LLM calls in `step.go:99-105`
 - [ ] **LLMC-09**: Router retries once on transient 5xx / 429 from one provider on a sibling entry (`pkg/llm/router.go:127-132`)
+- [ ] **LLMC-10**: Redis-down policy for LLM RateLimiter is explicit **FAIL-CLOSED** with 30s local-token-bucket fallback at $10/h ceiling; Prometheus alert on Redis unreachable; default `LLM_RATELIMIT_ON_REDIS_DOWN=block` (per research PITFALLS §9.2)
 
 ### Concurrency & Platform Failure UX (CONC)
 
@@ -135,15 +141,20 @@ Phase 26 — Concurrency Limits & Platform Failure UX
 | ACCT-03 | Phase 21 | Pending |
 | ACCT-04 | Phase 21 | Pending |
 | ACCT-05 | Phase 21 | Pending |
+| ACCT-06 | Phase 21 | Pending |
 | LEGAL-01 | Phase 22 | Pending |
 | LEGAL-02 | Phase 22 | Pending |
 | LEGAL-03 | Phase 22 | Pending |
 | LEGAL-04 | Phase 22 | Pending |
-| OPS-01 | Phase 23 | Pending |
-| OPS-02 | Phase 23 | Pending |
-| OPS-03 | Phase 23 | Pending |
-| OPS-04 | Phase 23 | Pending |
+| LEGAL-05 | Phase 22 | Pending |
+| LEGAL-06 | Phase 22 | Pending |
+| OPS-01 | Phase 23.1 | Pending |
+| OPS-02 | Phase 23.2 | Pending |
+| OPS-03 | Phase 23.3 | Pending |
+| OPS-04 | Phase 23.4 | Pending |
 | OPS-05 | Phase 23 | Pending |
+| OPS-06 | Phase 23.1 | Pending |
+| OPS-07 | Phase 23.3 | Pending |
 | LLMQ-01 | Phase 24 | Pending |
 | LLMQ-02 | Phase 24 | Pending |
 | LLMQ-03 | Phase 24 | Pending |
@@ -158,6 +169,7 @@ Phase 26 — Concurrency Limits & Platform Failure UX
 | LLMC-07 | Phase 25 | Pending |
 | LLMC-08 | Phase 25 | Pending |
 | LLMC-09 | Phase 25 | Pending |
+| LLMC-10 | Phase 25 | Pending |
 | CONC-01 | Phase 26 | Pending |
 | CONC-02 | Phase 26 | Pending |
 | CONC-03 | Phase 26 | Pending |
@@ -165,10 +177,10 @@ Phase 26 — Concurrency Limits & Platform Failure UX
 | CONC-05 | Phase 26 | Pending |
 
 **Coverage:**
-- v1.4 requirements: 37 total
-- Mapped to phases: 37
+- v1.4 requirements: 43 total (37 original + 6 added post-research: ACCT-06, LEGAL-05, LEGAL-06, OPS-06, OPS-07, LLMC-10)
+- Mapped to phases: 43
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-24*
-*Last updated: 2026-05-24 after v1.4 milestone kickoff*
+*Last updated: 2026-05-24 after research-driven adjustments (4 parallel agents + synthesizer)*
