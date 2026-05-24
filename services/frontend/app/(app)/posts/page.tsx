@@ -217,7 +217,18 @@ export default function PostsPage() {
         sub={tPosts('subtitle')}
         actions={
           canCreate ? (
-            <Button variant="primary" size="md">
+            // Phase 20 (Plan 20-02) / ONB-03: button is intentionally disabled
+            // until a chat-with-prefill flow exists. Tooltip directs users to
+            // the existing chat-based post-publishing path (telegram__send_channel_post
+            // tool already handles "опубликуй пост в Telegram" requests via the
+            // LLM agent loop). Re-enabling this button is tracked for v1.5+.
+            <Button
+              variant="primary"
+              size="md"
+              disabled
+              title={tPosts('createPostTooltip')}
+              aria-label={tPosts('createPostTooltip')}
+            >
               <Plus aria-hidden />
               {tPosts('createPost')}
             </Button>

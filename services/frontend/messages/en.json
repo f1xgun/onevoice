@@ -449,6 +449,7 @@
     "retry": "Retry",
     "retryUnavailable": "Soon — not available yet",
     "createPost": "Create post",
+    "createPostTooltip": "Posts are created via chat — ask the assistant to publish a post",
     "status": {
       "draft": "Draft",
       "scheduled": "Scheduled",
