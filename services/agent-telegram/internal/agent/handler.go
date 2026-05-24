@@ -110,7 +110,7 @@ func classifyTelegramError(err error) error {
 func (h *Handler) getSender(ctx context.Context, req a2a.ToolRequest, externalID string) (Sender, string, error) {
 	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentTelegram, externalID)
 	if err != nil {
-		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
+		return nil, "", agentbase.WrapTokenFetchError(fmt.Errorf("fetch token: %w", err))
 	}
 	sender, err := h.senderFactory(info.AccessToken)
 	if err != nil {

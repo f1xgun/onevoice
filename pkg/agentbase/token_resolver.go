@@ -2,7 +2,9 @@ package agentbase
 
 import (
 	"context"
+	"errors"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
 )
 
@@ -25,10 +27,38 @@ type TokenInfo struct {
 // When externalID is empty the underlying *tokenclient.Client falls back to
 // the first active integration for the platform — same semantics as the API
 // server's GetDecryptedToken (services/api/internal/service/integration.go).
-// Errors from the underlying HTTP client are returned wrapped per the
-// tokenclient package conventions; callers must NOT string-match them.
+//
+// Errors are sentinel-chained (tokenclient.ErrIntegrationNotFound /
+// ErrTokenExpired / ErrTransient); callers should branch via errors.Is.
+// WrapTokenFetchError applies the canonical retryability policy and is
+// what every agent handler in this repo uses — prefer it over rolling a
+// new classification.
 type TokenResolver interface {
 	GetToken(ctx context.Context, businessID, platform, externalID string) (TokenInfo, error)
+}
+
+// WrapTokenFetchError classifies a token-fetch error for the agent retry
+// policy. The four agent handlers
+// (services/agent-{telegram,vk,yandex-business,google-business}/internal/agent/handler.go)
+// all need the same branch:
+//
+//   - tokenclient.ErrTransient → return as-is so the error stays
+//     retryable (network blip, 5xx upstream — retrying may succeed).
+//   - anything else (ErrIntegrationNotFound, ErrTokenExpired, request-shape
+//     bugs) → wrap in *a2a.NonRetryableError so withRetry + the LLM-side
+//     tool_result both see "permanent failure, do not retry."
+//
+// Callers pass the already-contextualized error (e.g.
+// fmt.Errorf("fetch token: %w", err)) — the sentinel chain survives the
+// wrap so errors.Is keeps working.
+func WrapTokenFetchError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, tokenclient.ErrTransient) {
+		return err
+	}
+	return a2a.NewNonRetryableError(err)
 }
 
 // tokenResolverImpl is the default TokenResolver that delegates to a

@@ -123,7 +123,7 @@ func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient,
 	groupID, _ := req.Args["group_id"].(string)
 	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentVK, groupID)
 	if err != nil {
-		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
+		return nil, "", agentbase.WrapTokenFetchError(fmt.Errorf("fetch token: %w", err))
 	}
 	if groupID == "" {
 		groupID = info.ExternalID
@@ -139,7 +139,7 @@ func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKCli
 	groupID, _ := req.Args["group_id"].(string)
 	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentVK, groupID)
 	if err != nil {
-		return nil, "", a2a.NewNonRetryableError(fmt.Errorf("fetch token: %w", err))
+		return nil, "", agentbase.WrapTokenFetchError(fmt.Errorf("fetch token: %w", err))
 	}
 	if groupID == "" {
 		groupID = info.ExternalID
