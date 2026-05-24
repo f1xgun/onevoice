@@ -30,6 +30,24 @@ var (
 	ErrTokenNotFound = errors.New("token not found")
 )
 
+// Password reset errors — Phase 21b (ACCT-01).
+//
+// PITFALLS §1.1: the repository ConsumeAtomic statement collapses
+// (expired | already-consumed | unknown-hash) → ErrResetTokenInvalid so the
+// caller cannot distinguish failure modes. ErrResetTokenExpired is kept
+// as a separate sentinel for the (currently unused) future "look up first,
+// then mutate" path where the expiry IS surfaceable; the live atomic-consume
+// path always returns ErrResetTokenInvalid.
+//
+// ErrResetTokenCollision fires only on the astronomically improbable case
+// where 256-bit entropy produces a duplicate of an existing hash. The
+// service may retry on this sentinel.
+var (
+	ErrResetTokenInvalid   = errors.New("password reset token invalid")
+	ErrResetTokenExpired   = errors.New("password reset token expired")
+	ErrResetTokenCollision = errors.New("password reset token hash collision")
+)
+
 // Conversation errors
 var (
 	ErrConversationNotFound = errors.New("conversation not found")
