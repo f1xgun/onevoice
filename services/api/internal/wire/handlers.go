@@ -63,6 +63,11 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create auth handler: %w", err)
 	}
+	// Phase 21b (ACCT-01): inject password-reset service via setter to keep
+	// NewAuthHandler's signature stable across the rest of the codebase.
+	if svcs.PasswordReset != nil {
+		authHandler.SetPasswordResetService(svcs.PasswordReset)
+	}
 	businessHandler, err := handler.NewBusinessHandler(svcs.Business, svcs.PlatformSync, svcs.ObjectStorage)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create business handler: %w", err)

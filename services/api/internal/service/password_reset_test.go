@@ -436,5 +436,6 @@ func TestPasswordResetService_ConfirmReset_ConsumeAtomicError_MapsToInvalid(t *t
 
 func TestResetEmailSubject_LockedRU(t *testing.T) {
 	require.Equal(t, "Восстановление пароля — OneVoice", resetEmailSubject)
-	require.True(t, strings.Contains(buildResetEmailPlainText("X"), "Восстановление"))
+	require.True(t, strings.Contains(buildResetEmailHTML("X"), "Восстановление"))
+	require.True(t, strings.Contains(buildResetEmailPlainText("X"), "Здравствуйте"))
 }

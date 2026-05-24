@@ -48,6 +48,29 @@ type AuthHandler struct {
 	// the audit entry can record userID BEFORE the Redis invalidation removes
 	// the token-id binding (T-19-19 mitigation).
 	jwtSecret []byte
+	// Phase 21b (ACCT-01) password-reset service. Injected via setter
+	// SetPasswordResetService AFTER NewAuthHandler so the existing
+	// constructor signature stays untouched. Typed as the
+	// PasswordResetServiceAPI interface so handler tests can pass a
+	// double; production wiring passes a *service.PasswordResetService.
+	passwordResetService PasswordResetServiceAPI
+}
+
+// PasswordResetServiceAPI is the slice of *service.PasswordResetService
+// the AuthHandler consumes. Declared as an interface here for
+// testability — production wiring passes the concrete type, tests
+// pass a doubled implementation.
+type PasswordResetServiceAPI interface {
+	RequestReset(ctx context.Context, emailAddr, clientIP, userAgent string) error
+	ConfirmReset(ctx context.Context, plaintextToken, newPassword, clientIP, userAgent string) error
+}
+
+// SetPasswordResetService injects the password-reset dependency. Called
+// from wire/handlers.go AFTER PasswordResetService is built. Preferred
+// over extending NewAuthHandler's signature because that would force
+// every existing test to pass nil.
+func (h *AuthHandler) SetPasswordResetService(s PasswordResetServiceAPI) {
+	h.passwordResetService = s
 }
 
 // NewAuthHandler creates a new auth handler instance.
@@ -440,6 +463,67 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// --- Phase 21b: password reset (ACCT-01) ---------------------------------
+
+// RequestPasswordResetRequest is the body shape for POST /auth/password-reset/request.
+type RequestPasswordResetRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+// ConfirmPasswordResetRequest is the body shape for POST /auth/password-reset/confirm.
+type ConfirmPasswordResetRequest struct {
+	Token       string `json:"token" validate:"required,min=1"`
+	NewPassword string `json:"newPassword" validate:"required,min=8"`
+}
+
+// RequestPasswordReset handles POST /api/v1/auth/password-reset/request.
+//
+// Returns 204 ALWAYS (per CONTEXT D-10 + PITFALLS §1.1) regardless of
+// whether the email is registered. The service does its own per-email
+// rate-limit, dummy-audit-on-unknown-email, and outbox enqueue so
+// timing is symmetric between branches — adding a chi.RateLimit wrapper
+// here would short-circuit and skew the timing-parity contract.
+func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var req RequestPasswordResetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, r, err)
+		return
+	}
+	// Service ALWAYS returns nil. We do not branch on its result.
+	_ = h.passwordResetService.RequestReset(r.Context(), req.Email, clientIP(r), r.UserAgent())
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ConfirmPasswordReset handles POST /api/v1/auth/password-reset/confirm.
+//
+// On success: 204 No Content. The service has already consumed the
+// token, rotated the password hash, and wiped all refresh tokens for
+// the user — the client should redirect to /login and prompt for the
+// new password.
+//
+// On failure: writePasswordResetError maps the three Phase 21b sentinels
+// to public {code, message} — see handler/error_mapping.go.
+func (h *AuthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var req ConfirmPasswordResetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, r, err)
+		return
+	}
+	if err := h.passwordResetService.ConfirmReset(r.Context(), req.Token, req.NewPassword, clientIP(r), r.UserAgent()); err != nil {
+		writePasswordResetError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // clientIP returns the client IP from r.RemoteAddr, stripping the port. If
