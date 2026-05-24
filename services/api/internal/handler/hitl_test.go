@@ -39,10 +39,9 @@ func newFakeHITLPendingRepo() *fakeHITLPendingRepo {
 	return &fakeHITLPendingRepo{batches: map[string]*domain.PendingToolCallBatch{}}
 }
 
-func (f *fakeHITLPendingRepo) InsertPreparing(_ context.Context, _ *domain.PendingToolCallBatch) error {
+func (f *fakeHITLPendingRepo) Persist(_ context.Context, _ *domain.PendingToolCallBatch) error {
 	return nil
 }
-func (f *fakeHITLPendingRepo) PromoteToPending(_ context.Context, _ string) error { return nil }
 func (f *fakeHITLPendingRepo) GetByBatchID(_ context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

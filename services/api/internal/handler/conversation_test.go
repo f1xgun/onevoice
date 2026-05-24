@@ -137,10 +137,7 @@ type MockPendingToolCallRepository struct {
 	GetByBatchIDFunc              func(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error)
 }
 
-func (m *MockPendingToolCallRepository) InsertPreparing(_ context.Context, _ *domain.PendingToolCallBatch) error {
-	return nil
-}
-func (m *MockPendingToolCallRepository) PromoteToPending(_ context.Context, _ string) error {
+func (m *MockPendingToolCallRepository) Persist(_ context.Context, _ *domain.PendingToolCallBatch) error {
 	return nil
 }
 func (m *MockPendingToolCallRepository) GetByBatchID(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error) {

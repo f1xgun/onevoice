@@ -508,16 +508,22 @@ type PendingCall struct {
 // multi-document transactions), all cross-document
 // consistency is encoded as a strict write-order:
 //
-//	InsertPreparing → PromoteToPending → emit SSE
-//	↓ (crash here → ReconcileOrphanPreparing sweeps after olderThan)
+//	Persist → emit SSE
+//	↓ (crash mid-Persist → ReconcileOrphanPreparing sweeps after olderThan)
 //	AtomicTransitionToResolving → RecordDecisions → MarkDispatched* → MarkResolved
+//
+// Persist owns the pause-time persist completely: it stages the batch in an
+// internal "preparing" status, then promotes to "pending" with the TTL set.
+// The preparing window is implementation detail — it exists only so a crash
+// between the two underlying writes can be reaped by ReconcileOrphanPreparing
+// rather than leaving a row ticking toward premature TTL deletion. Callers
+// never observe the preparing state through this interface.
 //
 // AtomicTransitionToResolving uses findOneAndUpdate with filter
 // `{_id, status: "pending"}` and update `{$set: {status: "resolving"}}` to
 // guarantee exactly-one-wins on concurrent resolve attempts.
 type PendingToolCallRepository interface {
-	InsertPreparing(ctx context.Context, b *PendingToolCallBatch) error
-	PromoteToPending(ctx context.Context, batchID string) error
+	Persist(ctx context.Context, b *PendingToolCallBatch) error
 	GetByBatchID(ctx context.Context, batchID string) (*PendingToolCallBatch, error)
 	ListPendingByConversation(ctx context.Context, conversationID string) ([]*PendingToolCallBatch, error)
 	AtomicTransitionToResolving(ctx context.Context, batchID string) (*PendingToolCallBatch, error)
