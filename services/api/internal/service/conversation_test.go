@@ -150,7 +150,7 @@ func (s *stubProjectRepoForConv) Delete(_ context.Context, _ uuid.UUID) error   
 func (s *stubProjectRepoForConv) CountConversationsByID(_ context.Context, _ uuid.UUID) (int, error) {
 	return 0, nil
 }
-func (s *stubProjectRepoForConv) HardDeleteCascade(_ context.Context, _ uuid.UUID) (int, int, error) {
+func (s *stubProjectRepoForConv) HardDeleteCascade(_ context.Context, _ uuid.UUID) (deletedConvos, deletedMessages int, err error) {
 	return 0, 0, nil
 }
 
@@ -162,9 +162,6 @@ func newConvSvc(t *testing.T, conv *stubConversationRepo, msg *stubMessageRepo, 
 	require.NoError(t, err)
 	return svc
 }
-
-// strPtr is a tiny helper — service signature takes *string for projectID.
-func strPtr(s string) *string { return &s }
 
 func TestNewConversationService_NilDep_ReturnsError(t *testing.T) {
 	conv := &stubConversationRepo{}
