@@ -61,6 +61,13 @@ func (a *UserResetExtAdapter) GetByID(ctx context.Context, userID uuid.UUID) (*d
 	return a.inner.GetByID(ctx, userID)
 }
 
+// CreateInTx delegates to the inner concrete repo. Phase 21-03:
+// UserService.Register uses this so the user row commits atomically with
+// the user_consents + email_verification_tokens + email_outbox INSERTs.
+func (a *UserResetExtAdapter) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain.User) error {
+	return a.inner.CreateInTx(ctx, tx, user)
+}
+
 // UpdatePasswordHashInTx delegates to the inner concrete repo.
 func (a *UserResetExtAdapter) UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, bcryptHash []byte) error {
 	return a.inner.UpdatePasswordHashInTx(ctx, tx, userID, bcryptHash)
@@ -105,6 +112,44 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 		return fmt.Errorf("insert user: %w", err)
 	}
 
+	return nil
+}
+
+// CreateInTx inserts a user inside the caller-supplied tx. Phase 21-03:
+// UserService.Register opens a tx so the user_consents + email_verification_tokens
+// + email_outbox INSERTs commit atomically with the user row (no half-registered
+// user with no verification email).
+//
+// Maps Postgres unique-violation on email to domain.ErrUserExists, same
+// behavior as Create.
+func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain.User) error {
+	if user.ID == uuid.Nil {
+		user.ID = uuid.New()
+	}
+	now := time.Now()
+	user.CreatedAt = now
+	user.UpdatedAt = now
+
+	sql, args, err := r.sb.
+		Insert("users").
+		Columns("id", "email", "password_hash", "created_at", "updated_at").
+		Values(user.ID, user.Email, user.PasswordHash, user.CreatedAt, user.UpdatedAt).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build insert tx: %w", err)
+	}
+	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return domain.ErrUserExists
+		}
+		// pgconn may not classify before pgx attempts the bind — fall back
+		// to the string check (matches Create above).
+		if strings.Contains(err.Error(), "duplicate key") {
+			return domain.ErrUserExists
+		}
+		return fmt.Errorf("insert user tx: %w", err)
+	}
 	return nil
 }
 
