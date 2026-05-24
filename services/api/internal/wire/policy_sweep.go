@@ -11,9 +11,77 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/hitlvalidation"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 )
+
+// approvalSource is the generic input shape for business-scoped or
+// project-scoped approval overrides — decouples validateApprovalSettings from
+// concrete Business/Project domain types.
+//
+// For a Business, build it from `domain.Business.ToolApprovals()`.
+// For a Project, build it from `domain.Project.ApprovalOverrides`.
+//
+// Inlined from pkg/hitlvalidation (deleted): the validator had exactly one
+// caller — this file — and 89 LOC of package boilerplate around one log loop.
+// Keeping the validator co-located with the sweep concentrates the logic that
+// reads the live tool registry, queries Postgres, and emits the
+// tool_approval_whitelist_unknown observability events all in one file.
+type approvalSource struct {
+	// ID is the stable identifier used in the log line for operator triage
+	// (e.g., the business or project UUID as a string).
+	ID string
+	// Overrides is the typed map of `tool_name → ToolFloor` being validated.
+	// An empty or nil map is valid (produces no warnings).
+	Overrides map[string]domain.ToolFloor
+}
+
+// validateApprovalSettings logs a warning for every tool name referenced by a
+// business's `tool_approvals` or a project's `approval_overrides` that is NOT
+// present in the live registry. Unknown entries are treated as denied by the
+// runtime policy resolver (Registry.Floor returns ToolFloorForbidden for
+// unknown tools — safe default).
+//
+// Pure logging — does not mutate configuration. The log event key is stable:
+// `tool_approval_whitelist_unknown`. Grafana dashboards keyed on this string
+// will break if renamed.
+//
+// Returns the total warning count so the caller can emit a single summary
+// log line at boot.
+func validateApprovalSettings(
+	ctx context.Context,
+	registeredTools map[string]struct{},
+	businesses []approvalSource,
+	projects []approvalSource,
+) int {
+	warnCount := 0
+	for _, b := range businesses {
+		for toolName := range b.Overrides {
+			if _, ok := registeredTools[toolName]; !ok {
+				slog.WarnContext(ctx, "tool_approval_whitelist_unknown",
+					"scope", "business",
+					"id", b.ID,
+					"tool", toolName,
+					"action", "treated_as_denied",
+				)
+				warnCount++
+			}
+		}
+	}
+	for _, p := range projects {
+		for toolName := range p.Overrides {
+			if _, ok := registeredTools[toolName]; !ok {
+				slog.WarnContext(ctx, "tool_approval_whitelist_unknown",
+					"scope", "project",
+					"id", p.ID,
+					"tool", toolName,
+					"action", "treated_as_denied",
+				)
+				warnCount++
+			}
+		}
+	}
+	return warnCount
+}
 
 // pendingSweepLoopInterval — delay between the first failed orchestrator
 // fetch and the single retry. Keeps the sweep best-effort and bounded.
@@ -74,7 +142,7 @@ func RunToolApprovalStartupValidation(parent context.Context, pgPool *pgxpool.Po
 		return
 	}
 
-	count := hitlvalidation.ValidateApprovalSettings(sweepCtx, registered, businesses, projects)
+	count := validateApprovalSettings(sweepCtx, registered, businesses, projects)
 	slog.InfoContext(sweepCtx, "tool_approval_whitelist_unknown count",
 		"count", count,
 		"businesses_scanned", len(businesses),
@@ -98,16 +166,16 @@ func fetchOrchestratorToolNames(ctx context.Context, orch *orchestratorclient.Cl
 
 // loadBusinessApprovalSources reads every business's tool_approvals JSONB
 // entry directly from Postgres. Materialized into the typed
-// hitlvalidation.ApprovalSource shape so the validator stays decoupled from
+// approvalSource shape so the validator stays decoupled from
 // domain.Business. Skips businesses with no settings payload entirely.
-func loadBusinessApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]hitlvalidation.ApprovalSource, error) {
+func loadBusinessApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]approvalSource, error) {
 	rows, err := pool.Query(ctx, "SELECT id, COALESCE(settings, '{}'::jsonb)::text FROM businesses")
 	if err != nil {
 		return nil, fmt.Errorf("query businesses: %w", err)
 	}
 	defer rows.Close()
 
-	var out []hitlvalidation.ApprovalSource
+	var out []approvalSource
 	for rows.Next() {
 		var (
 			id       uuid.UUID
@@ -120,7 +188,7 @@ func loadBusinessApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]hit
 		if len(overrides) == 0 {
 			continue
 		}
-		out = append(out, hitlvalidation.ApprovalSource{
+		out = append(out, approvalSource{
 			ID:        id.String(),
 			Overrides: overrides,
 		})
@@ -134,7 +202,7 @@ func loadBusinessApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]hit
 // loadProjectApprovalSources reads every project's approval_overrides JSONB
 // column. Uses COALESCE so older projects (null column) are surfaced as
 // empty maps, not as an error.
-func loadProjectApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]hitlvalidation.ApprovalSource, error) {
+func loadProjectApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]approvalSource, error) {
 	rows, err := pool.Query(ctx, "SELECT id, COALESCE(approval_overrides, '{}'::jsonb)::text FROM projects")
 	if err != nil {
 		// Graceful degradation: if approval_overrides column doesn't yet exist
@@ -147,7 +215,7 @@ func loadProjectApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]hitl
 	}
 	defer rows.Close()
 
-	var out []hitlvalidation.ApprovalSource
+	var out []approvalSource
 	for rows.Next() {
 		var (
 			id        uuid.UUID
@@ -160,7 +228,7 @@ func loadProjectApprovalSources(ctx context.Context, pool *pgxpool.Pool) ([]hitl
 		if len(parsed) == 0 {
 			continue
 		}
-		out = append(out, hitlvalidation.ApprovalSource{
+		out = append(out, approvalSource{
 			ID:        id.String(),
 			Overrides: parsed,
 		})
