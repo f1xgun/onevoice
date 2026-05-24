@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: milestone
 status: executing
-last_updated: "2026-05-24T21:30:00.000Z"
-last_activity: 2026-05-24 -- Phase 21 wave 1 complete (21-01 email infra merged)
+last_updated: "2026-05-25T00:00:00.000Z"
+last_activity: 2026-05-25 -- Phase 21 wave 2 complete (21-02 password reset + 21-03 email verification + ACCT-06 merged)
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 8
-  completed_plans: 4
-  percent: 50
+  total_plans: 10
+  completed_plans: 6
+  percent: 60
 ---
 
 # State
@@ -18,9 +18,9 @@ progress:
 ## Current Position
 
 Phase: 21
-Plan: 21-01 complete; 21-02 + 21-03 (Wave 2, sequential due to handler.go overlap) next
+Plan: 21-01, 21-02, 21-03 complete; 21-04 (account deletion + 30-day grace, Wave 3) next
 Status: Executing
-Last activity: 2026-05-24 -- Phase 21 wave 1 complete (21-01 email infra merged)
+Last activity: 2026-05-25 -- Phase 21 wave 2 complete (21-02 password reset + 21-03 email verification + ACCT-06 merged)
 
 ## Project Reference
 
