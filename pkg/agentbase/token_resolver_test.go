@@ -3,6 +3,8 @@ package agentbase_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
 )
@@ -118,10 +121,10 @@ func TestTokenResolver_GetToken_NoUserToken_LeavesEmpty(t *testing.T) {
 
 // TestTokenResolver_GetToken_ErrorPropagates verifies that errors from the
 // underlying *tokenclient.Client are returned without modification, with an
-// empty TokenInfo. Callers (the agent handlers) wrap the error themselves with
-// a2a.NewNonRetryableError when appropriate.
+// empty TokenInfo. The sentinel chain (tokenclient.ErrIntegrationNotFound)
+// must survive the resolver so callers can use errors.Is upstream.
 func TestTokenResolver_GetToken_ErrorPropagates(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
@@ -130,5 +133,53 @@ func TestTokenResolver_GetToken_ErrorPropagates(t *testing.T) {
 	got, err := resolver.GetToken(context.Background(), "biz-1", "vk", "group-456")
 	require.Error(t, err)
 	assert.Equal(t, agentbase.TokenInfo{}, got, "error path must return zero TokenInfo")
-	assert.Contains(t, err.Error(), "not found")
+	assert.True(t, errors.Is(err, tokenclient.ErrIntegrationNotFound),
+		"sentinel chain must survive the resolver; got %v", err)
+}
+
+// TestWrapTokenFetchError covers the canonical retryability policy shared
+// by all four agent handlers. ErrTransient stays a bare error (retryable);
+// every other classification wraps as *a2a.NonRetryableError.
+func TestWrapTokenFetchError(t *testing.T) {
+	t.Run("nil_passthrough", func(t *testing.T) {
+		assert.Nil(t, agentbase.WrapTokenFetchError(nil))
+	})
+
+	t.Run("transient_stays_retryable", func(t *testing.T) {
+		// Simulate the call-site pattern: outer wrap preserves sentinel chain.
+		ctx := fmt.Errorf("fetch token: %w", tokenclient.ErrTransient)
+		out := agentbase.WrapTokenFetchError(ctx)
+		require.Error(t, out)
+		assert.False(t, errors.Is(out, &a2a.NonRetryableError{}),
+			"ErrTransient must NOT be wrapped as NonRetryable; callers can mark transient and retry")
+		assert.True(t, errors.Is(out, tokenclient.ErrTransient),
+			"sentinel chain must survive WrapTokenFetchError")
+	})
+
+	t.Run("not_found_marks_non_retryable", func(t *testing.T) {
+		ctx := fmt.Errorf("fetch token: %w", tokenclient.ErrIntegrationNotFound)
+		out := agentbase.WrapTokenFetchError(ctx)
+		require.Error(t, out)
+		assert.True(t, errors.Is(out, &a2a.NonRetryableError{}),
+			"ErrIntegrationNotFound is permanent until the user reconnects — must mark NonRetryable")
+		assert.True(t, errors.Is(out, tokenclient.ErrIntegrationNotFound),
+			"sentinel chain must survive the wrap")
+	})
+
+	t.Run("token_expired_marks_non_retryable", func(t *testing.T) {
+		ctx := fmt.Errorf("fetch token: %w", tokenclient.ErrTokenExpired)
+		out := agentbase.WrapTokenFetchError(ctx)
+		require.Error(t, out)
+		assert.True(t, errors.Is(out, &a2a.NonRetryableError{}),
+			"ErrTokenExpired is permanent until re-auth — must mark NonRetryable")
+	})
+
+	t.Run("unclassified_marks_non_retryable", func(t *testing.T) {
+		// 4xx-other-than-404/410 surfaces without a sentinel chain — likely
+		// a request-shape bug. Default is NonRetryable.
+		out := agentbase.WrapTokenFetchError(errors.New("tokenclient: unexpected status 400"))
+		require.Error(t, out)
+		assert.True(t, errors.Is(out, &a2a.NonRetryableError{}),
+			"unclassified errors must default to NonRetryable (do-not-retry posture is safer)")
+	})
 }
