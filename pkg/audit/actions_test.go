@@ -25,6 +25,11 @@ func TestActionConstants(t *testing.T) {
 		"auth.password_reset_requested":            ActionPasswordResetRequested,
 		"auth.password_reset_completed":            ActionPasswordResetCompleted,
 		"auth.password_reset_request_unknown_email": ActionPasswordResetUnknownEmail,
+		// Phase 21c — Email verification + soft-restrict (ACCT-02, D-42).
+		"auth.email_verification_link_viewed": ActionEmailVerificationLinkViewed,
+		"auth.email_verified":                 ActionEmailVerified,
+		"auth.email_changed_before_verify":    ActionEmailChangedBeforeVerify,
+		"auth.consent_recorded":               ActionConsentRecorded,
 		"integration.connected":     ActionIntegrationConnected,
 		"integration.disconnected":  ActionIntegrationDisconnected,
 		"integration.token_rotated": ActionIntegrationTokenRotated,
@@ -37,7 +42,7 @@ func TestActionConstants(t *testing.T) {
 	for expected, got := range tests {
 		require.Equal(t, expected, got)
 	}
-	require.Len(t, tests, 24, "expected 24 audit actions (21 base + 3 Phase 21b password reset)")
+	require.Len(t, tests, 28, "expected 28 audit actions (21 base + 3 Phase 21b password reset + 4 Phase 21c verify)")
 }
 
 func TestActionCategory(t *testing.T) {

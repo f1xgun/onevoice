@@ -75,10 +75,18 @@ func (r *auditLogRepository) Insert(ctx context.Context, log *domain.AuditLog) e
 	if len(details) == 0 {
 		details = json.RawMessage(`{}`)
 	}
+	// Phase 21-03 / ACCT-06: persist user_email_at_event as NULL when the
+	// caller left it empty so the column stores meaningful values only.
+	// Storing "" everywhere would defeat ad-hoc queries like
+	// `WHERE user_email_at_event IS NULL`.
+	var emailAtEvent any
+	if log.UserEmailAtEvent != "" {
+		emailAtEvent = log.UserEmailAtEvent
+	}
 	sql, args, err := r.sb.
 		Insert("audit_logs").
-		Columns("business_id", "user_id", "action", "resource", "details").
-		Values(log.BusinessID, log.UserID, log.Action, log.Resource, details).
+		Columns("business_id", "user_id", "action", "resource", "details", "user_email_at_event").
+		Values(log.BusinessID, log.UserID, log.Action, log.Resource, details, emailAtEvent).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert audit_log: %w", err)
@@ -113,7 +121,8 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 	}
 
 	q := r.sb.
-		Select("id", "business_id", "user_id", "action", "resource", "details", "created_at").
+		Select("id", "business_id", "user_id", "action", "resource", "details",
+			"COALESCE(user_email_at_event, '') AS user_email_at_event", "created_at").
 		From("audit_logs").
 		Where(squirrel.Eq{"business_id": businessID})
 
@@ -159,7 +168,7 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 		var l domain.AuditLog
 		if err := rows.Scan(
 			&l.ID, &l.BusinessID, &l.UserID,
-			&l.Action, &l.Resource, &l.Details, &l.CreatedAt,
+			&l.Action, &l.Resource, &l.Details, &l.UserEmailAtEvent, &l.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan audit_log row: %w", err)
 		}
@@ -223,7 +232,9 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 	q := r.sb.
 		Select(
 			"al.id", "al.business_id", "al.user_id",
-			"al.action", "al.resource", "al.details", "al.created_at",
+			"al.action", "al.resource", "al.details",
+			"COALESCE(al.user_email_at_event, '') AS user_email_at_event",
+			"al.created_at",
 			"COALESCE(u.email, '') AS actor_email",
 			// users table has no display_name column today; emit '' so
 			// the scanner has a non-NULL string and the column stays in
@@ -270,7 +281,8 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 		var row AuditLogRow
 		if err := rows.Scan(
 			&row.ID, &row.BusinessID, &row.UserID,
-			&row.Action, &row.Resource, &row.Details, &row.CreatedAt,
+			&row.Action, &row.Resource, &row.Details,
+			&row.UserEmailAtEvent, &row.CreatedAt,
 			&row.ActorEmail, &row.ActorDisplayName,
 		); err != nil {
 			return nil, fmt.Errorf("scan audit_log-with-actors row: %w", err)

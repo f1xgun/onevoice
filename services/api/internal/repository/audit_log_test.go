@@ -36,7 +36,7 @@ func TestAuditLogRepository_Insert_HappyPath(t *testing.T) {
 	// brittle across pgx versions. The shape check below
 	// (regex on INSERT INTO audit_logs) is the load-bearing assertion.
 	mock.ExpectExec(`INSERT INTO audit_logs`).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), "business.created", "business", pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), "business.created", "business", pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	err := repo.Insert(context.Background(), &domain.AuditLog{
@@ -57,7 +57,7 @@ func TestAuditLogRepository_Insert_LoginFailed_NilBusinessAndUser(t *testing.T) 
 	mock, repo := newAuditLogRepoMock(t)
 
 	mock.ExpectExec(`INSERT INTO audit_logs`).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), "auth.login_failed", "user", pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), "auth.login_failed", "user", pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	err := repo.Insert(context.Background(), &domain.AuditLog{
@@ -80,9 +80,10 @@ func TestAuditLogRepository_Insert_EmptyDetails_DefaultsToEmptyObject(t *testing
 	// The squirrel binder pulls Values() args literally; we cannot easily
 	// assert the substituted "{}" payload via regex on the SQL because the
 	// JSON content is a positional bind variable. Match the arg directly:
-	// the 5th positional arg must be json.RawMessage(`{}`).
+	// the 5th positional arg must be json.RawMessage(`{}`) and the 6th is
+	// the user_email_at_event placeholder (nil when caller didn't set it).
 	mock.ExpectExec(`INSERT INTO audit_logs`).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), "business.updated", "business", json.RawMessage(`{}`)).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), "business.updated", "business", json.RawMessage(`{}`), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	err := repo.Insert(context.Background(), &domain.AuditLog{
@@ -145,9 +146,9 @@ func TestAuditLogRepository_ListByBusiness_AllFiltersAndCursor(t *testing.T) {
 			pgxmock.AnyArg(),
 		).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"id", "business_id", "user_id", "action", "resource", "details", "user_email_at_event", "created_at",
 		}).
-			AddRow(uuid.New(), &biz, &actor, "rbac.role_granted", "role", json.RawMessage(`{}`), time.Now().UTC()))
+			AddRow(uuid.New(), &biz, &actor, "rbac.role_granted", "role", json.RawMessage(`{}`), "", time.Now().UTC()))
 
 	rows, err := repo.ListByBusiness(context.Background(), biz, domain.AuditLogFilter{
 		Category:   "rbac",
@@ -175,7 +176,7 @@ func TestAuditLogRepository_ListByBusiness_DefaultLimit(t *testing.T) {
 	mock.ExpectQuery(`FROM audit_logs WHERE business_id = \$1 ORDER BY .+ LIMIT 50`).
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"id", "business_id", "user_id", "action", "resource", "details", "user_email_at_event", "created_at",
 		}))
 
 	_, err := repo.ListByBusiness(context.Background(), biz, domain.AuditLogFilter{Limit: 0})
@@ -191,7 +192,7 @@ func TestAuditLogRepository_ListByBusiness_ClampLimit(t *testing.T) {
 	mock.ExpectQuery(`FROM audit_logs WHERE business_id = \$1 ORDER BY .+ LIMIT 200`).
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"id", "business_id", "user_id", "action", "resource", "details", "user_email_at_event", "created_at",
 		}))
 
 	_, err := repo.ListByBusiness(context.Background(), biz, domain.AuditLogFilter{Limit: 1000})
@@ -208,7 +209,7 @@ func TestAuditLogRepository_ListByBusiness_NoFilters(t *testing.T) {
 	mock.ExpectQuery(`FROM audit_logs WHERE business_id = \$1 ORDER BY created_at DESC, id DESC LIMIT 50`).
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"id", "business_id", "user_id", "action", "resource", "details", "user_email_at_event", "created_at",
 		}))
 
 	rows, err := repo.ListByBusiness(context.Background(), biz, domain.AuditLogFilter{})
@@ -229,7 +230,7 @@ func TestAuditLogRepository_ListByBusiness_HalfCursor_Ignored(t *testing.T) {
 	mock.ExpectQuery(`FROM audit_logs WHERE business_id = \$1 ORDER BY .+ LIMIT 50`).
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"id", "business_id", "user_id", "action", "resource", "details", "user_email_at_event", "created_at",
 		}))
 
 	_, err := repo.ListByBusiness(context.Background(), biz, domain.AuditLogFilter{
@@ -277,11 +278,12 @@ func TestAuditLogRepository_ListByBusinessWithActors_EnrichesEmail(t *testing.T)
 	mock.ExpectQuery(`LEFT JOIN users u ON u.id = al.user_id`).
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"id", "business_id", "user_id", "action", "resource", "details",
+			"user_email_at_event", "created_at",
 			"actor_email", "actor_display_name",
 		}).AddRow(
 			uuid.New(), &biz, &actor, "rbac.role_granted", "role",
-			json.RawMessage(`{}`), time.Now().UTC(),
+			json.RawMessage(`{}`), "", time.Now().UTC(),
 			"viewer@test.local", "",
 		))
 
@@ -305,11 +307,12 @@ func TestAuditLogRepository_ListByBusinessWithActors_NullUserBecomesEmptyEmail(t
 	mock.ExpectQuery(`LEFT JOIN users u ON u.id = al.user_id`).
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"id", "business_id", "user_id", "action", "resource", "details",
+			"user_email_at_event", "created_at",
 			"actor_email", "actor_display_name",
 		}).AddRow(
 			uuid.New(), &biz, (*uuid.UUID)(nil), "auth.login_failed", "user",
-			json.RawMessage(`{"attempted_email":"a@b.c"}`), time.Now().UTC(),
+			json.RawMessage(`{"attempted_email":"a@b.c"}`), "", time.Now().UTC(),
 			"", "",
 		))
 
@@ -349,7 +352,8 @@ func TestAuditLogRepository_ListByBusinessWithActors_AppliesAllFilters(t *testin
 			pgxmock.AnyArg(),
 		).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "business_id", "user_id", "action", "resource", "details", "created_at",
+			"id", "business_id", "user_id", "action", "resource", "details",
+			"user_email_at_event", "created_at",
 			"actor_email", "actor_display_name",
 		}))
 
