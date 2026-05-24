@@ -25,6 +25,12 @@ type Repos struct {
 	Invitation         domain.InvitationRepository
 	AuditLog           domain.AuditLogRepository
 
+	// Phase 21a email_outbox repository. Concrete pointer (not a
+	// domain interface) because the worker and downstream Phase 21
+	// services depend on the methods directly — there is no need for
+	// the indirection.
+	EmailOutbox *repository.EmailOutboxRepository
+
 	// MembershipLoader backs the authz cache (Phase 2 v2.0 RBAC). Same
 	// query surface as BusinessMembership but exposed as the typed
 	// authz.MembershipLoader interface to keep the cache decoupled.
@@ -50,6 +56,7 @@ func Repositories(h *DBHandles) *Repos {
 		Project:            repository.NewProjectRepository(h.PG, h.Mongo),
 		Invitation:         repository.NewInvitationRepository(h.PG),
 		AuditLog:           repository.NewAuditLogRepository(h.PG),
+		EmailOutbox:        repository.NewEmailOutboxRepository(h.PG),
 		MembershipLoader:   repository.NewMembershipLoader(h.PG),
 	}
 }
