@@ -219,19 +219,35 @@ func derefString(p *string) string {
 	return *p
 }
 
-// extractVoiceTone reads business.settings.voice_tone with a forgiving cast.
-// Missing / wrong-type values fall through to empty string — the orchestrator
-// system prompt treats that as "no tone preference".
-func extractVoiceTone(settings map[string]interface{}) string {
+// extractVoiceTone reads the voiceTone tag list out of business.Settings.
+// Tags persist as []string under settings.voiceTone (see UpdateVoiceTone).
+// JSON round-trips via Postgres come back as []interface{}, so handle both.
+// Returns nil when nothing is configured — the orchestrator's system prompt
+// treats nil/empty as "no tone preference set". Behavior is byte-identical
+// to the previous handler.extractVoiceTone implementation that the legacy
+// chat_proxy.go inline builder called.
+func extractVoiceTone(settings map[string]interface{}) []string {
 	if settings == nil {
-		return ""
+		return nil
 	}
-	v, ok := settings["voice_tone"]
-	if !ok {
-		return ""
+	raw, ok := settings["voiceTone"]
+	if !ok || raw == nil {
+		return nil
 	}
-	s, _ := v.(string)
-	return s
+	switch v := raw.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 // newStreamState constructs an empty streamState with a fresh idMap. Helper

@@ -110,10 +110,7 @@ func (t *Turn) enrich(ctx context.Context, req TurnRequest) (*enrichmentResult, 
 // project / stale ID / lookup failure all fall through to empty fields with a
 // warn log — the chat flow continues without project context rather than
 // failing the request.
-func (t *Turn) resolveProject(ctx context.Context, businessID uuid.UUID, conversationID string) (projectFields, map[string]domain.ToolFloor) {
-	var project projectFields
-	var overrides map[string]domain.ToolFloor
-
+func (t *Turn) resolveProject(ctx context.Context, businessID uuid.UUID, conversationID string) (project projectFields, overrides map[string]domain.ToolFloor) {
 	conv, convErr := t.deps.Conversations.GetByID(ctx, conversationID)
 	switch {
 	case convErr != nil:
