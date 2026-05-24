@@ -25,6 +25,13 @@ const (
 	ActionLogout          = "auth.logout"
 	ActionPasswordChanged = "auth.password_changed"
 	ActionUserRegistered  = "auth.user_registered"
+	// Phase 21b — Password reset (ACCT-01).
+	// ActionPasswordResetUnknownEmail is the timing-parity dummy row written
+	// when an unknown email submits a reset request — symmetric DB load to
+	// the known-email branch defends against enumeration (PITFALLS §1.1).
+	ActionPasswordResetRequested    = "auth.password_reset_requested"
+	ActionPasswordResetCompleted    = "auth.password_reset_completed"
+	ActionPasswordResetUnknownEmail = "auth.password_reset_request_unknown_email"
 
 	// integration.* — platform integrations.
 	ActionIntegrationConnected    = "integration.connected"

@@ -139,6 +139,35 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
+// UpdatePasswordHashInTx sets users.password_hash + updated_at for the
+// given userID inside the caller-supplied tx. Used by PasswordResetService
+// to commit the password update in the same transaction as the token
+// consume (Phase 21b D-12).
+//
+// NOT part of the domain.UserRepository interface — the interface stays
+// tx-free for callers that don't compose transactions. Service callers
+// type-assert against the concrete *userRepository to access this method
+// (an adapter is registered in wire/services.go).
+func (r *userRepository) UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, bcryptHash []byte) error {
+	sqlStr, args, err := r.sb.
+		Update("users").
+		Set("password_hash", string(bcryptHash)).
+		Set("updated_at", time.Now()).
+		Where(squirrel.Eq{"id": userID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update password_hash: %w", err)
+	}
+	cmdTag, err := tx.Exec(ctx, sqlStr, args...)
+	if err != nil {
+		return fmt.Errorf("update password_hash: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
 // UpdatePreferredLocale sets users.preferred_locale for the row matching
 // userID, also touching updated_at so audit-style queries notice the change.
 // Returns domain.ErrUserNotFound when 0 rows matched (mirrors Update above).
