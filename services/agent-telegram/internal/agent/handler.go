@@ -34,51 +34,44 @@ type Sender interface {
 type SenderFactory func(botToken string) (Sender, error)
 
 // Handler is the Telegram agent's per-request processor. Its Handle method
-// satisfies a2a.Exec and is wired into a2a.NewAgent from cmd/main.go.
+// satisfies a2a.Exec and is wired into a2a.NewAgent from cmd/main.go. The
+// dispatch chain (dispatcher fallback + per-tool routing + "unknown tool"
+// error) lives in agentbase.NewRouter; this struct only owns the per-tool
+// methods + their dependencies.
 type Handler struct {
 	tokens        TokenFetcher
 	senderFactory SenderFactory
-	dispatcher    agentbase.Dispatcher
+	exec          agentbase.ToolExec
 }
 
 // NewHandler creates a Handler with the given TokenFetcher, SenderFactory, and
 // agentbase.Dispatcher. The dispatcher owns the HITL dedupe gate and error
 // classification — see pkg/agentbase. Tests may pass a dispatcher built with
-// nil dedupe / nil classifier, or pass nil here to skip HITL entirely (a nil
-// dispatcher acts as identity dispatch).
+// nil dedupe / nil classifier, or pass nil here to skip HITL entirely. On the
+// nil-dispatcher path the router applies ClassifyTelegramError as the fallback
+// classifier so the contract matches the legacy Handle implementation.
 func NewHandler(tokens TokenFetcher, factory SenderFactory, dispatcher agentbase.Dispatcher) *Handler {
-	return &Handler{tokens: tokens, senderFactory: factory, dispatcher: dispatcher}
+	h := &Handler{tokens: tokens, senderFactory: factory}
+	h.exec = agentbase.NewRouter(h.routes(), dispatcher, agentbase.FuncClassifier(ClassifyTelegramError))
+	return h
 }
 
-// Handle routes the ToolRequest to the appropriate Telegram operation via the
-// agentbase.Dispatcher (which runs the HITL dedupe gate, then routeTool, then
-// classifies errors, then caches successful responses). When dispatcher is nil
-// (legacy unit tests) we route directly through routeTool.
+// Handle is the a2a.Exec entry point — a thin shim over the router built in
+// NewHandler. Kept as a method on Handler so the existing test surface
+// (h.Handle(ctx, req)) continues to work byte-identically.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	if h.dispatcher == nil {
-		resp, err := h.routeTool(ctx, req)
-		return resp, ClassifyTelegramError(err)
-	}
-	return h.dispatcher.Dispatch(ctx, req, h.routeTool)
+	return h.exec(ctx, req)
 }
 
-// routeTool dispatches to the per-tool implementation. The HITL dedupe gate
-// and error classification are handled by the dispatcher in Handle; routeTool
-// is exec callback shape required by agentbase.Dispatcher.
-func (h *Handler) routeTool(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	switch req.Tool {
-	case tools.TelegramSendChannelPost:
-		return h.sendChannelPost(ctx, req)
-	case tools.TelegramSendChannelPhoto:
-		return h.sendChannelPhoto(ctx, req)
-	case tools.TelegramSendNotification:
-		return h.sendNotification(ctx, req)
-	case tools.TelegramGetReviews:
-		return h.getReviews(ctx, req)
-	case tools.TelegramReplyToComment:
-		return h.replyToComment(ctx, req)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
+// routes binds the Telegram tool catalog to the Handler's per-tool methods.
+// Called once from NewHandler to seed the agentbase.Router.
+func (h *Handler) routes() map[string]agentbase.ToolExec {
+	return map[string]agentbase.ToolExec{
+		tools.TelegramSendChannelPost:  h.sendChannelPost,
+		tools.TelegramSendChannelPhoto: h.sendChannelPhoto,
+		tools.TelegramSendNotification: h.sendNotification,
+		tools.TelegramGetReviews:       h.getReviews,
+		tools.TelegramReplyToComment:   h.replyToComment,
 	}
 }
 
