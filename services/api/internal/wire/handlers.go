@@ -68,6 +68,10 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if svcs.PasswordReset != nil {
 		authHandler.SetPasswordResetService(svcs.PasswordReset)
 	}
+	// Phase 21-03 (ACCT-02): inject email-verification service via setter.
+	if svcs.EmailVerification != nil {
+		authHandler.SetEmailVerificationService(svcs.EmailVerification)
+	}
 	businessHandler, err := handler.NewBusinessHandler(svcs.Business, svcs.PlatformSync, svcs.ObjectStorage)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create business handler: %w", err)

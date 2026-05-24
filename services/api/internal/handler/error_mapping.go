@@ -20,6 +20,30 @@ type passwordResetErrorBody struct {
 	Message string `json:"message"`
 }
 
+// EmailVerificationErrorStatus maps Phase 21-03 verification public codes
+// to canonical HTTP status codes. Mirrors the frontend
+// services/frontend/lib/error_mapping.ts COPY map (21-CROSS-PLAN-CONTRACTS
+// §4) so the backend and frontend agree on the wire shape.
+//
+// Exposed as a func (not a map literal) so the constants reference
+// http.Status* directly — easier to grep + harder to type-mismatch.
+func EmailVerificationErrorStatus(code string) int {
+	switch code {
+	case "email_verification_required":
+		return http.StatusPreconditionFailed // 412
+	case "verify_token_invalid", "verify_token_expired":
+		return http.StatusBadRequest // 400
+	case "verify_resend_throttled":
+		return http.StatusTooManyRequests // 429
+	case "email_already_verified":
+		return http.StatusForbidden // 403
+	case "email_taken":
+		return http.StatusConflict // 409
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
 // writePasswordResetError maps the three Phase 21b sentinels to public
 // {code, message} responses. PITFALLS §1.1: expired / unknown / consumed
 // all collapse to reset_token_invalid by the time we reach here — the

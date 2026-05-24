@@ -949,6 +949,75 @@ func TestMe(t *testing.T) {
 	}
 }
 
+// TestMe_Phase21_EmailVerifiedFalse_ReturnsBannerDeadline asserts the
+// Phase 21-03 MeResponse wrapper. Unverified user gets emailVerified:false
+// + emailVerificationDeadline = created_at + 7 days exactly.
+func TestMe_Phase21_EmailVerifiedFalse_ReturnsBannerDeadline(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	createdAt := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+
+	mockService := new(MockUserService)
+	mockService.On("GetByID", mock.Anything, testUserID).
+		Return(&domain.User{
+			ID:            testUserID,
+			Email:         "unverified@example.com",
+			EmailVerified: false,
+			CreatedAt:     createdAt,
+			UpdatedAt:     createdAt,
+		}, nil)
+
+	handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", http.NoBody)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, testUserID)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.Me(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp struct {
+		Email                     string     `json:"email"`
+		EmailVerified             bool       `json:"emailVerified"`
+		EmailVerificationDeadline *time.Time `json:"emailVerificationDeadline"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Equal(t, "unverified@example.com", resp.Email)
+	require.False(t, resp.EmailVerified)
+	require.NotNil(t, resp.EmailVerificationDeadline)
+	wantDeadline := time.Date(2026, 5, 8, 10, 0, 0, 0, time.UTC)
+	require.Equal(t, wantDeadline, resp.EmailVerificationDeadline.UTC())
+}
+
+// TestMe_Phase21_EmailVerifiedTrue_OmitsDeadline asserts verified users
+// get emailVerified:true and the deadline field is omitted (omitempty).
+func TestMe_Phase21_EmailVerifiedTrue_OmitsDeadline(t *testing.T) {
+	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
+	verifiedAt := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+
+	mockService := new(MockUserService)
+	mockService.On("GetByID", mock.Anything, testUserID).
+		Return(&domain.User{
+			ID:              testUserID,
+			Email:           "verified@example.com",
+			EmailVerified:   true,
+			EmailVerifiedAt: &verifiedAt,
+			CreatedAt:       time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC),
+		}, nil)
+
+	handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", http.NoBody)
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, testUserID)
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.Me(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	require.Contains(t, body, `"emailVerified":true`)
+	// omitempty → field is absent for verified users (banner does not render).
+	require.NotContains(t, body, "emailVerificationDeadline")
+}
+
 // TestMe_ReturnsPreferredLocale verifies that the /me response shape exposes
 // preferred_locale via the json:"preferred_locale" tag on domain.User added in
 // i18n Phase A3. The FE reads this on login to seed the locale cookie when
