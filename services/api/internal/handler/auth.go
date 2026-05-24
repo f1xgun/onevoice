@@ -58,6 +58,13 @@ type AuthHandler struct {
 	// Phase 21-03 (ACCT-02) email-verification service. Same setter
 	// pattern as passwordResetService.
 	emailVerificationService EmailVerificationServiceAPI
+
+	// Phase 21-04 (ACCT-03 / D-31): meUserExtraGetter is an injectable
+	// function that fetches the user including soft-deleted state for
+	// the /auth/me handler. Non-nil in production wiring (set to
+	// UserResetExtAdapter.GetByIDIncludingDeleted), nil in legacy/test
+	// code paths where /auth/me falls back to userService.GetByID.
+	meUserExtraGetter func(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 }
 
 // PasswordResetServiceAPI is the slice of *service.PasswordResetService
@@ -91,6 +98,14 @@ func (h *AuthHandler) SetPasswordResetService(s PasswordResetServiceAPI) {
 // (Phase 21-03). Same setter pattern as SetPasswordResetService.
 func (h *AuthHandler) SetEmailVerificationService(s EmailVerificationServiceAPI) {
 	h.emailVerificationService = s
+}
+
+// SetMeUserExtraGetter injects the deletion-aware GetByIDIncludingDeleted
+// pathway for /auth/me (Phase 21-04). Wired with
+// repos.UserResetExt.GetByIDIncludingDeleted so soft-deleted users see
+// their accountDeletion state.
+func (h *AuthHandler) SetMeUserExtraGetter(fn func(ctx context.Context, userID uuid.UUID) (*domain.User, error)) {
+	h.meUserExtraGetter = fn
 }
 
 // NewAuthHandler creates a new auth handler instance.
@@ -388,10 +403,24 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 // surfaces here (other list endpoints keep their existing shape).
 // EmailVerificationDeadline is created_at + 7 days, nil/omitted when the
 // user is already verified.
+//
+// Phase 21-04 (ACCT-03 / D-31): AccountDeletion is non-nil only when the
+// user is inside the 30-day grace window — UI Surface 10 renders the
+// red banner + restore CTA off this struct.
 type MeResponse struct {
 	*domain.User
-	EmailVerified             bool       `json:"emailVerified"`
-	EmailVerificationDeadline *time.Time `json:"emailVerificationDeadline,omitempty"`
+	EmailVerified             bool                 `json:"emailVerified"`
+	EmailVerificationDeadline *time.Time           `json:"emailVerificationDeadline,omitempty"`
+	AccountDeletion           *AccountDeletionInfo `json:"accountDeletion,omitempty"`
+}
+
+// AccountDeletionInfo is the Phase 21-04 sub-struct on MeResponse.
+// All three timestamps are emitted in UTC RFC3339 (matches the rest of
+// the JSON shape).
+type AccountDeletionInfo struct {
+	RequestedAt         time.Time `json:"requestedAt"`
+	ScheduledDeletionAt time.Time `json:"scheduledDeletionAt"`
+	CanRestoreUntil     time.Time `json:"canRestoreUntil"`
 }
 
 // emailVerifyGraceDuration mirrors the soft-restrict middleware constant
@@ -399,7 +428,19 @@ type MeResponse struct {
 // (handler → middleware → service); both must agree on the 7-day value.
 const emailVerifyGraceDuration = 7 * 24 * time.Hour
 
+// deletionGraceDurationForMe mirrors AccountDeletionService.graceDays
+// constant. Duplicated as a const because the handler doesn't take the
+// service in /auth/me — wiring it just to read 30 days is overkill.
+// If the grace period ever changes, both constants must be updated
+// together.
+const deletionGraceDurationForMe = 30 * 24 * time.Hour
+
 // Me returns the authenticated user's profile.
+//
+// Phase 21-04: /auth/me uses GetByIDIncludingDeleted (via a setter-injected
+// dependency when wired; falls back to GetByID-only when not wired)
+// because users inside the 30-day grace window must still see their
+// /auth/me state to exercise restore (D-30 + Surface 10).
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	// Extract user ID from context (set by auth middleware)
 	userID, err := middleware.GetUserID(r.Context())
@@ -408,8 +449,17 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user from service
-	user, err := h.userService.GetByID(r.Context(), userID)
+	// Get user from service. We use the deletion-aware getter via the
+	// MeUserExtraGetter hook (wired in wire/handlers.go) so soft-deleted
+	// users still see /auth/me + the accountDeletion field renders the
+	// banner. Falls back to the default GetByID for backward compat in
+	// tests / pre-Phase-21 deploys.
+	var user *domain.User
+	if h.meUserExtraGetter != nil {
+		user, err = h.meUserExtraGetter(r.Context(), userID)
+	} else {
+		user, err = h.userService.GetByID(r.Context(), userID)
+	}
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
 			writeJSONError(w, http.StatusNotFound, "user not found")
@@ -430,6 +480,16 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	if !user.EmailVerified {
 		d := user.CreatedAt.Add(emailVerifyGraceDuration)
 		resp.EmailVerificationDeadline = &d
+	}
+
+	// Phase 21-04 (ACCT-03 / D-31): surface accountDeletion when pending.
+	if user.DeletionRequestedAt != nil && user.DeletionCanceledAt == nil {
+		graceEnd := user.DeletionRequestedAt.Add(deletionGraceDurationForMe)
+		resp.AccountDeletion = &AccountDeletionInfo{
+			RequestedAt:         *user.DeletionRequestedAt,
+			ScheduledDeletionAt: graceEnd,
+			CanRestoreUntil:     graceEnd,
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

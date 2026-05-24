@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/wire"
 )
 
@@ -84,6 +85,15 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	emailSender := wire.BuildEmailSender(log, cfg)
 	wire.StartOutboxWorker(ctx, log, repos.EmailOutbox, emailSender, cfg.OutboxPollInterval, cfg.OutboxMaxAttempts)
 
+	// Phase 21-04 (ACCT-03 / D-31): hourly hard-delete sweeper +
+	// 6h T-7 warning sweeper. Lifecycle bound to ctx so SIGTERM
+	// cleanly cancels both goroutines. Skipped when AccountDeletion
+	// service is nil (legacy/test deploys).
+	if svcs.AccountDeletion != nil {
+		go runHardDeleteSweeper(ctx, log, svcs.AccountDeletion)
+		go runDeletionWarningSweeper(ctx, log, svcs.AccountDeletion)
+	}
+
 	handlers, err := wire.Handlers(cfg, svcs, repos, handles)
 	if err != nil {
 		return err
@@ -111,7 +121,10 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	// router.Setup.
 	// Phase 21-03 (ACCT-02): repos.User is the UserLookup for the
 	// RequireVerifiedEmailDay0/Day7 soft-restrict middleware (D-26..D-29).
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User)
+	// Phase 21-04 (ACCT-03 / D-34): handles.PG is the pool the
+	// BlockWritesDuringGrace middleware reads users.deletion_requested_at
+	// from on every write request.
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User, handles.PG)
 
 	addr := ":" + cfg.Port
 	srv := &http.Server{
@@ -169,4 +182,71 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 
 	log.Info("server stopped")
 	return nil
+}
+
+// runHardDeleteSweeper — Phase 21-04 (ACCT-03 / D-31). Hourly cron entry
+// that hard-deletes users whose deletion_requested_at < NOW() - 30d.
+// The 30-day grace is forgiving of an hour of cadence imprecision.
+//
+// Each batch is processed in its own service-level TX via FOR UPDATE
+// SKIP LOCKED so concurrent CancelDeletion calls can race-win the row.
+// Per-user errors are logged but do NOT abort the sweeper — the rest
+// of the batch still attempts (T-DEL-12).
+//
+// Lifecycle bound to ctx (signal.NotifyContext-derived) so SIGTERM
+// cancels the ticker cleanly.
+func runHardDeleteSweeper(ctx context.Context, log *slog.Logger, svc *service.AccountDeletionService) {
+	const tickInterval = 1 * time.Hour
+	ticker := time.NewTicker(tickInterval)
+	defer ticker.Stop()
+	log.InfoContext(ctx, "hard delete sweeper: starting", "interval", tickInterval.String())
+	for {
+		select {
+		case <-ctx.Done():
+			log.InfoContext(ctx, "hard delete sweeper: stopping")
+			return
+		case <-ticker.C:
+			processed, err := svc.HardDeleteSweeper(ctx)
+			if err != nil {
+				log.WarnContext(ctx, "hard delete sweeper failed", "err", err)
+				continue
+			}
+			if processed > 0 {
+				log.InfoContext(ctx, "hard delete sweeper completed", "processed", processed)
+			}
+		}
+	}
+}
+
+// runDeletionWarningSweeper — Phase 21-04 (ACCT-03 / D-35). Every 6h
+// it scans the T-7 window (22d23h..23d ago) and enqueues a warning
+// email per user, deduped via ExistsBySubjectAndRecipient. The 1h-wide
+// sweep window with 6h cadence guarantees coverage — no T-7 email
+// missed even with a 5h sweeper outage (T-DEL-08).
+//
+// This sweeper is the safety net for the request-time deferred enqueue
+// (RequestDeletion calls EnqueueDeferred at +23d). If that deferred
+// row is missing (e.g. lost across a cancel→re-request churn), this
+// sweeper recovers within 6 hours.
+func runDeletionWarningSweeper(ctx context.Context, log *slog.Logger, svc *service.AccountDeletionService) {
+	const tickInterval = 6 * time.Hour
+	ticker := time.NewTicker(tickInterval)
+	defer ticker.Stop()
+	log.InfoContext(ctx, "deletion warning sweeper: starting", "interval", tickInterval.String())
+	for {
+		select {
+		case <-ctx.Done():
+			log.InfoContext(ctx, "deletion warning sweeper: stopping")
+			return
+		case <-ticker.C:
+			enqueued, err := svc.WarningSweeper(ctx)
+			if err != nil {
+				log.WarnContext(ctx, "deletion warning sweeper failed", "err", err)
+				continue
+			}
+			if enqueued > 0 {
+				log.InfoContext(ctx, "deletion warning sweeper enqueued T-7 mails", "count", enqueued)
+			}
+		}
+	}
 }

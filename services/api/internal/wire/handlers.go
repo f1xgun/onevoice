@@ -1,16 +1,42 @@
 package wire
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
+
+// init wires the SoleOwnerExtractor hook so handler.UserDeletionHandler
+// can return the 409 body with the businesses payload without importing
+// the service package directly (which would force the service package
+// to re-import a handler-side definition). The hook runs errors.As
+// against *service.ErrSoleOwnerBusinesses and remaps to the public
+// handler.SoleOwnerEntry shape.
+func init() {
+	handler.SoleOwnerExtractor = func(err error) ([]handler.SoleOwnerEntry, bool) {
+		var soleErr *service.ErrSoleOwnerBusinesses
+		if !errors.As(err, &soleErr) {
+			return nil, false
+		}
+		out := make([]handler.SoleOwnerEntry, len(soleErr.Businesses))
+		for i, b := range soleErr.Businesses {
+			out[i] = handler.SoleOwnerEntry{ID: b.ID, Name: b.Name}
+		}
+		return out, true
+	}
+}
 
 // NewChatProxyHandler consumes the shared *orchestratorclient.Client built
 // once in BuildServices (svcs.OrchClient) — there is no separate
@@ -71,6 +97,15 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	// Phase 21-03 (ACCT-02): inject email-verification service via setter.
 	if svcs.EmailVerification != nil {
 		authHandler.SetEmailVerificationService(svcs.EmailVerification)
+	}
+	// Phase 21-04 (ACCT-03): /auth/me must surface accountDeletion state
+	// for soft-deleted users so they can render the grace banner +
+	// click restore. Wire the deletion-aware GetByIDIncludingDeleted
+	// pathway through the existing UserResetExt adapter.
+	if repos.UserResetExt != nil {
+		authHandler.SetMeUserExtraGetter(func(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
+			return repos.UserResetExt.GetByIDIncludingDeleted(ctx, userID)
+		})
 	}
 	businessHandler, err := handler.NewBusinessHandler(svcs.Business, svcs.PlatformSync, svcs.ObjectStorage)
 	if err != nil {
@@ -218,6 +253,16 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	}
 	auditLogHandler := handler.NewAuditLogHandler(auditLister)
 
+	// Phase 21-04 (ACCT-03): DELETE /users/me + POST /users/me/restore.
+	// The handler needs the AccountDeletionService + the CORS-allowed
+	// origins for the Restore endpoint's Origin-header CSRF check
+	// (T-DEL-10). When svcs.AccountDeletion is nil (legacy/test deploys),
+	// we register a nil pointer so route registration knows to skip.
+	var userDeletionHandler *handler.UserDeletionHandler
+	if svcs.AccountDeletion != nil {
+		userDeletionHandler = handler.NewUserDeletionHandler(svcs.AccountDeletion, cfg.CORSAllowedOrigins)
+	}
+
 	return &router.Handlers{
 		Auth:          authHandler,
 		Business:      businessHandler,
@@ -245,6 +290,8 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		// Phase 19 Wave 5 (19-05): audit-log read handler. Bound to
 		// GET /businesses/{id}/audit-logs via router.Setup.
 		AuditLog: auditLogHandler,
+		// Phase 21-04 (ACCT-03): DELETE /users/me + POST /users/me/restore.
+		UserDeletion: userDeletionHandler,
 		// Telemetry handler is zero-dep; constructed inline.
 		Telemetry: &handler.TelemetryHandler{},
 	}, nil
