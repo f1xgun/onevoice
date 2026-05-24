@@ -353,6 +353,28 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		cfg.PublicURL,
 	)
 
+	// Phase 21-03 (ACCT-02 / D-17, D-40): wire the Register tx-flow
+	// collaborators so user_consents + email_verification_tokens +
+	// email_outbox commit atomically with the user row. The setter
+	// pattern keeps NewUserService's signature stable across phases.
+	if registerSetter, ok := s.User.(interface {
+		SetRegisterCollaborators(
+			pool service.RegisterTxPool,
+			userRepo service.RegisterUserExt,
+			consents service.ConsentInserter,
+			verify service.RegisterVerifyIssuer,
+			auditLogger audit.Logger,
+		)
+	}); ok {
+		registerSetter.SetRegisterCollaborators(
+			h.PG,
+			repos.UserResetExt,
+			repos.UserConsents,
+			s.EmailVerification,
+			s.AuditLogger,
+		)
+	}
+
 	return s, nil
 }
 

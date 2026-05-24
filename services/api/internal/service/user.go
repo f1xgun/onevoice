@@ -9,9 +9,11 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
 )
@@ -55,6 +57,62 @@ type userService struct {
 	repo      domain.UserRepository
 	redis     *redis.Client
 	jwtSecret []byte
+
+	// Phase 21-03 (ACCT-02) Register collaborators. Optional — when ANY of
+	// these is nil, Register falls back to the legacy non-tx path that
+	// only inserts the user row (preserves backward compat for
+	// pre-Phase-21 deployments + unit tests that don't bring up Postgres).
+	// When ALL are set, Register opens a tx, CreateInTx + user_consents
+	// INSERT + email_verification_tokens INSERT + email_outbox enqueue
+	// commit atomically.
+	registerPool     RegisterTxPool             // *pgxpool.Pool by structural typing
+	registerUserRepo RegisterUserExt            // *repository.UserResetExtAdapter
+	registerConsents ConsentInserter            // *repository.UserConsentsRepository
+	registerVerify   RegisterVerifyIssuer       // *service.EmailVerificationService
+	registerAudit    audit.Logger               // for ConsentRecorded audit row
+}
+
+// RegisterTxPool is the slice of *pgxpool.Pool that Register needs.
+// Interface-typed so unit tests can pass an in-memory fake.
+type RegisterTxPool interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+// RegisterUserExt is the tx-aware user insert seam.
+type RegisterUserExt interface {
+	CreateInTx(ctx context.Context, tx pgx.Tx, user *domain.User) error
+}
+
+// ConsentInserter records the initial 'service_operation' consent row
+// inside the same tx (D-40).
+type ConsentInserter interface {
+	Insert(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purpose, policyVersion string) error
+}
+
+// RegisterVerifyIssuer is the EmailVerificationService.IssueAndEnqueueTx
+// seam (D-17 — token + outbox enqueue commit atomically with the user
+// row).
+type RegisterVerifyIssuer interface {
+	IssueAndEnqueueTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, email string) error
+}
+
+// SetRegisterCollaborators wires the Phase 21-03 Register tx-flow deps.
+// All FOUR collaborators must be non-nil for the new path to activate;
+// passing nil for any disables the new path (Register falls back to the
+// legacy single-INSERT flow for backward compat). The audit logger is
+// optional even when the others are set.
+func (s *userService) SetRegisterCollaborators(
+	pool RegisterTxPool,
+	userRepo RegisterUserExt,
+	consents ConsentInserter,
+	verify RegisterVerifyIssuer,
+	auditLogger audit.Logger,
+) {
+	s.registerPool = pool
+	s.registerUserRepo = userRepo
+	s.registerConsents = consents
+	s.registerVerify = verify
+	s.registerAudit = auditLogger
 }
 
 // Compile-time check that userService implements UserService
@@ -72,7 +130,22 @@ func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSe
 	}, nil
 }
 
-// Register creates a new user with encrypted password
+// Register creates a new user with encrypted password.
+//
+// Phase 21-03 (ACCT-02 / D-17, D-20, D-40): when the SetRegisterCollaborators
+// hook is wired, Register opens a tx and inserts the user row + the
+// initial user_consents row + a fresh email_verification_tokens row +
+// the verification email_outbox row — all atomically. If any auxiliary
+// write fails, the user row rolls back too: no half-registered user
+// with no verification email.
+//
+// Auto-login is preserved (D-20) — the handler still calls Login after
+// Register returns and sets the refresh cookie. Email verification is
+// banner-driven (D-26..D-28); the user has 7 days before soft-restrict
+// kicks in.
+//
+// When collaborators are nil, falls back to the legacy single-INSERT
+// path (backward compat for tests / pre-Phase-21 deployments).
 func (s *userService) Register(ctx context.Context, email, password string) (*domain.User, error) {
 	// Validate email
 	if err := validateEmail(email); err != nil {
@@ -90,7 +163,6 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
-	// Create user
 	user := &domain.User{
 		ID:           uuid.New(),
 		Email:        email,
@@ -99,6 +171,43 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 		UpdatedAt:    time.Now(),
 	}
 
+	// Phase 21-03 atomic path: all writes in one tx.
+	if s.registerPool != nil && s.registerUserRepo != nil && s.registerConsents != nil && s.registerVerify != nil {
+		tx, err := s.registerPool.Begin(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("register begin tx: %w", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		if err := s.registerUserRepo.CreateInTx(ctx, tx, user); err != nil {
+			if errors.Is(err, domain.ErrUserExists) {
+				return nil, err
+			}
+			return nil, fmt.Errorf("register create user tx: %w", err)
+		}
+		// D-40: record the initial consent row.
+		if err := s.registerConsents.Insert(ctx, tx, user.ID, "service_operation", "pre-v22"); err != nil {
+			return nil, fmt.Errorf("register insert consent: %w", err)
+		}
+		// D-17: issue verify token + enqueue email in the same tx.
+		if err := s.registerVerify.IssueAndEnqueueTx(ctx, tx, user.ID, user.Email); err != nil {
+			return nil, fmt.Errorf("register issue verify: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("register commit: %w", err)
+		}
+
+		// AFTER commit: emit consent_recorded audit row (fire-and-forget).
+		// Audit emission is intentionally OUTSIDE the tx — the pkg/audit
+		// goroutine has its own retry + bounded context, and an audit
+		// failure must never roll back a successful Register.
+		if s.registerAudit != nil {
+			audit.LogConsentRecorded(ctx, s.registerAudit, user.ID, "service_operation", "pre-v22")
+		}
+		return sanitizeUser(user), nil
+	}
+
+	// Legacy path — no collaborators wired (tests / pre-Phase-21 deploys).
 	err = s.repo.Create(ctx, user)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserExists) {
