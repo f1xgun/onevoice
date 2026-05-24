@@ -91,9 +91,22 @@ func (s *stubConversationRepo) ScopedConversationIDs(_ context.Context, _, _ str
 	return nil, nil
 }
 
-// stubMessageRepo captures the system note appended by MoveToProject.
+// stubMessageRepo captures the system note appended by MoveToProject and
+// serves a preloaded message list for OpenChat tests via the Messages
+// field.
 type stubMessageRepo struct {
-	mu        sync.Mutex
+	mu sync.Mutex
+
+	// Messages is what ListByConversationID returns. nil → the service
+	// normalizes to []domain.Message{} on its end. Non-nil values flow
+	// through verbatim so OpenChat tests can assert pass-through ordering.
+	Messages []domain.Message
+	// ListErr forces ListByConversationID to fail — exercised by OpenChat
+	// tests covering the hard-error path.
+	ListErr error
+
+	// Created captures every Create call (system notes appended by
+	// MoveToProject). Population is preserved for ordering assertions.
 	Created   []*domain.Message
 	CreateErr error
 }
@@ -109,7 +122,12 @@ func (s *stubMessageRepo) Create(_ context.Context, m *domain.Message) error {
 	return nil
 }
 func (s *stubMessageRepo) ListByConversationID(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
-	return nil, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ListErr != nil {
+		return nil, s.ListErr
+	}
+	return s.Messages, nil
 }
 func (s *stubMessageRepo) CountByConversationID(_ context.Context, _ string) (int64, error) {
 	return 0, nil
@@ -154,11 +172,59 @@ func (s *stubProjectRepoForConv) HardDeleteCascade(_ context.Context, _ uuid.UUI
 	return 0, 0, nil
 }
 
-// newConvSvc assembles a ConversationService over the three stubs. Tests
+// stubPendingToolCallRepo serves a preloaded batch list for OpenChat
+// tests. Only ListPendingByConversation is interesting; the rest are
+// no-ops that satisfy the interface so we get compile-time drift
+// detection.
+type stubPendingToolCallRepo struct {
+	mu sync.Mutex
+
+	// Batches is what ListPendingByConversation returns. nil is a valid
+	// "no active batches" answer (OpenChat normalizes to an empty slice).
+	Batches []*domain.PendingToolCallBatch
+	// ListErr forces the soft-error path in OpenChat — the call still
+	// succeeds with PendingApprovals=[].
+	ListErr error
+}
+
+func (s *stubPendingToolCallRepo) ListPendingByConversation(_ context.Context, _ string) ([]*domain.PendingToolCallBatch, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ListErr != nil {
+		return nil, s.ListErr
+	}
+	return s.Batches, nil
+}
+func (s *stubPendingToolCallRepo) Persist(_ context.Context, _ *domain.PendingToolCallBatch) error {
+	return nil
+}
+func (s *stubPendingToolCallRepo) GetByBatchID(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+	return nil, nil
+}
+func (s *stubPendingToolCallRepo) AtomicTransitionToResolving(_ context.Context, _ string) (*domain.PendingToolCallBatch, error) {
+	return nil, nil
+}
+func (s *stubPendingToolCallRepo) RecordDecisions(_ context.Context, _ string, _ []domain.PendingCall) error {
+	return nil
+}
+func (s *stubPendingToolCallRepo) MarkDispatched(_ context.Context, _, _ string) error { return nil }
+func (s *stubPendingToolCallRepo) MarkResolved(_ context.Context, _ string) error      { return nil }
+func (s *stubPendingToolCallRepo) MarkExpired(_ context.Context, _ string) error       { return nil }
+func (s *stubPendingToolCallRepo) ReconcileOrphanPreparing(_ context.Context, _ time.Duration) (int64, error) {
+	return 0, nil
+}
+
+// newConvSvc assembles a ConversationService over the four stubs. Tests
 // preconfigure stub state before the call and inspect post-state after.
-func newConvSvc(t *testing.T, conv *stubConversationRepo, msg *stubMessageRepo, proj *stubProjectRepoForConv) *service.ConversationService {
+// MoveToProject tests can pass a zero-value stubPendingToolCallRepo since
+// that path doesn't read pending batches; passing nil would crash the
+// constructor.
+func newConvSvc(t *testing.T, conv *stubConversationRepo, msg *stubMessageRepo, proj *stubProjectRepoForConv, pending *stubPendingToolCallRepo) *service.ConversationService {
 	t.Helper()
-	svc, err := service.NewConversationService(conv, msg, proj)
+	if pending == nil {
+		pending = &stubPendingToolCallRepo{}
+	}
+	svc, err := service.NewConversationService(conv, msg, proj, pending)
 	require.NoError(t, err)
 	return svc
 }
@@ -167,20 +233,23 @@ func TestNewConversationService_NilDep_ReturnsError(t *testing.T) {
 	conv := &stubConversationRepo{}
 	msg := &stubMessageRepo{}
 	proj := &stubProjectRepoForConv{}
+	pending := &stubPendingToolCallRepo{}
 
 	cases := []struct {
-		name string
-		conv domain.ConversationRepository
-		msg  domain.MessageRepository
-		proj domain.ProjectRepository
+		name    string
+		conv    domain.ConversationRepository
+		msg     domain.MessageRepository
+		proj    domain.ProjectRepository
+		pending domain.PendingToolCallRepository
 	}{
-		{"nil conv", nil, msg, proj},
-		{"nil msg", conv, nil, proj},
-		{"nil proj", conv, msg, nil},
+		{"nil conv", nil, msg, proj, pending},
+		{"nil msg", conv, nil, proj, pending},
+		{"nil proj", conv, msg, nil, pending},
+		{"nil pending", conv, msg, proj, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s, err := service.NewConversationService(tc.conv, tc.msg, tc.proj)
+			s, err := service.NewConversationService(tc.conv, tc.msg, tc.proj, tc.pending)
 			assert.Error(t, err, "%s: nil dep must reject at construction time", tc.name)
 			assert.Nil(t, s)
 		})
@@ -214,7 +283,7 @@ func TestMoveToProject_HappyPath_WithProject(t *testing.T) {
 			BusinessID: businessID,
 		},
 	}
-	svc := newConvSvc(t, conv, msg, proj)
+	svc := newConvSvc(t, conv, msg, proj, nil)
 
 	projIDStr := projID.String()
 	updated, err := svc.MoveToProject(context.Background(), convID, businessID, requesterUser, &projIDStr)
@@ -254,7 +323,7 @@ func TestMoveToProject_HappyPath_NoProject(t *testing.T) {
 	}
 	msg := &stubMessageRepo{}
 	proj := &stubProjectRepoForConv{}
-	svc := newConvSvc(t, conv, msg, proj)
+	svc := newConvSvc(t, conv, msg, proj, nil)
 
 	updated, err := svc.MoveToProject(context.Background(), convID, businessID, requesterUser, nil)
 	require.NoError(t, err)
@@ -275,7 +344,7 @@ func TestMoveToProject_HappyPath_NoProject(t *testing.T) {
 
 func TestMoveToProject_ConversationNotFound(t *testing.T) {
 	conv := &stubConversationRepo{Conv: nil}
-	svc := newConvSvc(t, conv, &stubMessageRepo{}, &stubProjectRepoForConv{})
+	svc := newConvSvc(t, conv, &stubMessageRepo{}, &stubProjectRepoForConv{}, nil)
 
 	_, err := svc.MoveToProject(context.Background(), "missing", uuid.New(), uuid.New(), nil)
 	assert.True(t, errors.Is(err, domain.ErrConversationNotFound),
@@ -293,7 +362,7 @@ func TestMoveToProject_Forbidden_OtherUserConversation(t *testing.T) {
 		Conv: &domain.Conversation{ID: "c1", UserID: owner.String()},
 	}
 	msg := &stubMessageRepo{}
-	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{})
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
 
 	_, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), other, nil)
 	assert.True(t, errors.Is(err, domain.ErrForbidden), "want ErrForbidden, got %v", err)
@@ -309,7 +378,7 @@ func TestMoveToProject_ProjectNotFound_NonExistent(t *testing.T) {
 		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
 	}
 	proj := &stubProjectRepoForConv{Project: nil} // GetByID returns ErrProjectNotFound
-	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj)
+	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj, nil)
 
 	projIDStr := uuid.NewString()
 	_, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), requesterUser, &projIDStr)
@@ -335,7 +404,7 @@ func TestMoveToProject_ProjectNotFound_CrossTenant(t *testing.T) {
 			BusinessID: otherBiz, // cross-tenant
 		},
 	}
-	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj)
+	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj, nil)
 
 	projIDStr := proj.Project.ID.String()
 	_, err := svc.MoveToProject(context.Background(), "c1", requesterBiz, requesterUser, &projIDStr)
@@ -349,7 +418,7 @@ func TestMoveToProject_InvalidProjectID(t *testing.T) {
 	conv := &stubConversationRepo{
 		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
 	}
-	svc := newConvSvc(t, conv, &stubMessageRepo{}, &stubProjectRepoForConv{})
+	svc := newConvSvc(t, conv, &stubMessageRepo{}, &stubProjectRepoForConv{}, nil)
 
 	bad := "not-a-uuid"
 	_, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), requesterUser, &bad)
@@ -370,7 +439,7 @@ func TestMoveToProject_NoteFailure_DoesNotFailMove(t *testing.T) {
 		Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String()},
 	}
 	msg := &stubMessageRepo{CreateErr: errors.New("mongo timeout")}
-	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{})
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
 
 	updated, err := svc.MoveToProject(context.Background(), convID, uuid.New(), requesterUser, nil)
 	require.NoError(t, err, "note-write failure must NOT fail the move")
@@ -391,7 +460,7 @@ func TestMoveToProject_UpdateAssignmentError_StopsBeforeNote(t *testing.T) {
 		UpdateProjectAssignErr: errors.New("mongo write failure"),
 	}
 	msg := &stubMessageRepo{}
-	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{})
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
 
 	_, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), requesterUser, nil)
 	require.Error(t, err, "UpdateProjectAssignment failure must surface")
@@ -407,7 +476,7 @@ func TestMoveToProject_EmptyStringProjectID_TreatedAsNoProject(t *testing.T) {
 		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
 	}
 	proj := &stubProjectRepoForConv{} // GetErr stays nil; if called by mistake, Project=nil → ErrProjectNotFound
-	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj)
+	svc := newConvSvc(t, conv, &stubMessageRepo{}, proj, nil)
 
 	empty := ""
 	updated, err := svc.MoveToProject(context.Background(), "c1", uuid.New(), requesterUser, &empty)
@@ -417,6 +486,203 @@ func TestMoveToProject_EmptyStringProjectID_TreatedAsNoProject(t *testing.T) {
 	assert.NotNil(t, conv.UpdateCalls[0].ProjectID,
 		"empty-string projectID must reach the repo as a non-nil pointer to empty string")
 	assert.Equal(t, "", *conv.UpdateCalls[0].ProjectID)
+}
+
+// --- OpenChat tests -------------------------------------------------
+
+// TestOpenChat_HappyPath_EmptyPending covers the canonical chat-load
+// path: messages list flows through, no active approval batches → an
+// explicit empty PendingApprovals slice (never nil — the frontend
+// iterates unconditionally).
+func TestOpenChat_HappyPath_EmptyPending(t *testing.T) {
+	requesterUser := uuid.New()
+	convID := "507f1f77bcf86cd799439101"
+
+	conv := &stubConversationRepo{
+		Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String()},
+	}
+	msg := &stubMessageRepo{
+		Messages: []domain.Message{
+			{ID: "m1", ConversationID: convID, Role: "user", Content: "hi"},
+			{ID: "m2", ConversationID: convID, Role: "assistant", Content: "hello"},
+		},
+	}
+	pending := &stubPendingToolCallRepo{} // Batches=nil → empty result
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, pending)
+
+	view, err := svc.OpenChat(context.Background(), convID, requesterUser)
+	require.NoError(t, err)
+	require.NotNil(t, view)
+	require.Len(t, view.Messages, 2)
+	assert.Equal(t, "m1", view.Messages[0].ID)
+	assert.Equal(t, "m2", view.Messages[1].ID)
+	require.NotNil(t, view.PendingApprovals, "PendingApprovals must be a non-nil empty slice, never nil")
+	assert.Empty(t, view.PendingApprovals)
+}
+
+// TestOpenChat_HappyPath_WithPending exercises the projection: a single
+// pending batch with one call surfaces in the view, EditableFields is a
+// non-nil empty slice (stable wire contract), and timestamps round-trip.
+func TestOpenChat_HappyPath_WithPending(t *testing.T) {
+	requesterUser := uuid.New()
+	convID := "507f1f77bcf86cd799439102"
+	created := time.Now().UTC().Truncate(time.Second)
+	expires := created.Add(24 * time.Hour)
+
+	conv := &stubConversationRepo{
+		Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String()},
+	}
+	pending := &stubPendingToolCallRepo{
+		Batches: []*domain.PendingToolCallBatch{
+			{
+				ID:             "batch-abc",
+				ConversationID: convID,
+				MessageID:      "msg-42",
+				Status:         "pending",
+				Calls: []domain.PendingCall{
+					{CallID: "toolu_1", ToolName: "telegram__send_channel_post", Arguments: map[string]interface{}{"text": "hi"}},
+				},
+				CreatedAt: created,
+				ExpiresAt: expires,
+			},
+		},
+	}
+	svc := newConvSvc(t, conv, &stubMessageRepo{}, &stubProjectRepoForConv{}, pending)
+
+	view, err := svc.OpenChat(context.Background(), convID, requesterUser)
+	require.NoError(t, err)
+	require.NotNil(t, view)
+	require.Len(t, view.PendingApprovals, 1)
+
+	pa := view.PendingApprovals[0]
+	assert.Equal(t, "batch-abc", pa.BatchID)
+	assert.Equal(t, "msg-42", pa.MessageID)
+	assert.Equal(t, "pending", pa.Status)
+	assert.Equal(t, created, pa.CreatedAt)
+	assert.Equal(t, expires, pa.ExpiresAt)
+	require.Len(t, pa.Calls, 1)
+	assert.Equal(t, "toolu_1", pa.Calls[0].CallID)
+	assert.Equal(t, "telegram__send_channel_post", pa.Calls[0].ToolName)
+	require.NotNil(t, pa.Calls[0].EditableFields,
+		"EditableFields must be a non-nil empty slice for stable JSON contract")
+	assert.Empty(t, pa.Calls[0].EditableFields,
+		"EditableFields population is deferred to the frontend's live registry")
+}
+
+// TestOpenChat_PendingLookupSoftError covers the load-bearing soft-error
+// policy: if ListPendingByConversation fails, OpenChat still succeeds with
+// PendingApprovals=[]. The messages list IS the load-bearing payload; a
+// failed approval-card hydration must not fail the whole request.
+func TestOpenChat_PendingLookupSoftError(t *testing.T) {
+	requesterUser := uuid.New()
+	convID := "507f1f77bcf86cd799439103"
+
+	conv := &stubConversationRepo{
+		Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String()},
+	}
+	msg := &stubMessageRepo{
+		Messages: []domain.Message{
+			{ID: "m1", ConversationID: convID, Role: "user", Content: "still useful"},
+		},
+	}
+	pending := &stubPendingToolCallRepo{ListErr: errors.New("mongo timeout")}
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, pending)
+
+	view, err := svc.OpenChat(context.Background(), convID, requesterUser)
+	require.NoError(t, err, "pending-lookup failure must NOT fail the request")
+	require.NotNil(t, view)
+	require.Len(t, view.Messages, 1, "messages list still flows through on soft-error")
+	require.NotNil(t, view.PendingApprovals)
+	assert.Empty(t, view.PendingApprovals, "PendingApprovals must degrade to [] on soft-error")
+}
+
+// TestOpenChat_ConversationNotFound covers the missing-conversation path.
+// Returns the canonical sentinel so the handler maps to 404.
+func TestOpenChat_ConversationNotFound(t *testing.T) {
+	conv := &stubConversationRepo{Conv: nil}
+	svc := newConvSvc(t, conv, &stubMessageRepo{}, &stubProjectRepoForConv{}, nil)
+
+	_, err := svc.OpenChat(context.Background(), "missing", uuid.New())
+	assert.True(t, errors.Is(err, domain.ErrConversationNotFound),
+		"want ErrConversationNotFound, got %v", err)
+}
+
+// TestOpenChat_Forbidden_OtherUserConversation enforces ownership:
+// the conversation exists but belongs to a different user → ErrForbidden,
+// and crucially neither ListByConversationID NOR ListPendingByConversation
+// runs (no read amplification past the ownership gate).
+func TestOpenChat_Forbidden_OtherUserConversation(t *testing.T) {
+	owner := uuid.New()
+	other := uuid.New()
+
+	conv := &stubConversationRepo{
+		Conv: &domain.Conversation{ID: "c1", UserID: owner.String()},
+	}
+	// If either repo gets touched on the forbidden path, fail loudly.
+	msg := &stubMessageRepo{ListErr: errors.New("must not be called on forbidden path")}
+	pending := &stubPendingToolCallRepo{ListErr: errors.New("must not be called on forbidden path")}
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, pending)
+
+	_, err := svc.OpenChat(context.Background(), "c1", other)
+	assert.True(t, errors.Is(err, domain.ErrForbidden), "want ErrForbidden, got %v", err)
+}
+
+// TestOpenChat_MessageRepoError_HardFails verifies the messages list is
+// the load-bearing payload: a failure there fails the request (unlike
+// the pending soft-error policy). Distinguishes the two failure modes.
+func TestOpenChat_MessageRepoError_HardFails(t *testing.T) {
+	requesterUser := uuid.New()
+	conv := &stubConversationRepo{
+		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
+	}
+	msg := &stubMessageRepo{ListErr: errors.New("mongo down")}
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
+
+	_, err := svc.OpenChat(context.Background(), "c1", requesterUser)
+	assert.Error(t, err, "messages list is load-bearing — failure must surface")
+}
+
+// TestOpenChat_NilMessages_NormalizedToEmptySlice mirrors the legacy
+// handler's defensive nil → []domain.Message{} normalization so a nil
+// repo return never reaches JSON encoding as `null`.
+func TestOpenChat_NilMessages_NormalizedToEmptySlice(t *testing.T) {
+	requesterUser := uuid.New()
+	conv := &stubConversationRepo{
+		Conv: &domain.Conversation{ID: "c1", UserID: requesterUser.String()},
+	}
+	msg := &stubMessageRepo{Messages: nil} // explicit nil from repo
+	svc := newConvSvc(t, conv, msg, &stubProjectRepoForConv{}, nil)
+
+	view, err := svc.OpenChat(context.Background(), "c1", requesterUser)
+	require.NoError(t, err)
+	require.NotNil(t, view.Messages, "Messages must be a non-nil empty slice on nil repo return")
+	assert.Empty(t, view.Messages)
+}
+
+// TestOpenChat_MultipleBatches_PreservesOrder covers the edge case where
+// resume spawned a second pause: both batches surface, in repo order.
+func TestOpenChat_MultipleBatches_PreservesOrder(t *testing.T) {
+	requesterUser := uuid.New()
+	convID := "c-multi"
+
+	conv := &stubConversationRepo{
+		Conv: &domain.Conversation{ID: convID, UserID: requesterUser.String()},
+	}
+	pending := &stubPendingToolCallRepo{
+		Batches: []*domain.PendingToolCallBatch{
+			{ID: "b1", ConversationID: convID, MessageID: "m1", Status: "pending"},
+			{ID: "b2", ConversationID: convID, MessageID: "m2", Status: "resolving"},
+		},
+	}
+	svc := newConvSvc(t, conv, &stubMessageRepo{}, &stubProjectRepoForConv{}, pending)
+
+	view, err := svc.OpenChat(context.Background(), convID, requesterUser)
+	require.NoError(t, err)
+	require.Len(t, view.PendingApprovals, 2)
+	assert.Equal(t, "b1", view.PendingApprovals[0].BatchID)
+	assert.Equal(t, "pending", view.PendingApprovals[0].Status)
+	assert.Equal(t, "b2", view.PendingApprovals[1].BatchID)
+	assert.Equal(t, "resolving", view.PendingApprovals[1].Status)
 }
 
 // silenceLinter holds a reference to time so it can't accidentally be
