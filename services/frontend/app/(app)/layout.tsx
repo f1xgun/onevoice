@@ -14,6 +14,10 @@ import { NavRail } from '@/components/sidebar/NavRail';
 import { ProjectPane } from '@/components/sidebar/ProjectPane';
 import { BusinessRequiredGuard } from '@/components/BusinessRequiredGuard';
 import { PermissionsCacheGuard } from '@/components/PermissionsCacheGuard';
+// Phase 21-03 (ACCT-02): persistent yellow banner when emailVerified===false.
+// Mounted inside the <main> scroll container so it cohabits with route
+// content (sticky top-0 keeps it visible while the page scrolls).
+import { VerificationBanner } from '@/components/auth/VerificationBanner';
 import type { ReactNode } from 'react';
 
 // Module-level event-name singleton: any input/element listening for this
@@ -170,6 +174,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   tabIndex={-1}
                   className="h-full overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                 >
+                  <VerificationBanner />
                   {children}
                 </main>
               </Panel>
@@ -189,6 +194,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               tabIndex={-1}
               className="min-h-0 flex-1 overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
+              <VerificationBanner />
               {children}
             </main>
           </div>

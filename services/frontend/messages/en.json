@@ -1328,6 +1328,65 @@
         "weakPassword": "Password too short — minimum 8 characters.",
         "requestNewCta": "Request a new link"
       }
+    },
+    "verifyEmail": {
+      "eyebrow": "VERIFICATION",
+      "title": "Verify your email.",
+      "description": "Click the button below to confirm that this email is yours.",
+      "confirmCta": "Verify email",
+      "submitting": "Verifying…",
+      "successTitle": "Email verified.",
+      "successBody": "Thank you! All OneVoice features are now available.",
+      "successToast": "Email verified.",
+      "toDashboard": "Go to dashboard",
+      "asideBody": "The link is valid for 72 hours. If you didn't register with OneVoice, ignore this message.",
+      "errors": {
+        "invalid": "This link is no longer valid. Request a new one from your account.",
+        "verify_token_invalid": "This link is no longer valid. Request a new one from your account.",
+        "expired": "This link has expired. Sign in and click \"Resend email\".",
+        "verify_token_expired": "This link has expired. Sign in and click \"Resend email\".",
+        "throttled": "Too many requests. Try again in a minute.",
+        "required": "Verify your email to continue.",
+        "alreadyVerified": "Email is already verified.",
+        "taken": "This email is already used by another account.",
+        "resendCta": "Resend email"
+      }
+    },
+    "banner": {
+      "body": "Verify your email by {date} to connect integrations and invite teammates.",
+      "bodyNoDate": "Verify your email to unlock full OneVoice access.",
+      "resendCta": "Resend email",
+      "resendCooldown": "Resend in {sec}s",
+      "changeEmailCta": "I used the wrong email",
+      "resendSuccess": "Email sent. Check your spam folder too.",
+      "throttled": "Too many requests. Try again in a minute.",
+      "genericError": "Something went wrong. Try again in a minute.",
+      "changeTitle": "Change email",
+      "changeBody": "Enter the correct email — we'll send a fresh verification link. The old email will be replaced.",
+      "newEmailLabel": "New email",
+      "changeCta": "Save and send email",
+      "cancel": "Cancel",
+      "changeSuccess": "Email updated. Verification link sent to {newEmail}.",
+      "emailTaken": "This email is already used by another account.",
+      "alreadyVerified": "Email is already verified."
+    },
+    "blockedModal": {
+      "day0": {
+        "title": "Verify your email",
+        "body": "To connect integrations and invite teammates, please verify your email. We sent a link to your address.",
+        "resendCta": "Resend email",
+        "cancel": "Later",
+        "resendSuccess": "Email sent. Check your spam folder too.",
+        "throttled": "Too many requests. Try again in a minute."
+      },
+      "day7": {
+        "title": "Verify your email to continue",
+        "body": "Your seven-day verification window has ended. Resend the email and verify — after that you can continue.",
+        "resendCta": "Resend email",
+        "cancel": "Close",
+        "resendSuccess": "Email sent. Check your spam folder too.",
+        "throttled": "Too many requests. Try again in a minute."
+      }
     }
   },
   "errors": {
