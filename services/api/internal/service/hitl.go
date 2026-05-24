@@ -414,20 +414,11 @@ type localeSnapshot struct {
 
 // ToolsRegistryEntry is the per-tool projection returned by GET /api/v1/tools
 // (frontend) and by GET /internal/tools (internal — orchestrator-to-API).
-//
-// DisplayNameKey is the i18n catalog key the frontend uses to render the
-// tool label in the user's locale. Optional — older orchestrator
-// deploys send "" and the FE falls back to DisplayName.
-type ToolsRegistryEntry struct {
-	Name            string           `json:"name"`
-	DisplayName     string           `json:"displayName"`
-	DisplayNameKey  string           `json:"displayNameKey,omitempty"`
-	Platform        string           `json:"platform"`
-	Floor           domain.ToolFloor `json:"floor"`
-	EditableFields  []string         `json:"editableFields"`
-	Description     string           `json:"description"`     // LLM-facing.
-	UserDescription string           `json:"userDescription"` // end-user-facing copy for settings UI.
-}
+// Aliased to domain.ToolEntry so the orchestrator and the API share one
+// canonical type instead of redefining the same JSON shape on both sides of
+// the internal/ visibility wall. Full field documentation lives in
+// pkg/domain/tool_entry.go.
+type ToolsRegistryEntry = domain.ToolEntry
 
 // NewToolsRegistryCache constructs a cache bound to orchestratorURL (e.g.,
 // "http://orchestrator:8090"). Pass httpClient=nil to use http.DefaultClient.
