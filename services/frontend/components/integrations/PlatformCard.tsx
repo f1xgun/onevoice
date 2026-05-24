@@ -59,6 +59,11 @@ interface Props {
   disabled?: boolean;
   canConnect?: boolean;
   canDisconnect?: boolean;
+  // Phase 20 / ONB-04: render a "Preview" badge + tooltip on platforms whose
+  // backend agent does not yet route every tool the LLM might attempt.
+  // Today only google_business sets this (2 of N tools implemented per
+  // services/agent-google-business/internal/agent/handler.go:63-71).
+  isPreview?: boolean;
 }
 
 // Status label keys live under integrations.platformCard.status (RU+EN) —
@@ -101,6 +106,7 @@ export function PlatformCard({
   disabled,
   canConnect = true,
   canDisconnect = true,
+  isPreview = false,
 }: Props) {
   const tCard = useTranslations('integrations.platformCard');
   const qc = useQueryClient();
@@ -158,6 +164,15 @@ export function PlatformCard({
               </Badge>
             ) : (
               <Badge tone="neutral">{tCard('notConnected')}</Badge>
+            )}
+            {isPreview && (
+              <Badge
+                tone="warning"
+                title={tCard('previewTooltip')}
+                aria-label={tCard('previewTooltip')}
+              >
+                {tCard('previewBadge')}
+              </Badge>
             )}
           </div>
           <div className="mt-0.5 text-[13px] text-ink-mid">{description}</div>

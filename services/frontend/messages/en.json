@@ -840,6 +840,8 @@
     "platformCard": {
       "connected": "Connected",
       "notConnected": "Not connected",
+      "previewBadge": "Preview",
+      "previewTooltip": "Only review operations (read and reply) work today. Business info, posts, media, and metrics are coming in upcoming releases.",
       "channels": "Channels",
       "addChannel": "+ Add channel",
       "connect": "Connect",
