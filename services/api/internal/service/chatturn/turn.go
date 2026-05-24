@@ -123,6 +123,14 @@ func (t *Turn) Run(
 		// fall through to fresh-turn path
 	}
 
+	// Fresh-path body validation. The handler decodes the request body into
+	// TurnRequest unconditionally; we only enforce the "message required"
+	// invariant here so resume / re-emit / inline-error branches above can
+	// run on a request with an empty body (legacy behavior preserved).
+	if req.Message == "" {
+		return OutcomeMissingMessage, nil
+	}
+
 	// Step 2 — enrich + persist user message.
 	enriched, err := t.enrich(ctx, req)
 	if err != nil {
