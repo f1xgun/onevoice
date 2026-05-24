@@ -10,6 +10,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -53,9 +54,30 @@ func (a *UserResetExtAdapter) GetByEmail(ctx context.Context, email string) (*do
 	return a.inner.GetByEmail(ctx, email)
 }
 
+// GetByID delegates to the inner concrete repo. Phase 21-03: needed by
+// EmailVerificationService.RequestResend + ChangeEmailBeforeVerify which
+// must load the user state (email_verified + email) before mutating.
+func (a *UserResetExtAdapter) GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
+	return a.inner.GetByID(ctx, userID)
+}
+
 // UpdatePasswordHashInTx delegates to the inner concrete repo.
 func (a *UserResetExtAdapter) UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, bcryptHash []byte) error {
 	return a.inner.UpdatePasswordHashInTx(ctx, tx, userID, bcryptHash)
+}
+
+// UpdateEmailInTx delegates to the inner concrete repo. Phase 21-03 D-21:
+// PATCH /auth/email-before-verify mutates users.email inside the same tx
+// as token invalidation + fresh-token issuance.
+func (a *UserResetExtAdapter) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, newEmail string) error {
+	return a.inner.UpdateEmailInTx(ctx, tx, userID, newEmail)
+}
+
+// MarkEmailVerifiedInTx delegates to the inner concrete repo. Phase 21-03
+// D-22: POST /auth/verify-email/confirm flips email_verified + sets
+// email_verified_at inside the same tx as token consume.
+func (a *UserResetExtAdapter) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	return a.inner.MarkEmailVerifiedInTx(ctx, tx, userID)
 }
 
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
@@ -88,7 +110,10 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "password_hash", "preferred_locale", "created_at", "updated_at").
+		Select("id", "email", "password_hash", "preferred_locale",
+			"COALESCE(email_verified, FALSE) AS email_verified",
+			"email_verified_at",
+			"created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"id": id}).
 		ToSql()
@@ -102,6 +127,8 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 		&user.Email,
 		&user.PasswordHash,
 		&user.PreferredLocale,
+		&user.EmailVerified,
+		&user.EmailVerifiedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -117,7 +144,10 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	sql, args, err := r.sb.
-		Select("id", "email", "password_hash", "preferred_locale", "created_at", "updated_at").
+		Select("id", "email", "password_hash", "preferred_locale",
+			"COALESCE(email_verified, FALSE) AS email_verified",
+			"email_verified_at",
+			"created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"email": email}).
 		ToSql()
@@ -131,6 +161,8 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 		&user.Email,
 		&user.PasswordHash,
 		&user.PreferredLocale,
+		&user.EmailVerified,
+		&user.EmailVerifiedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -192,6 +224,61 @@ func (r *userRepository) UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, 
 	cmdTag, err := tx.Exec(ctx, sqlStr, args...)
 	if err != nil {
 		return fmt.Errorf("update password_hash: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+// UpdateEmailInTx sets users.email for the given userID inside the
+// caller-supplied tx. Phase 21-03 D-21: PATCH /auth/email-before-verify
+// runs this alongside InvalidateAllForUser + a fresh token issue + outbox
+// enqueue, all in one tx.
+//
+// Maps pgconn UNIQUE-violation (sqlstate 23505 on users.email) to
+// domain.ErrEmailTaken so the caller doesn't have to re-check after a race.
+func (r *userRepository) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, newEmail string) error {
+	sqlStr, args, err := r.sb.
+		Update("users").
+		Set("email", newEmail).
+		Set("updated_at", time.Now()).
+		Where(squirrel.Eq{"id": userID}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build update email: %w", err)
+	}
+	cmdTag, err := tx.Exec(ctx, sqlStr, args...)
+	if err != nil {
+		// Postgres unique-violation maps to ErrEmailTaken so a race between
+		// two concurrent ChangeEmailBeforeVerify calls (or against a fresh
+		// Register) surfaces the friendly error code, not a raw pg error.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return domain.ErrEmailTaken
+		}
+		return fmt.Errorf("update email: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+// MarkEmailVerifiedInTx flips users.email_verified=TRUE and stamps
+// email_verified_at=NOW() for the given userID inside the caller-supplied
+// tx. Phase 21-03 D-22: POST /auth/verify-email/confirm runs this in the
+// same tx as the token consume so a partial state (token consumed but
+// flag not flipped) cannot occur on a connection drop.
+func (r *userRepository) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	const q = `UPDATE users
+	              SET email_verified = TRUE,
+	                  email_verified_at = NOW(),
+	                  updated_at = NOW()
+	            WHERE id = $1`
+	cmdTag, err := tx.Exec(ctx, q, userID)
+	if err != nil {
+		return fmt.Errorf("mark email verified: %w", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
 		return domain.ErrUserNotFound

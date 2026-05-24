@@ -75,6 +75,13 @@ type Services struct {
 	// wire/handlers.go.
 	PasswordReset *service.PasswordResetService
 
+	// EmailVerification is the Phase 21-03 (ACCT-02) email-verification +
+	// soft-restrict service. Wired into AuthHandler via
+	// SetEmailVerificationService AND into UserService.Register via the
+	// shared IssueAndEnqueueTx helper (D-17: token + outbox enqueue must
+	// commit in the same tx as the user_consents INSERT + user row).
+	EmailVerification *service.EmailVerificationService
+
 	// reviewSyncerCancel is captured so Close() can stop the background
 	// ticker goroutine. nil when ReviewSyncer is nil.
 	reviewSyncerCancel context.CancelFunc
@@ -331,6 +338,19 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		repos.EmailOutbox,
 		s.AuditLogger,
 		h.Redis,
+	)
+
+	// Phase 21-03 (ACCT-02) email verification service. Composes the
+	// EmailVerificationTokenRepository + UserResetExt adapter (reused —
+	// satisfies service.VerifyUserRepo by structural typing) + outbox
+	// + Redis (1/min + 5/hr rate limit) + PublicURL for the link.
+	s.EmailVerification = service.NewEmailVerificationService(
+		h.PG,
+		repos.EmailVerificationToken,
+		repos.UserResetExt,
+		repos.EmailOutbox,
+		h.Redis,
+		cfg.PublicURL,
 	)
 
 	return s, nil

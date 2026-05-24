@@ -17,9 +17,16 @@ type User struct {
 	// reads this on /auth/me to seed the locale cookie and writes it via
 	// PATCH /auth/locale. Snake-case json tag mirrors the DB column name so the
 	// existing /me response shape exposes it without a custom serializer.
-	PreferredLocale string    `json:"preferred_locale" db:"preferred_locale"`
-	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
+	PreferredLocale string `json:"preferred_locale" db:"preferred_locale"`
+	// EmailVerified — Phase 21-03 / ACCT-02 / D-19. JSON-hidden by default;
+	// the /auth/me handler surfaces it via a wrapper struct (MeResponse) so
+	// other endpoints listing users don't accidentally leak the flag.
+	EmailVerified bool `json:"-" db:"email_verified"`
+	// EmailVerifiedAt is set when the user POSTs the verify-email link.
+	// JSON-hidden — surfaced only via /auth/me's wrapper.
+	EmailVerifiedAt *time.Time `json:"-" db:"email_verified_at"`
+	CreatedAt       time.Time  `json:"createdAt" db:"created_at"`
+	UpdatedAt       time.Time  `json:"updatedAt" db:"updated_at"`
 }
 
 type Business struct {
