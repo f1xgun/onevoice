@@ -80,17 +80,27 @@ func (c *Client) GetToken(ctx context.Context, businessID, platform, externalID 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("tokenclient: request: %w", err)
+		// Network / DNS / connection-refused — same outcome as a 5xx:
+		// retrying may succeed. Chain ErrTransient AND the underlying
+		// error so callers can branch on either via errors.Is.
+		return nil, fmt.Errorf("%w: request: %w", ErrTransient, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("tokenclient: integration not found")
+		return nil, ErrIntegrationNotFound
 	}
 	if resp.StatusCode == http.StatusGone {
-		return nil, fmt.Errorf("tokenclient: token expired and refresh failed")
+		return nil, ErrTokenExpired
+	}
+	if resp.StatusCode >= http.StatusInternalServerError {
+		return nil, fmt.Errorf("%w: unexpected status %d", ErrTransient, resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
+		// 4xx other than 404/410 — likely a request-shape bug (bad
+		// query params, malformed business_id) not a transient outage.
+		// Surface without a sentinel so the default NonRetryable
+		// classification at the call site holds.
 		return nil, fmt.Errorf("tokenclient: unexpected status %d", resp.StatusCode)
 	}
 
