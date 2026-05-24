@@ -42,57 +42,44 @@ type VKClient interface {
 type VKClientFactory func(accessToken string) VKClient
 
 // Handler is the VK agent's per-request processor. Its Handle method
-// satisfies a2a.Exec and is wired into a2a.NewAgent from cmd/main.go.
+// satisfies a2a.Exec and is wired into a2a.NewAgent from cmd/main.go. The
+// dispatch chain (dispatcher fallback + per-tool routing + "unknown tool"
+// error) lives in agentbase.NewRouter.
 type Handler struct {
 	tokens        TokenFetcher
 	clientFactory VKClientFactory
 	serviceKey    string // VK API service key for read-only operations (public data)
-	dispatcher    agentbase.Dispatcher
+	exec          agentbase.ToolExec
 }
 
 // NewHandler creates a Handler with per-request token fetching.
 // serviceKey is optional — if provided, read operations use it instead of
-// community token. dispatcher is optional — passing nil disables HITL dedupe
-// and applies classification directly (used by unit tests and dev-local envs).
+// community token. dispatcher is optional — passing nil disables HITL dedupe;
+// on that path the router applies ClassifyVKError as the fallback classifier.
 func NewHandler(tokens TokenFetcher, factory VKClientFactory, serviceKey string, dispatcher agentbase.Dispatcher) *Handler {
-	return &Handler{tokens: tokens, clientFactory: factory, serviceKey: serviceKey, dispatcher: dispatcher}
+	h := &Handler{tokens: tokens, clientFactory: factory, serviceKey: serviceKey}
+	h.exec = agentbase.NewRouter(h.routes(), dispatcher, agentbase.FuncClassifier(ClassifyVKError))
+	return h
 }
 
-// Handle routes the ToolRequest to the appropriate VK API operation via the
-// agentbase.Dispatcher (HITL dedupe gate + error classifier). When dispatcher
-// is nil we route directly through routeTool and apply ClassifyVKError once.
+// Handle is the a2a.Exec entry point — a thin shim over the router built in
+// NewHandler.
 func (h *Handler) Handle(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	if h.dispatcher == nil {
-		resp, err := h.routeTool(ctx, req)
-		return resp, ClassifyVKError(err)
-	}
-	return h.dispatcher.Dispatch(ctx, req, h.routeTool)
+	return h.exec(ctx, req)
 }
 
-// routeTool dispatches a ToolRequest to the per-tool implementation; the
-// dispatcher (in Handle) handles dedupe + classification around this exec.
-func (h *Handler) routeTool(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	switch req.Tool {
-	case tools.VKPublishPost:
-		return h.publishPost(ctx, req)
-	case tools.VKPostPhoto:
-		return h.postPhoto(ctx, req)
-	case tools.VKUpdateGroupInfo:
-		return h.updateGroupInfo(ctx, req)
-	case tools.VKSchedulePost:
-		return h.schedulePost(ctx, req)
-	case tools.VKGetComments:
-		return h.getComments(ctx, req)
-	case tools.VKReplyComment:
-		return h.replyComment(ctx, req)
-	case tools.VKDeleteComment:
-		return h.deleteComment(ctx, req)
-	case tools.VKGetCommunityInfo:
-		return h.getCommunityInfo(ctx, req)
-	case tools.VKGetWallPosts:
-		return h.getWallPosts(ctx, req)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
+// routes binds the VK tool catalog to the Handler's per-tool methods.
+func (h *Handler) routes() map[string]agentbase.ToolExec {
+	return map[string]agentbase.ToolExec{
+		tools.VKPublishPost:      h.publishPost,
+		tools.VKPostPhoto:        h.postPhoto,
+		tools.VKUpdateGroupInfo:  h.updateGroupInfo,
+		tools.VKSchedulePost:     h.schedulePost,
+		tools.VKGetComments:      h.getComments,
+		tools.VKReplyComment:     h.replyComment,
+		tools.VKDeleteComment:    h.deleteComment,
+		tools.VKGetCommunityInfo: h.getCommunityInfo,
+		tools.VKGetWallPosts:     h.getWallPosts,
 	}
 }
 
