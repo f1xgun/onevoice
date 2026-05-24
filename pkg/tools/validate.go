@@ -1,20 +1,4 @@
-// Package toolvalidation provides pure edit-args validation against per-tool
-// EditableFields allowlists. Shared by the orchestrator (at pause time if it
-// ever needs to pre-validate) and the API service's resolve handler (which
-// MUST reject edits on non-editable fields with 400 — "never silently
-// ignore").
-//
-// Rationale for the relocation from services/orchestrator/internal/toolregistry:
-// the resolve handler in services/api maps edit
-// validation failures to a 400 with the editable list in the response body.
-// The orchestrator's internal package is not importable from services/api
-// (Go's internal-visibility rule), so the validation logic lives here in
-// pkg/ as a dep-free pure function. The orchestrator's Registry.ValidateEditArgs
-// delegates to this package for single-source-of-truth semantics.
-//
-// The package is DELIBERATELY dep-free: only pkg/domain (nothing else). It
-// is imported by both services/orchestrator and services/api.
-package toolvalidation
+package tools
 
 import "fmt"
 
@@ -36,8 +20,8 @@ func (e *ErrFieldNotEditable) Error() string {
 
 // ErrNonScalarValue is returned when an edited value is not a top-level scalar
 // (string / number / bool). Edit-args are restricted to top-level scalars only
-// for v1.3; nested objects and arrays are rejected with a 400 (nested-
-// editing is deferred to v1.4+).
+// for v1.3; nested objects and arrays are rejected with a 400 (nested-editing
+// is deferred to v1.4+).
 type ErrNonScalarValue struct {
 	Tool  string
 	Field string
@@ -62,11 +46,17 @@ func (e *ErrNonScalarValue) Error() string {
 //     nil) is rejected with ErrNonScalarValue (no nested editing in v1.3).
 //   - When editable is nil (e.g., unknown tool, or a tool with no editable
 //     fields), every field in editedArgs is rejected with
-//     ErrFieldNotEditable.Editable == nil. Unknown
-//     tools behave as if everything is forbidden.
+//     ErrFieldNotEditable.Editable == nil. Unknown tools behave as if
+//     everything is forbidden.
 //
 // Returns nil when every (field, value) pair passes both checks. No
 // allocations on the happy path beyond the allow-set map.
+//
+// Historical note: this used to live in pkg/toolvalidation (split out to
+// dodge Go's internal/ visibility wall between services/orchestrator and
+// services/api). Both validator and tool-id constants share the same
+// conceptual unit ("tool semantics importable across services"), so they
+// now sit in one package — the dedicated split outlived its motivation.
 func ValidateEditArgs(toolName string, editedArgs map[string]interface{}, editable []string) error {
 	allow := make(map[string]struct{}, len(editable))
 	for _, f := range editable {

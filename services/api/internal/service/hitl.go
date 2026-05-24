@@ -6,7 +6,7 @@
 //
 //   - Ownership (actor.BusinessID == batch.BusinessID) — cross-tenant → 403
 //   - Decision shape (exactly one decision per call) — bad shape → 400 {missing:[...]}
-//   - Edit validation via pkg/toolvalidation — invalid field → 400 {editable:[...]}
+//   - Edit validation via pkg/tools.ValidateEditArgs — invalid field → 400 {editable:[...]}
 //   - Atomic status transition via findOneAndUpdate — race → 409 {retry_after_ms}
 //   - TOCTOU re-check via pkg/hitl.Resolve with FRESH business/project maps —
 //     post-pause Forbidden flips to a synthetic "policy_revoked" rejection
@@ -33,7 +33,7 @@ import (
 	pkghitl "github.com/f1xgun/onevoice/pkg/hitl"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
-	"github.com/f1xgun/onevoice/pkg/toolvalidation"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // defaultToolsRegistryCacheTTL is the fallback TTL applied when the caller
@@ -242,7 +242,7 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		d := decisionByID[c.CallID]
 		if d.Action == "edit" {
 			editable := s.toolsCache.EditableFields(c.ToolName)
-			if err := toolvalidation.ValidateEditArgs(c.ToolName, d.EditedArgs, editable); err != nil {
+			if err := tools.ValidateEditArgs(c.ToolName, d.EditedArgs, editable); err != nil {
 				// Typed error — handler maps to 400 with the correct body shape.
 				return nil, err
 			}
