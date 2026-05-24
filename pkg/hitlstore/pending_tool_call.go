@@ -40,8 +40,11 @@ const pendingToolCallTTL = 24 * time.Hour
 
 // pendingToolCallRepo is the unified Mongo-backed implementation of
 // domain.PendingToolCallRepository. Owns every state-machine transition:
-//   - writes (InsertPreparing, PromoteToPending) — called by the orchestrator
-//     at pause time,
+//   - pause-time persist (Persist) — called by the orchestrator. Bundles
+//     "stage as preparing → promote to pending with TTL" so callers never see
+//     the intermediate state. The split write exists only to give
+//     ReconcileOrphanPreparing a recovery seam for crashes between the two
+//     underlying writes.
 //   - atomic transition (AtomicTransitionToResolving) — called by the API
 //     resolve handler,
 //   - decision recording (RecordDecisions) — called by the API resolve
@@ -75,9 +78,10 @@ func NewPendingToolCallRepository(db *mongo.Database) domain.PendingToolCallRepo
 //
 // Index semantics:
 //   - `pending_tool_calls_ttl` — expireAfterSeconds=0 means documents expire
-//     at their own expires_at timestamp (up to 60s lag). Preparing rows do
-//     NOT set expires_at; TTL skips them so stillborn preparing rows are
-//     reaped by ReconcileOrphanPreparing instead.
+//     at their own expires_at timestamp (up to 60s lag). The transient
+//     "preparing" rows that Persist stages internally do NOT set expires_at;
+//     TTL skips them so stillborn preparing rows are reaped by
+//     ReconcileOrphanPreparing instead.
 //   - `pending_tool_calls_conv_status` — supports
 //     ListPendingByConversation's typical {conversation_id, status}
 //     predicate.
@@ -120,10 +124,25 @@ func EnsurePendingToolCallsIndexes(ctx context.Context, db *mongo.Database) erro
 	return nil
 }
 
-// InsertPreparing writes a new batch in status="preparing" WITHOUT setting
-// expires_at. The TTL index must never reap a stillborn preparing row before
-// the reconciliation sweep runs — keeping expires_at zero on preparing rows
-// is the cleanest way to keep them out of TTL's scope.
+// Persist stages the batch in an internal "preparing" status and then
+// promotes it to "pending" with a 24h TTL. From the caller's perspective the
+// batch transitions atomically from non-existent to pending; the preparing
+// window is an implementation detail.
+//
+// Why a two-step internally:
+//
+//   - The TTL index keys on expires_at. If the row were inserted directly with
+//     expires_at set, a crash before the orchestrator finished emitting the
+//     SSE event would leave a fully-pending row exposed to TTL deletion at an
+//     arbitrary time before any user-visible interaction had a chance to
+//     happen. The preparing window holds expires_at unset so the TTL sweep
+//     ignores stillborn rows, and ReconcileOrphanPreparing is the deterministic
+//     reaper.
+//
+//   - A crash strictly between the InsertOne and the promotion UpdateOne
+//     leaves the row in preparing status. ReconcileOrphanPreparing's filter
+//     `{status: "preparing", created_at < cutoff}` picks it up at the next
+//     API startup and flips it to expired.
 //
 // Identity-field guard: ConversationID and BusinessID are the structural
 // floor — every downstream path (pending-batch hydration filter, resolve-time
@@ -132,7 +151,7 @@ func EnsurePendingToolCallsIndexes(ctx context.Context, db *mongo.Database) erro
 // a future regression of chat.go / chat_proxy.go can never silently write
 // empty IDs again. UserID and MessageID are intentionally NOT guarded:
 // system/anonymous flows may legitimately have an empty UserID.
-func (r *pendingToolCallRepo) InsertPreparing(ctx context.Context, b *domain.PendingToolCallBatch) error {
+func (r *pendingToolCallRepo) Persist(ctx context.Context, b *domain.PendingToolCallBatch) error {
 	if b.ConversationID == "" {
 		return fmt.Errorf("pending_tool_call: conversation_id is required")
 	}
@@ -144,34 +163,33 @@ func (r *pendingToolCallRepo) InsertPreparing(ctx context.Context, b *domain.Pen
 	b.Status = "preparing"
 	b.CreatedAt = now
 	b.UpdatedAt = now
-	// Deliberately no write to expires_at here — keeps preparing rows out of
-	// the TTL sweep. PromoteToPending is the single place that sets the
-	// expiry once the batch is promoted to pending.
+	if _, err := r.coll.InsertOne(ctx, b); err != nil {
+		return fmt.Errorf("pending_tool_call: stage preparing: %w", err)
+	}
 
-	_, err := r.coll.InsertOne(ctx, b)
-	return err
-}
-
-// PromoteToPending flips a preparing row into status="pending" and sets
-// expires_at = now+24h. Returns ErrBatchNotFound if the batch does not exist
-// OR is not in status="preparing" — callers that need to distinguish the two
-// cases should do a second GetByBatchID lookup.
-func (r *pendingToolCallRepo) PromoteToPending(ctx context.Context, batchID string) error {
-	now := time.Now().UTC()
+	expiresAt := now.Add(pendingToolCallTTL)
 	res, err := r.coll.UpdateOne(ctx,
-		bson.M{"_id": batchID, "status": "preparing"},
+		bson.M{"_id": b.ID, "status": "preparing"},
 		bson.M{"$set": bson.M{
 			"status":     "pending",
-			"expires_at": now.Add(pendingToolCallTTL),
+			"expires_at": expiresAt,
 			"updated_at": now,
 		}},
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("pending_tool_call: promote to pending: %w", err)
 	}
 	if res.MatchedCount == 0 {
+		// Promotion saw nothing in preparing — would only happen if a
+		// reconcile sweep flipped this batch to expired between the two
+		// writes. Surface the unusual case as ErrBatchNotFound so the
+		// caller fails loudly rather than emitting a pause event for a
+		// batch that no longer exists.
 		return domain.ErrBatchNotFound
 	}
+	b.Status = "pending"
+	b.ExpiresAt = expiresAt
+	b.UpdatedAt = now
 	return nil
 }
 
