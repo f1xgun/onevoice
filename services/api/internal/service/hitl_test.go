@@ -35,10 +35,9 @@ func newStubPendingRepo() *stubPendingRepo {
 	return &stubPendingRepo{Batches: map[string]*domain.PendingToolCallBatch{}}
 }
 
-func (s *stubPendingRepo) InsertPreparing(_ context.Context, _ *domain.PendingToolCallBatch) error {
+func (s *stubPendingRepo) Persist(_ context.Context, _ *domain.PendingToolCallBatch) error {
 	return nil
 }
-func (s *stubPendingRepo) PromoteToPending(_ context.Context, _ string) error { return nil }
 func (s *stubPendingRepo) GetByBatchID(_ context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
