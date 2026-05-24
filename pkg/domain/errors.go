@@ -75,6 +75,27 @@ var (
 	ErrEmailTaken         = errors.New("email already used by another account")
 )
 
+// Account deletion errors — Phase 21-04 (ACCT-03).
+//
+// ErrDeletionAlreadyPending fires when a second DELETE /users/me comes in
+// while the user already has deletion_requested_at set and not canceled.
+// Handler maps to HTTP 423 with body code=account_pending_deletion.
+//
+// ErrNoDeletionPending fires when POST /users/me/restore is called on a
+// user with no pending deletion. Handler maps to HTTP 404
+// no_deletion_pending.
+//
+// ErrAlreadyPurged fires when POST /users/me/restore is called past the
+// 30-day grace window — the underlying repository UPDATE matched zero
+// rows because either (a) the row was hard-deleted by the sweeper or
+// (b) the deletion_requested_at boundary was crossed before this call.
+// Handler maps to HTTP 410 deletion_too_old.
+var (
+	ErrDeletionAlreadyPending = errors.New("account deletion already pending")
+	ErrNoDeletionPending      = errors.New("no account deletion pending")
+	ErrAlreadyPurged          = errors.New("account deletion grace expired")
+)
+
 // Conversation errors
 var (
 	ErrConversationNotFound = errors.New("conversation not found")

@@ -268,6 +268,35 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 	return nil
 }
 
+// MongoConversationsCleanup — Phase 21-04 hard-delete sweeper.
+//
+// For every conversation owned by `userID`, sets user_id=null + records the
+// original email under user_email_at_delete + adds deleted_owner=true. The
+// documents themselves are NOT deleted — business-level history stays
+// intact even after the user disappears (152-ФЗ + GDPR right-to-be-
+// forgotten compromise per D-37; per project memory:
+// "Mongo `conversations` deletion handling: set `user_id=null`, store
+// `user_email_at_delete`, add `deleted_owner=true` flag").
+//
+// Called by AccountDeletionService.HardDeleteSweeper AFTER the PG TX
+// commits — Mongo does not participate in the PG TX so this is best-
+// effort. Caller logs a warning on failure but does NOT roll back the PG
+// delete (the PG row is already gone — T-DEL-05 disposition).
+func (r *conversationRepository) MongoConversationsCleanup(ctx context.Context, userID string, originalEmail string) (int64, error) {
+	filter := bson.M{"user_id": userID}
+	update := bson.M{"$set": bson.M{
+		"user_id":              nil,
+		"user_email_at_delete": originalEmail,
+		"deleted_owner":        true,
+		"updated_at":           time.Now(),
+	}}
+	result, err := r.collection.UpdateMany(ctx, filter, update)
+	if err != nil {
+		return 0, fmt.Errorf("mongo conversations cleanup: %w", err)
+	}
+	return result.MatchedCount, nil
+}
+
 // Pin — Pitfalls §19.
 //
 // Atomic conditional update that sets pinned_at = now (UTC) on the

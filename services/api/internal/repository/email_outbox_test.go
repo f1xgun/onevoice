@@ -96,11 +96,110 @@ func TestEmailOutbox_Enqueue_Rollback(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestEmailOutbox_Enqueue_NilTxRejected(t *testing.T) {
-	_, repo := newEmailOutboxRepoMock(t)
-	_, err := repo.Enqueue(context.Background(), nil, OutboxEnqueueInput{ToEmail: "x@y.z"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "non-nil tx")
+// Phase 21-04 (21-CROSS-PLAN-CONTRACTS §3): Enqueue now ACCEPTS nil tx
+// and falls back to a pool INSERT so sweeper-driven sends (T-7 deletion
+// warning) can enqueue without a surrounding business tx. This test
+// previously asserted rejection — it now asserts the fallback path
+// executes a single INSERT via the pool.
+func TestEmailOutbox_Enqueue_NilTxFallsBackToPool(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+	expectedID := uuid.New()
+
+	// No ExpectBegin/Commit — the pool path issues a bare QueryRow.
+	mock.ExpectQuery(`INSERT INTO email_outbox`).
+		WithArgs("sweeper@example.com", "Удаление аккаунта — осталось 7 дней", "txt", "html").
+		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(expectedID))
+
+	got, err := repo.Enqueue(ctx, nil, OutboxEnqueueInput{
+		ToEmail:  "sweeper@example.com",
+		Subject:  "Удаление аккаунта — осталось 7 дней",
+		BodyText: "txt",
+		BodyHTML: "html",
+	})
+	require.NoError(t, err)
+	require.Equal(t, expectedID, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestEmailOutbox_EnqueueDeferred_Tx — Phase 21-04 §2a. The deferred
+// variant writes an explicit next_attempt_at so the worker won't pick
+// the row up until then (used by the T-7 deletion warning enqueue at
+// request-deletion time, scheduled +23 days).
+func TestEmailOutbox_EnqueueDeferred_Tx(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+	expectedID := uuid.New()
+	nextAttempt := time.Now().Add(23 * 24 * time.Hour).UTC().Truncate(time.Second)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`INSERT INTO email_outbox \(to_email, subject, body_text, body_html, next_attempt_at\)`).
+		WithArgs("user@example.com", "Удаление аккаунта — осталось 7 дней", "txt", "html", nextAttempt).
+		WillReturnRows(mock.NewRows([]string{"id"}).AddRow(expectedID))
+	mock.ExpectCommit()
+
+	tx, err := mock.Begin(ctx)
+	require.NoError(t, err)
+
+	got, err := repo.EnqueueDeferred(ctx, tx, OutboxEnqueueInput{
+		ToEmail:  "user@example.com",
+		Subject:  "Удаление аккаунта — осталось 7 дней",
+		BodyText: "txt",
+		BodyHTML: "html",
+	}, nextAttempt)
+	require.NoError(t, err)
+	require.Equal(t, expectedID, got)
+	require.NoError(t, tx.Commit(ctx))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestEmailOutbox_ExistsBySubjectAndRecipient — Phase 21-04 §2b. Returns
+// true if a row exists for (to_email, subject) in ANY status. Used by
+// the warning sweeper to dedupe.
+func TestEmailOutbox_ExistsBySubjectAndRecipient(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+
+	mock.ExpectQuery(`SELECT EXISTS \(\s*SELECT 1 FROM email_outbox WHERE to_email = \$1 AND subject = \$2\s*\)`).
+		WithArgs("user@example.com", "Удаление аккаунта — осталось 7 дней").
+		WillReturnRows(mock.NewRows([]string{"exists"}).AddRow(true))
+
+	exists, err := repo.ExistsBySubjectAndRecipient(ctx, "user@example.com", "Удаление аккаунта — осталось 7 дней")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestEmailOutbox_ExistsBySubjectAndRecipient_FalseWhenAbsent confirms the
+// query returns false when no row matches (the warning sweeper's primary
+// path on the first run).
+func TestEmailOutbox_ExistsBySubjectAndRecipient_FalseWhenAbsent(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+
+	mock.ExpectQuery(`SELECT EXISTS`).
+		WithArgs("never@example.com", "subj").
+		WillReturnRows(mock.NewRows([]string{"exists"}).AddRow(false))
+
+	exists, err := repo.ExistsBySubjectAndRecipient(ctx, "never@example.com", "subj")
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestEmailOutbox_CancelPendingBySubjectAndRecipient — Phase 21-04. On
+// POST /users/me/restore, the pending T-7 warning row should be
+// canceled so the user doesn't receive the warning after restoring.
+func TestEmailOutbox_CancelPendingBySubjectAndRecipient(t *testing.T) {
+	mock, repo := newEmailOutboxRepoMock(t)
+	ctx := context.Background()
+
+	mock.ExpectExec(`UPDATE email_outbox\s+SET status = 'canceled'.*WHERE to_email = \$1 AND subject = \$2 AND status = 'pending'`).
+		WithArgs("user@example.com", "Удаление аккаунта — осталось 7 дней").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	require.NoError(t, repo.CancelPendingBySubjectAndRecipient(ctx, "user@example.com", "Удаление аккаунта — осталось 7 дней"))
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestEmailOutbox_DrainPending_ReturnsDuePendingOnly(t *testing.T) {

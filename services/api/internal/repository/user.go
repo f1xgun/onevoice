@@ -61,6 +61,37 @@ func (a *UserResetExtAdapter) GetByID(ctx context.Context, userID uuid.UUID) (*d
 	return a.inner.GetByID(ctx, userID)
 }
 
+// GetByIDIncludingDeleted delegates to the inner concrete repo. Phase 21-04:
+// AccountDeletionService.RequestDeletion calls this so it can detect a
+// soft-deleted user and return ErrDeletionAlreadyPending instead of
+// ErrUserNotFound on the retry path.
+func (a *UserResetExtAdapter) GetByIDIncludingDeleted(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
+	return a.inner.GetByIDIncludingDeleted(ctx, userID)
+}
+
+// Phase 21-04 delegates: account deletion lifecycle on the same adapter
+// so AccountDeletionService consumes a single tx-aware user-repo seam.
+
+func (a *UserResetExtAdapter) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	return a.inner.RequestDeletionInTx(ctx, tx, userID)
+}
+
+func (a *UserResetExtAdapter) CancelDeletion(ctx context.Context, userID uuid.UUID, graceDays int) (bool, error) {
+	return a.inner.CancelDeletion(ctx, userID, graceDays)
+}
+
+func (a *UserResetExtAdapter) EnumeratePendingDeletionsInTx(ctx context.Context, tx pgx.Tx, before time.Time, limit int) ([]uuid.UUID, error) {
+	return a.inner.EnumeratePendingDeletionsInTx(ctx, tx, before, limit)
+}
+
+func (a *UserResetExtAdapter) EnumerateUpcomingDeletions(ctx context.Context, fromTime, toTime time.Time, limit int) ([]*domain.User, error) {
+	return a.inner.EnumerateUpcomingDeletions(ctx, fromTime, toTime, limit)
+}
+
+func (a *UserResetExtAdapter) HardDeleteInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	return a.inner.HardDeleteInTx(ctx, tx, userID)
+}
+
 // CreateInTx delegates to the inner concrete repo. Phase 21-03:
 // UserService.Register uses this so the user row commits atomically with
 // the user_consents + email_verification_tokens + email_outbox INSERTs.
@@ -153,11 +184,61 @@ func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain
 	return nil
 }
 
+// GetByID — Phase 21-04 D-41: filters `deleted_at IS NULL` so a soft-deleted
+// user (deletion requested, inside the 30-day grace window) looks like
+// ErrUserNotFound to every read path. Deletion-aware code paths
+// (AccountDeletionService, BlockWritesDuringGrace middleware, /auth/me)
+// call GetByIDIncludingDeleted instead.
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
 		Select("id", "email", "password_hash", "preferred_locale",
 			"COALESCE(email_verified, FALSE) AS email_verified",
 			"email_verified_at",
+			"deleted_at", "deletion_requested_at", "deletion_canceled_at",
+			"created_at", "updated_at").
+		From("users").
+		Where(squirrel.Eq{"id": id}).
+		Where("deleted_at IS NULL").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select: %w", err)
+	}
+
+	var user domain.User
+	err = r.pool.QueryRow(ctx, sql, args...).Scan(
+		&user.ID,
+		&user.Email,
+		&user.PasswordHash,
+		&user.PreferredLocale,
+		&user.EmailVerified,
+		&user.EmailVerifiedAt,
+		&user.DeletedAt,
+		&user.DeletionRequestedAt,
+		&user.DeletionCanceledAt,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("query user: %w", err)
+	}
+
+	return &user, nil
+}
+
+// GetByIDIncludingDeleted — Phase 21-04. Same SELECT as GetByID minus the
+// `deleted_at IS NULL` filter. Used by handlers that need to read the
+// accountDeletion state of a soft-deleted user (e.g. /auth/me must
+// surface the grace banner; POST /users/me/restore must find the row
+// to cancel).
+func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	sql, args, err := r.sb.
+		Select("id", "email", "password_hash", "preferred_locale",
+			"COALESCE(email_verified, FALSE) AS email_verified",
+			"email_verified_at",
+			"deleted_at", "deletion_requested_at", "deletion_canceled_at",
 			"created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"id": id}).
@@ -174,6 +255,9 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 		&user.PreferredLocale,
 		&user.EmailVerified,
 		&user.EmailVerifiedAt,
+		&user.DeletedAt,
+		&user.DeletionRequestedAt,
+		&user.DeletionCanceledAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -187,14 +271,22 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 	return &user, nil
 }
 
+// GetByEmail — Phase 21-04 D-41: filters `deleted_at IS NULL` so the same
+// email can be re-registered post-purge without colliding with a
+// soft-deleted account during the grace window (the legacy UNIQUE
+// constraint on users.email still applies, so during the 30-day grace the
+// email is genuinely unavailable — but at least no read confuses "soft-
+// deleted" with "active").
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	sql, args, err := r.sb.
 		Select("id", "email", "password_hash", "preferred_locale",
 			"COALESCE(email_verified, FALSE) AS email_verified",
 			"email_verified_at",
+			"deleted_at", "deletion_requested_at", "deletion_canceled_at",
 			"created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"email": email}).
+		Where("deleted_at IS NULL").
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)
@@ -208,6 +300,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 		&user.PreferredLocale,
 		&user.EmailVerified,
 		&user.EmailVerifiedAt,
+		&user.DeletedAt,
+		&user.DeletionRequestedAt,
+		&user.DeletionCanceledAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -324,6 +419,188 @@ func (r *userRepository) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, u
 	cmdTag, err := tx.Exec(ctx, q, userID)
 	if err != nil {
 		return fmt.Errorf("mark email verified: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+// RequestDeletionInTx — Phase 21-04. Sets deleted_at + deletion_requested_at
+// + updated_at on the user row inside the caller-supplied tx. The
+// `deletion_requested_at IS NULL` guard makes this idempotent: a second
+// concurrent call surfaces ErrDeletionAlreadyPending so the handler can
+// return 423 instead of double-scheduling.
+func (r *userRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	const q = `UPDATE users
+	              SET deletion_requested_at = NOW(),
+	                  deleted_at = NOW(),
+	                  deletion_canceled_at = NULL,
+	                  updated_at = NOW()
+	            WHERE id = $1
+	              AND deletion_requested_at IS NULL`
+	cmdTag, err := tx.Exec(ctx, q, userID)
+	if err != nil {
+		return fmt.Errorf("request deletion: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		// Either user doesn't exist OR deletion_requested_at is already set.
+		// Distinguish via a follow-up read so the service can map to the
+		// right sentinel.
+		var requestedAt *time.Time
+		var deletedAt *time.Time
+		err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at, deleted_at FROM users WHERE id = $1`, userID).
+			Scan(&requestedAt, &deletedAt)
+		if err2 != nil {
+			if errors.Is(err2, pgx.ErrNoRows) {
+				return domain.ErrUserNotFound
+			}
+			return fmt.Errorf("classify deletion state: %w", err2)
+		}
+		if requestedAt != nil {
+			return domain.ErrDeletionAlreadyPending
+		}
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+// CancelDeletion — Phase 21-04. Atomic UPDATE...RETURNING that clears
+// deleted_at and stamps deletion_canceled_at iff the user is currently
+// inside the 30-day grace window. Returns:
+//
+//	(true, nil)  — restored.
+//	(false, ErrAlreadyPurged) — past 30d boundary OR row already gone.
+//	(false, ErrNoDeletionPending) — row exists but had no pending deletion.
+func (r *userRepository) CancelDeletion(ctx context.Context, userID uuid.UUID, graceDays int) (bool, error) {
+	sql := fmt.Sprintf(`UPDATE users
+	                       SET deletion_canceled_at = NOW(),
+	                           deleted_at = NULL,
+	                           updated_at = NOW()
+	                     WHERE id = $1
+	                       AND deletion_requested_at IS NOT NULL
+	                       AND deletion_canceled_at IS NULL
+	                       AND deletion_requested_at > NOW() - INTERVAL '%d days'
+	                     RETURNING id`, graceDays)
+	var returnedID uuid.UUID
+	err := r.pool.QueryRow(ctx, sql, userID).Scan(&returnedID)
+	if err == nil {
+		return true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return false, fmt.Errorf("cancel deletion: %w", err)
+	}
+	// 0 rows matched — distinguish "no pending deletion" from "too late".
+	var requestedAt *time.Time
+	var canceledAt *time.Time
+	err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at, deletion_canceled_at FROM users WHERE id = $1`, userID).
+		Scan(&requestedAt, &canceledAt)
+	if err2 != nil {
+		if errors.Is(err2, pgx.ErrNoRows) {
+			// Row gone — must have been hard-deleted.
+			return false, domain.ErrAlreadyPurged
+		}
+		return false, fmt.Errorf("classify cancel state: %w", err2)
+	}
+	if requestedAt == nil {
+		return false, domain.ErrNoDeletionPending
+	}
+	// requestedAt is set AND we matched 0 rows → either canceledAt is already
+	// set (idempotent re-cancel) OR past the grace boundary.
+	if canceledAt != nil {
+		// Already canceled — treat as success-noop.
+		return true, nil
+	}
+	return false, domain.ErrAlreadyPurged
+}
+
+// EnumeratePendingDeletionsInTx — Phase 21-04 hard-delete sweeper helper.
+// Claims a batch of soft-deleted users whose 30-day grace has elapsed via
+// `FOR UPDATE SKIP LOCKED` so concurrent sweepers + the cancel endpoint
+// don't deadlock or race-clobber. Returns up to `limit` IDs ordered oldest-
+// first so the queue progresses deterministically.
+func (r *userRepository) EnumeratePendingDeletionsInTx(ctx context.Context, tx pgx.Tx, before time.Time, limit int) ([]uuid.UUID, error) {
+	const q = `SELECT id FROM users
+	            WHERE deletion_requested_at IS NOT NULL
+	              AND deletion_canceled_at IS NULL
+	              AND deletion_requested_at < $1
+	            ORDER BY deletion_requested_at ASC
+	            FOR UPDATE SKIP LOCKED
+	            LIMIT $2`
+	rows, err := tx.Query(ctx, q, before, limit)
+	if err != nil {
+		return nil, fmt.Errorf("enumerate pending deletions: %w", err)
+	}
+	defer rows.Close()
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan pending deletion: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("pending deletions rows: %w", err)
+	}
+	return ids, nil
+}
+
+// EnumerateUpcomingDeletions — Phase 21-04 warning sweeper helper.
+// Returns users whose deletion_requested_at falls between `fromTime`
+// (exclusive) and `toTime` (inclusive) — the T-7 window the
+// AccountDeletionService.WarningSweeper covers. Pool-based (no tx
+// needed; the warning sweeper has no business transaction). Returns full
+// user records so the caller can read the email + deletion_requested_at
+// without a second round-trip.
+func (r *userRepository) EnumerateUpcomingDeletions(ctx context.Context, fromTime, toTime time.Time, limit int) ([]*domain.User, error) {
+	const q = `SELECT id, email, password_hash, preferred_locale,
+	                  COALESCE(email_verified, FALSE) AS email_verified,
+	                  email_verified_at,
+	                  deleted_at, deletion_requested_at, deletion_canceled_at,
+	                  created_at, updated_at
+	             FROM users
+	            WHERE deletion_requested_at IS NOT NULL
+	              AND deletion_canceled_at IS NULL
+	              AND deletion_requested_at > $1
+	              AND deletion_requested_at <= $2
+	            ORDER BY deletion_requested_at ASC
+	            LIMIT $3`
+	rows, err := r.pool.Query(ctx, q, fromTime, toTime, limit)
+	if err != nil {
+		return nil, fmt.Errorf("enumerate upcoming deletions: %w", err)
+	}
+	defer rows.Close()
+	var out []*domain.User
+	for rows.Next() {
+		var u domain.User
+		if err := rows.Scan(
+			&u.ID, &u.Email, &u.PasswordHash, &u.PreferredLocale,
+			&u.EmailVerified, &u.EmailVerifiedAt,
+			&u.DeletedAt, &u.DeletionRequestedAt, &u.DeletionCanceledAt,
+			&u.CreatedAt, &u.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan upcoming deletion: %w", err)
+		}
+		out = append(out, &u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("upcoming deletions rows: %w", err)
+	}
+	return out, nil
+}
+
+// HardDeleteInTx — Phase 21-04 hard-delete sweeper. Issues `DELETE FROM
+// users WHERE id = $1` inside the caller-supplied tx. The caller is
+// responsible for writing the user_self_deleted audit row BEFORE the
+// DELETE (in the same tx) so the FK SET NULL behaviour (audit_logs.user_id
+// from 21-03 ACCT-06) has somewhere to land. After DELETE, the audit
+// row's FK becomes NULL but user_email_at_event preserves the email for
+// 152-ФЗ forensic queries.
+func (r *userRepository) HardDeleteInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	cmdTag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return fmt.Errorf("hard delete user: %w", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
 		return domain.ErrUserNotFound
