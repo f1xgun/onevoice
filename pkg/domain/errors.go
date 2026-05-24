@@ -48,6 +48,33 @@ var (
 	ErrResetTokenCollision = errors.New("password reset token hash collision")
 )
 
+// Email verification errors — Phase 21c (ACCT-02).
+//
+// Same PITFALLS §1.1 collapse as password reset: the atomic-consume
+// statement in EmailVerificationTokenRepository.ConsumeAtomic merges
+// (expired | already-consumed | unknown-hash) into ErrVerifyTokenInvalid.
+// The handler surfaces verify_token_invalid / verify_token_expired by
+// running a follow-up "is this row present but expired?" lookup ONLY on
+// the invalid branch — kept distinct so the verify-email page can show
+// the right copy ("link просрочена" vs "link недействительна").
+//
+// ErrAlreadyVerified is the guard returned by RequestResend and
+// ChangeEmailBeforeVerify when the user already has email_verified=TRUE.
+// Maps to HTTP 403 email_already_verified.
+//
+// ErrResendThrottled signals the Redis 1/min or 5/hr ceiling was hit.
+// Maps to HTTP 429 verify_resend_throttled.
+//
+// ErrEmailTaken signals the new email in PATCH /auth/email-before-verify
+// is already used by another user. Maps to HTTP 409 email_taken. Bonus:
+// also returned by UpdateEmailInTx on UNIQUE-violation race.
+var (
+	ErrVerifyTokenInvalid = errors.New("email verification token invalid")
+	ErrAlreadyVerified    = errors.New("email already verified")
+	ErrResendThrottled    = errors.New("email verification resend throttled")
+	ErrEmailTaken         = errors.New("email already used by another account")
+)
+
 // Conversation errors
 var (
 	ErrConversationNotFound = errors.New("conversation not found")
