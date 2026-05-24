@@ -1,0 +1,108 @@
+package chatturn
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/tools"
+)
+
+// fakeAgentTaskRepo records every Create / Update call so the test can assert
+// on the persisted shape. Other methods nil-panic — the tests in this file
+// only exercise the onToolCall / onToolResult paths.
+type fakeAgentTaskRepo struct {
+	domain.AgentTaskRepository
+	created []domain.AgentTask
+}
+
+func (f *fakeAgentTaskRepo) Create(_ context.Context, t *domain.AgentTask) error {
+	t.ID = "fake-id"
+	f.created = append(f.created, *t)
+	return nil
+}
+
+// newTurnForPostalTest builds a Turn with only the AgentTasks dep wired —
+// uses the unexported struct literal (accessible from same-package tests) so
+// the chatturn.New panic-on-nil guards don't fire for deps the postal path
+// doesn't touch.
+func newTurnForPostalTest(repo domain.AgentTaskRepository) *Turn {
+	return &Turn{deps: Deps{AgentTasks: repo}}
+}
+
+// TestOnToolCall_PersistsDisplayNameKey verifies the i18n catalog key
+// arriving on the orchestrator SSE frame must reach the agent_tasks document
+// so the FE can render the task title in the user's locale.
+func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
+	repo := &fakeAgentTaskRepo{}
+	turn := newTurnForPostalTest(repo)
+
+	idMap := map[string]string{}
+	turn.onToolCall(
+		context.Background(),
+		"biz-1",
+		"call-1",
+		tools.TelegramSendChannelPost,
+		"Отправить пост",                        // legacy display name
+		"tools.telegram.send_channel_post.name", // displayNameKey
+		map[string]interface{}{"text": "hi"},
+		idMap,
+	)
+
+	require.Len(t, repo.created, 1, "onToolCall should persist exactly one task")
+	got := repo.created[0]
+	assert.Equal(t, "Отправить пост", got.DisplayName, "legacy DisplayName preserved")
+	assert.Equal(t, "tools.telegram.send_channel_post.name", got.DisplayNameKey,
+		"DisplayNameKey must reach the persisted agent_tasks document")
+	assert.Equal(t, "telegram", got.Platform)
+	assert.Equal(t, "send_channel_post", got.Type)
+	assert.Equal(t, "running", got.Status)
+}
+
+// TestOnToolCall_EmptyDisplayNameKey_BackwardCompat — orchestrators predating
+// the i18n key still persist (FE falls back to the legacy DisplayName field).
+func TestOnToolCall_EmptyDisplayNameKey_BackwardCompat(t *testing.T) {
+	repo := &fakeAgentTaskRepo{}
+	turn := newTurnForPostalTest(repo)
+
+	idMap := map[string]string{}
+	turn.onToolCall(
+		context.Background(),
+		"biz-1",
+		"call-1",
+		tools.TelegramSendChannelPost,
+		"Отправить пост",
+		"", // no key from a legacy orchestrator
+		map[string]interface{}{"text": "hi"},
+		idMap,
+	)
+
+	require.Len(t, repo.created, 1)
+	assert.Equal(t, "", repo.created[0].DisplayNameKey)
+	assert.Equal(t, "Отправить пост", repo.created[0].DisplayName)
+}
+
+// TestOnToolCall_InternalToolSkipped — internal tools (no "__" separator) do
+// not surface on the Tasks page; the SSE handler must skip persistence
+// regardless of the displayNameKey value.
+func TestOnToolCall_InternalToolSkipped(t *testing.T) {
+	repo := &fakeAgentTaskRepo{}
+	turn := newTurnForPostalTest(repo)
+
+	idMap := map[string]string{}
+	turn.onToolCall(
+		context.Background(),
+		"biz-1",
+		"call-1",
+		"get_business_info", // internal tool
+		"Внутренний инструмент",
+		"tools.internal.get_business_info.name",
+		nil,
+		idMap,
+	)
+
+	assert.Empty(t, repo.created, "internal tools must not be persisted as agent_tasks")
+}
