@@ -15,7 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // Constants for conversation pagination
@@ -43,24 +43,32 @@ type ConversationHandler struct {
 	// after RBAC refactor — BusinessContext from RequireBusinessAccess
 	// middleware provides businessID + userID directly.
 	businessService BusinessService
-	// projectService validates projectId belongs to caller's business.
+	// projectService validates projectId belongs to caller's business
+	// during CreateConversation. Move-conversation goes through
+	// conversationService.MoveToProject, which has its own project lookup.
 	projectService ProjectService
 	// pendingRepo drives the pendingApprovals array on GET /messages.
 	pendingRepo domain.PendingToolCallRepository
+	// conversationService owns multi-repo transitions. Today it carries
+	// MoveToProject only; future migrations may move ListMessages
+	// hydration or Pin/Unpin here.
+	conversationService ConversationService
 }
 
 // NewConversationHandler creates a new conversation handler instance.
 // businessService and projectService are required — create-conversation
-// and move-conversation must validate that the supplied projectId belongs to the
-// caller's business. pendingRepo is required — GET /messages joins
-// the pending_tool_calls collection to hydrate the approval card. Passing nil
-// for any dep is a programmer error.
+// must validate that the supplied projectId belongs to the caller's
+// business. pendingRepo is required — GET /messages joins the
+// pending_tool_calls collection to hydrate the approval card.
+// conversationService is required — owns the multi-repo move transition.
+// Passing nil for any dep is a programmer error.
 func NewConversationHandler(
 	conversationRepo domain.ConversationRepository,
 	messageRepo domain.MessageRepository,
 	businessService BusinessService,
 	projectService ProjectService,
 	pendingRepo domain.PendingToolCallRepository,
+	conversationService ConversationService,
 ) (*ConversationHandler, error) {
 	if conversationRepo == nil {
 		return nil, fmt.Errorf("NewConversationHandler: conversationRepo cannot be nil")
@@ -77,12 +85,16 @@ func NewConversationHandler(
 	if pendingRepo == nil {
 		return nil, fmt.Errorf("NewConversationHandler: pendingRepo cannot be nil")
 	}
+	if conversationService == nil {
+		return nil, fmt.Errorf("NewConversationHandler: conversationService cannot be nil")
+	}
 	return &ConversationHandler{
-		conversationRepo: conversationRepo,
-		messageRepo:      messageRepo,
-		businessService:  businessService,
-		projectService:   projectService,
-		pendingRepo:      pendingRepo,
+		conversationRepo:    conversationRepo,
+		messageRepo:         messageRepo,
+		businessService:     businessService,
+		projectService:      projectService,
+		pendingRepo:         pendingRepo,
+		conversationService: conversationService,
 	}, nil
 }
 
@@ -536,68 +548,22 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	conv, err := h.conversationRepo.GetByID(r.Context(), conversationID)
+	updated, err := h.conversationService.MoveToProject(
+		r.Context(), conversationID, bc.BusinessID, bc.UserID, req.ProjectID)
 	if err != nil {
-		if errors.Is(err, domain.ErrConversationNotFound) {
+		switch {
+		case errors.Is(err, domain.ErrConversationNotFound):
 			writeJSONError(w, http.StatusNotFound, "conversation not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "move conversation: get conversation", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-	if conv.UserID != bc.UserID.String() {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
-		return
-	}
-
-	destName := i18n.Tr(r.Context(), "api.conversation.move.default_destination")
-	if req.ProjectID != nil && *req.ProjectID != "" {
-		projUUID, parseErr := uuid.Parse(*req.ProjectID)
-		if parseErr != nil {
+		case errors.Is(err, domain.ErrForbidden):
+			writeJSONError(w, http.StatusForbidden, "forbidden")
+		case errors.Is(err, domain.ErrProjectNotFound):
+			writeJSONError(w, http.StatusNotFound, "project not found")
+		case errors.Is(err, service.ErrInvalidProjectID):
 			writeJSONError(w, http.StatusBadRequest, "invalid project id")
-			return
-		}
-		proj, projErr := h.projectService.GetByID(r.Context(), bc.BusinessID, projUUID)
-		if projErr != nil {
-			if errors.Is(projErr, domain.ErrProjectNotFound) {
-				writeJSONError(w, http.StatusNotFound, "project not found")
-				return
-			}
-			slog.ErrorContext(r.Context(), "move conversation: get project", "error", projErr)
+		default:
+			slog.ErrorContext(r.Context(), "move conversation: service error", "error", err)
 			writeJSONError(w, http.StatusInternalServerError, "internal server error")
-			return
 		}
-		destName = proj.Name
-	}
-
-	if err := h.conversationRepo.UpdateProjectAssignment(r.Context(), conversationID, req.ProjectID); err != nil {
-		if errors.Is(err, domain.ErrConversationNotFound) {
-			writeJSONError(w, http.StatusNotFound, "conversation not found")
-			return
-		}
-		slog.ErrorContext(r.Context(), "move conversation: update project assignment", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	// Persisted in the writer's locale — history is not retroactively re-translated.
-	note := &domain.Message{
-		ConversationID: conversationID,
-		Role:           "system",
-		Content:        i18n.Tr(r.Context(), "api.conversation.move.system_message", destName),
-		CreatedAt:      time.Now(),
-	}
-	if err := h.messageRepo.Create(r.Context(), note); err != nil {
-		// Best-effort — the move itself already landed; log but don't fail.
-		slog.ErrorContext(r.Context(), "move conversation: failed to append system note", "error", err)
-	}
-
-	// Re-fetch to return the current state including the new project_id.
-	updated, err := h.conversationRepo.GetByID(r.Context(), conversationID)
-	if err != nil {
-		slog.ErrorContext(r.Context(), "move conversation: refetch conversation", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
