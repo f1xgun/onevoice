@@ -1,10 +1,7 @@
 package chatturn
 
 import (
-	"bufio"
 	"context"
-	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -12,7 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/sse"
 )
 
@@ -20,15 +17,6 @@ import (
 // enough that a long RPA tool chain can finish; tight enough that a stuck
 // agent can't pin the connection forever.
 const streamBudget = 10 * time.Minute
-
-// sseBufferBytes — bufio.Scanner buffer cap for orchestrator SSE frames.
-// Bumped from the 64KB default so large tool results and ModelMessages
-// snapshots flow through the proxy without truncation.
-const sseBufferBytes = 1 << 20 // 1 MiB
-
-// logLineMaxBytes truncates malformed-event log lines so a runaway upstream
-// (or attacker) can't flood the log pipeline with megabyte payloads.
-const logLineMaxBytes = 200
 
 // streamState is per-request mutable state populated by the SSE event loop.
 // Owned by Run on its stack; passed by pointer to the per-event handlers so
@@ -50,9 +38,13 @@ type streamState struct {
 // state + on-the-fly postal side effects.
 //
 // parentCtx supplies the correlation_id and the client-disconnect signal;
-// the orchestrator request runs on a detached 10-minute context so a
-// disconnect does NOT abort the upstream — AgentTask rows still reach
-// terminal states even after the user navigates away.
+// the orchestrator request runs on a detached 10-minute context (via
+// StreamSSEOptions.OrchCtxBudget) so a disconnect does NOT abort the upstream
+// — AgentTask rows still reach terminal states even after the user navigates
+// away. The SSE plumbing (detached ctx, correlation propagation, response
+// headers, scanner with 1MiB buffer, clientGone-aware drain loop) lives in
+// pkg/orchestratorclient.StreamSSE; this function owns ONLY the per-event
+// domain dispatch.
 func (t *Turn) streamOrchestrator(
 	parentCtx context.Context,
 	taskOpsCtx context.Context,
@@ -64,76 +56,19 @@ func (t *Turn) streamOrchestrator(
 	state *streamState,
 	emit func(sse.Event),
 ) error {
-	corrID := logger.CorrelationIDFromContext(parentCtx)
-	orchCtx, orchCancel := context.WithTimeout(context.Background(), streamBudget)
-	if corrID != "" {
-		orchCtx = logger.WithCorrelationID(orchCtx, corrID)
-	}
-	defer orchCancel()
-
-	mergedHeaders := make(map[string]string, len(headers)+1)
-	for k, v := range headers {
-		mergedHeaders[k] = v
-	}
-	if corrID != "" && mergedHeaders["X-Correlation-ID"] == "" {
-		mergedHeaders["X-Correlation-ID"] = corrID
-	}
-
-	resp, err := t.deps.Orch.StreamChat(orchCtx, conversationID, body, mergedHeaders)
-	if err != nil {
-		return fmt.Errorf("chatturn: orchestrator stream chat: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return fmt.Errorf("chatturn: streaming not supported by ResponseWriter")
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, sseBufferBytes), sseBufferBytes)
-
-	clientGone := parentCtx.Done()
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		select {
-		case <-clientGone:
-			// Skip writes to a dead socket, but keep scanning to drain the
-			// orchestrator stream so tool_results land in Mongo and
-			// AgentTask rows reach a terminal state.
-		default:
-			_, _ = fmt.Fprintf(w, "%s\n", line)
-			flusher.Flush()
-		}
-
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		ev, err := sse.Unmarshal([]byte(line[6:]))
-		if err != nil {
-			slog.WarnContext(parentCtx, "chatturn: malformed SSE event",
-				"error", err, "line", line[:min(len(line), logLineMaxBytes)])
-			continue
-		}
-		t.dispatchEvent(taskOpsCtx, businessID, state, ev)
-		if emit != nil {
-			emit(ev)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		slog.ErrorContext(parentCtx, "chatturn: SSE scanner error",
-			"error", err, "conversation_id", conversationID)
-		return fmt.Errorf("chatturn: scanner error: %w", err)
-	}
-	return nil
+	return t.deps.Orch.StreamSSE(parentCtx, orchestratorclient.StreamSSERequest{
+		ConversationID: conversationID,
+		Body:           body,
+		Writer:         w,
+		Headers:        headers,
+		OrchCtxBudget:  streamBudget,
+		OnEvent: func(ev sse.Event) {
+			t.dispatchEvent(taskOpsCtx, businessID, state, ev)
+			if emit != nil {
+				emit(ev)
+			}
+		},
+	})
 }
 
 // dispatchEvent routes a single parsed SSE frame into the per-stream state

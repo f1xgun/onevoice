@@ -1,7 +1,6 @@
 package chatturn
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -10,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/sse"
 )
 
@@ -162,9 +161,17 @@ func (t *Turn) sseInlineError(w http.ResponseWriter, reason string) {
 // tool_result events into the existing assistant Message. On done,
 // transitions Message.Status from pending_approval/in_progress to complete.
 //
-// Returns OutcomeOrchestratorUnavailable when the resume request fails
-// before any SSE byte is written — the handler maps this to 502 Bad Gateway.
-// All other paths write SSE bytes and return OutcomeRejoinedResume.
+// Returns OutcomeOrchestratorUnavailable when the resume request fails to
+// CONNECT — no SSE bytes have been written yet, so the handler may map this
+// to 502 Bad Gateway. After the upstream connects, all paths write SSE bytes
+// and return OutcomeRejoinedResume (mid-drain failures are logged, not
+// surfaced — the message is persisted as Complete so the conversation does
+// not stay stuck).
+//
+// The SSE plumbing (detached ctx via OrchCtxBudget, correlation propagation,
+// response headers, scanner, drain loop) lives in
+// pkg/orchestratorclient.StreamSSE; this function owns the per-event
+// state-mutation closure and the post-stream persistence decision.
 func (t *Turn) streamResume(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -179,40 +186,6 @@ func (t *Turn) streamResume(
 		return OutcomeInlineError, nil
 	}
 
-	// Detach the orchestrator request from the client's ctx so a client-side
-	// reconnect cannot cancel the in-flight resume mid-LLM-call.
-	corrID := logger.CorrelationIDFromContext(ctx)
-	orchCtx, orchCancel := context.WithTimeout(context.Background(), streamBudget)
-	if corrID != "" {
-		orchCtx = logger.WithCorrelationID(orchCtx, corrID)
-	}
-	defer orchCancel()
-
-	headers := map[string]string{}
-	if corrID != "" {
-		headers["X-Correlation-ID"] = corrID
-	}
-	resp, err := t.deps.Orch.StreamResume(orchCtx, conversationID, batchID, nil, headers)
-	if err != nil {
-		slog.ErrorContext(ctx, "chatturn: orchestrator resume request failed", "error", err)
-		return OutcomeOrchestratorUnavailable, fmt.Errorf("chatturn: orchestrator resume: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return OutcomeError, fmt.Errorf("chatturn: streaming not supported")
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, sseBufferBytes), sseBufferBytes)
-
 	// Work on a local copy so we flush the full final state in one Update.
 	// msg.Content is intentionally not cleared — we preserve the Content
 	// builder semantics and start from whatever was persisted at pause time.
@@ -226,65 +199,90 @@ func (t *Turn) streamResume(
 		callIdx[tc.ID] = i
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		_, _ = fmt.Fprintf(w, "%s\n", line)
-		flusher.Flush()
+	// terminated → orchestrator emitted "done" or "error"; msg is already
+	// persisted as Complete. fireAutoTitle → terminated via "done" (not
+	// "error"), so the auto-title fanout should run after StreamSSE returns.
+	var terminated, fireAutoTitle bool
 
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		ev, err := sse.Unmarshal([]byte(line[6:]))
-		if err != nil {
-			continue
-		}
-		switch ev.Type {
-		case "text":
-			postText.WriteString(ev.Content)
-		case "tool_result":
-			var content map[string]interface{}
-			if m, ok := ev.ToolResult.(map[string]interface{}); ok {
-				content = m
-			} else {
-				content = map[string]interface{}{"raw": ev.ToolResult}
+	streamErr := t.deps.Orch.StreamSSE(ctx, orchestratorclient.StreamSSERequest{
+		ConversationID: conversationID,
+		BatchID:        batchID,
+		Body:           nil,
+		Writer:         w,
+		OrchCtxBudget:  streamBudget,
+		OnEvent: func(ev sse.Event) {
+			if terminated {
+				// Defensive: ignore any frames the upstream emits after a
+				// terminal done/error. Should not happen in production but
+				// keeps the persist decision idempotent.
+				return
 			}
-			msg.ToolResults = append(msg.ToolResults, domain.ToolResult{
-				ToolCallID: ev.ToolCallID,
-				Content:    content,
-				IsError:    ev.ToolError != "",
-			})
-			if idx, ok := callIdx[ev.ToolCallID]; ok {
-				if ev.ToolError != "" {
-					msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
+			switch ev.Type {
+			case "text":
+				postText.WriteString(ev.Content)
+			case "tool_result":
+				var content map[string]interface{}
+				if m, ok := ev.ToolResult.(map[string]interface{}); ok {
+					content = m
 				} else {
-					msg.ToolCalls[idx].Status = domain.ToolCallStatusApproved
+					content = map[string]interface{}{"raw": ev.ToolResult}
 				}
+				msg.ToolResults = append(msg.ToolResults, domain.ToolResult{
+					ToolCallID: ev.ToolCallID,
+					Content:    content,
+					IsError:    ev.ToolError != "",
+				})
+				if idx, ok := callIdx[ev.ToolCallID]; ok {
+					if ev.ToolError != "" {
+						msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
+					} else {
+						msg.ToolCalls[idx].Status = domain.ToolCallStatusApproved
+					}
+				}
+			case "tool_rejected":
+				if idx, ok := callIdx[ev.ToolCallID]; ok {
+					msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
+				}
+			case sseEventError:
+				// Resume failed mid-stream (LLM error, ctx cancel, max-
+				// iterations cap). The error event is already forwarded to
+				// the client; here we MUST transition the assistant Message
+				// off pending_approval/in_progress, otherwise every
+				// subsequent POST /chat hits the gate's
+				// "turn_already_in_progress" branch and the conversation is
+				// permanently stuck.
+				msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
+				t.persistResumeDone(ctx, &msg)
+				terminated = true
+			case "done":
+				msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
+				t.persistResumeDone(ctx, &msg)
+				fireAutoTitle = true
+				terminated = true
 			}
-		case "tool_rejected":
-			if idx, ok := callIdx[ev.ToolCallID]; ok {
-				msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
-			}
-		case sseEventError:
-			// Resume failed mid-stream (LLM error, ctx cancel, max-iterations
-			// cap). The error event is already forwarded to the client; here
-			// we MUST transition the assistant Message off pending_approval/
-			// in_progress, otherwise every subsequent POST /chat hits the
-			// gate's "turn_already_in_progress" branch and the conversation
-			// is permanently stuck.
-			msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
-			t.persistResumeDone(ctx, &msg)
-			return OutcomeRejoinedResume, nil
-		case "done":
-			msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
-			t.persistResumeDone(ctx, &msg)
-			t.fireAutoTitleIfPendingResume(ctx, conversationID, &msg)
-			return OutcomeRejoinedResume, nil
-		}
+		},
+	})
+
+	// Connect failure: StreamSSE returned a "stream resume:" wrapped error
+	// AND we never processed any events. No bytes were written to w, so the
+	// handler can still emit a 502 JSON body.
+	if streamErr != nil && !terminated && strings.Contains(streamErr.Error(), "stream resume:") {
+		slog.ErrorContext(ctx, "chatturn: orchestrator resume request failed", "error", streamErr)
+		return OutcomeOrchestratorUnavailable, fmt.Errorf("chatturn: orchestrator resume: %w", streamErr)
+	}
+	// Mid-drain failure (scanner error, flusher missing): log and fall through
+	// to the partial-persist branch below — bytes were already written, the
+	// downstream HTTP response is committed.
+	if streamErr != nil {
+		slog.WarnContext(ctx, "chatturn: resume stream ended with error",
+			"error", streamErr, "conversation_id", conversationID)
 	}
 
-	if err := scanner.Err(); err != nil {
-		slog.ErrorContext(ctx, "chatturn: resume scanner error",
-			"error", err, "conversation_id", conversationID)
+	if terminated {
+		if fireAutoTitle {
+			t.fireAutoTitleIfPendingResume(ctx, conversationID, &msg)
+		}
+		return OutcomeRejoinedResume, nil
 	}
 
 	// Stream ended without EventDone — transient network drop, orchestrator

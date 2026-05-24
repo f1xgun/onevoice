@@ -12,19 +12,19 @@
 package handler
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -313,36 +313,31 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := json.Marshal(body)
 
-	headers := map[string]string{}
-	if corrID := logger.CorrelationIDFromContext(r.Context()); corrID != "" {
-		headers["X-Correlation-ID"] = corrID
-	}
-	resp, err := h.hitlService.OrchClient().StreamResume(r.Context(), conversationID, batchID, raw, headers)
-	if err != nil {
-		slog.ErrorContext(r.Context(), "resume: orchestrator request failed", "error", err)
-		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
-	// 1 MB scanner buffer matching chat_proxy (large tool results must flow through).
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, sseBufferBytes), sseBufferBytes)
-	for scanner.Scan() {
-		_, _ = fmt.Fprintf(w, "%s\n", scanner.Text())
-		flusher.Flush()
+	// StreamSSE owns: URL selection (batch_id → resume), correlation-id
+	// propagation, SSE response headers, scanner with 1 MiB buffer, and
+	// the raw-forward drain loop. OnEvent is nil — this handler does no
+	// per-event domain dispatch (the chatturn paths do that for the chat
+	// stream itself; the resolve handler just proxies).
+	//
+	// Pre-connect failures wrap their error with "stream resume:". After
+	// StreamSSE writes the SSE response headers, callers cannot emit a JSON
+	// error body — so we map only the pre-connect substring to a 502.
+	// Mid-drain failures are logged at WARN and the in-flight 200 SSE
+	// response is left committed as-is (legacy behavior).
+	streamErr := h.hitlService.OrchClient().StreamSSE(r.Context(), orchestratorclient.StreamSSERequest{
+		ConversationID: conversationID,
+		BatchID:        batchID,
+		Body:           raw,
+		Writer:         w,
+	})
+	if streamErr != nil {
+		if strings.Contains(streamErr.Error(), "stream resume:") {
+			slog.ErrorContext(r.Context(), "resume: orchestrator request failed", "error", streamErr)
+			writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
+			return
+		}
+		slog.WarnContext(r.Context(), "resume: stream ended with error",
+			"error", streamErr, "conversation_id", conversationID)
 	}
 }
 
