@@ -16,7 +16,6 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
-	"github.com/f1xgun/onevoice/pkg/toolvalidation"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -327,7 +326,7 @@ func TestHITLService_Resolve_EditInvalidField_Returns400WithEditable(t *testing.
 			{ID: "tc_a", Action: "edit", EditedArgs: map[string]interface{}{"channel_id": "-100"}},
 		},
 	})
-	var ferr *toolvalidation.ErrFieldNotEditable
+	var ferr *tools.ErrFieldNotEditable
 	if !errors.As(err, &ferr) {
 		t.Fatalf("want ErrFieldNotEditable, got %v", err)
 	}
@@ -356,7 +355,7 @@ func TestHITLService_Resolve_EditNestedObject_Returns400(t *testing.T) {
 			{ID: "tc_a", Action: "edit", EditedArgs: map[string]interface{}{"text": map[string]interface{}{"nested": 1}}},
 		},
 	})
-	var scalarErr *toolvalidation.ErrNonScalarValue
+	var scalarErr *tools.ErrNonScalarValue
 	if !errors.As(err, &scalarErr) {
 		t.Fatalf("want ErrNonScalarValue, got %v", err)
 	}
@@ -565,7 +564,7 @@ func TestHITLService_Resolve_ClientTamperedToolName_IgnoredAndPinned(t *testing.
 			}},
 		},
 	})
-	var ferr *toolvalidation.ErrFieldNotEditable
+	var ferr *tools.ErrFieldNotEditable
 	if !errors.As(err, &ferr) {
 		t.Fatalf("want ErrFieldNotEditable for tool_name tamper, got %v", err)
 	}
@@ -617,7 +616,7 @@ func TestHITLService_Resolve_EditCaseMismatch_Returns400(t *testing.T) {
 			{ID: "tc_a", Action: "edit", EditedArgs: map[string]interface{}{"Text": "x"}},
 		},
 	})
-	var ferr *toolvalidation.ErrFieldNotEditable
+	var ferr *tools.ErrFieldNotEditable
 	if !errors.As(err, &ferr) {
 		t.Fatalf("want ErrFieldNotEditable for case mismatch, got %v", err)
 	}

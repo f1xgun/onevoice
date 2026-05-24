@@ -1,15 +1,14 @@
-package toolvalidation_test
+package tools_test
 
 import (
 	"errors"
 	"testing"
 
 	"github.com/f1xgun/onevoice/pkg/tools"
-	"github.com/f1xgun/onevoice/pkg/toolvalidation"
 )
 
 func TestValidateEditArgs_HappyPath(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs(tools.TelegramSendChannelPost,
+	err := tools.ValidateEditArgs(tools.TelegramSendChannelPost,
 		map[string]interface{}{"text": "hello"},
 		[]string{"text", "parse_mode"},
 	)
@@ -19,11 +18,11 @@ func TestValidateEditArgs_HappyPath(t *testing.T) {
 }
 
 func TestValidateEditArgs_UnknownField_ReturnsErrFieldNotEditable(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs(tools.TelegramSendChannelPost,
+	err := tools.ValidateEditArgs(tools.TelegramSendChannelPost,
 		map[string]interface{}{"channel_id": "-100"},
 		[]string{"text", "parse_mode"},
 	)
-	var e *toolvalidation.ErrFieldNotEditable
+	var e *tools.ErrFieldNotEditable
 	if !errors.As(err, &e) {
 		t.Fatalf("want ErrFieldNotEditable, got %v", err)
 	}
@@ -40,11 +39,11 @@ func TestValidateEditArgs_UnknownField_ReturnsErrFieldNotEditable(t *testing.T) 
 
 func TestValidateEditArgs_CaseMismatch_ReturnsErrFieldNotEditable(t *testing.T) {
 	// case-sensitive matching. "Text" != "text".
-	err := toolvalidation.ValidateEditArgs(tools.TelegramSendChannelPost,
+	err := tools.ValidateEditArgs(tools.TelegramSendChannelPost,
 		map[string]interface{}{"Text": "hello"},
 		[]string{"text"},
 	)
-	var e *toolvalidation.ErrFieldNotEditable
+	var e *tools.ErrFieldNotEditable
 	if !errors.As(err, &e) {
 		t.Fatalf("want ErrFieldNotEditable for case mismatch, got %v", err)
 	}
@@ -52,33 +51,33 @@ func TestValidateEditArgs_CaseMismatch_ReturnsErrFieldNotEditable(t *testing.T) 
 
 func TestValidateEditArgs_NestedObject_ReturnsErrNonScalarValue(t *testing.T) {
 	// nested objects rejected.
-	err := toolvalidation.ValidateEditArgs("tool",
+	err := tools.ValidateEditArgs("tool",
 		map[string]interface{}{"text": map[string]interface{}{"nested": 1}},
 		[]string{"text"},
 	)
-	var e *toolvalidation.ErrNonScalarValue
+	var e *tools.ErrNonScalarValue
 	if !errors.As(err, &e) {
 		t.Fatalf("want ErrNonScalarValue for nested object, got %v", err)
 	}
 }
 
 func TestValidateEditArgs_Array_ReturnsErrNonScalarValue(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs("tool",
+	err := tools.ValidateEditArgs("tool",
 		map[string]interface{}{"text": []string{"a", "b"}},
 		[]string{"text"},
 	)
-	var e *toolvalidation.ErrNonScalarValue
+	var e *tools.ErrNonScalarValue
 	if !errors.As(err, &e) {
 		t.Fatalf("want ErrNonScalarValue for array, got %v", err)
 	}
 }
 
 func TestValidateEditArgs_NilValue_ReturnsErrNonScalarValue(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs("tool",
+	err := tools.ValidateEditArgs("tool",
 		map[string]interface{}{"text": nil},
 		[]string{"text"},
 	)
-	var e *toolvalidation.ErrNonScalarValue
+	var e *tools.ErrNonScalarValue
 	if !errors.As(err, &e) {
 		t.Fatalf("want ErrNonScalarValue for nil, got %v", err)
 	}
@@ -86,11 +85,11 @@ func TestValidateEditArgs_NilValue_ReturnsErrNonScalarValue(t *testing.T) {
 
 func TestValidateEditArgs_NilEditable_EveryFieldRejected(t *testing.T) {
 	// Unknown tool path: Registry returns nil EditableFields.
-	err := toolvalidation.ValidateEditArgs("unknown_tool",
+	err := tools.ValidateEditArgs("unknown_tool",
 		map[string]interface{}{"text": "hello"},
 		nil,
 	)
-	var e *toolvalidation.ErrFieldNotEditable
+	var e *tools.ErrFieldNotEditable
 	if !errors.As(err, &e) {
 		t.Fatalf("want ErrFieldNotEditable for unknown tool, got %v", err)
 	}
@@ -100,7 +99,7 @@ func TestValidateEditArgs_NilEditable_EveryFieldRejected(t *testing.T) {
 }
 
 func TestValidateEditArgs_MultipleScalars_AllAccepted(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs("tool",
+	err := tools.ValidateEditArgs("tool",
 		map[string]interface{}{
 			"text":    "hello",
 			"count":   float64(5),
@@ -115,7 +114,7 @@ func TestValidateEditArgs_MultipleScalars_AllAccepted(t *testing.T) {
 
 func TestValidateEditArgs_JSONNumericScalar_Accepted(t *testing.T) {
 	// JSON decodes numbers as float64 — ensure that path is accepted.
-	err := toolvalidation.ValidateEditArgs("tool",
+	err := tools.ValidateEditArgs("tool",
 		map[string]interface{}{"count": float64(42)},
 		[]string{"count"},
 	)
@@ -125,7 +124,7 @@ func TestValidateEditArgs_JSONNumericScalar_Accepted(t *testing.T) {
 }
 
 func TestValidateEditArgs_EmptyArgs_NoError(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs("tool", map[string]interface{}{}, []string{"text"})
+	err := tools.ValidateEditArgs("tool", map[string]interface{}{}, []string{"text"})
 	if err != nil {
 		t.Fatalf("want nil, got %v", err)
 	}
@@ -136,11 +135,11 @@ func TestValidateEditArgs_EmptyArgs_NoError(t *testing.T) {
 // attempted tool swap), it must be rejected because "tool_name" never appears
 // in any tool's EditableFields allowlist.
 func TestValidateEditArgs_ToolNameFieldAttempt_Rejected(t *testing.T) {
-	err := toolvalidation.ValidateEditArgs(tools.TelegramSendChannelPost,
+	err := tools.ValidateEditArgs(tools.TelegramSendChannelPost,
 		map[string]interface{}{"tool_name": tools.TelegramSendChannelPhoto},
 		[]string{"text"},
 	)
-	var e *toolvalidation.ErrFieldNotEditable
+	var e *tools.ErrFieldNotEditable
 	if !errors.As(err, &e) {
 		t.Fatalf("want ErrFieldNotEditable for tool_name tamper attempt, got %v", err)
 	}
