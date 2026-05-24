@@ -1,0 +1,135 @@
+// Package chatturn owns the lifecycle of one user-message-in / assistant-
+// reply-out round-trip with the LLM, including HITL pause/resume and the
+// postal fanout of resulting side effects (posts, reviews, agent-tasks).
+//
+// One Turn corresponds to one HTTP request landing on POST /chat/{id}; the
+// caller (services/api/internal/handler.ChatProxyHandler) is reduced to body
+// parsing, auth gating, and TurnOutcome → HTTP-status mapping.
+//
+// See CONTEXT.md §"Chat turn" for the four-step lifecycle (gate / enrich /
+// stream / post-stream) and the full list of terminal outcomes.
+package chatturn
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+	"golang.org/x/text/language"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+)
+
+// TurnRequest is the inputs a Turn needs to run. Constructed by the HTTP
+// handler from request body + URL params + middleware-supplied context.
+type TurnRequest struct {
+	BusinessID     uuid.UUID
+	UserID         uuid.UUID
+	ConversationID string
+	Message        string
+	Model          string
+
+	// ResumeBatchID is "" for fresh turns. When set, the gate step routes
+	// the request through StreamResume() instead of opening a fresh LLM call.
+	ResumeBatchID string
+
+	// Locale is the language tag captured at the request edge so every
+	// persist op + the auto-titler spawn ctx (Phase D2) sees the language
+	// the user is chatting in.
+	Locale language.Tag
+}
+
+// TurnOutcome enumerates terminal states of Turn.Run. The HTTP handler maps
+// outcomes to status codes; the SSE stream may already be partially flushed
+// when Run returns, so the handler must not write HTTP-status headers after
+// receiving Done / Error / PauseHITL.
+type TurnOutcome int
+
+const (
+	// OutcomeDone is the happy-path terminal state — the LLM produced a
+	// final assistant message and the persistence + fanout side effects
+	// have been initiated.
+	OutcomeDone TurnOutcome = iota
+
+	// OutcomeError means the LLM stream reported a non-recoverable error;
+	// the assistant message is persisted with the error-wrapper content.
+	OutcomeError
+
+	// OutcomePauseHITL means execution paused at a tool_approval_required
+	// event; the assistant message is persisted with Status=PendingApproval
+	// and PendingToolCall rows have been written.
+	OutcomePauseHITL
+
+	// OutcomeReemittedApproval means the request was a duplicate landing
+	// on an already-paused turn; we re-emitted the cached approval event
+	// instead of opening a new LLM call.
+	OutcomeReemittedApproval
+
+	// OutcomeRejoinedResume means the gate routed the request through the
+	// orchestrator's /resume endpoint to rejoin an in-flight resumed turn.
+	OutcomeRejoinedResume
+
+	// OutcomeOrchestratorUnavailable is returned when the orchestrator
+	// connection fails before the first SSE byte. The handler maps this
+	// to 502 Bad Gateway. Replaces the legacy strings.Contains check on
+	// the underlying network-error message.
+	OutcomeOrchestratorUnavailable
+
+	// OutcomeBusinessNotFound surfaces domain.ErrBusinessNotFound from
+	// enrichment so the handler can map to 404 without unwrapping.
+	OutcomeBusinessNotFound
+
+	// OutcomeInlineError covers the "turn already in flight, no batch
+	// header" inline-error branch from the gate.
+	OutcomeInlineError
+)
+
+// String is for log lines; the value names are part of the
+// observability contract (Grafana dashboards may key on them).
+func (o TurnOutcome) String() string {
+	switch o {
+	case OutcomeDone:
+		return "done"
+	case OutcomeError:
+		return "error"
+	case OutcomePauseHITL:
+		return "pause_hitl"
+	case OutcomeReemittedApproval:
+		return "reemitted_approval"
+	case OutcomeRejoinedResume:
+		return "rejoined_resume"
+	case OutcomeOrchestratorUnavailable:
+		return "orchestrator_unavailable"
+	case OutcomeBusinessNotFound:
+		return "business_not_found"
+	case OutcomeInlineError:
+		return "inline_error"
+	default:
+		return "unknown"
+	}
+}
+
+// BusinessReader is the narrow subset of *service.BusinessService consumed by
+// the enrichment step. Declared where consumed (CONVENTIONS.md §"Service
+// Interfaces") so tests can inject a fake without importing the full service.
+type BusinessReader interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
+}
+
+// IntegrationLister is the narrow subset of *service.IntegrationService
+// consumed by enrichment.
+type IntegrationLister interface {
+	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
+}
+
+// ProjectReader is the narrow subset of *service.ProjectService consumed by
+// enrichment for project-scoped prompt / whitelist / approval-override
+// resolution.
+type ProjectReader interface {
+	GetByID(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error)
+}
+
+// Titler is the optional auto-title hook. A nil Titler is allowed at Deps
+// construction time — the post-stream step silently disables auto-titling.
+type Titler interface {
+	GenerateAndSave(ctx context.Context, businessID, conversationID, userText, assistantText string)
+}
