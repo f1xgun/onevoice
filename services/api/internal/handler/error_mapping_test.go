@@ -13,6 +13,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 func TestWriteAuthzInvariantError(t *testing.T) {
@@ -182,4 +183,63 @@ func TestWriteRevokeError_RevokedDelegates(t *testing.T) {
 	writeRevokeError(w, domain.ErrInvitationRevoked)
 	require.Equal(t, http.StatusGone, w.Code)
 	require.Contains(t, w.Body.String(), `"reason":"revoked"`)
+}
+
+// --- Phase 21b: TestErrorMapping_PasswordReset_* ----------------------
+//
+// writePasswordResetError owns the public {code, message} mapping for
+// the three password-reset sentinels declared in 21-CROSS-PLAN-CONTRACTS.md
+// §4. Tests below guard the contract against silent drift — every code
+// the frontend's error_mapping.ts COPY map expects MUST be emitted by
+// the backend on the documented error.
+
+func TestErrorMapping_PasswordReset_TokenInvalid_SentinelMatches(t *testing.T) {
+	// service.ErrResetTokenInvalid aliases domain.ErrResetTokenInvalid;
+	// either form must map to the public reset_token_invalid code.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/", nil)
+	writePasswordResetError(w, r, service.ErrResetTokenInvalid)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "reset_token_invalid", body["code"])
+	require.NotEmpty(t, body["message"])
+}
+
+func TestErrorMapping_PasswordReset_TokenInvalid_DomainSentinel(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/", nil)
+	writePasswordResetError(w, r, domain.ErrResetTokenInvalid)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "reset_token_invalid", body["code"])
+}
+
+func TestErrorMapping_PasswordReset_TokenExpired(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/", nil)
+	writePasswordResetError(w, r, domain.ErrResetTokenExpired)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "reset_token_expired", body["code"])
+}
+
+func TestErrorMapping_PasswordReset_PasswordTooWeak(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/", nil)
+	writePasswordResetError(w, r, service.ErrPasswordTooWeak)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "password_too_weak", body["code"])
+}
+
+func TestErrorMapping_PasswordReset_UnknownErr_500(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/", nil)
+	writePasswordResetError(w, r, errors.New("something else"))
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	require.True(t, strings.Contains(w.Body.String(), "internal_server_error"))
 }
