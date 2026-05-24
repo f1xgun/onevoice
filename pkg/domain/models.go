@@ -12,7 +12,7 @@ type User struct {
 	Email        string    `json:"email" db:"email"`
 	PasswordHash string    `json:"-" db:"password_hash"`
 	// PreferredLocale is the user's chosen UI language ('ru' | 'en').
-	// Persisted in users.preferred_locale (migration 000008 — i18n Phase A3).
+	// Persisted in users.preferred_locale (migration 000010 prod / 000008 test — i18n Phase A3; renumbered in Phase 20 Plan 20-01).
 	// DB default 'ru'; CHECK constraint enforces the two-value enum. The frontend
 	// reads this on /auth/me to seed the locale cookie and writes it via
 	// PATCH /auth/locale. Snake-case json tag mirrors the DB column name so the

@@ -266,7 +266,7 @@ func (s *userService) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, 
 // UpdatePreferredLocale delegates straight to the repo. We don't re-validate
 // the locale value here because the handler already enforces the allow-list
 // (validator tag oneof=ru en) — duplicating it here would only drift. The DB
-// CHECK constraint added in migration 000008 is the safety net.
+// CHECK constraint added in migration 000010 (prod) / 000008 (test) — i18n Phase A3 — is the safety net.
 func (s *userService) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
 	if err := s.repo.UpdatePreferredLocale(ctx, userID, locale); err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {

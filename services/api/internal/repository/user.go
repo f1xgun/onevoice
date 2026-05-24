@@ -144,7 +144,7 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 // Returns domain.ErrUserNotFound when 0 rows matched (mirrors Update above).
 //
 // Validation of the locale value itself ('ru' | 'en') happens at the handler
-// boundary. The DB CHECK constraint (migration 000008) is the defense-in-depth
+// boundary. The DB CHECK constraint (migration 000010 prod / 000008 test — i18n Phase A3) is the defense-in-depth
 // floor — passing an invalid value here surfaces as a pgx error, NOT
 // ErrUserNotFound, because RowsAffected will be 0 only when id doesn't match.
 func (r *userRepository) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
