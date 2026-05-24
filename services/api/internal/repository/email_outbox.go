@@ -101,22 +101,88 @@ func NewEmailOutboxRepository(pool pgxPool) *EmailOutboxRepository {
 // The caller controls tx lifecycle (Begin/Commit/Rollback) — Enqueue
 // never starts or ends a transaction.
 //
-// Returns ErrEmailOutboxNotFound is not used here; tx==nil returns
-// an explicit error so callers don't accidentally enqueue outside a
-// transaction (which would defeat atomicity).
+// Phase 21-04 extension (21-CROSS-PLAN-CONTRACTS §3): when tx == nil,
+// Enqueue falls back to a pool.QueryRow INSERT so sweeper-driven sends
+// (e.g. the T-7 deletion warning sweeper) can enqueue without a
+// surrounding business transaction. Atomicity is still preserved in the
+// tx-using cases (password reset, verification, deletion request).
 func (r *EmailOutboxRepository) Enqueue(ctx context.Context, tx pgx.Tx, in OutboxEnqueueInput) (uuid.UUID, error) {
-	if tx == nil {
-		return uuid.Nil, errors.New("email_outbox: Enqueue requires a non-nil tx (atomicity guarantee)")
-	}
 	const q = `
 		INSERT INTO email_outbox (to_email, subject, body_text, body_html)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id`
 	var id uuid.UUID
+	if tx == nil {
+		// Phase 21-04: sweeper path with no business tx. Falls back to
+		// pool — single statement is atomic at the row level (no other row
+		// is involved). Safe because the dedupe check in the caller (e.g.
+		// ExistsBySubjectAndRecipient) precedes this call.
+		if err := r.pool.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML).Scan(&id); err != nil {
+			return uuid.Nil, fmt.Errorf("email_outbox: enqueue (nil tx): %w", err)
+		}
+		return id, nil
+	}
 	if err := tx.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML).Scan(&id); err != nil {
 		return uuid.Nil, fmt.Errorf("email_outbox: enqueue: %w", err)
 	}
 	return id, nil
+}
+
+// EnqueueDeferred — Phase 21-04 extension (21-CROSS-PLAN-CONTRACTS §2a).
+// Same as Enqueue but writes an explicit `next_attempt_at` so the worker
+// won't pick the row up until then. Used for the T-7 deletion warning
+// email (23 days in the future at request-deletion time).
+//
+// Also accepts a nil tx (sweeper fallback path), mirroring Enqueue.
+func (r *EmailOutboxRepository) EnqueueDeferred(ctx context.Context, tx pgx.Tx, in OutboxEnqueueInput, nextAttemptAt time.Time) (uuid.UUID, error) {
+	const q = `
+		INSERT INTO email_outbox (to_email, subject, body_text, body_html, next_attempt_at)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id`
+	var id uuid.UUID
+	if tx == nil {
+		if err := r.pool.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML, nextAttemptAt).Scan(&id); err != nil {
+			return uuid.Nil, fmt.Errorf("email_outbox: enqueue deferred (nil tx): %w", err)
+		}
+		return id, nil
+	}
+	if err := tx.QueryRow(ctx, q, in.ToEmail, in.Subject, in.BodyText, in.BodyHTML, nextAttemptAt).Scan(&id); err != nil {
+		return uuid.Nil, fmt.Errorf("email_outbox: enqueue deferred: %w", err)
+	}
+	return id, nil
+}
+
+// ExistsBySubjectAndRecipient — Phase 21-04 extension (21-CROSS-PLAN-CONTRACTS §2b).
+// Returns true if at least one email_outbox row exists for (to_email,
+// subject) in ANY status (pending|sent|failed|canceled). Used by the
+// deletion-warning sweeper to dedupe: a single user must receive at most
+// ONE T-7 reminder no matter how many times the sweeper runs.
+func (r *EmailOutboxRepository) ExistsBySubjectAndRecipient(ctx context.Context, toEmail, subject string) (bool, error) {
+	const q = `SELECT EXISTS (
+		SELECT 1 FROM email_outbox WHERE to_email = $1 AND subject = $2
+	)`
+	var exists bool
+	if err := r.pool.QueryRow(ctx, q, toEmail, subject).Scan(&exists); err != nil {
+		return false, fmt.Errorf("email_outbox: exists check: %w", err)
+	}
+	return exists, nil
+}
+
+// CancelPendingBySubjectAndRecipient — Phase 21-04. When a user cancels
+// their pending deletion via POST /users/me/restore, the pending T-7
+// warning row (scheduled +23d in the future via EnqueueDeferred) should
+// be canceled so the user doesn't receive the warning after restoring.
+// Idempotent: returns nil even if 0 rows match (no pending row OR worker
+// already failed-out the row).
+func (r *EmailOutboxRepository) CancelPendingBySubjectAndRecipient(ctx context.Context, toEmail, subject string) error {
+	const q = `UPDATE email_outbox
+	              SET status = 'canceled',
+	                  last_error = 'canceled: deletion restored'
+	            WHERE to_email = $1 AND subject = $2 AND status = 'pending'`
+	if _, err := r.pool.Exec(ctx, q, toEmail, subject); err != nil {
+		return fmt.Errorf("email_outbox: cancel pending: %w", err)
+	}
+	return nil
 }
 
 // DrainPending returns up to `limit` rows where status='pending' AND

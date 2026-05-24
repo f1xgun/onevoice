@@ -12,7 +12,16 @@ import (
 
 type UserRepository interface {
 	Create(ctx context.Context, user *User) error
+	// GetByID filters `deleted_at IS NULL` per D-41 — soft-deleted users
+	// look like ErrUserNotFound to every handler that reads via this method.
+	// Deletion-aware code paths (AccountDeletionService, BlockWritesDuringGrace
+	// middleware) call GetByIDIncludingDeleted instead.
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
+	// GetByIDIncludingDeleted — Phase 21-04. Returns the row even if
+	// deleted_at IS NOT NULL. The /auth/me handler uses this so users
+	// inside the 30-day grace window can still see their accountDeletion
+	// state and exercise restore (D-30).
+	GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	Update(ctx context.Context, user *User) error
 	// UpdatePreferredLocale persists the user's UI language choice
@@ -310,6 +319,13 @@ type ConversationRepository interface {
 	// MaxScopedConversations (overflow logged + truncated). Empty
 	// businessID or userID returns ErrInvalidScope.
 	ScopedConversationIDs(ctx context.Context, businessID, userID string, projectID *string) ([]string, error)
+	// MongoConversationsCleanup — Phase 21-04 hard-delete sweeper.
+	// For each conversation owned by the deleted user, sets user_id=null,
+	// user_email_at_delete=<original email>, deleted_owner=true. Does NOT
+	// delete documents (business-level history stays intact — D-37). Best-
+	// effort post-PG-TX (PG delete is source of truth; Mongo failure logged
+	// as warning, not rolled back). Returns matchedCount.
+	MongoConversationsCleanup(ctx context.Context, userID string, originalEmail string) (int64, error)
 }
 
 // ConversationTitleHit is the per-row projection returned by

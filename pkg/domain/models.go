@@ -25,8 +25,19 @@ type User struct {
 	// EmailVerifiedAt is set when the user POSTs the verify-email link.
 	// JSON-hidden — surfaced only via /auth/me's wrapper.
 	EmailVerifiedAt *time.Time `json:"-" db:"email_verified_at"`
-	CreatedAt       time.Time  `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time  `json:"updatedAt" db:"updated_at"`
+	// Phase 21-04 / ACCT-03: account-deletion lifecycle. All three are
+	// pointer-time.Time so they can be nil (the "no pending deletion" state).
+	// JSON-hidden — /auth/me exposes them via a typed accountDeletion field
+	// on MeResponse so other endpoints listing users don't accidentally
+	// leak them. GetByID / GetByEmail filter `deleted_at IS NULL` so a
+	// soft-deleted user becomes "not found" everywhere reads happen (D-41);
+	// use GetByIDIncludingDeleted when the deletion-aware code path needs to
+	// inspect these fields.
+	DeletedAt           *time.Time `json:"-" db:"deleted_at"`
+	DeletionRequestedAt *time.Time `json:"-" db:"deletion_requested_at"`
+	DeletionCanceledAt  *time.Time `json:"-" db:"deletion_canceled_at"`
+	CreatedAt           time.Time  `json:"createdAt" db:"created_at"`
+	UpdatedAt           time.Time  `json:"updatedAt" db:"updated_at"`
 }
 
 type Business struct {
