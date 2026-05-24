@@ -45,6 +45,41 @@ export const COPY: Record<string, ErrorEntry> = {
     i18nKey: 'auth.passwordReset.errors.weakPassword',
     type: 'inline',
   },
+
+  // Phase 21-03 (ACCT-02) — email verification + soft-restrict.
+  // 21-CROSS-PLAN-CONTRACTS.md §4. The i18n keys live under
+  // auth.verifyEmail.errors.* in messages/{ru,en}.json. Do not change
+  // the entry shape — fixed by §4.
+  verify_token_invalid: {
+    i18nKey: 'auth.verifyEmail.errors.invalid',
+    type: 'inline',
+  },
+  verify_token_expired: {
+    i18nKey: 'auth.verifyEmail.errors.expired',
+    type: 'inline',
+    actionLabel: 'auth.verifyEmail.errors.resendCta',
+  },
+  verify_resend_throttled: {
+    i18nKey: 'auth.verifyEmail.errors.throttled',
+    type: 'toast',
+    toastTone: 'warning',
+  },
+  email_verification_required: {
+    // 412 from RequireVerifiedEmailDay0/Day7 — the global modal-host
+    // listens for this entry's type==='modal' and renders
+    // EmailVerifiedRequiredModal.
+    i18nKey: 'auth.verifyEmail.errors.required',
+    type: 'modal',
+    actionLabel: 'auth.verifyEmail.errors.resendCta',
+  },
+  email_already_verified: {
+    i18nKey: 'auth.verifyEmail.errors.alreadyVerified',
+    type: 'toast',
+  },
+  email_taken: {
+    i18nKey: 'auth.verifyEmail.errors.taken',
+    type: 'inline',
+  },
 };
 
 const FALLBACK: ErrorEntry = {

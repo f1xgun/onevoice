@@ -4,6 +4,11 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  // Phase 21-03 (ACCT-02): /auth/me returns emailVerified + (when false)
+  // an ISO8601 deadline (created_at + 7 days). The persistent
+  // VerificationBanner renders when emailVerified === false.
+  emailVerified?: boolean;
+  emailVerificationDeadline?: string;
 }
 
 interface AuthState {
