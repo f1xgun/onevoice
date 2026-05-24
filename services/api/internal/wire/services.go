@@ -2,14 +2,18 @@ package wire
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
@@ -129,7 +133,13 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		// across every service / handler that records security-sensitive
 		// mutations. Async + bounded retry + metric-on-failure live inside
 		// pkg/audit; consumers just call AuditLogger.Log(ctx, entry).
-		AuditLogger: audit.NewLogger(repos.AuditLog),
+		//
+		// Phase 21-03 / ACCT-06: NewLoggerWithResolver injects a tiny
+		// adapter wrapping UserRepository.GetByID so loggerImpl.write can
+		// snapshot user_email_at_event BEFORE the INSERT. After Phase 21-04
+		// hard-deletes a user, the audit row's FK becomes NULL but the
+		// email survives for 152-ФЗ forensic queries.
+		AuditLogger: audit.NewLoggerWithResolver(repos.AuditLog, userResolverAdapter{repo: repos.User}),
 	}
 
 	// Auto-titler LLM Router wiring.
@@ -330,3 +340,27 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 // approval-validation lookups. 5 minutes balances responsiveness to
 // orchestrator restarts against load on /internal/tools.
 const toolsCacheTTL = 5 * time.Minute
+
+// userResolverAdapter implements pkg/audit.UserResolver by delegating to
+// domain.UserRepository.GetByID. Defined locally in wire/ (not pkg/audit)
+// to keep pkg/audit free of the services/api/repository import.
+//
+// On lookup failure the adapter returns ("", err) — pkg/audit.loggerImpl
+// catches the error, slog.Warns, and leaves UserEmailAtEvent empty so the
+// audit row still writes (Phase 21-03 / ACCT-06 D-disposition).
+type userResolverAdapter struct {
+	repo domain.UserRepository
+}
+
+// EmailByID returns the user's current email; "" + nil on user-not-found
+// so a deleted-mid-flight user doesn't surface as a resolver error.
+func (a userResolverAdapter) EmailByID(ctx context.Context, userID uuid.UUID) (string, error) {
+	u, err := a.repo.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return u.Email, nil
+}

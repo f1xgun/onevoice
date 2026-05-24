@@ -33,6 +33,21 @@ const (
 	ActionPasswordResetCompleted    = "auth.password_reset_completed"
 	ActionPasswordResetUnknownEmail = "auth.password_reset_request_unknown_email"
 
+	// Phase 21c — Email verification + soft-restrict (ACCT-02, ACCT-05, D-42).
+	// ActionEmailVerificationLinkViewed is reserved for future GET-side
+	// telemetry (currently the GET handler renders only a button and
+	// emits nothing; the action exists so we can flip telemetry on
+	// without an audit-enum migration).
+	// ActionEmailChangedBeforeVerify fires on PATCH /auth/email-before-verify
+	// — captures the old vs new email pair so the audit trail records
+	// pre-verification email churn.
+	// ActionConsentRecorded fires once per Register, alongside the
+	// user_consents INSERT (D-40).
+	ActionEmailVerificationLinkViewed = "auth.email_verification_link_viewed"
+	ActionEmailVerified               = "auth.email_verified"
+	ActionEmailChangedBeforeVerify    = "auth.email_changed_before_verify"
+	ActionConsentRecorded             = "auth.consent_recorded"
+
 	// integration.* — platform integrations.
 	ActionIntegrationConnected    = "integration.connected"
 	ActionIntegrationDisconnected = "integration.disconnected"

@@ -109,6 +109,32 @@ type UserRegisteredDetails struct {
 	UserAgent string `json:"user_agent"`
 }
 
+// EmailVerifiedDetails — Phase 21-03 / ACCT-02. No old/new state; the
+// AuditLog.UserEmailAtEvent snapshot captures the address that was just
+// verified.
+type EmailVerifiedDetails struct {
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+// EmailChangedBeforeVerifyDetails captures both addresses across the
+// pre-verification change (D-21). OldEmail is the pre-change value; the
+// AuditLog.UserEmailAtEvent snapshot already reflects OldEmail (the row is
+// written BEFORE the users.email column flips).
+type EmailChangedBeforeVerifyDetails struct {
+	OldEmail  string `json:"old_email"`
+	NewEmail  string `json:"new_email"`
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+// ConsentRecordedDetails — Phase 21-03 / D-40. Phase 22 will extend with
+// policy_sha256 + cross-border consent fields.
+type ConsentRecordedDetails struct {
+	Purpose       string `json:"purpose"`
+	PolicyVersion string `json:"policy_version"`
+}
+
 // ---- integration --------------------------------------------------------
 
 // IntegrationConnectedDetails — NEVER store the access/refresh token or any

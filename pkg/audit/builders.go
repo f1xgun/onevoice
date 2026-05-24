@@ -177,6 +177,43 @@ func LogUserRegistered(ctx context.Context, l Logger, userID uuid.UUID, email, i
 	})
 }
 
+// LogEmailVerified records a successful email verification (POST
+// /auth/verify-email/confirm). Phase 21-03 / ACCT-02. No old/new state in
+// details — the AuditLog.UserEmailAtEvent snapshot already captures the
+// address that was just verified.
+func LogEmailVerified(ctx context.Context, l Logger, userID uuid.UUID, ip, userAgent string) {
+	l.Log(ctx, Entry{
+		Action:   ActionEmailVerified,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(EmailVerifiedDetails{IP: ip, UserAgent: userAgent}),
+	})
+}
+
+// LogEmailChangedBeforeVerify records PATCH /auth/email-before-verify (D-21).
+// Captures both the OLD email (was: pre-change address) and the NEW email
+// so the forensic trail shows email churn during the unverified window.
+func LogEmailChangedBeforeVerify(ctx context.Context, l Logger, userID uuid.UUID, oldEmail, newEmail, ip, userAgent string) {
+	l.Log(ctx, Entry{
+		Action:   ActionEmailChangedBeforeVerify,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(EmailChangedBeforeVerifyDetails{OldEmail: oldEmail, NewEmail: newEmail, IP: ip, UserAgent: userAgent}),
+	})
+}
+
+// LogConsentRecorded records the user_consents INSERT that runs alongside
+// Register (D-40). Phase 21-03 / ACCT-02. Phase 22 will extend with
+// proper policy_version + policy_sha256 fields.
+func LogConsentRecorded(ctx context.Context, l Logger, userID uuid.UUID, purpose, policyVersion string) {
+	l.Log(ctx, Entry{
+		Action:   ActionConsentRecorded,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(ConsentRecordedDetails{Purpose: purpose, PolicyVersion: policyVersion}),
+	})
+}
+
 // ---- integration builders -----------------------------------------------
 
 // LogIntegrationConnected records a new integration. D-14: details carry
