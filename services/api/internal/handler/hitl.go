@@ -25,7 +25,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/logger"
-	"github.com/f1xgun/onevoice/pkg/toolvalidation"
+	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -85,8 +85,8 @@ type resolveRequest struct {
 //	ErrHITLForbidden           → 403 {"error":"forbidden"}
 //	ErrHITLBatchExpired        → 410 {"error":"approval_expired"}
 //	ErrHITLDecisionsShape      → 400 {"error":"shape mismatch","missing":[...]}
-//	*toolvalidation.ErrFieldNotEditable → 400 {"error":"...","editable":[...]}
-//	*toolvalidation.ErrNonScalarValue   → 400 {"error":"...","tool":"..."}
+//	*tools.ErrFieldNotEditable → 400 {"error":"...","editable":[...]}
+//	*tools.ErrNonScalarValue   → 400 {"error":"...","tool":"..."}
 //	ErrHITLRejectReasonTooLong → 400
 //	ErrHITLBatchAlreadyResolving → 409 {"error":"batch resolving","retry_after_ms":500,"reason":"concurrent resolve in progress"}
 //	default                    → 500
@@ -143,7 +143,7 @@ func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Req
 // Centralized so the happy-path handler stays easy to read.
 func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, err error) {
 	// Edit validation: never silently ignore.
-	var errEdit *toolvalidation.ErrFieldNotEditable
+	var errEdit *tools.ErrFieldNotEditable
 	if errors.As(err, &errEdit) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
 			"error":    fmt.Sprintf("field %q not editable for tool %q", errEdit.Field, errEdit.Tool),
@@ -151,7 +151,7 @@ func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, er
 		})
 		return
 	}
-	var errScalar *toolvalidation.ErrNonScalarValue
+	var errScalar *tools.ErrNonScalarValue
 	if errors.As(err, &errScalar) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
 			"error": fmt.Sprintf("field %q must be string/number/bool", errScalar.Field),

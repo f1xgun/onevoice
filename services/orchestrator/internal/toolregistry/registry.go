@@ -420,18 +420,11 @@ func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 	return out
 }
 
-// RegistryEntry is the projection exposed by GET /api/v1/tools.
-// Kept in the tools package so the API handler can import a typed shape.
-type RegistryEntry struct {
-	Name            string           `json:"name"`
-	DisplayName     string           `json:"displayName"`              // human-readable label (e.g., "Отправить пост") shown in settings UI; may be empty — frontend falls back to Name.
-	DisplayNameKey  string           `json:"displayNameKey,omitempty"` // i18n catalog key for the FE;. Empty → FE falls back to DisplayName.
-	Platform        string           `json:"platform"`                 // e.g., "telegram" — derived from {platform}__{action}
-	Floor           domain.ToolFloor `json:"floor"`
-	EditableFields  []string         `json:"editableFields"`
-	Description     string           `json:"description"`     // LLM-facing description — includes tool-name references and disambiguation rules. Locale-resolved when fetched via AllEntriesForLocale.
-	UserDescription string           `json:"userDescription"` // end-user-facing description shown in settings UI; never references other tool names.
-}
+// RegistryEntry is the projection exposed by GET /api/v1/tools — aliased to
+// domain.ToolEntry so the API and the orchestrator share one canonical type
+// instead of redefining the same JSON shape on both sides of the internal/
+// visibility wall. See pkg/domain/tool_entry.go for full field documentation.
+type RegistryEntry = domain.ToolEntry
 
 // AllEntries returns a snapshot of (name, displayName, platform, floor, editable, description)
 // for every registered tool. Description is returned in the registry's
