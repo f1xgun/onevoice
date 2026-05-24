@@ -1535,5 +1535,49 @@
     "stickyAlert": {
       "dismissAria": "Dismiss notification"
     }
+  },
+  "account": {
+    "deletion": {
+      "dangerZoneHeading": "Danger zone",
+      "dangerZoneDescription": "Deleting your account starts a 30-day cancellation window. After that the data cannot be restored.",
+      "deleteButton": "Delete account",
+      "confirmModal": {
+        "heading": "Delete account?",
+        "body": "This action starts a 30-day deletion period. Until {date} you can restore the account by signing back in.",
+        "passwordLabel": "Enter your password to confirm",
+        "passwordPlaceholder": "Your password",
+        "cta": "Delete in 30 days",
+        "submitting": "Deleting…",
+        "cancel": "Cancel",
+        "successToast": "Account will be deleted in 30 days.",
+        "passwordTooShort": "Minimum 8 characters",
+        "loadingImpact": "Loading impact…"
+      },
+      "soleOwnerModal": {
+        "heading": "Resolve businesses first",
+        "body": "You are the sole owner of the following businesses. Before deleting your account, transfer ownership or delete the businesses.",
+        "requiresAction": "Requires action",
+        "transferButton": "Transfer ownership",
+        "transferDisabledTooltip": "Available in the next version — delete the business or wait",
+        "deleteBusinessButton": "Delete business",
+        "andMore": "and {count} more",
+        "cancel": "Cancel"
+      },
+      "graceBanner": "Account will be deleted {date}.",
+      "graceBannerAction": "Cancel deletion",
+      "graceBannerActionAria": "Cancel account deletion",
+      "graceBannerSubmitting": "Canceling…",
+      "restoreSuccessToast": "Deletion canceled. Account restored.",
+      "errors": {
+        "pendingDeletion": "Account is pending deletion. Cancel deletion to continue.",
+        "pendingDeletionAction": "Cancel deletion",
+        "soleOwner": "Cannot delete account — you are the sole owner of a business.",
+        "passwordInvalid": "Invalid password",
+        "tooOld": "The cancellation window has expired. Account is already deleted.",
+        "noPending": "No pending deletion for this account.",
+        "originNotAllowed": "Request rejected for security reasons.",
+        "accountDeleted": "Account deleted."
+      }
+    }
   }
 }
