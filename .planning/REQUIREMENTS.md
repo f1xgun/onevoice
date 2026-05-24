@@ -10,7 +10,7 @@
 
 Phase 20 — Critical Onboarding & Migration Fixes
 
-- [ ] **ONB-01**: New user clicks "Create organization" on onboarding page and reaches a functional `/business/new` form that creates the business via `POST /api/v1/businesses`
+- [x] **ONB-01**: New user clicks "Create organization" on onboarding page and reaches a functional `/business/new` form that creates the business via `POST /api/v1/businesses` — **DONE upstream via PR #106 (commit `0b034ffd`, merged 2026-05-23)**, ahead of v1.4 kickoff
 - [ ] **ONB-02**: Fresh database executes `migrate up` cleanly (duplicate migration version `000008` renumbered to `000009`+ in both `migrations/postgres/` and `services/api/migrations/`)
 - [ ] **ONB-03**: Posts page "Create post" button either creates a draft post via chat or is hidden (no dead UI)
 - [ ] **ONB-04**: Google Business integration displayed with "Preview" or "Beta" badge on `/integrations` until the 9 missing tools (currently only 2 of 11 routed in `agent-google-business/internal/agent/handler.go`) are wired
@@ -132,7 +132,7 @@ Phase 26 — Concurrency Limits & Platform Failure UX
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ONB-01 | Phase 20 | Pending |
+| ONB-01 | Phase 20 | Complete (PR #106, 2026-05-23) |
 | ONB-02 | Phase 20 | Pending |
 | ONB-03 | Phase 20 | Pending |
 | ONB-04 | Phase 20 | Pending |
