@@ -6,7 +6,7 @@
 //
 //   - Ownership (actor.BusinessID == batch.BusinessID) — cross-tenant → 403
 //   - Decision shape (exactly one decision per call) — bad shape → 400 {missing:[...]}
-//   - Edit validation via pkg/toolvalidation — invalid field → 400 {editable:[...]}
+//   - Edit validation via pkg/tools.ValidateEditArgs — invalid field → 400 {editable:[...]}
 //   - Atomic status transition via findOneAndUpdate — race → 409 {retry_after_ms}
 //   - TOCTOU re-check via pkg/hitl.Resolve with FRESH business/project maps —
 //     post-pause Forbidden flips to a synthetic "policy_revoked" rejection
@@ -33,7 +33,7 @@ import (
 	pkghitl "github.com/f1xgun/onevoice/pkg/hitl"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
-	"github.com/f1xgun/onevoice/pkg/toolvalidation"
+	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // defaultToolsRegistryCacheTTL is the fallback TTL applied when the caller
@@ -242,7 +242,7 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		d := decisionByID[c.CallID]
 		if d.Action == "edit" {
 			editable := s.toolsCache.EditableFields(c.ToolName)
-			if err := toolvalidation.ValidateEditArgs(c.ToolName, d.EditedArgs, editable); err != nil {
+			if err := tools.ValidateEditArgs(c.ToolName, d.EditedArgs, editable); err != nil {
 				// Typed error — handler maps to 400 with the correct body shape.
 				return nil, err
 			}
@@ -414,20 +414,11 @@ type localeSnapshot struct {
 
 // ToolsRegistryEntry is the per-tool projection returned by GET /api/v1/tools
 // (frontend) and by GET /internal/tools (internal — orchestrator-to-API).
-//
-// DisplayNameKey is the i18n catalog key the frontend uses to render the
-// tool label in the user's locale. Optional — older orchestrator
-// deploys send "" and the FE falls back to DisplayName.
-type ToolsRegistryEntry struct {
-	Name            string           `json:"name"`
-	DisplayName     string           `json:"displayName"`
-	DisplayNameKey  string           `json:"displayNameKey,omitempty"`
-	Platform        string           `json:"platform"`
-	Floor           domain.ToolFloor `json:"floor"`
-	EditableFields  []string         `json:"editableFields"`
-	Description     string           `json:"description"`     // LLM-facing.
-	UserDescription string           `json:"userDescription"` // end-user-facing copy for settings UI.
-}
+// Aliased to domain.ToolEntry so the orchestrator and the API share one
+// canonical type instead of redefining the same JSON shape on both sides of
+// the internal/ visibility wall. Full field documentation lives in
+// pkg/domain/tool_entry.go.
+type ToolsRegistryEntry = domain.ToolEntry
 
 // NewToolsRegistryCache constructs a cache bound to orchestratorURL (e.g.,
 // "http://orchestrator:8090"). Pass httpClient=nil to use http.DefaultClient.

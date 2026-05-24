@@ -1,4 +1,4 @@
-package hitlvalidation_test
+package wire
 
 import (
 	"bytes"
@@ -8,13 +8,13 @@ import (
 	"testing"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
-	"github.com/f1xgun/onevoice/pkg/hitlvalidation"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
 // newCaptureLogger replaces slog's default logger with one backed by a buffer
-// so tests can assert the exact tool_approval_whitelist_unknown events emitted
-// by ValidateApprovalSettings. Restores the previous default via t.Cleanup.
+// so tests can assert the exact tool_approval_whitelist_unknown events
+// emitted by validateApprovalSettings. Restores the previous default via
+// t.Cleanup.
 func newCaptureLogger(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	buf := &bytes.Buffer{}
@@ -31,14 +31,14 @@ func TestValidateApprovalSettings_UnknownBusinessTool_LogsWarning(t *testing.T) 
 	registered := map[string]struct{}{
 		tools.TelegramSendChannelPost: {},
 	}
-	businesses := []hitlvalidation.ApprovalSource{{
+	businesses := []approvalSource{{
 		ID: "biz-123",
 		Overrides: map[string]domain.ToolFloor{
 			"renamed_or_missing__tool": domain.ToolFloorManual,
 		},
 	}}
 
-	n := hitlvalidation.ValidateApprovalSettings(context.Background(), registered, businesses, nil)
+	n := validateApprovalSettings(context.Background(), registered, businesses, nil)
 	if n != 1 {
 		t.Fatalf("warnCount = %d, want 1", n)
 	}
@@ -57,14 +57,14 @@ func TestValidateApprovalSettings_UnknownProjectTool_LogsWarning(t *testing.T) {
 	registered := map[string]struct{}{
 		tools.TelegramSendChannelPost: {},
 	}
-	projects := []hitlvalidation.ApprovalSource{{
+	projects := []approvalSource{{
 		ID: "proj-abc",
 		Overrides: map[string]domain.ToolFloor{
 			"ghost__tool": domain.ToolFloorForbidden,
 		},
 	}}
 
-	n := hitlvalidation.ValidateApprovalSettings(context.Background(), registered, nil, projects)
+	n := validateApprovalSettings(context.Background(), registered, nil, projects)
 	if n != 1 {
 		t.Fatalf("warnCount = %d, want 1", n)
 	}
@@ -86,20 +86,20 @@ func TestValidateApprovalSettings_AllKnown_NoWarnings(t *testing.T) {
 		tools.TelegramSendChannelPost: {},
 		tools.VKPublishPost:           {},
 	}
-	businesses := []hitlvalidation.ApprovalSource{{
+	businesses := []approvalSource{{
 		ID: "biz-1",
 		Overrides: map[string]domain.ToolFloor{
 			tools.TelegramSendChannelPost: domain.ToolFloorManual,
 		},
 	}}
-	projects := []hitlvalidation.ApprovalSource{{
+	projects := []approvalSource{{
 		ID: "proj-1",
 		Overrides: map[string]domain.ToolFloor{
 			tools.VKPublishPost: domain.ToolFloorManual,
 		},
 	}}
 
-	n := hitlvalidation.ValidateApprovalSettings(context.Background(), registered, businesses, projects)
+	n := validateApprovalSettings(context.Background(), registered, businesses, projects)
 	if n != 0 {
 		t.Fatalf("warnCount = %d, want 0 (all tools known)", n)
 	}
@@ -118,14 +118,14 @@ func TestValidateApprovalSettings_MixedKnownUnknown_CountsUnknownOnly(t *testing
 		tools.TelegramSendChannelPost: {},
 		tools.VKPublishPost:           {},
 	}
-	businesses := []hitlvalidation.ApprovalSource{{
+	businesses := []approvalSource{{
 		ID: "biz-1",
 		Overrides: map[string]domain.ToolFloor{
 			tools.TelegramSendChannelPost: domain.ToolFloorManual,
 			"bogus_biz__tool":             domain.ToolFloorAuto,
 		},
 	}}
-	projects := []hitlvalidation.ApprovalSource{{
+	projects := []approvalSource{{
 		ID: "proj-1",
 		Overrides: map[string]domain.ToolFloor{
 			tools.VKPublishPost:   domain.ToolFloorManual,
@@ -133,7 +133,7 @@ func TestValidateApprovalSettings_MixedKnownUnknown_CountsUnknownOnly(t *testing
 		},
 	}}
 
-	n := hitlvalidation.ValidateApprovalSettings(context.Background(), registered, businesses, projects)
+	n := validateApprovalSettings(context.Background(), registered, businesses, projects)
 	if n != 2 {
 		t.Fatalf("warnCount = %d, want 2 (one unknown per scope)", n)
 	}
@@ -147,7 +147,7 @@ func TestValidateApprovalSettings_MixedKnownUnknown_CountsUnknownOnly(t *testing
 // empty registered map yields zero warnings and zero panics.
 func TestValidateApprovalSettings_EmptyInputs(t *testing.T) {
 	buf := newCaptureLogger(t)
-	n := hitlvalidation.ValidateApprovalSettings(context.Background(), map[string]struct{}{}, nil, nil)
+	n := validateApprovalSettings(context.Background(), map[string]struct{}{}, nil, nil)
 	if n != 0 {
 		t.Fatalf("warnCount = %d, want 0", n)
 	}
@@ -157,22 +157,22 @@ func TestValidateApprovalSettings_EmptyInputs(t *testing.T) {
 }
 
 // TestValidateApprovalSettings_MultipleSourcesSameScope exercises iteration
-// across many ApprovalSources of the same scope (the API service produces one
-// per business / per project — this test guards that none of them are
-// silently skipped).
+// across many approvalSource entries of the same scope (the API service
+// produces one per business / per project — this test guards that none of
+// them are silently skipped).
 func TestValidateApprovalSettings_MultipleSourcesSameScope(t *testing.T) {
 	newCaptureLogger(t)
 
 	registered := map[string]struct{}{
 		tools.TelegramSendChannelPost: {},
 	}
-	businesses := []hitlvalidation.ApprovalSource{
+	businesses := []approvalSource{
 		{ID: "biz-1", Overrides: map[string]domain.ToolFloor{tools.TelegramSendChannelPost: domain.ToolFloorManual}},
 		{ID: "biz-2", Overrides: map[string]domain.ToolFloor{"deprecated__thing": domain.ToolFloorManual}},
 		{ID: "biz-3", Overrides: map[string]domain.ToolFloor{"another__ghost": domain.ToolFloorAuto}},
 	}
 
-	n := hitlvalidation.ValidateApprovalSettings(context.Background(), registered, businesses, nil)
+	n := validateApprovalSettings(context.Background(), registered, businesses, nil)
 	if n != 2 {
 		t.Fatalf("warnCount = %d, want 2 (biz-2 + biz-3 reference unknown tools)", n)
 	}
