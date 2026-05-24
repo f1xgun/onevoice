@@ -1292,7 +1292,45 @@
     "shell": {
       "wordmark": "OneVoice",
       "footer": "© {year} OneVoice"
+    },
+    "passwordReset": {
+      "request": {
+        "eyebrow": "PASSWORD RECOVERY",
+        "title": "Reset your password.",
+        "description": "Enter the email you registered with — we'll send a reset link.",
+        "emailLabel": "Registered email",
+        "emailInvalid": "Enter a valid email address.",
+        "submit": "Send link",
+        "submitting": "Sending…",
+        "networkError": "Could not send request. Check your connection and try again.",
+        "sentBody": "If this email is registered, we sent a recovery link. Check your spam folder.",
+        "sentCTA": "Back to sign-in",
+        "backToLogin": "Remembered your password? Sign in"
+      },
+      "confirm": {
+        "eyebrow": "NEW PASSWORD",
+        "title": "Set a new password.",
+        "description": "This link is valid for 30 minutes. After saving you will be signed out of all sessions.",
+        "revealCTA": "Set new password",
+        "newPasswordLabel": "New password",
+        "newPasswordHelper": "Minimum 8 characters",
+        "confirmPasswordLabel": "Confirm new password",
+        "passwordsMismatch": "Passwords do not match",
+        "submit": "Save password",
+        "submitting": "Saving…",
+        "requestNewLinkCTA": "Request a new link",
+        "successToast": "Password changed. Please sign in with the new one."
+      },
+      "errors": {
+        "invalid": "This link is no longer valid. Please request a new one.",
+        "expired": "This link has expired. Please request a new one.",
+        "weakPassword": "Password too short — minimum 8 characters.",
+        "requestNewCta": "Request a new link"
+      }
     }
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again in a minute."
   },
   "settings": {
     "page": {

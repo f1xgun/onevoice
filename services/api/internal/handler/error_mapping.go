@@ -8,7 +8,46 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
+
+// passwordResetErrorBody is the JSON shape returned by writePasswordResetError.
+// Discriminates failure modes via `code` so the frontend's error_mapping.ts
+// (services/frontend/lib/error_mapping.ts) can render the correct RU/EN
+// copy + CTA per 21-CROSS-PLAN-CONTRACTS.md §4.
+type passwordResetErrorBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// writePasswordResetError maps the three Phase 21b sentinels to public
+// {code, message} responses. PITFALLS §1.1: expired / unknown / consumed
+// all collapse to reset_token_invalid by the time we reach here — the
+// reset_token_expired code is reserved for a future "look up first,
+// then mutate" service path and is mapped so the frontend already learns
+// it (matches 21-CROSS-PLAN-CONTRACTS.md §4 COPY map).
+func writePasswordResetError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, service.ErrResetTokenInvalid):
+		writeJSON(w, http.StatusBadRequest, passwordResetErrorBody{
+			Code:    "reset_token_invalid",
+			Message: "Ссылка недействительна. Запросите новую.",
+		})
+	case errors.Is(err, domain.ErrResetTokenExpired):
+		writeJSON(w, http.StatusBadRequest, passwordResetErrorBody{
+			Code:    "reset_token_expired",
+			Message: "Ссылка просрочена. Запросите новую.",
+		})
+	case errors.Is(err, service.ErrPasswordTooWeak):
+		writeJSON(w, http.StatusBadRequest, passwordResetErrorBody{
+			Code:    "password_too_weak",
+			Message: "Пароль слишком короткий — минимум 8 символов.",
+		})
+	default:
+		slog.ErrorContext(r.Context(), "password reset handler error", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+	}
+}
 
 // writeAuthzInvariantError centralizes the authz sentinel -> HTTP mapping
 // shared by members.go, roles.go, and any future Phase 5 role-mutation
