@@ -30,6 +30,11 @@ func TestActionConstants(t *testing.T) {
 		"auth.email_verified":                 ActionEmailVerified,
 		"auth.email_changed_before_verify":    ActionEmailChangedBeforeVerify,
 		"auth.consent_recorded":               ActionConsentRecorded,
+		// Phase 21-04 — Account deletion lifecycle (ACCT-03, D-42).
+		"account.deletion_requested": ActionDeletionRequested,
+		"account.deletion_canceled":  ActionDeletionCanceled,
+		"account.sole_owner_blocked": ActionSoleOwnerBlocked,
+		"account.user_self_deleted":  ActionUserSelfDeleted,
 		"integration.connected":     ActionIntegrationConnected,
 		"integration.disconnected":  ActionIntegrationDisconnected,
 		"integration.token_rotated": ActionIntegrationTokenRotated,
@@ -42,7 +47,7 @@ func TestActionConstants(t *testing.T) {
 	for expected, got := range tests {
 		require.Equal(t, expected, got)
 	}
-	require.Len(t, tests, 28, "expected 28 audit actions (21 base + 3 Phase 21b password reset + 4 Phase 21c verify)")
+	require.Len(t, tests, 32, "expected 32 audit actions (21 base + 3 Phase 21b password reset + 4 Phase 21c verify + 4 Phase 21-04 deletion)")
 }
 
 func TestActionCategory(t *testing.T) {
@@ -54,6 +59,11 @@ func TestActionCategory(t *testing.T) {
 	require.Equal(t, "integration", ActionCategory(ActionIntegrationTokenRotated))
 	require.Equal(t, "business", ActionCategory(ActionBusinessCreated))
 	require.Equal(t, "project", ActionCategory(ActionProjectDeleted))
+	// Phase 21-04 (account.* lifecycle).
+	require.Equal(t, "account", ActionCategory(ActionDeletionRequested))
+	require.Equal(t, "account", ActionCategory(ActionDeletionCanceled))
+	require.Equal(t, "account", ActionCategory(ActionSoleOwnerBlocked))
+	require.Equal(t, "account", ActionCategory(ActionUserSelfDeleted))
 	require.Equal(t, "other", ActionCategory("unknown.thing"))
 	require.Equal(t, "other", ActionCategory("no_dot"))
 	require.Equal(t, "other", ActionCategory(""))

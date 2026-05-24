@@ -48,6 +48,27 @@ const (
 	ActionEmailChangedBeforeVerify    = "auth.email_changed_before_verify"
 	ActionConsentRecorded             = "auth.consent_recorded"
 
+	// Phase 21-04 — Account deletion lifecycle (ACCT-03, ACCT-05, D-42).
+	//
+	// ActionDeletionRequested fires when the user submits DELETE
+	// /users/me with the correct password — soft-deletes the row and
+	// schedules the hard-delete sweeper 30 days later.
+	// ActionDeletionCanceled fires on POST /users/me/restore inside
+	// the grace window.
+	// ActionSoleOwnerBlocked fires when DELETE /users/me is rejected
+	// because the user is the sole OWNER of one or more businesses —
+	// telemetry-grade record of attempts that the friendly 409 path
+	// rejected (T-DEL-02 mitigation visibility).
+	// ActionUserSelfDeleted is the FINAL terminal action — written by
+	// AccountDeletionService.HardDeleteSweeper INSIDE the same PG TX
+	// as the actual users-row DELETE so the audit row survives the
+	// row deletion via audit_logs.user_id ON DELETE SET NULL +
+	// user_email_at_event (ACCT-06, landed by 21-03).
+	ActionDeletionRequested = "account.deletion_requested"
+	ActionDeletionCanceled  = "account.deletion_canceled"
+	ActionSoleOwnerBlocked  = "account.sole_owner_blocked"
+	ActionUserSelfDeleted   = "account.user_self_deleted"
+
 	// integration.* — platform integrations.
 	ActionIntegrationConnected    = "integration.connected"
 	ActionIntegrationDisconnected = "integration.disconnected"
@@ -71,7 +92,7 @@ func ActionCategory(action string) string {
 		if action[i] == '.' {
 			cat := action[:i]
 			switch cat {
-			case "rbac", "auth", "integration", "business", "project":
+			case "rbac", "auth", "integration", "business", "project", "account":
 				return cat
 			default:
 				return "other"

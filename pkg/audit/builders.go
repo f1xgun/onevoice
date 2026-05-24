@@ -3,10 +3,12 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // mustMarshal is the internal helper used by every builder. Failure means
@@ -212,6 +214,63 @@ func LogConsentRecorded(ctx context.Context, l Logger, userID uuid.UUID, purpose
 		UserID:   &userID,
 		Details:  mustMarshal(ConsentRecordedDetails{Purpose: purpose, PolicyVersion: policyVersion}),
 	})
+}
+
+// ---- account.* (Phase 21-04 deletion) -----------------------------------
+
+// LogDeletionRequested records account.deletion_requested when the user
+// soft-deletes their account via DELETE /users/me. orphanedBusinessIDs is
+// the list of businesses that would have been orphaned by this deletion
+// — currently always empty because the handler returns 409 for any
+// sole-owner case, but the field is recorded for forward-compatibility
+// with v1.5 ownership-transfer.
+func LogDeletionRequested(ctx context.Context, l Logger, userID uuid.UUID, ip, ua string, orphanedBusinessIDs []uuid.UUID) {
+	l.Log(ctx, Entry{
+		Action:   ActionDeletionRequested,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(DeletionRequestedDetails{IP: ip, UserAgent: ua, BusinessesOrphaned: orphanedBusinessIDs}),
+	})
+}
+
+// LogDeletionCanceled records account.deletion_canceled on POST
+// /users/me/restore within the 30-day grace window.
+func LogDeletionCanceled(ctx context.Context, l Logger, userID uuid.UUID, ip, ua string) {
+	l.Log(ctx, Entry{
+		Action:   ActionDeletionCanceled,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(DeletionCanceledDetails{IP: ip, UserAgent: ua}),
+	})
+}
+
+// LogSoleOwnerBlocked records account.sole_owner_blocked when DELETE
+// /users/me is rejected because the user is the sole OWNER of one or
+// more businesses. Telemetry-grade record of attempts the friendly 409
+// path rejected (T-DEL-02 mitigation visibility).
+func LogSoleOwnerBlocked(ctx context.Context, l Logger, userID uuid.UUID, ip, ua string, soleOwnerBusinessIDs []uuid.UUID) {
+	l.Log(ctx, Entry{
+		Action:   ActionSoleOwnerBlocked,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(SoleOwnerBlockedDetails{IP: ip, UserAgent: ua, BusinessIDs: soleOwnerBusinessIDs}),
+	})
+}
+
+// LogUserSelfDeletedTx is INTENTIONALLY called WITHIN the HardDelete PG
+// TX — caller passes the in-flight pgx.Tx so the audit insert is
+// atomic with the user row deletion. Signature differs from the other
+// builders (which go through the async Logger) because the audit row
+// MUST land before the DELETE so the FK SET NULL from 21-03 ACCT-06 has
+// somewhere to land + user_email_at_event preserves the email for
+// 152-ФЗ forensic queries.
+func LogUserSelfDeletedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, originalEmail string) error {
+	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
+	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
+	if _, err := tx.Exec(ctx, q, userID, originalEmail, ActionUserSelfDeleted, "user", []byte(`{}`)); err != nil {
+		return fmt.Errorf("audit: user_self_deleted insert: %w", err)
+	}
+	return nil
 }
 
 // ---- integration builders -----------------------------------------------
