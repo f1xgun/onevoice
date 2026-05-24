@@ -14,17 +14,19 @@ internal/
 │                      (databases.go, repositories.go, services.go, handlers.go,
 │                       llm_providers.go, google_refresher.go,
 │                       integration_adapter.go, policy_sweep.go)
-├── handler/         → HTTP handlers (chi), request parsing, response formatting
-│   ├── chatproxy/   → 5 collaborators decomposed from chat_proxy.go
-│   │                  (RequestEnricher, OrchestrationProxy, MessagePersister,
-│   │                   PostalService, HITLCoordinator); chat_proxy.go is now a
-│   │                   thin facade
+├── handler/         → HTTP handlers (chi); request parsing, status mapping
+│   ├── chat_proxy.go → thin facade (~230 LOC): auth gate, body decode,
+│   │                   delegates the whole lifecycle to chatturn.Turn, maps
+│   │                   TurnOutcome → HTTP status. No business logic.
 │   ├── oauth/       → true OAuth code-flow handlers (vk.go, yandex.go,
 │   │                  google.go, base.go) — split out of monolithic oauth.go
 │   └── connect/     → paste-flow Connect handlers (telegram.go,
 │                      vk_community.go) — kept distinct from OAuth flows
 ├── middleware/      → auth (JWT), CORS, logging, rate limiting (Redis)
 ├── service/         → business logic, orchestrates repositories
+│   └── chatturn/    → chat-turn lifecycle: gate, enrich, stream, persist,
+│                      auto-title gate, postal fanout. One public entry:
+│                      Turn.Run(ctx, w, req, emit). See CONTEXT.md §"Chat turn".
 ├── platform/        → capability-segregated PlatformSyncer strategy
 │                      (syncer.go interfaces; telegram_syncer.go, vk_syncer.go,
 │                       yandex_syncer.go implement only the capabilities they
@@ -35,9 +37,10 @@ internal/
 
 `cmd/main.go` calls `wire.BootstrapDatabases()`, `wire.Repositories()`, `wire.Services()`, `wire.Handlers()` (defined under `internal/wire/`) and stays ≤200 LOC. The decomposed handler sub-packages are:
 
-- `internal/handler/chatproxy/` — 5 collaborators (RequestEnricher, OrchestrationProxy, MessagePersister, PostalService, HITLCoordinator); the legacy `chat_proxy.go` is now a thin facade.
 - `internal/handler/oauth/` — true OAuth code-flow handlers (vk, yandex, google + shared base).
 - `internal/handler/connect/` — paste-flow Connect handlers (telegram, vk_community).
+
+The chat-turn lifecycle that used to live under `internal/handler/chatproxy/` (five collaborators: RequestEnricher, OrchestrationProxy, MessagePersister, PostalService, HITLCoordinator) was consolidated into `internal/service/chatturn/` as private methods on a single `Turn` struct. The handler is now a thin HTTP-facade — Handler → Service → Repository is enforced.
 
 Public route paths under `/oauth/...` are unchanged by the oauth/connect split — `router/router.go` registers handlers from both packages onto the same prefixes.
 
