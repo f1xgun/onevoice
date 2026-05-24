@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/hitl"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/sse"
-	"github.com/f1xgun/onevoice/services/orchestrator/internal/hitl"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
@@ -25,8 +25,8 @@ const (
 	// OutcomeDone — LLM returned a terminal response with no tool calls.
 	OutcomeDone StepOutcome = iota
 	// OutcomePaused — at least one manual-floor tool call was classified;
-	// the batch was persisted (InsertPreparing → PromoteToPending) and
-	// the tool_approval_required SSE event emitted. Goroutine MUST exit.
+	// the batch was persisted via pendingRepo.Persist and the
+	// tool_approval_required SSE event emitted. Goroutine MUST exit.
 	OutcomePaused
 	// OutcomeError — unrecoverable error; an EventError has already been emitted.
 	OutcomeError
@@ -179,10 +179,11 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			}
 		}
 
-		// 7. Manual calls — two-phase persist, emit pause event, return.
-		//    Order invariant: persist succeeds BEFORE
-		//    emitting the pause event — on crash the orphan-reconcile
-		//    sweep cleans stuck preparing rows.
+		// 7. Manual calls — persist, emit pause event, return.
+		//    Order invariant: Persist succeeds BEFORE emitting the pause
+		//    event. Persist's internal preparing → pending two-step is the
+		//    crash-recovery seam for the orphan-reconcile sweep; callers see
+		//    a single transition from "no batch" to "pending".
 		if len(manualCalls) > 0 {
 			if o.pendingRepo == nil {
 				err := fmt.Errorf("HITL not configured: manual-floor tool classified but pendingRepo is nil")
@@ -196,16 +197,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			batchID := uuid.NewString()
 			batch := buildPendingBatch(batchID, state, manualCalls)
 
-			if err := o.pendingRepo.InsertPreparing(ctx, batch); err != nil {
+			if err := o.pendingRepo.Persist(ctx, batch); err != nil {
 				select {
 				case out <- Event{Type: EventError, Content: fmt.Sprintf("failed to persist approval batch: %v", err)}:
-				case <-ctx.Done():
-				}
-				return OutcomeError, "", err
-			}
-			if err := o.pendingRepo.PromoteToPending(ctx, batchID); err != nil {
-				select {
-				case out <- Event{Type: EventError, Content: fmt.Sprintf("failed to promote approval batch: %v", err)}:
 				case <-ctx.Done():
 				}
 				return OutcomeError, "", err
@@ -285,9 +279,9 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 		Calls:          calls,
 		ModelMessages:  msgSnapshot,
 		IterationIdx:   state.Iter,
-		// Status / CreatedAt / UpdatedAt / ExpiresAt set by the repo
-		// (InsertPreparing sets status=preparing; PromoteToPending
-		// sets status=pending + expires_at=now+24h).
+		// Status / CreatedAt / UpdatedAt / ExpiresAt set by the repo —
+		// pendingRepo.Persist writes status=pending with
+		// expires_at=now+24h after promotion completes.
 	}
 }
 

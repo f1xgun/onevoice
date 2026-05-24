@@ -27,16 +27,16 @@ type mockPendingRepo struct {
 	mu sync.Mutex
 
 	// ops is an ordered list of method names invoked, used for
-	// two-phase-write ordering assertions (Insert → Promote → emit).
+	// pause-ordering assertions (Persist → emit pause event).
 	ops []string
 
-	// insertedBatches captures the batch snapshots passed to InsertPreparing.
+	// insertedBatches captures the batch snapshots passed to Persist.
 	insertedBatches []*domain.PendingToolCallBatch
 
-	// Configurable failures — tests set these to simulate crashes between
-	// pause phases.
-	insertErr  error
-	promoteErr error
+	// persistErr lets tests simulate a Mongo failure inside Persist —
+	// it short-circuits before the batch is stored so callers see the
+	// same outcome as a crash mid-Persist.
+	persistErr error
 
 	// Per-batch stored state (for GetByBatchID, MarkDispatched, MarkResolved).
 	store map[string]*domain.PendingToolCallBatch
@@ -46,29 +46,19 @@ func newMockPendingRepo() *mockPendingRepo {
 	return &mockPendingRepo{store: make(map[string]*domain.PendingToolCallBatch)}
 }
 
-func (m *mockPendingRepo) InsertPreparing(_ context.Context, b *domain.PendingToolCallBatch) error {
+func (m *mockPendingRepo) Persist(_ context.Context, b *domain.PendingToolCallBatch) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.ops = append(m.ops, "InsertPreparing")
-	if m.insertErr != nil {
-		return m.insertErr
+	m.ops = append(m.ops, "Persist")
+	if m.persistErr != nil {
+		return m.persistErr
 	}
-	// Copy pointer (callers don't mutate after insert in the hot path).
+	// Real Persist promotes the batch to status=pending before returning;
+	// mirror that here so consumers observing GetByBatchID after Persist
+	// see the post-promote state.
+	b.Status = "pending"
 	m.insertedBatches = append(m.insertedBatches, b)
 	m.store[b.ID] = b
-	return nil
-}
-
-func (m *mockPendingRepo) PromoteToPending(_ context.Context, batchID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.ops = append(m.ops, "PromoteToPending")
-	if m.promoteErr != nil {
-		return m.promoteErr
-	}
-	if b, ok := m.store[batchID]; ok {
-		b.Status = "pending"
-	}
 	return nil
 }
 
@@ -247,14 +237,15 @@ func TestStepRun_ManualFloorTool_PersistsBatchAndReturnsPaused(t *testing.T) {
 
 	evts := drainEvents(events)
 
-	// Ordering invariant: InsertPreparing → PromoteToPending → pause event.
-	// Two-phase persist must complete BEFORE the SSE event.
+	// Ordering invariant: Persist → pause event. Persist must complete
+	// (status=pending committed) BEFORE the SSE event fires; otherwise a
+	// crash between persist and emit leaves an unrecoverable in-flight
+	// batch from the user's POV.
 	repo.mu.Lock()
 	ops := append([]string{}, repo.ops...)
 	repo.mu.Unlock()
-	require.GreaterOrEqual(t, len(ops), 2, "must call InsertPreparing + PromoteToPending")
-	assert.Equal(t, "InsertPreparing", ops[0])
-	assert.Equal(t, "PromoteToPending", ops[1])
+	require.GreaterOrEqual(t, len(ops), 1, "must call Persist")
+	assert.Equal(t, "Persist", ops[0])
 
 	// Pause event emitted
 	pauseEvts := findEvents(evts, orchestrator.EventToolApprovalRequired)
@@ -297,7 +288,7 @@ func TestStepRun_ManualFloor_PersistFails_EmitsErrorAndDoesNotEmitPauseEvent(t *
 
 	reg := newRegistryWithFloor("manual_tool", domain.ToolFloorManual, nil)
 	repo := newMockPendingRepo()
-	repo.insertErr = errors.New("mongo unavailable")
+	repo.persistErr = errors.New("mongo unavailable")
 
 	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
 	events, err := orch.Run(context.Background(), orchestrator.RunRequest{

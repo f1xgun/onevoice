@@ -30,8 +30,8 @@ const (
 
 	// EventToolApprovalRequired is emitted once per paused LLM turn, carrying
 	// the batch_id + summarized calls that need human approval.
-	// Emitted AFTER the PendingToolCallBatch is persisted (InsertPreparing →
-	// PromoteToPending succeed); never emitted on a partial-persist crash.
+	// Emitted AFTER pendingRepo.Persist completes (status=pending committed);
+	// never emitted on a partial-persist crash.
 	// The goroutine exits immediately after.
 	EventToolApprovalRequired EventType = "tool_approval_required"
 
@@ -163,9 +163,8 @@ func NewWithOptions(llmClient LLMClient, toolRegistry *toolregistry.Registry, op
 }
 
 // NewWithHITL constructs an Orchestrator with HITL wired in — pendingRepo
-// receives the InsertPreparing + PromoteToPending + MarkDispatched +
-// MarkResolved calls from stepRun / Resume. Use this constructor in
-// cmd/main.go.
+// receives the Persist + MarkDispatched + MarkResolved calls from stepRun /
+// Resume. Use this constructor in cmd/main.go.
 func NewWithHITL(
 	llmClient LLMClient,
 	toolRegistry *toolregistry.Registry,
