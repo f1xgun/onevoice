@@ -315,3 +315,110 @@ func TestRouter_WithFakeSelector_RecordsFailure(t *testing.T) {
 	require.Len(t, sel.records, 1)
 	assert.False(t, sel.records[0].Success)
 }
+
+// ---------------------------------------------------------------------------
+// Invoke[T]: bracketed pick → run → record
+// ---------------------------------------------------------------------------
+
+func TestInvoke_Success_RecordsOutcomeAndReturnsResult(t *testing.T) {
+	sel := &recordingSelector{
+		entry:    &llm.ModelProviderEntry{Model: "gpt-4", Provider: "fake"},
+		provider: makeStub("fake"),
+	}
+
+	entry, result, err := llm.Invoke(sel, "gpt-4", llm.StrategyCost,
+		func(p llm.Provider) (string, time.Duration, error) {
+			return "provider:" + p.Name(), 175 * time.Millisecond, nil
+		})
+	require.NoError(t, err)
+	assert.Equal(t, "provider:fake", result)
+	assert.Equal(t, "fake", entry.Provider)
+
+	require.Len(t, sel.records, 1)
+	assert.True(t, sel.records[0].Success)
+	assert.Equal(t, "gpt-4", sel.records[0].Model,
+		"Invoke must fill outcome.Model from the requested model")
+	assert.Equal(t, 175*time.Millisecond, sel.records[0].Latency,
+		"Invoke must propagate provider-reported latency into outcome.Latency")
+}
+
+func TestInvoke_ProviderError_RecordsFailureAndPropagatesError(t *testing.T) {
+	sel := &recordingSelector{
+		entry:    &llm.ModelProviderEntry{Model: "gpt-4", Provider: "fake"},
+		provider: makeStub("fake"),
+	}
+	wantErr := errors.New("provider boom")
+
+	entry, result, err := llm.Invoke(sel, "gpt-4", llm.StrategyCost,
+		func(_ llm.Provider) (string, time.Duration, error) {
+			return "", 0, wantErr
+		})
+	assert.ErrorIs(t, err, wantErr)
+	assert.Empty(t, result, "Invoke must return zero T when fn errors")
+	assert.NotNil(t, entry, "Invoke must still return the picked entry on fn error so the caller can attribute the failure")
+
+	require.Len(t, sel.records, 1)
+	assert.False(t, sel.records[0].Success,
+		"outcome.Success must be false when fn returns a non-nil error")
+}
+
+func TestInvoke_PickError_DoesNotRunFnNorRecord(t *testing.T) {
+	pickErr := errors.New("no provider for model")
+	sel := &recordingSelector{err: pickErr}
+	fnCalled := false
+
+	entry, _, err := llm.Invoke(sel, "gpt-4", llm.StrategyCost,
+		func(_ llm.Provider) (string, time.Duration, error) {
+			fnCalled = true
+			return "should-not-happen", 0, nil
+		})
+	assert.ErrorIs(t, err, pickErr)
+	assert.Nil(t, entry, "no entry on pick failure — nothing to attribute")
+	assert.False(t, fnCalled, "fn must not run when Pick fails")
+	assert.Empty(t, sel.records, "Record must not be called when Pick fails")
+}
+
+func TestInvoke_WallClock_PopulatedFromObservedDuration(t *testing.T) {
+	// Sleep a small amount inside fn so the wall-clock measurement is
+	// reliably non-zero across schedulers. We assert a lower bound only —
+	// upper bound would be flaky under load.
+	const minSleep = 5 * time.Millisecond
+	sel := &recordingSelector{
+		entry:    &llm.ModelProviderEntry{Model: "gpt-4", Provider: "fake"},
+		provider: makeStub("fake"),
+	}
+
+	_, _, err := llm.Invoke(sel, "gpt-4", llm.StrategyCost,
+		func(_ llm.Provider) (struct{}, time.Duration, error) {
+			time.Sleep(minSleep)
+			return struct{}{}, 0, nil
+		})
+	require.NoError(t, err)
+	require.Len(t, sel.records, 1)
+	assert.GreaterOrEqual(t, sel.records[0].Wall, minSleep,
+		"Invoke must fill outcome.Wall with the observed fn duration")
+}
+
+func TestInvoke_GenericResultType_Works(t *testing.T) {
+	// Sanity: the generic type parameter accepts non-pointer types like
+	// channels (used by the streaming path) and pointer types like
+	// *ChatResponse interchangeably.
+	sel := &recordingSelector{
+		entry:    &llm.ModelProviderEntry{Model: "gpt-4", Provider: "fake"},
+		provider: makeStub("fake"),
+	}
+
+	_, ch, err := llm.Invoke(sel, "gpt-4", llm.StrategyCost,
+		func(_ llm.Provider) (<-chan llm.StreamChunk, time.Duration, error) {
+			out := make(chan llm.StreamChunk)
+			close(out)
+			return out, 0, nil // zero latency — channel-open isn't user-perceived
+		})
+	require.NoError(t, err)
+	require.NotNil(t, ch)
+
+	require.Len(t, sel.records, 1)
+	assert.True(t, sel.records[0].Success)
+	assert.Equal(t, time.Duration(0), sel.records[0].Latency,
+		"streaming path reports zero Latency so the rolling window skips the sample")
+}
