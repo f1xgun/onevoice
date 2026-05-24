@@ -1,6 +1,7 @@
 package router
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -18,6 +19,12 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
+
+// passThroughMiddleware is a no-op middleware used by the soft-restrict
+// wrappers when the caller passes a nil UserLookup (legacy / test deploys
+// that don't wire Phase 21-03 yet). Preserves existing behavior in those
+// environments while keeping the route declarations uniform.
+func passThroughMiddleware(next http.Handler) http.Handler { return next }
 
 // Per-endpoint per-window rate limits (window is always time.Minute today).
 // Register is tighter than login because automated signup abuse is the
@@ -73,7 +80,11 @@ type Handlers struct {
 // RateLimits comment block above for the role of each field.
 // authzCache backs the RequireBusinessAccess middleware that gates the
 // /businesses/{id}/... subtree (Phase 2 v2.0 RBAC).
-func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker, allowedOrigins []string, rateLimits RateLimits, authzCache *authz.Cache) *chi.Mux {
+// users is the UserLookup the Phase 21-03 soft-restrict middleware reads
+// email_verified from on every protected request (D-26..D-29 / ACCT-02).
+// May be nil — when nil, the soft-restrict decorators degrade to
+// pass-through (legacy/test compat).
+func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker, allowedOrigins []string, rateLimits RateLimits, authzCache *authz.Cache, users middleware.UserLookup) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -120,6 +131,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		r.Post("/auth/password-reset/request", handlers.Auth.RequestPasswordReset)
 		r.Post("/auth/password-reset/confirm", handlers.Auth.ConfirmPasswordReset)
 
+		// Phase 21-03 — Email verification confirm (ACCT-02 / D-22, D-23).
+		// PUBLIC: no JWT required. The verify-email page in the FE is
+		// reachable when the user is logged out (e.g. clicks the link in
+		// another browser). Returns 204 with NO Set-Cookie / session
+		// material — T-VE-02 mitigation. NO GET handler — the FE renders
+		// a button-gated page off the ?token=… query string and POSTs
+		// only after the user clicks (scanner-protection per D-22).
+		r.Post("/auth/verify-email/confirm", handlers.Auth.VerifyConfirm)
+
 		// OAuth callback routes (public — state parameter validates session)
 		r.Get("/oauth/vk/callback", handlers.OAuth.VKCallback)
 		r.Get("/oauth/vk/community-callback", handlers.OAuth.VKCommunityCallback)
@@ -148,6 +168,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			r.Post("/auth/logout", handlers.Auth.Logout)
 			r.Get("/auth/me", handlers.Auth.Me)
 			r.Put("/auth/password", handlers.Auth.ChangePassword)
+
+			// Phase 21-03 — Email verification resend + email-before-verify
+			// (ACCT-02 / D-21, D-24). JWT-required but NOT decorated by
+			// RequireVerifiedEmail* — the whole point is they're reachable
+			// to UNVERIFIED users (otherwise the user could never recover
+			// from a dead email-on-file). D-30 explicitly exempts these.
+			r.Post("/auth/verify-email/resend", handlers.Auth.VerifyResend)
+			r.Patch("/auth/email-before-verify", handlers.Auth.EmailBeforeVerify)
 			// i18n Phase A3: persist the user's UI language choice
 			// ('ru'|'en'). Sits next to /auth/me/password as a sibling
 			// account-self-service endpoint; the frontend syncs the cookie ↔
@@ -166,7 +194,16 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			// BIZ-02 + BIZ-03 (auth-only, NOT business-scoped).
 			r.Get("/businesses", handlers.Business.ListUserBusinesses)
-			r.Post("/businesses", handlers.Business.CreateBusiness)
+			// Phase 21-03 (ACCT-02 / D-28): POST /businesses is gated by the
+			// day-7 soft-restrict — unverified users get 7 days to convert
+			// before business creation is blocked. Listing remains open
+			// (read endpoints are banner-only per D-29).
+			if users != nil {
+				r.With(middleware.RequireVerifiedEmailDay7(users)).
+					Post("/businesses", handlers.Business.CreateBusiness)
+			} else {
+				r.Post("/businesses", handlers.Business.CreateBusiness)
+			}
 
 			// Phase 19 manual review refresh — kicks the cross-business sync;
 			// no business scope so any authed user can trigger it.
@@ -201,6 +238,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Put("/tool-approvals", handlers.Business.UpdateBusinessToolApprovals)
 
 				// Integrations.
+				// GET endpoints (list / auth-url / communities / locations) are
+				// never gated by RequireVerifiedEmail* — read endpoints stay
+				// open to unverified users per D-29.
 				r.Get("/integrations", handlers.Integration.ListIntegrations)
 				r.Delete("/integrations/{integrationId}", handlers.Integration.DeleteIntegration)
 
@@ -208,30 +248,45 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/integrations/vk/auth-url", handlers.OAuth.GetVKAuthURL)
 				r.Get("/integrations/vk/communities", handlers.OAuth.VKCommunities)
 				r.Get("/integrations/vk/community-auth-url", handlers.OAuth.VKCommunityAuthURL)
-				r.Post("/integrations/vk/connect", handlers.Connect.ConnectVK)
-				r.Post("/integrations/vk/{id}/refresh-name", handlers.Connect.RefreshVKCommunityName)
-
 				r.Get("/integrations/yandex_business/auth-url", handlers.OAuth.GetYandexAuthURL)
-				// Yandex.Business cookie-paste flow (replaces the broken OAuth-only path:
-				// Yandex doesn't expose a Sprav API for the actions we automate, so the
-				// Playwright agent needs real browser session cookies. See AGENTS.md +
-				// memory/project_yandex_business_no_oauth_api.md for the full rationale.)
-				r.Post("/integrations/yandex_business/probe", handlers.OAuth.ProbeYandexBusiness)
-				r.Post("/integrations/yandex_business/companies", handlers.OAuth.ListYandexCompanies)
-				r.Post("/integrations/yandex_business/connect", handlers.OAuth.ConnectYandexBusiness)
-				r.Post("/integrations/yandex_business/{id}/refresh-name", handlers.OAuth.RefreshYandexBusinessName)
-
 				r.Get("/integrations/google_business/auth-url", handlers.OAuth.GetGoogleAuthURL)
 				r.Get("/integrations/google_business/locations", handlers.OAuth.GoogleLocations)
-				r.Post("/integrations/google_business/select-location", handlers.OAuth.GoogleSelectLocation)
 
-				r.Post("/integrations/telegram/verify", handlers.Connect.VerifyTelegramLogin)
-				r.Post("/integrations/telegram/connect", handlers.Connect.ConnectTelegram)
-				r.Post("/integrations/telegram/refresh", handlers.Connect.RefreshTelegramLinkedGroup)
+				// Phase 21-03 (ACCT-02 / D-26): day-0 hard-block on POST
+				// /integrations/* — attacker surface for spam token connection.
+				// Each connect endpoint is wrapped individually so the
+				// decorator order stays explicit at the route declaration.
+				integWith := func() func(http.Handler) http.Handler {
+					if users == nil {
+						return passThroughMiddleware
+					}
+					return middleware.RequireVerifiedEmailDay0(users)
+				}()
+				r.With(integWith).Post("/integrations/vk/connect", handlers.Connect.ConnectVK)
+				r.With(integWith).Post("/integrations/vk/{id}/refresh-name", handlers.Connect.RefreshVKCommunityName)
+				r.With(integWith).Post("/integrations/yandex_business/probe", handlers.OAuth.ProbeYandexBusiness)
+				r.With(integWith).Post("/integrations/yandex_business/companies", handlers.OAuth.ListYandexCompanies)
+				r.With(integWith).Post("/integrations/yandex_business/connect", handlers.OAuth.ConnectYandexBusiness)
+				r.With(integWith).Post("/integrations/yandex_business/{id}/refresh-name", handlers.OAuth.RefreshYandexBusinessName)
+				r.With(integWith).Post("/integrations/google_business/select-location", handlers.OAuth.GoogleSelectLocation)
+				r.With(integWith).Post("/integrations/telegram/verify", handlers.Connect.VerifyTelegramLogin)
+				r.With(integWith).Post("/integrations/telegram/connect", handlers.Connect.ConnectTelegram)
+				r.With(integWith).Post("/integrations/telegram/refresh", handlers.Connect.RefreshTelegramLinkedGroup)
 
 				// Chat (rate-limited via env-tunable RateLimits.Chat).
-				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Chat, time.Minute, "chat")).
-					Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
+				// Phase 21-03 (ACCT-02 / D-28): day-7 soft-restrict gates
+				// chat — unverified users have 7-day grace; reads / history
+				// stay open. Layered AFTER RateLimitByUser so a throttled
+				// request short-circuits before the DB lookup.
+				if users != nil {
+					r.With(
+						middleware.RateLimitByUser(redisClient, rateLimits.Chat, time.Minute, "chat"),
+						middleware.RequireVerifiedEmailDay7(users),
+					).Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
+				} else {
+					r.With(middleware.RateLimitByUser(redisClient, rateLimits.Chat, time.Minute, "chat")).
+						Post("/chat/{conversationID}", handlers.ChatProxy.Chat)
+				}
 				if handlers.HITL != nil {
 					r.With(middleware.RateLimitByUser(redisClient, rateLimits.HITL, time.Minute, "chat")).
 						Post("/chat/{id}/resume", handlers.HITL.Resume)
@@ -305,8 +360,16 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 				// Phase 3: invitations CRUD — business-scoped under
 				// PermMembersInvite. Mirrors Members/Roles registration.
+				// Phase 21-03 (ACCT-02 / D-26): POST is gated by day-0
+				// soft-restrict — unverified users cannot send invites
+				// (spam vector). GET and DELETE stay open.
 				if handlers.Invitations != nil {
-					r.Post("/invitations", handlers.Invitations.Create)
+					if users != nil {
+						r.With(middleware.RequireVerifiedEmailDay0(users)).
+							Post("/invitations", handlers.Invitations.Create)
+					} else {
+						r.Post("/invitations", handlers.Invitations.Create)
+					}
 					r.Get("/invitations", handlers.Invitations.ListPending)
 					r.Delete("/invitations/{inviteId}", handlers.Invitations.Revoke)
 				}

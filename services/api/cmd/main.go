@@ -93,13 +93,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	hc.AddCheck("postgres", func(ctx context.Context) error { return handles.PG.Ping(ctx) })
 	hc.AddCheck("redis", func(ctx context.Context) error { return handles.Redis.Ping(ctx).Err() })
 
-	return runServers(ctx, log, cfg, handlers, hc, svcs, handles)
+	return runServers(ctx, log, cfg, handlers, hc, svcs, handles, repos)
 }
 
 // runServers builds the public + internal chi routers and starts both
 // http.Servers with graceful shutdown. Process-lifecycle code, not wiring —
 // that is why it stays in cmd/main.go rather than internal/wire/.
-func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handlers *router.Handlers, hc *health.Checker, svcs *wire.Services, handles *wire.DBHandles) error {
+func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handlers *router.Handlers, hc *health.Checker, svcs *wire.Services, handles *wire.DBHandles, repos *wire.Repos) error {
 	rateLimits := router.RateLimits{
 		Register: cfg.RateLimitRegister,
 		Login:    cfg.RateLimitLogin,
@@ -109,7 +109,9 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	// Phase 2 v2.0 RBAC: authzCache is owned by wire.Services and gates the
 	// /businesses/{id}/... subtree via authz.RequireBusinessAccess inside
 	// router.Setup.
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache)
+	// Phase 21-03 (ACCT-02): repos.User is the UserLookup for the
+	// RequireVerifiedEmailDay0/Day7 soft-restrict middleware (D-26..D-29).
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User)
 
 	addr := ":" + cfg.Port
 	srv := &http.Server{
