@@ -51,14 +51,6 @@ func (t *Turn) persistAssistantComplete(ctx context.Context, msg *domain.Message
 	return t.deps.Messages.Create(ctx, msg)
 }
 
-// persistAssistantUpdate writes the assistant Message via Update — used by
-// the resume path's done / error branches where the same Message ID must be
-// preserved (the resumed turn re-uses the pending_approval row, not creating
-// a new one).
-func (t *Turn) persistAssistantUpdate(ctx context.Context, msg *domain.Message) error {
-	return t.deps.Messages.Update(ctx, msg)
-}
-
 // fireAutoTitleIfPending re-reads the conversation AFTER messageRepo.Create
 // returned and spawns the titler goroutine when title_status is still
 // auto_pending.
@@ -77,6 +69,7 @@ func (t *Turn) persistAssistantUpdate(ctx context.Context, msg *domain.Message) 
 //     language as the chat (Phase D2).
 //   - cancel is wired through a watcher goroutine so vet doesn't flag a
 //     discarded cancel and the timer goroutine cannot leak.
+//
 // FireAutoTitleIfPending is the public entry point for legacy handler-side
 // tests that exercise the gate predicate directly. Production callers should
 // not need this — Turn.Run calls fireAutoTitleIfPending internally.

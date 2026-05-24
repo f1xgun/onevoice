@@ -42,14 +42,17 @@ const sseEventError = "error"
 // from X-Onevoice-Resume-Batch-Id (or ?batch_id query) — empty means the
 // client did not request explicit resume.
 //
+// Soft-errors (FindByConversationActive failure, ListPendingByConversation
+// failure) fall through to log-and-continue — the legacy chat_proxy.go
+// behavior is preserved so a transient DB blip cannot brick a chat. No
+// terminal error is ever surfaced; only the four-tuple is returned.
+//
 // Returns:
 //   - action — what Run should do next
 //   - activeMsg — the current pending_approval/in_progress Message, or nil
 //   - batch — the pending batch for reemitApprovalEvent (nil otherwise)
 //   - batchID — resolved batch ID for the resume call (empty for fresh)
-//   - err — only when ListPendingByConversation hard-fails; soft-errors
-//     fall through (legacy chat_proxy.go behavior preserved)
-func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID string) (gateAction, *domain.Message, *domain.PendingToolCallBatch, string, error) {
+func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID string) (gateAction, *domain.Message, *domain.PendingToolCallBatch, string) {
 	activeMsg, activeErr := t.deps.Messages.FindByConversationActive(ctx, conversationID)
 	if activeErr != nil && !errors.Is(activeErr, domain.ErrMessageNotFound) {
 		slog.WarnContext(ctx, "chatturn: FindByConversationActive failed, falling through",
@@ -83,22 +86,22 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 		case resolving != nil:
 			// orchestrator is mid-dispatch; rejoin keyed on this batch.ID;
 			// reuse activeMsg.ID so tool_result events extend the same Message.
-			return gateRejoinResume, activeMsg, resolving, resolving.ID, nil
+			return gateRejoinResume, activeMsg, resolving, resolving.ID
 		case pending != nil:
 			// approval card dropped off the client but the batch is still
 			// pending → re-emit and close.
-			return gateReemitApproval, activeMsg, pending, "", nil
+			return gateReemitApproval, activeMsg, pending, ""
 		default:
 			// orphan in_progress Message with no active batch.
-			return gateInlineError, activeMsg, nil, "", nil
+			return gateInlineError, activeMsg, nil, ""
 		}
 	}
 
 	// Explicit-resume branch: header AND active message → forward to resume.
 	if activeMsg != nil && headerBatchID != "" {
-		return gateRejoinResume, activeMsg, nil, headerBatchID, nil
+		return gateRejoinResume, activeMsg, nil, headerBatchID
 	}
-	return gateFresh, nil, nil, "", nil
+	return gateFresh, nil, nil, ""
 }
 
 // reemitApprovalEvent writes a tool_approval_required SSE event built from

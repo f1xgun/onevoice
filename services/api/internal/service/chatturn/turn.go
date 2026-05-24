@@ -104,12 +104,9 @@ func (t *Turn) Run(
 	req TurnRequest,
 	emit func(sse.Event),
 ) (TurnOutcome, error) {
-	// Step 1 — gate.
-	action, activeMsg, batch, batchID, gateErr := t.gateOnRequest(ctx, req.ConversationID, req.ResumeBatchID)
-	if gateErr != nil {
-		slog.ErrorContext(ctx, "chatturn: gate failed", "error", gateErr)
-		return OutcomeError, fmt.Errorf("chatturn: gate: %w", gateErr)
-	}
+	// Step 1 — gate. Soft-errors are logged inside gateOnRequest; no terminal
+	// failure is ever returned (legacy behavior — DB blips must not brick chat).
+	action, activeMsg, batch, batchID := t.gateOnRequest(ctx, req.ConversationID, req.ResumeBatchID)
 	switch action {
 	case gateRejoinResume:
 		return t.streamResume(ctx, w, req.ConversationID, activeMsg, batchID)
