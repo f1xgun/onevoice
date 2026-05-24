@@ -13,16 +13,21 @@ import (
 )
 
 // ConversationService owns conversation operations that compose more than
-// one repository write into a single domain transition. Pure CRUD reads/
-// writes stay on the handler-to-repo path until they grow shared logic.
+// one repository write or read into a single domain transition. Pure CRUD
+// reads/writes stay on the handler-to-repo path until they grow shared
+// logic.
 //
-// The first method, MoveToProject, replaces an inline four-op sequence in
-// ConversationHandler.MoveConversation. Future methods can migrate the
-// rest of ConversationHandler as similar shapes emerge.
+// As of this seam:
+//   - MoveToProject — replaces an inline four-op sequence in
+//     ConversationHandler.MoveConversation.
+//   - OpenChat — replaces an inline four-op sequence + soft-error +
+//     projection in ConversationHandler.ListMessages, returning a
+//     fully-projected *ChatView ready for JSON encoding.
 type ConversationService struct {
 	convRepo    domain.ConversationRepository
 	messageRepo domain.MessageRepository
 	projectRepo domain.ProjectRepository
+	pendingRepo domain.PendingToolCallRepository
 }
 
 // NewConversationService constructs a ConversationService. Every dep is
@@ -32,6 +37,7 @@ func NewConversationService(
 	convRepo domain.ConversationRepository,
 	messageRepo domain.MessageRepository,
 	projectRepo domain.ProjectRepository,
+	pendingRepo domain.PendingToolCallRepository,
 ) (*ConversationService, error) {
 	if convRepo == nil {
 		return nil, fmt.Errorf("NewConversationService: convRepo cannot be nil")
@@ -42,10 +48,14 @@ func NewConversationService(
 	if projectRepo == nil {
 		return nil, fmt.Errorf("NewConversationService: projectRepo cannot be nil")
 	}
+	if pendingRepo == nil {
+		return nil, fmt.Errorf("NewConversationService: pendingRepo cannot be nil")
+	}
 	return &ConversationService{
 		convRepo:    convRepo,
 		messageRepo: messageRepo,
 		projectRepo: projectRepo,
+		pendingRepo: pendingRepo,
 	}, nil
 }
 
@@ -54,6 +64,57 @@ func NewConversationService(
 // ErrProjectNotFound so the handler can map malformed input to 400 and
 // missing-project to 404 without duplicating the parse check.
 var ErrInvalidProjectID = fmt.Errorf("invalid project id")
+
+// ChatView is the API contract returned by OpenChat — a fully-projected
+// view of a conversation's messages + active approval batches, ready for
+// JSON encoding by the handler. The JSON tags travel with the value object
+// because the projection (camelCase `pendingApprovals`, stable empty `[]`)
+// IS the contract — keeping it adjacent to OpenChat concentrates the
+// "shape of GET /messages" decisions in one place.
+//
+// PendingApprovals is ALWAYS serialized as a non-nil slice (even when
+// empty) so frontend code can iterate unconditionally; OpenChat enforces
+// this regardless of whether the pending lookup soft-errored.
+type ChatView struct {
+	Messages         []domain.Message         `json:"messages"`
+	PendingApprovals []PendingApprovalSummary `json:"pendingApprovals"`
+}
+
+// PendingApprovalSummary is the per-batch projection emitted by OpenChat.
+// Each field name matches the JSON contract the frontend consumes to
+// render the approval card on page reload.
+//
+// EditableFields is intentionally left empty in this response: the
+// frontend already has the live tool registry via the `['tools']` React
+// Query (GET /api/v1/tools), which is the single source of truth for
+// per-tool editable-field whitelists. The field is still emitted as []
+// (not omitted) so the JSON schema stays stable for downstream consumers.
+type PendingApprovalSummary struct {
+	BatchID   string                `json:"batchId"`
+	MessageID string                `json:"messageId"`
+	Calls     []ApprovalCallSummary `json:"calls"`
+	Status    string                `json:"status"`
+	CreatedAt time.Time             `json:"createdAt"`
+	ExpiresAt time.Time             `json:"expiresAt"`
+}
+
+// ApprovalCallSummary is the api → frontend (camelCase) projection of an
+// approval batch element. Distinct from pkg/sse.ApprovalCall, which is the
+// orchestrator → api wire (snake_case) shape: the two consumers have
+// different naming conventions and slightly different field sets (no
+// Floor here because the FE has its own tools cache for that), so two
+// types serve two contracts.
+type ApprovalCallSummary struct {
+	CallID         string                 `json:"callId"`
+	ToolName       string                 `json:"toolName"`
+	Args           map[string]interface{} `json:"args"`
+	EditableFields []string               `json:"editableFields"`
+}
+
+// defaultMessageListLimit caps the number of messages OpenChat returns.
+// The frontend chat history view renders the latest N; older entries
+// require explicit pagination (not yet exposed via OpenChat).
+const defaultMessageListLimit = 200
 
 // MoveToProject moves a conversation to a different project (or to no
 // project when projectID is nil/empty) and returns the post-move
@@ -142,4 +203,84 @@ func (s *ConversationService) MoveToProject(
 		return nil, err
 	}
 	return updated, nil
+}
+
+// OpenChat returns the assembled view rendered by GET /messages —
+// ownership-checked messages list + projected pending-approval batches —
+// in a single call. Composes four repo reads with one soft-error policy
+// (pending lookup failures degrade gracefully to an empty array) and
+// emits the wire-shape projection so the handler is a pure encoding step.
+//
+//  1. Fetch the conversation. Missing → ErrConversationNotFound.
+//  2. Enforce ownership — the requester must be the conversation's
+//     user. Cross-user attempts surface as ErrForbidden.
+//  3. Load the latest messages (capped at defaultMessageListLimit).
+//  4. Load active approval batches. Failure is non-fatal: logged and
+//     surfaced as an empty PendingApprovals slice. Rationale: the
+//     messages list is still useful for chat history; failing the
+//     entire request because of an approval-card hydration miss would
+//     be more surprising than a missing card.
+//  5. Project each batch into the camelCase wire shape and assemble the
+//     final ChatView.
+//
+// Errors:
+//   - domain.ErrConversationNotFound — conversation does not exist
+//   - domain.ErrForbidden            — conversation exists, caller is not the owner
+//   - other                          — persistence errors propagated verbatim
+//     (only the messages lookup blocks the request; pending lookups soft-error)
+func (s *ConversationService) OpenChat(
+	ctx context.Context,
+	conversationID string,
+	requesterUserID uuid.UUID,
+) (*ChatView, error) {
+	conv, err := s.convRepo.GetByID(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if conv.UserID != requesterUserID.String() {
+		return nil, domain.ErrForbidden
+	}
+
+	messages, err := s.messageRepo.ListByConversationID(ctx, conversationID, defaultMessageListLimit, 0)
+	if err != nil {
+		return nil, err
+	}
+	if messages == nil {
+		messages = []domain.Message{}
+	}
+
+	pendingApprovals := make([]PendingApprovalSummary, 0)
+	batches, perr := s.pendingRepo.ListPendingByConversation(ctx, conversationID)
+	if perr != nil {
+		slog.WarnContext(ctx, "OpenChat: failed to load pending approvals",
+			"error", perr, "conversation_id", conversationID)
+	} else {
+		for _, b := range batches {
+			summary := PendingApprovalSummary{
+				BatchID:   b.ID,
+				MessageID: b.MessageID,
+				Calls:     make([]ApprovalCallSummary, 0, len(b.Calls)),
+				Status:    b.Status,
+				CreatedAt: b.CreatedAt,
+				ExpiresAt: b.ExpiresAt,
+			}
+			for _, c := range b.Calls {
+				summary.Calls = append(summary.Calls, ApprovalCallSummary{
+					CallID:   c.CallID,
+					ToolName: c.ToolName,
+					Args:     c.Arguments,
+					// EditableFields intentionally empty — the
+					// frontend has the live whitelist via
+					// GET /api/v1/tools.
+					EditableFields: []string{},
+				})
+			}
+			pendingApprovals = append(pendingApprovals, summary)
+		}
+	}
+
+	return &ChatView{
+		Messages:         messages,
+		PendingApprovals: pendingApprovals,
+	}, nil
 }
