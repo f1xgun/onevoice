@@ -40,9 +40,17 @@ type Repos struct {
 	// Phase 21b: tx-aware password setter, exposed separately from the
 	// domain.UserRepository interface (which stays tx-free). The concrete
 	// *repository.UserResetExtAdapter satisfies service.UserRepoForReset
-	// by structural typing — wire/services.go passes this value directly
-	// into NewPasswordResetService.
+	// AND service.VerifyUserRepo by structural typing — wire/services.go
+	// passes this value directly into NewPasswordResetService and
+	// NewEmailVerificationService.
 	UserResetExt *repository.UserResetExtAdapter
+
+	// Phase 21-03 (ACCT-02) email_verification_tokens repository.
+	EmailVerificationToken *repository.EmailVerificationTokenRepository
+
+	// Phase 21-03 (ACCT-02 / D-40) user_consents repository — stub for
+	// Phase 22 to extend.
+	UserConsents *repository.UserConsentsRepository
 
 	// MembershipLoader backs the authz cache (Phase 2 v2.0 RBAC). Same
 	// query surface as BusinessMembership but exposed as the typed
@@ -69,9 +77,11 @@ func Repositories(h *DBHandles) *Repos {
 		Project:            repository.NewProjectRepository(h.PG, h.Mongo),
 		Invitation:         repository.NewInvitationRepository(h.PG),
 		AuditLog:           repository.NewAuditLogRepository(h.PG),
-		EmailOutbox:        repository.NewEmailOutboxRepository(h.PG),
-		PasswordResetToken: repository.NewPasswordResetTokenRepository(h.PG),
-		UserResetExt:       repository.NewUserResetExtAdapter(h.PG),
-		MembershipLoader:   repository.NewMembershipLoader(h.PG),
+		EmailOutbox:            repository.NewEmailOutboxRepository(h.PG),
+		PasswordResetToken:     repository.NewPasswordResetTokenRepository(h.PG),
+		UserResetExt:           repository.NewUserResetExtAdapter(h.PG),
+		EmailVerificationToken: repository.NewEmailVerificationTokenRepository(h.PG),
+		UserConsents:           repository.NewUserConsentsRepository(h.PG),
+		MembershipLoader:       repository.NewMembershipLoader(h.PG),
 	}
 }
