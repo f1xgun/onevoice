@@ -18,6 +18,11 @@ import { PermissionsCacheGuard } from '@/components/PermissionsCacheGuard';
 // Mounted inside the <main> scroll container so it cohabits with route
 // content (sticky top-0 keeps it visible while the page scrolls).
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
+// Phase 21-04 (ACCT-03): persistent RED banner when accountDeletion !== null.
+// UI-SPEC Surface 10: outranks VerificationBanner — mounts ABOVE so the
+// deletion-grace state visually wins when both could fire (the user
+// can be both unverified AND mid-grace).
+import { DeletionGraceBanner } from '@/components/account/DeletionGraceBanner';
 import type { ReactNode } from 'react';
 
 // Module-level event-name singleton: any input/element listening for this
@@ -174,6 +179,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   tabIndex={-1}
                   className="h-full overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                 >
+                  <DeletionGraceBanner />
                   <VerificationBanner />
                   {children}
                 </main>

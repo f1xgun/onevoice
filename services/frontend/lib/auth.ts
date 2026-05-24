@@ -9,6 +9,15 @@ export interface User {
   // VerificationBanner renders when emailVerified === false.
   emailVerified?: boolean;
   emailVerificationDeadline?: string;
+  // Phase 21-04 (ACCT-03): non-null when the user is inside the 30-day
+  // deletion grace window. DeletionGraceBanner mounts when this is set.
+  accountDeletion?: AccountDeletionInfo | null;
+}
+
+export interface AccountDeletionInfo {
+  requestedAt: string;
+  scheduledDeletionAt: string;
+  canRestoreUntil: string;
 }
 
 interface AuthState {
