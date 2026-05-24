@@ -24,3 +24,17 @@ type ProjectService interface {
 	DeleteCascade(ctx context.Context, businessID, id, actorID uuid.UUID) (deletedConversations, deletedMessages int, err error)
 	CountConversations(ctx context.Context, businessID, id uuid.UUID) (int, error)
 }
+
+// ConversationService is the handler-facing view of the
+// *service.ConversationService concrete type. Owns conversation operations
+// that cross multiple repository writes (MoveToProject as of this seam).
+// Declared as an interface so conversation_test.go can swap in a noop fake
+// for handler tests that don't exercise the move path.
+type ConversationService interface {
+	MoveToProject(
+		ctx context.Context,
+		conversationID string,
+		businessID, requesterUserID uuid.UUID,
+		projectID *string,
+	) (*domain.Conversation, error)
+}

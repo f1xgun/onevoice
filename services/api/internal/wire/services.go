@@ -33,6 +33,7 @@ type Services struct {
 	Review        service.ReviewService
 	AgentTask     service.AgentTaskService
 	Project       *service.ProjectService
+	Conversation  *service.ConversationService
 	HITL          *service.HITLService
 	Titler        *service.Titler // may be nil — graceful disable
 	Searcher      *service.Searcher
@@ -204,6 +205,16 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s.Post = service.NewPostService(repos.Post, s.Business)
 	s.AgentTask = service.NewAgentTaskService(repos.AgentTask, s.Business)
 	s.Project = service.NewProjectService(repos.Project, s.AuditLogger)
+
+	// ConversationService owns multi-repo conversation transitions
+	// (currently MoveToProject — see services/api/internal/service/conversation.go).
+	// Reads from three repos so MoveConversation handler can shrink to a
+	// thin HTTP-to-domain-call adapter.
+	conversationService, err := service.NewConversationService(repos.Conversation, repos.Message, repos.Project)
+	if err != nil {
+		return nil, fmt.Errorf("wire: create conversation service: %w", err)
+	}
+	s.Conversation = conversationService
 
 	// Initialize object storage (MinIO / S3) for user uploads
 	objectStorage, err := storage.NewMinioClient(ctx, storage.Config{

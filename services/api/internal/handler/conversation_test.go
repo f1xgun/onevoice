@@ -270,6 +270,60 @@ func (s *noopProjectService) CountConversations(_ context.Context, _, _ uuid.UUI
 	return 0, nil
 }
 
+// noopConversationService panics on every call. Wired by default into
+// handler tests that don't exercise MoveConversation; calling it signals
+// the test forgot to inject a real *service.ConversationService.
+type noopConversationService struct{}
+
+func (noopConversationService) MoveToProject(_ context.Context, _ string, _, _ uuid.UUID, _ *string) (*domain.Conversation, error) {
+	panic("noopConversationService.MoveToProject: test must wire a real *service.ConversationService when exercising MoveConversation")
+}
+
+// stubProjectRepoForHandler is a one-method ProjectRepository stub used by
+// MoveConversation handler tests to feed the in-line ConversationService.
+// Most repo methods are unreachable in this path — they return nil/empty
+// values to satisfy the interface.
+type stubProjectRepoForHandler struct {
+	GetByIDFunc func(ctx context.Context, id uuid.UUID) (*domain.Project, error)
+}
+
+func (s *stubProjectRepoForHandler) GetByID(ctx context.Context, id uuid.UUID) (*domain.Project, error) {
+	if s.GetByIDFunc != nil {
+		return s.GetByIDFunc(ctx, id)
+	}
+	return nil, domain.ErrProjectNotFound
+}
+func (s *stubProjectRepoForHandler) Create(_ context.Context, _ *domain.Project) error {
+	return nil
+}
+func (s *stubProjectRepoForHandler) ListByBusinessID(_ context.Context, _ uuid.UUID) ([]domain.Project, error) {
+	return nil, nil
+}
+func (s *stubProjectRepoForHandler) Update(_ context.Context, _ *domain.Project) error {
+	return nil
+}
+func (s *stubProjectRepoForHandler) Delete(_ context.Context, _ uuid.UUID) error { return nil }
+func (s *stubProjectRepoForHandler) CountConversationsByID(_ context.Context, _ uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (s *stubProjectRepoForHandler) HardDeleteCascade(_ context.Context, _ uuid.UUID) (deletedConvos, deletedMessages int, err error) {
+	return 0, 0, nil
+}
+
+// newRealConvSvcForMoveTest constructs a real *service.ConversationService
+// over the test's existing conv + message mocks plus a stubProjectRepo that
+// echoes a single fixture project. Used by MoveConversation handler tests
+// to exercise the full handler→service→repo path while keeping locale and
+// system-note assertions intact.
+func newRealConvSvcForMoveTest(t *testing.T, convRepo domain.ConversationRepository, msgRepo domain.MessageRepository, projRepo domain.ProjectRepository) *service.ConversationService {
+	t.Helper()
+	svc, err := service.NewConversationService(convRepo, msgRepo, projRepo)
+	if err != nil {
+		t.Fatalf("newRealConvSvcForMoveTest: %v", err)
+	}
+	return svc
+}
+
 // newTestConversationHandler builds a ConversationHandler wired with a stub
 // business service and a stub project service that returns ErrProjectNotFound
 // by default. Tests that need custom behavior call NewConversationHandler
@@ -277,7 +331,15 @@ func (s *noopProjectService) CountConversations(_ context.Context, _, _ uuid.UUI
 // PendingToolCallRepository mock so the pendingApprovals array is
 // always serialized as [] for legacy tests.
 func newTestConversationHandler(convRepo domain.ConversationRepository, msgRepo domain.MessageRepository) *ConversationHandler {
-	h, err := NewConversationHandler(convRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{})
+	// Wire a real *service.ConversationService over the test's mocks so
+	// MoveConversation tests that use this helper (missing-conv,
+	// wrong-user, invalid-body) exercise the full handler→service path
+	// without re-deriving error mapping in the helper.
+	convSvc, err := service.NewConversationService(convRepo, msgRepo, &stubProjectRepoForHandler{})
+	if err != nil {
+		panic(err)
+	}
+	h, err := NewConversationHandler(convRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{}, convSvc)
 	if err != nil {
 		panic(err)
 	}
@@ -459,7 +521,7 @@ func TestCreateConversation_RepositoryError(t *testing.T) {
 
 // TestNewConversationHandler_NilRepository tests error on nil repository
 func TestNewConversationHandler_NilRepository(t *testing.T) {
-	h, err := NewConversationHandler(nil, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{})
+	h, err := NewConversationHandler(nil, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{}, noopConversationService{})
 	assert.Error(t, err)
 	assert.Nil(t, h)
 }
@@ -467,7 +529,7 @@ func TestNewConversationHandler_NilRepository(t *testing.T) {
 // TestNewConversationHandler_NilBusinessService ensures the new dep
 // is checked.
 func TestNewConversationHandler_NilBusinessService(t *testing.T) {
-	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, nil, &noopProjectService{}, &MockPendingToolCallRepository{})
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, nil, &noopProjectService{}, &MockPendingToolCallRepository{}, noopConversationService{})
 	assert.Error(t, err)
 	assert.Nil(t, h)
 }
@@ -475,7 +537,7 @@ func TestNewConversationHandler_NilBusinessService(t *testing.T) {
 // TestNewConversationHandler_NilProjectService ensures the new dep
 // is checked.
 func TestNewConversationHandler_NilProjectService(t *testing.T) {
-	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, nil, &MockPendingToolCallRepository{})
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, nil, &MockPendingToolCallRepository{}, noopConversationService{})
 	assert.Error(t, err)
 	assert.Nil(t, h)
 }
@@ -483,7 +545,16 @@ func TestNewConversationHandler_NilProjectService(t *testing.T) {
 // TestNewConversationHandler_NilPendingRepo ensures the new dep is
 // checked (chat_proxy and GET /messages both rely on it).
 func TestNewConversationHandler_NilPendingRepo(t *testing.T) {
-	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, nil)
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, nil, noopConversationService{})
+	assert.Error(t, err)
+	assert.Nil(t, h)
+}
+
+// TestNewConversationHandler_NilConversationService ensures the move-only
+// dep is checked. ConversationService owns the MoveToProject transition;
+// without it, /move would nil-deref at request time.
+func TestNewConversationHandler_NilConversationService(t *testing.T) {
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{}, nil)
 	assert.Error(t, err)
 	assert.Nil(t, h)
 }
@@ -1079,7 +1150,7 @@ func TestCreateConversation_WithProjectID(t *testing.T) {
 			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Reviews"}, nil
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, &noopBusinessService{}, proj, &MockPendingToolCallRepository{})
+	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, &noopBusinessService{}, proj, &MockPendingToolCallRepository{}, noopConversationService{})
 	require.NoError(t, err)
 
 	pid := projectID.String()
@@ -1123,7 +1194,7 @@ func TestCreateConversation_NullAndAbsentProjectIDEquivalent(t *testing.T) {
 					return nil
 				},
 			}
-			h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{})
+			h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{}, noopConversationService{})
 			require.NoError(t, err)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader([]byte(tc.body)))
@@ -1152,7 +1223,7 @@ func TestCreateConversation_ProjectCrossBusiness(t *testing.T) {
 			return nil, domain.ErrProjectNotFound
 		},
 	}
-	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, proj, &MockPendingToolCallRepository{})
+	h, err := NewConversationHandler(&MockConversationRepository{}, &MockMessageRepository{}, &noopBusinessService{}, proj, &MockPendingToolCallRepository{}, noopConversationService{})
 	require.NoError(t, err)
 
 	pid := projectID.String()
@@ -1215,7 +1286,12 @@ func TestMoveConversation_ToProject(t *testing.T) {
 			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Отзывы"}, nil
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, proj, &MockPendingToolCallRepository{})
+	projRepo := &stubProjectRepoForHandler{
+		GetByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Project, error) {
+			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Отзывы"}, nil
+		},
+	}
+	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, proj, &MockPendingToolCallRepository{}, newRealConvSvcForMoveTest(t, mockRepo, msgRepo, projRepo))
 	require.NoError(t, err)
 
 	pid := projectID.String()
@@ -1274,7 +1350,7 @@ func TestMoveConversation_ToNullBezProyekta(t *testing.T) {
 			return nil
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{})
+	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{}, newRealConvSvcForMoveTest(t, mockRepo, msgRepo, &stubProjectRepoForHandler{}))
 	require.NoError(t, err)
 
 	// null body
@@ -1320,7 +1396,7 @@ func TestMoveConversation_EnglishLocale_NullDestination(t *testing.T) {
 			return nil
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{})
+	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{}, newRealConvSvcForMoveTest(t, mockRepo, msgRepo, &stubProjectRepoForHandler{}))
 	require.NoError(t, err)
 
 	body := []byte(`{"projectId":null}`)
@@ -1379,7 +1455,12 @@ func TestMoveConversation_EnglishLocale_RealProject(t *testing.T) {
 			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Reviews"}, nil
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, proj, &MockPendingToolCallRepository{})
+	projRepo := &stubProjectRepoForHandler{
+		GetByIDFunc: func(_ context.Context, _ uuid.UUID) (*domain.Project, error) {
+			return &domain.Project{ID: projectID, BusinessID: businessID, Name: "Reviews"}, nil
+		},
+	}
+	h, err := NewConversationHandler(mockRepo, msgRepo, &noopBusinessService{}, proj, &MockPendingToolCallRepository{}, newRealConvSvcForMoveTest(t, mockRepo, msgRepo, projRepo))
 	require.NoError(t, err)
 
 	pid := projectID.String()
@@ -1418,7 +1499,15 @@ func TestMoveConversation_ProjectCrossBusiness(t *testing.T) {
 			return nil, domain.ErrProjectNotFound
 		},
 	}
-	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, &noopBusinessService{}, proj, &MockPendingToolCallRepository{})
+	// ConversationService gets a stub that returns the project as belonging
+	// to a DIFFERENT business — the cross-tenant guard inside MoveToProject
+	// surfaces ErrProjectNotFound (existence-enumeration defense).
+	projRepo := &stubProjectRepoForHandler{
+		GetByIDFunc: func(_ context.Context, id uuid.UUID) (*domain.Project, error) {
+			return &domain.Project{ID: id, BusinessID: uuid.New(), Name: "OtherBizProject"}, nil
+		},
+	}
+	h, err := NewConversationHandler(mockRepo, &MockMessageRepository{}, &noopBusinessService{}, proj, &MockPendingToolCallRepository{}, newRealConvSvcForMoveTest(t, mockRepo, &MockMessageRepository{}, projRepo))
 	require.NoError(t, err)
 
 	pid := projectID.String()
@@ -1493,7 +1582,7 @@ func TestMoveConversation_InvalidBody(t *testing.T) {
 // pending-tool-call repo mock so tests can drive ListPendingByConversation.
 func newConversationHandlerWithPending(t *testing.T, convRepo domain.ConversationRepository, msgRepo domain.MessageRepository, pendingRepo domain.PendingToolCallRepository) *ConversationHandler {
 	t.Helper()
-	h, err := NewConversationHandler(convRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, pendingRepo)
+	h, err := NewConversationHandler(convRepo, msgRepo, &noopBusinessService{}, &noopProjectService{}, pendingRepo, noopConversationService{})
 	require.NoError(t, err)
 	return h
 }
@@ -1773,7 +1862,7 @@ func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 // that returns a fixed business ID so Pin/Unpin handler tests can assert
 // the (id, business_id, user_id) scope filter without re-stubbing each test.
 func pinTestHandler(convRepo domain.ConversationRepository, businessID, userID uuid.UUID) *ConversationHandler {
-	h, err := NewConversationHandler(convRepo, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{})
+	h, err := NewConversationHandler(convRepo, &MockMessageRepository{}, &noopBusinessService{}, &noopProjectService{}, &MockPendingToolCallRepository{}, noopConversationService{})
 	if err != nil {
 		panic(err)
 	}
