@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: milestone
 status: executing
-last_updated: "2026-05-25T00:00:00.000Z"
-last_activity: 2026-05-25 -- Phase 21 wave 2 complete (21-02 password reset + 21-03 email verification + ACCT-06 merged)
+last_updated: "2026-05-25T03:00:00.000Z"
+last_activity: 2026-05-25 -- Phase 21 wave 3 complete (21-04 account deletion + grace + restore merged) — verification next
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 10
-  completed_plans: 6
-  percent: 60
+  total_plans: 11
+  completed_plans: 7
+  percent: 64
 ---
 
 # State
@@ -18,9 +18,9 @@ progress:
 ## Current Position
 
 Phase: 21
-Plan: 21-01, 21-02, 21-03 complete; 21-04 (account deletion + 30-day grace, Wave 3) next
-Status: Executing
-Last activity: 2026-05-25 -- Phase 21 wave 2 complete (21-02 password reset + 21-03 email verification + ACCT-06 merged)
+Plan: All 4 plans (21-01..21-04) merged; running phase verification next
+Status: Executing — verification
+Last activity: 2026-05-25 -- Phase 21 wave 3 complete (21-04 account deletion + grace + restore merged) — verification next
 
 ## Project Reference
 
