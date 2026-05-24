@@ -54,6 +54,10 @@ type AuthHandler struct {
 	// PasswordResetServiceAPI interface so handler tests can pass a
 	// double; production wiring passes a *service.PasswordResetService.
 	passwordResetService PasswordResetServiceAPI
+
+	// Phase 21-03 (ACCT-02) email-verification service. Same setter
+	// pattern as passwordResetService.
+	emailVerificationService EmailVerificationServiceAPI
 }
 
 // PasswordResetServiceAPI is the slice of *service.PasswordResetService
@@ -65,12 +69,28 @@ type PasswordResetServiceAPI interface {
 	ConfirmReset(ctx context.Context, plaintextToken, newPassword, clientIP, userAgent string) error
 }
 
+// EmailVerificationServiceAPI is the slice of *service.EmailVerificationService
+// the AuthHandler consumes. Declared as an interface for the same
+// testability reason as PasswordResetServiceAPI.
+type EmailVerificationServiceAPI interface {
+	RequestResend(ctx context.Context, userID uuid.UUID) error
+	ConfirmVerify(ctx context.Context, plaintextToken string) (uuid.UUID, error)
+	IsTokenExpired(ctx context.Context, plaintextToken string) (bool, error)
+	ChangeEmailBeforeVerify(ctx context.Context, userID uuid.UUID, newEmail string) (oldEmail string, err error)
+}
+
 // SetPasswordResetService injects the password-reset dependency. Called
 // from wire/handlers.go AFTER PasswordResetService is built. Preferred
 // over extending NewAuthHandler's signature because that would force
 // every existing test to pass nil.
 func (h *AuthHandler) SetPasswordResetService(s PasswordResetServiceAPI) {
 	h.passwordResetService = s
+}
+
+// SetEmailVerificationService injects the email-verification dependency
+// (Phase 21-03). Same setter pattern as SetPasswordResetService.
+func (h *AuthHandler) SetEmailVerificationService(s EmailVerificationServiceAPI) {
+	h.emailVerificationService = s
 }
 
 // NewAuthHandler creates a new auth handler instance.
@@ -359,7 +379,27 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
-// Me returns the authenticated user's profile
+// MeResponse is the Phase 21-03 (ACCT-02 / D-25) wrapper around the user
+// payload. The legacy /auth/me returned *domain.User directly; we now
+// wrap so the frontend can render the verification banner without an
+// extra round-trip.
+//
+// User.EmailVerified is json-hidden on the domain.User struct so it only
+// surfaces here (other list endpoints keep their existing shape).
+// EmailVerificationDeadline is created_at + 7 days, nil/omitted when the
+// user is already verified.
+type MeResponse struct {
+	*domain.User
+	EmailVerified             bool       `json:"emailVerified"`
+	EmailVerificationDeadline *time.Time `json:"emailVerificationDeadline,omitempty"`
+}
+
+// emailVerifyGraceDuration mirrors the soft-restrict middleware constant
+// (D-28 / D-29). Duplicated here as a const to avoid a circular import
+// (handler → middleware → service); both must agree on the 7-day value.
+const emailVerifyGraceDuration = 7 * 24 * time.Hour
+
+// Me returns the authenticated user's profile.
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	// Extract user ID from context (set by auth middleware)
 	userID, err := middleware.GetUserID(r.Context())
@@ -380,8 +420,18 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return user (password hash already sanitized by service)
-	writeJSON(w, http.StatusOK, user)
+	// Phase 21-03 wrapper. Verified users get a nil deadline (omitted via
+	// `omitempty`); unverified users get created_at + 7 days so the
+	// banner can compute the countdown without a second round-trip.
+	resp := MeResponse{
+		User:          user,
+		EmailVerified: user.EmailVerified,
+	}
+	if !user.EmailVerified {
+		d := user.CreatedAt.Add(emailVerifyGraceDuration)
+		resp.EmailVerificationDeadline = &d
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ChangePassword handles PUT /api/v1/auth/password
@@ -524,6 +574,152 @@ func (h *AuthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Phase 21-03: email verification (ACCT-02) -------------------------
+
+// VerifyConfirmRequest is the body shape for POST /auth/verify-email/confirm.
+type VerifyConfirmRequest struct {
+	Token string `json:"token" validate:"required,min=20"`
+}
+
+// VerifyConfirm handles POST /api/v1/auth/verify-email/confirm (D-22, D-23).
+//
+// On success: 204 No Content. CRITICAL: NO Set-Cookie header is emitted —
+// no session is granted (T-VE-02 mitigation — an attacker who registered
+// with a victim's email must not become the victim's session).
+//
+// On failure: 400 with body {code: verify_token_invalid | verify_token_expired}.
+// The handler runs a single follow-up LookupExpired query ONLY on
+// invalid-failure to surface the "expired" UX hint per Surface 3 — both
+// codes are equally safe (the token is already burned either way).
+func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
+	var req VerifyConfirmRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, r, err)
+		return
+	}
+	if h.emailVerificationService == nil {
+		writeJSONError(w, http.StatusInternalServerError, "email verification service not configured")
+		return
+	}
+
+	userID, err := h.emailVerificationService.ConfirmVerify(r.Context(), req.Token)
+	if err != nil {
+		if errors.Is(err, domain.ErrVerifyTokenInvalid) {
+			// UX-only follow-up: is the row present but expired? Both branches
+			// safely refuse the consume; we only differ on the public code so
+			// the verify page (Surface 3) can show the right copy.
+			code := "verify_token_invalid"
+			if expired, _ := h.emailVerificationService.IsTokenExpired(r.Context(), req.Token); expired {
+				code = "verify_token_expired"
+			}
+			writeJSONCodeError(w, http.StatusBadRequest, code)
+			return
+		}
+		slog.Error("verify confirm failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	// EXPLICITLY NO h.setRefreshTokenCookie — T-VE-02 mitigation. The page
+	// redirects the user to the dashboard which uses their existing session
+	// (or sends them to /login if they were not logged in).
+	audit.LogEmailVerified(r.Context(), h.audit, userID, clientIP(r), r.UserAgent())
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// VerifyResend handles POST /api/v1/auth/verify-email/resend (D-24).
+// Auth-required (middleware enforces). Maps service sentinels to public
+// codes: ErrAlreadyVerified → 403 email_already_verified;
+// ErrResendThrottled → 429 verify_resend_throttled.
+func (h *AuthHandler) VerifyResend(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if h.emailVerificationService == nil {
+		writeJSONError(w, http.StatusInternalServerError, "email verification service not configured")
+		return
+	}
+
+	if err := h.emailVerificationService.RequestResend(r.Context(), userID); err != nil {
+		switch {
+		case errors.Is(err, domain.ErrAlreadyVerified):
+			writeJSONCodeError(w, http.StatusForbidden, "email_already_verified")
+			return
+		case errors.Is(err, domain.ErrResendThrottled):
+			writeJSONCodeError(w, http.StatusTooManyRequests, "verify_resend_throttled")
+			return
+		}
+		slog.Error("verify resend failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// EmailBeforeVerifyRequest is the body shape for PATCH /auth/email-before-verify.
+type EmailBeforeVerifyRequest struct {
+	NewEmail string `json:"newEmail" validate:"required,email"`
+}
+
+// EmailBeforeVerify handles PATCH /api/v1/auth/email-before-verify (D-21).
+// Auth-required (middleware enforces). Only allowed when email_verified=false
+// — otherwise returns 403 email_already_verified. Maps ErrEmailTaken to
+// 409. On success: 204 + audit row with old+new email.
+func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserID(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if h.emailVerificationService == nil {
+		writeJSONError(w, http.StatusInternalServerError, "email verification service not configured")
+		return
+	}
+
+	var req EmailBeforeVerifyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		writeValidationError(w, r, err)
+		return
+	}
+
+	oldEmail, err := h.emailVerificationService.ChangeEmailBeforeVerify(r.Context(), userID, req.NewEmail)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrAlreadyVerified):
+			writeJSONCodeError(w, http.StatusForbidden, "email_already_verified")
+			return
+		case errors.Is(err, domain.ErrEmailTaken):
+			writeJSONCodeError(w, http.StatusConflict, "email_taken")
+			return
+		}
+		slog.Error("email-before-verify failed", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	audit.LogEmailChangedBeforeVerify(r.Context(), h.audit, userID, oldEmail, req.NewEmail, clientIP(r), r.UserAgent())
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// writeJSONCodeError writes a {"code":"<code>"} response body. Used by
+// the Phase 21-03 handlers so the frontend's error_mapping.ts can route
+// on the code per 21-CROSS-PLAN-CONTRACTS.md §4.
+func writeJSONCodeError(w http.ResponseWriter, status int, code string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(struct {
+		Code string `json:"code"`
+	}{Code: code})
 }
 
 // clientIP returns the client IP from r.RemoteAddr, stripping the port. If
