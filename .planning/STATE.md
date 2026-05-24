@@ -1,11 +1,26 @@
+---
+gsd_state_version: 1.0
+milestone: v1.4
+milestone_name: milestone
+status: executing
+last_updated: "2026-05-24T11:09:00.327Z"
+last_activity: 2026-05-24
+progress:
+  total_phases: 7
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 100
+---
+
 # State
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-24 — Milestone v1.4 Launch Readiness started
+Phase: 21
+Plan: Not started
+Status: Executing Phase 20
+Last activity: 2026-05-24
 
 ## Project Reference
 
@@ -13,7 +28,7 @@ See: [.planning/PROJECT.md](PROJECT.md) (updated 2026-05-24)
 
 **Core value:** Business owners can manage their digital presence across multiple platforms through a single conversational interface.
 
-**Current focus:** v1.4 Launch Readiness — close P0 blockers from the 2026-05-24 launch audit so the first 5–10 real businesses can use OneVoice end-to-end.
+**Current focus:** Phase 20 — critical-onboarding-migration-fixes
 
 ## Active Milestone
 
