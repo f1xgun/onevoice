@@ -151,6 +151,16 @@ type Config struct {
 	// Shutdown
 	ShutdownTimeout time.Duration
 
+	// Phase 21a — transactional email infrastructure.
+	// UnisenderAPIKey: empty = NoopSender (dev/local); set = UnisenderSender.
+	// Operators: see docs/runbook-email-dns.md for the DKIM/SPF/DMARC
+	// pre-req that gates production sends.
+	UnisenderAPIKey    string
+	UnisenderFromEmail string        // default "noreply@onevoice.app"
+	UnisenderFromName  string        // default "OneVoice"
+	OutboxPollInterval time.Duration // default 5s
+	OutboxMaxAttempts  int           // default 5
+
 	// Auto-titler. TitlerModel falls back to LLMModel when unset;
 	// when both are unset the titler is disabled (graceful no-op —
 	// API must boot cleanly without any LLM env).
@@ -235,6 +245,13 @@ func Load() (*Config, error) {
 		RateLimitHITL:     getEnvInt("RATE_LIMIT_HITL", 10),
 
 		ShutdownTimeout: shutdownTimeout,
+
+		// Phase 21a — transactional email infrastructure.
+		UnisenderAPIKey:    os.Getenv("UNISENDER_API_KEY"),
+		UnisenderFromEmail: getEnv("UNISENDER_FROM_EMAIL", "noreply@onevoice.app"),
+		UnisenderFromName:  getEnv("UNISENDER_FROM_NAME", "OneVoice"),
+		OutboxPollInterval: getEnvDuration("OUTBOX_POLL_INTERVAL", 5*time.Second), //nolint:mnd // env-driven default
+		OutboxMaxAttempts:  getEnvInt("OUTBOX_MAX_ATTEMPTS", 5),                   //nolint:mnd // env-driven default
 	}
 
 	// Auto-titler env loading. Mirrors

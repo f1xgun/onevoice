@@ -77,6 +77,13 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// is bound to ctx (SIGTERM cancels the sweep).
 	wire.StartRetentionSweep(ctx, handles.PG, repos.AuditLog)
 
+	// Phase 21a: email_outbox drain worker. Lifecycle bound to ctx.
+	// Mirrors StartRetentionSweep. Logs to slog under "email_outbox worker".
+	// Sender is NoopSender in dev (empty UNISENDER_API_KEY) and
+	// UnisenderSender in production — see wire/email.go.
+	emailSender := wire.BuildEmailSender(log, cfg)
+	wire.StartOutboxWorker(ctx, log, repos.EmailOutbox, emailSender, cfg.OutboxPollInterval, cfg.OutboxMaxAttempts)
+
 	handlers, err := wire.Handlers(cfg, svcs, repos, handles)
 	if err != nil {
 		return err
