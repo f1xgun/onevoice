@@ -156,6 +156,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 			HITL:     cfg.RateLimitHITL,
 		},
 		svcs.AuthzCache,
+		nil, // Phase 21-03 soft-restrict UserLookup — tests pass nil for pass-through.
 	)
 
 	return &testEnv{
