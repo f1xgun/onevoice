@@ -201,6 +201,11 @@ func (c *hitlConvRepo) ScopedConversationIDs(_ context.Context, _, _ string, _ *
 	return nil, nil
 }
 
+// MongoConversationsCleanup stub — Phase 21-04.
+func (c *hitlConvRepo) MongoConversationsCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // -- helpers -----------------------------------------------------------------
 
 func seededToolsCache() *service.ToolsRegistryCache {

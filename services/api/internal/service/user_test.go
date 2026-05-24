@@ -42,6 +42,17 @@ func (m *mockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	return nil, domain.ErrUserNotFound
 }
 
+// Phase 21-04: GetByIDIncludingDeleted satisfies the widened
+// domain.UserRepository interface. Reuses getByIDFunc when set so the
+// existing test cases continue to drive both the soft-delete-filtered
+// and the deletion-aware code paths.
+func (m *mockUserRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, id)
+	}
+	return nil, domain.ErrUserNotFound
+}
+
 func (m *mockUserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	if m.getByEmailFunc != nil {
 		return m.getByEmailFunc(ctx, email)
