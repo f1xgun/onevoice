@@ -27,6 +27,37 @@ func NewUserRepository(pool *pgxpool.Pool) domain.UserRepository {
 	}
 }
 
+// UserResetExtAdapter is the public façade exposing GetByEmail +
+// UpdatePasswordHashInTx — the slice of UserRepository the
+// PasswordResetService (Phase 21b) consumes. Returned as a concrete type
+// (not an interface) so wire/repositories.go can construct it without
+// importing the service package (and avoid the type-assertion dance).
+type UserResetExtAdapter struct {
+	inner *userRepository
+}
+
+// NewUserResetExtAdapter constructs the Phase 21b extension repo. Re-uses
+// the same connection pool as NewUserRepository — both struct values
+// share state through the pgxpool's connection multiplex.
+func NewUserResetExtAdapter(pool *pgxpool.Pool) *UserResetExtAdapter {
+	return &UserResetExtAdapter{
+		inner: &userRepository{
+			pool: pool,
+			sb:   squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+		},
+	}
+}
+
+// GetByEmail delegates to the inner concrete repo.
+func (a *UserResetExtAdapter) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+	return a.inner.GetByEmail(ctx, email)
+}
+
+// UpdatePasswordHashInTx delegates to the inner concrete repo.
+func (a *UserResetExtAdapter) UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, bcryptHash []byte) error {
+	return a.inner.UpdatePasswordHashInTx(ctx, tx, userID, bcryptHash)
+}
+
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()

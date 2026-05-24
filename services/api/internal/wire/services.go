@@ -66,6 +66,11 @@ type Services struct {
 	// blocks the request path.
 	AuditLogger audit.Logger
 
+	// PasswordReset is the Phase 21b (ACCT-01) password-reset service.
+	// Wired into AuthHandler via SetPasswordResetService in
+	// wire/handlers.go.
+	PasswordReset *service.PasswordResetService
+
 	// reviewSyncerCancel is captured so Close() can stop the background
 	// ticker goroutine. nil when ReviewSyncer is nil.
 	reviewSyncerCancel context.CancelFunc
@@ -303,6 +308,19 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		repos.Project,
 		s.ToolsCache,
 		orchClient,
+	)
+
+	// Phase 21b (ACCT-01) password reset service. Composes the
+	// PasswordResetTokenRepository + the tx-aware user repo adapter +
+	// the email outbox (Phase 21a) + the shared audit logger + Redis
+	// (rate-limit + post-commit refresh-token wipe).
+	s.PasswordReset = service.NewPasswordResetService(
+		h.PG,
+		repos.PasswordResetToken,
+		repos.UserResetExt,
+		repos.EmailOutbox,
+		s.AuditLogger,
+		h.Redis,
 	)
 
 	return s, nil

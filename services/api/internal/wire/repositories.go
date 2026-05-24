@@ -31,6 +31,19 @@ type Repos struct {
 	// the indirection.
 	EmailOutbox *repository.EmailOutboxRepository
 
+	// Phase 21b (ACCT-01) password_reset_tokens repository. Concrete
+	// pointer for the same reason as EmailOutbox — only the
+	// PasswordResetService depends on it and the methods are used
+	// directly without an intervening interface.
+	PasswordResetToken *repository.PasswordResetTokenRepository
+
+	// Phase 21b: tx-aware password setter, exposed separately from the
+	// domain.UserRepository interface (which stays tx-free). The concrete
+	// *repository.UserResetExtAdapter satisfies service.UserRepoForReset
+	// by structural typing — wire/services.go passes this value directly
+	// into NewPasswordResetService.
+	UserResetExt *repository.UserResetExtAdapter
+
 	// MembershipLoader backs the authz cache (Phase 2 v2.0 RBAC). Same
 	// query surface as BusinessMembership but exposed as the typed
 	// authz.MembershipLoader interface to keep the cache decoupled.
@@ -57,6 +70,8 @@ func Repositories(h *DBHandles) *Repos {
 		Invitation:         repository.NewInvitationRepository(h.PG),
 		AuditLog:           repository.NewAuditLogRepository(h.PG),
 		EmailOutbox:        repository.NewEmailOutboxRepository(h.PG),
+		PasswordResetToken: repository.NewPasswordResetTokenRepository(h.PG),
+		UserResetExt:       repository.NewUserResetExtAdapter(h.PG),
 		MembershipLoader:   repository.NewMembershipLoader(h.PG),
 	}
 }

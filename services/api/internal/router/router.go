@@ -105,6 +105,21 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/login", handlers.Auth.Login)
 		r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
 
+		// Phase 21b — Password reset (ACCT-01).
+		// No middleware.RateLimit chi wrapper: the handler does its own
+		// per-email Redis rate-limit inside the service so the
+		// timing-parity contract (CONTEXT D-15) is enforced uniformly.
+		// A chi RateLimit here would short-circuit before the service
+		// runs and skew the unknown-email branch.
+		//
+		// NO GET handler for /auth/password-reset/confirm — the frontend
+		// renders the page off the ?token=… query string and the user
+		// must explicitly POST after clicking the reveal CTA. This is
+		// the scanner-protection (PITFALLS §1.5) — Outlook Safe Links
+		// and Yandex 360 link prefetch cannot consume the token via GET.
+		r.Post("/auth/password-reset/request", handlers.Auth.RequestPasswordReset)
+		r.Post("/auth/password-reset/confirm", handlers.Auth.ConfirmPasswordReset)
+
 		// OAuth callback routes (public — state parameter validates session)
 		r.Get("/oauth/vk/callback", handlers.OAuth.VKCallback)
 		r.Get("/oauth/vk/community-callback", handlers.OAuth.VKCommunityCallback)
