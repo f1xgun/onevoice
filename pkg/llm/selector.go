@@ -3,6 +3,8 @@ package llm
 import (
 	"sync"
 	"time"
+
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
 // Selector chooses a Provider for a model based on registry config plus
@@ -40,13 +42,27 @@ type Selector interface {
 	Record(entry *ModelProviderEntry, outcome Outcome)
 }
 
-// Outcome is the verdict Router reports for a single invocation. Latency
-// is zero for streaming starts: the channel-open latency is not the
-// user-perceived latency, and rolling-window updates on a misleading
-// value would skew future picks.
+// Outcome is the verdict reported back to Selector.Record after a single
+// provider invocation. Two latencies live here for two purposes:
+//
+//   - Latency: end-of-response duration reported by the provider (set by
+//     non-stream Chat after the body arrives; zero for streaming starts
+//     because the channel-open instant is not user-perceived). Drives the
+//     rolling-window AvgLatencyMs used by Pick(StrategySpeed).
+//   - Wall: wall-clock duration spent inside the provider call as seen by
+//     the caller (Invoke fills this from start/time.Since). Drives the
+//     prometheus per-call latency histogram via metrics.RecordLLMRequest.
+//
+// Model is the model name the caller requested. Invoke fills it; direct
+// Record callers (e.g. integration tests that exercise Selector policy
+// without going through Invoke) may leave it empty — in that case the
+// defaultSelector skips the prometheus emission so non-Router consumers
+// of the seam don't accidentally pollute the histogram.
 type Outcome struct {
 	Success bool
 	Latency time.Duration
+	Model   string
+	Wall    time.Duration
 }
 
 // defaultSelector policy tuning. Lives at package scope so future Selector
@@ -214,6 +230,71 @@ func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 		entry.AvgLatencyMs = m.avgLatencyMs
 	}
 	entry.LastCheckedAt = time.Now()
+
+	// Per-call prometheus emission lives here so the seam owns ALL
+	// "what to report about a provider invocation" decisions. Gated on
+	// outcome.Model so direct Record callers (integration tests etc.)
+	// don't leak empty-label series into the histogram — only Invoke
+	// callers (Router + future similar wrappers) emit.
+	if outcome.Model != "" {
+		status := "success"
+		if !outcome.Success {
+			status = "error"
+		}
+		metrics.RecordLLMRequest(outcome.Model, entry.Provider, status, outcome.Wall)
+	}
+}
+
+// Invoke brackets a single Selector cycle — pick a provider, run fn, record
+// the outcome, return — so callers don't have to remember to call Record
+// (and don't risk drift between two near-identical Chat / ChatStream
+// bookkeeping blocks). The closure shape is shared by the blocking and
+// streaming paths:
+//
+//	entry, resp, err := Invoke(sel, req.Model, req.Strategy,
+//	    func(p Provider) (*ChatResponse, time.Duration, error) {
+//	        r, err := p.Chat(ctx, req)
+//	        if err != nil { return nil, 0, err }
+//	        return r, r.Latency, nil
+//	    })
+//
+//	entry, ch, err := Invoke(sel, req.Model, req.Strategy,
+//	    func(p Provider) (<-chan StreamChunk, time.Duration, error) {
+//	        ch, err := p.ChatStream(ctx, req)
+//	        if err != nil { return nil, 0, err }
+//	        return ch, 0, nil // channel-open instant not user-perceived
+//	    })
+//
+// fn returns the caller's typed result, the provider-reported latency
+// (used by the rolling window — zero means "don't sample me"), and any
+// error. Invoke fills outcome.Model + outcome.Wall from the caller-
+// supplied model and the observed wall-clock; outcome.Success is set
+// from err == nil so fn doesn't have to think about it.
+//
+// On Pick failure fn is not called and Record is not invoked — the error
+// has no provider entry to attribute. The Selector seam owns retry policy,
+// not Invoke; if multi-provider retry ever lands it goes on Selector,
+// not duplicated across each Invoke call site.
+func Invoke[T any](
+	s Selector,
+	model string,
+	strategy Strategy,
+	fn func(p Provider) (T, time.Duration, error),
+) (*ModelProviderEntry, T, error) {
+	var zero T
+	entry, provider, err := s.Pick(model, strategy)
+	if err != nil {
+		return nil, zero, err
+	}
+	start := time.Now()
+	result, providerLatency, fnErr := fn(provider)
+	s.Record(entry, Outcome{
+		Success: fnErr == nil,
+		Latency: providerLatency,
+		Model:   model,
+		Wall:    time.Since(start),
+	})
+	return entry, result, fnErr
 }
 
 // avgCost averages the input + output per-1M-token list price. Tie-breaker

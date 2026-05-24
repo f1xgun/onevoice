@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
 var (
@@ -105,75 +103,71 @@ func tierFromRequest(req ChatRequest) string {
 	return req.Tier
 }
 
+// checkRateLimit enforces the per-user/tier limit before any provider work.
+// Returns nil when the caller may proceed. Extracted so Chat and ChatStream
+// share the gate verbatim — both must skip the check when no rate limiter
+// is wired and when the request has no user id (cluster-internal calls).
+func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
+	if r.rateLimiter == nil || req.UserID == uuid.Nil {
+		return nil
+	}
+	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, tierFromRequest(req), 0)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return ErrRateLimitExceeded
+	}
+	return nil
+}
+
 // Chat performs a blocking LLM chat request using the selected provider.
+// Picking, outcome recording, and per-call prometheus emission all run
+// inside Invoke; Router owns only the rate-limit gate and the async
+// billing log.
 func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	if r.rateLimiter != nil && req.UserID != uuid.Nil {
-		tier := tierFromRequest(req)
-		allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, tier, 0)
-		if err != nil {
-			return nil, err
-		}
-		if !allowed {
-			return nil, ErrRateLimitExceeded
-		}
+	if err := r.checkRateLimit(ctx, req); err != nil {
+		return nil, err
 	}
 
-	entry, provider, err := r.selector.Pick(req.Model, req.Strategy)
+	entry, resp, err := Invoke(r.selector, req.Model, req.Strategy,
+		func(p Provider) (*ChatResponse, time.Duration, error) {
+			out, callErr := p.Chat(ctx, req)
+			if callErr != nil {
+				return nil, 0, callErr
+			}
+			return out, out.Latency, nil
+		})
 	if err != nil {
 		return nil, err
 	}
 
-	start := time.Now()
-	resp, err := provider.Chat(ctx, req)
-	if err != nil {
-		r.selector.Record(entry, Outcome{Success: false})
-		metrics.RecordLLMRequest(req.Model, entry.Provider, "error", time.Since(start))
-		return nil, err
-	}
-
-	metrics.RecordLLMRequest(req.Model, entry.Provider, "success", time.Since(start))
-	r.selector.Record(entry, Outcome{Success: true, Latency: resp.Latency})
 	resp.Provider = entry.Provider
-
 	if r.billing != nil {
 		go r.logBilling(context.Background(), req, entry, resp)
 	}
-
 	return resp, nil
 }
 
-// ChatStream performs a streaming LLM chat request using the selected provider.
-// The channel-open latency is not the user-perceived latency so we report
-// success with a zero Latency — the rolling window stays untouched for
-// streaming starts (defaultSelector skips zero-latency samples by design).
+// ChatStream performs a streaming LLM chat request using the selected
+// provider. The closure returns a zero providerLatency because the
+// channel-open instant is not user-perceived; defaultSelector skips
+// zero-latency samples so the rolling window stays untouched for
+// streaming starts.
 func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error) {
-	if r.rateLimiter != nil && req.UserID != uuid.Nil {
-		tier := tierFromRequest(req)
-		allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, tier, 0)
-		if err != nil {
-			return nil, err
-		}
-		if !allowed {
-			return nil, ErrRateLimitExceeded
-		}
-	}
-
-	entry, provider, err := r.selector.Pick(req.Model, req.Strategy)
-	if err != nil {
+	if err := r.checkRateLimit(ctx, req); err != nil {
 		return nil, err
 	}
 
-	start := time.Now()
-	ch, err := provider.ChatStream(ctx, req)
-	if err != nil {
-		r.selector.Record(entry, Outcome{Success: false})
-		metrics.RecordLLMRequest(req.Model, entry.Provider, "error", time.Since(start))
-		return nil, err
-	}
-
-	metrics.RecordLLMRequest(req.Model, entry.Provider, "success", time.Since(start))
-	r.selector.Record(entry, Outcome{Success: true, Latency: 0})
-	return ch, nil
+	_, ch, err := Invoke(r.selector, req.Model, req.Strategy,
+		func(p Provider) (<-chan StreamChunk, time.Duration, error) {
+			out, callErr := p.ChatStream(ctx, req)
+			if callErr != nil {
+				return nil, 0, callErr
+			}
+			return out, 0, nil
+		})
+	return ch, err
 }
 
 // logBilling calculates costs and logs a UsageLog entry.
