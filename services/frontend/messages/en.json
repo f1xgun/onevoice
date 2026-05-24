@@ -1299,6 +1299,7 @@
         "title": "Reset your password.",
         "description": "Enter the email you registered with — we'll send a reset link.",
         "emailLabel": "Registered email",
+        "emailPlaceholder": "you@example.com",
         "emailInvalid": "Enter a valid email address.",
         "submit": "Send link",
         "submitting": "Sending…",

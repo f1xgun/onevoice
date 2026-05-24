@@ -1311,6 +1311,7 @@
         "title": "Восстановление пароля.",
         "description": "Введите email, указанный при регистрации — мы отправим ссылку для сброса.",
         "emailLabel": "Email, указанный при регистрации",
+        "emailPlaceholder": "you@example.com",
         "emailInvalid": "Введите корректный email.",
         "submit": "Получить ссылку",
         "submitting": "Отправляем…",
