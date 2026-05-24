@@ -135,6 +135,34 @@ type ConsentRecordedDetails struct {
 	PolicyVersion string `json:"policy_version"`
 }
 
+// ---- account.* (Phase 21-04 deletion) -----------------------------------
+
+// DeletionRequestedDetails — Phase 21-04 / ACCT-03. BusinessesOrphaned
+// captures the list of business IDs that would be orphaned by the
+// deletion. v1.4 always emits [] because the handler returns 409 for
+// any sole-owner case (the user must transfer ownership first); v1.5
+// ownership-transfer may permit non-empty deletions.
+type DeletionRequestedDetails struct {
+	IP                 string      `json:"ip"`
+	UserAgent          string      `json:"user_agent"`
+	BusinessesOrphaned []uuid.UUID `json:"businesses_orphaned"`
+}
+
+// DeletionCanceledDetails — Phase 21-04 / ACCT-03.
+type DeletionCanceledDetails struct {
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+// SoleOwnerBlockedDetails — Phase 21-04 / T-DEL-02. Records the IDs of
+// businesses the user is the sole OWNER of so support can see which
+// businesses blocked which deletion attempts.
+type SoleOwnerBlockedDetails struct {
+	IP          string      `json:"ip"`
+	UserAgent   string      `json:"user_agent"`
+	BusinessIDs []uuid.UUID `json:"business_ids"`
+}
+
 // ---- integration --------------------------------------------------------
 
 // IntegrationConnectedDetails — NEVER store the access/refresh token or any
