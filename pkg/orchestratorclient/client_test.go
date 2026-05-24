@@ -3,7 +3,6 @@ package orchestratorclient
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,74 +14,6 @@ import (
 	"github.com/f1xgun/onevoice/pkg/sse"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
-
-func TestStreamChat_PostsToConversationURL(t *testing.T) {
-	var (
-		gotMethod string
-		gotPath   string
-		gotBody   []byte
-		gotHeader string
-	)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotMethod = r.Method
-		gotPath = r.URL.Path
-		gotHeader = r.Header.Get("X-Correlation-Id")
-		gotBody, _ = io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
-	}))
-	defer srv.Close()
-
-	client := New(srv.URL, srv.Client())
-	resp, err := client.StreamChat(context.Background(), "conv-1", []byte(`{"message":"hi"}`), map[string]string{
-		"X-Correlation-Id": "abc-123",
-	})
-	if err != nil {
-		t.Fatalf("StreamChat: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if gotMethod != http.MethodPost {
-		t.Errorf("method = %q, want POST", gotMethod)
-	}
-	if gotPath != "/chat/conv-1" {
-		t.Errorf("path = %q, want /chat/conv-1", gotPath)
-	}
-	if string(gotBody) != `{"message":"hi"}` {
-		t.Errorf("body = %q, want JSON body forwarded verbatim", gotBody)
-	}
-	if gotHeader != "abc-123" {
-		t.Errorf("X-Correlation-Id = %q, want abc-123", gotHeader)
-	}
-}
-
-func TestStreamResume_PassesBatchIDAsQuery(t *testing.T) {
-	var (
-		gotPath  string
-		gotQuery string
-	)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotQuery = r.URL.RawQuery
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("data: {\"type\":\"done\"}\n\n"))
-	}))
-	defer srv.Close()
-
-	client := New(srv.URL, srv.Client())
-	resp, err := client.StreamResume(context.Background(), "conv-2", "batch-9", []byte(`{}`), nil)
-	if err != nil {
-		t.Fatalf("StreamResume: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if gotPath != "/chat/conv-2/resume" {
-		t.Errorf("path = %q, want /chat/conv-2/resume", gotPath)
-	}
-	if !strings.Contains(gotQuery, "batch_id=batch-9") {
-		t.Errorf("query = %q, want batch_id=batch-9", gotQuery)
-	}
-}
 
 func TestListTools_ParsesEntries(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

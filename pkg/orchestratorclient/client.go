@@ -97,60 +97,6 @@ type DraftReplyResponse struct {
 	Model      string `json:"model,omitempty"`
 }
 
-// StreamChat opens POST {baseURL}/chat/{conversationID} with the supplied
-// body and headers, returning the raw *http.Response. Caller is responsible
-// for streaming + closing resp.Body. Used by chatproxy.OrchestrationProxy.
-//
-// Deprecated: callers should use StreamSSE, which owns SSE-response headers,
-// the buffered drain loop, and the clientGone-aware skip semantics in one
-// place. This method is retained for the duration of the migration sweep and
-// will be removed in a follow-up commit.
-func (c *Client) StreamChat(ctx context.Context, conversationID string, body []byte, headers map[string]string) (*http.Response, error) {
-	u := c.baseURL + "/chat/" + url.PathEscape(conversationID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("orchestratorclient: build chat request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("orchestratorclient: stream chat: %w", err)
-	}
-	return resp, nil
-}
-
-// StreamResume opens POST {baseURL}/chat/{conversationID}/resume?batch_id=X
-// with the supplied body and headers, returning the raw *http.Response.
-//
-// Deprecated: callers should use StreamSSE. See StreamChat for rationale.
-func (c *Client) StreamResume(ctx context.Context, conversationID, batchID string, body []byte, headers map[string]string) (*http.Response, error) {
-	u := c.baseURL + "/chat/" + url.PathEscape(conversationID) + "/resume?batch_id=" + url.QueryEscape(batchID)
-	var reader *bytes.Reader
-	if len(body) == 0 {
-		reader = bytes.NewReader(nil)
-	} else {
-		reader = bytes.NewReader(body)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, reader)
-	if err != nil {
-		return nil, fmt.Errorf("orchestratorclient: build resume request: %w", err)
-	}
-	if len(body) > 0 {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("orchestratorclient: stream resume: %w", err)
-	}
-	return resp, nil
-}
-
 // sseScannerBufferBytes is the bufio.Scanner buffer cap for upstream SSE
 // frames. 1 MiB matches the prior chatproxy/chat_proxy buffer — large
 // tool_result payloads (whole-channel review batches) must fit a single line.
