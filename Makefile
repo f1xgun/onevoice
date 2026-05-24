@@ -1,5 +1,5 @@
 .PHONY: help build run test test-all test-frontend test-a11y test-coverage test-integration
-.PHONY: lint lint-rbac lint-frontend lint-all fmt fmt-fix docs-check
+.PHONY: lint lint-rbac lint-urls lint-frontend lint-migrations lint-all fmt fmt-fix docs-check
 .PHONY: migrate-up migrate-down migrate-create db-seed verify-rbac-backfill
 .PHONY: up down logs restart restart-service docker-up docker-down docker-logs docker-clean
 .PHONY: clean certs
@@ -119,7 +119,11 @@ lint-frontend: ## Run frontend linters (ESLint + Prettier)
 	@cd services/frontend && pnpm exec prettier --check .
 	@echo "Frontend lint clean"
 
-lint-all: lint lint-rbac lint-urls lint-frontend docs-check ## Run all linters (Go + RBAC drift + URL check + frontend + docs)
+lint-migrations: ## Verify migration parity (no duplicate versions, paired up/down files)
+	@echo "Checking migration parity..."
+	@./scripts/check-migrations-parity.sh
+
+lint-all: lint lint-rbac lint-urls lint-frontend lint-migrations docs-check ## Run all linters (Go + RBAC drift + URL check + frontend + migration parity + docs)
 
 docs-check: ## Fail if docs reference tool names absent from Go code
 	@./scripts/check-doc-tool-drift.sh

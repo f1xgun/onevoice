@@ -149,7 +149,7 @@ type ChangePasswordRequest struct {
 
 // UpdatePreferredLocaleRequest is the body for PATCH /api/v1/auth/locale.
 // The validator's `oneof` tag enforces the 'ru'|'en' allow-list at the HTTP
-// boundary; the DB CHECK constraint added in migration 000008 is the
+// boundary; the DB CHECK constraint added in migration 000010 (prod) / 000008 (test) — i18n Phase A3 — is the
 // defense-in-depth floor. Widening the allow-list is a one-line tag + one
 // migration when we add more languages — i18n Phase A3.
 type UpdatePreferredLocaleRequest struct {
