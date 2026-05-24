@@ -27,9 +27,14 @@ type ProjectService interface {
 
 // ConversationService is the handler-facing view of the
 // *service.ConversationService concrete type. Owns conversation operations
-// that cross multiple repository writes (MoveToProject as of this seam).
-// Declared as an interface so conversation_test.go can swap in a noop fake
-// for handler tests that don't exercise the move path.
+// that cross multiple repository reads/writes:
+//   - MoveToProject — multi-repo write transition (move + system note).
+//   - OpenChat      — multi-repo read composite (messages + pending
+//     batches) returning the fully-projected ChatView the handler
+//     JSON-encodes verbatim.
+//
+// Declared as an interface so conversation_test.go can swap in a noop
+// fake for handler tests that don't exercise these paths.
 type ConversationService interface {
 	MoveToProject(
 		ctx context.Context,
@@ -37,4 +42,10 @@ type ConversationService interface {
 		businessID, requesterUserID uuid.UUID,
 		projectID *string,
 	) (*domain.Conversation, error)
+
+	OpenChat(
+		ctx context.Context,
+		conversationID string,
+		requesterUserID uuid.UUID,
+	) (*service.ChatView, error)
 }

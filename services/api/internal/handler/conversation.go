@@ -28,11 +28,6 @@ const (
 const (
 	// mongoObjectIDHexLen is the length of a hex-encoded Mongo ObjectID.
 	mongoObjectIDHexLen = 24
-
-	// defaultMessageListLimit caps the number of messages returned by
-	// GET /conversations/:id/messages. The frontend chat history view
-	// renders the latest N; older entries require explicit pagination.
-	defaultMessageListLimit = 200
 )
 
 // ConversationHandler handles conversation-related HTTP requests
@@ -47,27 +42,23 @@ type ConversationHandler struct {
 	// during CreateConversation. Move-conversation goes through
 	// conversationService.MoveToProject, which has its own project lookup.
 	projectService ProjectService
-	// pendingRepo drives the pendingApprovals array on GET /messages.
-	pendingRepo domain.PendingToolCallRepository
 	// conversationService owns multi-repo transitions. Today it carries
-	// MoveToProject only; future migrations may move ListMessages
-	// hydration or Pin/Unpin here.
+	// MoveToProject and OpenChat (the GET /messages composite + soft-
+	// error + projection).
 	conversationService ConversationService
 }
 
 // NewConversationHandler creates a new conversation handler instance.
 // businessService and projectService are required — create-conversation
 // must validate that the supplied projectId belongs to the caller's
-// business. pendingRepo is required — GET /messages joins the
-// pending_tool_calls collection to hydrate the approval card.
-// conversationService is required — owns the multi-repo move transition.
-// Passing nil for any dep is a programmer error.
+// business. conversationService is required — owns the multi-repo move
+// and chat-view transitions. Passing nil for any dep is a programmer
+// error.
 func NewConversationHandler(
 	conversationRepo domain.ConversationRepository,
 	messageRepo domain.MessageRepository,
 	businessService BusinessService,
 	projectService ProjectService,
-	pendingRepo domain.PendingToolCallRepository,
 	conversationService ConversationService,
 ) (*ConversationHandler, error) {
 	if conversationRepo == nil {
@@ -82,9 +73,6 @@ func NewConversationHandler(
 	if projectService == nil {
 		return nil, fmt.Errorf("NewConversationHandler: projectService cannot be nil")
 	}
-	if pendingRepo == nil {
-		return nil, fmt.Errorf("NewConversationHandler: pendingRepo cannot be nil")
-	}
 	if conversationService == nil {
 		return nil, fmt.Errorf("NewConversationHandler: conversationService cannot be nil")
 	}
@@ -93,41 +81,8 @@ func NewConversationHandler(
 		messageRepo:         messageRepo,
 		businessService:     businessService,
 		projectService:      projectService,
-		pendingRepo:         pendingRepo,
 		conversationService: conversationService,
 	}, nil
-}
-
-// PendingApprovalSummary is the per-batch projection returned by
-// GET /conversations/{id}/messages in the `pendingApprovals` array. Each
-// field name matches the JSON contract the frontend consumes to
-// render the approval card on page reload.
-//
-// EditableFields is intentionally left empty in this response: the frontend
-// already has the live tool registry via the `['tools']` React Query
-// (GET /api/v1/tools), which is the single source of truth for
-// per-tool editable-field whitelists. The field is still emitted as [] (not
-// omitted) so the JSON schema stays stable for downstream consumers.
-type PendingApprovalSummary struct {
-	BatchID   string                `json:"batchId"`
-	MessageID string                `json:"messageId"`
-	Calls     []ApprovalCallSummary `json:"calls"`
-	Status    string                `json:"status"`
-	CreatedAt time.Time             `json:"createdAt"`
-	ExpiresAt time.Time             `json:"expiresAt"`
-}
-
-// ApprovalCallSummary is the api → frontend (camelCase) projection of an
-// approval batch element. Distinct from pkg/sse.ApprovalCall, which is the
-// orchestrator → api wire (snake_case) shape: the two consumers have
-// different naming conventions and slightly different field sets (no Floor
-// here because the FE has its own tools cache for that), so two types
-// serve two contracts.
-type ApprovalCallSummary struct {
-	CallID         string                 `json:"callId"`
-	ToolName       string                 `json:"toolName"`
-	Args           map[string]interface{} `json:"args"`
-	EditableFields []string               `json:"editableFields"`
 }
 
 // CreateConversationRequest represents the conversation creation request.
@@ -408,21 +363,14 @@ func (h *ConversationHandler) DeleteConversation(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// listMessagesResponse is the JSON shape returned by GET /messages. Messages
-// retains the v1.2 wire format; pendingApprovals lets the approval card
-// rehydrate on page reload.
-//
-// `pendingApprovals` is ALWAYS serialized (even as []) so the frontend can
-// iterate unconditionally — never omit or emit null.
-type listMessagesResponse struct {
-	Messages         []domain.Message         `json:"messages"`
-	PendingApprovals []PendingApprovalSummary `json:"pendingApprovals"`
-}
-
 // ListMessages handles GET /api/v1/conversations/{id}/messages.
-// Extends the response with a pendingApprovals array hydrated from
-// the pending_tool_calls collection so the frontend approval card can
-// reconstruct its state on page reload.
+//
+// Pure HTTP-mapping adapter over ConversationService.OpenChat: the
+// service owns the four-op composite (conversation fetch + ownership
+// gate + messages list + pending-batch projection) and emits a
+// fully-projected ChatView that JSON-encodes byte-identical to the
+// pre-migration listMessagesResponse shape. Sentinel errors map to
+// the same statuses as before.
 func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -437,69 +385,20 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 
 	conversationID := chi.URLParam(r, "id")
 
-	// Verify conversation exists and belongs to user
-	conversation, err := h.conversationRepo.GetByID(r.Context(), conversationID)
+	view, err := h.conversationService.OpenChat(r.Context(), conversationID, bc.UserID)
 	if err != nil {
-		if errors.Is(err, domain.ErrConversationNotFound) {
+		switch {
+		case errors.Is(err, domain.ErrConversationNotFound):
 			writeJSONError(w, http.StatusNotFound, "conversation not found")
-			return
+		case errors.Is(err, domain.ErrForbidden):
+			writeJSONError(w, http.StatusForbidden, "forbidden")
+		default:
+			slog.ErrorContext(r.Context(), "list messages: service error", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		}
-		slog.Error("failed to get conversation", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	if conversation.UserID != bc.UserID.String() {
-		writeJSONError(w, http.StatusForbidden, "forbidden")
-		return
-	}
-
-	messages, err := h.messageRepo.ListByConversationID(r.Context(), conversationID, defaultMessageListLimit, 0)
-	if err != nil {
-		slog.Error("failed to list messages", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-	if messages == nil {
-		messages = []domain.Message{}
-	}
-
-	// Hydrate the approval card from pending_tool_calls. Failure here
-	// is non-fatal — the messages list is still useful. The repo performs the
-	// lazy-expiration virtualization so any batch past its TTL surfaces as
-	// status="expired".
-	pendingApprovals := make([]PendingApprovalSummary, 0)
-	batches, err := h.pendingRepo.ListPendingByConversation(r.Context(), conversationID)
-	if err != nil {
-		slog.WarnContext(r.Context(), "list messages: failed to load pending approvals",
-			"error", err, "conversation_id", conversationID)
-	} else {
-		for _, b := range batches {
-			summary := PendingApprovalSummary{
-				BatchID:   b.ID,
-				MessageID: b.MessageID,
-				Calls:     make([]ApprovalCallSummary, 0, len(b.Calls)),
-				Status:    b.Status,
-				CreatedAt: b.CreatedAt,
-				ExpiresAt: b.ExpiresAt,
-			}
-			for _, c := range b.Calls {
-				summary.Calls = append(summary.Calls, ApprovalCallSummary{
-					CallID:   c.CallID,
-					ToolName: c.ToolName,
-					Args:     c.Arguments,
-					// EditableFields intentionally empty — frontend gets the
-					// live whitelist from GET /api/v1/tools.
-					EditableFields: []string{},
-				})
-			}
-			pendingApprovals = append(pendingApprovals, summary)
-		}
-	}
-
-	writeJSON(w, http.StatusOK, listMessagesResponse{
-		Messages:         messages,
-		PendingApprovals: pendingApprovals,
-	})
+	writeJSON(w, http.StatusOK, view)
 }
 
 // MoveConversationRequest is the body for POST /api/v1/conversations/{id}/move.

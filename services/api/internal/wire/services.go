@@ -210,7 +210,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	// (currently MoveToProject — see services/api/internal/service/conversation.go).
 	// Reads from three repos so MoveConversation handler can shrink to a
 	// thin HTTP-to-domain-call adapter.
-	conversationService, err := service.NewConversationService(repos.Conversation, repos.Message, repos.Project)
+	conversationService, err := service.NewConversationService(repos.Conversation, repos.Message, repos.Project, h.PendingToolCallRepo)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create conversation service: %w", err)
 	}
