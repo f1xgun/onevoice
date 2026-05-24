@@ -3,70 +3,65 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
-	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
-	"github.com/f1xgun/onevoice/pkg/sse"
-	"github.com/f1xgun/onevoice/services/api/internal/handler/chatproxy"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
+	"github.com/f1xgun/onevoice/services/api/internal/service/chatturn"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
-// ResumeBatchHeader is re-exported from chatproxy so callers (router,
-// chat_proxy_test.go) keep using `handler.ResumeBatchHeader`.
-const ResumeBatchHeader = chatproxy.ResumeBatchHeader
+// ResumeBatchHeader is the explicit HITL resume header. Stays in the handler
+// package so the router and existing tests keep using handler.ResumeBatchHeader.
+const ResumeBatchHeader = "X-Onevoice-Resume-Batch-Id"
 
-// Package-level lint constants kept here so sibling handlers (titler.go,
-// hitl.go) reference one source of truth. Originally introduced in PR #60
-// (lint-hardening); preserved across the chatproxy decomposition.
+// Package-level constants kept on the handler so sibling handlers
+// (titler.go, hitl.go) reference one source of truth. sseBufferBytes is the
+// scanner buffer cap used by the resume-stream path in hitl.go; matches
+// chatturn's stream scanner so large tool results flow through both paths
+// without truncation.
 const (
 	roleAssistant  = "assistant"
 	roleUser       = "user"
-	sseBufferBytes = 1 << 20 // 1 MiB — matches chatproxy.OrchestrationProxy
+	sseBufferBytes = 1 << 20 // 1 MiB
 )
 
-// ChatProxyHandler is the thin facade over chatproxy/ collaborators.
-// The unexported repo fields stay on the struct
-// so chat_proxy_test.go's direct literal `&ChatProxyHandler{messageRepo:
-// msgRepo}` continues to compile.
+// ChatProxyHandler is the thin HTTP-facade over services/api/internal/service/chatturn.Turn.
+//
+// Responsibilities:
+//   - request parsing (body decode, header / URL params)
+//   - auth gating (BusinessContext, PermContentCreate)
+//   - TurnOutcome → HTTP-status mapping when no SSE bytes have flowed yet
+//
+// Everything else (gate / enrich / stream / persist / postal) lives in
+// services/api/internal/service/chatturn. See CONTEXT.md §"Chat turn".
+//
+// The messageRepo field is retained for one legacy test that constructs the
+// handler with a struct literal (TestChatProxy_LoadHistory_SkipsEmptyAssistant);
+// loadHistory below reads it directly so that test does not depend on a
+// fully wired *chatturn.Turn.
 type ChatProxyHandler struct {
-	businessService    BusinessService
-	integrationService IntegrationService
-	projectService     ProjectService
-	conversationRepo   domain.ConversationRepository
-	messageRepo        domain.MessageRepository
-	pendingRepo        domain.PendingToolCallRepository
-	postRepo           domain.PostRepository
-	reviewRepo         domain.ReviewRepository
-	agentTaskRepo      domain.AgentTaskRepository
-	taskHub            *taskhub.Hub
-	orchClient         *orchestratorclient.Client
-	titler             *service.Titler
-
-	enricher  *chatproxy.RequestEnricher
-	proxy     *chatproxy.OrchestrationProxy
-	persister *chatproxy.MessagePersister
-	postal    *chatproxy.PostalService
-	hitl      *chatproxy.HITLCoordinator
+	turn        *chatturn.Turn
+	messageRepo domain.MessageRepository
 }
 
-// NewChatProxyHandler constructs the facade. Takes the
-// shared *orchestratorclient.Client built once in wire.BuildServices instead
-// of re-wrapping (orchestratorURL, httpClient) into a fresh client. A nil
-// orchClient is auto-built from orchestratorURL+httpClient so existing tests
-// can keep passing (orch.URL, nil, ...) without threading the shared client.
+// NewChatProxyHandler keeps the legacy 12-arg signature so the wire package
+// and existing tests continue to compile unchanged. Internally constructs
+// the chatturn.Turn that owns the lifecycle.
+//
+// A nil orchClient is replaced with a no-op client built from an empty URL —
+// preserves the chat_proxy_test.go pattern where tests pass nil to skip the
+// orchestrator handshake.
+//
+// A nil titler short-circuits to chatturn.Deps.Titler = nil so the auto-
+// title gate in chatturn returns early without doing a needless conversation
+// re-read.
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
@@ -96,56 +91,56 @@ func NewChatProxyHandler(
 		// orchestrator-unavailable cleanly.
 		orchClient = orchestratorclient.New("", http.DefaultClient)
 	}
-	persister := chatproxy.NewMessagePersister(messageRepo, conversationRepo, titlerAdapter{titler})
-	proxy := chatproxy.NewOrchestrationProxy(orchClient)
+	var titlerImpl chatturn.Titler
+	if titler != nil {
+		titlerImpl = titlerAdapter{titler: titler}
+	}
+
+	turn := chatturn.New(chatturn.Deps{
+		Business:      businessService,
+		Integrations:  integrationService,
+		Projects:      projectService,
+		Conversations: conversationRepo,
+		Messages:      messageRepo,
+		Pending:       pendingRepo,
+		Posts:         postRepo,
+		Reviews:       reviewRepo,
+		AgentTasks:    agentTaskRepo,
+		TaskHub:       taskHub,
+		Orch:          orchClient,
+		Titler:        titlerImpl,
+	})
 
 	return &ChatProxyHandler{
-		businessService:    businessService,
-		integrationService: integrationService,
-		projectService:     projectService,
-		conversationRepo:   conversationRepo,
-		messageRepo:        messageRepo,
-		pendingRepo:        pendingRepo,
-		postRepo:           postRepo,
-		reviewRepo:         reviewRepo,
-		agentTaskRepo:      agentTaskRepo,
-		taskHub:            taskHub,
-		orchClient:         orchClient,
-		titler:             titler,
-		enricher:           chatproxy.NewRequestEnricher(businessService, integrationService, projectService, conversationRepo, messageRepo),
-		proxy:              proxy,
-		persister:          persister,
-		postal:             chatproxy.NewPostalService(postRepo, reviewRepo, agentTaskRepo, taskHub),
-		hitl:               chatproxy.NewHITLCoordinator(pendingRepo, messageRepo, persister, orchClient),
+		turn:        turn,
+		messageRepo: messageRepo,
 	}
 }
 
-// titlerAdapter satisfies chatproxy.TitlerService while accepting a nil
-// concrete *service.Titler (graceful disable). The wrapped pointer is
-// nil-checked on every call so the interface dynamic type doesn't bypass
-// the guard.
+// titlerAdapter satisfies chatturn.Titler around the concrete *service.Titler.
+// Kept as a small struct so chatturn doesn't have to know about
+// service.Titler's wider surface.
 type titlerAdapter struct{ titler *service.Titler }
 
 func (a titlerAdapter) GenerateAndSave(ctx context.Context, businessID, conversationID, userText, assistantText string) {
-	if a.titler == nil {
-		return
-	}
 	a.titler.GenerateAndSave(ctx, businessID, conversationID, userText, assistantText)
 }
 
-// streamState is per-request state collected by the SSE event handler;
-// passed by pointer so the closure can mutate it.
-type streamState struct {
-	assistantText    strings.Builder
-	toolCalls        []domain.ToolCall
-	toolResults      []domain.ToolResult
-	pauseEvent       *sse.Event
-	streamErrContent string
+// chatProxyRequest is the JSON body shape; an unexported handler-local type
+// so the wire contract stays under the handler's control.
+type chatProxyRequest struct {
+	Model   string `json:"model"`
+	Message string `json:"message"`
 }
 
-// Chat routes the request through the 4-step facade: HITL gate → enrich +
-// persist → SSE stream → post-stream persist. HITL flow preserved
-// verbatim — see chatproxy/hitl_coordinator.go GateAction* doc.
+// Chat parses the request, delegates the lifecycle to Turn.Run, and maps
+// the returned TurnOutcome to an HTTP status code when no SSE bytes have
+// been written yet.
+//
+// Once any SSE byte hits the wire (gate non-Fresh branches, or the fresh
+// stream successfully forwarding orchestrator output), the response body
+// is committed and HTTP-status mapping is moot — those outcomes fall
+// through silently.
 func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -159,256 +154,61 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 	conversationID := chi.URLParam(r, "conversationID")
 
-	corrID := logger.CorrelationIDFromContext(r.Context())
-	// Capture locale once at the request edge so every persist op + the
-	// auto-titler spawn ctx (Phase D2) sees the same language tag the user
-	// is chatting in. Resolved from middleware.Locale → i18n.LocaleFromContext.
-	reqLocale := i18n.LocaleFromContext(r.Context())
-	persistCtx := func() (context.Context, context.CancelFunc) {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if corrID != "" {
-			ctx = logger.WithCorrelationID(ctx, corrID)
-		}
-		ctx = i18n.WithLocale(ctx, reqLocale)
-		return ctx, cancel
-	}
-
-	// Step 1: stream-open gate.
 	headerBatch := r.Header.Get(ResumeBatchHeader)
 	if headerBatch == "" {
 		headerBatch = r.URL.Query().Get("batch_id")
 	}
-	action, activeMsg, batch, batchID, gateErr := h.hitl.GateOnRequest(r.Context(), conversationID, headerBatch)
-	if gateErr != nil {
-		slog.ErrorContext(r.Context(), "chat proxy: HITL gate failed", "error", gateErr)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-	switch action {
-	case chatproxy.GateActionFresh:
-		// Fall through to Step 2 (no active message + no resume header).
-	case chatproxy.GateActionRejoinResume:
-		h.hitl.StreamResume(w, r, conversationID, activeMsg, batchID, persistCtx)
-		return
-	case chatproxy.GateActionReemitApproval:
-		h.hitl.ReemitApprovalEvent(w, batch)
-		return
-	case chatproxy.GateActionInlineError:
-		h.hitl.SSEInlineError(w, "turn_already_in_progress")
-		return
-	}
 
-	// Step 2: parse body, enrich, persist user message.
-	var req chatproxy.ChatProxyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if req.Message == "" {
-		writeJSONError(w, http.StatusBadRequest, "message is required")
-		return
-	}
-	enriched, err := h.enricher.Enrich(r.Context(), bc.UserID, conversationID, req)
-	if err != nil {
-		if errors.Is(err, domain.ErrBusinessNotFound) {
-			writeJSONError(w, http.StatusNotFound, "business not found")
+	// Body decode is skipped for explicit-resume calls — they reuse the
+	// already-persisted user message and the request body is empty. For
+	// fresh calls we decode unconditionally; the Message-required check is
+	// enforced INSIDE Turn.Run's Fresh branch (via OutcomeMissingMessage)
+	// so the gate can still route an empty-body request to inline-error /
+	// re-emit-approval before any body validation fires.
+	var body chatProxyRequest
+	if headerBatch == "" {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		slog.ErrorContext(r.Context(), "chat proxy: enrich failed", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-	if err := h.persister.PersistUserMessage(r.Context(), enriched.UserMessage); err != nil {
-		slog.ErrorContext(r.Context(), "failed to save user message", "error", err)
 	}
 
-	// Step 3: open orchestrator stream, dispatch SSE events.
-	streamStartMessageID := uuid.NewString()
-	state := &streamState{}
-	idMap := make(map[string]string)
-
-	taskOpsCtx, cancelTaskOps := context.WithTimeout(context.Background(), 10*time.Minute)
-	if corrID != "" {
-		taskOpsCtx = logger.WithCorrelationID(taskOpsCtx, corrID)
-	}
-	defer cancelTaskOps()
-
-	orchBody, _ := json.Marshal(h.buildOrchRequest(r.Context(), bc.UserID, enriched, req))
-	streamErr := h.proxy.StreamChat(r.Context(), w, conversationID, orchBody, nil, func(ev sse.Event) {
-		h.dispatchSSEEvent(taskOpsCtx, enriched.Business.ID.String(), state, idMap, ev)
-	})
-	if streamErr != nil && state.pauseEvent == nil && state.streamErrContent == "" &&
-		!errors.Is(streamErr, context.Canceled) && strings.Contains(streamErr.Error(), "stream chat") {
-		// Surface 502 only when we never received any SSE bytes (dial refused).
-		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
-		return
-	}
-
-	// Step 4: post-stream persistence + side effects.
-	h.persistAfterStream(persistCtx, conversationID, streamStartMessageID, enriched, req, state)
-	if h.postRepo != nil || h.reviewRepo != nil {
-		sideCtx, cancel := persistCtx()
-		defer cancel()
-		h.postal.RecordPostsAndReviews(sideCtx, enriched.Business.ID.String(), state.toolCalls, state.toolResults)
-	}
-}
-
-// dispatchSSEEvent routes a single parsed SSE frame into the per-stream state
-// + collaborator side effects. Per-stream state is owned by the caller.
-func (h *ChatProxyHandler) dispatchSSEEvent(taskOpsCtx context.Context, businessID string, state *streamState, idMap map[string]string, ev sse.Event) {
-	switch ev.Type {
-	case "text":
-		state.assistantText.WriteString(ev.Content)
-	case "tool_call":
-		// anti-footgun #4: propagate the LLM's real tool_call.id.
-		state.toolCalls = append(state.toolCalls, domain.ToolCall{
-			ID:        ev.ToolCallID,
-			Name:      ev.ToolName,
-			Arguments: ev.ToolArgs,
-		})
-		h.postal.OnToolCall(taskOpsCtx, businessID, ev.ToolCallID, ev.ToolName, ev.ToolDisplayName, ev.ToolDisplayNameKey, ev.ToolArgs, idMap)
-	case "tool_result":
-		var content map[string]interface{}
-		if m, ok := ev.ToolResult.(map[string]interface{}); ok {
-			content = m
-		} else {
-			content = map[string]interface{}{"raw": ev.ToolResult}
-		}
-		state.toolResults = append(state.toolResults, domain.ToolResult{
-			ToolCallID: ev.ToolCallID,
-			Content:    content,
-			IsError:    ev.ToolError != "",
-		})
-		h.postal.OnToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, ev.ToolError, idMap)
-	case "tool_approval_required":
-		// copy so the post-loop branch can read BatchID.
-		evCopy := ev
-		state.pauseEvent = &evCopy
-	case "error":
-		// Captured for assistant Message persist (avoids empty content
-		// poisoning loadHistory on the next turn).
-		state.streamErrContent = ev.Content
-	}
-	// "tool_rejected": forward-only — paired Message persisted in pause/done path.
-}
-
-// persistAfterStream writes the assistant Message after the SSE loop drains
-// (pause branch OR done/error). Auto-title fires on done.
-func (h *ChatProxyHandler) persistAfterStream(
-	persistCtx func() (context.Context, context.CancelFunc),
-	conversationID, streamStartMessageID string,
-	enriched *chatproxy.EnrichmentResult,
-	req chatproxy.ChatProxyRequest,
-	state *streamState,
-) {
-	// Pause-time persistence.
-	if state.pauseEvent != nil {
-		saveCtx, cancel := persistCtx()
-		defer cancel()
-		pendingToolCalls := make([]domain.ToolCall, 0, len(state.toolCalls))
-		for _, tc := range state.toolCalls {
-			pendingToolCalls = append(pendingToolCalls, domain.ToolCall{
-				ID:         tc.ID,
-				Name:       tc.Name,
-				Arguments:  tc.Arguments,
-				ApprovalID: fmt.Sprintf("%s-%s", state.pauseEvent.BatchID, tc.ID),
-				Status:     domain.ToolCallStatusPending,
-			})
-		}
-		assistantMsg := &domain.Message{
-			ID:             streamStartMessageID,
-			ConversationID: conversationID,
-			Role:           roleAssistant,
-			Content:        state.assistantText.String(),
-			ToolCalls:      pendingToolCalls,
-			Status:         domain.MessageStatusPendingApproval,
-		}
-		if err := h.persister.PersistAssistantPause(saveCtx, assistantMsg); err != nil {
-			slog.WarnContext(saveCtx, "failed to persist assistant pending_approval message",
-				"error", err, "conversation_id", conversationID, "batch_id", state.pauseEvent.BatchID)
-		}
-		return
-	}
-
-	// Done / error persistence.
-	if state.assistantText.Len() == 0 && len(state.toolCalls) == 0 && state.streamErrContent == "" {
-		return
-	}
-	saveCtx, cancel := persistCtx()
-	defer cancel()
-	content := state.assistantText.String()
-	if content == "" && state.streamErrContent != "" {
-		// Localize at write-time using the locale captured in persistCtx
-		// (planted by the request edge from middleware.Locale). The wrapper
-		// is persisted to MongoDB so chat history renders in the writer's
-		// language forever — we don't retroactively re-translate.
-		content = i18n.Tr(saveCtx, "api.chat.stream_error_wrapper", state.streamErrContent)
-	}
-	assistantMsg := &domain.Message{
-		ID:             streamStartMessageID,
+	req := chatturn.TurnRequest{
+		BusinessID:     bc.BusinessID,
+		UserID:         bc.UserID,
 		ConversationID: conversationID,
-		Role:           roleAssistant,
-		Content:        content,
-		ToolCalls:      state.toolCalls,
-		ToolResults:    state.toolResults,
-		Status:         domain.MessageStatusComplete,
+		Message:        body.Message,
+		Model:          body.Model,
+		ResumeBatchID:  headerBatch,
+		Locale:         i18n.LocaleFromContext(r.Context()),
 	}
-	if err := h.persister.PersistAssistantComplete(saveCtx, assistantMsg); err != nil {
-		slog.ErrorContext(saveCtx, "failed to save assistant message", "error", err)
-	}
-	// skip auto-title on errors.
-	if state.streamErrContent == "" {
-		h.persister.FireAutoTitleIfPending(persistCtx, conversationID, enriched.Business.ID.String(), req.Message, state.assistantText.String())
+
+	outcome, err := h.turn.Run(r.Context(), w, req, nil)
+	switch outcome {
+	case chatturn.OutcomeMissingMessage:
+		writeJSONError(w, http.StatusBadRequest, "message is required")
+	case chatturn.OutcomeBusinessNotFound:
+		writeJSONError(w, http.StatusNotFound, "business not found")
+	case chatturn.OutcomeOrchestratorUnavailable:
+		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
+	case chatturn.OutcomeError:
+		// Bytes may already be on the wire; only log.
+		if err != nil {
+			slog.ErrorContext(r.Context(), "chat turn errored", "error", err)
+		}
+	default:
+		// OutcomeDone / OutcomePauseHITL / OutcomeRejoinedResume /
+		// OutcomeReemittedApproval / OutcomeInlineError — SSE bytes already
+		// committed, nothing left for the handler to do.
 	}
 }
 
-// buildOrchRequest assembles the JSON body forwarded to /chat/{id}. Field
-// set is byte-identical to the legacy inline builder so the orchestrator
-// continues to receive the exact same shape (no contract change), with the
-// single addition of the `locale` field (Phase D1): the resolved per-request
-// language tag, sourced from i18n.LocaleFromContext(ctx). The locale is what
-// flips the orchestrator's prompt builder between RU and EN templates, which
-// in turn flips the LLM's reply language.
-func (h *ChatProxyHandler) buildOrchRequest(ctx context.Context, userID uuid.UUID, enriched *chatproxy.EnrichmentResult, req chatproxy.ChatProxyRequest) map[string]interface{} {
-	business := enriched.Business
-	return map[string]interface{}{
-		"model":                      req.Model,
-		"message":                    req.Message,
-		"business_id":                business.ID.String(),
-		"business_name":              business.Name,
-		"business_category":          business.Category,
-		"business_address":           business.Address,
-		"business_phone":             business.Phone,
-		"business_website":           derefString(business.Website),
-		"business_description":       business.Description,
-		"business_voice_tone":        extractVoiceTone(business.Settings),
-		"active_integrations":        enriched.ActiveIntegrations,
-		"history":                    enriched.History,
-		"project_id":                 enriched.Project.ID,
-		"project_name":               enriched.Project.Name,
-		"project_system_prompt":      enriched.Project.SystemPrompt,
-		"project_whitelist_mode":     enriched.Project.WhitelistMode,
-		"project_allowed_tools":      enriched.Project.AllowedTools,
-		"user_id":                    userID.String(),
-		"message_id":                 enriched.UserMessage.ID,
-		"tier":                       "",
-		"business_approvals":         enriched.BusinessApprovals,
-		"project_approval_overrides": enriched.ProjectOverrides,
-		// Locale resolved from the API request — the middleware.Locale chain
-		// parses Accept-Language (set by the frontend axios interceptor from
-		// the NEXT_LOCALE cookie). Emitted as the canonical BCP-47 string
-		// ("ru", "en") so the orchestrator's MatchAcceptLanguage on the other
-		// side handles both single-tag and preference-list inputs uniformly.
-		"locale": i18n.LocaleFromContext(ctx).String(),
-	}
-}
-
-// === facade wrappers — keep existing chat_proxy_test.go invocations working ===
-
-// loadHistory keeps the same projection chat_proxy_test.go:261 asserts.
-// Implementation is duplicated (not delegated to enricher) so the test at
-// line 260 — which constructs `&ChatProxyHandler{messageRepo: msgRepo}`
-// directly without an Enricher — continues to work unchanged.
+// loadHistory is a compat shim used by TestChatProxy_LoadHistory_SkipsEmptyAssistant,
+// which constructs &ChatProxyHandler{messageRepo: msgRepo} directly without
+// wiring Turn. Reads h.messageRepo so the test stays valid.
+//
+// Production callers should not use this — Turn.Run loads history through
+// chatturn's own loadHistory (which uses the same projection rules).
 func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID string) []map[string]string {
 	msgs, err := h.messageRepo.ListByConversationID(ctx, conversationID, 100, 0)
 	if err != nil {
@@ -430,10 +230,19 @@ func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID strin
 	return history
 }
 
+// fireAutoTitleIfPending / fireAutoTitleIfPendingResume are test-only
+// wrappers that adapt the legacy persistCtx closure to chatturn.Turn's
+// ctx-based public API. The closure pattern was unique to the legacy
+// handler shape; preserved here so the existing chat_proxy_test.go suites
+// pass unchanged.
 func (h *ChatProxyHandler) fireAutoTitleIfPending(persistCtx func() (context.Context, context.CancelFunc), conversationID, businessID, userText, assistantText string) {
-	h.persister.FireAutoTitleIfPending(persistCtx, conversationID, businessID, userText, assistantText)
+	parentCtx, cancel := persistCtx()
+	defer cancel()
+	h.turn.FireAutoTitleIfPending(parentCtx, conversationID, businessID, userText, assistantText)
 }
 
 func (h *ChatProxyHandler) fireAutoTitleIfPendingResume(persistCtx func() (context.Context, context.CancelFunc), conversationID string, assistantMsg *domain.Message) {
-	h.persister.FireAutoTitleIfPendingResume(persistCtx, conversationID, assistantMsg)
+	parentCtx, cancel := persistCtx()
+	defer cancel()
+	h.turn.FireAutoTitleIfPendingResume(parentCtx, conversationID, assistantMsg)
 }

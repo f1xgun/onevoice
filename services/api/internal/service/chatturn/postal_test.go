@@ -1,4 +1,4 @@
-package chatproxy
+package chatturn
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 
 // fakeAgentTaskRepo records every Create / Update call so the test can assert
 // on the persisted shape. Other methods nil-panic — the tests in this file
-// only exercise the OnToolCall/OnToolResult paths.
+// only exercise the onToolCall / onToolResult paths.
 type fakeAgentTaskRepo struct {
 	domain.AgentTaskRepository
 	created []domain.AgentTask
@@ -25,15 +25,23 @@ func (f *fakeAgentTaskRepo) Create(_ context.Context, t *domain.AgentTask) error
 	return nil
 }
 
+// newTurnForPostalTest builds a Turn with only the AgentTasks dep wired —
+// uses the unexported struct literal (accessible from same-package tests) so
+// the chatturn.New panic-on-nil guards don't fire for deps the postal path
+// doesn't touch.
+func newTurnForPostalTest(repo domain.AgentTaskRepository) *Turn {
+	return &Turn{deps: Deps{AgentTasks: repo}}
+}
+
 // TestOnToolCall_PersistsDisplayNameKey verifies the i18n catalog key
 // arriving on the orchestrator SSE frame must reach the agent_tasks document
 // so the FE can render the task title in the user's locale.
 func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
 	repo := &fakeAgentTaskRepo{}
-	svc := NewPostalService(nil, nil, repo, nil)
+	turn := newTurnForPostalTest(repo)
 
 	idMap := map[string]string{}
-	svc.OnToolCall(
+	turn.onToolCall(
 		context.Background(),
 		"biz-1",
 		"call-1",
@@ -44,7 +52,7 @@ func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
 		idMap,
 	)
 
-	require.Len(t, repo.created, 1, "OnToolCall should persist exactly one task")
+	require.Len(t, repo.created, 1, "onToolCall should persist exactly one task")
 	got := repo.created[0]
 	assert.Equal(t, "Отправить пост", got.DisplayName, "legacy DisplayName preserved")
 	assert.Equal(t, "tools.telegram.send_channel_post.name", got.DisplayNameKey,
@@ -55,14 +63,13 @@ func TestOnToolCall_PersistsDisplayNameKey(t *testing.T) {
 }
 
 // TestOnToolCall_EmptyDisplayNameKey_BackwardCompat — orchestrators predating
-// Events without a key still persist (FE falls back to
-// the legacy DisplayName field).
+// the i18n key still persist (FE falls back to the legacy DisplayName field).
 func TestOnToolCall_EmptyDisplayNameKey_BackwardCompat(t *testing.T) {
 	repo := &fakeAgentTaskRepo{}
-	svc := NewPostalService(nil, nil, repo, nil)
+	turn := newTurnForPostalTest(repo)
 
 	idMap := map[string]string{}
-	svc.OnToolCall(
+	turn.onToolCall(
 		context.Background(),
 		"biz-1",
 		"call-1",
@@ -83,10 +90,10 @@ func TestOnToolCall_EmptyDisplayNameKey_BackwardCompat(t *testing.T) {
 // regardless of the displayNameKey value.
 func TestOnToolCall_InternalToolSkipped(t *testing.T) {
 	repo := &fakeAgentTaskRepo{}
-	svc := NewPostalService(nil, nil, repo, nil)
+	turn := newTurnForPostalTest(repo)
 
 	idMap := map[string]string{}
-	svc.OnToolCall(
+	turn.onToolCall(
 		context.Background(),
 		"biz-1",
 		"call-1",

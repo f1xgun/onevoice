@@ -1,4 +1,4 @@
-package chatproxy
+package chatturn
 
 import (
 	"context"
@@ -34,41 +34,24 @@ var postingTools = map[string]postingToolInfo{
 	tools.VKPublishPost:            {platform: a2a.AgentVK, contentField: "text"},
 }
 
-// PostalService consolidates AgentTask lifecycle (created/done/error) +
-// Post/Review upserts triggered by tool_call / tool_result SSE events.
-type PostalService struct {
-	posts   domain.PostRepository   // optional — nil disables Post.Create
-	reviews domain.ReviewRepository // optional — nil disables Review.Upsert
-	tasks   domain.AgentTaskRepository
-	hub     *taskhub.Hub // optional — nil disables hub.Publish
-}
-
-// NewPostalService constructs a PostalService. tasks is required (drives
-// AgentTask Create/Update); posts, reviews, and hub may be nil to skip
-// persistence / realtime publishing (legacy chat_proxy.go behavior).
-func NewPostalService(posts domain.PostRepository, reviews domain.ReviewRepository, tasks domain.AgentTaskRepository, hub *taskhub.Hub) *PostalService {
-	return &PostalService{
-		posts:   posts,
-		reviews: reviews,
-		tasks:   tasks,
-		hub:     hub,
-	}
-}
-
-// OnToolCall records a new AgentTask in "running" state and publishes a
+// onToolCall records a new AgentTask in "running" state and publishes a
 // task.created event so the Tasks page can render the row before the tool
 // has finished executing. Internal (non-platform) tools are skipped.
 //
-// idMap is per-stream state owned by the entry handler — passed in so a
-// PostalService instance can be reused across requests (no per-stream state
-// on the receiver).
-func (s *PostalService) OnToolCall(
+// idMap is per-stream state owned by Run (carried on the streamState) — passed
+// in so a Turn instance can be reused across requests without per-stream
+// fields on the receiver.
+func (t *Turn) onToolCall(
 	ctx context.Context,
-	businessID, toolCallID, toolName, displayName, displayNameKey string,
-	args map[string]interface{},
+	businessID string,
+	toolCallID string,
+	toolName string,
+	toolDisplayName string,
+	toolDisplayNameKey string,
+	toolArgs map[string]interface{},
 	idMap map[string]string,
 ) {
-	if s.tasks == nil {
+	if t.deps.AgentTasks == nil {
 		return
 	}
 	sep := strings.Index(toolName, "__")
@@ -76,45 +59,42 @@ func (s *PostalService) OnToolCall(
 		return // internal tool — not surfaced on the Tasks page
 	}
 	if toolCallID == "" {
-		slog.WarnContext(ctx, "chat proxy: tool_call without tool_call_id", "tool", toolName)
+		slog.WarnContext(ctx, "chatturn: tool_call without tool_call_id", "tool", toolName)
 		return
 	}
 	now := time.Now()
 	task := &domain.AgentTask{
-		BusinessID: businessID,
-		Type:       toolName[sep+2:],
-		Platform:   toolName[:sep],
-		// DisplayName stays as the source-of-truth literal (legacy fallback).
-		// DisplayNameKey is the i18n catalog key the FE prefers.
-		// When the orchestrator predates D3 the key is empty; FE falls back
-		// to DisplayName cleanly.
-		DisplayName:    displayName,
-		DisplayNameKey: displayNameKey,
+		BusinessID:     businessID,
+		Type:           toolName[sep+2:],
+		Platform:       toolName[:sep],
+		DisplayName:    toolDisplayName,
+		DisplayNameKey: toolDisplayNameKey,
 		Status:         "running",
-		Input:          args,
+		Input:          toolArgs,
 		StartedAt:      &now,
 	}
-	if err := s.tasks.Create(ctx, task); err != nil {
-		slog.ErrorContext(ctx, "failed to create agent task record", "tool", toolName, "error", err)
+	if err := t.deps.AgentTasks.Create(ctx, task); err != nil {
+		slog.ErrorContext(ctx, "chatturn: failed to create agent task record", "tool", toolName, "error", err)
 		return
 	}
 	idMap[toolCallID] = task.ID
-	if s.hub != nil {
-		s.hub.Publish(businessID, taskhub.Event{Kind: taskhub.KindCreated, Task: *task})
+	if t.deps.TaskHub != nil {
+		t.deps.TaskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindCreated, Task: *task})
 	}
 }
 
-// OnToolResult transitions a previously created AgentTask to "done" or
+// onToolResult transitions a previously created AgentTask to "done" or
 // "error", stamps CompletedAt, and publishes task.updated so the UI can
 // swap the badge and show the duration.
-func (s *PostalService) OnToolResult(
+func (t *Turn) onToolResult(
 	ctx context.Context,
-	businessID, toolCallID string,
+	businessID string,
+	toolCallID string,
 	content map[string]interface{},
-	toolErr string,
+	toolError string,
 	idMap map[string]string,
 ) {
-	if s.tasks == nil {
+	if t.deps.AgentTasks == nil {
 		return
 	}
 	if toolCallID == "" {
@@ -124,10 +104,9 @@ func (s *PostalService) OnToolResult(
 	if !ok {
 		// Result without a prior tool_call in this stream: skip rather than
 		// create a half-formed record.
-		slog.WarnContext(ctx, "chat proxy: tool_result without matching tool_call", "tool_call_id", toolCallID)
+		slog.WarnContext(ctx, "chatturn: tool_result without matching tool_call", "tool_call_id", toolCallID)
 		return
 	}
-
 	now := time.Now()
 	update := &domain.AgentTask{
 		ID:          taskID,
@@ -135,48 +114,52 @@ func (s *PostalService) OnToolResult(
 		Status:      "done",
 		CompletedAt: &now,
 	}
-	if toolErr != "" {
+	if toolError != "" {
 		update.Status = taskStatusError
-		update.Error = toolErr
+		update.Error = toolError
 		if msg, ok := content["error"].(string); ok && msg != "" {
 			update.Error = msg
 		}
 	} else {
 		update.Output = content
 	}
-	if err := s.tasks.Update(ctx, update); err != nil {
-		slog.ErrorContext(ctx, "failed to update agent task record", "task_id", taskID, "error", err)
+	if err := t.deps.AgentTasks.Update(ctx, update); err != nil {
+		slog.ErrorContext(ctx, "chatturn: failed to update agent task record", "task_id", taskID, "error", err)
 		return
 	}
-
-	if s.hub == nil {
+	if t.deps.TaskHub == nil {
 		return
 	}
-	fresh, err := s.tasks.GetByID(ctx, businessID, taskID)
+	fresh, err := t.deps.AgentTasks.GetByID(ctx, businessID, taskID)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to reload agent task for hub publish", "task_id", taskID, "error", err)
+		slog.ErrorContext(ctx, "chatturn: failed to reload agent task for hub publish", "task_id", taskID, "error", err)
 		return
 	}
-	s.hub.Publish(businessID, taskhub.Event{Kind: taskhub.KindUpdated, Task: *fresh})
+	t.deps.TaskHub.Publish(businessID, taskhub.Event{Kind: taskhub.KindUpdated, Task: *fresh})
 }
 
-// RecordPostsAndReviews walks the accumulated ToolCalls/ToolResults after the
-// SSE stream ends and:
+// recordPostsAndReviews walks the accumulated ToolCalls / ToolResults after
+// the SSE stream ends and:
 //   - creates Post records for each successful posting tool call
 //   - upserts Review records for each successful *__get_reviews tool call
 //
-// Mirrors the chat_proxy.go:644-748 post-stream side-effects block verbatim.
-func (s *PostalService) RecordPostsAndReviews(ctx context.Context, businessID string, calls []domain.ToolCall, results []domain.ToolResult) {
-	if len(results) == 0 {
+// Mirrors the legacy chatproxy.PostalService.RecordPostsAndReviews verbatim.
+func (t *Turn) recordPostsAndReviews(
+	ctx context.Context,
+	businessID string,
+	toolCalls []domain.ToolCall,
+	toolResults []domain.ToolResult,
+) {
+	if len(toolResults) == 0 {
 		return
 	}
-	toolCallByID := make(map[string]domain.ToolCall, len(calls))
-	for _, tc := range calls {
+	toolCallByID := make(map[string]domain.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
 		toolCallByID[tc.ID] = tc
 	}
 
-	if s.posts != nil {
-		for _, tr := range results {
+	if t.deps.Posts != nil {
+		for _, tr := range toolResults {
 			tc, ok := toolCallByID[tr.ToolCallID]
 			if !ok {
 				continue
@@ -218,14 +201,14 @@ func (s *PostalService) RecordPostsAndReviews(ctx context.Context, businessID st
 				Status:      status,
 				PublishedAt: publishedAt,
 			}
-			if err := s.posts.Create(ctx, post); err != nil {
-				slog.ErrorContext(ctx, "failed to create post record", "tool", tc.Name, "error", err)
+			if err := t.deps.Posts.Create(ctx, post); err != nil {
+				slog.ErrorContext(ctx, "chatturn: failed to create post record", "tool", tc.Name, "error", err)
 			}
 		}
 	}
 
-	if s.reviews != nil {
-		for _, tr := range results {
+	if t.deps.Reviews != nil {
+		for _, tr := range toolResults {
 			if tr.IsError {
 				continue
 			}
@@ -246,7 +229,6 @@ func (s *PostalService) RecordPostsAndReviews(ctx context.Context, businessID st
 			if !ok {
 				continue
 			}
-
 			for _, r := range reviewsList {
 				m, ok := r.(map[string]interface{})
 				if !ok {
@@ -256,8 +238,8 @@ func (s *PostalService) RecordPostsAndReviews(ctx context.Context, businessID st
 				if review.ExternalID == "" {
 					continue
 				}
-				if err := s.reviews.Upsert(ctx, review); err != nil {
-					slog.ErrorContext(ctx, "failed to upsert review", "tool", tc.Name, "error", err)
+				if err := t.deps.Reviews.Upsert(ctx, review); err != nil {
+					slog.ErrorContext(ctx, "chatturn: failed to upsert review", "tool", tc.Name, "error", err)
 				}
 			}
 		}
