@@ -100,7 +100,9 @@ func buildTestRouter(t *testing.T) *chi.Mux {
 	cache := authz.NewCacheForTest(&fakeLoader{}, time.Second, time.Second)
 	hc := health.New()
 	handlers := buildTestHandlers()
-	return router.Setup(handlers, []byte("test-secret"), nil, hc, []string{"http://localhost:3000"}, router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10}, cache, nil)
+	// Phase 21-04: nil pool — soft-restrict grace gate degrades to
+	// pass-through for the router structure tests.
+	return router.Setup(handlers, []byte("test-secret"), nil, hc, []string{"http://localhost:3000"}, router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10}, cache, nil, nil)
 }
 
 // TestRouter_BusinessScopedRouteCount asserts that at least 30 routes are

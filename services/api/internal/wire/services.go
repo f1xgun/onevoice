@@ -82,6 +82,12 @@ type Services struct {
 	// commit in the same tx as the user_consents INSERT + user row).
 	EmailVerification *service.EmailVerificationService
 
+	// AccountDeletion is the Phase 21-04 (ACCT-03 / ACCT-05) account-
+	// deletion service. Wired into UserDeletionHandler via the
+	// NewUserDeletionHandler constructor + into cmd/main.go via the
+	// runHardDeleteSweeper / runDeletionWarningSweeper goroutines.
+	AccountDeletion *service.AccountDeletionService
+
 	// reviewSyncerCancel is captured so Close() can stop the background
 	// ticker goroutine. nil when ReviewSyncer is nil.
 	reviewSyncerCancel context.CancelFunc
@@ -351,6 +357,19 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		repos.EmailOutbox,
 		h.Redis,
 		cfg.PublicURL,
+	)
+
+	// Phase 21-04 (ACCT-03 / ACCT-05): account-deletion service. Composes
+	// the UserResetExt adapter (deletion methods land there alongside
+	// password-reset + verify) + the conversation repo (Mongo cleanup
+	// post-hard-delete) + the outbox (confirmation + T-7 warning) + the
+	// shared audit logger.
+	s.AccountDeletion = service.NewAccountDeletionService(
+		h.PG,
+		repos.UserResetExt,
+		repos.Conversation,
+		repos.EmailOutbox,
+		s.AuditLogger,
 	)
 
 	// Phase 21-03 (ACCT-02 / D-17, D-40): wire the Register tx-flow

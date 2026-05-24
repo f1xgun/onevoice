@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
@@ -19,6 +20,11 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
+
+// Phase 21-04 grace-period constant (D-31). Mirrors
+// service.AccountDeletionService.graceDays — the BlockWritesDuringGrace
+// middleware needs the value to compute the 423 body's deletionDate.
+const deletionGraceDaysForRouter = 30
 
 // passThroughMiddleware is a no-op middleware used by the soft-restrict
 // wrappers when the caller passes a nil UserLookup (legacy / test deploys
@@ -70,6 +76,7 @@ type Handlers struct {
 	Roles         *handler.RolesHandler       // RBAC: role listing
 	Invitations   *handler.InvitationsHandler // RBAC: invitation lifecycle (Phase 3)
 	AuditLog      *handler.AuditLogHandler    // Phase 19 Wave 5: audit-log read endpoint
+	UserDeletion  *handler.UserDeletionHandler // Phase 21-04: DELETE /users/me + restore (ACCT-03)
 }
 
 // Setup creates and configures the Chi router with all routes and middleware.
@@ -84,7 +91,11 @@ type Handlers struct {
 // email_verified from on every protected request (D-26..D-29 / ACCT-02).
 // May be nil — when nil, the soft-restrict decorators degrade to
 // pass-through (legacy/test compat).
-func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker, allowedOrigins []string, rateLimits RateLimits, authzCache *authz.Cache, users middleware.UserLookup) *chi.Mux {
+// pgPool is the Phase 21-04 (D-34) shared pool the BlockWritesDuringGrace
+// middleware reads users.deletion_requested_at from on every write
+// request. May be nil — when nil, the grace gate degrades to pass-
+// through (legacy/test compat).
+func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker, allowedOrigins []string, rateLimits RateLimits, authzCache *authz.Cache, users middleware.UserLookup, pgPool *pgxpool.Pool) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -159,23 +170,44 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				Get("/invitations/{token}", handlers.Invitations.Preview)
 		}
 
-		// Protected routes (require auth)
+		// Phase 21-04 (ACCT-03 / D-30 / D-34): always-reachable
+		// authenticated routes. These are NEVER decorated by
+		// BlockWritesDuringGrace because they are the user's escape
+		// hatches from the soft-deleted state (restore + delete +
+		// verify) OR they're idempotent reads (me + logout).
+		// Verify endpoints from 21-03 also live here (D-30: right to
+		// erasure / right to verify cannot be gated by other
+		// middleware).
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Auth(jwtSecret))
+			r.Post("/auth/logout", handlers.Auth.Logout)
+			r.Get("/auth/me", handlers.Auth.Me)
+			// Phase 21-03 verify resend + email-before-verify (D-21, D-24).
+			r.Post("/auth/verify-email/resend", handlers.Auth.VerifyResend)
+			r.Patch("/auth/email-before-verify", handlers.Auth.EmailBeforeVerify)
+			// Phase 21-04 — DELETE /users/me + POST /users/me/restore
+			// (ACCT-03). Always reachable: DELETE is idempotent (second
+			// call surfaces 423 from the service layer, not the
+			// middleware); Restore is the explicit escape hatch.
+			if handlers.UserDeletion != nil {
+				r.Delete("/users/me", handlers.UserDeletion.Delete)
+				r.Post("/users/me/restore", handlers.UserDeletion.Restore)
+			}
+		})
+
+		// Protected routes (require auth + write-gated by Phase 21-04
+		// grace middleware when pgPool is provided).
 		r.Group(func(r chi.Router) {
 			// Auth middleware
 			r.Use(middleware.Auth(jwtSecret))
+			// Phase 21-04 (D-34): block POST/PUT/PATCH/DELETE for users
+			// inside the 30-day grace window. GETs bypass at the
+			// middleware layer (method-check guard).
+			if pgPool != nil {
+				r.Use(middleware.BlockWritesDuringGrace(pgPool, deletionGraceDaysForRouter))
+			}
 
-			// Auth-only routes (not business-scoped).
-			r.Post("/auth/logout", handlers.Auth.Logout)
-			r.Get("/auth/me", handlers.Auth.Me)
 			r.Put("/auth/password", handlers.Auth.ChangePassword)
-
-			// Phase 21-03 — Email verification resend + email-before-verify
-			// (ACCT-02 / D-21, D-24). JWT-required but NOT decorated by
-			// RequireVerifiedEmail* — the whole point is they're reachable
-			// to UNVERIFIED users (otherwise the user could never recover
-			// from a dead email-on-file). D-30 explicitly exempts these.
-			r.Post("/auth/verify-email/resend", handlers.Auth.VerifyResend)
-			r.Patch("/auth/email-before-verify", handlers.Auth.EmailBeforeVerify)
 			// i18n Phase A3: persist the user's UI language choice
 			// ('ru'|'en'). Sits next to /auth/me/password as a sibling
 			// account-self-service endpoint; the frontend syncs the cookie ↔
