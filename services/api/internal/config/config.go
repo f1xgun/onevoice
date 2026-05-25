@@ -147,6 +147,7 @@ type Config struct {
 	RateLimitLogin    int
 	RateLimitChat     int
 	RateLimitHITL     int
+	RateLimitConsents int // Phase 22 T-22-08 — per-minute budget for /auth/consents + /users/me/consents/pdn/withdraw
 
 	// Shutdown
 	ShutdownTimeout time.Duration
@@ -254,6 +255,7 @@ func Load() (*Config, error) {
 		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
 		RateLimitChat:     getEnvInt("RATE_LIMIT_CHAT", 10),
 		RateLimitHITL:     getEnvInt("RATE_LIMIT_HITL", 10),
+		RateLimitConsents: getEnvInt("RATE_LIMIT_CONSENTS", 10), // Phase 22 T-22-08; 10/min/user is generous (genuine retry budget, blocks UPSERT thrash)
 
 		ShutdownTimeout: shutdownTimeout,
 
