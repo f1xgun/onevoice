@@ -23,6 +23,17 @@ import { VerificationBanner } from '@/components/auth/VerificationBanner';
 // deletion-grace state visually wins when both could fire (the user
 // can be both unverified AND mid-grace).
 import { DeletionGraceBanner } from '@/components/account/DeletionGraceBanner';
+// Phase 22-02 (D-25/D-26): site-wide Footer mounted at the bottom of
+// BOTH desktop and mobile <main> branches (Phase 21 verification GAP
+// taught us: forget the mobile branch and the banner / footer never
+// renders on phones).
+import { Footer } from '@/components/layout/Footer';
+// Phase 22-02 (D-11): forced re-consent modal — z-50 portal that
+// renders OUTSIDE <main> when the user has stale policy versions and
+// is past the email-verification gate. Mutually exclusive with
+// EmailVerifiedRequiredModal per the modal-precedence rule (UI-SPEC
+// §Cross-surface stacking).
+import { ReConsentModal } from '@/components/legal/ReConsentModal';
 import type { ReactNode } from 'react';
 
 // Module-level event-name singleton: any input/element listening for this
@@ -109,6 +120,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // /projects/* only. Other authenticated routes show NavRail + content.
   const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
 
+  // Phase 22-02 (D-11): ReConsentModal rendering condition. The
+  // EmailVerifiedRequiredModal (Phase 21-03) still takes precedence —
+  // we must NOT render both. We read the user's email-verification
+  // state from emailVerified===false combined with the active
+  // verification deadline (existing convention; the explicit
+  // requiresEmailVerification flag is forward-compat).
+  const user = useAuthStore.getState().user;
+  const requiresEmailVerification =
+    user?.requiresEmailVerification === true || user?.emailVerified === false;
+  const showReConsent = !!user?.requiresReconsent && !requiresEmailVerification;
+
   return (
     <BusinessRequiredGuard>
       <>
@@ -177,11 +199,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <main
                   id="main-content"
                   tabIndex={-1}
-                  className="h-full overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                  className="flex h-full flex-col overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                 >
                   <DeletionGraceBanner />
                   <VerificationBanner />
-                  {children}
+                  <div className="flex-1">{children}</div>
+                  <Footer />
                 </main>
               </Panel>
             </PanelGroup>
@@ -198,13 +221,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <main
               id="main-content"
               tabIndex={-1}
-              className="min-h-0 flex-1 overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
               <DeletionGraceBanner />
               <VerificationBanner />
-              {children}
+              <div className="flex-1">{children}</div>
+              <Footer />
             </main>
           </div>
+        )}
+        {/* Phase 22-02 Surface E (D-11): forced re-consent. Portal-mounted
+            at the top level so the modal sits OUTSIDE <main> and reaches
+            z-50 above any banners. Mutually exclusive with the email-
+            verification modal — that one still wins (UI-SPEC §Modal
+            precedence rule). */}
+        {showReConsent && user?.requiresReconsent && (
+          <ReConsentModal policies={user.requiresReconsent.policies} />
         )}
       </>
     </BusinessRequiredGuard>
