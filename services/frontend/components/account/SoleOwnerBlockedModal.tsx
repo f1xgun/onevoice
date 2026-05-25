@@ -34,7 +34,11 @@ interface SoleOwnerBlockedModalProps {
 
 const MAX_VISIBLE = 5;
 
-export function SoleOwnerBlockedModal({ open, businesses, onOpenChange }: SoleOwnerBlockedModalProps) {
+export function SoleOwnerBlockedModal({
+  open,
+  businesses,
+  onOpenChange,
+}: SoleOwnerBlockedModalProps) {
   const t = useTranslations('account.deletion.soleOwnerModal');
 
   const visible = businesses.slice(0, MAX_VISIBLE);
@@ -63,22 +67,15 @@ export function SoleOwnerBlockedModal({ open, businesses, onOpenChange }: SoleOw
             >
               <div className="flex flex-1 items-center gap-2">
                 <span className="text-[14px] font-medium">{b.name}</span>
-                <Badge className="bg-warning-soft text-[var(--ov-warning-ink)]">{t('requiresAction')}</Badge>
+                <Badge className="bg-warning-soft text-[var(--ov-warning-ink)]">
+                  {t('requiresAction')}
+                </Badge>
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled
-                  title={t('transferDisabledTooltip')}
-                >
+                <Button variant="primary" size="sm" disabled title={t('transferDisabledTooltip')}>
                   {t('transferButton')}
                 </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  asChild
-                >
+                <Button variant="danger" size="sm" asChild>
                   <a href={`/business/${b.id}`}>{t('deleteBusinessButton')}</a>
                 </Button>
               </div>
@@ -92,9 +89,7 @@ export function SoleOwnerBlockedModal({ open, businesses, onOpenChange }: SoleOw
         </ul>
 
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => onOpenChange(false)}>
-            {t('cancel')}
-          </AlertDialogCancel>
+          <AlertDialogCancel onClick={() => onOpenChange(false)}>{t('cancel')}</AlertDialogCancel>
           {/* Defensive: AlertDialogAction so escape/keyboard exits work the same
               as Cancel — no destructive default-focus path. */}
           <AlertDialogAction asChild>
