@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: milestone
-status: discussing
-last_updated: "2026-05-25T10:15:00.000Z"
-last_activity: 2026-05-25 -- Phase 22 context locked (30 decisions, 4 areas discussed, 7 deferred to v1.5)
+status: ui-spec_locked
+last_updated: "2026-05-25T10:45:00.000Z"
+last_activity: 2026-05-25 -- Phase 22 UI-SPEC verified (7 surfaces, 6/6 dimensions, 3 FLAGs)
 progress:
   total_phases: 7
   completed_phases: 2
@@ -17,10 +17,10 @@ progress:
 
 ## Current Position
 
-Phase: 22 (Legal Compliance Scaffolding) — context captured
-Plan: ready for /gsd-plan-phase 22
-Status: Discussing complete; 22-CONTEXT.md locked
-Last activity: 2026-05-25 -- Phase 22 context locked (30 decisions, 4 areas discussed, 7 deferred to v1.5)
+Phase: 22 (Legal Compliance Scaffolding) — UI design contract locked
+Plan: ready for /gsd-plan-phase 22 (UI safety gate now passes)
+Status: UI-SPEC verified (7 surfaces, 6/6 dimensions, 3 FLAGs)
+Last activity: 2026-05-25 -- Phase 22 UI-SPEC verified (7 surfaces, 6/6 dimensions, 3 FLAGs)
 
 ## Project Reference
 
