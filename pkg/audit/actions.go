@@ -48,6 +48,25 @@ const (
 	ActionEmailChangedBeforeVerify    = "auth.email_changed_before_verify"
 	ActionConsentRecorded             = "auth.consent_recorded"
 
+	// Phase 22 — legal compliance scaffolding (LEGAL-01..06, D-27).
+	// ActionConsentRecorded (auth.consent_recorded) above is REUSED from
+	// Phase 21 — same constant, now used with new purposes (tos, privacy,
+	// pdn) instead of service_operation. The four below are NEW.
+	//
+	// ActionConsentReconsentRequired fires when /auth/me decides the user
+	// needs to re-consent (DiffAgainstCurrent returned non-empty). Helps
+	// debug «why am I seeing this modal?».
+	// ActionConsentReconsented fires when the user submits POST /auth/consents.
+	// ActionConsentWithdrawn fires when POST /users/me/consents/pdn/withdraw
+	// triggers the deletion flow (D-13/D-14: TOS/Privacy/PDN withdrawal
+	// is functionally identical — all three lead to account deletion).
+	// ActionConsentPolicyVersionBumped fires once per environment per
+	// version bump — system event (UserID nil).
+	ActionConsentReconsentRequired   = "auth.consent_reconsent_required"
+	ActionConsentReconsented         = "auth.consent_reconsented"
+	ActionConsentWithdrawn           = "auth.consent_withdrawn"
+	ActionConsentPolicyVersionBumped = "auth.consent_policy_version_bumped"
+
 	// Phase 21-04 — Account deletion lifecycle (ACCT-03, ACCT-05, D-42).
 	//
 	// ActionDeletionRequested fires when the user submits DELETE
