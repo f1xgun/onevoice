@@ -48,6 +48,12 @@ export function createLoginSchema(t: ValidationTranslator) {
 export function createRegisterSchema(t: ValidationTranslator) {
   const minChars = (count: number) => t('minChars', { count });
   const maxChars = (count: number) => t('maxChars', { count });
+  // Phase 22-02 (D-15) — two independent required-consent checkboxes.
+  // Both validate as literal(true), so unticked / partially-ticked
+  // submits surface FieldErrors independently per UI-SPEC §D state
+  // matrix. The error message reuses the validation namespace
+  // ('consentRequired') so a single i18n key covers both fields.
+  const consentRequiredMessage = t('consentRequired');
   return z
     .object({
       name: z
@@ -57,6 +63,8 @@ export function createRegisterSchema(t: ValidationTranslator) {
       email: z.string().email(t('email')).max(EMAIL_MAX_LEN),
       password: z.string().min(PASSWORD_MIN_LEN, minChars(PASSWORD_MIN_LEN)),
       confirmPassword: z.string(),
+      acceptTosPrivacy: z.literal(true, { message: consentRequiredMessage }),
+      acceptPdn: z.literal(true, { message: consentRequiredMessage }),
     })
     .refine((d) => d.password === d.confirmPassword, {
       message: t('passwordsMismatch'),
