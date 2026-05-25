@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: milestone
-status: ui-spec_locked
-last_updated: "2026-05-25T10:45:00.000Z"
-last_activity: 2026-05-25 -- Phase 22 UI-SPEC verified (7 surfaces, 6/6 dimensions, 3 FLAGs)
+status: plans_locked
+last_updated: "2026-05-25T12:30:00.000Z"
+last_activity: 2026-05-25 -- Phase 22 plans verified (3 plans, 6/6 dimensions, 4 non-blocking FLAGs)
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 11
+  total_plans: 14
   completed_plans: 7
-  percent: 64
+  percent: 50
 ---
 
 # State
 
 ## Current Position
 
-Phase: 22 (Legal Compliance Scaffolding) — UI design contract locked
-Plan: ready for /gsd-plan-phase 22 (UI safety gate now passes)
-Status: UI-SPEC verified (7 surfaces, 6/6 dimensions, 3 FLAGs)
-Last activity: 2026-05-25 -- Phase 22 UI-SPEC verified (7 surfaces, 6/6 dimensions, 3 FLAGs)
+Phase: 22 (Legal Compliance Scaffolding) — plans locked
+Plan: ready for /gsd-execute-phase 22 (3 waves: 22-01 → 22-02 → 22-03)
+Status: Plans verified (6/6 dimensions PASS, 4 non-blocking FLAGs)
+Last activity: 2026-05-25 -- Phase 22 plans verified (3 plans, 6/6 dimensions, 4 non-blocking FLAGs)
 
 ## Project Reference
 
