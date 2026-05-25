@@ -197,7 +197,7 @@ func TestErrorMapping_PasswordReset_TokenInvalid_SentinelMatches(t *testing.T) {
 	// service.ErrResetTokenInvalid aliases domain.ErrResetTokenInvalid;
 	// either form must map to the public reset_token_invalid code.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/", nil)
+	r := httptest.NewRequest("POST", "/", http.NoBody)
 	writePasswordResetError(w, r, service.ErrResetTokenInvalid)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	var body map[string]string
@@ -208,7 +208,7 @@ func TestErrorMapping_PasswordReset_TokenInvalid_SentinelMatches(t *testing.T) {
 
 func TestErrorMapping_PasswordReset_TokenInvalid_DomainSentinel(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/", nil)
+	r := httptest.NewRequest("POST", "/", http.NoBody)
 	writePasswordResetError(w, r, domain.ErrResetTokenInvalid)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	var body map[string]string
@@ -218,7 +218,7 @@ func TestErrorMapping_PasswordReset_TokenInvalid_DomainSentinel(t *testing.T) {
 
 func TestErrorMapping_PasswordReset_TokenExpired(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/", nil)
+	r := httptest.NewRequest("POST", "/", http.NoBody)
 	writePasswordResetError(w, r, domain.ErrResetTokenExpired)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	var body map[string]string
@@ -228,7 +228,7 @@ func TestErrorMapping_PasswordReset_TokenExpired(t *testing.T) {
 
 func TestErrorMapping_PasswordReset_PasswordTooWeak(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/", nil)
+	r := httptest.NewRequest("POST", "/", http.NoBody)
 	writePasswordResetError(w, r, service.ErrPasswordTooWeak)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	var body map[string]string
@@ -238,7 +238,7 @@ func TestErrorMapping_PasswordReset_PasswordTooWeak(t *testing.T) {
 
 func TestErrorMapping_PasswordReset_UnknownErr_500(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/", nil)
+	r := httptest.NewRequest("POST", "/", http.NoBody)
 	writePasswordResetError(w, r, errors.New("something else"))
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	require.True(t, strings.Contains(w.Body.String(), "internal_server_error"))

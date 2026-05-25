@@ -9,7 +9,7 @@ import (
 
 // resetConfirmPathFragment matches any URL whose path contains the
 // password-reset confirm endpoint. Phase 21b D-16 + PITFALLS §1.4 require
-// belt-and-suspenders defence against token leakage via access logs /
+// belt-and-suspenders defense against token leakage via access logs /
 // downstream middleware: even though RequestLogger today only logs
 // r.URL.Path (which is query-string-free by Go stdlib semantics), a
 // future refactor or a downstream middleware (Sentry, panic recovery,

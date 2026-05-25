@@ -35,7 +35,7 @@ func (p *fakePool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Ro
 // whether the middleware short-circuited.
 func mkRequestWithUser(t *testing.T, method string, userID uuid.UUID) *http.Request {
 	t.Helper()
-	req := httptest.NewRequest(method, "/anything", nil)
+	req := httptest.NewRequest(method, "/anything", http.NoBody)
 	ctx := context.WithValue(req.Context(), UserIDKey, userID)
 	return req.WithContext(ctx)
 }
@@ -160,7 +160,7 @@ func TestBlockWrites_NoAuthCtx_PassesThrough(t *testing.T) {
 		},
 	}
 	mw := BlockWritesDuringGrace(pool, 30)
-	req := httptest.NewRequest(http.MethodPost, "/anything", nil)
+	req := httptest.NewRequest(http.MethodPost, "/anything", http.NoBody)
 	// no userID in context — Auth would have caught earlier
 	rec := httptest.NewRecorder()
 	mw(okHandler()).ServeHTTP(rec, req)

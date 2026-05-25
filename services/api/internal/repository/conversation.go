@@ -282,7 +282,7 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 // commits — Mongo does not participate in the PG TX so this is best-
 // effort. Caller logs a warning on failure but does NOT roll back the PG
 // delete (the PG row is already gone — T-DEL-05 disposition).
-func (r *conversationRepository) MongoConversationsCleanup(ctx context.Context, userID string, originalEmail string) (int64, error) {
+func (r *conversationRepository) MongoConversationsCleanup(ctx context.Context, userID, originalEmail string) (int64, error) {
 	filter := bson.M{"user_id": userID}
 	update := bson.M{"$set": bson.M{
 		"user_id":              nil,

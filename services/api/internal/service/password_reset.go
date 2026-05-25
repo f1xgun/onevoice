@@ -73,6 +73,10 @@ const (
 	resetConfirmURLBase = "https://onevoice.app/auth/password-reset/confirm"
 	// resetEmailSubject — RU primary per CONTEXT D-decisions.
 	resetEmailSubject = "Восстановление пароля — OneVoice"
+	// resetRefreshScanBatch — page size for the Redis SCAN that wipes the
+	// user's refresh tokens during password reset (D-13). 256 is a balance
+	// between roundtrips and per-page work; Redis docs recommend ~100-1000.
+	resetRefreshScanBatch int64 = 256
 )
 
 // Service-level sentinels exposed for the handler error_mapping.
@@ -327,7 +331,7 @@ func (s *PasswordResetService) wipeRefreshTokens(ctx context.Context, userID uui
 	var cursor uint64
 	var toDelete []string
 	for {
-		keys, next, err := s.redis.Scan(ctx, cursor, refreshTokenKeyPrefix+"*", 256).Result()
+		keys, next, err := s.redis.Scan(ctx, cursor, refreshTokenKeyPrefix+"*", resetRefreshScanBatch).Result()
 		if err != nil {
 			return fmt.Errorf("scan: %w", err)
 		}
