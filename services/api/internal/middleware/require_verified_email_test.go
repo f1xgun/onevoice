@@ -162,7 +162,7 @@ func TestRequireVerifiedEmailDay7_AllowsVerifiedRegardlessOfAge(t *testing.T) {
 
 // --- Edge cases ---------------------------------------------------------
 
-// TestRequireVerifiedEmail_NoUserIDPassesThrough — defence-in-depth pass-through
+// TestRequireVerifiedEmail_NoUserIDPassesThrough — defense-in-depth pass-through
 // when the upstream Auth middleware did not set a userID. The downstream
 // handler is expected to 401 in this case.
 func TestRequireVerifiedEmail_NoUserIDPassesThrough(t *testing.T) {

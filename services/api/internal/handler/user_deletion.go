@@ -144,7 +144,7 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if be, ok := asSoleOwnerErr(err); ok {
 		rows := make([]soleOwnerBusinessRespEntry, len(be))
 		for i, b := range be {
-			rows[i] = soleOwnerBusinessRespEntry{ID: b.ID, Name: b.Name}
+			rows[i] = soleOwnerBusinessRespEntry(b)
 		}
 		writeJSON(w, http.StatusConflict, soleOwnerErrorBody{
 			Code:       "sole_owner_of_businesses",
@@ -260,7 +260,7 @@ func asSoleOwnerErr(err error) ([]soleOwnerEntry, bool) {
 	}
 	out := make([]soleOwnerEntry, len(rows))
 	for i, r := range rows {
-		out[i] = soleOwnerEntry{ID: r.ID, Name: r.Name}
+		out[i] = soleOwnerEntry(r)
 	}
 	return out, true
 }

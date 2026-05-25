@@ -593,7 +593,7 @@ func (r *userRepository) EnumerateUpcomingDeletions(ctx context.Context, fromTim
 // HardDeleteInTx — Phase 21-04 hard-delete sweeper. Issues `DELETE FROM
 // users WHERE id = $1` inside the caller-supplied tx. The caller is
 // responsible for writing the user_self_deleted audit row BEFORE the
-// DELETE (in the same tx) so the FK SET NULL behaviour (audit_logs.user_id
+// DELETE (in the same tx) so the FK SET NULL behavior (audit_logs.user_id
 // from 21-03 ACCT-06) has somewhere to land. After DELETE, the audit
 // row's FK becomes NULL but user_email_at_event preserves the email for
 // 152-ФЗ forensic queries.
