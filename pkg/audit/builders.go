@@ -205,14 +205,117 @@ func LogEmailChangedBeforeVerify(ctx context.Context, l Logger, userID uuid.UUID
 }
 
 // LogConsentRecorded records the user_consents INSERT that runs alongside
-// Register (D-40). Phase 21-03 / ACCT-02. Phase 22 will extend with
-// proper policy_version + policy_sha256 fields.
+// Register (D-40). Phase 21-03 / ACCT-02. Phase 22 EXTENDS this with the
+// tx-aware sister builder LogConsentRecordedTx below; this fire-and-forget
+// variant is kept for the legacy single-purpose path.
 func LogConsentRecorded(ctx context.Context, l Logger, userID uuid.UUID, purpose, policyVersion string) {
 	l.Log(ctx, Entry{
 		Action:   ActionConsentRecorded,
 		Resource: "user",
 		UserID:   &userID,
 		Details:  mustMarshal(ConsentRecordedDetails{Purpose: purpose, PolicyVersion: policyVersion}),
+	})
+}
+
+// ---- Phase 22 consent builders (D-27, D-28) -----------------------------
+
+// LogConsentRecordedTx records the Register-flow consent INSERT inside
+// the caller's pgx.Tx. Mirrors LogUserSelfDeletedTx — the audit row
+// commits atomically with the user_consents UPSERTs so a rollback wipes
+// both (152-ФЗ forensic invariant per D-28).
+//
+// purposes packs the three slugs ["tos","privacy","pdn"]; policyVersion
+// is the build's current version at write time; policySHA256 may be
+// empty (frontend-computed; not plumbed server-side in v1.4).
+//
+// user_email_at_event is intentionally empty: Register tx doesn't have
+// the user resolver wired (the row doesn't exist yet at audit-write
+// time); for consent re-record + withdrawal the resolver path is also
+// unused because the audit row is tx-scoped not Logger-routed.
+func LogConsentRecordedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purposes []string, policyVersion, policySHA256, ip, userAgent string) error {
+	d, err := json.Marshal(ConsentRecordedDetails{
+		Purposes:      purposes,
+		PolicyVersion: policyVersion,
+		PolicySHA256:  policySHA256,
+		IP:            ip,
+		UserAgent:     userAgent,
+	})
+	if err != nil {
+		return fmt.Errorf("audit: marshal consent_recorded details: %w", err)
+	}
+	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
+	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
+	if _, err := tx.Exec(ctx, q, userID, "", ActionConsentRecorded, "user", d); err != nil {
+		return fmt.Errorf("audit: consent_recorded insert: %w", err)
+	}
+	return nil
+}
+
+// LogConsentReconsentedTx records POST /auth/consents inside the same tx
+// as the UPSERTs. fromVersion is the user's prior version (used for
+// timeline analysis); toVersion is the build's currentVersion.
+func LogConsentReconsentedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purposes []string, fromVersion, toVersion, ip, userAgent string) error {
+	d, err := json.Marshal(ConsentReconsentedDetails{
+		Purposes:    purposes,
+		FromVersion: fromVersion,
+		ToVersion:   toVersion,
+		IP:          ip,
+		UserAgent:   userAgent,
+	})
+	if err != nil {
+		return fmt.Errorf("audit: marshal consent_reconsented details: %w", err)
+	}
+	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
+	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
+	if _, err := tx.Exec(ctx, q, userID, "", ActionConsentReconsented, "user", d); err != nil {
+		return fmt.Errorf("audit: consent_reconsented insert: %w", err)
+	}
+	return nil
+}
+
+// LogConsentWithdrawnTx records POST /users/me/consents/pdn/withdraw
+// inside the user_consents.withdrawn_at UPDATE tx. purpose is "pdn"
+// (or "tos"/"privacy" if D-14 v1.5 ever differentiates; v1.4 always
+// withdraws via /pdn/withdraw and that triggers the deletion bundle).
+func LogConsentWithdrawnTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purpose, ip, userAgent string) error {
+	d, err := json.Marshal(ConsentWithdrawnDetails{
+		Purpose:   purpose,
+		IP:        ip,
+		UserAgent: userAgent,
+	})
+	if err != nil {
+		return fmt.Errorf("audit: marshal consent_withdrawn details: %w", err)
+	}
+	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
+	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
+	if _, err := tx.Exec(ctx, q, userID, "", ActionConsentWithdrawn, "user", d); err != nil {
+		return fmt.Errorf("audit: consent_withdrawn insert: %w", err)
+	}
+	return nil
+}
+
+// LogConsentReconsentRequired is fire-and-forget — emitted from /auth/me
+// when DiffAgainstCurrent reports stale policies. No tx (the request is
+// read-only). Helps support debug why a user is seeing the modal.
+func LogConsentReconsentRequired(ctx context.Context, l Logger, userID uuid.UUID, policies []string, currentVersion string) {
+	l.Log(ctx, Entry{
+		Action:   ActionConsentReconsentRequired,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(ConsentReconsentRequiredDetails{Policies: policies, CurrentVersion: currentVersion}),
+	})
+}
+
+// LogConsentPolicyVersionBumped is fire-and-forget system event with no
+// UserID. Emitted once per environment when the API detects a new
+// build's currentVersion exceeds the most-recent recorded one (Phase
+// 22-03 wires this; this plan only declares the builder).
+func LogConsentPolicyVersionBumped(ctx context.Context, l Logger, slug, fromVersion, toVersion, sha256 string) {
+	l.Log(ctx, Entry{
+		Action:   ActionConsentPolicyVersionBumped,
+		Resource: "policy",
+		UserID:   nil, // system event — no actor.
+		Details:  mustMarshal(ConsentPolicyVersionBumpedDetails{Slug: slug, FromVersion: fromVersion, ToVersion: toVersion, SHA256: sha256}),
 	})
 }
 

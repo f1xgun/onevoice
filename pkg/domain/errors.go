@@ -75,6 +75,23 @@ var (
 	ErrEmailTaken         = errors.New("email already used by another account")
 )
 
+// Consent errors — Phase 22 (LEGAL-01..06).
+//
+// ErrConsentMissing fires when /auth/consents or POST /auth/register is
+// submitted without all three slugs (tos, privacy, pdn) at the current
+// build version. Handler maps to HTTP 400 with body
+// {"code":"consent_required","missing":[...]}.
+//
+// ErrConsentVersionMismatch fires when the submitted policy version no
+// longer matches legalconfig.CurrentVersion(slug) — i.e. the operator
+// bumped the policy mid-review. Handler maps to HTTP 409 with body
+// {"code":"version_mismatch","currentVersion":"..."}. The frontend
+// recovers by reloading the modal against the new currentVersion.
+var (
+	ErrConsentMissing         = errors.New("consent missing or stale version")
+	ErrConsentVersionMismatch = errors.New("consent version mismatch (operator bumped policy mid-review)")
+)
+
 // Account deletion errors — Phase 21-04 (ACCT-03).
 //
 // ErrDeletionAlreadyPending fires when a second DELETE /users/me comes in
