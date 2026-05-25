@@ -30,7 +30,6 @@ func (p *fakePool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Ro
 	return fakeRow{scan: p.scan}
 }
 
-
 // inject the user-id into context BEFORE the middleware runs, then
 // chain the middleware over a trivial 200-OK handler so we can observe
 // whether the middleware short-circuited.

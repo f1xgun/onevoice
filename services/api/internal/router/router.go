@@ -67,16 +67,17 @@ type Handlers struct {
 	AgentTask     *handler.AgentTaskHandler
 	Telemetry     *handler.TelemetryHandler
 	Project       *handler.ProjectHandler
-	HITL          *handler.HITLHandler        // resolve + resume + GET /tools
-	Titler        *handler.TitlerHandler      // POST /conversations/{id}/regenerate-title
-	Search        *handler.SearchHandler      // GET /api/v1/search
-	Platforms     *handler.PlatformsHandler   // Public platform registry
-	Permissions   *handler.PermissionsHandler // RBAC: static permission registry
-	Members       *handler.MembersHandler     // RBAC: member management
-	Roles         *handler.RolesHandler       // RBAC: role listing
-	Invitations   *handler.InvitationsHandler // RBAC: invitation lifecycle (Phase 3)
-	AuditLog      *handler.AuditLogHandler    // Phase 19 Wave 5: audit-log read endpoint
+	HITL          *handler.HITLHandler         // resolve + resume + GET /tools
+	Titler        *handler.TitlerHandler       // POST /conversations/{id}/regenerate-title
+	Search        *handler.SearchHandler       // GET /api/v1/search
+	Platforms     *handler.PlatformsHandler    // Public platform registry
+	Permissions   *handler.PermissionsHandler  // RBAC: static permission registry
+	Members       *handler.MembersHandler      // RBAC: member management
+	Roles         *handler.RolesHandler        // RBAC: role listing
+	Invitations   *handler.InvitationsHandler  // RBAC: invitation lifecycle (Phase 3)
+	AuditLog      *handler.AuditLogHandler     // Phase 19 Wave 5: audit-log read endpoint
 	UserDeletion  *handler.UserDeletionHandler // Phase 21-04: DELETE /users/me + restore (ACCT-03)
+	Consents      *handler.ConsentsHandler     // Phase 22: re-consent + withdraw + list (LEGAL-01..06)
 }
 
 // Setup creates and configures the Chi router with all routes and middleware.
@@ -192,6 +193,14 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			if handlers.UserDeletion != nil {
 				r.Delete("/users/me", handlers.UserDeletion.Delete)
 				r.Post("/users/me/restore", handlers.UserDeletion.Restore)
+			}
+			// Phase 22 — re-consent + withdraw + list. Always reachable
+			// (D-30 precedent — right-to-erasure / right-to-withdraw
+			// cannot be gated by verification or grace per 152-ФЗ Art. 21).
+			if handlers.Consents != nil {
+				r.Post("/auth/consents", handlers.Consents.Reconsent)
+				r.Get("/users/me/consents", handlers.Consents.ListMine)
+				r.Post("/users/me/consents/pdn/withdraw", handlers.Consents.WithdrawPDN)
 			}
 		})
 

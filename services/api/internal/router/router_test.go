@@ -21,6 +21,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // routerTestJWTSecret is a 32-byte stub secret used by router tests so
@@ -43,6 +44,9 @@ func (f *fakeLoader) LoadRole(_ context.Context, _ uuid.UUID) (*authz.CachedRole
 type stubUserService struct{}
 
 func (stubUserService) Register(_ context.Context, _, _ string) (*domain.User, error) {
+	panic("not called in routing test")
+}
+func (stubUserService) RegisterWithContext(_ context.Context, _, _ string, _ service.RegistrationContext) (*domain.User, error) {
 	panic("not called in routing test")
 }
 func (stubUserService) Login(_ context.Context, _, _ string) (user *domain.User, accessToken, refreshToken string, err error) {

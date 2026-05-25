@@ -28,8 +28,12 @@ import (
 // the handler consumes. Declared as an interface here so handler tests
 // can pass an in-memory double (mirrors PasswordResetServiceAPI and
 // EmailVerificationServiceAPI).
+//
+// Phase 22 / D-13: RequestDeletion grew a trailing `reason` parameter so
+// ConsentService.WithdrawPDN can pass "consent_withdrawn" to bypass the
+// bcrypt check. The user_deletion.go Delete handler always passes "".
 type AccountDeletionServiceAPI interface {
-	RequestDeletion(ctx context.Context, userID uuid.UUID, password, clientIP, userAgent string) error
+	RequestDeletion(ctx context.Context, userID uuid.UUID, password, clientIP, userAgent, reason string) error
 	CancelDeletion(ctx context.Context, userID uuid.UUID, clientIP, userAgent string) error
 	GetScheduledDeletionAt(ctx context.Context, userID uuid.UUID) (time.Time, error)
 }
@@ -101,7 +105,10 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.RequestDeletion(r.Context(), userID, req.Password, clientIP(r), r.UserAgent())
+	// Phase 22 / D-13: pass reason="" so the bcrypt password check runs.
+	// ConsentService.WithdrawPDN is the only caller that passes the
+	// "consent_withdrawn" reason (skips the password check).
+	err = h.service.RequestDeletion(r.Context(), userID, req.Password, clientIP(r), r.UserAgent(), "")
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return

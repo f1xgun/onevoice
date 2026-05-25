@@ -197,7 +197,7 @@ func (s *EmailVerificationService) IsTokenExpired(ctx context.Context, plaintext
 // Returns:
 //   - domain.ErrAlreadyVerified — handler maps to HTTP 403.
 //   - domain.ErrEmailTaken      — handler maps to HTTP 409 (UNIQUE-violation
-//                                 races to the same sentinel via UpdateEmailInTx).
+//     races to the same sentinel via UpdateEmailInTx).
 //   - oldEmail (first return) for the handler to write on the audit row.
 func (s *EmailVerificationService) ChangeEmailBeforeVerify(ctx context.Context, userID uuid.UUID, newEmail string) (oldEmail string, err error) {
 	u, err := s.users.GetByID(ctx, userID)

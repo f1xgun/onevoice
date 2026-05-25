@@ -138,12 +138,12 @@ type EmailChangedBeforeVerifyDetails struct {
 // Phase 21 audit rows already on disk and for future single-slug
 // reconsent rows.
 type ConsentRecordedDetails struct {
-	Purpose       string   `json:"purpose,omitempty"`        // legacy single-purpose (Phase 21).
-	Purposes      []string `json:"purposes,omitempty"`       // Phase 22: e.g. ["tos","privacy","pdn"].
+	Purpose       string   `json:"purpose,omitempty"`  // legacy single-purpose (Phase 21).
+	Purposes      []string `json:"purposes,omitempty"` // Phase 22: e.g. ["tos","privacy","pdn"].
 	PolicyVersion string   `json:"policy_version"`
-	PolicySHA256  string   `json:"policy_sha256,omitempty"`  // Phase 22 (D-08).
-	IP            string   `json:"ip,omitempty"`             // Phase 22 (D-18).
-	UserAgent     string   `json:"user_agent,omitempty"`     // Phase 22 (D-18).
+	PolicySHA256  string   `json:"policy_sha256,omitempty"` // Phase 22 (D-08).
+	IP            string   `json:"ip,omitempty"`            // Phase 22 (D-18).
+	UserAgent     string   `json:"user_agent,omitempty"`    // Phase 22 (D-18).
 }
 
 // ConsentReconsentRequiredDetails — Phase 22 (D-27). Logged when the

@@ -143,13 +143,23 @@ func (s *AccountDeletionService) WithGraceDays(graceDays, t7OffsetDays int) *Acc
 // TX alongside pending-invitation revocation + outbox enqueue (immediate
 // confirmation + deferred T-7 warning).
 //
+// The `reason` parameter (Phase 22 / D-13) selects between the two
+// supported entry paths:
+//   - reason == "" — DELETE /users/me (Phase 21-04 default). Verifies
+//     the bcrypt password (T-DEL-07).
+//   - reason == "consent_withdrawn" — POST /users/me/consents/pdn/
+//     withdraw (Phase 22). SKIPS the password check (152-ФЗ Art. 21
+//     forbids friction barriers on the withdrawal path; D-14). The
+//     caller (ConsentService.WithdrawPDN) is the only legitimate user
+//     of this branch — see T-22-11 in the threat model.
+//
 // Returns:
 //   - nil on success
-//   - domain.ErrInvalidCredentials when password doesn't match (T-DEL-07)
+//   - domain.ErrInvalidCredentials when password doesn't match (T-DEL-07; reason="" only)
 //   - domain.ErrUserNotFound when the user doesn't exist
 //   - domain.ErrDeletionAlreadyPending when deletion is already pending
 //   - *ErrSoleOwnerBusinesses when the user is the sole OWNER of any business
-func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uuid.UUID, password, clientIP, userAgent string) error {
+func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uuid.UUID, password, clientIP, userAgent, reason string) error {
 	user, err := s.users.GetByIDIncludingDeleted(ctx, userID)
 	if err != nil {
 		return err
@@ -161,10 +171,15 @@ func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uui
 		return domain.ErrDeletionAlreadyPending
 	}
 
-	// T-DEL-07: constant-time bcrypt compare via the same primitive
-	// ChangePassword uses (services/api/internal/service/user.go:399).
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return domain.ErrInvalidCredentials
+	// T-DEL-07 / D-13: constant-time bcrypt compare via the same
+	// primitive ChangePassword uses. Phase 22 SKIPS this check when
+	// reason=="consent_withdrawn" — the consent withdrawal flow already
+	// authed via session + cannot present a friction barrier per
+	// 152-ФЗ Art. 21.
+	if reason != "consent_withdrawn" {
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+			return domain.ErrInvalidCredentials
+		}
 	}
 
 	// T-DEL-02: enumerate sole-owner businesses BEFORE issuing any

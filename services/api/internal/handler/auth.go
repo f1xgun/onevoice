@@ -17,19 +17,32 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // UserService defines the interface for user-related operations
 type UserService interface {
 	Register(ctx context.Context, email, password string) (*domain.User, error)
+	// RegisterWithContext is the Phase 22 atomic-Register entry point —
+	// records three consents inside the same tx as the user row.
+	RegisterWithContext(ctx context.Context, email, password string, regCtx service.RegistrationContext) (*domain.User, error)
 	Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error)
 	RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
 	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
+}
+
+// ConsentDiffer is the slice of *service.ConsentService the auth
+// handler needs for the /auth/me requiresReconsent field. Declared
+// here (not service-side) so the handler tests can pass a double.
+// May be nil — when nil, Me skips the requiresReconsent populator.
+type ConsentDiffer interface {
+	DiffAgainstCurrent(ctx context.Context, userID uuid.UUID) (*service.RequiresReconsentInfo, error)
 }
 
 // Package-level validator instance (reused across handlers)
@@ -65,6 +78,11 @@ type AuthHandler struct {
 	// UserResetExtAdapter.GetByIDIncludingDeleted), nil in legacy/test
 	// code paths where /auth/me falls back to userService.GetByID.
 	meUserExtraGetter func(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+
+	// Phase 22 (LEGAL-01..06). When non-nil, Me populates the
+	// requiresReconsent field on /auth/me by calling DiffAgainstCurrent.
+	// nil-safe — when not wired the field is omitted from the response.
+	consents ConsentDiffer
 }
 
 // PasswordResetServiceAPI is the slice of *service.PasswordResetService
@@ -106,6 +124,13 @@ func (h *AuthHandler) SetEmailVerificationService(s EmailVerificationServiceAPI)
 // their accountDeletion state.
 func (h *AuthHandler) SetMeUserExtraGetter(fn func(ctx context.Context, userID uuid.UUID) (*domain.User, error)) {
 	h.meUserExtraGetter = fn
+}
+
+// SetConsentDiffer injects the Phase 22 ConsentService into the auth
+// handler so Me can populate requiresReconsent. Idempotent setter to
+// keep NewAuthHandler's signature stable.
+func (h *AuthHandler) SetConsentDiffer(d ConsentDiffer) {
+	h.consents = d
 }
 
 // NewAuthHandler creates a new auth handler instance.
@@ -175,10 +200,27 @@ func (h *AuthHandler) readRefreshTokenCookie(r *http.Request) (string, error) {
 	return "", http.ErrNoCookie
 }
 
-// RegisterRequest represents the registration request payload
+// RegisterConsents is the per-slug version map submitted with
+// /auth/register (Phase 22 / D-15, D-16). All three must equal the
+// build's currentVersion (legalconfig.*Version) or the handler returns
+// 400 consent_required with the missing slugs listed.
+type RegisterConsents struct {
+	TOS     string `json:"tos"`
+	Privacy string `json:"privacy"`
+	PDN     string `json:"pdn"`
+}
+
+// RegisterRequest represents the registration request payload.
+//
+// Phase 22 / D-15, D-16: clients MUST submit `consents`. The Phase 21
+// legacy clients (no consents field) still work — the handler treats a
+// missing/empty consents block as "all stale" and returns 400
+// consent_required, which is the safe behavior: forcing a UI
+// migration before allowing register.
 type RegisterRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=8"`
+	Email    string           `json:"email" validate:"required,email"`
+	Password string           `json:"password" validate:"required,min=8"`
+	Consents RegisterConsents `json:"consents"`
 }
 
 // LoginRequest represents the login request payload
@@ -214,7 +256,15 @@ type UpdatePreferredLocaleRequest struct {
 	Locale string `json:"locale" validate:"required,oneof=ru en"`
 }
 
-// Register handles user registration and auto-login
+// Register handles user registration and auto-login.
+//
+// Phase 22 / D-15, D-16: validates the submitted `consents` block
+// against legalconfig.CurrentVersion(slug) for tos/privacy/pdn. Any
+// missing or stale version returns 400 with body
+// {"code":"consent_required","missing":[...]}. On success, passes the
+// three policies + clientIP + UserAgent through RegistrationContext to
+// RegisterWithContext which writes the three rows in the same tx as the
+// user row + verify token + outbox enqueue (D-17 atomic-Register).
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
@@ -230,8 +280,38 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Register user
-	_, err := h.userService.Register(r.Context(), req.Email, req.Password)
+	// Phase 22 / D-15, D-16: every consent slug MUST equal the build's
+	// currentVersion. Missing / stale → 400 consent_required.
+	var missing []string
+	if req.Consents.TOS != legalconfig.TOSVersion {
+		missing = append(missing, string(legalconfig.PolicyTOS))
+	}
+	if req.Consents.Privacy != legalconfig.PrivacyVersion {
+		missing = append(missing, string(legalconfig.PolicyPrivacy))
+	}
+	if req.Consents.PDN != legalconfig.PDNVersion {
+		missing = append(missing, string(legalconfig.PolicyPDN))
+	}
+	if len(missing) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"code":    "consent_required",
+			"missing": missing,
+		})
+		return
+	}
+
+	// Phase 22 / D-17: pass policies + IP + UA into the tx-flow so the
+	// three consent rows commit alongside the user row.
+	regCtx := service.RegistrationContext{
+		IP:        clientIP(r),
+		UserAgent: r.UserAgent(),
+		Policies: []service.PolicyAccepted{
+			{Slug: string(legalconfig.PolicyTOS), Version: req.Consents.TOS},
+			{Slug: string(legalconfig.PolicyPrivacy), Version: req.Consents.Privacy},
+			{Slug: string(legalconfig.PolicyPDN), Version: req.Consents.PDN},
+		},
+	}
+	_, err := h.userService.RegisterWithContext(r.Context(), req.Email, req.Password, regCtx)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserExists) {
 			writeJSONError(w, http.StatusConflict, "user already exists")
@@ -412,6 +492,10 @@ type MeResponse struct {
 	EmailVerified             bool                 `json:"emailVerified"`
 	EmailVerificationDeadline *time.Time           `json:"emailVerificationDeadline,omitempty"`
 	AccountDeletion           *AccountDeletionInfo `json:"accountDeletion,omitempty"`
+	// Phase 22 (LEGAL-01..06 / D-11): non-nil when at least one of the
+	// user's tos/privacy/pdn rows is stale or missing. Frontend renders
+	// <ReConsentModal> when this field is present.
+	RequiresReconsent *service.RequiresReconsentInfo `json:"requiresReconsent,omitempty"`
 }
 
 // AccountDeletionInfo is the Phase 21-04 sub-struct on MeResponse.
@@ -491,6 +575,21 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			CanRestoreUntil:     graceEnd,
 		}
 	}
+
+	// Phase 22 (LEGAL-01..06 / D-11): populate requiresReconsent when
+	// the ConsentService is wired AND at least one tos/privacy/pdn row
+	// is stale. A nil diff leaves the field omitted (`omitempty`).
+	if h.consents != nil {
+		diff, derr := h.consents.DiffAgainstCurrent(r.Context(), userID)
+		if derr != nil {
+			// Best-effort: log + omit the field. /auth/me must not 500
+			// because of a consent-diff failure.
+			slog.Warn("auth/me: diff against current consents failed", "userID", userID, "err", derr)
+		} else if diff != nil {
+			resp.RequiresReconsent = diff
+		}
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
@@ -87,6 +88,12 @@ type Services struct {
 	// NewUserDeletionHandler constructor + into cmd/main.go via the
 	// runHardDeleteSweeper / runDeletionWarningSweeper goroutines.
 	AccountDeletion *service.AccountDeletionService
+
+	// Consent is the Phase 22 (LEGAL-01..06) consent orchestration
+	// service. Wired into ConsentsHandler + into UserService.Register
+	// via SetRegisterConsentService so the 3-row UPSERT runs inside the
+	// same tx as the user row.
+	Consent *service.ConsentService
 
 	// reviewSyncerCancel is captured so Close() can stop the background
 	// ticker goroutine. nil when ReviewSyncer is nil.
@@ -372,6 +379,21 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.AuditLogger,
 	)
 
+	// Phase 22 (LEGAL-01..06 / D-17): ConsentService orchestrates the
+	// three consent flows (Register UPSERTs, ReConsent modal, PDN
+	// withdrawal). currentVersion closure plumbs legalconfig.* version
+	// constants; sha256 stays empty until Phase 22-02 wires the policy
+	// loader (the frontend computes it).
+	s.Consent = service.NewConsentService(
+		h.PG,
+		repos.UserConsents,
+		s.AccountDeletion,
+		s.AuditLogger,
+		func(slug legalconfig.PolicySlug) (string, string) {
+			return legalconfig.CurrentVersion(slug), ""
+		},
+	)
+
 	// Phase 21-03 (ACCT-02 / D-17, D-40): wire the Register tx-flow
 	// collaborators so user_consents + email_verification_tokens +
 	// email_outbox commit atomically with the user row. The setter
@@ -392,6 +414,14 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 			s.EmailVerification,
 			s.AuditLogger,
 		)
+	}
+	// Phase 22 (LEGAL-01..06 / D-17): wire ConsentService into Register
+	// so RegisterWithContext writes 3 consent rows in the same tx as
+	// the user row + verify token + outbox enqueue.
+	if consentSetter, ok := s.User.(interface {
+		SetRegisterConsentService(consentSvc *service.ConsentService)
+	}); ok {
+		consentSetter.SetRegisterConsentService(s.Consent)
 	}
 
 	return s, nil
