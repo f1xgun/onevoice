@@ -29,11 +29,7 @@ export default function AccountSettingsPage() {
         <p className="mt-4 text-[15px] leading-[1.55] text-[var(--ov-ink-mid)]">
           {t('dangerZoneDescription')}
         </p>
-        <Button
-          variant="danger"
-          className="mt-6"
-          onClick={() => setConfirmOpen(true)}
-        >
+        <Button variant="danger" className="mt-6" onClick={() => setConfirmOpen(true)}>
           {t('deleteButton')}
         </Button>
       </Card>

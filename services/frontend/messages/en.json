@@ -300,7 +300,8 @@
     "businessCategoryRequired": "Pick a category",
     "projectNameRequired": "Enter a project name.",
     "projectSystemPromptMax": "System prompt is too long (max {max, plural, one {# character} other {# characters}}).",
-    "projectAllowedToolsRequired": "Pick at least one tool, or switch the mode to \"None\"."
+    "projectAllowedToolsRequired": "Pick at least one tool, or switch the mode to \"None\".",
+    "consentRequired": "Required for registration"
   },
   "chat": {
     "heading": "Chats",
@@ -544,35 +545,81 @@
       },
       "tools": {
         "telegram": {
-          "send_channel_post": { "name": "Send post" },
-          "send_channel_photo": { "name": "Send photo" },
-          "send_notification": { "name": "Owner notification" },
-          "get_reviews": { "name": "Fetch reviews" },
-          "reply_to_comment": { "name": "Reply to comment" }
+          "send_channel_post": {
+            "name": "Send post"
+          },
+          "send_channel_photo": {
+            "name": "Send photo"
+          },
+          "send_notification": {
+            "name": "Owner notification"
+          },
+          "get_reviews": {
+            "name": "Fetch reviews"
+          },
+          "reply_to_comment": {
+            "name": "Reply to comment"
+          }
         },
         "vk": {
-          "publish_post": { "name": "Publish post" },
-          "post_photo": { "name": "Publish photo" },
-          "schedule_post": { "name": "Schedule post" },
-          "update_group_info": { "name": "Update community info" },
-          "get_comments": { "name": "Fetch comments" },
-          "reply_comment": { "name": "Reply to comment" },
-          "delete_comment": { "name": "Delete comment" },
-          "get_community_info": { "name": "Fetch community info" },
-          "get_wall_posts": { "name": "Fetch wall posts" }
+          "publish_post": {
+            "name": "Publish post"
+          },
+          "post_photo": {
+            "name": "Publish photo"
+          },
+          "schedule_post": {
+            "name": "Schedule post"
+          },
+          "update_group_info": {
+            "name": "Update community info"
+          },
+          "get_comments": {
+            "name": "Fetch comments"
+          },
+          "reply_comment": {
+            "name": "Reply to comment"
+          },
+          "delete_comment": {
+            "name": "Delete comment"
+          },
+          "get_community_info": {
+            "name": "Fetch community info"
+          },
+          "get_wall_posts": {
+            "name": "Fetch wall posts"
+          }
         },
         "yandex_business": {
-          "get_info": { "name": "Fetch business profile" },
-          "update_hours": { "name": "Update business hours" },
-          "update_info": { "name": "Update business info" },
-          "get_reviews": { "name": "Fetch Yandex reviews" },
-          "reply_review": { "name": "Reply to Yandex review" },
-          "upload_photo": { "name": "Upload photo" },
-          "create_post": { "name": "Publish Yandex Business post" }
+          "get_info": {
+            "name": "Fetch business profile"
+          },
+          "update_hours": {
+            "name": "Update business hours"
+          },
+          "update_info": {
+            "name": "Update business info"
+          },
+          "get_reviews": {
+            "name": "Fetch Yandex reviews"
+          },
+          "reply_review": {
+            "name": "Reply to Yandex review"
+          },
+          "upload_photo": {
+            "name": "Upload photo"
+          },
+          "create_post": {
+            "name": "Publish Yandex Business post"
+          }
         },
         "google_business": {
-          "get_reviews": { "name": "Fetch Google reviews" },
-          "reply_review": { "name": "Reply to Google review" }
+          "get_reviews": {
+            "name": "Fetch Google reviews"
+          },
+          "reply_review": {
+            "name": "Reply to Google review"
+          }
         }
       }
     }
@@ -1054,7 +1101,11 @@
     "demo": {
       "yandexLabel": "Yandex",
       "inboxRows": {
-        "0": { "name": "Alena K.", "message": "Are you open on Sunday?", "label": "draft ready" },
+        "0": {
+          "name": "Alena K.",
+          "message": "Are you open on Sunday?",
+          "label": "draft ready"
+        },
         "1": {
           "name": "Mikhail P.",
           "message": "Gave you five stars — thanks for the attention",
@@ -1067,13 +1118,28 @@
         }
       },
       "sampleInbox": {
-        "0": { "message": "Are you open tomorrow?", "ago": "1 min" },
-        "1": { "message": "Where can I find you?", "ago": "12 min" },
-        "2": { "message": "Thanks, all set — five stars", "ago": "1 h" }
+        "0": {
+          "message": "Are you open tomorrow?",
+          "ago": "1 min"
+        },
+        "1": {
+          "message": "Where can I find you?",
+          "ago": "12 min"
+        },
+        "2": {
+          "message": "Thanks, all set — five stars",
+          "ago": "1 h"
+        }
       },
       "sampleReviews": {
-        "0": { "name": "Mikhail P.", "text": "Best flat white in the neighborhood. I'll be back." },
-        "1": { "name": "Anna", "text": "The cappuccino is ordinary, but the staff is polite." }
+        "0": {
+          "name": "Mikhail P.",
+          "text": "Best flat white in the neighborhood. I'll be back."
+        },
+        "1": {
+          "name": "Anna",
+          "text": "The cappuccino is ordinary, but the staff is polite."
+        }
       }
     },
     "sample": {
@@ -1115,15 +1181,42 @@
       "body": "In Russia — no compromises. We connect to the real channels, not their Western lookalikes."
     },
     "platforms": {
-      "telegram": { "display": "Telegram", "meta": "Channels and bots" },
-      "vk": { "display": "VK", "meta": "Communities" },
-      "yandex_business": { "display": "Yandex.Business", "meta": "Map and reviews" },
-      "google_business": { "display": "Google Business", "meta": "Under review" },
-      "2gis": { "display": "2GIS", "meta": "Under review" },
-      "avito": { "display": "Avito", "meta": "Under review" },
-      "whatsapp": { "display": "WhatsApp", "meta": "Under review" },
-      "instagram": { "display": "Instagram", "meta": "Under review" },
-      "ok": { "display": "Odnoklassniki", "meta": "Under review" }
+      "telegram": {
+        "display": "Telegram",
+        "meta": "Channels and bots"
+      },
+      "vk": {
+        "display": "VK",
+        "meta": "Communities"
+      },
+      "yandex_business": {
+        "display": "Yandex.Business",
+        "meta": "Map and reviews"
+      },
+      "google_business": {
+        "display": "Google Business",
+        "meta": "Under review"
+      },
+      "2gis": {
+        "display": "2GIS",
+        "meta": "Under review"
+      },
+      "avito": {
+        "display": "Avito",
+        "meta": "Under review"
+      },
+      "whatsapp": {
+        "display": "WhatsApp",
+        "meta": "Under review"
+      },
+      "instagram": {
+        "display": "Instagram",
+        "meta": "Under review"
+      },
+      "ok": {
+        "display": "Odnoklassniki",
+        "meta": "Under review"
+      }
     },
     "platformStatus": {
       "have": "live",
@@ -1448,6 +1541,36 @@
         "manual": "With your approval",
         "auto": "On its own"
       }
+    },
+    "privacy": {
+      "tab": "Privacy",
+      "title": "Data processing consents",
+      "subtitle": "Manage the consents you gave at registration.",
+      "row": {
+        "tos": "Terms of Service",
+        "privacy": "Privacy Policy",
+        "pdn": "Personal Data Processing Consent"
+      },
+      "acceptedAt": "Effective from {acceptedAt} · version {version}",
+      "openDoc": "Open document",
+      "loading": "Loading consents…",
+      "loadError": "Could not load consents. Please refresh the page.",
+      "pdn": {
+        "note": "Withdrawing PDN consent leads to account deletion within 30 days. ToS and Privacy Policy consents are withdrawn alongside it.",
+        "cta": "Withdraw PDN consent",
+        "submitting": "Withdrawing…",
+        "alreadyScheduled": "Deletion scheduled for {deletionDate}. Manage cancellation in the Account section."
+      },
+      "dialog": {
+        "title": "Withdraw PDN consent",
+        "body": "Withdrawing PDN consent leads to account deletion within 30 days (152-FZ Art. 21). All your data, including businesses where you are sole owner, will be deleted. This process is irreversible after 30 days.",
+        "cancel": "Cancel",
+        "confirm": "Withdraw consent and delete account"
+      },
+      "toast": {
+        "scheduled": "Deletion scheduled for {deletionDate}",
+        "error": "Could not withdraw consent. Please try again."
+      }
     }
   },
   "sidebar": {
@@ -1579,5 +1702,87 @@
         "accountDeleted": "Account deleted."
       }
     }
+  },
+  "legal": {
+    "privacy": {
+      "title": "Privacy Policy"
+    },
+    "terms": {
+      "title": "Terms of Service"
+    },
+    "consent": {
+      "title": "Personal Data Processing Consent",
+      "crossBorderHeading": "Cross-border data transfer",
+      "crossBorderBody": "OneVoice uses LLM providers (Anthropic, OpenAI) based in the USA. Cross-border transfer is performed under Art. 12 of Federal Law 152-FZ.",
+      "roskomnadzorHeading": "Personal data processing notification",
+      "roskomnadzorBody": "Operator registration data in the Roskomnadzor personal-data-operator registry is published at pd.rkn.gov.ru."
+    },
+    "contact": {
+      "title": "Contact the personal data operator",
+      "subtitle": "Operator details and the procedure for submitting personal data requests.",
+      "slaNotice": "Response time: 15 business days (152-FZ Art. 14 §2)."
+    },
+    "shared": {
+      "effectiveTag": "Effective from {effectiveFrom} · version {version}",
+      "controllerHeading": "Personal data controller",
+      "controllerOperatorLabel": "Operator",
+      "controllerInnLabel": "TIN",
+      "controllerAddressLabel": "Address",
+      "controllerEmailLabel": "Email for personal data requests",
+      "bodyLoadError": "Could not load the document. Please refresh the page.",
+      "versionMissing": "Version not specified"
+    }
+  },
+  "register": {
+    "consent": {
+      "tosPrivacy": "I accept the [Terms of Service](/legal/terms) and [Privacy Policy](/legal/privacy).",
+      "pdn": "I [consent to personal data processing](/legal/consent).",
+      "required": "Required for registration"
+    },
+    "submit": {
+      "disabledHint": "Check both consents to continue"
+    },
+    "errors": {
+      "consentRequired": "We've updated our documents — please reload the page and confirm the new consent versions."
+    },
+    "noscript": "Enable JavaScript to register."
+  },
+  "reconsent": {
+    "modal": {
+      "heading": "We've updated our terms of use",
+      "body": "To continue using OneVoice, please review the updated documents and confirm your consent.",
+      "policy": {
+        "tos": "Terms of Service",
+        "privacy": "Privacy Policy",
+        "pdn": "Personal Data Processing Consent"
+      },
+      "diff": {
+        "old": "Previous version: {old}",
+        "new": "New version: {new}"
+      },
+      "openDoc": "Open document",
+      "checkbox": "I have reviewed the updated documents and accept their terms.",
+      "cta": {
+        "accept": "Accept and continue",
+        "accepting": "Accepting…",
+        "logout": "Log out",
+        "loggingOut": "Logging out…"
+      },
+      "error": {
+        "generic": "Could not save consent. Please try again.",
+        "versionMismatch": "Terms were updated again — the page will reload."
+      }
+    }
+  },
+  "footer": {
+    "navAria": "Legal documents",
+    "links": {
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Service",
+      "consent": "PDN Consent"
+    },
+    "copyright": "© {year} {entityName}",
+    "contact": "Contact PDN operator: {email}",
+    "contactAria": "Email the personal data operator: {email}"
   }
 }
