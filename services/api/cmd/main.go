@@ -115,6 +115,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		Login:    cfg.RateLimitLogin,
 		Chat:     cfg.RateLimitChat,
 		HITL:     cfg.RateLimitHITL,
+		Consents: cfg.RateLimitConsents,
 	}
 	// Phase 2 v2.0 RBAC: authzCache is owned by wire.Services and gates the
 	// /businesses/{id}/... subtree via authz.RequireBusinessAccess inside

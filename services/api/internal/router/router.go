@@ -50,6 +50,7 @@ type RateLimits struct {
 	Login    int
 	Chat     int
 	HITL     int
+	Consents int // Phase 22 (T-22-08): per-minute budget for /auth/consents + /users/me/consents/pdn/withdraw
 }
 
 // Handlers encapsulates all HTTP handlers
@@ -197,10 +198,18 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// Phase 22 — re-consent + withdraw + list. Always reachable
 			// (D-30 precedent — right-to-erasure / right-to-withdraw
 			// cannot be gated by verification or grace per 152-ФЗ Art. 21).
+			// T-22-08 mitigation: per-user rate limit on the two write
+			// endpoints (Redis-backed, scope="consents"). GET stays
+			// unthrottled — listing your own consents is non-mutating and
+			// already userID-scoped. Withdrawal triggers the 30-day
+			// deletion flow per D-13, so abuse is naturally self-limiting,
+			// but the budget guards against accidental client retry loops.
 			if handlers.Consents != nil {
-				r.Post("/auth/consents", handlers.Consents.Reconsent)
+				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Consents, time.Minute, "consents")).
+					Post("/auth/consents", handlers.Consents.Reconsent)
 				r.Get("/users/me/consents", handlers.Consents.ListMine)
-				r.Post("/users/me/consents/pdn/withdraw", handlers.Consents.WithdrawPDN)
+				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Consents, time.Minute, "consents")).
+					Post("/users/me/consents/pdn/withdraw", handlers.Consents.WithdrawPDN)
 			}
 		})
 

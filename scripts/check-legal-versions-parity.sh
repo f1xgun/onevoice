@@ -65,4 +65,64 @@ if [[ ${#MISMATCH[@]} -gt 0 ]]; then
   exit 1
 fi
 
+# T-22F-12 mitigation — RU/EN policy frontmatter parity.
+# D-09 declares the Russian text the legal source-of-truth; the EN translation
+# is "for convenience". When a policy is bumped, both *.ru.md AND *.en.md
+# frontmatter must move together — otherwise users on /?locale=en see a stale
+# `version`/`effective_from` while the server happily accepts the RU value.
+# This catches the bump-one-forget-the-other class.
+CONTENT_DIR="$REPO_ROOT/services/frontend/content/legal"
+declare -a CONTENT_MISMATCH=()
+extract_md_field() {
+  # Read frontmatter field value. Frontmatter is the block between the first
+  # pair of `---` lines at top of file. Avoids dragging in YAML deps.
+  local file="$1"
+  local field="$2"
+  awk -v f="$field" '
+    /^---$/ { fm++; next }
+    fm == 1 && $0 ~ "^" f ":" {
+      sub("^" f ":[[:space:]]*", "")
+      gsub(/^["'"'"']|["'"'"']$/, "")
+      print
+      exit
+    }
+  ' "$file"
+}
+for slug in tos privacy consent terms; do
+  RU="$CONTENT_DIR/${slug}.ru.md"
+  EN="$CONTENT_DIR/${slug}.en.md"
+  # Skip slugs that don't have both locale files (e.g., tos isn't a content
+  # slug — TOS uses terms.{ru,en}.md). Existence-skip is intentional: the
+  # contract is "if both files exist, they must agree".
+  if [[ ! -f "$RU" || ! -f "$EN" ]]; then
+    continue
+  fi
+  for field in version effective_from; do
+    RU_VAL="$(extract_md_field "$RU" "$field")"
+    EN_VAL="$(extract_md_field "$EN" "$field")"
+    if [[ -z "$RU_VAL" ]]; then
+      echo "FAIL: ${slug}.ru.md missing frontmatter field '${field}'" >&2
+      exit 1
+    fi
+    if [[ -z "$EN_VAL" ]]; then
+      echo "FAIL: ${slug}.en.md missing frontmatter field '${field}'" >&2
+      exit 1
+    fi
+    if [[ "$RU_VAL" != "$EN_VAL" ]]; then
+      CONTENT_MISMATCH+=("${slug}.{ru,en}.md ${field}: ru='$RU_VAL' en='$EN_VAL'")
+    fi
+  done
+done
+
+if [[ ${#CONTENT_MISMATCH[@]} -gt 0 ]]; then
+  echo "FAIL: legal policy MD frontmatter drift between RU (source-of-truth) and EN:" >&2
+  for m in "${CONTENT_MISMATCH[@]}"; do
+    echo "  $m" >&2
+  done
+  echo >&2
+  echo "D-09 mandates RU/EN move together. Translate the new Russian body and bump the EN frontmatter in the same commit." >&2
+  exit 1
+fi
+
 echo "OK: pkg/legalconfig and services/frontend/lib/legal versions match (tos/privacy/pdn)"
+echo "OK: RU/EN frontmatter (version + effective_from) matches across privacy/terms/consent"
