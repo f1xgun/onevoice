@@ -30,7 +30,11 @@ import { Label } from '@/components/ui/label';
 import { FieldError } from '@/components/ui/field-error';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
-import { deleteAccount, type DeletionAccountError, type SoleOwnerBusiness } from '@/lib/api/account';
+import {
+  deleteAccount,
+  type DeletionAccountError,
+  type SoleOwnerBusiness,
+} from '@/lib/api/account';
 import { SoleOwnerBlockedModal } from './SoleOwnerBlockedModal';
 
 interface DeleteConfirmModalProps {
@@ -39,6 +43,13 @@ interface DeleteConfirmModalProps {
 }
 
 const MIN_PASSWORD_LEN = 8;
+const DELETION_GRACE_DAYS = 30;
+const HOURS_PER_DAY = 24;
+const MINUTES_PER_HOUR = 60;
+const SECONDS_PER_MINUTE = 60;
+const MS_PER_SECOND = 1000;
+const DELETION_GRACE_MS =
+  DELETION_GRACE_DAYS * HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MS_PER_SECOND;
 
 export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalProps) {
   const t = useTranslations('account.deletion.confirmModal');
@@ -55,7 +66,7 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
   // now + 30 days. We render the date locally rather than round-tripping
   // because the user hasn't submitted yet; the backend computes the
   // authoritative date when DELETE returns.
-  const deletionDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const deletionDate = new Date(Date.now() + DELETION_GRACE_MS);
   const dateLabel = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'ru-RU', {
     day: 'numeric',
     month: 'long',
@@ -137,7 +148,7 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
               placeholder={t('passwordPlaceholder')}
               disabled={submitting}
             />
-            {fieldError ? <FieldError message={fieldError} /> : null}
+            {fieldError ? <FieldError>{fieldError}</FieldError> : null}
           </div>
 
           <AlertDialogFooter>
@@ -151,10 +162,7 @@ export function DeleteConfirmModal({ open, onOpenChange }: DeleteConfirmModalPro
                 void handleSubmit();
               }}
             >
-              <Button
-                variant="danger"
-                disabled={submitting || password.length < MIN_PASSWORD_LEN}
-              >
+              <Button variant="danger" disabled={submitting || password.length < MIN_PASSWORD_LEN}>
                 {submitting ? t('submitting') : t('cta')}
               </Button>
             </AlertDialogAction>

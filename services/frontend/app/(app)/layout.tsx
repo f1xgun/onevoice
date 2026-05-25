@@ -200,6 +200,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               tabIndex={-1}
               className="min-h-0 flex-1 overflow-y-auto bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             >
+              <DeletionGraceBanner />
               <VerificationBanner />
               {children}
             </main>

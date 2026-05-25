@@ -25,6 +25,8 @@ import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+const HTTP_GONE = 410;
+
 export function DeletionGraceBanner() {
   const t = useTranslations('account.deletion');
   const locale = useLocale();
@@ -48,16 +50,15 @@ export function DeletionGraceBanner() {
       window.location.reload();
     } catch (e) {
       const err = e as DeletionAccountError;
-      if (err.code === 'deletion_too_old' || err.status === 410) {
+      if (err.code === 'deletion_too_old' || err.status === HTTP_GONE) {
         toast({ description: t('errors.tooOld'), variant: 'destructive' });
         // Session is effectively dead — bounce to login.
         window.location.href = '/login';
         return;
       }
       toast({
-        description: err.code === 'origin_not_allowed'
-          ? t('errors.originNotAllowed')
-          : t('errors.tooOld'),
+        description:
+          err.code === 'origin_not_allowed' ? t('errors.originNotAllowed') : t('errors.tooOld'),
         variant: 'destructive',
       });
       setSubmitting(false);
@@ -69,15 +70,13 @@ export function DeletionGraceBanner() {
       role="alert"
       className={cn(
         'sticky top-0 z-40 w-full',
-        'border-b border-[var(--ov-danger)]/30',
+        'border-[var(--ov-danger)]/30 border-b',
         'bg-[var(--ov-danger-soft)] text-[var(--ov-danger)]',
         'px-4 py-3 md:px-6'
       )}
     >
       <div className="mx-auto flex max-w-7xl flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <p className="text-[15px] leading-[1.55]">
-          {t('graceBanner', { date: dateLabel })}
-        </p>
+        <p className="text-[15px] leading-[1.55]">{t('graceBanner', { date: dateLabel })}</p>
         <Button
           variant="accent"
           size="sm"
