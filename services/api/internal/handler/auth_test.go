@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
 // testJWTSecret is a 32-byte stub secret used by handler tests to satisfy
@@ -32,6 +33,18 @@ type MockUserService struct {
 
 func (m *MockUserService) Register(ctx context.Context, email, password string) (*domain.User, error) {
 	args := m.Called(ctx, email, password)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+// RegisterWithContext — Phase 22 atomic-Register entry point. Tests
+// that don't care about the consent payload may continue to mock
+// Register; tests that exercise /auth/register's new consent flow
+// mock this method explicitly.
+func (m *MockUserService) RegisterWithContext(ctx context.Context, email, password string, regCtx service.RegistrationContext) (*domain.User, error) {
+	args := m.Called(ctx, email, password, regCtx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -87,9 +100,9 @@ func TestRegister(t *testing.T) {
 	}{
 		{
 			name:        "successful registration",
-			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
 			mockSetup: func(m *MockUserService) {
-				m.On("Register", mock.Anything, "user@example.com", "password123").
+				m.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 					Return(&domain.User{
 						ID:        uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 						Email:     "user@example.com",
@@ -173,9 +186,9 @@ func TestRegister(t *testing.T) {
 		},
 		{
 			name:        "user already exists",
-			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
 			mockSetup: func(m *MockUserService) {
-				m.On("Register", mock.Anything, "user@example.com", "password123").
+				m.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 					Return(nil, domain.ErrUserExists)
 			},
 			wantStatus: http.StatusConflict,
@@ -194,9 +207,9 @@ func TestRegister(t *testing.T) {
 		},
 		{
 			name:        "internal server error",
-			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`,
 			mockSetup: func(m *MockUserService) {
-				m.On("Register", mock.Anything, "user@example.com", "password123").
+				m.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 					Return(nil, errors.New("database connection failed"))
 			},
 			wantStatus: http.StatusInternalServerError,
@@ -204,6 +217,35 @@ func TestRegister(t *testing.T) {
 				body := w.Body.String()
 				assert.Contains(t, body, `"error":"internal server error"`)
 				assert.NotContains(t, body, "database") // Should not leak internal details
+			},
+		},
+		{
+			// Phase 22 / D-15, D-16: missing consent payload → 400 consent_required.
+			name:        "phase 22 consent missing",
+			requestBody: `{"email":"user@example.com","password":"password123"}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"code":"consent_required"`)
+				assert.Contains(t, body, `"tos"`)
+				assert.Contains(t, body, `"privacy"`)
+				assert.Contains(t, body, `"pdn"`)
+			},
+		},
+		{
+			// Phase 22 / D-15: stale single slug → 400 with missing listing it.
+			name:        "phase 22 stale pdn version",
+			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v0.9"}}`,
+			mockSetup:   func(m *MockUserService) {},
+			wantStatus:  http.StatusBadRequest,
+			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
+				body := w.Body.String()
+				assert.Contains(t, body, `"code":"consent_required"`)
+				assert.Contains(t, body, `"pdn"`)
+				// only pdn is stale — tos + privacy should NOT appear in missing.
+				assert.NotContains(t, body, `"tos"`)
+				assert.NotContains(t, body, `"privacy"`)
 			},
 		},
 	}
@@ -825,7 +867,7 @@ func TestSecureCookies(t *testing.T) {
 
 func TestRegister_AutoLoginFailure(t *testing.T) {
 	mockService := new(MockUserService)
-	mockService.On("Register", mock.Anything, "user@example.com", "password123").
+	mockService.On("RegisterWithContext", mock.Anything, "user@example.com", "password123", mock.AnythingOfType("service.RegistrationContext")).
 		Return(&domain.User{
 			ID:    uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
 			Email: "user@example.com",
@@ -835,7 +877,7 @@ func TestRegister_AutoLoginFailure(t *testing.T) {
 
 	handler, _ := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"user@example.com","password":"password123"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v1.0"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 

@@ -1000,10 +1000,10 @@ func (f *fakeRegisterUserExt) CreateInTx(_ context.Context, _ pgx.Tx, u *domain.
 }
 
 type fakeConsentInserter struct {
-	insertCnt        int
-	lastPurpose      string
-	lastPolicy       string
-	insertErr        error
+	insertCnt   int
+	lastPurpose string
+	lastPolicy  string
+	insertErr   error
 }
 
 func (f *fakeConsentInserter) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, purpose, policy string) error {

@@ -263,6 +263,21 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		userDeletionHandler = handler.NewUserDeletionHandler(svcs.AccountDeletion, cfg.CORSAllowedOrigins)
 	}
 
+	// Phase 22 (LEGAL-01..06): /auth/consents + /users/me/consents +
+	// /users/me/consents/pdn/withdraw. The handler needs the
+	// ConsentService for write paths + the UserConsents repo for the
+	// GET list path. CORS-allowed origins back the Origin-header
+	// CSRF check on the two write endpoints (T-22-01 mitigation).
+	var consentsHandler *handler.ConsentsHandler
+	if svcs.Consent != nil {
+		consentsHandler = handler.NewConsentsHandler(svcs.Consent, repos.UserConsents, cfg.CORSAllowedOrigins)
+	}
+	// Phase 22: inject the ConsentDiffer into the auth handler so /auth/me
+	// populates requiresReconsent. Always wired when svcs.Consent is set.
+	if svcs.Consent != nil {
+		authHandler.SetConsentDiffer(svcs.Consent)
+	}
+
 	return &router.Handlers{
 		Auth:          authHandler,
 		Business:      businessHandler,
@@ -292,6 +307,8 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		AuditLog: auditLogHandler,
 		// Phase 21-04 (ACCT-03): DELETE /users/me + POST /users/me/restore.
 		UserDeletion: userDeletionHandler,
+		// Phase 22 (LEGAL-01..06): /auth/consents + /users/me/consents + .../pdn/withdraw.
+		Consents: consentsHandler,
 		// Telemetry handler is zero-dep; constructed inline.
 		Telemetry: &handler.TelemetryHandler{},
 	}, nil

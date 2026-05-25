@@ -37,9 +37,29 @@ const (
 	passwordMaxLen = 72
 )
 
+// RegistrationContext carries the per-request context needed by the
+// Phase 22 atomic-Register flow. The handler builds this from the HTTP
+// request (clientIP + UserAgent + the validated consents body) and
+// passes it through RegisterWithContext.
+//
+// When Policies is empty OR consentService isn't wired (legacy /
+// test path), the user.Register fallback runs and inserts a single
+// 'service_operation' consent row to keep the Phase 21 invariant alive
+// for environments that haven't been upgraded yet.
+type RegistrationContext struct {
+	IP        string
+	UserAgent string
+	Policies  []PolicyAccepted
+}
+
 // UserService defines the interface for user-related operations
 type UserService interface {
 	Register(ctx context.Context, email, password string) (*domain.User, error)
+	// RegisterWithContext is the Phase 22 atomic-Register entry point
+	// (D-17). The handler uses this; the legacy Register stays for
+	// tests / pre-Phase-22 deploys. When consentService is not wired,
+	// RegisterWithContext degrades to the legacy single-INSERT flow.
+	RegisterWithContext(ctx context.Context, email, password string, regCtx RegistrationContext) (*domain.User, error)
 	Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error)
 	RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error)
 	Logout(ctx context.Context, refreshToken string) error
@@ -65,11 +85,16 @@ type userService struct {
 	// When ALL are set, Register opens a tx, CreateInTx + user_consents
 	// INSERT + email_verification_tokens INSERT + email_outbox enqueue
 	// commit atomically.
-	registerPool     RegisterTxPool             // *pgxpool.Pool by structural typing
-	registerUserRepo RegisterUserExt            // *repository.UserResetExtAdapter
-	registerConsents ConsentInserter            // *repository.UserConsentsRepository
-	registerVerify   RegisterVerifyIssuer       // *service.EmailVerificationService
-	registerAudit    audit.Logger               // for ConsentRecorded audit row
+	registerPool     RegisterTxPool       // *pgxpool.Pool by structural typing
+	registerUserRepo RegisterUserExt      // *repository.UserResetExtAdapter
+	registerConsents ConsentInserter      // *repository.UserConsentsRepository (legacy single-INSERT path)
+	registerVerify   RegisterVerifyIssuer // *service.EmailVerificationService
+	registerAudit    audit.Logger         // for ConsentRecorded audit row (legacy path)
+
+	// Phase 22 (LEGAL-01..06 / D-17). When non-nil, RegisterWithContext
+	// uses RecordRegistrationConsents (3× UpsertConsent + tx-aware audit
+	// row) instead of the Phase 21 single 'service_operation' INSERT.
+	registerConsentSvc *ConsentService
 }
 
 // RegisterTxPool is the slice of *pgxpool.Pool that Register needs.
@@ -113,6 +138,15 @@ func (s *userService) SetRegisterCollaborators(
 	s.registerConsents = consents
 	s.registerVerify = verify
 	s.registerAudit = auditLogger
+}
+
+// SetRegisterConsentService wires the Phase 22 (LEGAL-01..06 / D-17)
+// ConsentService into Register. When set, RegisterWithContext writes
+// THREE user_consents rows (tos, privacy, pdn) in the same tx as the
+// user row + verify token + outbox enqueue. The legacy single
+// 'service_operation' INSERT path stays available when this is nil.
+func (s *userService) SetRegisterConsentService(consentSvc *ConsentService) {
+	s.registerConsentSvc = consentSvc
 }
 
 // Compile-time check that userService implements UserService
@@ -217,6 +251,79 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 	}
 
 	return sanitizeUser(user), nil
+}
+
+// RegisterWithContext is the Phase 22 atomic-Register entry point
+// (LEGAL-01..06 / D-17). When the Phase 22 ConsentService is wired
+// (SetRegisterConsentService called from wire/services.go), writes
+// THREE user_consents rows at the build's currentVersion in the SAME
+// pgx.Tx as the user row + email_verification_tokens INSERT + outbox
+// enqueue. Audit row written synchronously inside the tx (D-28).
+//
+// When consentSvc is nil (e.g. tests not wiring it), falls back to the
+// Phase 21 single 'service_operation' INSERT path so the Phase 21
+// behavior stays intact.
+//
+// The handler (auth.Register) is responsible for validating the
+// submitted policy versions match legalconfig.CurrentVersion BEFORE
+// calling this. RegisterWithContext only trusts that the versions in
+// regCtx.Policies are already current.
+func (s *userService) RegisterWithContext(ctx context.Context, email, password string, regCtx RegistrationContext) (*domain.User, error) {
+	// Validate email
+	if err := validateEmail(email); err != nil {
+		return nil, err
+	}
+	// Validate password
+	if err := validatePassword(password); err != nil {
+		return nil, err
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+
+	user := &domain.User{
+		ID:           uuid.New(),
+		Email:        email,
+		PasswordHash: string(passwordHash),
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	// Phase 22 atomic path: all writes in one tx, including 3× consent UPSERTs.
+	if s.registerPool != nil && s.registerUserRepo != nil && s.registerVerify != nil && s.registerConsentSvc != nil {
+		tx, err := s.registerPool.Begin(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("register begin tx: %w", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		if err := s.registerUserRepo.CreateInTx(ctx, tx, user); err != nil {
+			if errors.Is(err, domain.ErrUserExists) {
+				return nil, err
+			}
+			return nil, fmt.Errorf("register create user tx: %w", err)
+		}
+		// Phase 22 / D-17: 3× UpsertConsent (tos, privacy, pdn) +
+		// tx-aware audit row via LogConsentRecordedTx — all inside the
+		// same tx as the user row + verify token + outbox enqueue.
+		if err := s.registerConsentSvc.RecordRegistrationConsents(ctx, tx, user.ID, regCtx.IP, regCtx.UserAgent, regCtx.Policies); err != nil {
+			return nil, fmt.Errorf("record registration consents: %w", err)
+		}
+		// D-17: issue verify token + enqueue email in the same tx.
+		if err := s.registerVerify.IssueAndEnqueueTx(ctx, tx, user.ID, user.Email); err != nil {
+			return nil, fmt.Errorf("register issue verify: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("register commit: %w", err)
+		}
+		return sanitizeUser(user), nil
+	}
+
+	// Fallback to Phase 21 (single service_operation INSERT) path — the
+	// existing Register implementation is the canonical legacy path.
+	return s.Register(ctx, email, password)
 }
 
 // Login authenticates user and issues access and refresh tokens
