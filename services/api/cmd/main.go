@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/f1xgun/onevoice/pkg/health"
+	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
@@ -44,6 +45,28 @@ func main() {
 
 func run(log *slog.Logger, cfg *config.Config) error {
 	log.Info("starting onevoice api server")
+
+	// Phase 22 M-04 (T-22D-02 enforcement): refuse to start when LEGAL_*
+	// env vars are still placeholder AND the operator explicitly opted into
+	// strict mode via LEGAL_ENFORCE=strict (production deploys per
+	// docs/runbook-launch-readiness.md §6). Non-strict (dev/local) just
+	// warns once — the API still boots so contributors can run it without
+	// real ИНН + entity. Without this gate, the runbook's «HARD block» on
+	// placeholder values is documentation-only and the API happily renders
+	// «[Юридическое лицо — будет обновлено]» to real users.
+	entity := legalconfig.Load()
+	if entity.IsPlaceholder() {
+		if os.Getenv("LEGAL_ENFORCE") == "strict" {
+			log.Error("legalconfig: LEGAL_* env vars still placeholder under LEGAL_ENFORCE=strict — refusing to start",
+				"name_is_placeholder", entity.Name == legalconfig.PlaceholderName || entity.Name == "",
+				"inn_empty", entity.INN == "",
+				"address_empty", entity.Address == "",
+				"email_pdn_is_placeholder", entity.EmailPDN == legalconfig.PlaceholderEmail || entity.EmailPDN == "",
+			)
+			return fmt.Errorf("legalconfig: production startup blocked — set LEGAL_ENTITY_NAME, LEGAL_INN, LEGAL_ADDRESS, LEGAL_EMAIL_PDN per docs/runbook-launch-readiness.md §6")
+		}
+		log.Warn("legalconfig: LEGAL_* env vars not fully configured — running with placeholder values (dev/staging only). Set LEGAL_ENFORCE=strict in production.")
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

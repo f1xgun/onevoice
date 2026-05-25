@@ -587,6 +587,16 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("auth/me: diff against current consents failed", "userID", userID, "err", derr)
 		} else if diff != nil {
 			resp.RequiresReconsent = diff
+			// Phase 22 T-22F-04 mitigation (per 22-SECURITY.md): record that
+			// the ReConsentModal will be shown to this user. Without this row,
+			// a user can later claim "I never saw the modal" and audit_logs
+			// will not contradict them. Fire-and-forget — the audit Logger
+			// spawns its own goroutine, so failure here cannot 500 /auth/me.
+			slugs := make([]string, 0, len(diff.Policies))
+			for _, p := range diff.Policies {
+				slugs = append(slugs, p.Slug)
+			}
+			audit.LogConsentReconsentRequired(r.Context(), h.audit, userID, slugs, legalconfig.TOSVersion)
 		}
 	}
 
