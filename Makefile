@@ -1,5 +1,6 @@
 .PHONY: help build run test test-all test-frontend test-a11y test-coverage test-integration
 .PHONY: lint lint-rbac lint-urls lint-frontend lint-migrations lint-all fmt fmt-fix docs-check
+.PHONY: check-legal-versions check-legal-versions-parity
 .PHONY: migrate-up migrate-down migrate-create db-seed verify-rbac-backfill
 .PHONY: up down logs restart restart-service docker-up docker-down docker-logs docker-clean
 .PHONY: clean certs
@@ -123,7 +124,21 @@ lint-migrations: ## Verify migration parity (no duplicate versions, paired up/do
 	@echo "Checking migration parity..."
 	@./scripts/check-migrations-parity.sh
 
-lint-all: lint lint-rbac lint-urls lint-frontend lint-migrations docs-check ## Run all linters (Go + RBAC drift + URL check + frontend + migration parity + docs)
+# Phase 22-03 — Asserts pkg/legalconfig/versions.go and
+# services/frontend/lib/legal/versions.ts carry IDENTICAL version strings
+# for tos / privacy / pdn. Drift causes 409 version_mismatch loops or
+# accepted-with-wrong-version audit rows. Wired into lint-all so a PR
+# bumping the Go const without the TS const (or vice versa) fails CI.
+check-legal-versions-parity: ## Verify pkg/legalconfig and frontend/lib/legal version constants match
+	@echo "Checking legal version parity..."
+	@bash scripts/check-legal-versions-parity.sh
+
+# Alias for the parity target (operator-friendly short name referenced
+# by docs/runbook-launch-readiness.md §6 and the .env.example launch-gate
+# comment block).
+check-legal-versions: check-legal-versions-parity ## Alias for check-legal-versions-parity
+
+lint-all: lint lint-rbac lint-urls lint-frontend lint-migrations check-legal-versions-parity docs-check ## Run all linters (Go + RBAC drift + URL check + frontend + migration parity + legal version parity + docs)
 
 docs-check: ## Fail if docs reference tool names absent from Go code
 	@./scripts/check-doc-tool-drift.sh
