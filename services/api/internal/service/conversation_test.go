@@ -91,6 +91,12 @@ func (s *stubConversationRepo) ScopedConversationIDs(_ context.Context, _, _ str
 	return nil, nil
 }
 
+// MongoConversationsCleanup stub — Phase 21-04 hard-delete sweeper interface.
+// Tests in this file don't exercise the cleanup path; default to (0, nil).
+func (s *stubConversationRepo) MongoConversationsCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // stubMessageRepo captures the system note appended by MoveToProject and
 // serves a preloaded message list for OpenChat tests via the Messages
 // field.
