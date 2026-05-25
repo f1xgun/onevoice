@@ -3,6 +3,7 @@ go 1.25.0
 use (
 	./pkg
 	./pkg/audit
+	./pkg/email
 	./services/agent-google-business
 	./services/agent-telegram
 	./services/agent-vk

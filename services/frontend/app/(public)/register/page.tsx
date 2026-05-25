@@ -15,17 +15,30 @@ import { queryClient } from '@/lib/queryClient';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { createRegisterSchema, type RegisterInput } from '@/lib/schemas';
+import { TOS_VERSION, PRIVACY_VERSION, PDN_VERSION } from '@/lib/legal/versions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AuthShell } from '@/components/auth/AuthShell';
+import { ConsentCheckboxes } from '@/components/auth/ConsentCheckboxes';
 import { MonoLabel } from '@/components/ui/mono-label';
+
+// Phase 22-02 (D-15): zod schema field identifiers for the two
+// required-consent checkboxes. Constants (not inline literals) so the
+// i18next no-literal-string lint rule isn't false-tripped — these are
+// schema keys, not user-facing copy.
+const ACCEPT_TOS_PRIVACY_FIELD = 'acceptTosPrivacy' as const;
+const ACCEPT_PDN_FIELD = 'acceptPdn' as const;
 
 export default function RegisterPage() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
   const tReg = useTranslations('auth.register');
   const tValidation = useTranslations('validation');
+  // Phase 22-02 (D-16): the consent_required toast lives in the new
+  // 'register.errors' namespace ("Мы обновили документы — пожалуйста,
+  // перезагрузите страницу и подтвердите новые версии согласий.").
+  const tRegErrors = useTranslations('register.errors');
   // Rebuild the schema whenever the validation translator identity changes
   // so a runtime locale switch swaps the Russian validation copy with the
   // English one (Phase B1).
@@ -34,17 +47,32 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    control,
+    formState: { errors, isSubmitting, isValid },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
+    // Phase 22-02 (D-15): submit button must stay disabled until BOTH
+    // checkboxes are ticked. mode:'onChange' so isValid reflects the
+    // current checkbox state in real time rather than only after a
+    // submit attempt.
+    mode: 'onChange',
   });
 
   const onSubmit = async (data: RegisterInput) => {
     try {
+      // Phase 22-02 (D-16): registration POST body carries the current
+      // policy versions from lib/legal/versions.ts. Backend cross-checks
+      // each slug against pkg/legalconfig.CurrentVersion(); on drift it
+      // returns 400 consent_required.
       const res = await api.post(API_PATHS.AUTH.REGISTER, {
         name: data.name,
         email: data.email,
         password: data.password,
+        consents: {
+          tos: TOS_VERSION,
+          privacy: PRIVACY_VERSION,
+          pdn: PDN_VERSION,
+        },
       });
       setAuth(res.data.user, res.data.accessToken);
       // Phase 5 / Phase 5 review HIGH-02: drop ALL session-scoped React Query
@@ -62,8 +90,17 @@ export default function RegisterPage() {
       router.push('/chat');
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
+      const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data
         ?.message;
+      // Phase 22-02 (D-16): 400 consent_required → toast prompting reload.
+      // Server saw a stale version string; the user's lib/legal/versions.ts
+      // is older than the build deployed mid-session. Reload re-fetches
+      // the latest version constants from the bundle.
+      if (status === HTTP_STATUS.BAD_REQUEST && code === 'consent_required') {
+        toast.error(tRegErrors('consentRequired'));
+        return;
+      }
       if (status === HTTP_STATUS.CONFLICT) {
         toast.error(tReg('emailExists'));
       } else {
@@ -142,7 +179,17 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        <Button type="submit" size="lg" className="mt-2 w-full" disabled={isSubmitting}>
+        {/* Phase 22-02 Surface D (D-15): two required-consent checkboxes
+            before the submit. Submit stays disabled until isValid (both
+            literal(true)). */}
+        <ConsentCheckboxes
+          control={control}
+          errors={errors}
+          tosName={ACCEPT_TOS_PRIVACY_FIELD}
+          pdnName={ACCEPT_PDN_FIELD}
+        />
+
+        <Button type="submit" size="lg" className="mt-2 w-full" disabled={isSubmitting || !isValid}>
           {isSubmitting ? tReg('submitting') : tReg('submit')}
         </Button>
 

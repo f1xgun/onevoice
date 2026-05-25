@@ -1,3 +1,4 @@
+-- Renumbered from 000009 to 000010 in Phase 20 (Plan 20-01) following rbac_cleanup renumber from 000008→000009.
 -- Phase A3 / i18n-readiness: persist the user's preferred UI locale on the
 -- users table so the frontend can sync cookie ↔ DB on login. Two valid values
 -- for now: 'ru' (default — back-compat) and 'en'. The CHECK constraint guards

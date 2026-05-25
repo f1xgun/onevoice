@@ -8,32 +8,53 @@ import (
 
 func TestActionConstants(t *testing.T) {
 	tests := map[string]string{
-		"rbac.role_granted":         ActionRoleGranted,
-		"rbac.member_removed":       ActionMemberRemoved,
-		"rbac.role_created":         ActionRoleCreated,
-		"rbac.role_updated":         ActionRoleUpdated,
-		"rbac.role_deleted":         ActionRoleDeleted,
-		"rbac.invitation_created":   ActionInvitationCreated,
-		"rbac.invitation_revoked":   ActionInvitationRevoked,
-		"rbac.invitation_accepted":  ActionInvitationAccepted,
-		"auth.login_success":        ActionLoginSuccess,
-		"auth.login_failed":         ActionLoginFailed,
-		"auth.logout":               ActionLogout,
-		"auth.password_changed":     ActionPasswordChanged,
-		"auth.user_registered":      ActionUserRegistered,
-		"integration.connected":     ActionIntegrationConnected,
-		"integration.disconnected":  ActionIntegrationDisconnected,
-		"integration.token_rotated": ActionIntegrationTokenRotated,
-		"business.created":          ActionBusinessCreated,
-		"business.updated":          ActionBusinessUpdated,
-		"project.created":           ActionProjectCreated,
-		"project.updated":           ActionProjectUpdated,
-		"project.deleted":           ActionProjectDeleted,
+		"rbac.role_granted":        ActionRoleGranted,
+		"rbac.member_removed":      ActionMemberRemoved,
+		"rbac.role_created":        ActionRoleCreated,
+		"rbac.role_updated":        ActionRoleUpdated,
+		"rbac.role_deleted":        ActionRoleDeleted,
+		"rbac.invitation_created":  ActionInvitationCreated,
+		"rbac.invitation_revoked":  ActionInvitationRevoked,
+		"rbac.invitation_accepted": ActionInvitationAccepted,
+		"auth.login_success":       ActionLoginSuccess,
+		"auth.login_failed":        ActionLoginFailed,
+		"auth.logout":              ActionLogout,
+		"auth.password_changed":    ActionPasswordChanged,
+		"auth.user_registered":     ActionUserRegistered,
+		// Phase 21b — Password reset (ACCT-01).
+		"auth.password_reset_requested":             ActionPasswordResetRequested,
+		"auth.password_reset_completed":             ActionPasswordResetCompleted,
+		"auth.password_reset_request_unknown_email": ActionPasswordResetUnknownEmail,
+		// Phase 21c — Email verification + soft-restrict (ACCT-02, D-42).
+		"auth.email_verification_link_viewed": ActionEmailVerificationLinkViewed,
+		"auth.email_verified":                 ActionEmailVerified,
+		"auth.email_changed_before_verify":    ActionEmailChangedBeforeVerify,
+		"auth.consent_recorded":               ActionConsentRecorded,
+		// Phase 21-04 — Account deletion lifecycle (ACCT-03, D-42).
+		"account.deletion_requested": ActionDeletionRequested,
+		"account.deletion_canceled":  ActionDeletionCanceled,
+		"account.sole_owner_blocked": ActionSoleOwnerBlocked,
+		"account.user_self_deleted":  ActionUserSelfDeleted,
+		// Phase 22 — Legal compliance scaffolding (LEGAL-01..06, D-27).
+		// ActionConsentRecorded above is reused with new purposes
+		// (tos/privacy/pdn) — same constant, new Details.Purposes.
+		"auth.consent_reconsent_required":    ActionConsentReconsentRequired,
+		"auth.consent_reconsented":           ActionConsentReconsented,
+		"auth.consent_withdrawn":             ActionConsentWithdrawn,
+		"auth.consent_policy_version_bumped": ActionConsentPolicyVersionBumped,
+		"integration.connected":              ActionIntegrationConnected,
+		"integration.disconnected":           ActionIntegrationDisconnected,
+		"integration.token_rotated":          ActionIntegrationTokenRotated,
+		"business.created":                   ActionBusinessCreated,
+		"business.updated":                   ActionBusinessUpdated,
+		"project.created":                    ActionProjectCreated,
+		"project.updated":                    ActionProjectUpdated,
+		"project.deleted":                    ActionProjectDeleted,
 	}
 	for expected, got := range tests {
 		require.Equal(t, expected, got)
 	}
-	require.Len(t, tests, 21, "expected 21 audit actions (auth.token_refreshed excluded per Assumption A2)")
+	require.Len(t, tests, 36, "expected 36 audit actions (21 base + 3 Phase 21b password reset + 4 Phase 21c verify + 4 Phase 21-04 deletion + 4 Phase 22 consent)")
 }
 
 func TestActionCategory(t *testing.T) {
@@ -45,6 +66,11 @@ func TestActionCategory(t *testing.T) {
 	require.Equal(t, "integration", ActionCategory(ActionIntegrationTokenRotated))
 	require.Equal(t, "business", ActionCategory(ActionBusinessCreated))
 	require.Equal(t, "project", ActionCategory(ActionProjectDeleted))
+	// Phase 21-04 (account.* lifecycle).
+	require.Equal(t, "account", ActionCategory(ActionDeletionRequested))
+	require.Equal(t, "account", ActionCategory(ActionDeletionCanceled))
+	require.Equal(t, "account", ActionCategory(ActionSoleOwnerBlocked))
+	require.Equal(t, "account", ActionCategory(ActionUserSelfDeleted))
 	require.Equal(t, "other", ActionCategory("unknown.thing"))
 	require.Equal(t, "other", ActionCategory("no_dot"))
 	require.Equal(t, "other", ActionCategory(""))

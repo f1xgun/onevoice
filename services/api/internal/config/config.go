@@ -147,9 +147,31 @@ type Config struct {
 	RateLimitLogin    int
 	RateLimitChat     int
 	RateLimitHITL     int
+	RateLimitConsents int // Phase 22 T-22-08 — per-minute budget for /auth/consents + /users/me/consents/pdn/withdraw
 
 	// Shutdown
 	ShutdownTimeout time.Duration
+
+	// Phase 21a — transactional email infrastructure.
+	// UnisenderAPIKey: empty = NoopSender (dev/local); set = UnisenderSender.
+	// Operators: see docs/runbook-email-dns.md for the DKIM/SPF/DMARC
+	// pre-req that gates production sends.
+	UnisenderAPIKey    string
+	UnisenderFromEmail string        // default "noreply@onevoice.app"
+	UnisenderFromName  string        // default "OneVoice"
+	OutboxPollInterval time.Duration // default 5s
+	OutboxMaxAttempts  int           // default 5
+
+	// Phase 22 — Legal entity (152-ФЗ Art. 14 data controller). D-19, D-20.
+	// When any of these is a placeholder, /legal/* renders fallback copy
+	// and the footer emits console.warn (D-22 — must not crash). Phase
+	// 22-03 launch checklist (D-29) verifies non-placeholder values in
+	// production. Frontend reads the mirrored NEXT_PUBLIC_LEGAL_* vars
+	// (see .env.example) so the data-controller block renders SSR-safe.
+	LegalEntityName string
+	LegalINN        string
+	LegalAddress    string
+	LegalEmailPDN   string
 
 	// Auto-titler. TitlerModel falls back to LLMModel when unset;
 	// when both are unset the titler is disabled (graceful no-op —
@@ -233,8 +255,25 @@ func Load() (*Config, error) {
 		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
 		RateLimitChat:     getEnvInt("RATE_LIMIT_CHAT", 10),
 		RateLimitHITL:     getEnvInt("RATE_LIMIT_HITL", 10),
+		RateLimitConsents: getEnvInt("RATE_LIMIT_CONSENTS", 10), // Phase 22 T-22-08; 10/min/user is generous (genuine retry budget, blocks UPSERT thrash)
 
 		ShutdownTimeout: shutdownTimeout,
+
+		// Phase 21a — transactional email infrastructure.
+		UnisenderAPIKey:    os.Getenv("UNISENDER_API_KEY"),
+		UnisenderFromEmail: getEnv("UNISENDER_FROM_EMAIL", "noreply@onevoice.app"),
+		UnisenderFromName:  getEnv("UNISENDER_FROM_NAME", "OneVoice"),
+		OutboxPollInterval: getEnvDuration("OUTBOX_POLL_INTERVAL", 5*time.Second), //nolint:mnd // env-driven default
+		OutboxMaxAttempts:  getEnvInt("OUTBOX_MAX_ATTEMPTS", 5),                   //nolint:mnd // env-driven default
+
+		// Phase 22 — Legal entity (152-ФЗ Art. 14 data controller). D-19,
+		// D-20, D-21, D-22. Defaults render the «[Юридическое лицо — будет
+		// обновлено]» / «—» stubs so the API boots without operator
+		// configuration; pre-launch checklist (D-29) catches placeholders.
+		LegalEntityName: getEnv("LEGAL_ENTITY_NAME", "[Юридическое лицо — будет обновлено]"),
+		LegalINN:        os.Getenv("LEGAL_INN"),
+		LegalAddress:    os.Getenv("LEGAL_ADDRESS"),
+		LegalEmailPDN:   getEnv("LEGAL_EMAIL_PDN", "—"),
 	}
 
 	// Auto-titler env loading. Mirrors

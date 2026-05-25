@@ -109,6 +109,108 @@ type UserRegisteredDetails struct {
 	UserAgent string `json:"user_agent"`
 }
 
+// EmailVerifiedDetails — Phase 21-03 / ACCT-02. No old/new state; the
+// AuditLog.UserEmailAtEvent snapshot captures the address that was just
+// verified.
+type EmailVerifiedDetails struct {
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+// EmailChangedBeforeVerifyDetails captures both addresses across the
+// pre-verification change (D-21). OldEmail is the pre-change value; the
+// AuditLog.UserEmailAtEvent snapshot already reflects OldEmail (the row is
+// written BEFORE the users.email column flips).
+type EmailChangedBeforeVerifyDetails struct {
+	OldEmail  string `json:"old_email"`
+	NewEmail  string `json:"new_email"`
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+// ConsentRecordedDetails — Phase 21-03 / D-40, extended in Phase 22.
+//
+// Phase 21 wrote a single Purpose ("service_operation") per Register.
+// Phase 22 reuses the same action but writes a single audit row per
+// Register with the three new purposes packed into Purposes
+// ["tos","privacy","pdn"], plus the forensic fields (D-18). The single-
+// purpose `Purpose` field stays for backward compatibility with the
+// Phase 21 audit rows already on disk and for future single-slug
+// reconsent rows.
+type ConsentRecordedDetails struct {
+	Purpose       string   `json:"purpose,omitempty"`  // legacy single-purpose (Phase 21).
+	Purposes      []string `json:"purposes,omitempty"` // Phase 22: e.g. ["tos","privacy","pdn"].
+	PolicyVersion string   `json:"policy_version"`
+	PolicySHA256  string   `json:"policy_sha256,omitempty"` // Phase 22 (D-08).
+	IP            string   `json:"ip,omitempty"`            // Phase 22 (D-18).
+	UserAgent     string   `json:"user_agent,omitempty"`    // Phase 22 (D-18).
+}
+
+// ConsentReconsentRequiredDetails — Phase 22 (D-27). Logged when the
+// /auth/me handler decides DiffAgainstCurrent returned at least one
+// stale policy and the frontend will show the modal.
+type ConsentReconsentRequiredDetails struct {
+	Policies       []string `json:"policies"`        // slugs needing re-consent.
+	CurrentVersion string   `json:"current_version"` // the build's currentVersion at decision time.
+}
+
+// ConsentReconsentedDetails — Phase 22 (D-27). Logged inside the same
+// pgx.Tx as the UPSERTs (D-28) when POST /auth/consents succeeds.
+type ConsentReconsentedDetails struct {
+	Purposes    []string `json:"purposes"`
+	FromVersion string   `json:"from_version,omitempty"`
+	ToVersion   string   `json:"to_version"`
+	IP          string   `json:"ip,omitempty"`
+	UserAgent   string   `json:"user_agent,omitempty"`
+}
+
+// ConsentWithdrawnDetails — Phase 22 (D-27). Logged inside the same
+// pgx.Tx as the user_consents.withdrawn_at UPDATE.
+type ConsentWithdrawnDetails struct {
+	Purpose   string `json:"purpose"` // "pdn" (and bundles tos+privacy implicitly per D-14).
+	IP        string `json:"ip,omitempty"`
+	UserAgent string `json:"user_agent,omitempty"`
+}
+
+// ConsentPolicyVersionBumpedDetails — Phase 22 (D-27). System event —
+// no UserID. Logged once per environment per bump (the operator pushes
+// new policy text, restarts the API; first /auth/me decides the bump
+// happened and emits this row).
+type ConsentPolicyVersionBumpedDetails struct {
+	Slug        string `json:"slug"`
+	FromVersion string `json:"from_version"`
+	ToVersion   string `json:"to_version"`
+	SHA256      string `json:"sha256"`
+}
+
+// ---- account.* (Phase 21-04 deletion) -----------------------------------
+
+// DeletionRequestedDetails — Phase 21-04 / ACCT-03. BusinessesOrphaned
+// captures the list of business IDs that would be orphaned by the
+// deletion. v1.4 always emits [] because the handler returns 409 for
+// any sole-owner case (the user must transfer ownership first); v1.5
+// ownership-transfer may permit non-empty deletions.
+type DeletionRequestedDetails struct {
+	IP                 string      `json:"ip"`
+	UserAgent          string      `json:"user_agent"`
+	BusinessesOrphaned []uuid.UUID `json:"businesses_orphaned"`
+}
+
+// DeletionCanceledDetails — Phase 21-04 / ACCT-03.
+type DeletionCanceledDetails struct {
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+// SoleOwnerBlockedDetails — Phase 21-04 / T-DEL-02. Records the IDs of
+// businesses the user is the sole OWNER of so support can see which
+// businesses blocked which deletion attempts.
+type SoleOwnerBlockedDetails struct {
+	IP          string      `json:"ip"`
+	UserAgent   string      `json:"user_agent"`
+	BusinessIDs []uuid.UUID `json:"business_ids"`
+}
+
 // ---- integration --------------------------------------------------------
 
 // IntegrationConnectedDetails — NEVER store the access/refresh token or any

@@ -106,6 +106,11 @@ func (r *titlerConvRepo) ScopedConversationIDs(_ context.Context, _, _ string, _
 	return nil, nil
 }
 
+// MongoConversationsCleanup stub — Phase 21-04.
+func (r *titlerConvRepo) MongoConversationsCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 func (r *titlerConvRepo) TransitionToAutoPending(_ context.Context, _ string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

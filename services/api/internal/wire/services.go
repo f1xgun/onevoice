@@ -2,14 +2,19 @@ package wire
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
+	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
@@ -65,6 +70,30 @@ type Services struct {
 	// (wiring done in Plan 19-04). Safe to call from any goroutine; never
 	// blocks the request path.
 	AuditLogger audit.Logger
+
+	// PasswordReset is the Phase 21b (ACCT-01) password-reset service.
+	// Wired into AuthHandler via SetPasswordResetService in
+	// wire/handlers.go.
+	PasswordReset *service.PasswordResetService
+
+	// EmailVerification is the Phase 21-03 (ACCT-02) email-verification +
+	// soft-restrict service. Wired into AuthHandler via
+	// SetEmailVerificationService AND into UserService.Register via the
+	// shared IssueAndEnqueueTx helper (D-17: token + outbox enqueue must
+	// commit in the same tx as the user_consents INSERT + user row).
+	EmailVerification *service.EmailVerificationService
+
+	// AccountDeletion is the Phase 21-04 (ACCT-03 / ACCT-05) account-
+	// deletion service. Wired into UserDeletionHandler via the
+	// NewUserDeletionHandler constructor + into cmd/main.go via the
+	// runHardDeleteSweeper / runDeletionWarningSweeper goroutines.
+	AccountDeletion *service.AccountDeletionService
+
+	// Consent is the Phase 22 (LEGAL-01..06) consent orchestration
+	// service. Wired into ConsentsHandler + into UserService.Register
+	// via SetRegisterConsentService so the 3-row UPSERT runs inside the
+	// same tx as the user row.
+	Consent *service.ConsentService
 
 	// reviewSyncerCancel is captured so Close() can stop the background
 	// ticker goroutine. nil when ReviewSyncer is nil.
@@ -124,7 +153,13 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		// across every service / handler that records security-sensitive
 		// mutations. Async + bounded retry + metric-on-failure live inside
 		// pkg/audit; consumers just call AuditLogger.Log(ctx, entry).
-		AuditLogger: audit.NewLogger(repos.AuditLog),
+		//
+		// Phase 21-03 / ACCT-06: NewLoggerWithResolver injects a tiny
+		// adapter wrapping UserRepository.GetByID so loggerImpl.write can
+		// snapshot user_email_at_event BEFORE the INSERT. After Phase 21-04
+		// hard-deletes a user, the audit row's FK becomes NULL but the
+		// email survives for 152-ФЗ forensic queries.
+		AuditLogger: audit.NewLoggerWithResolver(repos.AuditLog, userResolverAdapter{repo: repos.User}),
 	}
 
 	// Auto-titler LLM Router wiring.
@@ -305,6 +340,90 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		orchClient,
 	)
 
+	// Phase 21b (ACCT-01) password reset service. Composes the
+	// PasswordResetTokenRepository + the tx-aware user repo adapter +
+	// the email outbox (Phase 21a) + the shared audit logger + Redis
+	// (rate-limit + post-commit refresh-token wipe).
+	s.PasswordReset = service.NewPasswordResetService(
+		h.PG,
+		repos.PasswordResetToken,
+		repos.UserResetExt,
+		repos.EmailOutbox,
+		s.AuditLogger,
+		h.Redis,
+	)
+
+	// Phase 21-03 (ACCT-02) email verification service. Composes the
+	// EmailVerificationTokenRepository + UserResetExt adapter (reused —
+	// satisfies service.VerifyUserRepo by structural typing) + outbox
+	// + Redis (1/min + 5/hr rate limit) + PublicURL for the link.
+	s.EmailVerification = service.NewEmailVerificationService(
+		h.PG,
+		repos.EmailVerificationToken,
+		repos.UserResetExt,
+		repos.EmailOutbox,
+		h.Redis,
+		cfg.PublicURL,
+	)
+
+	// Phase 21-04 (ACCT-03 / ACCT-05): account-deletion service. Composes
+	// the UserResetExt adapter (deletion methods land there alongside
+	// password-reset + verify) + the conversation repo (Mongo cleanup
+	// post-hard-delete) + the outbox (confirmation + T-7 warning) + the
+	// shared audit logger.
+	s.AccountDeletion = service.NewAccountDeletionService(
+		h.PG,
+		repos.UserResetExt,
+		repos.Conversation,
+		repos.EmailOutbox,
+		s.AuditLogger,
+	)
+
+	// Phase 22 (LEGAL-01..06 / D-17): ConsentService orchestrates the
+	// three consent flows (Register UPSERTs, ReConsent modal, PDN
+	// withdrawal). currentVersion closure plumbs legalconfig.* version
+	// constants; sha256 stays empty until Phase 22-02 wires the policy
+	// loader (the frontend computes it).
+	s.Consent = service.NewConsentService(
+		h.PG,
+		repos.UserConsents,
+		s.AccountDeletion,
+		s.AuditLogger,
+		func(slug legalconfig.PolicySlug) (string, string) {
+			return legalconfig.CurrentVersion(slug), ""
+		},
+	)
+
+	// Phase 21-03 (ACCT-02 / D-17, D-40): wire the Register tx-flow
+	// collaborators so user_consents + email_verification_tokens +
+	// email_outbox commit atomically with the user row. The setter
+	// pattern keeps NewUserService's signature stable across phases.
+	if registerSetter, ok := s.User.(interface {
+		SetRegisterCollaborators(
+			pool service.RegisterTxPool,
+			userRepo service.RegisterUserExt,
+			consents service.ConsentInserter,
+			verify service.RegisterVerifyIssuer,
+			auditLogger audit.Logger,
+		)
+	}); ok {
+		registerSetter.SetRegisterCollaborators(
+			h.PG,
+			repos.UserResetExt,
+			repos.UserConsents,
+			s.EmailVerification,
+			s.AuditLogger,
+		)
+	}
+	// Phase 22 (LEGAL-01..06 / D-17): wire ConsentService into Register
+	// so RegisterWithContext writes 3 consent rows in the same tx as
+	// the user row + verify token + outbox enqueue.
+	if consentSetter, ok := s.User.(interface {
+		SetRegisterConsentService(consentSvc *service.ConsentService)
+	}); ok {
+		consentSetter.SetRegisterConsentService(s.Consent)
+	}
+
 	return s, nil
 }
 
@@ -312,3 +431,27 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 // approval-validation lookups. 5 minutes balances responsiveness to
 // orchestrator restarts against load on /internal/tools.
 const toolsCacheTTL = 5 * time.Minute
+
+// userResolverAdapter implements pkg/audit.UserResolver by delegating to
+// domain.UserRepository.GetByID. Defined locally in wire/ (not pkg/audit)
+// to keep pkg/audit free of the services/api/repository import.
+//
+// On lookup failure the adapter returns ("", err) — pkg/audit.loggerImpl
+// catches the error, slog.Warns, and leaves UserEmailAtEvent empty so the
+// audit row still writes (Phase 21-03 / ACCT-06 D-disposition).
+type userResolverAdapter struct {
+	repo domain.UserRepository
+}
+
+// EmailByID returns the user's current email; "" + nil on user-not-found
+// so a deleted-mid-flight user doesn't surface as a resolver error.
+func (a userResolverAdapter) EmailByID(ctx context.Context, userID uuid.UUID) (string, error) {
+	u, err := a.repo.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return u.Email, nil
+}
