@@ -30,6 +30,89 @@ var (
 	ErrTokenNotFound = errors.New("token not found")
 )
 
+// Password reset errors — Phase 21b (ACCT-01).
+//
+// PITFALLS §1.1: the repository ConsumeAtomic statement collapses
+// (expired | already-consumed | unknown-hash) → ErrResetTokenInvalid so the
+// caller cannot distinguish failure modes. ErrResetTokenExpired is kept
+// as a separate sentinel for the (currently unused) future "look up first,
+// then mutate" path where the expiry IS surfaceable; the live atomic-consume
+// path always returns ErrResetTokenInvalid.
+//
+// ErrResetTokenCollision fires only on the astronomically improbable case
+// where 256-bit entropy produces a duplicate of an existing hash. The
+// service may retry on this sentinel.
+var (
+	ErrResetTokenInvalid   = errors.New("password reset token invalid")
+	ErrResetTokenExpired   = errors.New("password reset token expired")
+	ErrResetTokenCollision = errors.New("password reset token hash collision")
+)
+
+// Email verification errors — Phase 21c (ACCT-02).
+//
+// Same PITFALLS §1.1 collapse as password reset: the atomic-consume
+// statement in EmailVerificationTokenRepository.ConsumeAtomic merges
+// (expired | already-consumed | unknown-hash) into ErrVerifyTokenInvalid.
+// The handler surfaces verify_token_invalid / verify_token_expired by
+// running a follow-up "is this row present but expired?" lookup ONLY on
+// the invalid branch — kept distinct so the verify-email page can show
+// the right copy ("link просрочена" vs "link недействительна").
+//
+// ErrAlreadyVerified is the guard returned by RequestResend and
+// ChangeEmailBeforeVerify when the user already has email_verified=TRUE.
+// Maps to HTTP 403 email_already_verified.
+//
+// ErrResendThrottled signals the Redis 1/min or 5/hr ceiling was hit.
+// Maps to HTTP 429 verify_resend_throttled.
+//
+// ErrEmailTaken signals the new email in PATCH /auth/email-before-verify
+// is already used by another user. Maps to HTTP 409 email_taken. Bonus:
+// also returned by UpdateEmailInTx on UNIQUE-violation race.
+var (
+	ErrVerifyTokenInvalid = errors.New("email verification token invalid")
+	ErrAlreadyVerified    = errors.New("email already verified")
+	ErrResendThrottled    = errors.New("email verification resend throttled")
+	ErrEmailTaken         = errors.New("email already used by another account")
+)
+
+// Consent errors — Phase 22 (LEGAL-01..06).
+//
+// ErrConsentMissing fires when /auth/consents or POST /auth/register is
+// submitted without all three slugs (tos, privacy, pdn) at the current
+// build version. Handler maps to HTTP 400 with body
+// {"code":"consent_required","missing":[...]}.
+//
+// ErrConsentVersionMismatch fires when the submitted policy version no
+// longer matches legalconfig.CurrentVersion(slug) — i.e. the operator
+// bumped the policy mid-review. Handler maps to HTTP 409 with body
+// {"code":"version_mismatch","currentVersion":"..."}. The frontend
+// recovers by reloading the modal against the new currentVersion.
+var (
+	ErrConsentMissing         = errors.New("consent missing or stale version")
+	ErrConsentVersionMismatch = errors.New("consent version mismatch (operator bumped policy mid-review)")
+)
+
+// Account deletion errors — Phase 21-04 (ACCT-03).
+//
+// ErrDeletionAlreadyPending fires when a second DELETE /users/me comes in
+// while the user already has deletion_requested_at set and not canceled.
+// Handler maps to HTTP 423 with body code=account_pending_deletion.
+//
+// ErrNoDeletionPending fires when POST /users/me/restore is called on a
+// user with no pending deletion. Handler maps to HTTP 404
+// no_deletion_pending.
+//
+// ErrAlreadyPurged fires when POST /users/me/restore is called past the
+// 30-day grace window — the underlying repository UPDATE matched zero
+// rows because either (a) the row was hard-deleted by the sweeper or
+// (b) the deletion_requested_at boundary was crossed before this call.
+// Handler maps to HTTP 410 deletion_too_old.
+var (
+	ErrDeletionAlreadyPending = errors.New("account deletion already pending")
+	ErrNoDeletionPending      = errors.New("no account deletion pending")
+	ErrAlreadyPurged          = errors.New("account deletion grace expired")
+)
+
 // Conversation errors
 var (
 	ErrConversationNotFound = errors.New("conversation not found")

@@ -129,6 +129,12 @@ func (m *MockConversationRepository) ScopedConversationIDs(_ context.Context, _,
 	return nil, nil
 }
 
+// MongoConversationsCleanup stub — Phase 21-04. Handler tests don't
+// exercise the hard-delete sweeper path so the no-op is sufficient.
+func (m *MockConversationRepository) MongoConversationsCleanup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // MockPendingToolCallRepository is a minimal test double for the
 // PendingToolCallRepository. Only the methods actually called by the handler
 // under test need a *Func field; others return nil / empty slices.

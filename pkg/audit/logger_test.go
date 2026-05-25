@@ -108,3 +108,88 @@ func TestLogger_TerminalFailureIncrementsMetric(t *testing.T) {
 	after := testutil.ToFloat64(auditLogWriteFailuresTotal.WithLabelValues("auth"))
 	require.Equal(t, before+1, after, "expected one failure increment on auth category")
 }
+
+// --- Phase 21-03 / ACCT-06 — UserResolver populates user_email_at_event ---
+
+// fakeUserResolver is a programmable stub for the EmailByID lookup. If
+// errResult is non-nil it returns ("", errResult); otherwise (emailResult, nil).
+type fakeUserResolver struct {
+	emailResult string
+	errResult   error
+	calls       atomic.Int32
+}
+
+func (f *fakeUserResolver) EmailByID(_ context.Context, _ uuid.UUID) (string, error) {
+	f.calls.Add(1)
+	if f.errResult != nil {
+		return "", f.errResult
+	}
+	return f.emailResult, nil
+}
+
+func TestLogger_WithResolver_PopulatesEmail(t *testing.T) {
+	repo := &stubRepo{}
+	resolver := &fakeUserResolver{emailResult: "alice@example.com"}
+	l := NewLoggerWithResolver(repo, resolver)
+	uid := uuid.New()
+	l.Log(context.Background(), Entry{
+		Action:   ActionLoginSuccess,
+		Resource: "user",
+		UserID:   &uid,
+	})
+	require.Equal(t, 1, waitForInserts(repo, 1, 2*time.Second))
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Equal(t, "alice@example.com", repo.inserted[0].UserEmailAtEvent)
+	require.Equal(t, int32(1), resolver.calls.Load())
+}
+
+func TestLogger_WithResolver_NilUserIDLeavesEmailEmpty(t *testing.T) {
+	repo := &stubRepo{}
+	resolver := &fakeUserResolver{emailResult: "should-not-be-used@x.com"}
+	l := NewLoggerWithResolver(repo, resolver)
+	l.Log(context.Background(), Entry{
+		Action:   ActionLoginFailed, // typical nil-userID entry
+		Resource: "user",
+	})
+	require.Equal(t, 1, waitForInserts(repo, 1, 2*time.Second))
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Equal(t, "", repo.inserted[0].UserEmailAtEvent)
+	require.Equal(t, int32(0), resolver.calls.Load(), "resolver MUST NOT be called when UserID is nil")
+}
+
+func TestLogger_WithResolver_ErrorStillWritesRow(t *testing.T) {
+	repo := &stubRepo{}
+	resolver := &fakeUserResolver{errResult: errors.New("simulated resolver error")}
+	l := NewLoggerWithResolver(repo, resolver)
+	uid := uuid.New()
+	l.Log(context.Background(), Entry{
+		Action:   ActionEmailVerified,
+		Resource: "user",
+		UserID:   &uid,
+	})
+	require.Equal(t, 1, waitForInserts(repo, 1, 2*time.Second))
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Equal(t, "", repo.inserted[0].UserEmailAtEvent, "resolver error must leave email empty but still write the row")
+	require.Equal(t, int32(1), resolver.calls.Load())
+}
+
+func TestLogger_NewLoggerKeepsNopResolver(t *testing.T) {
+	// Backward-compatibility gate: NewLogger (no resolver) must continue to
+	// produce empty UserEmailAtEvent without calling any resolver. Defends
+	// against a future refactor accidentally requiring resolver injection.
+	repo := &stubRepo{}
+	l := NewLogger(repo)
+	uid := uuid.New()
+	l.Log(context.Background(), Entry{
+		Action:   ActionLoginSuccess,
+		Resource: "user",
+		UserID:   &uid,
+	})
+	require.Equal(t, 1, waitForInserts(repo, 1, 2*time.Second))
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Equal(t, "", repo.inserted[0].UserEmailAtEvent)
+}

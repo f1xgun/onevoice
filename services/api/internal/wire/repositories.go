@@ -25,6 +25,33 @@ type Repos struct {
 	Invitation         domain.InvitationRepository
 	AuditLog           domain.AuditLogRepository
 
+	// Phase 21a email_outbox repository. Concrete pointer (not a
+	// domain interface) because the worker and downstream Phase 21
+	// services depend on the methods directly — there is no need for
+	// the indirection.
+	EmailOutbox *repository.EmailOutboxRepository
+
+	// Phase 21b (ACCT-01) password_reset_tokens repository. Concrete
+	// pointer for the same reason as EmailOutbox — only the
+	// PasswordResetService depends on it and the methods are used
+	// directly without an intervening interface.
+	PasswordResetToken *repository.PasswordResetTokenRepository
+
+	// Phase 21b: tx-aware password setter, exposed separately from the
+	// domain.UserRepository interface (which stays tx-free). The concrete
+	// *repository.UserResetExtAdapter satisfies service.UserRepoForReset
+	// AND service.VerifyUserRepo by structural typing — wire/services.go
+	// passes this value directly into NewPasswordResetService and
+	// NewEmailVerificationService.
+	UserResetExt *repository.UserResetExtAdapter
+
+	// Phase 21-03 (ACCT-02) email_verification_tokens repository.
+	EmailVerificationToken *repository.EmailVerificationTokenRepository
+
+	// Phase 21-03 (ACCT-02 / D-40) user_consents repository — stub for
+	// Phase 22 to extend.
+	UserConsents *repository.UserConsentsRepository
+
 	// MembershipLoader backs the authz cache (Phase 2 v2.0 RBAC). Same
 	// query surface as BusinessMembership but exposed as the typed
 	// authz.MembershipLoader interface to keep the cache decoupled.
@@ -37,19 +64,24 @@ type Repos struct {
 // without failure modes (Mongo-backed repos).
 func Repositories(h *DBHandles) *Repos {
 	return &Repos{
-		User:               repository.NewUserRepository(h.PG),
-		Business:           repository.NewBusinessRepository(h.PG),
-		BusinessMembership: repository.NewBusinessMembershipRepository(h.PG),
-		Role:               repository.NewRoleRepository(h.PG),
-		Integration:        repository.NewIntegrationRepository(h.PG),
-		Conversation:       repository.NewConversationRepository(h.Mongo),
-		Message:            repository.NewMessageRepository(h.Mongo),
-		Review:             repository.NewReviewRepository(h.Mongo),
-		Post:               repository.NewPostRepository(h.Mongo),
-		AgentTask:          repository.NewAgentTaskRepository(h.Mongo),
-		Project:            repository.NewProjectRepository(h.PG, h.Mongo),
-		Invitation:         repository.NewInvitationRepository(h.PG),
-		AuditLog:           repository.NewAuditLogRepository(h.PG),
-		MembershipLoader:   repository.NewMembershipLoader(h.PG),
+		User:                   repository.NewUserRepository(h.PG),
+		Business:               repository.NewBusinessRepository(h.PG),
+		BusinessMembership:     repository.NewBusinessMembershipRepository(h.PG),
+		Role:                   repository.NewRoleRepository(h.PG),
+		Integration:            repository.NewIntegrationRepository(h.PG),
+		Conversation:           repository.NewConversationRepository(h.Mongo),
+		Message:                repository.NewMessageRepository(h.Mongo),
+		Review:                 repository.NewReviewRepository(h.Mongo),
+		Post:                   repository.NewPostRepository(h.Mongo),
+		AgentTask:              repository.NewAgentTaskRepository(h.Mongo),
+		Project:                repository.NewProjectRepository(h.PG, h.Mongo),
+		Invitation:             repository.NewInvitationRepository(h.PG),
+		AuditLog:               repository.NewAuditLogRepository(h.PG),
+		EmailOutbox:            repository.NewEmailOutboxRepository(h.PG),
+		PasswordResetToken:     repository.NewPasswordResetTokenRepository(h.PG),
+		UserResetExt:           repository.NewUserResetExtAdapter(h.PG),
+		EmailVerificationToken: repository.NewEmailVerificationTokenRepository(h.PG),
+		UserConsents:           repository.NewUserConsentsRepository(h.PG),
+		MembershipLoader:       repository.NewMembershipLoader(h.PG),
 	}
 }

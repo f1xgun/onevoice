@@ -1,3 +1,4 @@
+-- Renumbered from 000008 to 000009 in Phase 20 (Plan 20-01) to resolve duplicate-version collision with 000008_audit_log_infrastructure.
 -- Phase 6 v2.0 RBAC cleanup: drop legacy single-owner-per-business artifacts.
 -- Phase 1 (migration 000007) seeded business_members; every business now has
 -- at least one owner member (verified by `make verify-rbac-backfill`). This

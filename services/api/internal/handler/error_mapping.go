@@ -8,7 +8,70 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
+
+// passwordResetErrorBody is the JSON shape returned by writePasswordResetError.
+// Discriminates failure modes via `code` so the frontend's error_mapping.ts
+// (services/frontend/lib/error_mapping.ts) can render the correct RU/EN
+// copy + CTA per 21-CROSS-PLAN-CONTRACTS.md §4.
+type passwordResetErrorBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// EmailVerificationErrorStatus maps Phase 21-03 verification public codes
+// to canonical HTTP status codes. Mirrors the frontend
+// services/frontend/lib/error_mapping.ts COPY map (21-CROSS-PLAN-CONTRACTS
+// §4) so the backend and frontend agree on the wire shape.
+//
+// Exposed as a func (not a map literal) so the constants reference
+// http.Status* directly — easier to grep + harder to type-mismatch.
+func EmailVerificationErrorStatus(code string) int {
+	switch code {
+	case "email_verification_required":
+		return http.StatusPreconditionFailed // 412
+	case "verify_token_invalid", "verify_token_expired":
+		return http.StatusBadRequest // 400
+	case "verify_resend_throttled":
+		return http.StatusTooManyRequests // 429
+	case "email_already_verified":
+		return http.StatusForbidden // 403
+	case "email_taken":
+		return http.StatusConflict // 409
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// writePasswordResetError maps the three Phase 21b sentinels to public
+// {code, message} responses. PITFALLS §1.1: expired / unknown / consumed
+// all collapse to reset_token_invalid by the time we reach here — the
+// reset_token_expired code is reserved for a future "look up first,
+// then mutate" service path and is mapped so the frontend already learns
+// it (matches 21-CROSS-PLAN-CONTRACTS.md §4 COPY map).
+func writePasswordResetError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, service.ErrResetTokenInvalid):
+		writeJSON(w, http.StatusBadRequest, passwordResetErrorBody{
+			Code:    "reset_token_invalid",
+			Message: "Ссылка недействительна. Запросите новую.",
+		})
+	case errors.Is(err, domain.ErrResetTokenExpired):
+		writeJSON(w, http.StatusBadRequest, passwordResetErrorBody{
+			Code:    "reset_token_expired",
+			Message: "Ссылка просрочена. Запросите новую.",
+		})
+	case errors.Is(err, service.ErrPasswordTooWeak):
+		writeJSON(w, http.StatusBadRequest, passwordResetErrorBody{
+			Code:    "password_too_weak",
+			Message: "Пароль слишком короткий — минимум 8 символов.",
+		})
+	default:
+		slog.ErrorContext(r.Context(), "password reset handler error", "error", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
+	}
+}
 
 // writeAuthzInvariantError centralizes the authz sentinel -> HTTP mapping
 // shared by members.go, roles.go, and any future Phase 5 role-mutation

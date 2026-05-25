@@ -3,10 +3,12 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // mustMarshal is the internal helper used by every builder. Failure means
@@ -175,6 +177,203 @@ func LogUserRegistered(ctx context.Context, l Logger, userID uuid.UUID, email, i
 		UserID:   &userID,
 		Details:  mustMarshal(UserRegisteredDetails{Email: email, IP: ip, UserAgent: userAgent}),
 	})
+}
+
+// LogEmailVerified records a successful email verification (POST
+// /auth/verify-email/confirm). Phase 21-03 / ACCT-02. No old/new state in
+// details — the AuditLog.UserEmailAtEvent snapshot already captures the
+// address that was just verified.
+func LogEmailVerified(ctx context.Context, l Logger, userID uuid.UUID, ip, userAgent string) {
+	l.Log(ctx, Entry{
+		Action:   ActionEmailVerified,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(EmailVerifiedDetails{IP: ip, UserAgent: userAgent}),
+	})
+}
+
+// LogEmailChangedBeforeVerify records PATCH /auth/email-before-verify (D-21).
+// Captures both the OLD email (was: pre-change address) and the NEW email
+// so the forensic trail shows email churn during the unverified window.
+func LogEmailChangedBeforeVerify(ctx context.Context, l Logger, userID uuid.UUID, oldEmail, newEmail, ip, userAgent string) {
+	l.Log(ctx, Entry{
+		Action:   ActionEmailChangedBeforeVerify,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(EmailChangedBeforeVerifyDetails{OldEmail: oldEmail, NewEmail: newEmail, IP: ip, UserAgent: userAgent}),
+	})
+}
+
+// LogConsentRecorded records the user_consents INSERT that runs alongside
+// Register (D-40). Phase 21-03 / ACCT-02. Phase 22 EXTENDS this with the
+// tx-aware sister builder LogConsentRecordedTx below; this fire-and-forget
+// variant is kept for the legacy single-purpose path.
+func LogConsentRecorded(ctx context.Context, l Logger, userID uuid.UUID, purpose, policyVersion string) {
+	l.Log(ctx, Entry{
+		Action:   ActionConsentRecorded,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(ConsentRecordedDetails{Purpose: purpose, PolicyVersion: policyVersion}),
+	})
+}
+
+// ---- Phase 22 consent builders (D-27, D-28) -----------------------------
+
+// LogConsentRecordedTx records the Register-flow consent INSERT inside
+// the caller's pgx.Tx. Mirrors LogUserSelfDeletedTx — the audit row
+// commits atomically with the user_consents UPSERTs so a rollback wipes
+// both (152-ФЗ forensic invariant per D-28).
+//
+// purposes packs the three slugs ["tos","privacy","pdn"]; policyVersion
+// is the build's current version at write time; policySHA256 may be
+// empty (frontend-computed; not plumbed server-side in v1.4).
+//
+// user_email_at_event is intentionally empty: Register tx doesn't have
+// the user resolver wired (the row doesn't exist yet at audit-write
+// time); for consent re-record + withdrawal the resolver path is also
+// unused because the audit row is tx-scoped not Logger-routed.
+func LogConsentRecordedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purposes []string, policyVersion, policySHA256, ip, userAgent string) error {
+	d, err := json.Marshal(ConsentRecordedDetails{
+		Purposes:      purposes,
+		PolicyVersion: policyVersion,
+		PolicySHA256:  policySHA256,
+		IP:            ip,
+		UserAgent:     userAgent,
+	})
+	if err != nil {
+		return fmt.Errorf("audit: marshal consent_recorded details: %w", err)
+	}
+	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
+	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
+	if _, err := tx.Exec(ctx, q, userID, "", ActionConsentRecorded, "user", d); err != nil {
+		return fmt.Errorf("audit: consent_recorded insert: %w", err)
+	}
+	return nil
+}
+
+// LogConsentReconsentedTx records POST /auth/consents inside the same tx
+// as the UPSERTs. fromVersion is the user's prior version (used for
+// timeline analysis); toVersion is the build's currentVersion.
+func LogConsentReconsentedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purposes []string, fromVersion, toVersion, ip, userAgent string) error {
+	d, err := json.Marshal(ConsentReconsentedDetails{
+		Purposes:    purposes,
+		FromVersion: fromVersion,
+		ToVersion:   toVersion,
+		IP:          ip,
+		UserAgent:   userAgent,
+	})
+	if err != nil {
+		return fmt.Errorf("audit: marshal consent_reconsented details: %w", err)
+	}
+	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
+	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
+	if _, err := tx.Exec(ctx, q, userID, "", ActionConsentReconsented, "user", d); err != nil {
+		return fmt.Errorf("audit: consent_reconsented insert: %w", err)
+	}
+	return nil
+}
+
+// LogConsentWithdrawnTx records POST /users/me/consents/pdn/withdraw
+// inside the user_consents.withdrawn_at UPDATE tx. purpose is "pdn"
+// (or "tos"/"privacy" if D-14 v1.5 ever differentiates; v1.4 always
+// withdraws via /pdn/withdraw and that triggers the deletion bundle).
+func LogConsentWithdrawnTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purpose, ip, userAgent string) error {
+	d, err := json.Marshal(ConsentWithdrawnDetails{
+		Purpose:   purpose,
+		IP:        ip,
+		UserAgent: userAgent,
+	})
+	if err != nil {
+		return fmt.Errorf("audit: marshal consent_withdrawn details: %w", err)
+	}
+	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
+	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
+	if _, err := tx.Exec(ctx, q, userID, "", ActionConsentWithdrawn, "user", d); err != nil {
+		return fmt.Errorf("audit: consent_withdrawn insert: %w", err)
+	}
+	return nil
+}
+
+// LogConsentReconsentRequired is fire-and-forget — emitted from /auth/me
+// when DiffAgainstCurrent reports stale policies. No tx (the request is
+// read-only). Helps support debug why a user is seeing the modal.
+func LogConsentReconsentRequired(ctx context.Context, l Logger, userID uuid.UUID, policies []string, currentVersion string) {
+	l.Log(ctx, Entry{
+		Action:   ActionConsentReconsentRequired,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(ConsentReconsentRequiredDetails{Policies: policies, CurrentVersion: currentVersion}),
+	})
+}
+
+// LogConsentPolicyVersionBumped is fire-and-forget system event with no
+// UserID. Emitted once per environment when the API detects a new
+// build's currentVersion exceeds the most-recent recorded one (Phase
+// 22-03 wires this; this plan only declares the builder).
+func LogConsentPolicyVersionBumped(ctx context.Context, l Logger, slug, fromVersion, toVersion, sha256 string) {
+	l.Log(ctx, Entry{
+		Action:   ActionConsentPolicyVersionBumped,
+		Resource: "policy",
+		UserID:   nil, // system event — no actor.
+		Details:  mustMarshal(ConsentPolicyVersionBumpedDetails{Slug: slug, FromVersion: fromVersion, ToVersion: toVersion, SHA256: sha256}),
+	})
+}
+
+// ---- account.* (Phase 21-04 deletion) -----------------------------------
+
+// LogDeletionRequested records account.deletion_requested when the user
+// soft-deletes their account via DELETE /users/me. orphanedBusinessIDs is
+// the list of businesses that would have been orphaned by this deletion
+// — currently always empty because the handler returns 409 for any
+// sole-owner case, but the field is recorded for forward-compatibility
+// with v1.5 ownership-transfer.
+func LogDeletionRequested(ctx context.Context, l Logger, userID uuid.UUID, ip, ua string, orphanedBusinessIDs []uuid.UUID) {
+	l.Log(ctx, Entry{
+		Action:   ActionDeletionRequested,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(DeletionRequestedDetails{IP: ip, UserAgent: ua, BusinessesOrphaned: orphanedBusinessIDs}),
+	})
+}
+
+// LogDeletionCanceled records account.deletion_canceled on POST
+// /users/me/restore within the 30-day grace window.
+func LogDeletionCanceled(ctx context.Context, l Logger, userID uuid.UUID, ip, ua string) {
+	l.Log(ctx, Entry{
+		Action:   ActionDeletionCanceled,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(DeletionCanceledDetails{IP: ip, UserAgent: ua}),
+	})
+}
+
+// LogSoleOwnerBlocked records account.sole_owner_blocked when DELETE
+// /users/me is rejected because the user is the sole OWNER of one or
+// more businesses. Telemetry-grade record of attempts the friendly 409
+// path rejected (T-DEL-02 mitigation visibility).
+func LogSoleOwnerBlocked(ctx context.Context, l Logger, userID uuid.UUID, ip, ua string, soleOwnerBusinessIDs []uuid.UUID) {
+	l.Log(ctx, Entry{
+		Action:   ActionSoleOwnerBlocked,
+		Resource: "user",
+		UserID:   &userID,
+		Details:  mustMarshal(SoleOwnerBlockedDetails{IP: ip, UserAgent: ua, BusinessIDs: soleOwnerBusinessIDs}),
+	})
+}
+
+// LogUserSelfDeletedTx is INTENTIONALLY called WITHIN the HardDelete PG
+// TX — caller passes the in-flight pgx.Tx so the audit insert is
+// atomic with the user row deletion. Signature differs from the other
+// builders (which go through the async Logger) because the audit row
+// MUST land before the DELETE so the FK SET NULL from 21-03 ACCT-06 has
+// somewhere to land + user_email_at_event preserves the email for
+// 152-ФЗ forensic queries.
+func LogUserSelfDeletedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, originalEmail string) error {
+	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
+	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
+	if _, err := tx.Exec(ctx, q, userID, originalEmail, ActionUserSelfDeleted, "user", []byte(`{}`)); err != nil {
+		return fmt.Errorf("audit: user_self_deleted insert: %w", err)
+	}
+	return nil
 }
 
 // ---- integration builders -----------------------------------------------

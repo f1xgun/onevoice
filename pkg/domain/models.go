@@ -12,14 +12,32 @@ type User struct {
 	Email        string    `json:"email" db:"email"`
 	PasswordHash string    `json:"-" db:"password_hash"`
 	// PreferredLocale is the user's chosen UI language ('ru' | 'en').
-	// Persisted in users.preferred_locale (migration 000008 — i18n Phase A3).
+	// Persisted in users.preferred_locale (migration 000010 prod / 000008 test — i18n Phase A3; renumbered in Phase 20 Plan 20-01).
 	// DB default 'ru'; CHECK constraint enforces the two-value enum. The frontend
 	// reads this on /auth/me to seed the locale cookie and writes it via
 	// PATCH /auth/locale. Snake-case json tag mirrors the DB column name so the
 	// existing /me response shape exposes it without a custom serializer.
-	PreferredLocale string    `json:"preferred_locale" db:"preferred_locale"`
-	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
+	PreferredLocale string `json:"preferred_locale" db:"preferred_locale"`
+	// EmailVerified — Phase 21-03 / ACCT-02 / D-19. JSON-hidden by default;
+	// the /auth/me handler surfaces it via a wrapper struct (MeResponse) so
+	// other endpoints listing users don't accidentally leak the flag.
+	EmailVerified bool `json:"-" db:"email_verified"`
+	// EmailVerifiedAt is set when the user POSTs the verify-email link.
+	// JSON-hidden — surfaced only via /auth/me's wrapper.
+	EmailVerifiedAt *time.Time `json:"-" db:"email_verified_at"`
+	// Phase 21-04 / ACCT-03: account-deletion lifecycle. All three are
+	// pointer-time.Time so they can be nil (the "no pending deletion" state).
+	// JSON-hidden — /auth/me exposes them via a typed accountDeletion field
+	// on MeResponse so other endpoints listing users don't accidentally
+	// leak them. GetByID / GetByEmail filter `deleted_at IS NULL` so a
+	// soft-deleted user becomes "not found" everywhere reads happen (D-41);
+	// use GetByIDIncludingDeleted when the deletion-aware code path needs to
+	// inspect these fields.
+	DeletedAt           *time.Time `json:"-" db:"deleted_at"`
+	DeletionRequestedAt *time.Time `json:"-" db:"deletion_requested_at"`
+	DeletionCanceledAt  *time.Time `json:"-" db:"deletion_canceled_at"`
+	CreatedAt           time.Time  `json:"createdAt" db:"created_at"`
+	UpdatedAt           time.Time  `json:"updatedAt" db:"updated_at"`
 }
 
 type Business struct {
@@ -89,7 +107,14 @@ type AuditLog struct {
 	Action     string          `json:"action" db:"action"`
 	Resource   string          `json:"resource" db:"resource"`
 	Details    json.RawMessage `json:"details" db:"details"`
-	CreatedAt  time.Time       `json:"createdAt" db:"created_at"`
+	// UserEmailAtEvent is the actor's email captured at write-time by
+	// pkg/audit/logger.go via a UserResolver lookup. Phase 21-03 / ACCT-06:
+	// after Phase 21-04's hard-delete fires, user_id may be NULL (FK SET
+	// NULL) but this column preserves identity so 152-ФЗ audit queries
+	// still resolve the actor. Empty string when UserID is nil OR the
+	// resolver returned an error (failure NEVER blocks the audit row).
+	UserEmailAtEvent string    `json:"userEmailAtEvent,omitempty" db:"user_email_at_event"`
+	CreatedAt        time.Time `json:"createdAt" db:"created_at"`
 }
 
 type RefreshToken struct {

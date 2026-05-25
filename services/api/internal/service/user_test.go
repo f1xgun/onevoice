@@ -9,6 +9,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,6 +36,17 @@ func (m *mockUserRepository) Create(ctx context.Context, user *domain.User) erro
 }
 
 func (m *mockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, id)
+	}
+	return nil, domain.ErrUserNotFound
+}
+
+// Phase 21-04: GetByIDIncludingDeleted satisfies the widened
+// domain.UserRepository interface. Reuses getByIDFunc when set so the
+// existing test cases continue to drive both the soft-delete-filtered
+// and the deletion-aware code paths.
+func (m *mockUserRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	if m.getByIDFunc != nil {
 		return m.getByIDFunc(ctx, id)
 	}
@@ -939,3 +951,148 @@ func TestGenerateTokens(t *testing.T) {
 		assert.Equal(t, tokenID, claims.TokenID)
 	})
 }
+
+// --- Phase 21-03 Register tx-flow ---------------------------------------
+
+// fakeRegisterTx is a minimal pgx.Tx double for tests that exercise the
+// Register tx-flow without bringing up Postgres. Only Begin / Commit /
+// Rollback semantics are tracked; queries are stubbed by the fake repos.
+type fakeRegisterPool struct {
+	beginErr  error
+	commitErr error
+	beginCnt  int
+	commitCnt int
+	rollCnt   int
+}
+
+func (f *fakeRegisterPool) Begin(_ context.Context) (pgx.Tx, error) {
+	f.beginCnt++
+	if f.beginErr != nil {
+		return nil, f.beginErr
+	}
+	return &fakeRegisterTx{owner: f}, nil
+}
+
+type fakeRegisterTx struct {
+	owner *fakeRegisterPool
+	pgx.Tx
+}
+
+func (t *fakeRegisterTx) Commit(_ context.Context) error {
+	t.owner.commitCnt++
+	return t.owner.commitErr
+}
+func (t *fakeRegisterTx) Rollback(_ context.Context) error {
+	t.owner.rollCnt++
+	return nil
+}
+
+type fakeRegisterUserExt struct {
+	createCnt int
+	createErr error
+	lastUser  *domain.User
+}
+
+func (f *fakeRegisterUserExt) CreateInTx(_ context.Context, _ pgx.Tx, u *domain.User) error {
+	f.createCnt++
+	f.lastUser = u
+	return f.createErr
+}
+
+type fakeConsentInserter struct {
+	insertCnt   int
+	lastPurpose string
+	lastPolicy  string
+	insertErr   error
+}
+
+func (f *fakeConsentInserter) Insert(_ context.Context, _ pgx.Tx, _ uuid.UUID, purpose, policy string) error {
+	f.insertCnt++
+	f.lastPurpose = purpose
+	f.lastPolicy = policy
+	return f.insertErr
+}
+
+type fakeVerifyIssuer struct {
+	issueCnt int
+	issueErr error
+	lastUID  uuid.UUID
+	lastMail string
+}
+
+func (f *fakeVerifyIssuer) IssueAndEnqueueTx(_ context.Context, _ pgx.Tx, uid uuid.UUID, mail string) error {
+	f.issueCnt++
+	f.lastUID = uid
+	f.lastMail = mail
+	return f.issueErr
+}
+
+func TestUserService_Register_TxFlow_AtomicSuccess(t *testing.T) {
+	ctx := context.Background()
+	redisClient, _ := setupRedis(t)
+	repo := &mockUserRepository{} // legacy path repo — should NOT be called
+
+	svc, err := NewUserService(repo, redisClient, "test-secret-must-be-32bytes-ok!!")
+	require.NoError(t, err)
+
+	pool := &fakeRegisterPool{}
+	userExt := &fakeRegisterUserExt{}
+	consents := &fakeConsentInserter{}
+	verify := &fakeVerifyIssuer{}
+
+	svc.(*userService).SetRegisterCollaborators(pool, userExt, consents, verify, nil)
+
+	user, err := svc.Register(ctx, "alice@example.com", "password123")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, "alice@example.com", user.Email)
+
+	// Tx lifecycle: 1 Begin + 1 Commit; no extra Rollback (commit was clean).
+	require.Equal(t, 1, pool.beginCnt)
+	require.Equal(t, 1, pool.commitCnt)
+
+	// All collaborators called exactly once.
+	require.Equal(t, 1, userExt.createCnt)
+	require.Equal(t, 1, consents.insertCnt)
+	require.Equal(t, 1, verify.issueCnt)
+
+	// Consent shape matches D-40.
+	require.Equal(t, "service_operation", consents.lastPurpose)
+	require.Equal(t, "pre-v22", consents.lastPolicy)
+
+	// Verify-issuer received the same email.
+	require.Equal(t, "alice@example.com", verify.lastMail)
+	require.Equal(t, user.ID, verify.lastUID)
+}
+
+func TestUserService_Register_TxFlow_VerifyFailureRollsBack(t *testing.T) {
+	ctx := context.Background()
+	redisClient, _ := setupRedis(t)
+	repo := &mockUserRepository{}
+
+	svc, err := NewUserService(repo, redisClient, "test-secret-must-be-32bytes-ok!!")
+	require.NoError(t, err)
+
+	pool := &fakeRegisterPool{}
+	userExt := &fakeRegisterUserExt{}
+	consents := &fakeConsentInserter{}
+	verify := &fakeVerifyIssuer{issueErr: assertSentinel("outbox enqueue blew up")}
+
+	svc.(*userService).SetRegisterCollaborators(pool, userExt, consents, verify, nil)
+
+	user, err := svc.Register(ctx, "alice@example.com", "password123")
+	require.Error(t, err)
+	require.Nil(t, user)
+
+	// User-create + consent-insert happened, but commit must NOT — the
+	// deferred Rollback fires (semantically the user row goes nowhere).
+	require.Equal(t, 1, pool.beginCnt)
+	require.Equal(t, 0, pool.commitCnt, "verify failure must short-circuit before commit")
+	require.GreaterOrEqual(t, pool.rollCnt, 1)
+}
+
+// assertSentinel is a tiny helper to produce an error value the test can
+// inspect without importing extra packages.
+type assertSentinel string
+
+func (e assertSentinel) Error() string { return string(e) }

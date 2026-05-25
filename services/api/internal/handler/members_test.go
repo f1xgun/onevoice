@@ -195,6 +195,13 @@ func (m *MockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	return args.Get(0).(*domain.User), args.Error(1)
 }
 
+// GetByIDIncludingDeleted stub — Phase 21-04. Handler tests for
+// members / invitations don't exercise the soft-delete path; route
+// through GetByID so existing testify expectations still match.
+func (m *MockUserRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	return m.GetByID(ctx, id)
+}
+
 func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	return nil, errors.New("not implemented")
 }

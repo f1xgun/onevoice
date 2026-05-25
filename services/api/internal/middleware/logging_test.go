@@ -121,3 +121,55 @@ func TestResponseWriter_WriteWithoutWriteHeader(t *testing.T) {
 	assert.Equal(t, 4, n)
 	assert.Equal(t, http.StatusOK, wrapped.status)
 }
+
+// --- Phase 21b: D-16 / PITFALLS §1.4 query-string scrubbing -----------
+
+// TestRequestLogger_StripsTokenFromConfirmPath asserts the access-log
+// belt-and-suspenders defense: requests to /auth/password-reset/confirm
+// must NEVER leak the ?token=… query string downstream — neither in
+// this logger's own output nor via the mutated r.URL.RawQuery the next
+// handler in the chain sees.
+func TestRequestLogger_StripsTokenFromConfirmPath(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	var rawQueryAtHandlerTime string
+	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Capture what the inner handler sees — RawQuery must already
+		// be scrubbed by the time we reach here.
+		rawQueryAtHandlerTime = r.URL.RawQuery
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest("POST", "/api/v1/auth/password-reset/confirm?token=secret123", http.NoBody)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusNoContent, rr.Code)
+	assert.NotContains(t, buf.String(), "secret123",
+		"access log must not surface the ?token=… fragment")
+	assert.Equal(t, "", rawQueryAtHandlerTime,
+		"downstream handler must observe an empty RawQuery for the confirm path")
+}
+
+// TestRequestLogger_PassThroughRawQueryForOtherPaths asserts the scrub
+// is path-scoped — unrelated requests' query strings stay intact for
+// the downstream handler chain (e.g. cursor pagination on /businesses).
+func TestRequestLogger_PassThroughRawQueryForOtherPaths(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	var observedRawQuery string
+	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observedRawQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/businesses?cursor=abc", http.NoBody)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "cursor=abc", observedRawQuery,
+		"non-reset paths must preserve their query string for downstream handlers")
+}
