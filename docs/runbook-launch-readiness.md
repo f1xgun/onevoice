@@ -1,8 +1,8 @@
-# OneVoice Launch Readiness — Pre-Deploy Checklist
+# Launch Readiness Runbook
 
-**Audience:** Operator deploying OneVoice to production.
-**Run frequency:** Every staging-deploy AND every production-deploy. CI does NOT replace this checklist — CI catches drift inside the codebase; the items below verify the running deployment against the operator's external commitments (DNS, РКН, env vars, mailbox routability).
-**Skip-blockers:** A failure in §6 (Legal compliance) is a HARD block — production deploy must not proceed. §3 (Database), §5 (Email), and §6 must all be GREEN before flipping the public DNS record.
+**Audience:** Operator (you). Walks the operator-side gates required before a production deploy.
+
+**Skip-blockers:** A failure in §6 (Legal compliance) is a HARD block — production deploy must not proceed. §3 (Database), §5 (Email), §6 (Legal compliance), and §7 (Operational hardening — Grafana) must all be GREEN before flipping the public DNS record.
 
 ## 1. Audience and scope
 
@@ -20,15 +20,19 @@ CI runs the codebase-side parity checks (`make lint-all` includes `check-legal-v
 
 - [ ] `migrate up` on a fresh DB reaches the latest version with no errors.
 - [ ] `bash scripts/check-migrations-parity.sh` exits 0 (no duplicate versions, every `.up.sql` has a paired `.down.sql`, prod/test counts match the documented divergence).
-- [ ] Backups are routinely produced — see §4 (deferred).
+- [ ] Backups are routinely produced — see §4 (Phase 23-03 backup + restore drill).
 - [ ] Phase 22-01 migrations applied: `000016_phase_22_user_consents_forensic.up.sql` AND `000017_phase_22_user_consents_backfill.up.sql` (in `migrations/postgres/`). Confirm by `psql -c "\d user_consents"` showing `withdrawn_at`, `ip`, `user_agent` columns.
 
-## 4. Backups
+## 4. Backups (Phase 23-03)
 
-Deferred to Phase 23.1 (per `.planning/milestones/v1.4-ROADMAP.md`). Placeholder until shipped:
+Backup + restore infrastructure ships in Phase 23-03 (restic + KMS-encrypted password + weekly CI drill). Pre-deploy gate:
 
-- [ ] *(deferred)* Backup schedule documented and tested.
-- [ ] *(deferred)* Restore drill performed within the last 90 days.
+- [ ] `RESTIC_PASSWORD_KMS_KEY_ID` + `RESTIC_PASSWORD_CIPHERTEXT` + `RESTIC_REPOSITORY` set in production env (see [docs/runbook-restore.md §1](runbook-restore.md) for KMS key + ciphertext provisioning).
+- [ ] Yandex Cloud KMS key + Object Storage bucket exist; backup container's service account has `kms.keys.decrypt` and `storage.editor` permissions.
+- [ ] One full backup-restore drill completed in the last 90 days against scratch PG+Mongo per [docs/runbook-restore.md §4](runbook-restore.md).
+- [ ] `pushgateway:9091/metrics | grep backup_last_success_timestamp` returns a recent timestamp.
+- [ ] Operator has the plaintext restic password saved in the password manager for disaster recovery (verifies WR-04 round-trip equality between operator-saved value and what the container reads from KMS).
+- [ ] Weekly `backup-restore-drill.yml` CI job is green (the `entrypoint-roundtrip` sub-job is the regression guard for the `| base64 -d` bug fixed in 23-07).
 
 ## 5. Email infrastructure (Phase 21-01)
 
@@ -37,7 +41,7 @@ Deferred to Phase 23.1 (per `.planning/milestones/v1.4-ROADMAP.md`). Placeholder
 - [ ] `UNISENDER_FROM_EMAIL=noreply@onevoice.app` set.
 - [ ] Test email lands in real `@yandex.ru` AND `@mail.ru` inboxes (not spam) — operator manually verifies via the Unisender console or the password-reset flow.
 
-## 6. Legal compliance (Phase 22 — THIS PLAN)
+## 6. Legal compliance (Phase 22)
 
 Failure of ANY item below is a **HARD block** on production deploy. The launch-readiness document explicitly designates **§6 (Legal compliance)** as the hard-block section so that an operator skimming this checklist cannot accidentally skip it.
 
@@ -84,29 +88,79 @@ Failure of ANY item below is a **HARD block** on production deploy. The launch-r
 - [ ] `pdn@onevoice.app` inbox (the value of `LEGAL_EMAIL_PDN`) is set up, monitored daily, and the operator's incident-response calendar reflects the SLA.
 - [ ] Template responses in `docs/runbook-pdn-request.md §4` are saved as inbox drafts or stored in a shared notes document for fast use.
 
-## 7. Observability
+## §7 Operational hardening — Grafana password gate
 
-Deferred to Phase 23.2 (per `.planning/milestones/v1.4-ROADMAP.md`). Placeholder until shipped:
+**HARD BLOCK.** The deploy MUST NOT proceed if any of these fail.
+Source plan: `.planning/phases/23-operational-hardening/23-02-grafana-auth-network-PLAN.md`
+(decisions D-09, D-10, D-11).
 
-- [ ] *(deferred)* Grafana dashboards covering API + orchestrator + agents are live.
-- [ ] *(deferred)* Alert thresholds documented for `email_outbox_failed_rows_total`, `llm_request_errors_total`, `tool_dispatch_timeouts_total`.
+Run the snippet below from a shell that has `.env.prod` sourced (or in a
+context where `GF_SECURITY_ADMIN_PASSWORD` is already exported):
 
-## 8. Rate limits
+```bash
+# 7.1 GF_SECURITY_ADMIN_PASSWORD must be set
+if [ -z "${GF_SECURITY_ADMIN_PASSWORD:-}" ]; then
+  echo "FAIL §7.1: GF_SECURITY_ADMIN_PASSWORD is empty"; exit 1
+fi
 
-Deferred to Phase 23.4 (per `.planning/milestones/v1.4-ROADMAP.md`). Placeholder until shipped:
+# 7.2 Must not be the literal "admin"
+if [ "${GF_SECURITY_ADMIN_PASSWORD}" = "admin" ]; then
+  echo "FAIL §7.2: GF_SECURITY_ADMIN_PASSWORD is the default 'admin'"; exit 1
+fi
 
-- [ ] *(deferred)* `RATE_LIMIT_REGISTER`, `RATE_LIMIT_LOGIN`, `RATE_LIMIT_CHAT`, `RATE_LIMIT_HITL` env vars set appropriately for v1.4 beta scale.
-- [ ] *(deferred)* `RateLimiter` from `pkg/llm/` wired into the orchestrator and integration-tested.
+# 7.3 Length floor 16 (UTF-8 bytes)
+if [ "${#GF_SECURITY_ADMIN_PASSWORD}" -lt 16 ]; then
+  echo "FAIL §7.3: GF_SECURITY_ADMIN_PASSWORD shorter than 16 chars"; exit 1
+fi
 
-## 9. References
+# 7.4 Observability stack must NOT publish ports
+if grep -qE '^\s+ports:' docker-compose.observability.yml; then
+  echo "FAIL §7.4: docker-compose.observability.yml has a ports: mapping"; exit 1
+fi
+
+echo "OK §7 Grafana password gate"
+```
+
+Acceptable outcomes:
+
+- All four lines silently pass and the script prints `OK §7 Grafana password gate`.
+- Any `FAIL §7.x` line: STOP the deploy. Regenerate the password
+  (`openssl rand -base64 24`), update `.env.prod`, re-run the gate.
+
+Operator runbook for accessing Grafana now that the host port is gone:
+[docs/runbook-observability-access.md](runbook-observability-access.md).
+
+## 8. Observability network
+
+Sub-gate of §7. After `docker compose -f docker-compose.observability.yml up -d`
+with `GF_SECURITY_ADMIN_PASSWORD` set:
+
+- [ ] `ss -tlnp | grep -E ':3003|:9090|:3100'` on the host returns NO host listener for those ports — only Docker-internal bridges.
+- [ ] Grafana reachable from a tailnet client at `http://<host-tailnet-name>:3000`.
+- [ ] `tailscale status` on the host shows the tailnet up and the production ACL applied.
+
+## 9. Rate limits and login brute-force defence (Phase 23-04)
+
+Phase 23-04 wires lockout + SmartCaptcha on `/auth/login`. Pre-deploy gate:
+
+- [ ] `LOCKOUT_FAIL_THRESHOLD_CAPTCHA` (default 4) and `LOCKOUT_FAIL_THRESHOLD_LOCK` (default 10) set appropriately for v1.4 beta scale.
+- [ ] `LOCKOUT_DURATION` (default 15m) set; operators should not lower below 5m (defeats brute-force protection) or raise above 60m (poor UX after typo storms).
+- [ ] `TRUSTED_PROXY_CIDRS` matches the production load balancer's published IP ranges. If empty, `X-Forwarded-For` is NEVER trusted (default — fail-closed).
+- [ ] `SMARTCAPTCHA_SITE_KEY` + `SMARTCAPTCHA_SECRET_KEY` + `NEXT_PUBLIC_SMARTCAPTCHA_SITE_KEY` all set with non-placeholder values from the Yandex Cloud SmartCaptcha console. If any is empty, the captcha tier (4-9 failed attempts) silently becomes a no-op (boot warning logged) — TierLocked (10+) still gates brute force but the soft-block tier provides zero rate-limit gain.
+- [ ] Manual smoke test: 4 wrong-password attempts surface the captcha widget on /login; 10 wrong attempts trip 423 + `code:account_locked` + `Retry-After: <seconds>` header.
+- [ ] `RATE_LIMIT_REGISTER` (default 5/min) and `RATE_LIMIT_LOGIN` (default 10/min) set appropriately.
+
+## 10. References
 
 - `docs/runbook-email-dns.md` — Email DNS setup (Phase 21-01)
 - `docs/runbook-rkn-filing.md` — РКН Art. 22 + Art. 12 cross-border filing (Phase 22-03)
 - `docs/runbook-pdn-request.md` — 15-day SLA process for 152-ФЗ Art. 14 subject-rights requests (Phase 22-03)
+- `docs/runbook-restore.md` — Backup + restore drill (Phase 23-03)
+- `docs/runbook-observability-access.md` — Tailscale operator access to Grafana now that the host port is gone (Phase 23-02)
 - `scripts/check-legal-versions-parity.sh` — Drift guard between Go and TS policy-version constants
 - `scripts/check-migrations-parity.sh` — Drift guard between prod and test migration paths
-- `.env.example` — All required env vars with operator commentary; see §13 «Legal entity (Phase 22)» and the PHASE 22 LAUNCH GATE warning block
+- `.env.example` — All required env vars with operator commentary; see §13 «Legal entity (Phase 22)» and §14 «Operational hardening (Phase 23)»
 
 ---
 
-*Phase 22-03 master pre-deploy gate. Update whenever a new operator-facing dependency is added.*
+*Phase 23 master pre-deploy gate. Update whenever a new operator-facing dependency is added.*
