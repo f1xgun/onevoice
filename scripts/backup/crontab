@@ -1,0 +1,3 @@
+# OneVoice backup — daily 00:00 UTC = 03:00 MSK (D-03).
+# BusyBox crond reads this from /etc/crontabs/root (installed by Dockerfile).
+0 0 * * * /scripts/backup/backup.sh >> /var/log/backup.log 2>&1
