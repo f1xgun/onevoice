@@ -108,7 +108,7 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	// Phase 22 / D-13: pass reason="" so the bcrypt password check runs.
 	// ConsentService.WithdrawPDN is the only caller that passes the
 	// "consent_withdrawn" reason (skips the password check).
-	err = h.service.RequestDeletion(r.Context(), userID, req.Password, clientIP(r), r.UserAgent(), "")
+	err = h.service.RequestDeletion(r.Context(), userID, req.Password, middleware.ClientIP(r), r.UserAgent(), "")
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -177,7 +177,7 @@ func (h *UserDeletionHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.CancelDeletion(r.Context(), userID, clientIP(r), r.UserAgent())
+	err = h.service.CancelDeletion(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return

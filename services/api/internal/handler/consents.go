@@ -154,7 +154,7 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	err = h.service.ReConsent(r.Context(), userID, clientIP(r), r.UserAgent(), policies)
+	err = h.service.ReConsent(r.Context(), userID, middleware.ClientIP(r), r.UserAgent(), policies)
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
@@ -196,7 +196,7 @@ func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.WithdrawPDN(r.Context(), userID, clientIP(r), r.UserAgent())
+	err = h.service.WithdrawPDN(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)

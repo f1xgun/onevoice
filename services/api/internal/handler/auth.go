@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -327,7 +325,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Phase 22 / D-17: pass policies + IP + UA into the tx-flow so the
 	// three consent rows commit alongside the user row.
 	regCtx := service.RegistrationContext{
-		IP:        clientIP(r),
+		IP:        middleware.ClientIP(r),
 		UserAgent: r.UserAgent(),
 		Policies: []service.PolicyAccepted{
 			{Slug: string(legalconfig.PolicyTOS), Version: req.Consents.TOS},
@@ -363,7 +361,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Phase 19 audit: registration emits auth.user_registered AFTER the
 	// auto-login cookies are set so we record the IP/UA that actually
 	// completed the flow. Fire-and-forget — Logger spawns its own goroutine.
-	audit.LogUserRegistered(r.Context(), h.audit, user.ID, user.Email, clientIP(r), r.UserAgent())
+	audit.LogUserRegistered(r.Context(), h.audit, user.ID, user.Email, middleware.ClientIP(r), r.UserAgent())
 
 	writeJSON(w, http.StatusCreated, LoginResponse{
 		User:        user,
@@ -411,7 +409,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		clientIPForCaptcha := middleware.LoginClientIP(r.Context())
 		if clientIPForCaptcha == "" {
-			clientIPForCaptcha = clientIP(r)
+			// Phase 23-05 (CR-01): fallback when LockoutMiddleware did not annotate
+			// the ctx (fail-open on Redis error / body-read error / JSON-decode
+			// error / IPv6 peer / middleware not mounted in tests).
+			// middleware.ClientIP honors TRUSTED_PROXY_CIDRS so XFF is only
+			// trusted when the TCP peer is an allow-listed proxy.
+			clientIPForCaptcha = middleware.ClientIP(r)
 		}
 		if verr := h.captcha.Verify(r.Context(), token, clientIPForCaptcha); verr != nil {
 			if errors.Is(verr, service.ErrCaptchaTransient) {
@@ -447,7 +450,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			// Phase 19 audit (D-31): user_id intentionally nil — we do NOT look
 			// up the attempted email against the users table. The attempted
 			// email is captured in Details for brute-force analysis.
-			audit.LogLoginFailed(r.Context(), h.audit, req.Email, clientIP(r), r.UserAgent(), "invalid_credentials")
+			audit.LogLoginFailed(r.Context(), h.audit, req.Email, middleware.ClientIP(r), r.UserAgent(), "invalid_credentials")
 			// Phase 23.4 (OPS-04): increment the lockout counter. Best-effort;
 			// a Redis error here is logged but does not change the response
 			// (a 500 on a wrong-password is a worse UX than missed counter increment).
@@ -464,7 +467,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Phase 19 audit: login_success fired AFTER the refresh-token cookie is
 	// set so the request fully succeeded. Async fire-and-forget.
-	audit.LogLoginSuccess(r.Context(), h.audit, user.ID, clientIP(r), r.UserAgent())
+	audit.LogLoginSuccess(r.Context(), h.audit, user.ID, middleware.ClientIP(r), r.UserAgent())
 
 	// Phase 23.4 (OPS-04): clear the lockout counter on success so legitimate
 	// users don't accumulate stale failure state from earlier fat-fingers.
@@ -486,7 +489,10 @@ func (h *AuthHandler) recordLoginFailure(r *http.Request, email string) {
 	}
 	ip := middleware.LoginClientIP(r.Context())
 	if ip == "" {
-		ip = clientIP(r)
+		// Phase 23-05 (CR-01): see Login captcha-fallback comment.
+		// middleware.ClientIP honors TRUSTED_PROXY_CIDRS so XFF cannot be
+		// spoofed by an attacker whose TCP peer is outside the trusted set.
+		ip = middleware.ClientIP(r)
 	}
 	net16 := middleware.Net16(ip)
 	if net16 == "" {
@@ -506,7 +512,8 @@ func (h *AuthHandler) clearLockoutForLogin(r *http.Request, email string) {
 	}
 	ip := middleware.LoginClientIP(r.Context())
 	if ip == "" {
-		ip = clientIP(r)
+		// Phase 23-05 (CR-01): see Login captcha-fallback comment.
+		ip = middleware.ClientIP(r)
 	}
 	net16 := middleware.Net16(ip)
 	if net16 == "" {
@@ -766,7 +773,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	// Phase 19 audit: fired AFTER successful password change. NO old / new
 	// password content in details (D-14 — only IP + UA for forensics).
-	audit.LogPasswordChanged(r.Context(), h.audit, userID, clientIP(r), r.UserAgent())
+	audit.LogPasswordChanged(r.Context(), h.audit, userID, middleware.ClientIP(r), r.UserAgent())
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -844,7 +851,7 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	// Service ALWAYS returns nil. We do not branch on its result.
-	_ = h.passwordResetService.RequestReset(r.Context(), req.Email, clientIP(r), r.UserAgent())
+	_ = h.passwordResetService.RequestReset(r.Context(), req.Email, middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -867,7 +874,7 @@ func (h *AuthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Reques
 		writeValidationError(w, r, err)
 		return
 	}
-	if err := h.passwordResetService.ConfirmReset(r.Context(), req.Token, req.NewPassword, clientIP(r), r.UserAgent()); err != nil {
+	if err := h.passwordResetService.ConfirmReset(r.Context(), req.Token, req.NewPassword, middleware.ClientIP(r), r.UserAgent()); err != nil {
 		writePasswordResetError(w, r, err)
 		return
 	}
@@ -926,7 +933,7 @@ func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
 	// EXPLICITLY NO h.setRefreshTokenCookie — T-VE-02 mitigation. The page
 	// redirects the user to the dashboard which uses their existing session
 	// (or sends them to /login if they were not logged in).
-	audit.LogEmailVerified(r.Context(), h.audit, userID, clientIP(r), r.UserAgent())
+	audit.LogEmailVerified(r.Context(), h.audit, userID, middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1005,7 +1012,7 @@ func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	audit.LogEmailChangedBeforeVerify(r.Context(), h.audit, userID, oldEmail, req.NewEmail, clientIP(r), r.UserAgent())
+	audit.LogEmailChangedBeforeVerify(r.Context(), h.audit, userID, oldEmail, req.NewEmail, middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1020,30 +1027,8 @@ func writeJSONCodeError(w http.ResponseWriter, status int, code string) {
 	}{Code: code})
 }
 
-// clientIP returns the client IP from r.RemoteAddr, stripping the port. If
-// the trusted-proxy X-Forwarded-For header is present, the FIRST entry (the
-// original client) is returned instead. IPv6 addresses come back without
-// brackets — net.SplitHostPort handles the bracketed form.
-//
-// T-19-18 disposition: when not behind a trusted proxy, the X-Forwarded-For
-// header is attacker-controllable. Audit IP is best-effort forensic data,
-// not auth — accepted risk per the threat model.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i > 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return strings.TrimSpace(xff)
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	// net.SplitHostPort already strips IPv6 brackets ([::1]:8080 -> "::1").
-	// Validate the host is parseable IP — fall back to the raw value
-	// otherwise to preserve forensic value when the source isn't an IP.
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.String()
-	}
-	return host
-}
+// Phase 23-05 (CR-01): the legacy local client-IP helper that lived here was
+// deleted because it read the forwarding header unconditionally and bypassed
+// the TRUSTED_PROXY_CIDRS trust gate. All call sites now go through
+// middleware.ClientIP, which honors the trust gate. See
+// .planning/phases/23-operational-hardening/23-05-clientip-fallback-fix-PLAN.md.
