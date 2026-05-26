@@ -14,6 +14,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/pkg/lockout"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
@@ -97,7 +98,10 @@ type Handlers struct {
 // middleware reads users.deletion_requested_at from on every write
 // request. May be nil — when nil, the grace gate degrades to pass-
 // through (legacy/test compat).
-func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker, allowedOrigins []string, rateLimits RateLimits, authzCache *authz.Cache, users middleware.UserLookup, pgPool *pgxpool.Pool) *chi.Mux {
+// lock is the Phase 23.4 (OPS-04) lockout state that gates /auth/login. May be
+// nil — when nil, LockoutMiddleware is skipped and Login degrades to legacy
+// behavior (no brute-force throttle beyond chi-level rate limit).
+func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker, allowedOrigins []string, rateLimits RateLimits, authzCache *authz.Cache, users middleware.UserLookup, pgPool *pgxpool.Pool, lock *lockout.Lockout) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -126,7 +130,22 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth)
 		r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).Post("/auth/register", handlers.Auth.Register)
-		r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/login", handlers.Auth.Login)
+		// Phase 23.4 (D-21): LockoutMiddleware mounted on /auth/login ONLY.
+		// NOT on /auth/register (rate-limited at the outbox layer in Phase 21).
+		// NOT on /auth/password-reset (D-20 self-unlock — adding lockout there
+		// would defeat the whole point). NOT on /auth/refresh (cookie-bearer
+		// auth, brute-force has nothing to brute against).
+		// Order matters: lockout BEFORE rate-limit so a locked account
+		// returns 423 (not 429) — the 423 carries retry_after_seconds the
+		// frontend needs for the lockout UI.
+		if lock != nil {
+			r.With(middleware.LockoutMiddleware(lock)).
+				With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).
+				Post("/auth/login", handlers.Auth.Login)
+		} else {
+			// Graceful disable: no Redis at boot → legacy login path with rate-limit only.
+			r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/login", handlers.Auth.Login)
+		}
 		r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
 
 		// Phase 21b — Password reset (ACCT-01).

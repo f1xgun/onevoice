@@ -18,6 +18,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/legalconfig"
+	"github.com/f1xgun/onevoice/pkg/lockout"
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
@@ -83,6 +84,14 @@ type AuthHandler struct {
 	// requiresReconsent field on /auth/me by calling DiffAgainstCurrent.
 	// nil-safe — when not wired the field is omitted from the response.
 	consents ConsentDiffer
+
+	// Phase 23.4 (OPS-04): brute-force / credential-stuffing defense for
+	// /auth/login. Both may be nil — Login degrades to legacy behavior
+	// (no lockout, no captcha) so the handler boots in environments
+	// without a Redis (test fixtures) or without SmartCaptcha env config.
+	lock            *lockout.Lockout
+	captcha         service.SmartCaptchaVerifier
+	captchaFailOpen bool
 }
 
 // PasswordResetServiceAPI is the slice of *service.PasswordResetService
@@ -156,6 +165,21 @@ func NewAuthHandler(userService UserService, secureCookies bool, auditLogger aud
 		audit:         auditLogger,
 		jwtSecret:     jwtSecret,
 	}, nil
+}
+
+// WithLockout installs the Phase 23.4 lockout + SmartCaptcha verifier on
+// an existing AuthHandler. Optional: when not called the handler keeps the
+// legacy (no lockout, no captcha) login behavior — used by unit tests and
+// dev environments without Redis / SmartCaptcha secrets.
+//
+// failOpen controls the response on ErrCaptchaTransient (Yandex unreachable):
+// true → log + proceed (T-23.4-07, safer for legitimate users during outage);
+// false → reject as 403. Defaults to true per .planning/research/STACK.md §2.
+func (h *AuthHandler) WithLockout(lock *lockout.Lockout, captcha service.SmartCaptchaVerifier, failOpen bool) *AuthHandler {
+	h.lock = lock
+	h.captcha = captcha
+	h.captchaFailOpen = failOpen
+	return h
 }
 
 func (h *AuthHandler) cookieName() string {
@@ -318,7 +342,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to register user", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		// Phase 23.4 (OPS-05 / D-24): machine-readable error code so the frontend
+		// can render a Russian string via the i18n catalog.
+		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeRegisterInternal)
 		return
 	}
 
@@ -326,7 +352,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		slog.Error("auto-login after register failed", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		// Phase 23.4 (OPS-05 / D-24): auto_login_failed distinct from register_internal —
+		// the user account WAS created; only the token issue failed.
+		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeAutoLoginFailed)
 		return
 	}
 
@@ -343,11 +371,24 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Login handles user login
+// Login handles user login.
+//
+// Phase 23.4 (OPS-04): layered defense per D-17.
+//  1. Lockout middleware (mounted in router.go) has already annotated the
+//     context with CaptchaRequired / LoginEmail / LoginClientIP and
+//     short-circuited any TierLocked request before we get here.
+//  2. If CaptchaRequired is set (tier 4–9), this handler MUST verify the
+//     X-Captcha-Token header before delegating to userService.Login. Missing
+//     token → 400 captcha_required. Invalid token → 403 captcha_invalid.
+//     Transient Yandex outage → fail-open per T-23.4-07 (warn + proceed).
+//  3. On ErrInvalidCredentials, lockout.RecordFailure increments the counter.
+//  4. On success, lockout.Clear wipes the counter so subsequent legit logins
+//     don't accumulate stale state.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 
-	// Parse request body
+	// Parse request body. The lockout middleware has already restored the
+	// body via io.NopCloser(bytes.NewReader(...)) so this Decode is safe.
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -357,6 +398,40 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := h.validate.Struct(req); err != nil {
 		writeValidationError(w, r, err)
 		return
+	}
+
+	// Phase 23.4 (OPS-04): captcha gate. Skipped when the middleware did not
+	// annotate the ctx (test fixtures without lockout wiring) or when the
+	// captcha verifier is nil (dev / no SMARTCAPTCHA_SECRET_KEY).
+	if middleware.CaptchaRequired(r.Context()) && h.captcha != nil {
+		token := r.Header.Get("X-Captcha-Token")
+		if token == "" {
+			writeJSONCodeError(w, http.StatusBadRequest, ErrCodeCaptchaRequired)
+			return
+		}
+		clientIPForCaptcha := middleware.LoginClientIP(r.Context())
+		if clientIPForCaptcha == "" {
+			clientIPForCaptcha = clientIP(r)
+		}
+		if verr := h.captcha.Verify(r.Context(), token, clientIPForCaptcha); verr != nil {
+			if errors.Is(verr, service.ErrCaptchaTransient) {
+				// T-23.4-07: SmartCaptcha outage. Fail-open is the safer
+				// default — bot-through during outage is acceptable,
+				// locking every real user out is not.
+				if h.captchaFailOpen {
+					slog.Warn("smartcaptcha: transient error, failing open",
+						slog.String("error", verr.Error()),
+						slog.String("client_ip", clientIPForCaptcha),
+					)
+				} else {
+					writeJSONCodeError(w, http.StatusForbidden, ErrCodeCaptchaInvalid)
+					return
+				}
+			} else {
+				writeJSONCodeError(w, http.StatusForbidden, ErrCodeCaptchaInvalid)
+				return
+			}
+		}
 	}
 
 	// Call service
@@ -373,6 +448,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			// up the attempted email against the users table. The attempted
 			// email is captured in Details for brute-force analysis.
 			audit.LogLoginFailed(r.Context(), h.audit, req.Email, clientIP(r), r.UserAgent(), "invalid_credentials")
+			// Phase 23.4 (OPS-04): increment the lockout counter. Best-effort;
+			// a Redis error here is logged but does not change the response
+			// (a 500 on a wrong-password is a worse UX than missed counter increment).
+			h.recordLoginFailure(r, req.Email)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
@@ -387,10 +466,55 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// set so the request fully succeeded. Async fire-and-forget.
 	audit.LogLoginSuccess(r.Context(), h.audit, user.ID, clientIP(r), r.UserAgent())
 
+	// Phase 23.4 (OPS-04): clear the lockout counter on success so legitimate
+	// users don't accumulate stale failure state from earlier fat-fingers.
+	h.clearLockoutForLogin(r, req.Email)
+
 	writeJSON(w, http.StatusOK, LoginResponse{
 		User:        user,
 		AccessToken: accessToken,
 	})
+}
+
+// recordLoginFailure increments the (email_hash, /16 IP) lockout counter.
+// No-op when the handler was constructed without WithLockout (test fixtures).
+// Errors are logged but never propagated — a Redis outage must not turn a
+// 401 invalid-credentials into a 500.
+func (h *AuthHandler) recordLoginFailure(r *http.Request, email string) {
+	if h.lock == nil {
+		return
+	}
+	ip := middleware.LoginClientIP(r.Context())
+	if ip == "" {
+		ip = clientIP(r)
+	}
+	net16 := middleware.Net16(ip)
+	if net16 == "" {
+		return // IPv6 / unparseable
+	}
+	if _, err := h.lock.RecordFailure(r.Context(), email, net16); err != nil {
+		slog.Warn("lockout: RecordFailure failed", "error", err, "email", email)
+	}
+}
+
+// clearLockoutForLogin removes the lockout counter for a successful login.
+// Mirrors recordLoginFailure's defensive shape — no-op without WithLockout,
+// errors logged but never propagated.
+func (h *AuthHandler) clearLockoutForLogin(r *http.Request, email string) {
+	if h.lock == nil {
+		return
+	}
+	ip := middleware.LoginClientIP(r.Context())
+	if ip == "" {
+		ip = clientIP(r)
+	}
+	net16 := middleware.Net16(ip)
+	if net16 == "" {
+		return
+	}
+	if err := h.lock.Clear(r.Context(), email, net16); err != nil {
+		slog.Warn("lockout: Clear failed", "error", err, "email", email)
+	}
 }
 
 // RefreshToken handles token refresh
@@ -409,7 +533,8 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to refresh token", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeRefreshInternal)
 		return
 	}
 
@@ -459,7 +584,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to logout", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeLogoutInternal)
 		return
 	}
 
@@ -550,7 +676,8 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to get user", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeGetUserInternal)
 		return
 	}
 
@@ -632,7 +759,8 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to change password", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeChangePasswordInternal)
 		return
 	}
 
@@ -677,7 +805,8 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		slog.Error("failed to update preferred locale", "error", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeUpdateLocaleInternal)
 		return
 	}
 

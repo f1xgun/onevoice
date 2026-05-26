@@ -157,7 +157,10 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	// Phase 21-04 (ACCT-03 / D-34): handles.PG is the pool the
 	// BlockWritesDuringGrace middleware reads users.deletion_requested_at
 	// from on every write request.
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User, handles.PG)
+	// Phase 23.4 (OPS-04): svcs.Lockout enables LockoutMiddleware on /auth/login
+	// (D-21). Nil-safe — when Redis was unavailable at boot the middleware is
+	// skipped and Login degrades to legacy behavior.
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User, handles.PG, svcs.Lockout)
 
 	addr := ":" + cfg.Port
 	srv := &http.Server{

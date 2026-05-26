@@ -107,6 +107,11 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 			return repos.UserResetExt.GetByIDIncludingDeleted(ctx, userID)
 		})
 	}
+	// Phase 23.4 (OPS-04): install lockout + SmartCaptcha verifier. Both
+	// dependencies are nil-safe inside AuthHandler.Login. The router mounts
+	// middleware.LockoutMiddleware on /auth/login (D-21) using the same
+	// svcs.Lockout instance.
+	authHandler.WithLockout(svcs.Lockout, svcs.SmartCaptcha, cfg.SmartCaptchaFailOpen)
 	businessHandler, err := handler.NewBusinessHandler(svcs.Business, svcs.PlatformSync, svcs.ObjectStorage)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create business handler: %w", err)
