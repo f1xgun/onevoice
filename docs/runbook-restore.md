@@ -33,6 +33,13 @@ Run on a host with `yc` CLI installed and authenticated to the right Yandex Clou
    # Save restic.enc.b64 contents into .env.prod as RESTIC_PASSWORD_CIPHERTEXT.
    # KEEP $RESTIC_PW in your password manager — disaster recovery if KMS is unreachable (see §5).
    ```
+
+   The plaintext you save here — the raw `openssl rand -base64 32` output —
+   is exactly what the container's `entrypoint.sh` recovers from KMS at
+   boot (no double-decode). The same value is what you'd export to
+   `RESTIC_PASSWORD` in the §5 disaster-recovery procedure. Regression
+   guarded by `.github/workflows/backup-restore-drill.yml::entrypoint-roundtrip`
+   (Phase 23-07 / WR-04).
 5. Create the service account + KMS-decrypt role binding + key:
    ```bash
    yc iam service-account create --name onevoice-backup
