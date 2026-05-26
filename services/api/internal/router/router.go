@@ -107,7 +107,12 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 	// Global middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.CorrelationID())
-	r.Use(chimiddleware.RealIP)
+	// chi's RealIP middleware was removed 2026-05-26 (Phase 23-06, WR-01):
+	// it rewrites r.RemoteAddr from X-Forwarded-For unconditionally with no
+	// trust-set knob, which lets an attacker spoof the upstream peer IP and
+	// bypass the Phase 23.4 TRUSTED_PROXY_CIDRS trust gate in
+	// middleware.ClientIP. middleware.ClientIP is now the single source of
+	// truth for "did this XFF entry come from a trusted proxy?".
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{

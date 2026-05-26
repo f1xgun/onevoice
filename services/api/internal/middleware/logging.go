@@ -65,6 +65,9 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			logger.Info("request started",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
+				// remote_addr is the raw TCP peer since Phase 23-06 (chi.RealIP removed,
+				// WR-01). For trust-gated client IP, use middleware.ClientIP — see
+				// trusted_proxy.go. Logged here for best-effort forensics only.
 				slog.String("remote_addr", r.RemoteAddr),
 			)
 
@@ -83,6 +86,9 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				slog.String("path", r.URL.Path),
 				slog.Int("status", wrapped.status),
 				slog.Int64("duration_ms", duration.Milliseconds()),
+				// remote_addr is the raw TCP peer since Phase 23-06 (chi.RealIP removed,
+				// WR-01). For trust-gated client IP, use middleware.ClientIP — see
+				// trusted_proxy.go. Logged here for best-effort forensics only.
 				slog.String("remote_addr", r.RemoteAddr),
 			)
 		})
