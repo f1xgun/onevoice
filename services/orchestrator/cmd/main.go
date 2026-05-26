@@ -7,7 +7,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -79,18 +78,11 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		}
 	}()
 
-	hc := health.New()
-	hc.AddCheck("mongo", func(ctx context.Context) error {
-		return mongoDB.Client().Ping(ctx, nil)
-	})
-	if nc != nil {
-		hc.AddCheck("nats", func(ctx context.Context) error {
-			if !nc.IsConnected() {
-				return errors.New("nats disconnected")
-			}
-			return nil
-		})
-	}
+	// Phase 23-01: same source-of-truth helper as services/api. Orchestrator
+	// owns Mongo + (optional) NATS only — pass nil for PG and Redis so the
+	// helper silently skips them. WithCheckTimeout wires the env-driven knob.
+	hc := health.New(health.WithCheckTimeout(cfg.HealthCheckTimeout))
+	health.RegisterDefaultChecks(hc, nil, mongoDB.Client(), nil, nc)
 
 	// pendingRepo wires HITL pause-time persistence so manual-floor
 	// tool calls can be saved as PendingToolCallBatch documents. Without it,
