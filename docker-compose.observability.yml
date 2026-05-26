@@ -88,6 +88,44 @@ services:
       - onevoice-network
     restart: unless-stopped
 
+  # Pushgateway — receives short-lived job metrics (backup, etc.).
+  # No host port — Prometheus scrapes it on the internal network.
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: onevoice-pushgateway
+    networks:
+      - onevoice-network
+    restart: unless-stopped
+
+  # Backup — daily pg_dump + mongodump → restic → Yandex Object Storage.
+  # RESTIC_PASSWORD is decrypted from Yandex KMS at container boot
+  # (entrypoint.sh); never stored on host in plaintext (OPS-06, D-07).
+  # BusyBox crond drives the 00:00 UTC schedule (D-03, D-06 amended).
+  backup:
+    build:
+      context: ./scripts/backup
+      args:
+        YC_VERSION: "0.130.0"
+    container_name: onevoice-backup
+    environment:
+      PG_DSN: "${BACKUP_PG_DSN}"
+      MONGO_URI: "${BACKUP_MONGO_URI}"
+      RESTIC_REPOSITORY: "${RESTIC_REPOSITORY:?RESTIC_REPOSITORY required}"
+      RESTIC_PASSWORD_CIPHERTEXT: "${RESTIC_PASSWORD_CIPHERTEXT:?KMS-encrypted RESTIC_PASSWORD required}"
+      RESTIC_PASSWORD_KMS_KEY_ID: "${RESTIC_PASSWORD_KMS_KEY_ID:?KMS key id required}"
+      YC_SA_JSON_CREDENTIALS: "${YC_SA_JSON_CREDENTIALS:?Yandex Cloud service-account JSON required}"
+      YC_BACKUP_BUCKET: "${YC_BACKUP_BUCKET:-onevoice-backups}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+      AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-ru-central1}"
+      PUSHGATEWAY_URL: "${PUSHGATEWAY_URL:-http://pushgateway:9091}"
+    restart: unless-stopped
+    networks:
+      - onevoice-network
+    depends_on:
+      pushgateway:
+        condition: service_started
+
 volumes:
   loki_data:
     driver: local
