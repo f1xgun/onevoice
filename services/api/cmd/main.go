@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"go.mongodb.org/mongo-driver/v2/mongo"
+
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/pkg/logger"
@@ -122,9 +124,16 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return err
 	}
 
-	hc := health.New()
-	hc.AddCheck("postgres", func(ctx context.Context) error { return handles.PG.Ping(ctx) })
-	hc.AddCheck("redis", func(ctx context.Context) error { return handles.Redis.Ping(ctx).Err() })
+	// Phase 23-01: single source of truth for dep checks lives in
+	// pkg/health/wiring.go::RegisterDefaultChecks (D-16 amended). Pass every
+	// dep handle the API service owns; the helper skips nil args silently so
+	// orchestrator (which has no PG/Redis) can call the same helper.
+	hc := health.New(health.WithCheckTimeout(cfg.HealthCheckTimeout))
+	var mongoClient *mongo.Client
+	if handles.Mongo != nil {
+		mongoClient = handles.Mongo.Client()
+	}
+	health.RegisterDefaultChecks(hc, handles.PG, mongoClient, handles.Redis, handles.NATS)
 
 	return runServers(ctx, log, cfg, handlers, hc, svcs, handles, repos)
 }

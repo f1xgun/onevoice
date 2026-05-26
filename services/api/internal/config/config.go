@@ -173,6 +173,13 @@ type Config struct {
 	LegalAddress    string
 	LegalEmailPDN   string
 
+	// Phase 23-01 — HealthCheckTimeout caps any single dep ping inside
+	// /health/ready. Checks run concurrently (sync.WaitGroup in
+	// pkg/health.ReadyHandler), so total wall-clock budget =
+	// HealthCheckTimeout (max, not Σ deps × timeout). Default 2s preserves
+	// k8s readinessProbe (5s default) headroom.
+	HealthCheckTimeout time.Duration
+
 	// Auto-titler. TitlerModel falls back to LLMModel when unset;
 	// when both are unset the titler is disabled (graceful no-op —
 	// API must boot cleanly without any LLM env).
@@ -274,6 +281,16 @@ func Load() (*Config, error) {
 		LegalINN:        os.Getenv("LEGAL_INN"),
 		LegalAddress:    os.Getenv("LEGAL_ADDRESS"),
 		LegalEmailPDN:   getEnv("LEGAL_EMAIL_PDN", "—"),
+
+		// Phase 23-01: per-dep readiness check timeout. T-23.1-04 — never
+		// trust the operator's bytes; getEnvDuration already falls back on
+		// parse errors, and a zero/negative explicit value would be rejected
+		// by the defensive clamp below.
+		HealthCheckTimeout: getEnvDuration("HEALTH_CHECK_TIMEOUT", 2*time.Second),
+	}
+
+	if cfg.HealthCheckTimeout <= 0 {
+		cfg.HealthCheckTimeout = 2 * time.Second
 	}
 
 	// Auto-titler env loading. Mirrors
