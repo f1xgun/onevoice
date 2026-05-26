@@ -7,16 +7,20 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/lockout"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -1262,4 +1266,124 @@ func TestUpdatePreferredLocale(t *testing.T) {
 			mockService.AssertExpectations(t)
 		})
 	}
+}
+
+// newLockoutFallbackHandler boots a handler wired to a real lockout backed
+// by miniredis. Returns the handler, the miniredis instance (so the test
+// can read keys), and a cleanup func.
+//
+// The handler is NOT mounted behind LockoutMiddleware — that is the whole
+// point of these tests: they exercise the FALLBACK path where
+// middleware.LoginClientIP(r.Context()) returns "" and the handler must
+// fall back through middleware.ClientIP (the trust-gated helper). Pre
+// 23-05 the fallback was the spoofable handler.clientIP helper; this test
+// is the regression guard that proves the fallback is now safe.
+func newLockoutFallbackHandler(t *testing.T) (*AuthHandler, *MockUserService, *miniredis.Miniredis) {
+	t.Helper()
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	lock := lockout.New(rdb, lockout.Config{})
+
+	mockService := new(MockUserService)
+	h, err := NewAuthHandler(mockService, false, audit.Nop(), testJWTSecret)
+	require.NoError(t, err)
+	h.WithLockout(lock, nil, true)
+	return h, mockService, mr
+}
+
+// TestLogin_LockoutFallback_UsesTrustedProxyClientIP is the regression guard
+// for Phase 23-05 (CR-01). Scenario:
+//
+//   - TCP peer 9.9.9.9 — OUTSIDE every default trusted CIDR.
+//   - X-Forwarded-For: 178.154.250.5 — a value INSIDE the default Yandex
+//     Cloud NLB CIDR (would be "trusted" if an attacker could spoof it).
+//   - LockoutMiddleware is NOT mounted (this unit test calls h.Login
+//     directly), so middleware.LoginClientIP(r.Context()) is "" and the
+//     handler MUST take the fallback path.
+//
+// Before 23-05 the fallback was the legacy handler.clientIP helper, which
+// read XFF unconditionally and would have keyed the lockout to the spoofed
+// /16 (178.154.0.0/16). After 23-05 the fallback is middleware.ClientIP,
+// which IGNORES XFF because the TCP peer is not in TRUSTED_PROXY_CIDRS,
+// so the lockout is keyed to the attacker's REAL /16 (9.9.0.0/16).
+func TestLogin_LockoutFallback_UsesTrustedProxyClientIP(t *testing.T) {
+	require.NoError(t, middleware.InitTrustedProxies("")) // installs default Yandex LB CIDRs
+
+	h, mockService, mr := newLockoutFallbackHandler(t)
+	mockService.On("Login", mock.Anything, "victim@example.com", "wrongpassword").
+		Return(nil, "", "", domain.ErrInvalidCredentials)
+
+	body := `{"email":"victim@example.com","password":"wrongpassword"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	// Untrusted TCP peer.
+	req.RemoteAddr = "9.9.9.9:443"
+	// Spoofed XFF that would match a trusted CIDR if the peer were the LB.
+	req.Header.Set("X-Forwarded-For", "178.154.250.5")
+	rec := httptest.NewRecorder()
+
+	h.Login(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code,
+		"login should fail with 401 invalid credentials; got body=%q", rec.Body.String())
+
+	keys := mr.Keys()
+	require.Len(t, keys, 1, "expected exactly one lockout key written, got %v", keys)
+	require.True(t,
+		strings.HasSuffix(keys[0], ":9.9.0.0/16"),
+		"lockout key %q must end with :9.9.0.0/16 (real attacker /16), proving middleware.ClientIP ignored the spoofed XFF",
+		keys[0],
+	)
+	require.False(t,
+		strings.HasSuffix(keys[0], ":178.154.0.0/16"),
+		"lockout key %q must NOT end with :178.154.0.0/16 (spoofed XFF /16)",
+		keys[0],
+	)
+
+	mockService.AssertExpectations(t)
+}
+
+// TestLogin_LockoutFallback_TrustedPeerHonorsXFF guards against
+// over-correction: when the TCP peer IS in a trusted CIDR (a real Yandex
+// Cloud NLB), the leftmost X-Forwarded-For entry must drive the /16
+// because the LB has vouched for it. Re-keying onto the LB's own /16
+// would break per-real-client isolation.
+func TestLogin_LockoutFallback_TrustedPeerHonorsXFF(t *testing.T) {
+	require.NoError(t, middleware.InitTrustedProxies("")) // installs default Yandex LB CIDRs
+
+	h, mockService, mr := newLockoutFallbackHandler(t)
+	mockService.On("Login", mock.Anything, "victim@example.com", "wrongpassword").
+		Return(nil, "", "", domain.ErrInvalidCredentials)
+
+	body := `{"email":"victim@example.com","password":"wrongpassword"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	// Trusted TCP peer — real Yandex Cloud NLB IP.
+	req.RemoteAddr = "178.154.250.5:443"
+	// Original client per RFC 5737 documentation /16.
+	req.Header.Set("X-Forwarded-For", "203.0.113.42")
+	rec := httptest.NewRecorder()
+
+	h.Login(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code,
+		"login should fail with 401 invalid credentials; got body=%q", rec.Body.String())
+
+	keys := mr.Keys()
+	require.Len(t, keys, 1, "expected exactly one lockout key written, got %v", keys)
+	require.True(t,
+		strings.HasSuffix(keys[0], ":203.0.0.0/16"),
+		"when peer is in trusted CIDR, the leftmost XFF must drive the /16 (got %q)",
+		keys[0],
+	)
+	require.False(t,
+		strings.HasSuffix(keys[0], ":178.154.0.0/16"),
+		"lockout key %q must NOT be keyed on the LB's own /16",
+		keys[0],
+	)
+
+	mockService.AssertExpectations(t)
 }
