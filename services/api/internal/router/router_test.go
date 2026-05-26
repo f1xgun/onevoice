@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
+	apimiddleware "github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/router"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -160,4 +162,64 @@ func TestRouter_CreateBusinessRegistered(t *testing.T) {
 		return nil
 	})
 	assert.True(t, found, "POST /api/v1/businesses must be registered")
+}
+
+// TestRouter_XFFFromUntrustedPeerIgnored proves the chi.RealIP removal
+// (Phase 23-06, WR-01): a request with X-Forwarded-For matching a
+// would-be-trusted CIDR but a TCP peer OUTSIDE TRUSTED_PROXY_CIDRS
+// must reach the handler with r.RemoteAddr unchanged — so the Phase
+// 23.4 middleware.ClientIP correctly returns the TCP peer (not the
+// spoofed XFF) and the lockout key is bound to the attacker's /16.
+//
+// We mount a fresh chi router with the SAME global middleware stack as
+// router.Setup (minus RealIP, which is the contract under test) and
+// attach a probe handler that captures r.RemoteAddr and middleware.ClientIP.
+// We do NOT call router.Setup directly because the real Setup mounts
+// /auth/login which requires fully wired auth + lockout dependencies —
+// here we only need to assert on the IP-resolution contract.
+//
+// Acceptance: this test fails before the chi.RealIP removal (RealIP
+// would rewrite r.RemoteAddr to "178.154.250.5") and passes after.
+func TestRouter_XFFFromUntrustedPeerIgnored(t *testing.T) {
+	// Force defaultTrustedCIDRs (178.154.250.0/24, 84.252.160.0/19) into
+	// the package-level set so ClientIP can be exercised end-to-end.
+	require.NoError(t, apimiddleware.InitTrustedProxies(""))
+
+	var capturedRemoteAddr, capturedClientIP string
+	probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRemoteAddr = r.RemoteAddr
+		capturedClientIP = apimiddleware.ClientIP(r)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux := chi.NewRouter()
+	mux.Use(chimiddleware.RequestID)
+	mux.Use(apimiddleware.CorrelationID())
+	// NOTE: NO chimiddleware.RealIP here — that is the contract this test enforces.
+	mux.Use(chimiddleware.Logger)
+	mux.Use(chimiddleware.Recoverer)
+	mux.Post("/probe", probe)
+
+	req := httptest.NewRequest(http.MethodPost, "/probe", nil)
+	// TCP peer outside any trusted CIDR.
+	req.RemoteAddr = "9.9.9.9:443"
+	// XFF that WOULD match a trusted CIDR (Yandex Cloud LB range
+	// 178.154.250.0/24) — attacker trying to look like an LB.
+	req.Header.Set("X-Forwarded-For", "178.154.250.5")
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	// r.RemoteAddr MUST be the TCP peer, NOT rewritten from XFF.
+	require.Equal(t, "9.9.9.9:443", capturedRemoteAddr,
+		"chi.RealIP removed in Phase 23-06 — r.RemoteAddr must equal the actual TCP peer")
+	// middleware.ClientIP MUST return the TCP peer host (9.9.9.9),
+	// ignoring the spoofed XFF because 9.9.9.9 is not in any trusted CIDR.
+	require.Equal(t, "9.9.9.9", capturedClientIP,
+		"middleware.ClientIP must ignore X-Forwarded-For when the TCP peer is outside TRUSTED_PROXY_CIDRS")
+	// The /16 derived for lockout keying MUST be the attacker's /16,
+	// not the spoofed-LB /16 — proves the lockout/captcha gate is bound
+	// to the real attacker.
+	require.Equal(t, "9.9.0.0/16", apimiddleware.Net16(capturedClientIP))
 }

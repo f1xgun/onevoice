@@ -171,7 +171,14 @@ func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration,
 }
 
 // getClientIP extracts the client IP address from the request
-// Checks X-Forwarded-For header first (for proxied requests), then falls back to RemoteAddr
+// Checks X-Forwarded-For header first (for proxied requests), then falls back to RemoteAddr.
+//
+// SECURITY NOTE (Phase 23-06): this helper still reads X-Forwarded-For
+// and X-Real-IP unconditionally. Rate-limit keying is best-effort —
+// a sophisticated attacker can rotate XFF to avoid per-IP buckets — but
+// tightening it is out of scope for the WR-01 gap-closure plan. For
+// security-sensitive client IP (lockout/captcha), call
+// middleware.ClientIP which is the trust-gated source of truth.
 func getClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header (comma-separated list, first is client)
 	xff := r.Header.Get("X-Forwarded-For")
