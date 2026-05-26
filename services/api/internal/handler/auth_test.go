@@ -215,7 +215,9 @@ func TestRegister(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"internal server error"`)
+				// Phase 23.4 (OPS-05 / D-24): Register now emits a machine-readable
+				// code so the frontend can render a Russian string via i18n catalog.
+				assert.Contains(t, body, `"code":"register_internal"`)
 				assert.NotContains(t, body, "database") // Should not leak internal details
 			},
 		},
@@ -499,7 +501,8 @@ func TestRefreshToken(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"internal server error"`)
+				// Phase 23.4 (OPS-05 / D-24): RefreshToken emits machine-readable code.
+				assert.Contains(t, body, `"code":"refresh_internal"`)
 				assert.NotContains(t, body, "redis") // Should not leak internal details
 			},
 		},
@@ -590,7 +593,8 @@ func TestLogout(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"internal server error"`)
+				// Phase 23.4 (OPS-05 / D-24): Logout emits machine-readable code.
+				assert.Contains(t, body, `"code":"logout_internal"`)
 				assert.NotContains(t, body, "redis") // Should not leak internal details
 			},
 		},
@@ -756,7 +760,8 @@ func TestChangePassword(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"internal server error"`)
+				// Phase 23.4 (OPS-05 / D-24): ChangePassword emits machine-readable code.
+				assert.Contains(t, body, `"code":"change_password_internal"`)
 				assert.NotContains(t, body, "database") // no internal detail leak
 			},
 		},
@@ -885,7 +890,10 @@ func TestRegister_AutoLoginFailure(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	body := w.Body.String()
-	assert.Contains(t, body, `"error":"internal server error"`)
+	// Phase 23.4 (OPS-05 / D-24): auto-login failure emits a distinct code
+	// (auto_login_failed) so the frontend can tell the user "account was
+	// created but login failed, please sign in manually".
+	assert.Contains(t, body, `"code":"auto_login_failed"`)
 	assert.NotContains(t, body, "auto-login") // no internal detail leak
 
 	mockService.AssertExpectations(t)
@@ -964,7 +972,8 @@ func TestMe(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"internal server error"`)
+				// Phase 23.4 (OPS-05 / D-24): Me emits machine-readable code.
+				assert.Contains(t, body, `"code":"get_user_internal"`)
 				assert.NotContains(t, body, "database") // Should not leak internal details
 			},
 		},
@@ -1226,7 +1235,8 @@ func TestUpdatePreferredLocale(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"internal server error"`)
+				// Phase 23.4 (OPS-05 / D-24): UpdatePreferredLocale emits machine-readable code.
+				assert.Contains(t, body, `"code":"update_locale_internal"`)
 				assert.NotContains(t, body, "postgres") // no internal detail leak
 			},
 		},

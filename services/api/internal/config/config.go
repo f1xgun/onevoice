@@ -180,6 +180,30 @@ type Config struct {
 	// k8s readinessProbe (5s default) headroom.
 	HealthCheckTimeout time.Duration
 
+	// Phase 23.4 (OPS-04) — lockout + SmartCaptcha + trusted-proxy knobs.
+	//
+	// LockoutFailThresholdCaptcha — counter at which TierCaptcha kicks in.
+	// LockoutFailThresholdLock    — counter at which TierLocked kicks in.
+	// LockoutDuration             — Redis TTL and lock window (also the
+	//                               retry_after_seconds value on 423 responses).
+	// SmartCaptchaSiteKey         — public key for the JS widget; exposed to
+	//                               the frontend via NEXT_PUBLIC_SMARTCAPTCHA_SITE_KEY.
+	// SmartCaptchaSecretKey       — server-side validation secret. Empty = Noop
+	//                               verifier (captcha disabled).
+	// TrustedProxyCIDRs           — comma-separated CIDR list controlling which
+	//                               X-Forwarded-For sources are trusted (D-19).
+	//                               Empty falls back to Yandex Cloud LB defaults.
+	// SmartCaptchaFailOpen        — on ErrCaptchaTransient (Yandex unreachable):
+	//                               true → log+proceed (T-23.4-07 safer default);
+	//                               false → reject as 403.
+	LockoutFailThresholdCaptcha int
+	LockoutFailThresholdLock    int
+	LockoutDuration             time.Duration
+	SmartCaptchaSiteKey         string
+	SmartCaptchaSecretKey       string
+	TrustedProxyCIDRs           string
+	SmartCaptchaFailOpen        bool
+
 	// Auto-titler. TitlerModel falls back to LLMModel when unset;
 	// when both are unset the titler is disabled (graceful no-op —
 	// API must boot cleanly without any LLM env).
@@ -292,6 +316,28 @@ func Load() (*Config, error) {
 	if cfg.HealthCheckTimeout <= 0 {
 		cfg.HealthCheckTimeout = 2 * time.Second
 	}
+
+	// Phase 23.4 (OPS-04) — lockout + SmartCaptcha + trusted-proxy env loading.
+	// Defaults match pkg/lockout.Default* constants so they stay in sync; the
+	// clamp below also defends against operator typos (negative threshold etc.).
+	cfg.LockoutFailThresholdCaptcha = getEnvInt("LOCKOUT_FAIL_THRESHOLD_CAPTCHA", 4) //nolint:mnd // env-driven default
+	cfg.LockoutFailThresholdLock = getEnvInt("LOCKOUT_FAIL_THRESHOLD_LOCK", 10)      //nolint:mnd // env-driven default
+	cfg.LockoutDuration = getEnvDuration("LOCKOUT_DURATION", 15*time.Minute)         //nolint:mnd // env-driven default
+	if cfg.LockoutFailThresholdCaptcha <= 0 {
+		cfg.LockoutFailThresholdCaptcha = 4
+	}
+	if cfg.LockoutFailThresholdLock <= 0 {
+		cfg.LockoutFailThresholdLock = 10
+	}
+	if cfg.LockoutDuration <= 0 {
+		cfg.LockoutDuration = 15 * time.Minute
+	}
+	cfg.SmartCaptchaSiteKey = os.Getenv("SMARTCAPTCHA_SITE_KEY")
+	cfg.SmartCaptchaSecretKey = os.Getenv("SMARTCAPTCHA_SECRET_KEY")
+	cfg.TrustedProxyCIDRs = os.Getenv("TRUSTED_PROXY_CIDRS")
+	// SMARTCAPTCHA_FAIL_OPEN defaults to "true" per T-23.4-07 — fail-open
+	// during Yandex outages so legitimate users keep logging in.
+	cfg.SmartCaptchaFailOpen = getEnv("SMARTCAPTCHA_FAIL_OPEN", envBoolTrue) == envBoolTrue
 
 	// Auto-titler env loading. Mirrors
 	// services/orchestrator/internal/config/config.go but does NOT fail-fast

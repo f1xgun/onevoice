@@ -16,8 +16,10 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/lockout"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
+	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 	"github.com/f1xgun/onevoice/services/api/internal/platform"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
@@ -94,6 +96,16 @@ type Services struct {
 	// via SetRegisterConsentService so the 3-row UPSERT runs inside the
 	// same tx as the user row.
 	Consent *service.ConsentService
+
+	// Phase 23.4 (OPS-04): brute-force / credential-stuffing defense on
+	// /auth/login. Lockout is non-nil whenever h.Redis is non-nil
+	// (Redis is the storage layer); SmartCaptcha is non-nil always
+	// (Noop impl when SMARTCAPTCHA_SECRET_KEY is empty so the handler
+	// has a stable dependency to inject). Both consumed by AuthHandler
+	// via WithLockout in wire/handlers.go and by router.go which mounts
+	// the LockoutMiddleware on /auth/login (D-21 — only that route).
+	Lockout      *lockout.Lockout
+	SmartCaptcha service.SmartCaptchaVerifier
 
 	// reviewSyncerCancel is captured so Close() can stop the background
 	// ticker goroutine. nil when ReviewSyncer is nil.
@@ -422,6 +434,42 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		SetRegisterConsentService(consentSvc *service.ConsentService)
 	}); ok {
 		consentSetter.SetRegisterConsentService(s.Consent)
+	}
+
+	// Phase 23.4 (OPS-04): lockout + SmartCaptcha wiring.
+	//
+	// InitTrustedProxies installs the TRUSTED_PROXY_CIDRS allowlist used by
+	// middleware.ClientIP (D-19). An invalid CIDR is fatal — we want to fail
+	// fast rather than silently degrade to "trust nothing" and lock the
+	// wrong IPs.
+	if err := middleware.InitTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
+		return nil, fmt.Errorf("wire: init trusted proxies: %w", err)
+	}
+	// Lockout is keyed off Redis; if Redis is unavailable we leave it nil and
+	// the AuthHandler degrades to legacy behavior (no lockout). This matches
+	// the existing rate-limiter wiring pattern — Redis is treated as soft
+	// infra, not a hard boot dependency.
+	if h.Redis != nil {
+		s.Lockout = lockout.New(h.Redis, lockout.Config{
+			FailThresholdCaptcha: cfg.LockoutFailThresholdCaptcha,
+			FailThresholdLock:    cfg.LockoutFailThresholdLock,
+			Duration:             cfg.LockoutDuration,
+		})
+		log.Info("lockout: enabled",
+			"captcha_threshold", cfg.LockoutFailThresholdCaptcha,
+			"lock_threshold", cfg.LockoutFailThresholdLock,
+			"duration", cfg.LockoutDuration,
+		)
+	} else {
+		log.Warn("lockout: disabled (no Redis client) — /auth/login will not enforce brute-force protection")
+	}
+	// SmartCaptcha: prod verifier when secret is set, Noop otherwise.
+	if cfg.SmartCaptchaSecretKey != "" {
+		s.SmartCaptcha = service.NewYandexSmartCaptcha(cfg.SmartCaptchaSecretKey, nil)
+		log.Info("smartcaptcha: enabled (Yandex)")
+	} else {
+		s.SmartCaptcha = service.NewNoopSmartCaptcha()
+		log.Warn("smartcaptcha: disabled (no SMARTCAPTCHA_SECRET_KEY) — captcha tier will not gate logins")
 	}
 
 	return s, nil
