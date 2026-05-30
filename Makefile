@@ -3,7 +3,7 @@
 .PHONY: check-legal-versions check-legal-versions-parity
 .PHONY: migrate-up migrate-down migrate-create db-seed verify-rbac-backfill
 .PHONY: up down logs restart restart-service docker-up docker-down docker-logs docker-clean
-.PHONY: clean certs
+.PHONY: clean certs mtls-certs mtls-check clean-certs
 
 # Variables
 BINARY_NAME=api
@@ -260,6 +260,19 @@ certs: ## Generate mTLS certificates for internal communication
 	done
 	@rm -f certs/ca.srl
 	@echo "Certificates generated in certs/"
+
+# mTLS certs — Phase 25a-01. The dev CA + per-service leaf certs that the
+# API internal :8443 listener and tokenclient mTLS use. Idempotent: running
+# again with an existing infra/mtls/certs/ca.crt is a no-op.
+mtls-certs: ## Generate dev CA + per-service leaf certs into infra/mtls/certs/ (idempotent)
+	@bash scripts/gen-mtls-certs.sh
+
+mtls-check: ## Verify every leaf cert against the dev CA + 30-day expiry window
+	@bash scripts/check-mtls-certs.sh
+
+clean-certs: ## Remove all generated mTLS material (next mtls-certs rebuilds)
+	@find infra/mtls/certs -mindepth 1 ! -name '.gitignore' -delete 2>/dev/null || true
+	@echo "infra/mtls/certs/ cleaned (kept .gitignore)"
 
 # Clean
 clean: ## Remove build artifacts

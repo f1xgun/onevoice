@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/f1xgun/onevoice/pkg/mtls"
 )
 
 // defaultCacheTTL is how long a fetched token is reused before a fresh lookup.
@@ -40,7 +43,7 @@ type Client struct {
 
 func New(baseURL string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 10 * time.Second}
+		httpClient = defaultHTTPClient()
 	}
 	return &Client{
 		baseURL:    baseURL,
@@ -48,6 +51,38 @@ func New(baseURL string, httpClient *http.Client) *Client {
 		cacheTTL:   defaultCacheTTL,
 		cache:      make(map[string]cacheEntry),
 	}
+}
+
+// defaultHTTPClient builds the http.Client used when callers pass nil to
+// New. When ONEVOICE_MTLS_ENABLED=true, the transport carries the
+// service's leaf cert + CA root so calls to the API's internal :8443
+// listener complete the mTLS handshake. When mTLS is disabled (unit tests
+// against httptest.NewServer), the transport stays plain — preserving the
+// pre-mTLS behavior so the existing test suite keeps passing.
+//
+// A misconfigured mTLS env (enabled=true but missing/unreadable certs) is
+// logged at warn level and falls back to plain transport rather than
+// returning an error — `New` has no error return and changing its
+// signature would break every caller (4 platform agents + tests). The
+// downstream request will then hit a TLS handshake failure with a clear
+// error, which is logged at every call site.
+func defaultHTTPClient() *http.Client {
+	tr := &http.Transport{}
+	if mtls.IsEnabled() {
+		paths, err := mtls.PathsFromEnv()
+		switch {
+		case err != nil:
+			slog.Warn("tokenclient: mtls enabled but env misconfigured — falling back to plain transport", "error", err)
+		default:
+			tlsCfg, terr := mtls.LoadClientTLSConfig(paths)
+			if terr != nil {
+				slog.Warn("tokenclient: mtls enabled but cert load failed — falling back to plain transport", "error", terr)
+			} else {
+				tr.TLSClientConfig = tlsCfg
+			}
+		}
+	}
+	return &http.Client{Timeout: 10 * time.Second, Transport: tr}
 }
 
 func cacheKey(businessID, platform, externalID string) string {

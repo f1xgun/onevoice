@@ -203,6 +203,17 @@ jobs:
             services/agent-vk/go.sum
             services/agent-yandex-business/go.sum
 
+      # mTLS cert harness — generate ephemeral dev CA + per-service leaf
+      # certs into infra/mtls/certs/ so the API + tokenclient mTLS tests
+      # have material to load. The script is idempotent + check-certs
+      # verifies the chain before tests run. Cert material lives only in
+      # the runner FS and is gitignored — never persists across runs.
+      - name: Generate ephemeral mTLS certs
+        run: bash scripts/gen-mtls-certs.sh
+
+      - name: Verify mTLS cert chain
+        run: bash scripts/check-mtls-certs.sh
+
       - name: Test pkg
         run: go test -v -race -coverprofile=coverage-pkg.out ./...
         working-directory: pkg

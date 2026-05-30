@@ -187,10 +187,30 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		Handler:           internalRouter,
 		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
 	}
+	// mTLS: when ONEVOICE_MTLS_ENABLED=true (production / docker-compose),
+	// terminate TLS on :8443 with RequireAndVerifyClientCert. Plain HTTP
+	// connection attempts get a TLS handshake error — no useful response.
+	// Falls back to ListenAndServe (plain HTTP) when disabled so unit tests
+	// and dev runs without certs still work. See pkg/mtls/config.go.
+	internalTLS, mtlsErr := wire.MaybeServerTLSConfig()
+	if mtlsErr != nil {
+		return fmt.Errorf("internal server tls: %w", mtlsErr)
+	}
+	if internalTLS != nil {
+		internalSrv.TLSConfig = internalTLS
+	}
 	go func() {
-		log.Info("internal server listening", "addr", internalAddr)
-		if err := internalSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("internal server error", "error", err)
+		log.Info("internal server listening", "addr", internalAddr, "tls", internalTLS != nil)
+		var serveErr error
+		if internalTLS != nil {
+			// Cert + key are already loaded into TLSConfig.Certificates;
+			// empty string args tell ListenAndServeTLS to use them.
+			serveErr = internalSrv.ListenAndServeTLS("", "")
+		} else {
+			serveErr = internalSrv.ListenAndServe()
+		}
+		if serveErr != nil && serveErr != http.ErrServerClosed {
+			log.Error("internal server error", "error", serveErr)
 		}
 	}()
 

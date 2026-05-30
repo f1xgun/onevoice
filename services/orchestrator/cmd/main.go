@@ -23,6 +23,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/pkg/mtls"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/wire"
@@ -52,6 +53,11 @@ func main() {
 func run(log *slog.Logger, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	// Surface the mTLS posture at startup so a misconfigured deploy is
+	// visible in the first log line rather than during the first internal
+	// HTTP call. tokenclient + future billingclient pick up the same env.
+	log.Info("mtls", "enabled", mtls.IsEnabled())
 
 	router, err := wire.LLMRouter(cfg, log)
 	if err != nil {
