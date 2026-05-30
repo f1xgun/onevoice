@@ -133,6 +133,46 @@ func friendlyConversationCapMessage(ctx context.Context) string {
 	return conversationCapMessageRU
 }
 
+// Friendly text for rate-limiter sentinels that surface mid-loop. Two-locale
+// switch matching the chat handler's bootstrap-error translation.
+const (
+	dailySpendInLoopRU         = "Достигнут дневной лимит расходов для этого бизнеса. Попробуйте завтра."
+	dailySpendInLoopEN         = "Daily spend limit reached for this business. Try again tomorrow."
+	rateLimitUnavailInLoopRU   = "Сервис ограничения запросов временно недоступен. Попробуйте позже."
+	rateLimitUnavailInLoopEN   = "Rate limiter is temporarily unavailable. Please try again shortly."
+	rateLimitExceededInLoopRU  = "Слишком много запросов. Подождите минуту и повторите."
+	rateLimitExceededInLoopEN  = "Too many requests. Wait a minute and try again."
+)
+
+// translateChatError converts a Router-side rate-limiter sentinel into an SSE
+// Event carrying the machine-readable Code. Errors without a matching
+// sentinel keep their legacy free-text shape so observability is preserved.
+func translateChatError(ctx context.Context, err error) Event {
+	en := i18n.LocaleFromContext(ctx) == language.English
+	switch {
+	case errors.Is(err, llm.ErrDailySpendExceeded):
+		msg := dailySpendInLoopRU
+		if en {
+			msg = dailySpendInLoopEN
+		}
+		return Event{Type: EventError, Code: "daily_spend_exceeded", Content: msg}
+	case errors.Is(err, llm.ErrRateLimitUnavailable):
+		msg := rateLimitUnavailInLoopRU
+		if en {
+			msg = rateLimitUnavailInLoopEN
+		}
+		return Event{Type: EventError, Code: "rate_limit_unavailable", Content: msg}
+	case errors.Is(err, llm.ErrRateLimitExceeded):
+		msg := rateLimitExceededInLoopRU
+		if en {
+			msg = rateLimitExceededInLoopEN
+		}
+		return Event{Type: EventError, Code: "rate_limit_exceeded", Content: msg}
+	default:
+		return Event{Type: EventError, Content: err.Error()}
+	}
+}
+
 // stepRun is the single shared loop body used by both Run (fresh turns) and
 // Resume (post-approval continuation). It MUST NOT block waiting for
 // approval — when a manual-floor tool is classified, it persists the
@@ -173,8 +213,13 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		}
 		resp, err := o.llm.Chat(ctx, llmReq)
 		if err != nil {
+			// Translate rate-limiter sentinels to coded SSE error events so
+			// downstream consumers can branch on Code without parsing free
+			// text. Unknown errors keep their legacy err.Error() shape so
+			// existing observability is preserved.
+			ev := translateChatError(ctx, err)
 			select {
-			case out <- Event{Type: EventError, Content: err.Error()}:
+			case out <- ev:
 			case <-ctx.Done():
 			}
 			return OutcomeError, "", err
