@@ -236,6 +236,9 @@ func TestRouter_XFFFromUntrustedPeerIgnored(t *testing.T) {
 type stubBilling struct{}
 
 func (stubBilling) LogUsage(_ context.Context, _ *llm.UsageLog) error { return nil }
+func (stubBilling) GetDailySpend(_ context.Context, _ uuid.UUID, _ time.Time) (float64, error) {
+	return 0, nil
+}
 
 // buildTestInternalRouter wires SetupInternal with a fake billing repo so
 // the route's middleware stack is exercised end-to-end without DB.
