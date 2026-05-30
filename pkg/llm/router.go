@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
 var (
@@ -135,36 +137,107 @@ func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
 	return nil
 }
 
-// Chat performs a blocking LLM chat request using the selected provider.
-// Picking, outcome recording, and per-call prometheus emission all run
-// inside Invoke; Router owns only the rate-limit gate and the async
-// billing log.
+// retryLabel maps an attempt index to the label value the
+// llm_router_retry_total counter expects. The label vocabulary is fixed at
+// {first, second}; values past index 1 collapse to "unknown" so a future
+// policy change to N>2 attempts cannot silently mint new series.
+func retryLabel(attempt int) string {
+	switch attempt {
+	case 0:
+		return "first"
+	case 1:
+		return "second"
+	default:
+		return "unknown"
+	}
+}
+
+// maxChatAttempts caps the candidate walk at two attempts — the primary
+// pick plus one sibling. Same-entry retry is intentionally skipped: without
+// backoff it amplifies provider outages, and the second-most-preferred
+// registry entry is a stronger fallback signal than a same-shot retry.
+const maxChatAttempts = 2
+
+// Chat performs a blocking LLM chat request, walking up to two registered
+// candidates with a one-shot retry on transient provider errors. The retry
+// targets a sibling registry entry (different provider for the same model);
+// the LLM POST is naturally idempotent at the API layer, so a sibling can
+// safely replay the request.
+//
+// Failure semantics:
+//
+//   - Non-transient error on attempt 0: returned immediately. No sibling is
+//     attempted because the failure (4xx, malformed payload, etc.) will
+//     reproduce on any provider.
+//   - Transient error on attempt 0 with a sibling available: a second
+//     attempt against the sibling fires. If it succeeds, its response is
+//     returned and billed. If it fails (transient or otherwise), that
+//     second error is returned.
+//   - Single-candidate registries return the original error without a
+//     second attempt — there is no sibling to retry against.
+//
+// Billing fires exactly once and only for the successful attempt's
+// response — the failed first attempt is never billed even if its partial
+// response surfaced Usage tokens.
 func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	if err := r.checkRateLimit(ctx, req); err != nil {
 		return nil, err
 	}
 
-	entry, resp, err := Invoke(r.selector, req.Model, req.Strategy,
-		func(p Provider) (*ChatResponse, time.Duration, error) {
-			out, callErr := p.Chat(ctx, req)
-			if callErr != nil {
-				return nil, 0, callErr
-			}
-			return out, out.Latency, nil
-		})
-	if err != nil {
-		return nil, err
+	candidates := r.selector.Candidates(req.Model, req.Strategy)
+	if len(candidates) == 0 {
+		return nil, ErrNoProvider
 	}
 
-	resp.Provider = entry.Provider
-	// Skip billing for system-level callers (titler, review_drafter) that
-	// pass uuid.Nil BusinessID. The usage_logs.business_id column is NOT NULL
-	// and the repository rejects nil-BusinessID rows; system callers are
-	// retro-fitted to pass real BusinessIDs at the wiring layer.
-	if r.billing != nil && req.BusinessID != uuid.Nil {
-		go r.logBilling(context.Background(), req, entry, resp)
+	var lastErr error
+	for attempt, cand := range candidates {
+		if attempt >= maxChatAttempts {
+			break
+		}
+
+		start := time.Now()
+		resp, callErr := cand.Provider.Chat(ctx, req)
+		// Feed the health rollup on every attempt — both successful
+		// retries and exhausted retries inform the next Pick.
+		providerLatency := time.Duration(0)
+		if resp != nil {
+			providerLatency = resp.Latency
+		}
+		r.selector.Record(cand.Entry, Outcome{
+			Success: callErr == nil,
+			Latency: providerLatency,
+			Model:   req.Model,
+			Wall:    time.Since(start),
+		})
+
+		if callErr == nil {
+			metrics.LLMRouterRetry.WithLabelValues("success", retryLabel(attempt)).Inc()
+			resp.Provider = cand.Entry.Provider
+			// Skip billing for system-level callers (titler,
+			// review_drafter) that pass uuid.Nil BusinessID. The
+			// usage_logs.business_id column is NOT NULL and the
+			// repository rejects nil-BusinessID rows.
+			if r.billing != nil && req.BusinessID != uuid.Nil {
+				go r.logBilling(context.Background(), req, cand.Entry, resp)
+			}
+			return resp, nil
+		}
+
+		lastErr = callErr
+		if !isTransientLLMError(callErr) {
+			metrics.LLMRouterRetry.WithLabelValues("nonretryable", retryLabel(attempt)).Inc()
+			return nil, callErr
+		}
+		// Transient. Decide whether a retry is even possible.
+		if attempt == 0 && len(candidates) >= 2 {
+			metrics.LLMRouterRetry.WithLabelValues("retrying", retryLabel(attempt)).Inc()
+			continue
+		}
+		metrics.LLMRouterRetry.WithLabelValues("exhausted", retryLabel(attempt)).Inc()
+		return nil, callErr
 	}
-	return resp, nil
+
+	return nil, lastErr
 }
 
 // ChatStream performs a streaming LLM chat request using the selected
@@ -172,6 +245,13 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 // channel-open instant is not user-perceived; defaultSelector skips
 // zero-latency samples so the rolling window stays untouched for
 // streaming starts.
+//
+// ChatStream is intentionally NOT retried. Mid-stream errors are not
+// safely idempotent: the channel may have already emitted partial chunks
+// to the caller, and replaying the request against a sibling would
+// surface duplicate content. Callers that need fault tolerance on the
+// streaming path should fall back to non-streaming Chat (which is the
+// retried path) or re-issue the prompt on a fresh connection.
 func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error) {
 	if err := r.checkRateLimit(ctx, req); err != nil {
 		return nil, err
