@@ -229,7 +229,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	// sendOrCancel writes ev to out, but returns false if ctx is cancelled
+	// sendOrCancel writes ev to out, but returns false if ctx is canceled
 	// first. Mirrors the gate used by dispatchToolCalls (orchestrator.go) so a
 	// caller that hangs up mid-resume cannot leave the per-call goroutines
 	// blocked indefinitely on a full channel buffer.
