@@ -18,8 +18,11 @@ var (
 const tokensPerMillion = 1_000_000
 
 // RateLimitChecker is a testable interface for rate limit enforcement.
+// businessID is the attribution key for the per-business daily-spend gate;
+// callers without business context pass uuid.Nil so the gate is skipped (same
+// nil-guard discipline applied to billing writes).
 type RateLimitChecker interface {
-	CheckLimit(ctx context.Context, userID uuid.UUID, tier string, tokens int) (bool, error)
+	CheckLimit(ctx context.Context, userID, businessID uuid.UUID, tier string, tokens int) (bool, error)
 }
 
 // Router calls LLM providers selected by a Selector seam (pkg/llm/selector.go).
@@ -120,8 +123,10 @@ func (r *Router) checkRateLimit(ctx context.Context, req ChatRequest) error {
 	if r.rateLimiter == nil || req.UserID == uuid.Nil {
 		return nil
 	}
-	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, tierFromRequest(req), 0)
+	allowed, err := r.rateLimiter.CheckLimit(ctx, req.UserID, req.BusinessID, tierFromRequest(req), 0)
 	if err != nil {
+		// Pass the sentinel through verbatim so callers can branch on
+		// ErrDailySpendExceeded / ErrRateLimitUnavailable directly.
 		return err
 	}
 	if !allowed {

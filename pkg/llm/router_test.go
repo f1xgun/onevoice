@@ -63,13 +63,19 @@ func makeStub(name string) *stubProvider {
 	}
 }
 
-// fakeRateLimiter satisfies RateLimitChecker for tests.
+// fakeRateLimiter satisfies RateLimitChecker for tests. Captures the userID
+// and businessID it was called with so tests can assert propagation.
 type fakeRateLimiter struct {
 	allowed bool
 	err     error
+
+	gotUserID     uuid.UUID
+	gotBusinessID uuid.UUID
 }
 
-func (f *fakeRateLimiter) CheckLimit(_ context.Context, _ uuid.UUID, _ string, _ int) (bool, error) {
+func (f *fakeRateLimiter) CheckLimit(_ context.Context, userID, businessID uuid.UUID, _ string, _ int) (bool, error) {
+	f.gotUserID = userID
+	f.gotBusinessID = businessID
 	return f.allowed, f.err
 }
 
@@ -267,6 +273,62 @@ func TestRouter_RateLimit_SkippedForNilUserID(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
+}
+
+// TestRouter_CheckRateLimit_PassesBusinessID — Chat with non-nil BusinessID
+// reaches CheckLimit with that same UUID.
+func TestRouter_CheckRateLimit_PassesBusinessID(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+	frl := &fakeRateLimiter{allowed: true}
+	r := llm.NewRouter(registry,
+		llm.WithProvider(makeStub("openai")),
+		llm.WithRateLimitChecker(frl),
+	)
+
+	bizID := uuid.New()
+	userID := uuid.New()
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     userID,
+		BusinessID: bizID,
+		Tier:       "free",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, userID, frl.gotUserID)
+	assert.Equal(t, bizID, frl.gotBusinessID)
+}
+
+// TestRouter_DailySpendError_PropagatesAsIs — sentinel reaches caller.
+func TestRouter_DailySpendError_PropagatesAsIs(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+	r := llm.NewRouter(registry,
+		llm.WithProvider(makeStub("openai")),
+		llm.WithRateLimitChecker(&fakeRateLimiter{err: llm.ErrDailySpendExceeded}),
+	)
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded), "got %v", err)
+}
+
+// TestRouter_RateLimitUnavailable_PropagatesAsIs — infra sentinel pass-through.
+func TestRouter_RateLimitUnavailable_PropagatesAsIs(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+	r := llm.NewRouter(registry,
+		llm.WithProvider(makeStub("openai")),
+		llm.WithRateLimitChecker(&fakeRateLimiter{err: llm.ErrRateLimitUnavailable}),
+	)
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	assert.True(t, errors.Is(err, llm.ErrRateLimitUnavailable), "got %v", err)
 }
 
 func TestRouter_RateLimit_CheckerError_Propagated(t *testing.T) {
