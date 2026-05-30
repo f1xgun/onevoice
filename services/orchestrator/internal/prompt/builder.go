@@ -69,16 +69,189 @@ type ProjectContext struct {
 // argument. Helpers therefore trust their tag and never re-normalize — the
 // "collapse arbitrary tag → Russian|English" rule lives in pkg/i18n alongside
 // MatchAcceptLanguage, not scattered through prompt/.
+//
+// Build is retained as a back-compat wrapper over BuildSplit for callers that
+// still want a single concatenated system message (titler, draft_reply). New
+// callers should prefer BuildSplit + llm.ChatRequest.SystemBlocks for the
+// two-block Anthropic prompt cache split (Plan 24-02).
 func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []llm.Message {
+	platform, business, msgs := BuildSplit(ctx, proj, history)
+	system := platform + "\n" + business
+	out := make([]llm.Message, 0, 1+len(msgs))
+	out = append(out, llm.Message{Role: "system", Content: system})
+	out = append(out, msgs...)
+	return out
+}
+
+// BuildSplit returns the two-block system prompt — Block 1 (platform-wide,
+// byte-stable per locale) and Block 2 (per-business, varies per request) —
+// along with the conversation history (no leading system message).
+//
+// Block 1 (platform):
+//   - Preamble ("Ты — AI-ассистент..." / "You are an AI assistant...")
+//   - "## Правила" / "## Rules" with the platform-wide rule list
+//   - Trailing language directive ("Общайся на русском языке" / "Respond in English")
+//
+// Block 2 (business):
+//   - "## Бизнес:" / "## Business:" header + business details (Name, Category,
+//     Address, Phone, Website, Description)
+//   - "Тон общения:" / "Tone:"
+//   - "Текущая дата и время:" / "Current date and time:"
+//   - "## Активные интеграции" / "## Active integrations" list
+//   - Optional "## Проект: ..." / "## Project: ..." block when proj != nil
+//
+// Anthropic stamps cache_control on Block 1 ONLY — see the CacheBoundary flag
+// on llm.SystemBlock and stampSystemCacheControl in pkg/llm/providers/anthropic.go.
+// Block 1 byte-stability across BusinessContext variations is guarded by
+// TestSystemPromptHash_Stability (builder_stability_test.go).
+//
+// Reordering note (Plan 24-02): the legacy single-block builder emitted
+// preamble → Business → Tone → Now → Integrations → Rules. Splitting it
+// reorders to preamble → Rules → Business → Tone → Now → Integrations
+// because the cache prefix MUST be platform-only. RESEARCH §Pattern 2:
+// rules-first ordering is in fact preferred — platform rules lead the prompt
+// and carry the cache_control marker.
+func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message) (platform, business string, msgs []llm.Message) {
 	tag := i18n.NormalizeToSupported(ctx.Locale)
-	system := buildSystemContent(ctx, tag)
+	platform = buildPlatformBlock(tag)
+	business = buildBusinessBlock(ctx, tag)
 	if proj != nil {
-		system = appendProjectBlock(system, proj, tag)
+		business = appendProjectBlock(business, proj, tag)
 	}
-	msgs := make([]llm.Message, 0, 1+len(history))
-	msgs = append(msgs, llm.Message{Role: "system", Content: system})
+	msgs = make([]llm.Message, 0, len(history))
 	msgs = append(msgs, history...)
-	return msgs
+	return platform, business, msgs
+}
+
+// buildPlatformBlock renders the locale-fixed platform prefix (Block 1). It
+// takes NO BusinessContext — its output is byte-stable per locale, which is
+// the invariant Anthropic's cross-business prompt cache depends on.
+func buildPlatformBlock(tag language.Tag) string {
+	if tag == language.English {
+		return buildPlatformBlockEn()
+	}
+	return buildPlatformBlockRu()
+}
+
+// buildPlatformBlockRu is the Russian platform prefix. The trailing language
+// directive "Общайся на русском языке" is load-bearing (see Phase D of
+// .planning/i18n-readiness/PLAN.md) and MUST remain at the end of Block 1
+// so it appears just before the per-business business block in the
+// concatenated prompt.
+func buildPlatformBlockRu() string {
+	var sb strings.Builder
+	sb.WriteString("Ты — AI-ассистент для управления цифровым присутствием бизнеса.\n")
+	sb.WriteString("\n## Правила\n")
+	sb.WriteString("- Выполняй задачи самостоятельно через доступные инструменты — не объясняй план, а действуй\n")
+	sb.WriteString("- Если задача неясна, задай один уточняющий вопрос, затем выполни задачу без дополнительных подтверждений\n")
+	sb.WriteString("- Когда пользователь просит получить отзывы/комментарии — вызывай инструменты ДЛЯ ВСЕХ активных платформ, а не только для одной\n")
+	sb.WriteString("- Частичные ошибки допустимы: сообщи об успехах и неудачах после выполнения\n")
+	sb.WriteString("- Общайся на русском языке\n")
+	return sb.String()
+}
+
+// buildPlatformBlockEn is the English platform prefix. See buildPlatformBlockRu
+// for the load-bearing-directive invariant.
+func buildPlatformBlockEn() string {
+	var sb strings.Builder
+	sb.WriteString("You are an AI assistant for managing a business's digital presence.\n")
+	sb.WriteString("\n## Rules\n")
+	sb.WriteString("- Perform tasks independently using the available tools — do not explain the plan, take action\n")
+	sb.WriteString("- If a task is unclear, ask one clarifying question, then complete the task without further confirmations\n")
+	sb.WriteString("- When the user asks for reviews/comments, call tools for ALL active platforms, not just one\n")
+	sb.WriteString("- Partial errors are acceptable: report successes and failures after execution\n")
+	sb.WriteString("- Respond in English\n")
+	return sb.String()
+}
+
+// buildBusinessBlock renders the per-business Block 2. Everything that varies
+// per request (business fields, integrations, current time) lives here so it
+// never participates in the cache prefix.
+func buildBusinessBlock(ctx BusinessContext, tag language.Tag) string {
+	if tag == language.English {
+		return buildBusinessBlockEn(ctx)
+	}
+	return buildBusinessBlockRu(ctx)
+}
+
+// buildBusinessBlockRu emits the Russian per-business section.
+func buildBusinessBlockRu(ctx BusinessContext) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "## Бизнес: %s\n", ctx.Name)
+	if ctx.Category != "" {
+		fmt.Fprintf(&sb, "Категория: %s\n", ctx.Category)
+	}
+	if ctx.Address != "" {
+		fmt.Fprintf(&sb, "Адрес: %s\n", ctx.Address)
+	}
+	if ctx.Phone != "" {
+		fmt.Fprintf(&sb, "Телефон: %s\n", ctx.Phone)
+	}
+	if ctx.Website != "" {
+		fmt.Fprintf(&sb, "Сайт: %s\n", ctx.Website)
+	}
+	if ctx.Description != "" {
+		fmt.Fprintf(&sb, "Описание: %s\n", ctx.Description)
+	}
+
+	tone := ctx.Tone
+	if tone == "" {
+		tone = "профессиональный"
+	}
+	fmt.Fprintf(&sb, "\nТон общения: %s\n", tone)
+
+	fmt.Fprintf(&sb, "\nТекущая дата и время: %s\n", ctx.Now.Format("2006-01-02 15:04 MST"))
+
+	if len(ctx.ActiveIntegrations) > 0 {
+		sb.WriteString("\n## Активные интеграции\n")
+		for _, integration := range ctx.ActiveIntegrations {
+			fmt.Fprintf(&sb, "- %s\n", integration)
+		}
+		sb.WriteString("\nТы можешь управлять этими платформами через доступные инструменты.\n")
+	} else {
+		sb.WriteString("\nНет активных интеграций с платформами.\n")
+	}
+	return sb.String()
+}
+
+// buildBusinessBlockEn emits the English per-business section.
+func buildBusinessBlockEn(ctx BusinessContext) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "## Business: %s\n", ctx.Name)
+	if ctx.Category != "" {
+		fmt.Fprintf(&sb, "Category: %s\n", ctx.Category)
+	}
+	if ctx.Address != "" {
+		fmt.Fprintf(&sb, "Address: %s\n", ctx.Address)
+	}
+	if ctx.Phone != "" {
+		fmt.Fprintf(&sb, "Phone: %s\n", ctx.Phone)
+	}
+	if ctx.Website != "" {
+		fmt.Fprintf(&sb, "Website: %s\n", ctx.Website)
+	}
+	if ctx.Description != "" {
+		fmt.Fprintf(&sb, "Description: %s\n", ctx.Description)
+	}
+
+	tone := ctx.Tone
+	if tone == "" {
+		tone = "professional"
+	}
+	fmt.Fprintf(&sb, "\nTone: %s\n", tone)
+
+	fmt.Fprintf(&sb, "\nCurrent date and time: %s\n", ctx.Now.Format("2006-01-02 15:04 MST"))
+
+	if len(ctx.ActiveIntegrations) > 0 {
+		sb.WriteString("\n## Active integrations\n")
+		for _, integration := range ctx.ActiveIntegrations {
+			fmt.Fprintf(&sb, "- %s\n", integration)
+		}
+		sb.WriteString("\nYou can manage these platforms through the available tools.\n")
+	} else {
+		sb.WriteString("\nNo active platform integrations.\n")
+	}
+	return sb.String()
 }
 
 // appendProjectBlock glues the project prompt layer onto the business-only
@@ -174,130 +347,3 @@ func restrictionsAllowedOnly(tag language.Tag, allowed []string) string {
 		"(или просто откажись, если альтернативы нет). НЕ подменяй канал молча.\n"
 }
 
-// buildSystemContent renders the locale-appropriate system prompt skeleton.
-// The two language paths are kept in lock-step: every section emitted in
-// Russian has an English counterpart and vice versa, so flipping the locale
-// never produces a partially-localized prompt. The trailing language-steering
-// line ("Общайся на русском языке" / "Respond in English") is the single
-// load-bearing string that flips the LLM's reply language — section headers
-// alone are insufficient. See Phase D of `.planning/i18n-readiness/PLAN.md`.
-//
-// tag must already be one of i18n.Supported (Russian or English) — Build
-// normalizes ctx.Locale before invoking this helper.
-func buildSystemContent(ctx BusinessContext, tag language.Tag) string {
-	if tag == language.English {
-		return buildSystemContentEn(ctx)
-	}
-	return buildSystemContentRu(ctx)
-}
-
-// buildSystemContentRu is the original (and default) Russian template. Kept
-// byte-for-byte identical to the pre-i18n shape so existing snapshot tests
-// continue to pass and so RU-locale users see no behavioral drift after the
-// i18n switch lands.
-func buildSystemContentRu(ctx BusinessContext) string {
-	var sb strings.Builder
-
-	sb.WriteString("Ты — AI-ассистент для управления цифровым присутствием бизнеса.\n\n")
-
-	fmt.Fprintf(&sb, "## Бизнес: %s\n", ctx.Name)
-	if ctx.Category != "" {
-		fmt.Fprintf(&sb, "Категория: %s\n", ctx.Category)
-	}
-	if ctx.Address != "" {
-		fmt.Fprintf(&sb, "Адрес: %s\n", ctx.Address)
-	}
-	if ctx.Phone != "" {
-		fmt.Fprintf(&sb, "Телефон: %s\n", ctx.Phone)
-	}
-	if ctx.Website != "" {
-		fmt.Fprintf(&sb, "Сайт: %s\n", ctx.Website)
-	}
-	if ctx.Description != "" {
-		fmt.Fprintf(&sb, "Описание: %s\n", ctx.Description)
-	}
-
-	tone := ctx.Tone
-	if tone == "" {
-		tone = "профессиональный"
-	}
-	fmt.Fprintf(&sb, "\nТон общения: %s\n", tone)
-
-	fmt.Fprintf(&sb, "\nТекущая дата и время: %s\n", ctx.Now.Format("2006-01-02 15:04 MST"))
-
-	if len(ctx.ActiveIntegrations) > 0 {
-		sb.WriteString("\n## Активные интеграции\n")
-		for _, integration := range ctx.ActiveIntegrations {
-			fmt.Fprintf(&sb, "- %s\n", integration)
-		}
-		sb.WriteString("\nТы можешь управлять этими платформами через доступные инструменты.\n")
-	} else {
-		sb.WriteString("\nНет активных интеграций с платформами.\n")
-	}
-
-	sb.WriteString("\n## Правила\n")
-	sb.WriteString("- Выполняй задачи самостоятельно через доступные инструменты — не объясняй план, а действуй\n")
-	sb.WriteString("- Если задача неясна, задай один уточняющий вопрос, затем выполни задачу без дополнительных подтверждений\n")
-	sb.WriteString("- Когда пользователь просит получить отзывы/комментарии — вызывай инструменты ДЛЯ ВСЕХ активных платформ, а не только для одной\n")
-	sb.WriteString("- Частичные ошибки допустимы: сообщи об успехах и неудачах после выполнения\n")
-	sb.WriteString("- Общайся на русском языке\n")
-
-	return sb.String()
-}
-
-// buildSystemContentEn is the English counterpart of buildSystemContentRu.
-// Every section header, tone-default, and rule line mirrors the Russian text
-// 1:1 — keep them in sync when adding new rules so locale switching never
-// produces an asymmetric prompt.
-//
-// The trailing "Respond in English" line is load-bearing: section labels in
-// English alone do not flip LLM output language without an explicit directive.
-func buildSystemContentEn(ctx BusinessContext) string {
-	var sb strings.Builder
-
-	sb.WriteString("You are an AI assistant for managing a business's digital presence.\n\n")
-
-	fmt.Fprintf(&sb, "## Business: %s\n", ctx.Name)
-	if ctx.Category != "" {
-		fmt.Fprintf(&sb, "Category: %s\n", ctx.Category)
-	}
-	if ctx.Address != "" {
-		fmt.Fprintf(&sb, "Address: %s\n", ctx.Address)
-	}
-	if ctx.Phone != "" {
-		fmt.Fprintf(&sb, "Phone: %s\n", ctx.Phone)
-	}
-	if ctx.Website != "" {
-		fmt.Fprintf(&sb, "Website: %s\n", ctx.Website)
-	}
-	if ctx.Description != "" {
-		fmt.Fprintf(&sb, "Description: %s\n", ctx.Description)
-	}
-
-	tone := ctx.Tone
-	if tone == "" {
-		tone = "professional"
-	}
-	fmt.Fprintf(&sb, "\nTone: %s\n", tone)
-
-	fmt.Fprintf(&sb, "\nCurrent date and time: %s\n", ctx.Now.Format("2006-01-02 15:04 MST"))
-
-	if len(ctx.ActiveIntegrations) > 0 {
-		sb.WriteString("\n## Active integrations\n")
-		for _, integration := range ctx.ActiveIntegrations {
-			fmt.Fprintf(&sb, "- %s\n", integration)
-		}
-		sb.WriteString("\nYou can manage these platforms through the available tools.\n")
-	} else {
-		sb.WriteString("\nNo active platform integrations.\n")
-	}
-
-	sb.WriteString("\n## Rules\n")
-	sb.WriteString("- Perform tasks independently using the available tools — do not explain the plan, take action\n")
-	sb.WriteString("- If a task is unclear, ask one clarifying question, then complete the task without further confirmations\n")
-	sb.WriteString("- When the user asks for reviews/comments, call tools for ALL active platforms, not just one\n")
-	sb.WriteString("- Partial errors are acceptable: report successes and failures after execution\n")
-	sb.WriteString("- Respond in English\n")
-
-	return sb.String()
-}
