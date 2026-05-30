@@ -124,9 +124,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return err
 	}
 
-	// Phase 23-01: single source of truth for dep checks lives in
-	// pkg/health/wiring.go::RegisterDefaultChecks (D-16 amended). Pass every
-	// dep handle the API service owns; the helper skips nil args silently so
+	// Single source of truth for dep checks lives in
+	// pkg/health/wiring.go::RegisterDefaultChecks. Pass every dep handle
+	// the API service owns; the helper skips nil args silently so
 	// orchestrator (which has no PG/Redis) can call the same helper.
 	hc := health.New(health.WithCheckTimeout(cfg.HealthCheckTimeout))
 	var mongoClient *mongo.Client
@@ -157,9 +157,9 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	// Phase 21-04 (ACCT-03 / D-34): handles.PG is the pool the
 	// BlockWritesDuringGrace middleware reads users.deletion_requested_at
 	// from on every write request.
-	// Phase 23.4 (OPS-04): svcs.Lockout enables LockoutMiddleware on /auth/login
-	// (D-21). Nil-safe — when Redis was unavailable at boot the middleware is
-	// skipped and Login degrades to legacy behavior.
+	// svcs.Lockout enables LockoutMiddleware on /auth/login. Nil-safe —
+	// when Redis was unavailable at boot the middleware is skipped and
+	// Login degrades to legacy behavior.
 	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User, handles.PG, svcs.Lockout)
 
 	addr := ":" + cfg.Port

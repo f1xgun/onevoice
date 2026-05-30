@@ -41,9 +41,9 @@ func TestYandexSmartCaptcha_Failed(t *testing.T) {
 
 func TestYandexSmartCaptcha_NetworkError(t *testing.T) {
 	// Stub started then immediately closed → dial fails → ErrCaptchaTransient.
-	// The fail-open path in the handler (per T-23.4-07) hinges on the
-	// caller distinguishing transient from invalid; we MUST surface
-	// ErrCaptchaTransient here, not ErrCaptchaInvalid.
+	// The handler's fail-open path hinges on the caller distinguishing
+	// transient from invalid; we MUST surface ErrCaptchaTransient here,
+	// not ErrCaptchaInvalid.
 	stub := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	addr := stub.URL
 	stub.Close()

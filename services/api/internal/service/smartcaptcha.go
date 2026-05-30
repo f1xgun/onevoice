@@ -12,11 +12,10 @@ import (
 	"time"
 )
 
-// Phase 23.4 (D-22) — Yandex SmartCaptcha server-side verifier.
+// Yandex SmartCaptcha server-side verifier.
 //
-// Picked over Cloudflare Turnstile (RKN throttles CF intermittently — see
-// .planning/research/PITFALLS.md §RU-network captcha) and hCaptcha
-// (foreign CDN, latency from Russia). Yandex SmartCaptcha:
+// Picked over Cloudflare Turnstile (RKN throttles CF intermittently) and
+// hCaptcha (foreign CDN, latency from Russia). Yandex SmartCaptcha:
 //   - 250k/month free tier (covers v1.4 traffic).
 //   - Sits on Yandex Cloud infra → no RKN risk.
 //   - Invisible-mode JS widget produces a token; backend POSTs that token to
@@ -28,9 +27,9 @@ import (
 var ErrCaptchaInvalid = errors.New("smartcaptcha: token invalid")
 
 // ErrCaptchaTransient means the validate endpoint was unreachable or
-// returned unparseable data. The caller should fail-open per T-23.4-07 —
-// locking every real user out during a Yandex SmartCaptcha outage is worse
-// than letting some bots through.
+// returned unparseable data. The caller should fail-open — locking every
+// real user out during a Yandex SmartCaptcha outage is worse than letting
+// some bots through.
 var ErrCaptchaTransient = errors.New("smartcaptcha: transient validation error")
 
 // captchaValidateEndpoint is the production Yandex SmartCaptcha verify URL.
@@ -54,7 +53,7 @@ type SmartCaptchaVerifier interface {
 	// Verify returns nil on a valid token; ErrCaptchaInvalid on a rejected
 	// token; ErrCaptchaTransient when the endpoint is unreachable or replied
 	// with garbage. clientIP is the user's IP (used to bind the token to a
-	// network neighborhood — see T-23.4-06 replay defense).
+	// network neighborhood — replay defense).
 	Verify(ctx context.Context, token, clientIP string) error
 }
 

@@ -73,27 +73,16 @@ func writePasswordResetError(w http.ResponseWriter, r *http.Request, err error) 
 	}
 }
 
-// Phase 23.4 (OPS-05 / D-24, D-25) — machine-readable error code constants.
-//
-// The seven previously-English "internal server error" strings in auth.go
-// (Register / Register-auto-login / RefreshToken / Logout / Me /
-// ChangePassword / UpdatePreferredLocale) are replaced with these codes
-// via writeJSONCodeError. The frontend resolves each code to a Russian
-// string via the i18n catalog (messages/ru.json under common.errors.*).
-//
-// Three more codes (account_locked, captcha_required, captcha_invalid) are
-// added for the lockout/captcha flow in /auth/login.
-//
-// Scope discipline (D-24): ONLY the seven D-24 lines are refactored. The
-// remaining English strings in auth.go (post-Phase 21 verification handlers)
-// stay as-is and are tracked by the hardcoded-string sweep memory.
+// Machine-readable error code constants. The frontend resolves each code to
+// a Russian string via the i18n catalog (messages/ru.json under
+// common.errors.*).
 const (
-	// Lockout / SmartCaptcha codes — Phase 23.4 OPS-04.
+	// Lockout / SmartCaptcha codes for /auth/login.
 	ErrCodeAccountLocked   = "account_locked"
 	ErrCodeCaptchaRequired = "captcha_required"
 	ErrCodeCaptchaInvalid  = "captcha_invalid"
 
-	// OPS-05 (D-24) — 7 auth.go internal-error replacements.
+	// Internal-error codes for the auth handler family.
 	ErrCodeRegisterInternal       = "register_internal"        // Register, post-create
 	ErrCodeAutoLoginFailed        = "auto_login_failed"        // Register, auto-login
 	ErrCodeRefreshInternal        = "refresh_internal"         // RefreshToken
@@ -103,10 +92,8 @@ const (
 	ErrCodeUpdateLocaleInternal   = "update_locale_internal"   // UpdatePreferredLocale
 )
 
-// writeJSONCodeError is defined in auth.go (Phase 21-03). It emits a
-// {"code":"<code>"} response body that the frontend's error_mapping.ts
-// routes on. Phase 23.4 (OPS-05 / D-24, D-25) reuses that helper rather
-// than duplicating the encode path.
+// writeJSONCodeError is defined in auth.go. It emits a {"code":"<code>"}
+// response body that the frontend's error_mapping.ts routes on.
 
 // writeAuthzInvariantError centralizes the authz sentinel -> HTTP mapping
 // shared by members.go, roles.go, and any future Phase 5 role-mutation

@@ -3,7 +3,7 @@
 # via Yandex KMS, persist into /etc/profile.d/restic.sh so the crond-spawned
 # shell inherits it (crond itself does NOT propagate parent env to job shells),
 # then exec the CMD (crond -f).
-# OPS-06 — 152-ФЗ Art. 19 §2(2) KMS-managed key.
+# 152-ФЗ Art. 19 §2(2) KMS-managed key.
 set -euo pipefail
 
 : "${YC_SA_JSON_CREDENTIALS:?Service-account JSON required (mount as env or file)}"
@@ -22,14 +22,14 @@ yc config set service-account-key /root/.config/yandex-cloud/credentials.json
 # `yc kms symmetric-crypto decrypt --plaintext-file /dev/stdout` writes the
 # raw plaintext bytes to stdout. Capture them directly — the value written
 # here MUST equal byte-for-byte the plaintext the operator passed to
-# `yc kms symmetric-crypto encrypt` during runbook §1 step 4. An earlier
-# implementation piped this output through a base64 decoder (removed
-# 2026-05-26, Phase 23-07 / WR-04), which decoded raw bytes as if they
-# were base64-encoded — producing a value that passed the `test -n` check
-# but did NOT match the operator-saved plaintext. That was a silent
-# backup-correctness defect that only surfaced at disaster-recovery time.
-# Regression-guarded by .github/workflows/backup-restore-drill.yml.
-# DO NOT add `| base64 ...` to this pipeline.
+# `yc kms symmetric-crypto encrypt` during the backup runbook. An earlier
+# implementation piped this output through a base64 decoder, which decoded
+# raw bytes as if they were base64-encoded — producing a value that passed
+# the `test -n` check but did NOT match the operator-saved plaintext. That
+# was a silent backup-correctness defect that only surfaced at
+# disaster-recovery time. Regression-guarded by
+# .github/workflows/backup-restore-drill.yml. DO NOT add `| base64 ...`
+# to this pipeline.
 DECRYPTED=$(yc kms symmetric-crypto decrypt \
     --id "$RESTIC_PASSWORD_KMS_KEY_ID" \
     --ciphertext-base64 "$RESTIC_PASSWORD_CIPHERTEXT" \

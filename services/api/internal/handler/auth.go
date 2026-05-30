@@ -83,10 +83,10 @@ type AuthHandler struct {
 	// nil-safe — when not wired the field is omitted from the response.
 	consents ConsentDiffer
 
-	// Phase 23.4 (OPS-04): brute-force / credential-stuffing defense for
-	// /auth/login. Both may be nil — Login degrades to legacy behavior
-	// (no lockout, no captcha) so the handler boots in environments
-	// without a Redis (test fixtures) or without SmartCaptcha env config.
+	// Brute-force / credential-stuffing defense for /auth/login. Both may
+	// be nil — Login degrades to legacy behavior (no lockout, no captcha)
+	// so the handler boots in environments without a Redis (test fixtures)
+	// or without SmartCaptcha env config.
 	lock            *lockout.Lockout
 	captcha         service.SmartCaptchaVerifier
 	captchaFailOpen bool
@@ -165,14 +165,14 @@ func NewAuthHandler(userService UserService, secureCookies bool, auditLogger aud
 	}, nil
 }
 
-// WithLockout installs the Phase 23.4 lockout + SmartCaptcha verifier on
-// an existing AuthHandler. Optional: when not called the handler keeps the
-// legacy (no lockout, no captcha) login behavior — used by unit tests and
-// dev environments without Redis / SmartCaptcha secrets.
+// WithLockout installs the lockout + SmartCaptcha verifier on an existing
+// AuthHandler. Optional: when not called the handler keeps the legacy
+// (no lockout, no captcha) login behavior — used by unit tests and dev
+// environments without Redis / SmartCaptcha secrets.
 //
 // failOpen controls the response on ErrCaptchaTransient (Yandex unreachable):
-// true → log + proceed (T-23.4-07, safer for legitimate users during outage);
-// false → reject as 403. Defaults to true per .planning/research/STACK.md §2.
+// true → log + proceed (safer for legitimate users during outage);
+// false → reject as 403. Defaults to true.
 func (h *AuthHandler) WithLockout(lock *lockout.Lockout, captcha service.SmartCaptchaVerifier, failOpen bool) *AuthHandler {
 	h.lock = lock
 	h.captcha = captcha
@@ -340,8 +340,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to register user", "error", err)
-		// Phase 23.4 (OPS-05 / D-24): machine-readable error code so the frontend
-		// can render a Russian string via the i18n catalog.
+		// Machine-readable error code so the frontend can render a Russian
+		// string via the i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeRegisterInternal)
 		return
 	}
@@ -350,8 +350,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		slog.Error("auto-login after register failed", "error", err)
-		// Phase 23.4 (OPS-05 / D-24): auto_login_failed distinct from register_internal —
-		// the user account WAS created; only the token issue failed.
+		// auto_login_failed distinct from register_internal — the user
+		// account WAS created; only the token issue failed.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeAutoLoginFailed)
 		return
 	}
@@ -371,14 +371,14 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 // Login handles user login.
 //
-// Phase 23.4 (OPS-04): layered defense per D-17.
+// Layered defense:
 //  1. Lockout middleware (mounted in router.go) has already annotated the
 //     context with CaptchaRequired / LoginEmail / LoginClientIP and
 //     short-circuited any TierLocked request before we get here.
 //  2. If CaptchaRequired is set (tier 4–9), this handler MUST verify the
 //     X-Captcha-Token header before delegating to userService.Login. Missing
 //     token → 400 captcha_required. Invalid token → 403 captcha_invalid.
-//     Transient Yandex outage → fail-open per T-23.4-07 (warn + proceed).
+//     Transient Yandex outage → fail-open (warn + proceed).
 //  3. On ErrInvalidCredentials, lockout.RecordFailure increments the counter.
 //  4. On success, lockout.Clear wipes the counter so subsequent legit logins
 //     don't accumulate stale state.
@@ -398,9 +398,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Phase 23.4 (OPS-04): captcha gate. Skipped when the middleware did not
-	// annotate the ctx (test fixtures without lockout wiring) or when the
-	// captcha verifier is nil (dev / no SMARTCAPTCHA_SECRET_KEY).
+	// Captcha gate. Skipped when the middleware did not annotate the ctx
+	// (test fixtures without lockout wiring) or when the captcha verifier
+	// is nil (dev / no SMARTCAPTCHA_SECRET_KEY).
 	if middleware.CaptchaRequired(r.Context()) && h.captcha != nil {
 		token := r.Header.Get("X-Captcha-Token")
 		if token == "" {
@@ -409,8 +409,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		clientIPForCaptcha := middleware.LoginClientIP(r.Context())
 		if clientIPForCaptcha == "" {
-			// Phase 23-05 (CR-01): fallback when LockoutMiddleware did not annotate
-			// the ctx (fail-open on Redis error / body-read error / JSON-decode
+			// Fallback when LockoutMiddleware did not annotate the ctx
+			// (fail-open on Redis error / body-read error / JSON-decode
 			// error / IPv6 peer / middleware not mounted in tests).
 			// middleware.ClientIP honors TRUSTED_PROXY_CIDRS so XFF is only
 			// trusted when the TCP peer is an allow-listed proxy.
@@ -418,9 +418,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		if verr := h.captcha.Verify(r.Context(), token, clientIPForCaptcha); verr != nil {
 			if errors.Is(verr, service.ErrCaptchaTransient) {
-				// T-23.4-07: SmartCaptcha outage. Fail-open is the safer
-				// default — bot-through during outage is acceptable,
-				// locking every real user out is not.
+				// SmartCaptcha outage. Fail-open is the safer default —
+				// bot-through during outage is acceptable, locking every
+				// real user out is not.
 				if h.captchaFailOpen {
 					slog.Warn("smartcaptcha: transient error, failing open",
 						slog.String("error", verr.Error()),
@@ -451,9 +451,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			// up the attempted email against the users table. The attempted
 			// email is captured in Details for brute-force analysis.
 			audit.LogLoginFailed(r.Context(), h.audit, req.Email, middleware.ClientIP(r), r.UserAgent(), "invalid_credentials")
-			// Phase 23.4 (OPS-04): increment the lockout counter. Best-effort;
-			// a Redis error here is logged but does not change the response
-			// (a 500 on a wrong-password is a worse UX than missed counter increment).
+			// Increment the lockout counter. Best-effort; a Redis error
+			// here is logged but does not change the response (a 500 on a
+			// wrong-password is a worse UX than missed counter increment).
 			h.recordLoginFailure(r, req.Email)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
@@ -469,8 +469,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// set so the request fully succeeded. Async fire-and-forget.
 	audit.LogLoginSuccess(r.Context(), h.audit, user.ID, middleware.ClientIP(r), r.UserAgent())
 
-	// Phase 23.4 (OPS-04): clear the lockout counter on success so legitimate
-	// users don't accumulate stale failure state from earlier fat-fingers.
+	// Clear the lockout counter on success so legitimate users don't
+	// accumulate stale failure state from earlier fat-fingers.
 	h.clearLockoutForLogin(r, req.Email)
 
 	writeJSON(w, http.StatusOK, LoginResponse{
@@ -489,7 +489,7 @@ func (h *AuthHandler) recordLoginFailure(r *http.Request, email string) {
 	}
 	ip := middleware.LoginClientIP(r.Context())
 	if ip == "" {
-		// Phase 23-05 (CR-01): see Login captcha-fallback comment.
+		// See Login captcha-fallback comment.
 		// middleware.ClientIP honors TRUSTED_PROXY_CIDRS so XFF cannot be
 		// spoofed by an attacker whose TCP peer is outside the trusted set.
 		ip = middleware.ClientIP(r)
@@ -512,7 +512,7 @@ func (h *AuthHandler) clearLockoutForLogin(r *http.Request, email string) {
 	}
 	ip := middleware.LoginClientIP(r.Context())
 	if ip == "" {
-		// Phase 23-05 (CR-01): see Login captcha-fallback comment.
+		// See Login captcha-fallback comment.
 		ip = middleware.ClientIP(r)
 	}
 	net16 := middleware.Net16(ip)
@@ -540,7 +540,7 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to refresh token", "error", err)
-		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeRefreshInternal)
 		return
 	}
@@ -591,7 +591,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to logout", "error", err)
-		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeLogoutInternal)
 		return
 	}
@@ -683,7 +683,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to get user", "error", err)
-		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeGetUserInternal)
 		return
 	}
@@ -766,7 +766,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to change password", "error", err)
-		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeChangePasswordInternal)
 		return
 	}
@@ -812,7 +812,7 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		slog.Error("failed to update preferred locale", "error", err)
-		// Phase 23.4 (OPS-05 / D-24): machine-readable error code.
+		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeUpdateLocaleInternal)
 		return
 	}
@@ -1027,8 +1027,7 @@ func writeJSONCodeError(w http.ResponseWriter, status int, code string) {
 	}{Code: code})
 }
 
-// Phase 23-05 (CR-01): the legacy local client-IP helper that lived here was
-// deleted because it read the forwarding header unconditionally and bypassed
-// the TRUSTED_PROXY_CIDRS trust gate. All call sites now go through
-// middleware.ClientIP, which honors the trust gate. See
-// .planning/phases/23-operational-hardening/23-05-clientip-fallback-fix-PLAN.md.
+// The legacy local client-IP helper that lived here was deleted because it
+// read the forwarding header unconditionally and bypassed the
+// TRUSTED_PROXY_CIDRS trust gate. All call sites now go through
+// middleware.ClientIP, which honors the trust gate.

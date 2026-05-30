@@ -173,14 +173,13 @@ type Config struct {
 	LegalAddress    string
 	LegalEmailPDN   string
 
-	// Phase 23-01 — HealthCheckTimeout caps any single dep ping inside
-	// /health/ready. Checks run concurrently (sync.WaitGroup in
-	// pkg/health.ReadyHandler), so total wall-clock budget =
-	// HealthCheckTimeout (max, not Σ deps × timeout). Default 2s preserves
-	// k8s readinessProbe (5s default) headroom.
+	// HealthCheckTimeout caps any single dep ping inside /health/ready.
+	// Checks run concurrently (sync.WaitGroup in pkg/health.ReadyHandler),
+	// so total wall-clock budget = HealthCheckTimeout (max, not Σ deps ×
+	// timeout). Default 2s preserves k8s readinessProbe (5s default) headroom.
 	HealthCheckTimeout time.Duration
 
-	// Phase 23.4 (OPS-04) — lockout + SmartCaptcha + trusted-proxy knobs.
+	// Lockout + SmartCaptcha + trusted-proxy knobs.
 	//
 	// LockoutFailThresholdCaptcha — counter at which TierCaptcha kicks in.
 	// LockoutFailThresholdLock    — counter at which TierLocked kicks in.
@@ -191,10 +190,10 @@ type Config struct {
 	// SmartCaptchaSecretKey       — server-side validation secret. Empty = Noop
 	//                               verifier (captcha disabled).
 	// TrustedProxyCIDRs           — comma-separated CIDR list controlling which
-	//                               X-Forwarded-For sources are trusted (D-19).
+	//                               X-Forwarded-For sources are trusted.
 	//                               Empty falls back to Yandex Cloud LB defaults.
 	// SmartCaptchaFailOpen        — on ErrCaptchaTransient (Yandex unreachable):
-	//                               true → log+proceed (T-23.4-07 safer default);
+	//                               true → log+proceed (safer default);
 	//                               false → reject as 403.
 	LockoutFailThresholdCaptcha int
 	LockoutFailThresholdLock    int
@@ -306,10 +305,10 @@ func Load() (*Config, error) {
 		LegalAddress:    os.Getenv("LEGAL_ADDRESS"),
 		LegalEmailPDN:   getEnv("LEGAL_EMAIL_PDN", "—"),
 
-		// Phase 23-01: per-dep readiness check timeout. T-23.1-04 — never
-		// trust the operator's bytes; getEnvDuration already falls back on
-		// parse errors, and a zero/negative explicit value would be rejected
-		// by the defensive clamp below.
+		// Per-dep readiness check timeout. Never trust the operator's bytes;
+		// getEnvDuration already falls back on parse errors, and a zero or
+		// negative explicit value would be rejected by the defensive clamp
+		// below.
 		HealthCheckTimeout: getEnvDuration("HEALTH_CHECK_TIMEOUT", 2*time.Second),
 	}
 
@@ -317,9 +316,9 @@ func Load() (*Config, error) {
 		cfg.HealthCheckTimeout = 2 * time.Second
 	}
 
-	// Phase 23.4 (OPS-04) — lockout + SmartCaptcha + trusted-proxy env loading.
-	// Defaults match pkg/lockout.Default* constants so they stay in sync; the
-	// clamp below also defends against operator typos (negative threshold etc.).
+	// Lockout + SmartCaptcha + trusted-proxy env loading. Defaults match
+	// pkg/lockout.Default* constants so they stay in sync; the clamp below
+	// also defends against operator typos (negative threshold etc.).
 	const (
 		defaultLockoutCaptcha  = 4
 		defaultLockoutLock     = 10
@@ -340,8 +339,8 @@ func Load() (*Config, error) {
 	cfg.SmartCaptchaSiteKey = os.Getenv("SMARTCAPTCHA_SITE_KEY")
 	cfg.SmartCaptchaSecretKey = os.Getenv("SMARTCAPTCHA_SECRET_KEY")
 	cfg.TrustedProxyCIDRs = os.Getenv("TRUSTED_PROXY_CIDRS")
-	// SMARTCAPTCHA_FAIL_OPEN defaults to "true" per T-23.4-07 — fail-open
-	// during Yandex outages so legitimate users keep logging in.
+	// SMARTCAPTCHA_FAIL_OPEN defaults to "true" — fail-open during Yandex
+	// outages so legitimate users keep logging in.
 	cfg.SmartCaptchaFailOpen = getEnv("SMARTCAPTCHA_FAIL_OPEN", envBoolTrue) == envBoolTrue
 
 	// Auto-titler env loading. Mirrors

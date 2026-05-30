@@ -13,14 +13,14 @@ import (
 	"github.com/f1xgun/onevoice/pkg/lockout"
 )
 
-// Phase 23.4 (D-21, D-23) — LockoutMiddleware mounts ONLY on POST /auth/login.
+// LockoutMiddleware mounts ONLY on POST /auth/login.
 //
 // Flow per request:
 //  1. Peek the JSON body to extract "email". The body is restored verbatim
 //     for the downstream handler so json.NewDecoder().Decode() still works.
 //  2. Derive (clientIP, net16) via the trusted_proxy helpers.
 //  3. lockout.GetTier:
-//       TierLocked  → short-circuit 423 + retry_after_seconds (D-17).
+//       TierLocked  → short-circuit 423 + retry_after_seconds.
 //       TierCaptcha → annotate ctx with CaptchaRequiredKey=true; downstream
 //                     handler MUST verify X-Captcha-Token before delegating
 //                     to userService.Login.
@@ -28,9 +28,9 @@ import (
 //  4. Always annotate ctx with LoginEmailKey + LoginClientIPKey so the
 //     handler doesn't have to re-parse / re-resolve them.
 //
-// Fail-open on Redis errors (T-23.4-07): blocking every legitimate user
-// during a Redis outage is worse than letting brute-force through for the
-// duration of the outage. The error is logged for ops visibility.
+// Fail-open on Redis errors: blocking every legitimate user during a Redis
+// outage is worse than letting brute-force through for the duration of the
+// outage. The error is logged for ops visibility.
 
 // bodyPeekLimit caps the bytes read for the email probe. 1 MiB matches the
 // existing chi body limits and is comfortably above the largest plausible
@@ -88,7 +88,7 @@ func LockoutMiddleware(lock *lockout.Lockout) func(http.Handler) http.Handler {
 				return
 			}
 
-			// 3. Check tier. Fail-open on Redis error (T-23.4-07).
+			// 3. Check tier. Fail-open on Redis error.
 			tier, err := lock.GetTier(r.Context(), probe.Email, net16)
 			if err != nil {
 				slog.Warn("lockout: GetTier failed; failing open",

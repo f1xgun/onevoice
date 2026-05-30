@@ -1,19 +1,19 @@
 // Package lockout implements a Redis-backed per-(email_hash, /16 IP) failure
 // counter for brute-force / credential-stuffing defense on /auth/login.
 //
-// Phase 23.4 (OPS-04). Layered defense (D-17):
+// Layered defense:
 //
 //	0–3 failures  → TierNormal  (login proceeds normally)
 //	4–9 failures  → TierCaptcha (handler enforces SmartCaptcha challenge)
 //	10+ failures  → TierLocked  (middleware short-circuits with 423)
 //
 // Key format: "onevoice:lockout:" + sha256_hex(lowercase(email)) + ":" + net16(ip).
-// The email is hashed (D-18) so a Redis dump cannot enumerate the registered
-// email allowlist. The IP is bucketed at the /16 (D-18) to absorb shared-NAT
-// collisions while still binding to the network neighborhood — an attacker
-// from a different /16 cannot lock out a legitimate user.
+// The email is hashed so a Redis dump cannot enumerate the registered email
+// allowlist. The IP is bucketed at the /16 to absorb shared-NAT collisions
+// while still binding to the network neighborhood — an attacker from a
+// different /16 cannot lock out a legitimate user.
 //
-// Self-unlock (D-20): on successful password-reset the service calls
+// Self-unlock: on successful password-reset the service calls
 // ClearAllForEmail to remove every per-/16 variant of the email_hash key.
 //
 // Atomicity: RecordFailure uses Redis INCR (atomic at any concurrency) and

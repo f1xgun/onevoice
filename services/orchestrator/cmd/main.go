@@ -78,8 +78,8 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		}
 	}()
 
-	// Phase 23-01: same source-of-truth helper as services/api. Orchestrator
-	// owns Mongo + (optional) NATS only — pass nil for PG and Redis so the
+	// Same source-of-truth helper as services/api. Orchestrator owns
+	// Mongo + (optional) NATS only — pass nil for PG and Redis so the
 	// helper silently skips them. WithCheckTimeout wires the env-driven knob.
 	hc := health.New(health.WithCheckTimeout(cfg.HealthCheckTimeout))
 	health.RegisterDefaultChecks(hc, nil, mongoDB.Client(), nil, nc)
