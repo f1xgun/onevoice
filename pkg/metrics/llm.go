@@ -38,6 +38,28 @@ var (
 		Name: "llm_input_tokens_after_breakpoint_total",
 		Help: "Total input tokens consumed after the last cache breakpoint (paid full input price).",
 	}, []string{"model"})
+
+	// BillingPostFailures counts every non-2xx outcome from
+	// pkg/billingclient.Client.LogUsage. Labeled by reason so Grafana can
+	// distinguish the silent-drop modes:
+	//
+	//	transient         — network failure / HTTP 5xx; safe to retry
+	//	invalid_payload   — local validation failure / HTTP 400; do NOT retry
+	//	unexpected_status — non-2xx, non-4xx, non-5xx (e.g. stray 418); likely
+	//	                    a misconfigured reverse proxy
+	//
+	// The counter is the audit signal for the silent-loss billing posture
+	// (see pkg/billingclient/AGENTS.md): the router drops the error on the
+	// floor so the LLM response is never blocked, but the counter rises
+	// every time a usage row is lost. v1.4 free-beta accepts this trade-off;
+	// v1.5+ may add an outbox once the drop rate becomes material.
+	//
+	// SECURITY: labels MUST stay coarse (3 fixed values); do NOT add
+	// business_id / user_id / model labels — cardinality blowout + PII.
+	BillingPostFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "llm_billing_post_failures_total",
+		Help: "Count of billingclient.LogUsage failures, by reason (transient|invalid_payload|unexpected_status).",
+	}, []string{"reason"})
 )
 
 // RecordLLMRequest records a completed LLM request.
