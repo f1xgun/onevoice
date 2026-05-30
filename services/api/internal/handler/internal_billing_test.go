@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -25,6 +26,18 @@ type mockBilling struct {
 	mu    sync.Mutex
 	Calls []llm.UsageLog
 	errs  []error
+
+	// Daily-spend mock state. spendValue is returned by GetDailySpend; spendErr
+	// (when non-nil) is returned instead. spendCalls captures the (businessID,
+	// day) tuples seen so tests can assert UTC anchoring.
+	spendValue float64
+	spendErr   error
+	spendCalls []spendCall
+}
+
+type spendCall struct {
+	BusinessID uuid.UUID
+	Day        time.Time
 }
 
 func (m *mockBilling) LogUsage(_ context.Context, log *llm.UsageLog) error {
@@ -49,6 +62,13 @@ func (m *mockBilling) callCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.Calls)
+}
+
+func (m *mockBilling) GetDailySpend(_ context.Context, businessID uuid.UUID, day time.Time) (float64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.spendCalls = append(m.spendCalls, spendCall{BusinessID: businessID, Day: day})
+	return m.spendValue, m.spendErr
 }
 
 // validUsageLogJSON returns a populated UsageLog with business_id + model set.
@@ -199,6 +219,123 @@ func TestLogUsage_PersistsConversationIDAndCacheTokens(t *testing.T) {
 	assert.Equal(t, 50, got.OutputTokens)
 	assert.Equal(t, 200, got.CacheReadTokens)
 	assert.Equal(t, 75, got.CacheCreationTokens)
+}
+
+// ---------------------------------------------------------------------
+// GetDailySpend handler tests
+// ---------------------------------------------------------------------
+
+// doGetSpend issues a GET against the daily_spend endpoint with the supplied
+// raw query string and returns the recorded response. Using the raw form
+// (rather than url.Values.Encode) lets tests probe malformed inputs.
+func doGetSpend(t *testing.T, h *handler.InternalBillingHandler, rawQuery string) *httptest.ResponseRecorder {
+	t.Helper()
+	target := "/internal/v1/billing/daily_spend"
+	if rawQuery != "" {
+		target += "?" + rawQuery
+	}
+	req := httptest.NewRequest(http.MethodGet, target, http.NoBody)
+	rec := httptest.NewRecorder()
+	h.GetDailySpend(rec, req)
+	return rec
+}
+
+// TestGetDailySpend_MissingBusinessID_400 — required param.
+func TestGetDailySpend_MissingBusinessID_400(t *testing.T) {
+	repo := &mockBilling{}
+	h := handler.NewInternalBillingHandler(repo, nil)
+
+	rec := doGetSpend(t, h, "date=2026-05-30")
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid_payload")
+}
+
+// TestGetDailySpend_MissingDate_400 — required param.
+func TestGetDailySpend_MissingDate_400(t *testing.T) {
+	repo := &mockBilling{}
+	h := handler.NewInternalBillingHandler(repo, nil)
+
+	rec := doGetSpend(t, h, "business_id="+uuid.New().String())
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid_payload")
+}
+
+// TestGetDailySpend_InvalidUUID_400 — malformed business_id.
+func TestGetDailySpend_InvalidUUID_400(t *testing.T) {
+	repo := &mockBilling{}
+	h := handler.NewInternalBillingHandler(repo, nil)
+
+	rec := doGetSpend(t, h, "business_id=not-a-uuid&date=2026-05-30")
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid_payload")
+}
+
+// TestGetDailySpend_InvalidDate_400 — wrong format.
+func TestGetDailySpend_InvalidDate_400(t *testing.T) {
+	repo := &mockBilling{}
+	h := handler.NewInternalBillingHandler(repo, nil)
+
+	rec := doGetSpend(t, h, "business_id="+uuid.New().String()+"&date=2026/05/30")
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid_payload")
+}
+
+// TestGetDailySpend_Success_200 — valid params + repo returns 0.5 → 200 with
+// body {"daily_spend_usd": 0.5}.
+func TestGetDailySpend_Success_200(t *testing.T) {
+	repo := &mockBilling{spendValue: 0.5}
+	h := handler.NewInternalBillingHandler(repo, nil)
+
+	bizID := uuid.New()
+	rec := doGetSpend(t, h, "business_id="+bizID.String()+"&date=2026-05-30")
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+	var body struct {
+		DailySpendUSD float64 `json:"daily_spend_usd"`
+	}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.InDelta(t, 0.5, body.DailySpendUSD, 1e-9)
+}
+
+// TestGetDailySpend_RepoError_500 — internal error body, no leaked detail.
+func TestGetDailySpend_RepoError_500(t *testing.T) {
+	repo := &mockBilling{spendErr: errors.New("db connection refused")}
+	h := handler.NewInternalBillingHandler(repo, nil)
+
+	rec := doGetSpend(t, h, "business_id="+uuid.New().String()+"&date=2026-05-30")
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.NotContains(t, rec.Body.String(), "db connection refused")
+	assert.Contains(t, rec.Body.String(), "transient")
+}
+
+// TestGetDailySpend_DateParsedAsUTC — the date string lands in the repo as a
+// UTC-anchored time so the repository's day window matches what the caller
+// asked for regardless of local time zone.
+func TestGetDailySpend_DateParsedAsUTC(t *testing.T) {
+	repo := &mockBilling{}
+	h := handler.NewInternalBillingHandler(repo, nil)
+
+	rec := doGetSpend(t, h, "business_id="+uuid.New().String()+"&date=2026-05-30")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, repo.spendCalls, 1)
+	got := repo.spendCalls[0].Day
+	assert.Equal(t, 2026, got.Year())
+	assert.Equal(t, time.May, got.Month())
+	assert.Equal(t, 30, got.Day())
+	assert.Equal(t, time.UTC, got.Location())
+}
+
+// TestGetDailySpend_WrongMethod_405 — only GET is allowed.
+func TestGetDailySpend_WrongMethod_405(t *testing.T) {
+	repo := &mockBilling{}
+	h := handler.NewInternalBillingHandler(repo, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/billing/daily_spend", http.NoBody)
+	rec := httptest.NewRecorder()
+	h.GetDailySpend(rec, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
 
 // Defensive extra: body exceeding MaxBytes (>64KB) is rejected as invalid payload.

@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -160,4 +161,114 @@ func TestLoad_SelfHostedEndpoints_StopsAtGap(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, cfg.SelfHostedEndpoints, 1)
 	assert.Equal(t, "llama3.1", cfg.SelfHostedEndpoints[0].Model)
+}
+
+// ---------------------------------------------------------------------
+// Cost-guard config tests
+// ---------------------------------------------------------------------
+
+func requireLoad(t *testing.T) (*config.Config, error) {
+	t.Helper()
+	t.Setenv("LLM_MODEL", "gpt-4o-mini")
+	return config.Load()
+}
+
+func TestConfig_ConversationCaps_Defaults(t *testing.T) {
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, 50000, cfg.ConversationInputCap)
+	assert.Equal(t, 10000, cfg.ConversationOutputCap)
+}
+
+func TestConfig_ConversationCaps_EnvOverride(t *testing.T) {
+	t.Setenv("LLM_CONVERSATION_INPUT_CAP", "100000")
+	t.Setenv("LLM_CONVERSATION_OUTPUT_CAP", "20000")
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, 100000, cfg.ConversationInputCap)
+	assert.Equal(t, 20000, cfg.ConversationOutputCap)
+}
+
+func TestConfig_ConversationCaps_Zero(t *testing.T) {
+	t.Setenv("LLM_CONVERSATION_INPUT_CAP", "0")
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cfg.ConversationInputCap)
+}
+
+func TestConfig_FreeTierDailySpend_Default(t *testing.T) {
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, cfg.FreeTierDailySpendUSD)
+}
+
+func TestConfig_FreeTierDailySpend_EnvOverride(t *testing.T) {
+	t.Setenv("LLM_FREE_TIER_DAILY_SPEND_USD", "2.5")
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.InDelta(t, 2.5, cfg.FreeTierDailySpendUSD, 1e-9)
+}
+
+func TestConfig_FreeTierDailySpend_Unlimited(t *testing.T) {
+	t.Setenv("LLM_FREE_TIER_DAILY_SPEND_USD", "-1")
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.InDelta(t, -1.0, cfg.FreeTierDailySpendUSD, 1e-9)
+}
+
+func TestConfig_RedisDownPolicy_Default(t *testing.T) {
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, "block", cfg.RedisDownPolicy)
+}
+
+func TestConfig_RedisDownPolicy_LocalFallback(t *testing.T) {
+	t.Setenv("LLM_RATELIMIT_ON_REDIS_DOWN", "local_fallback")
+	t.Setenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR", "3000")
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, "local_fallback", cfg.RedisDownPolicy)
+	assert.Equal(t, 3000, cfg.LocalFallbackRequestsPerHour)
+}
+
+func TestConfig_RedisDownPolicy_Invalid(t *testing.T) {
+	t.Setenv("LLM_RATELIMIT_ON_REDIS_DOWN", "panic")
+	_, err := requireLoad(t)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "block")
+	assert.Contains(t, err.Error(), "local_fallback")
+}
+
+func TestConfig_LocalFallback_RequiresRate(t *testing.T) {
+	t.Setenv("LLM_RATELIMIT_ON_REDIS_DOWN", "local_fallback")
+	t.Setenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR", "0")
+	_, err := requireLoad(t)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR")
+}
+
+func TestConfig_LocalFallback_DefaultRate(t *testing.T) {
+	t.Setenv("LLM_RATELIMIT_ON_REDIS_DOWN", "local_fallback")
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, 2000, cfg.LocalFallbackRequestsPerHour)
+}
+
+// TestConfig_LocalFallback_InvalidIntFailsLoud — regression for WR-03.
+// Previously a non-integer env value was silently swallowed and the loader
+// kept the 2000 default. With a non-integer value the operator's typo is now
+// surfaced as a boot error instead of being coerced into the default rate.
+func TestConfig_LocalFallback_InvalidIntFailsLoud(t *testing.T) {
+	t.Setenv("LLM_RATELIMIT_ON_REDIS_DOWN", "local_fallback")
+	t.Setenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR", "foo")
+	_, err := requireLoad(t)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR")
+	assert.Contains(t, err.Error(), `"foo"`)
+}
+
+func TestConfig_LocalFallbackWindow_Default(t *testing.T) {
+	cfg, err := requireLoad(t)
+	require.NoError(t, err)
+	assert.Equal(t, 30*time.Second, cfg.LocalFallbackWindow)
 }

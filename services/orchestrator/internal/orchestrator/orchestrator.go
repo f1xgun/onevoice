@@ -51,7 +51,12 @@ const (
 // persist tool_call events with the LLM's real call ID on the assistant
 // Message.ToolCalls.
 type Event struct {
-	Type            EventType
+	Type EventType
+	// Code is a machine-readable discriminator on error events so downstream
+	// consumers (api proxy / frontend) can branch on the failure mode without
+	// parsing Content. Projected onto sse.Event.Code on the wire and stays
+	// absent (omitempty) for non-error events.
+	Code            string
 	Content         string
 	ToolCallID      string
 	ToolName        string
@@ -133,6 +138,14 @@ type Options struct {
 	// ToolExecTimeout bounds how long a single tool call may block.
 	// Zero means no per-tool timeout — the parent context governs.
 	ToolExecTimeout time.Duration
+	// ConversationInputCap stops the agent loop when the accumulated input
+	// tokens (LLM Usage.InputTokens summed across iterations, including
+	// tool-result bytes the next iter sends back) reach this many. Zero
+	// disables enforcement and the loop runs to MaxIterations as before.
+	ConversationInputCap int
+	// ConversationOutputCap is the parallel knob for accumulated output
+	// tokens. Zero disables enforcement.
+	ConversationOutputCap int
 }
 
 // Orchestrator runs the LLM agent loop.

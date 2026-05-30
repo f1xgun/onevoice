@@ -504,13 +504,17 @@ func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 
 	r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
 
-	// Billing write path. Gated by RequireServiceIdentity so only the
-	// orchestrator (or api self-call) can append usage rows. Defense in depth
-	// on top of the listener-level mTLS handshake.
+	// Billing endpoints. Gated by RequireServiceIdentity so only the
+	// orchestrator (or api self-call) can append usage rows or read spend.
+	// Defense in depth on top of the listener-level mTLS handshake.
 	if handlers.InternalBilling != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireServiceIdentity(internalServiceIdentityAllowlist, nil))
 			r.Post("/internal/v1/billing/usage_logs", handlers.InternalBilling.LogUsage)
+			// Daily-spend read path consumed by the orchestrator's rate-limiter
+			// before every chat turn. Same mTLS + service-identity gate as the
+			// write path so it cannot be probed off-cluster.
+			r.Get("/internal/v1/billing/daily_spend", handlers.InternalBilling.GetDailySpend)
 		})
 	}
 

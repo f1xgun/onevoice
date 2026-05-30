@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/time/rate"
+
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/llm/providers"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
@@ -63,6 +66,75 @@ func allConfiguredModelIDs(cfg *config.Config) []string {
 	add(cfg.LLMModel)
 	add(cfg.DraftReplyModel)
 	return ids
+}
+
+// secondsPerHour is the divisor that turns a per-hour request budget into a
+// per-second rate.Limit. Named so the conversion is self-documenting.
+const secondsPerHour = 3600.0
+
+// localFallbackBurstDivisor sizes the in-process bucket's burst proportional
+// to the configured per-hour rate so a short traffic spike during a Redis
+// outage is not artificially clamped. ~1% of the hourly rate, floored at 1.
+const localFallbackBurstDivisor = 100
+
+// BuildRateLimiter assembles the *llm.RateLimiter consumed by the orchestrator
+// and api routers. Honors the operator's cost-guard policy:
+//
+//   - Daily-spend gate is wired via the supplied DailySpender.
+//   - When cfg.FreeTierDailySpendUSD > 0 it overrides the compiled
+//     DefaultTierLimits["free"].DailySpendUSD; a value of -1 disables the
+//     gate ("unlimited"); 0 keeps the compiled default.
+//   - Redis-down policy is "block" (fail-closed) by default; "local_fallback"
+//     consults an in-process bucket sized off LocalFallbackRequestsPerHour.
+func BuildRateLimiter(cfg *config.Config, log *slog.Logger, rdb *redis.Client, spender llm.DailySpender) (*llm.RateLimiter, error) {
+	limits := make(llm.TierLimits, len(llm.DefaultTierLimits))
+	for k, v := range llm.DefaultTierLimits {
+		limits[k] = v
+	}
+	switch {
+	case cfg.FreeTierDailySpendUSD > 0:
+		free := limits["free"]
+		free.DailySpendUSD = cfg.FreeTierDailySpendUSD
+		limits["free"] = free
+	case cfg.FreeTierDailySpendUSD < 0:
+		// Negative is the "unlimited" sentinel: drop the cap to 0 which
+		// disables the gate (the limiter skips DailySpender lookup when
+		// the limit is non-positive).
+		free := limits["free"]
+		free.DailySpendUSD = 0
+		limits["free"] = free
+	}
+
+	opts := []llm.RateLimiterOption{}
+	if spender != nil {
+		opts = append(opts, llm.WithDailySpender(spender))
+	}
+
+	switch cfg.RedisDownPolicy {
+	case "block":
+		opts = append(opts, llm.WithRedisDownPolicy(llm.RedisDownPolicyBlock))
+	case "local_fallback":
+		if cfg.LocalFallbackRequestsPerHour <= 0 {
+			return nil, fmt.Errorf("BuildRateLimiter: LocalFallbackRequestsPerHour must be > 0 for local_fallback policy")
+		}
+		limit := rate.Limit(float64(cfg.LocalFallbackRequestsPerHour) / secondsPerHour)
+		burst := cfg.LocalFallbackRequestsPerHour / localFallbackBurstDivisor
+		if burst < 1 {
+			burst = 1
+		}
+		opts = append(opts,
+			llm.WithRedisDownPolicy(llm.RedisDownPolicyLocalFallback),
+			llm.WithLocalBucket(limit, burst),
+		)
+		log.Info("rate limiter: local_fallback policy active",
+			"requests_per_hour", cfg.LocalFallbackRequestsPerHour,
+			"burst", burst,
+		)
+	default:
+		return nil, fmt.Errorf("BuildRateLimiter: unknown RedisDownPolicy %q", cfg.RedisDownPolicy)
+	}
+
+	return llm.NewRateLimiter(rdb, limits, opts...), nil
 }
 
 // LLMRouter constructs the LLM Router with every provider whose API key is

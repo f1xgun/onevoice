@@ -150,3 +150,35 @@ func TestUnmarshal_MalformedJSON(t *testing.T) {
 	_, err := sse.Unmarshal([]byte(`{type:`))
 	require.Error(t, err)
 }
+
+// TestMarshal_CodeOmitemptyWhenEmpty — the Code field is absent from the
+// marshaled bytes whenever it is the zero string. Pins byte-identity for
+// every pre-existing error event that does not set Code.
+func TestMarshal_CodeOmitemptyWhenEmpty(t *testing.T) {
+	b, err := sse.Marshal(sse.Event{Type: "error", Content: "boom"})
+	require.NoError(t, err)
+	assert.Equal(t, `{"type":"error","content":"boom"}`, string(b))
+	assert.NotContains(t, string(b), `"code"`)
+}
+
+// TestMarshal_CodePresentWhenSet — Code marshals as the second key (right after
+// type) when populated.
+func TestMarshal_CodePresentWhenSet(t *testing.T) {
+	b, err := sse.Marshal(sse.Event{
+		Type:    "error",
+		Code:    "conversation_token_cap",
+		Content: "limit reached",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, `{"type":"error","code":"conversation_token_cap","content":"limit reached"}`, string(b))
+}
+
+// TestUnmarshal_CodeRoundTrip — Code survives marshal → unmarshal.
+func TestUnmarshal_CodeRoundTrip(t *testing.T) {
+	orig := sse.Event{Type: "error", Code: "rate_limit_exceeded", Content: "слишком много запросов"}
+	bytes, err := sse.Marshal(orig)
+	require.NoError(t, err)
+	got, err := sse.Unmarshal(bytes)
+	require.NoError(t, err)
+	assert.Equal(t, orig, got)
+}

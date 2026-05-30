@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -17,10 +18,12 @@ import (
 const maxBillingPayloadBytes = 64 * 1024
 
 // BillingService is the narrow write-only surface the internal billing
-// handler depends on. Matches pkg/llm.Writer; declared locally so the handler
-// package does not import pkg/llm just for the interface alias.
+// handler depends on. LogUsage backs the POST usage_logs endpoint;
+// GetDailySpend backs the GET daily_spend endpoint that the orchestrator's
+// rate-limiter consults before each chat turn.
 type BillingService interface {
 	LogUsage(ctx context.Context, log *llm.UsageLog) error
+	GetDailySpend(ctx context.Context, businessID uuid.UUID, day time.Time) (float64, error)
 }
 
 // InternalBillingHandler serves POST /internal/v1/billing/usage_logs on the
@@ -107,4 +110,76 @@ func writeBillingError(w http.ResponseWriter, status int, code, detail string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(billingErrorBody{Error: code, Detail: detail})
+}
+
+// dailySpendDateFormat is the wire format for the date query parameter on
+// GET daily_spend. time.Parse against this layout anchors the result in UTC
+// so callers in non-UTC time zones still land on the UTC calendar day they
+// asked for.
+const dailySpendDateFormat = "2006-01-02"
+
+// dailySpendBody is the JSON envelope returned on 200.
+type dailySpendBody struct {
+	DailySpendUSD float64 `json:"daily_spend_usd"`
+}
+
+// GetDailySpend handles GET /internal/v1/billing/daily_spend.
+//
+// Query parameters (both required):
+//   - business_id — UUID of the business whose spend to look up.
+//   - date        — UTC calendar day in YYYY-MM-DD form.
+//
+// Status codes:
+//   - 200 OK — body is {"daily_spend_usd": <float>}.
+//   - 400 Bad Request — missing/invalid business_id or date; body is
+//     {"error":"invalid_payload","detail":"…"}.
+//   - 405 Method Not Allowed — non-GET verb.
+//   - 500 Internal Server Error — repository failure;
+//     body is {"error":"transient"} (no internal details leaked).
+func (h *InternalBillingHandler) GetDailySpend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeBillingError(w, http.StatusMethodNotAllowed, "method_not_allowed", "")
+		return
+	}
+
+	q := r.URL.Query()
+	businessIDStr := q.Get("business_id")
+	if businessIDStr == "" {
+		writeBillingError(w, http.StatusBadRequest, "invalid_payload", "business_id required")
+		return
+	}
+	bizID, err := uuid.Parse(businessIDStr)
+	if err != nil {
+		writeBillingError(w, http.StatusBadRequest, "invalid_payload", "business_id must be a UUID")
+		return
+	}
+	if bizID == uuid.Nil {
+		writeBillingError(w, http.StatusBadRequest, "invalid_payload", "business_id required")
+		return
+	}
+
+	dateStr := q.Get("date")
+	if dateStr == "" {
+		writeBillingError(w, http.StatusBadRequest, "invalid_payload", "date required")
+		return
+	}
+	day, err := time.Parse(dailySpendDateFormat, dateStr)
+	if err != nil {
+		writeBillingError(w, http.StatusBadRequest, "invalid_payload", "date must be YYYY-MM-DD")
+		return
+	}
+
+	spend, err := h.billing.GetDailySpend(r.Context(), bizID, day)
+	if err != nil {
+		h.log.ErrorContext(r.Context(), "internal_billing: GetDailySpend repo failed",
+			"error", err,
+			"business_id", bizID,
+		)
+		writeBillingError(w, http.StatusInternalServerError, "transient", "")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(dailySpendBody{DailySpendUSD: spend})
 }
