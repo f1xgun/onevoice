@@ -151,22 +151,47 @@ func mapStopReason(sr anthropic.StopReason) string {
 // Anthropic's split (system blocks + message slice) representation.
 //
 // Routing rules:
-//   - role:"system"      → TextBlockParam appended to systemBlocks (preserves order)
+//   - req.SystemBlocks (Plan 24-02) → preferred channel. When non-empty, every
+//     SystemBlock is mapped to a TextBlockParam (Text/Type only — cache_control
+//     stamping is the caller's job, see Chat() below). req.Messages is assumed
+//     system-free in this branch; any stray role:"system" entry is logged via
+//     a fallback append so that wiring bugs don't silently lose system content.
+//   - req.Messages role:"system"     → TextBlockParam appended to systemBlocks
+//     (legacy scrub path, runs ONLY when SystemBlocks is empty).
 //   - role:"user"        → MessageParam{Role:user, Content:[text]}
 //   - role:"assistant"   → MessageParam{Role:assistant, Content:[text?, tool_use*]}
 //     where each entry in m.ToolCalls becomes a tool_use ContentBlock
 //   - role:"tool"        → MessageParam{Role:user, Content:[tool_result]} —
 //     Anthropic represents tool results as user-role messages
-//
-// Plan 24-02 will add ChatRequest.SystemBlocks as the preferred channel and
-// update this helper to prefer it over the role:"system" scrub.
 func buildAnthropicMessagesV2(req llm.ChatRequest) ([]anthropic.TextBlockParam, []anthropic.MessageParam) {
 	var systemBlocks []anthropic.TextBlockParam
+	preferSystemBlocks := len(req.SystemBlocks) > 0
+	if preferSystemBlocks {
+		systemBlocks = make([]anthropic.TextBlockParam, 0, len(req.SystemBlocks))
+		for _, sb := range req.SystemBlocks {
+			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{
+				Text: sb.Text,
+				Type: "text",
+			})
+		}
+	}
+
 	msgs := make([]anthropic.MessageParam, 0, len(req.Messages))
 
 	for _, m := range req.Messages {
 		switch m.Role {
 		case "system":
+			if preferSystemBlocks {
+				// Wiring bug: caller populated SystemBlocks AND left a
+				// role:"system" entry in Messages. Append it for safety so
+				// no content is silently dropped, but the canonical channel
+				// (SystemBlocks) leads the cache prefix.
+				systemBlocks = append(systemBlocks, anthropic.TextBlockParam{
+					Text: m.Content,
+					Type: "text",
+				})
+				continue
+			}
 			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{
 				Text: m.Content,
 				Type: "text",
@@ -203,17 +228,49 @@ func buildAnthropicMessagesV2(req llm.ChatRequest) ([]anthropic.TextBlockParam, 
 	return systemBlocks, msgs
 }
 
+// stampSystemCacheControl stamps cache_control:ephemeral on the system block
+// the caller wants cached.
+//
+//   - When req.SystemBlocks is non-empty: find the LAST entry with
+//     CacheBoundary==true and stamp cache_control on the corresponding
+//     systemBlocks[i] (positional 1:1 mapping with the input slice). Blocks
+//     after the marked one stay uncached — this is the Block 1 / Block 2
+//     split: Block 1 (CacheBoundary=true) caches the platform prefix, Block 2
+//     (per-business) does not.
+//   - When req.SystemBlocks is empty: legacy fallback — stamp the LAST
+//     scrubbed block (Plan 24-01 behavior preserved for non-migrated callers).
+func stampSystemCacheControl(req llm.ChatRequest, systemBlocks []anthropic.TextBlockParam) {
+	if len(systemBlocks) == 0 {
+		return
+	}
+	if len(req.SystemBlocks) > 0 {
+		// Walk req.SystemBlocks backwards for the last CacheBoundary=true
+		// index. The positional alignment with systemBlocks holds because
+		// buildAnthropicMessagesV2 emits exactly one TextBlockParam per
+		// SystemBlock (in order) before any defensive Messages-system
+		// appends.
+		for i := len(req.SystemBlocks) - 1; i >= 0; i-- {
+			if req.SystemBlocks[i].CacheBoundary {
+				if i < len(systemBlocks) {
+					systemBlocks[i].CacheControl = anthropic.NewCacheControlEphemeralParam()
+				}
+				return
+			}
+		}
+		return
+	}
+	// Legacy scrub path — stamp the last block (Plan 24-01).
+	systemBlocks[len(systemBlocks)-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
+}
+
 // Chat sends a request and returns the complete response.
 func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	start := time.Now()
 	systemBlocks, msgs := buildAnthropicMessagesV2(req)
 
-	// LLMQ-02: stamp cache_control on the LAST system block. Plan 24-02 will
-	// switch to honoring an explicit CacheBoundary flag on SystemBlocks so
-	// per-business text in Block 2 stays uncached.
-	if last := len(systemBlocks) - 1; last >= 0 {
-		systemBlocks[last].CacheControl = anthropic.NewCacheControlEphemeralParam()
-	}
+	// LLMQ-02 / Plan 24-02: stamp cache_control on the LAST CacheBoundary=true
+	// system block (or the last legacy-scrub block when SystemBlocks is empty).
+	stampSystemCacheControl(req, systemBlocks)
 
 	maxTokens := int64(req.MaxTokens)
 	if maxTokens == 0 {

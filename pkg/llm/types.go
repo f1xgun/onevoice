@@ -45,17 +45,40 @@ type FunctionDefinition struct {
 	Parameters  map[string]interface{} `json:"parameters"` // JSON Schema
 }
 
+// SystemBlock is one segment of a multi-block system prompt. SystemBlocks are
+// the canonical channel for system content as of Phase 24 Plan 02 — they
+// replace the legacy "scrub role:'system' out of Messages" path that providers
+// previously relied on.
+//
+// CacheBoundary is a hint to providers that this block is the LAST member of a
+// cache-eligible prefix. Anthropic stamps `cache_control: ephemeral` on the
+// LAST block in the slice whose CacheBoundary is true (see Pattern 2 in
+// 24-RESEARCH.md). Providers that do not implement prompt caching (OpenAI,
+// OpenRouter, SelfHosted) silently ignore the flag and concatenate every block
+// into one leading `role:"system"` message.
+type SystemBlock struct {
+	Text          string `json:"text"`
+	CacheBoundary bool   `json:"cache_boundary,omitempty"`
+}
+
 // ChatRequest represents a request to generate a chat completion.
+//
+// SystemBlocks is the preferred channel for system-prompt content as of Plan
+// 24-02. When non-empty, providers consume it directly and assume Messages is
+// system-free. When empty, providers fall back to scrubbing `role:"system"`
+// entries out of Messages (legacy behavior — preserved so non-migrated callers
+// like services/api/internal/service/titler.go continue to work).
 type ChatRequest struct {
-	UserID      uuid.UUID        `json:"user_id"` // Use uuid.Nil for system-level calls
-	Model       string           `json:"model"`
-	Messages    []Message        `json:"messages"`
-	Tools       []ToolDefinition `json:"tools,omitempty"`
-	MaxTokens   int              `json:"max_tokens,omitempty"`
-	Temperature float64          `json:"temperature,omitempty"`
-	TopP        float64          `json:"top_p,omitempty"`
-	Stop        []string         `json:"stop,omitempty"`
-	RequestID   string           `json:"request_id,omitempty"` // For tracing
+	UserID       uuid.UUID        `json:"user_id"` // Use uuid.Nil for system-level calls
+	Model        string           `json:"model"`
+	Messages     []Message        `json:"messages"`
+	SystemBlocks []SystemBlock    `json:"system_blocks,omitempty"`
+	Tools        []ToolDefinition `json:"tools,omitempty"`
+	MaxTokens    int              `json:"max_tokens,omitempty"`
+	Temperature  float64          `json:"temperature,omitempty"`
+	TopP         float64          `json:"top_p,omitempty"`
+	Stop         []string         `json:"stop,omitempty"`
+	RequestID    string           `json:"request_id,omitempty"` // For tracing
 	// Routing metadata
 	Tier     string   `json:"tier,omitempty"`     // Subscription tier for rate limiting
 	Strategy Strategy `json:"strategy,omitempty"` // Routing strategy (default: StrategyCost)
