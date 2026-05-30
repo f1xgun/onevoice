@@ -192,4 +192,10 @@ type fakeSelector struct {
 func (f *fakeSelector) Pick(_ string, _ llm.Strategy) (*llm.ModelProviderEntry, llm.Provider, error) {
 	return f.entry, f.prov, nil
 }
+func (f *fakeSelector) Candidates(_ string, _ llm.Strategy) []llm.Candidate {
+	if f.entry == nil {
+		return nil
+	}
+	return []llm.Candidate{{Entry: f.entry, Provider: f.prov}}
+}
 func (f *fakeSelector) Record(_ *llm.ModelProviderEntry, _ llm.Outcome) {}

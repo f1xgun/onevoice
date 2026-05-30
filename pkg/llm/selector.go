@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -34,12 +35,25 @@ type Selector interface {
 	// without the Selector exposing its registry. Returns ErrNoProvider
 	// when no enabled+registered provider exists for the model.
 	Pick(model string, strategy Strategy) (*ModelProviderEntry, Provider, error)
+	// Candidates returns the priority-ordered candidate list for `model`
+	// under `strategy`. Index 0 is the entry Pick would return; subsequent
+	// entries are the siblings the Router walks for the one-shot retry.
+	// Empty slice when no enabled+registered provider serves the model.
+	Candidates(model string, strategy Strategy) []Candidate
 	// Record folds an Outcome back into the Selector's policy state. The
 	// entry must be one previously returned by Pick — the default impl
 	// uses entry.Provider + entry.Model as its metrics key and also
 	// mirrors the new health / latency state onto the entry pointer so
 	// the next Pick (and any registry consumer) sees it immediately.
 	Record(entry *ModelProviderEntry, outcome Outcome)
+}
+
+// Candidate pairs a registry entry with its registered Provider, so
+// Router.Chat can iterate the priority-ordered list without re-resolving
+// providers from the entry.Provider name on every step.
+type Candidate struct {
+	Entry    *ModelProviderEntry
+	Provider Provider
 }
 
 // Outcome is the verdict reported back to Selector.Record after a single
@@ -116,47 +130,36 @@ func NewSelector(registry *Registry, providers map[string]Provider) Selector {
 // outage from permanently deadlocking the Router once the provider
 // recovers.
 func (s *defaultSelector) Pick(model string, strategy Strategy) (*ModelProviderEntry, Provider, error) {
-	entries := s.registry.GetModelProviders(model)
-	if len(entries) == 0 {
+	cands := s.buildCandidates(model, strategy)
+	if len(cands) == 0 {
 		return nil, nil, ErrNoProvider
 	}
+	return cands[0].Entry, cands[0].Provider, nil
+}
 
-	var best *ModelProviderEntry
-	var bestProvider Provider
+// Candidates returns the priority-ordered candidate list for `model` under
+// `strategy`. Index 0 matches Pick's choice; the remaining entries are
+// siblings the Router walks for the one-shot retry. Unhealthy and
+// degraded entries appear after healthy ones but are NOT filtered out —
+// the retry path can attempt a known-bad sibling if the primary fails,
+// which is preferable to surfacing the failure to the caller when the
+// sibling might have recovered between health checks.
+func (s *defaultSelector) Candidates(model string, strategy Strategy) []Candidate {
+	return s.buildCandidates(model, strategy)
+}
 
-	for _, e := range entries {
-		if e.HealthStatus != HealthStatusHealthy || !e.Enabled {
-			continue
-		}
-		p, ok := s.providers[e.Provider]
-		if !ok {
-			continue
-		}
-		if best == nil {
-			best = e
-			bestProvider = p
-			continue
-		}
-		if strategy == StrategyCost {
-			if avgCost(e) < avgCost(best) {
-				best = e
-				bestProvider = p
-			}
-		} else {
-			if betterLatency(e, best) {
-				best = e
-				bestProvider = p
-			}
-		}
+// buildCandidates is the shared ordering pass driven by both Pick and
+// Candidates. Two phases: collect enabled+registered entries, then sort
+// stably with healthy entries first and the strategy's tie-break inside
+// each health bucket. Registry order is preserved for equal keys so the
+// output is deterministic across calls.
+func (s *defaultSelector) buildCandidates(model string, strategy Strategy) []Candidate {
+	entries := s.registry.GetModelProviders(model)
+	if len(entries) == 0 {
+		return nil
 	}
 
-	if best != nil {
-		return best, bestProvider, nil
-	}
-
-	// Fallback: every healthy candidate filtered out. Try the first
-	// enabled+registered entry anyway so a recovering provider can serve
-	// traffic without an explicit health-reset.
+	out := make([]Candidate, 0, len(entries))
 	for _, e := range entries {
 		if !e.Enabled {
 			continue
@@ -165,9 +168,34 @@ func (s *defaultSelector) Pick(model string, strategy Strategy) (*ModelProviderE
 		if !ok {
 			continue
 		}
-		return e, p, nil
+		out = append(out, Candidate{Entry: e, Provider: p})
 	}
-	return nil, nil, ErrNoProvider
+	if len(out) == 0 {
+		return nil
+	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		hi := out[i].Entry.HealthStatus == HealthStatusHealthy
+		hj := out[j].Entry.HealthStatus == HealthStatusHealthy
+		if hi != hj {
+			return hi
+		}
+		// Within the same health bucket, apply the strategy's tie-break.
+		if strategy == StrategyCost {
+			ci := avgCost(out[i].Entry)
+			cj := avgCost(out[j].Entry)
+			if ci != cj {
+				return ci < cj
+			}
+			return false
+		}
+		// StrategySpeed: cheaper average latency wins; zero AvgLatencyMs
+		// (no measurements) ranks last so a fresh entry doesn't win on a
+		// phantom "zero is smallest" comparison.
+		return betterLatency(out[i].Entry, out[j].Entry)
+	})
+
+	return out
 }
 
 // Record folds an Outcome into the rolling metrics and mirrors the new
