@@ -116,11 +116,12 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		// Anthropic stamps cache_control on it; Block 2 (per-business) does
 		// not — keeps the cache prefix byte-stable across businesses.
 		llmReq := llm.ChatRequest{
-			UserID:   state.UserUUID,
-			Model:    state.Model,
-			Messages: state.Messages,
-			Tools:    state.AvailableTools,
-			Tier:     state.Tier,
+			UserID:    state.UserUUID,
+			Model:     state.Model,
+			Messages:  state.Messages,
+			Tools:     state.AvailableTools,
+			Tier:      state.Tier,
+			MaxTokens: llm.DefaultMaxTokensFor(state.Model),
 		}
 		if state.SystemPlatform != "" || state.SystemBusiness != "" {
 			llmReq.SystemBlocks = []llm.SystemBlock{
