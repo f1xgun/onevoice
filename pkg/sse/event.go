@@ -23,7 +23,12 @@ import (
 // for the canonical EventType values (text / tool_call / tool_result /
 // tool_rejected / tool_approval_required / done / error).
 type Event struct {
-	Type               string                 `json:"type"`
+	Type string `json:"type"`
+	// Code is a machine-readable discriminator on error events so the api
+	// proxy and frontend can branch on the failure mode without parsing
+	// Content. omitempty keeps legacy events (text / done / non-coded
+	// errors) byte-identical on the wire.
+	Code               string                 `json:"code,omitempty"`
 	Content            string                 `json:"content,omitempty"`
 	ToolCallID         string                 `json:"tool_call_id,omitempty"`
 	ToolName           string                 `json:"tool_name,omitempty"`
