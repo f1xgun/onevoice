@@ -99,8 +99,8 @@ services:
 
   # Backup — daily pg_dump + mongodump → restic → Yandex Object Storage.
   # RESTIC_PASSWORD is decrypted from Yandex KMS at container boot
-  # (entrypoint.sh); never stored on host in plaintext (OPS-06, D-07).
-  # BusyBox crond drives the 00:00 UTC schedule (D-03, D-06 amended).
+  # (entrypoint.sh); never stored on host in plaintext.
+  # BusyBox crond drives the 00:00 UTC schedule.
   backup:
     build:
       context: ./scripts/backup
