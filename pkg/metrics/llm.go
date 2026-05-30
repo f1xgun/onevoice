@@ -60,6 +60,46 @@ var (
 		Name: "llm_billing_post_failures_total",
 		Help: "Count of billingclient.LogUsage failures, by reason (transient|invalid_payload|unexpected_status).",
 	}, []string{"reason"})
+
+	// LLMDailySpendBlocked counts chat requests blocked because the per-business
+	// daily-spend cap was reached. Labeled by `tier` so Grafana can split the
+	// alert per pricing plan.
+	LLMDailySpendBlocked = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "llm_daily_spend_blocked_total",
+		Help: "Chat requests blocked because the per-business daily spend cap was reached, by tier.",
+	}, []string{"tier"})
+
+	// LLMConversationCapHit counts agent-loop terminations because the per-
+	// conversation token cap was reached. `axis` is "input" or "output" so an
+	// operator can distinguish prompt-heavy from completion-heavy runaways.
+	LLMConversationCapHit = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "llm_conversation_cap_hit_total",
+		Help: "Agent-loop terminations because the per-conversation token cap was reached, by axis (input or output).",
+	}, []string{"axis"})
+
+	// LLMRedisDownFallback records the outcome whenever the rate-limiter sees
+	// a Redis failure. `action` separates the four policy paths:
+	//   block             — fail-closed default; the chat is refused.
+	//   fallback          — in-process bucket allowed the request.
+	//   fallback_blocked  — in-process bucket was exhausted.
+	//   misconfigured     — local_fallback policy but no bucket was wired,
+	//                       or the daily-spend lookup itself failed (we cannot
+	//                       distinguish "rate-limiter cannot decide safely"
+	//                       sources at the label level).
+	LLMRedisDownFallback = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "llm_redis_down_fallback_total",
+		Help: "Rate-limiter Redis-failure outcomes, by action (block, fallback, fallback_blocked, misconfigured).",
+	}, []string{"action"})
+
+	// LLMRouterRetry records the outcome of the router's retry-once policy
+	// when a transient provider error fires. `result` is one of
+	// success / retrying / exhausted / nonretryable; `attempt` is first /
+	// second so a Grafana panel can show "what fraction of first-attempt
+	// transients recover on the sibling provider?".
+	LLMRouterRetry = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "llm_router_retry_total",
+		Help: "Router retry-once outcomes, by result (success, retrying, exhausted, nonretryable) and attempt (first, second).",
+	}, []string{"result", "attempt"})
 )
 
 // RecordLLMRequest records a completed LLM request.

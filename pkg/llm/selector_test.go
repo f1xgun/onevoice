@@ -275,6 +275,13 @@ func (s *recordingSelector) Pick(_ string, _ llm.Strategy) (*llm.ModelProviderEn
 	return s.entry, s.provider, s.err
 }
 
+func (s *recordingSelector) Candidates(_ string, _ llm.Strategy) []llm.Candidate {
+	if s.err != nil || s.entry == nil {
+		return nil
+	}
+	return []llm.Candidate{{Entry: s.entry, Provider: s.provider}}
+}
+
 func (s *recordingSelector) Record(_ *llm.ModelProviderEntry, o llm.Outcome) {
 	s.records = append(s.records, o)
 }
@@ -421,4 +428,112 @@ func TestInvoke_GenericResultType_Works(t *testing.T) {
 	assert.True(t, sel.records[0].Success)
 	assert.Equal(t, time.Duration(0), sel.records[0].Latency,
 		"streaming path reports zero Latency so the rolling window skips the sample")
+}
+
+// ---------------------------------------------------------------------------
+// Candidates: priority-ordered candidate list for retry-once
+// ---------------------------------------------------------------------------
+
+func TestSelector_Candidates_SinglyConfigured(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 1.0, 3.0, 100)
+	s, _, _ := newSelectorFixture([]*llm.ModelProviderEntry{entry}, "openai")
+
+	cands := s.Candidates("gpt-4", llm.StrategyCost)
+	require.Len(t, cands, 1)
+	assert.Equal(t, "openai", cands[0].Entry.Provider)
+	assert.NotNil(t, cands[0].Provider)
+}
+
+func TestSelector_Candidates_MultiplyConfigured(t *testing.T) {
+	expensive := healthyEntry("gpt-4", "expensive", 10.0, 30.0, 1000)
+	cheap := healthyEntry("gpt-4", "cheap", 2.0, 6.0, 1500)
+	s, _, _ := newSelectorFixture(
+		[]*llm.ModelProviderEntry{expensive, cheap}, "expensive", "cheap",
+	)
+
+	cands := s.Candidates("gpt-4", llm.StrategyCost)
+	require.Len(t, cands, 2)
+	assert.Equal(t, "cheap", cands[0].Entry.Provider,
+		"index 0 must match Pick's choice under StrategyCost")
+	assert.Equal(t, "expensive", cands[1].Entry.Provider,
+		"the sibling is the runner-up")
+}
+
+func TestSelector_Candidates_NoEntries(t *testing.T) {
+	s, _, _ := newSelectorFixture(nil)
+	cands := s.Candidates("missing-model", llm.StrategyCost)
+	assert.Empty(t, cands, "unknown model returns empty slice, not an error")
+}
+
+func TestSelector_Candidates_HealthBucketRollup(t *testing.T) {
+	healthy := healthyEntry("gpt-4", "ok", 5.0, 15.0, 500)
+	down := healthyEntry("gpt-4", "broken", 1.0, 1.0, 100)
+	down.HealthStatus = "down"
+
+	s, _, _ := newSelectorFixture(
+		[]*llm.ModelProviderEntry{down, healthy}, "broken", "ok",
+	)
+
+	cands := s.Candidates("gpt-4", llm.StrategyCost)
+	require.Len(t, cands, 2,
+		"unhealthy entries stay in the list so the retry path can attempt them")
+	assert.Equal(t, "ok", cands[0].Entry.Provider,
+		"healthy bucket sorts before unhealthy")
+	assert.Equal(t, "broken", cands[1].Entry.Provider)
+}
+
+func TestSelector_Candidates_StrategyAware(t *testing.T) {
+	fast := healthyEntry("gpt-4", "fast", 5.0, 15.0, 200)
+	slow := healthyEntry("gpt-4", "slow", 1.0, 3.0, 1500)
+
+	s, _, _ := newSelectorFixture(
+		[]*llm.ModelProviderEntry{fast, slow}, "fast", "slow",
+	)
+
+	costOrder := s.Candidates("gpt-4", llm.StrategyCost)
+	require.Len(t, costOrder, 2)
+	assert.Equal(t, "slow", costOrder[0].Entry.Provider,
+		"StrategyCost ranks cheaper input/output first")
+
+	speedOrder := s.Candidates("gpt-4", llm.StrategySpeed)
+	require.Len(t, speedOrder, 2)
+	assert.Equal(t, "fast", speedOrder[0].Entry.Provider,
+		"StrategySpeed ranks lower AvgLatencyMs first")
+}
+
+func TestSelector_Candidates_SkipsDisabledAndUnregistered(t *testing.T) {
+	disabled := healthyEntry("gpt-4", "off", 1.0, 1.0, 100)
+	disabled.Enabled = false
+	ghost := healthyEntry("gpt-4", "ghost", 1.0, 1.0, 100) // no provider registered
+	enabled := healthyEntry("gpt-4", "ok", 5.0, 15.0, 500)
+
+	s, _, _ := newSelectorFixture(
+		[]*llm.ModelProviderEntry{disabled, ghost, enabled},
+		"off", "ok", // ghost intentionally absent from provider map
+	)
+
+	cands := s.Candidates("gpt-4", llm.StrategyCost)
+	require.Len(t, cands, 1,
+		"disabled and unregistered entries are excluded")
+	assert.Equal(t, "ok", cands[0].Entry.Provider)
+}
+
+func TestSelector_Candidates_DeterministicOrdering(t *testing.T) {
+	// Two entries with the same cost and same health bucket — registry
+	// insertion order must be preserved across repeated Candidates calls
+	// so the retry path picks the same sibling on every invocation.
+	a := healthyEntry("gpt-4", "alpha", 1.0, 1.0, 100)
+	b := healthyEntry("gpt-4", "beta", 1.0, 1.0, 100)
+	s, _, _ := newSelectorFixture(
+		[]*llm.ModelProviderEntry{a, b}, "alpha", "beta",
+	)
+
+	first := s.Candidates("gpt-4", llm.StrategyCost)
+	require.Len(t, first, 2)
+	for i := 0; i < 5; i++ {
+		next := s.Candidates("gpt-4", llm.StrategyCost)
+		require.Len(t, next, 2)
+		assert.Equal(t, first[0].Entry.Provider, next[0].Entry.Provider)
+		assert.Equal(t, first[1].Entry.Provider, next[1].Entry.Provider)
+	}
 }

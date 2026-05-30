@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/f1xgun/onevoice/pkg/billingclient"
 	"github.com/f1xgun/onevoice/pkg/health"
@@ -34,7 +35,26 @@ import (
 const (
 	mongoShutdownTimeout = 5 * time.Second
 	httpReadTimeout      = 15 * time.Second
+	redisPingTimeout     = 3 * time.Second
 )
+
+// newRedisClient builds a *redis.Client from a connection string and verifies
+// connectivity with a short Ping. Returns an error on dial / auth failure so
+// the orchestrator fails to boot rather than handing the rate limiter a
+// half-broken client.
+func newRedisClient(ctx context.Context, url string) (*redis.Client, error) {
+	opts, err := redis.ParseURL(url)
+	if err != nil {
+		return nil, fmt.Errorf("parse REDIS_URL: %w", err)
+	}
+	rdb := redis.NewClient(opts)
+	pingCtx, cancel := context.WithTimeout(ctx, redisPingTimeout)
+	defer cancel()
+	if perr := rdb.Ping(pingCtx).Err(); perr != nil {
+		return nil, fmt.Errorf("redis ping: %w", perr)
+	}
+	return rdb, nil
+}
 
 func main() {
 	log := logger.New("orchestrator")
@@ -70,7 +90,30 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	billingHTTP := billingclient.New(cfg.APIInternalURL, nil)
 	log.Info("billing client wired", "url", cfg.APIInternalURL)
 
-	router, err := wire.LLMRouter(cfg, log, llm.WithBilling(billingHTTP))
+	// Rate limiter wiring. When REDIS_URL is unset (typical dev runs without
+	// a Redis sidecar) the rate limiter is skipped and the router degrades to
+	// the legacy "no rate limit, no daily-spend gate" path. Production sets
+	// REDIS_URL so all guards are active.
+	routerOpts := []llm.RouterOption{llm.WithBilling(billingHTTP)}
+	if cfg.RedisURL != "" {
+		rdb, redisErr := newRedisClient(ctx, cfg.RedisURL)
+		if redisErr != nil {
+			return fmt.Errorf("redis: %w", redisErr)
+		}
+		rl, rlErr := wire.BuildRateLimiter(cfg, log, rdb, billingHTTP)
+		if rlErr != nil {
+			return fmt.Errorf("rate limiter: %w", rlErr)
+		}
+		routerOpts = append(routerOpts, llm.WithRateLimiter(rl))
+		log.Info("rate limiter wired",
+			"policy", cfg.RedisDownPolicy,
+			"free_tier_daily_spend_usd", cfg.FreeTierDailySpendUSD,
+		)
+	} else {
+		log.Warn("rate limiter disabled: REDIS_URL is unset — cost guards inactive")
+	}
+
+	router, err := wire.LLMRouter(cfg, log, routerOpts...)
 	if err != nil {
 		return err
 	}
@@ -105,7 +148,9 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// tool calls can be saved as PendingToolCallBatch documents. Without it,
 	// stepRun emits EventError "HITL not configured".
 	orch := orchestrator.NewWithHITL(router, registry, pendingRepo, orchestrator.Options{
-		MaxIterations: cfg.MaxIterations,
+		MaxIterations:         cfg.MaxIterations,
+		ConversationInputCap:  cfg.ConversationInputCap,
+		ConversationOutputCap: cfg.ConversationOutputCap,
 	})
 	handlers := wire.Handlers(orch, registry, router, cfg)
 

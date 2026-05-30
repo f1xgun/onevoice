@@ -288,3 +288,73 @@ func TestChatHandler_invalid_whitelist_mode_falls_back(t *testing.T) {
 	require.NotNil(t, got.ProjectContext)
 	assert.Equal(t, "proj-42", got.ProjectContext.ID)
 }
+
+// ---------------------------------------------------------------------
+// Friendly SSE error translation tests
+// ---------------------------------------------------------------------
+
+// failingRunner returns a fixed error from Run so the handler hits the
+// bootstrap-error translation path.
+type failingRunner struct{ err error }
+
+func (f *failingRunner) Run(_ context.Context, _ orchestrator.RunRequest) (<-chan orchestrator.Event, error) {
+	return nil, f.err
+}
+
+// extractFirstSSEEvent parses the first `data: ...` frame from the recorder
+// body and returns the decoded sse.Event.
+func extractFirstSSEEvent(t *testing.T, body string) map[string]any {
+	t.Helper()
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			raw := strings.TrimPrefix(line, "data: ")
+			var ev map[string]any
+			require.NoError(t, json.Unmarshal([]byte(raw), &ev))
+			return ev
+		}
+	}
+	t.Fatalf("no SSE data frame found in body: %q", body)
+	return nil
+}
+
+func TestChatHandler_DailySpendExceeded_FriendlySSE(t *testing.T) {
+	h := handler.NewChatHandler(&failingRunner{err: llm.ErrDailySpendExceeded}, "gpt-4o-mini")
+
+	body := `{"model":"gpt-4o-mini","message":"go","business_id":"b1"}`
+	req := httptest.NewRequest(http.MethodPost, "/chat/conv-1", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	h.Chat(w, req)
+
+	ev := extractFirstSSEEvent(t, w.Body.String())
+	assert.Equal(t, "error", ev["type"])
+	assert.Equal(t, "daily_spend_exceeded", ev["code"])
+	assert.NotEmpty(t, ev["content"])
+}
+
+func TestChatHandler_RateLimitUnavailable_FriendlySSE(t *testing.T) {
+	h := handler.NewChatHandler(&failingRunner{err: llm.ErrRateLimitUnavailable}, "gpt-4o-mini")
+
+	body := `{"model":"gpt-4o-mini","message":"go","business_id":"b1"}`
+	req := httptest.NewRequest(http.MethodPost, "/chat/conv-1", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	h.Chat(w, req)
+
+	ev := extractFirstSSEEvent(t, w.Body.String())
+	assert.Equal(t, "error", ev["type"])
+	assert.Equal(t, "rate_limit_unavailable", ev["code"])
+}
+
+func TestChatHandler_RateLimitExceeded_FriendlySSE(t *testing.T) {
+	h := handler.NewChatHandler(&failingRunner{err: llm.ErrRateLimitExceeded}, "gpt-4o-mini")
+
+	body := `{"model":"gpt-4o-mini","message":"go","business_id":"b1"}`
+	req := httptest.NewRequest(http.MethodPost, "/chat/conv-1", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	h.Chat(w, req)
+
+	ev := extractFirstSSEEvent(t, w.Body.String())
+	assert.Equal(t, "error", ev["type"])
+	assert.Equal(t, "rate_limit_exceeded", ev["code"])
+}

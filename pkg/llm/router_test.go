@@ -3,14 +3,19 @@ package llm_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	openai "github.com/sashabaranov/go-openai"
+
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
 // ---------------------------------------------------------------------------
@@ -63,13 +68,19 @@ func makeStub(name string) *stubProvider {
 	}
 }
 
-// fakeRateLimiter satisfies RateLimitChecker for tests.
+// fakeRateLimiter satisfies RateLimitChecker for tests. Captures the userID
+// and businessID it was called with so tests can assert propagation.
 type fakeRateLimiter struct {
 	allowed bool
 	err     error
+
+	gotUserID     uuid.UUID
+	gotBusinessID uuid.UUID
 }
 
-func (f *fakeRateLimiter) CheckLimit(_ context.Context, _ uuid.UUID, _ string, _ int) (bool, error) {
+func (f *fakeRateLimiter) CheckLimit(_ context.Context, userID, businessID uuid.UUID, _ string, _ int) (bool, error) {
+	f.gotUserID = userID
+	f.gotBusinessID = businessID
 	return f.allowed, f.err
 }
 
@@ -267,6 +278,62 @@ func TestRouter_RateLimit_SkippedForNilUserID(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
+}
+
+// TestRouter_CheckRateLimit_PassesBusinessID — Chat with non-nil BusinessID
+// reaches CheckLimit with that same UUID.
+func TestRouter_CheckRateLimit_PassesBusinessID(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+	frl := &fakeRateLimiter{allowed: true}
+	r := llm.NewRouter(registry,
+		llm.WithProvider(makeStub("openai")),
+		llm.WithRateLimitChecker(frl),
+	)
+
+	bizID := uuid.New()
+	userID := uuid.New()
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     userID,
+		BusinessID: bizID,
+		Tier:       "free",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, userID, frl.gotUserID)
+	assert.Equal(t, bizID, frl.gotBusinessID)
+}
+
+// TestRouter_DailySpendError_PropagatesAsIs — sentinel reaches caller.
+func TestRouter_DailySpendError_PropagatesAsIs(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+	r := llm.NewRouter(registry,
+		llm.WithProvider(makeStub("openai")),
+		llm.WithRateLimitChecker(&fakeRateLimiter{err: llm.ErrDailySpendExceeded}),
+	)
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded), "got %v", err)
+}
+
+// TestRouter_RateLimitUnavailable_PropagatesAsIs — infra sentinel pass-through.
+func TestRouter_RateLimitUnavailable_PropagatesAsIs(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 5.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+	r := llm.NewRouter(registry,
+		llm.WithProvider(makeStub("openai")),
+		llm.WithRateLimitChecker(&fakeRateLimiter{err: llm.ErrRateLimitUnavailable}),
+	)
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	assert.True(t, errors.Is(err, llm.ErrRateLimitUnavailable), "got %v", err)
 }
 
 func TestRouter_RateLimit_CheckerError_Propagated(t *testing.T) {
@@ -593,4 +660,417 @@ func TestRouter_SuccessRecorded_UpdatesLatency(t *testing.T) {
 
 	providers := registry.GetModelProviders("gpt-4")
 	assert.Equal(t, 400, providers[0].AvgLatencyMs)
+}
+
+// ---------------------------------------------------------------------------
+// Router retry-once tests (sibling registry entry on transient errors)
+// ---------------------------------------------------------------------------
+
+// sequenceProvider returns canned (response, error) tuples in order, one per
+// Chat call. Tests assemble its responses up-front so the multi-attempt
+// retry path can be driven deterministically.
+type sequenceProvider struct {
+	name      string
+	responses []seqResponse
+	callCount int
+}
+
+type seqResponse struct {
+	resp *llm.ChatResponse
+	err  error
+}
+
+func (p *sequenceProvider) Chat(_ context.Context, _ llm.ChatRequest) (*llm.ChatResponse, error) {
+	if p.callCount >= len(p.responses) {
+		return nil, fmt.Errorf("%s: unexpected extra call (count=%d)", p.name, p.callCount+1)
+	}
+	r := p.responses[p.callCount]
+	p.callCount++
+	return r.resp, r.err
+}
+
+func (p *sequenceProvider) ChatStream(_ context.Context, _ llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk)
+	close(ch)
+	return ch, nil
+}
+func (p *sequenceProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) { return nil, nil }
+func (p *sequenceProvider) HealthCheck(_ context.Context) error                   { return nil }
+func (p *sequenceProvider) Name() string                                          { return p.name }
+
+// candidateSelector hands back a fixed Candidates list plus captures every
+// Record call so tests can assert health-rollup fan-out across both
+// retry attempts.
+type candidateSelector struct {
+	candidates []llm.Candidate
+	pickErr    error
+	records    []recordedOutcome
+}
+
+type recordedOutcome struct {
+	entry   *llm.ModelProviderEntry
+	outcome llm.Outcome
+}
+
+func (s *candidateSelector) Pick(_ string, _ llm.Strategy) (*llm.ModelProviderEntry, llm.Provider, error) {
+	if s.pickErr != nil {
+		return nil, nil, s.pickErr
+	}
+	if len(s.candidates) == 0 {
+		return nil, nil, llm.ErrNoProvider
+	}
+	return s.candidates[0].Entry, s.candidates[0].Provider, nil
+}
+
+func (s *candidateSelector) Candidates(_ string, _ llm.Strategy) []llm.Candidate {
+	return s.candidates
+}
+
+func (s *candidateSelector) Record(entry *llm.ModelProviderEntry, o llm.Outcome) {
+	s.records = append(s.records, recordedOutcome{entry, o})
+}
+
+func transientAPIError(status int) error {
+	return fmt.Errorf("provider chat: %w", &openai.APIError{HTTPStatusCode: status, Message: "transient"})
+}
+
+func nonTransientAPIError(status int) error {
+	return fmt.Errorf("provider chat: %w", &openai.APIError{HTTPStatusCode: status, Message: "client error"})
+}
+
+func TestRouter_RetryOnce_TransientThenSuccess(t *testing.T) {
+	before := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("success", "second"))
+
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic"}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		{nil, transientAPIError(503)},
+	}}
+	provB := &sequenceProvider{name: "anthropic", responses: []seqResponse{
+		{&llm.ChatResponse{Content: "ok", Usage: llm.TokenUsage{InputTokens: 100, OutputTokens: 50}}, nil},
+	}}
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+		{Entry: entryB, Provider: provB},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	resp, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.NoError(t, err)
+	assert.Equal(t, "ok", resp.Content)
+	assert.Equal(t, "anthropic", resp.Provider)
+	assert.Equal(t, 1, provA.callCount)
+	assert.Equal(t, 1, provB.callCount)
+
+	after := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("success", "second"))
+	assert.Equal(t, before+1, after, "success on the retry must bump success/second")
+}
+
+func TestRouter_RetryOnce_TransientThenTransient(t *testing.T) {
+	before := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("exhausted", "second"))
+
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic"}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		{nil, transientAPIError(503)},
+	}}
+	provB := &sequenceProvider{name: "anthropic", responses: []seqResponse{
+		{nil, transientAPIError(503)},
+	}}
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+		{Entry: entryB, Provider: provB},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	_, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.Error(t, err)
+	assert.Equal(t, 1, provA.callCount)
+	assert.Equal(t, 1, provB.callCount,
+		"sibling must be attempted even though it also fails")
+
+	after := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("exhausted", "second"))
+	assert.Equal(t, before+1, after)
+}
+
+func TestRouter_RetryOnce_NonTransientImmediate(t *testing.T) {
+	before := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("nonretryable", "first"))
+
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic"}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		{nil, nonTransientAPIError(400)},
+	}}
+	provB := &sequenceProvider{name: "anthropic"} // must NOT be called
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+		{Entry: entryB, Provider: provB},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	_, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.Error(t, err)
+	assert.Equal(t, 1, provA.callCount)
+	assert.Equal(t, 0, provB.callCount,
+		"non-transient errors must not consume the retry budget")
+
+	after := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("nonretryable", "first"))
+	assert.Equal(t, before+1, after)
+}
+
+func TestRouter_RetryOnce_NonTransientOnRetry(t *testing.T) {
+	before := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("nonretryable", "second"))
+
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic"}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		{nil, transientAPIError(503)},
+	}}
+	provB := &sequenceProvider{name: "anthropic", responses: []seqResponse{
+		{nil, nonTransientAPIError(400)},
+	}}
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+		{Entry: entryB, Provider: provB},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	_, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.Error(t, err)
+	assert.Equal(t, 1, provA.callCount)
+	assert.Equal(t, 1, provB.callCount)
+
+	after := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("nonretryable", "second"))
+	assert.Equal(t, before+1, after)
+}
+
+func TestRouter_RetryOnce_SingleCandidate(t *testing.T) {
+	before := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("exhausted", "first"))
+
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		{nil, transientAPIError(503)},
+	}}
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	_, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.Error(t, err)
+	assert.Equal(t, 1, provA.callCount)
+
+	after := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("exhausted", "first"))
+	assert.Equal(t, before+1, after,
+		"single-candidate transient must bump exhausted/first, not exhausted/second")
+}
+
+func TestRouter_RetryOnce_FirstAttemptSucceeds(t *testing.T) {
+	before := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("success", "first"))
+
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic"}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		{&llm.ChatResponse{Content: "first ok"}, nil},
+	}}
+	provB := &sequenceProvider{name: "anthropic"} // must NOT be called
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+		{Entry: entryB, Provider: provB},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	resp, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.NoError(t, err)
+	assert.Equal(t, "first ok", resp.Content)
+	assert.Equal(t, "openrouter", resp.Provider)
+	assert.Equal(t, 1, provA.callCount)
+	assert.Equal(t, 0, provB.callCount)
+
+	after := testutil.ToFloat64(metrics.LLMRouterRetry.WithLabelValues("success", "first"))
+	assert.Equal(t, before+1, after)
+}
+
+// Bills-only-success: when the retry succeeds, the billing fake must
+// capture exactly one UsageLog and that log's Usage matches B's response.
+// A's partial Usage (mimicking SDKs that surface a shell on error) must
+// NOT bleed into the billing row.
+func TestRouter_RetryOnce_BillsOnlySuccess(t *testing.T) {
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter", InputCostPer1MTok: 1, OutputCostPer1MTok: 3}
+	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic", InputCostPer1MTok: 2, OutputCostPer1MTok: 6}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		// Partial response with bogus Usage tagged onto the error path.
+		// The detector sees the wrapped APIError so the retry fires; if
+		// the router accidentally billed A, this row would surface.
+		{&llm.ChatResponse{Usage: llm.TokenUsage{InputTokens: 99, OutputTokens: 99}}, transientAPIError(503)},
+	}}
+	provB := &sequenceProvider{name: "anthropic", responses: []seqResponse{
+		{&llm.ChatResponse{Content: "winner", Usage: llm.TokenUsage{InputTokens: 100, OutputTokens: 50}}, nil},
+	}}
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+		{Entry: entryB, Provider: provB},
+	}}
+
+	billing := &MockBillingRepository{}
+	r := llm.NewRouter(llm.NewRegistry(),
+		llm.WithSelector(sel),
+		llm.WithBilling(billing),
+	)
+
+	resp, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "winner", resp.Content)
+
+	assert.Eventually(t, func() bool { return billing.LastLog() != nil },
+		200*time.Millisecond, 10*time.Millisecond)
+	require.Equal(t, 1, billing.CallCount(),
+		"LogUsage must fire exactly once — the failed attempt is never billed")
+
+	last := billing.LastLog()
+	require.NotNil(t, last)
+	assert.Equal(t, 100, last.InputTokens,
+		"billed Usage must come from the successful sibling, not the failed primary")
+	assert.Equal(t, 50, last.OutputTokens)
+	assert.Equal(t, "anthropic", last.Provider)
+}
+
+func TestRouter_RetryOnce_RecordsBothOutcomes(t *testing.T) {
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic"}
+	provA := &sequenceProvider{name: "openrouter", responses: []seqResponse{
+		{nil, transientAPIError(503)},
+	}}
+	provB := &sequenceProvider{name: "anthropic", responses: []seqResponse{
+		{&llm.ChatResponse{Content: "ok"}, nil},
+	}}
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+		{Entry: entryB, Provider: provB},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	_, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.NoError(t, err)
+
+	require.Len(t, sel.records, 2,
+		"health rollup must see one Record per attempt")
+	assert.False(t, sel.records[0].outcome.Success,
+		"attempt 0 failed and Record must reflect that")
+	assert.True(t, sel.records[1].outcome.Success,
+		"attempt 1 succeeded and Record must reflect that")
+	assert.Equal(t, "openrouter", sel.records[0].entry.Provider)
+	assert.Equal(t, "anthropic", sel.records[1].entry.Provider)
+}
+
+func TestRouter_RetryOnce_NoCandidates(t *testing.T) {
+	sel := &candidateSelector{candidates: nil}
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	_, err := r.Chat(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	assert.ErrorIs(t, err, llm.ErrNoProvider)
+	assert.Empty(t, sel.records, "no provider was tried, no Record fires")
+}
+
+func TestRouter_RetryOnce_RateLimitErrorNotRetried(t *testing.T) {
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	provA := &sequenceProvider{name: "openrouter"} // must NOT be called
+
+	sel := &candidateSelector{candidates: []llm.Candidate{{Entry: entryA, Provider: provA}}}
+	r := llm.NewRouter(llm.NewRegistry(),
+		llm.WithSelector(sel),
+		llm.WithRateLimitChecker(&fakeRateLimiter{err: llm.ErrDailySpendExceeded}),
+	)
+
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	assert.ErrorIs(t, err, llm.ErrDailySpendExceeded)
+	assert.Equal(t, 0, provA.callCount,
+		"rate-limit gate must fire before any candidate is dialed")
+}
+
+// ChatStream is intentionally not retried — verify it walks Pick (single
+// candidate path) and does not consume the retry budget. We assert by
+// counting Records: only one fires, regardless of how many candidates
+// the selector advertises.
+func TestRouter_RetryOnce_ChatStreamUnchanged(t *testing.T) {
+	entryA := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "openrouter"}
+	entryB := &llm.ModelProviderEntry{Model: "gpt-4", Provider: "anthropic"}
+	provA := makeStub("openrouter")
+	provB := makeStub("anthropic")
+
+	sel := &candidateSelector{candidates: []llm.Candidate{
+		{Entry: entryA, Provider: provA},
+		{Entry: entryB, Provider: provB},
+	}}
+
+	r := llm.NewRouter(llm.NewRegistry(), llm.WithSelector(sel))
+	ch, err := r.ChatStream(context.Background(), llm.ChatRequest{Model: "gpt-4"})
+	require.NoError(t, err)
+	require.NotNil(t, ch)
+
+	assert.Len(t, sel.records, 1,
+		"ChatStream must walk Pick (single candidate), not the retry list")
+}
+
+// End-to-end shape: register two real registry entries for the same model
+// (one openai, one anthropic). Drive Chat through Router. Verify the
+// successful response carries the sibling's Provider name and the
+// captured billing row attributes to the sibling.
+func TestRouter_RetryOnce_E2E_OpenAIToAnthropic(t *testing.T) {
+	const model = "anthropic/claude-sonnet-4-6"
+	openaiEntry := healthyEntry(model, "openai", 3.0, 15.0, 200)
+	anthropicEntry := healthyEntry(model, "anthropic", 3.0, 15.0, 250)
+	registry := newTestRegistry(openaiEntry, anthropicEntry)
+
+	openaiFailing := &sequenceProvider{
+		name: "openai",
+		responses: []seqResponse{
+			{nil, transientAPIError(503)},
+		},
+	}
+	anthropicWinning := &sequenceProvider{
+		name: "anthropic",
+		responses: []seqResponse{
+			{&llm.ChatResponse{
+				Content: "hello from anthropic",
+				Usage:   llm.TokenUsage{InputTokens: 250, OutputTokens: 80},
+			}, nil},
+		},
+	}
+
+	billing := &MockBillingRepository{}
+	r := llm.NewRouter(registry,
+		llm.WithProvider(openaiFailing),
+		llm.WithProvider(anthropicWinning),
+		llm.WithBilling(billing),
+	)
+
+	resp, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      model,
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "hello from anthropic", resp.Content)
+	assert.Equal(t, "anthropic", resp.Provider,
+		"successful response must attribute to the sibling that served it")
+	assert.Equal(t, 1, openaiFailing.callCount)
+	assert.Equal(t, 1, anthropicWinning.callCount)
+
+	assert.Eventually(t, func() bool { return billing.LastLog() != nil },
+		200*time.Millisecond, 10*time.Millisecond)
+	last := billing.LastLog()
+	require.NotNil(t, last)
+	assert.Equal(t, "anthropic", last.Provider)
+	assert.Equal(t, 250, last.InputTokens)
+	assert.Equal(t, 80, last.OutputTokens)
+	assert.Equal(t, 1, billing.CallCount(),
+		"the failed openai attempt must NOT have been billed")
 }

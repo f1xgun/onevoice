@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -228,13 +229,66 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	events, err := h.runner.Run(ctx, runReq)
 	if err != nil {
-		writeSSE(ctx, w, flusher, sse.Event{Type: "error", Content: err.Error()})
+		writeSSE(ctx, w, flusher, translateRunnerError(ctx, err))
 		return
 	}
 
 	for event := range events {
 		writeSSE(ctx, w, flusher, sseevent.FromEvent(event))
 	}
+}
+
+// translateRunnerError converts a Run / Resume bootstrap error into the SSE
+// wire shape. Rate-limiter sentinels become coded error events with a
+// localized fallback message; everything else falls through with the
+// untranslated err.Error() text so the existing legacy behavior is preserved.
+//
+// ErrConversationTokenCap is intentionally NOT translated here — the agent
+// loop is the canonical emitter (stepRun emits Code="conversation_token_cap"
+// directly on the event channel), and double-emission would be a bug.
+func translateRunnerError(ctx context.Context, err error) sse.Event {
+	switch {
+	case errors.Is(err, llm.ErrDailySpendExceeded):
+		return sse.Event{Type: "error", Code: "daily_spend_exceeded", Content: friendlyDailySpendMessage(ctx)}
+	case errors.Is(err, llm.ErrRateLimitUnavailable):
+		return sse.Event{Type: "error", Code: "rate_limit_unavailable", Content: friendlyRateLimitUnavailableMessage(ctx)}
+	case errors.Is(err, llm.ErrRateLimitExceeded):
+		return sse.Event{Type: "error", Code: "rate_limit_exceeded", Content: friendlyRateLimitExceededMessage(ctx)}
+	default:
+		return sse.Event{Type: "error", Content: err.Error()}
+	}
+}
+
+// Friendly-message helpers — two-locale switch only. The wire shape's Code
+// field is the discriminator; Content is the human-readable fallback.
+const (
+	dailySpendRU        = "Достигнут дневной лимит расходов для этого бизнеса. Попробуйте завтра или свяжитесь с владельцем."
+	dailySpendEN        = "Daily spend limit reached for this business. Try again tomorrow or contact the owner."
+	rateLimitUnavailRU  = "Сервис ограничения запросов временно недоступен. Попробуйте позже."
+	rateLimitUnavailEN  = "Rate limiter is temporarily unavailable. Please try again shortly."
+	rateLimitExceededRU = "Слишком много запросов. Подождите минуту и повторите."
+	rateLimitExceededEN = "Too many requests. Wait a minute and try again."
+)
+
+func friendlyDailySpendMessage(ctx context.Context) string {
+	if i18n.LocaleFromContext(ctx) == language.English {
+		return dailySpendEN
+	}
+	return dailySpendRU
+}
+
+func friendlyRateLimitUnavailableMessage(ctx context.Context) string {
+	if i18n.LocaleFromContext(ctx) == language.English {
+		return rateLimitUnavailEN
+	}
+	return rateLimitUnavailRU
+}
+
+func friendlyRateLimitExceededMessage(ctx context.Context) string {
+	if i18n.LocaleFromContext(ctx) == language.English {
+		return rateLimitExceededEN
+	}
+	return rateLimitExceededRU
 }
 
 func writeSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, event sse.Event) {

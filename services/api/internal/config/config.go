@@ -221,6 +221,14 @@ type Config struct {
 	OpenAIAPIKey        string
 	AnthropicAPIKey     string
 	SelfHostedEndpoints []SelfHostedEndpoint
+
+	// Cost-guard knobs. Same env vars + semantics as the orchestrator config
+	// so the titler / draft-reply Router (api-side) honors the same daily-
+	// spend gate and Redis-down policy. Validation lives at boot in
+	// services/api/internal/wire.
+	FreeTierDailySpendUSD        float64
+	RedisDownPolicy              string
+	LocalFallbackRequestsPerHour int
 }
 
 func Load() (*Config, error) {
@@ -360,6 +368,29 @@ func Load() (*Config, error) {
 	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
 	cfg.AnthropicAPIKey = os.Getenv("ANTHROPIC_API_KEY")
 	cfg.SelfHostedEndpoints = parseIndexedEndpoints()
+
+	if v := os.Getenv("LLM_FREE_TIER_DAILY_SPEND_USD"); v != "" {
+		if f, perr := strconv.ParseFloat(v, 64); perr == nil {
+			cfg.FreeTierDailySpendUSD = f
+		}
+	}
+	cfg.RedisDownPolicy = getEnv("LLM_RATELIMIT_ON_REDIS_DOWN", "block")
+	switch cfg.RedisDownPolicy {
+	case "block", "local_fallback":
+	default:
+		return nil, fmt.Errorf("LLM_RATELIMIT_ON_REDIS_DOWN must be \"block\" or \"local_fallback\", got %q", cfg.RedisDownPolicy)
+	}
+	cfg.LocalFallbackRequestsPerHour = 2000
+	if v := os.Getenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR"); v != "" {
+		n, perr := strconv.Atoi(v)
+		if perr != nil {
+			return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be a positive integer, got %q: %w", v, perr)
+		}
+		cfg.LocalFallbackRequestsPerHour = n
+	}
+	if cfg.RedisDownPolicy == "local_fallback" && cfg.LocalFallbackRequestsPerHour <= 0 {
+		return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be > 0 when LLM_RATELIMIT_ON_REDIS_DOWN=local_fallback")
+	}
 
 	// Validate required fields
 	if cfg.JWTSecret == "" {

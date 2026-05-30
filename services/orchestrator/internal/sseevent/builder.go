@@ -21,6 +21,7 @@ import (
 func FromEvent(e orchestrator.Event) sse.Event {
 	out := sse.Event{
 		Type:    string(e.Type),
+		Code:    e.Code,
 		Content: e.Content,
 	}
 	switch e.Type {

@@ -97,9 +97,23 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Ev
 // non-whitespace byte, a legacy raw array begins with '['. Resume logs a
 // debug entry on legacy batches so operators can confirm in-flight legacy
 // batches drained naturally.
-func decodeSnapshot(raw []byte) (messages []llm.Message, platform, business string, legacy bool, err error) {
+// snapshotDecoded carries the decoded fields of a pause snapshot so the
+// resume goroutine can populate RunState without juggling a long return list.
+// Legacy V1 snapshots leave most fields zero — the `legacy` flag tells the
+// caller to expect a leading system message in Messages instead.
+type snapshotDecoded struct {
+	Messages                []llm.Message
+	SystemPlatform          string
+	SystemBusiness          string
+	AccumulatedInputTokens  int
+	AccumulatedOutputTokens int
+	Legacy                  bool
+}
+
+func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
+	var out snapshotDecoded
 	if len(raw) == 0 {
-		return nil, "", "", false, nil
+		return out, nil
 	}
 	// Skip leading whitespace to find the first JSON token.
 	i := 0
@@ -107,21 +121,28 @@ func decodeSnapshot(raw []byte) (messages []llm.Message, platform, business stri
 		i++
 	}
 	if i >= len(raw) {
-		return nil, "", "", false, nil
+		return out, nil
 	}
 	if raw[i] == '{' {
 		var env modelMessagesSnapshotV2
 		if uErr := json.Unmarshal(raw, &env); uErr != nil {
-			return nil, "", "", false, uErr
+			return snapshotDecoded{}, uErr
 		}
-		return env.Messages, env.SystemPlatform, env.SystemBusiness, false, nil
+		out.Messages = env.Messages
+		out.SystemPlatform = env.SystemPlatform
+		out.SystemBusiness = env.SystemBusiness
+		out.AccumulatedInputTokens = env.AccumulatedInputTokens
+		out.AccumulatedOutputTokens = env.AccumulatedOutputTokens
+		return out, nil
 	}
 	// Legacy array shape.
 	var msgs []llm.Message
 	if uErr := json.Unmarshal(raw, &msgs); uErr != nil {
-		return nil, "", "", false, uErr
+		return snapshotDecoded{}, uErr
 	}
-	return msgs, "", "", true, nil
+	out.Messages = msgs
+	out.Legacy = true
+	return out, nil
 }
 
 // resumeGoroutine is the body of the spawned resume goroutine. Extracted so
@@ -131,20 +152,20 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 	// 1. Reconstruct state from the snapshot. decodeSnapshot accepts both
 	// the versioned envelope and the legacy raw-array shape; legacy batches
 	// in flight at deploy time drain through the legacy fallback.
-	messages, platform, business, legacy, err := decodeSnapshot(batch.ModelMessages)
+	snap, err := decodeSnapshot(batch.ModelMessages)
 	if err != nil {
 		out <- Event{Type: EventError, Content: fmt.Sprintf("corrupt snapshot: %v", err)}
 		return
 	}
-	if legacy {
+	if snap.Legacy {
 		slog.DebugContext(ctx, "resume: legacy snapshot detected — using provider scrub fallback",
 			"batch_id", batch.ID,
 		)
 	}
 	state := &RunState{
-		Messages:                 messages,
-		SystemPlatform:           platform,
-		SystemBusiness:           business,
+		Messages:                 snap.Messages,
+		SystemPlatform:           snap.SystemPlatform,
+		SystemBusiness:           snap.SystemBusiness,
 		AvailableTools:           o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools),
 		BusinessApprovals:        req.BusinessApprovals,
 		ProjectApprovalOverrides: req.ProjectApprovalOverrides,
@@ -156,6 +177,12 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 		Model:                    req.Model,
 		Tier:                     req.Tier,
 		Iter:                     batch.IterationIdx + 1,
+		// Hydrate accumulated token counts so the per-conversation cap
+		// continues to measure from the pre-pause budget. Legacy V1/V2
+		// snapshots without these fields land at zero — correct because
+		// pre-cap turns were not subject to enforcement.
+		AccumulatedInputTokens:  snap.AccumulatedInputTokens,
+		AccumulatedOutputTokens: snap.AccumulatedOutputTokens,
 	}
 
 	// Inject batch.BusinessID into the dispatch context so the NATS executor's
@@ -202,7 +229,26 @@ func (o *Orchestrator) dispatchApprovedCalls(
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
+	// sendOrCancel writes ev to out, but returns false if ctx is canceled
+	// first. Mirrors the gate used by dispatchToolCalls (orchestrator.go) so a
+	// caller that hangs up mid-resume cannot leave the per-call goroutines
+	// blocked indefinitely on a full channel buffer.
+	sendOrCancel := func(ev Event) bool {
+		select {
+		case out <- ev:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
 	for i := range batch.Calls {
+		// Bail out early if the caller has gone away — no point queueing
+		// further rejections or spawning goroutines that will immediately
+		// hit the same cancellation gate.
+		if ctx.Err() != nil {
+			break
+		}
 		call := batch.Calls[i]
 
 		// Reject verdict → synthetic rejection, no dispatch.
@@ -219,11 +265,13 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				ToolCallID: call.CallID,
 			})
 			mu.Unlock()
-			out <- Event{
+			if !sendOrCancel(Event{
 				Type:       EventToolRejected,
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
 				Content:    reason,
+			}) {
+				return
 			}
 			continue
 		}
@@ -243,11 +291,13 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				ToolCallID: call.CallID,
 			})
 			mu.Unlock()
-			out <- Event{
+			if !sendOrCancel(Event{
 				Type:       EventToolRejected,
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
 				Content:    "policy_revoked",
+			}) {
+				return
 			}
 			continue
 		}
@@ -288,13 +338,15 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			// DisplayNameKey populated so the AgentTask row created on
 			// the resume path also carries the i18n key —
 			// matches the fresh-turn path in dispatchToolCalls.
-			out <- Event{
+			if !sendOrCancel(Event{
 				Type:               EventToolCall,
 				ToolCallID:         c.CallID,
 				ToolName:           c.ToolName,
 				ToolDisplayName:    o.tools.DisplayName(c.ToolName),
 				ToolDisplayNameKey: o.tools.DisplayNameKey(c.ToolName),
 				ToolArgs:           args,
+			}) {
+				return
 			}
 
 			result, execErr := o.tools.ExecuteWithApproval(ctx, c.ToolName, args, approvalID)
@@ -335,7 +387,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			// DisplayNameKey carried through so chat_proxy can update
 			// the AgentTask with the localizable key even when the row
 			// was first created by a different orchestrator instance.
-			out <- Event{
+			_ = sendOrCancel(Event{
 				Type:               EventToolResult,
 				ToolCallID:         c.CallID,
 				ToolName:           c.ToolName,
@@ -343,7 +395,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				ToolDisplayNameKey: o.tools.DisplayNameKey(c.ToolName),
 				ToolResult:         result,
 				ToolError:          errStr,
-			}
+			})
 		}(call)
 	}
 
