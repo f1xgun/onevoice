@@ -320,17 +320,22 @@ func Load() (*Config, error) {
 	// Phase 23.4 (OPS-04) — lockout + SmartCaptcha + trusted-proxy env loading.
 	// Defaults match pkg/lockout.Default* constants so they stay in sync; the
 	// clamp below also defends against operator typos (negative threshold etc.).
-	cfg.LockoutFailThresholdCaptcha = getEnvInt("LOCKOUT_FAIL_THRESHOLD_CAPTCHA", 4) //nolint:mnd // env-driven default
-	cfg.LockoutFailThresholdLock = getEnvInt("LOCKOUT_FAIL_THRESHOLD_LOCK", 10)      //nolint:mnd // env-driven default
-	cfg.LockoutDuration = getEnvDuration("LOCKOUT_DURATION", 15*time.Minute)         //nolint:mnd // env-driven default
+	const (
+		defaultLockoutCaptcha  = 4
+		defaultLockoutLock     = 10
+		defaultLockoutDuration = 15 * time.Minute
+	)
+	cfg.LockoutFailThresholdCaptcha = getEnvInt("LOCKOUT_FAIL_THRESHOLD_CAPTCHA", defaultLockoutCaptcha)
+	cfg.LockoutFailThresholdLock = getEnvInt("LOCKOUT_FAIL_THRESHOLD_LOCK", defaultLockoutLock)
+	cfg.LockoutDuration = getEnvDuration("LOCKOUT_DURATION", defaultLockoutDuration)
 	if cfg.LockoutFailThresholdCaptcha <= 0 {
-		cfg.LockoutFailThresholdCaptcha = 4
+		cfg.LockoutFailThresholdCaptcha = defaultLockoutCaptcha
 	}
 	if cfg.LockoutFailThresholdLock <= 0 {
-		cfg.LockoutFailThresholdLock = 10
+		cfg.LockoutFailThresholdLock = defaultLockoutLock
 	}
 	if cfg.LockoutDuration <= 0 {
-		cfg.LockoutDuration = 15 * time.Minute
+		cfg.LockoutDuration = defaultLockoutDuration
 	}
 	cfg.SmartCaptchaSiteKey = os.Getenv("SMARTCAPTCHA_SITE_KEY")
 	cfg.SmartCaptchaSecretKey = os.Getenv("SMARTCAPTCHA_SECRET_KEY")

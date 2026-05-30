@@ -16,7 +16,7 @@ func TestClientIP_RemoteAddrUntrustedIgnoresXFF(t *testing.T) {
 	// The XFF header must be ignored — returns the peer IP.
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	r.RemoteAddr = "1.2.3.4:12345"
 	r.Header.Set("X-Forwarded-For", "9.9.9.9")
 
@@ -27,7 +27,7 @@ func TestClientIP_RemoteAddrTrustedReadsXFF(t *testing.T) {
 	// Peer is INSIDE the trust set → trust the LB's XFF. Leftmost wins.
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	r.RemoteAddr = "10.0.0.5:12345"
 	r.Header.Set("X-Forwarded-For", "9.9.9.9, 8.8.8.8")
 
@@ -39,7 +39,7 @@ func TestClientIP_TrustedNoXFF_FallsBackToPeer(t *testing.T) {
 	// rather than empty string. Forensic value preserved.
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))
 
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	r.RemoteAddr = "10.0.0.5:12345"
 
 	assert.Equal(t, "10.0.0.5", middleware.ClientIP(r))
@@ -51,7 +51,7 @@ func TestClientIP_DefaultCIDRs_WhenEmptyInput(t *testing.T) {
 	// the XFF must be honored.
 	require.NoError(t, middleware.InitTrustedProxies(""))
 
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	r.RemoteAddr = "178.154.250.5:443"
 	r.Header.Set("X-Forwarded-For", "203.0.113.7")
 	assert.Equal(t, "203.0.113.7", middleware.ClientIP(r))
@@ -74,7 +74,6 @@ func TestNet16_IPv4(t *testing.T) {
 		{"0.0.0.0", "0.0.0.0/16"},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.ip, func(t *testing.T) {
 			assert.Equal(t, tc.want, middleware.Net16(tc.ip))
 		})
