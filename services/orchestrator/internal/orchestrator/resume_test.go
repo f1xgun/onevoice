@@ -554,6 +554,75 @@ func TestResume_LegacyV1SnapshotZeroes(t *testing.T) {
 		"legacy snapshot must hydrate at 0 so the resumed turn does not falsely trip the cap")
 }
 
+// TestResume_CtxCancelledMidDispatch_ReturnsPromptly_NoGoroutineLeak —
+// regression for the goroutine-leak vector in dispatchApprovedCalls. With a
+// large approved batch and a caller that disconnects (ctx cancellation) mid-
+// resume, every per-call goroutine must observe ctx.Done() on its channel
+// send and return, so wg.Wait() unblocks and the resume goroutine reaches
+// close(ch). Before the fix the unbuffered `out <- Event{...}` sends could
+// block forever once the 32-slot SSE buffer was full and the consumer stopped
+// reading.
+func TestResume_CtxCancelledMidDispatch_ReturnsPromptly_NoGoroutineLeak(t *testing.T) {
+	// stubLLM is never reached because stepRun runs after dispatch returns;
+	// even if it is, providing a benign response keeps the assertion local
+	// to the dispatch behavior.
+	stub := &stubLLM{responses: []*llm.ChatResponse{{Content: "ok", FinishReason: "stop"}}}
+
+	// 64 approved calls > 32-slot SSE buffer; each call emits tool_call +
+	// tool_result so naive sends would block well before drain completes.
+	const numCalls = 64
+	rec := &recordingExecutor{}
+	reg := toolregistry.NewRegistry()
+	reg.Register(toolregistry.ToolSpec{Def: llm.ToolDefinition{
+		Type:     llm.ToolCallTypeFunction,
+		Function: llm.FunctionDefinition{Name: "leak_tool", Description: "d", Parameters: map[string]interface{}{}},
+	}, Floor: domain.ToolFloorManual, EditableFields: []string{"text"}}, rec)
+
+	repo := newMockPendingRepo()
+	calls := make([]domain.PendingCall, 0, numCalls)
+	for i := 0; i < numCalls; i++ {
+		calls = append(calls, domain.PendingCall{
+			CallID:    fmt.Sprintf("c-%d", i),
+			ToolName:  "leak_tool",
+			Arguments: map[string]interface{}{"text": "x"},
+			Verdict:   "approve",
+		})
+	}
+	batch := batchWithCalls(t, "batch-leak", calls)
+	repo.store["batch-leak"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{MaxIterations: 5})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	events, err := orch.Resume(ctx, orchestrator.ResumeRequest{BatchID: "batch-leak"})
+	require.NoError(t, err)
+
+	// Simulate caller hang-up: cancel immediately and DO NOT drain `events`.
+	// The 32-slot buffer will fill quickly; per-call goroutines then must
+	// observe ctx.Done() rather than block on the send.
+	cancel()
+
+	// The producer goroutine must close `events` within a generous bound.
+	// If the leak regressed, this would hang forever and the test would
+	// time out at the package timeout — assert closure explicitly so the
+	// failure is obvious.
+	closed := make(chan struct{})
+	go func() {
+		// Drain whatever events were already buffered so the channel can be
+		// closed by the producer; we don't care about the content here.
+		for range events {
+		}
+		close(closed)
+	}()
+
+	select {
+	case <-closed:
+		// Producer closed `events` promptly after cancellation — fix works.
+	case <-time.After(2 * time.Second):
+		t.Fatal("resume dispatch did not return after ctx cancellation — goroutine leak regression")
+	}
+}
+
 // TestResume_AccumulatedTokensSurviveJSONRoundTrip — marshal/unmarshal of a
 // V2 snapshot preserves the new fields verbatim.
 func TestResume_AccumulatedTokensSurviveJSONRoundTrip(t *testing.T) {

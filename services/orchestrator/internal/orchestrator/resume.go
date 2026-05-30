@@ -229,7 +229,26 @@ func (o *Orchestrator) dispatchApprovedCalls(
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
+	// sendOrCancel writes ev to out, but returns false if ctx is cancelled
+	// first. Mirrors the gate used by dispatchToolCalls (orchestrator.go) so a
+	// caller that hangs up mid-resume cannot leave the per-call goroutines
+	// blocked indefinitely on a full channel buffer.
+	sendOrCancel := func(ev Event) bool {
+		select {
+		case out <- ev:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
 	for i := range batch.Calls {
+		// Bail out early if the caller has gone away — no point queueing
+		// further rejections or spawning goroutines that will immediately
+		// hit the same cancellation gate.
+		if ctx.Err() != nil {
+			break
+		}
 		call := batch.Calls[i]
 
 		// Reject verdict → synthetic rejection, no dispatch.
@@ -246,11 +265,13 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				ToolCallID: call.CallID,
 			})
 			mu.Unlock()
-			out <- Event{
+			if !sendOrCancel(Event{
 				Type:       EventToolRejected,
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
 				Content:    reason,
+			}) {
+				return
 			}
 			continue
 		}
@@ -270,11 +291,13 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				ToolCallID: call.CallID,
 			})
 			mu.Unlock()
-			out <- Event{
+			if !sendOrCancel(Event{
 				Type:       EventToolRejected,
 				ToolCallID: call.CallID,
 				ToolName:   call.ToolName,
 				Content:    "policy_revoked",
+			}) {
+				return
 			}
 			continue
 		}
@@ -315,13 +338,15 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			// DisplayNameKey populated so the AgentTask row created on
 			// the resume path also carries the i18n key —
 			// matches the fresh-turn path in dispatchToolCalls.
-			out <- Event{
+			if !sendOrCancel(Event{
 				Type:               EventToolCall,
 				ToolCallID:         c.CallID,
 				ToolName:           c.ToolName,
 				ToolDisplayName:    o.tools.DisplayName(c.ToolName),
 				ToolDisplayNameKey: o.tools.DisplayNameKey(c.ToolName),
 				ToolArgs:           args,
+			}) {
+				return
 			}
 
 			result, execErr := o.tools.ExecuteWithApproval(ctx, c.ToolName, args, approvalID)
@@ -362,7 +387,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			// DisplayNameKey carried through so chat_proxy can update
 			// the AgentTask with the localizable key even when the row
 			// was first created by a different orchestrator instance.
-			out <- Event{
+			_ = sendOrCancel(Event{
 				Type:               EventToolResult,
 				ToolCallID:         c.CallID,
 				ToolName:           c.ToolName,
@@ -370,7 +395,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				ToolDisplayNameKey: o.tools.DisplayNameKey(c.ToolName),
 				ToolResult:         result,
 				ToolError:          errStr,
-			}
+			})
 		}(call)
 	}
 
