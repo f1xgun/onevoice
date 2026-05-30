@@ -77,8 +77,8 @@ func writePEM(t *testing.T, path, blockType string, der []byte) {
 	require.NoError(t, pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}))
 }
 
-// TestLoadServerTLSConfig — Test 1 from the plan.
-// Asserts ClientAuth==RequireAndVerifyClientCert + ClientCAs populated.
+// TestLoadServerTLSConfig asserts ClientAuth==RequireAndVerifyClientCert
+// + ClientCAs populated.
 func TestLoadServerTLSConfig(t *testing.T) {
 	paths := generatePKI(t, t.TempDir())
 
@@ -90,11 +90,10 @@ func TestLoadServerTLSConfig(t *testing.T) {
 		"server config must require + verify the client cert")
 	assert.NotNil(t, cfg.ClientCAs, "ClientCAs must be populated for client-cert verification")
 	assert.Len(t, cfg.Certificates, 1, "server must present exactly one leaf cert")
-	assert.Equal(t, uint16(tls.VersionTLS12), cfg.MinVersion, "TLS 1.2 floor (T-25a-02)")
+	assert.Equal(t, uint16(tls.VersionTLS12), cfg.MinVersion, "TLS 1.2 floor")
 }
 
-// TestLoadClientTLSConfig — Test 2 from the plan.
-// Asserts Certificates len==1 + RootCAs populated.
+// TestLoadClientTLSConfig asserts Certificates len==1 + RootCAs populated.
 func TestLoadClientTLSConfig(t *testing.T) {
 	paths := generatePKI(t, t.TempDir())
 
@@ -107,8 +106,8 @@ func TestLoadClientTLSConfig(t *testing.T) {
 	assert.Equal(t, uint16(tls.VersionTLS12), cfg.MinVersion)
 }
 
-// TestLoad_MissingFile — Test 3 from the plan.
-// Asserts wrapping with an underlying fs error, never a panic.
+// TestLoad_MissingFile asserts wrapping with an underlying fs error, never
+// a panic.
 func TestLoad_MissingFile(t *testing.T) {
 	bogus := mtls.ServiceCertPaths{
 		CACertPath: "/nonexistent/ca.crt",
@@ -148,8 +147,8 @@ func TestLoad_MissingFile(t *testing.T) {
 	})
 }
 
-// TestPathsFromEnv — Test 4 from the plan.
-// Reads env vars; errors when ONEVOICE_MTLS_ENABLED=true and any path missing.
+// TestPathsFromEnv exercises env-var loading. Errors when
+// ONEVOICE_MTLS_ENABLED=true and any path is missing.
 func TestPathsFromEnv(t *testing.T) {
 	t.Run("enabled with all paths set", func(t *testing.T) {
 		t.Setenv(mtls.EnvEnabled, "true")
@@ -203,8 +202,8 @@ func TestPathsFromEnv(t *testing.T) {
 	})
 }
 
-// TestLoadClientTLSConfig_Idempotent — Test 5 from the plan.
-// Two loads of the same file produce equivalent leaf certs.
+// TestLoadClientTLSConfig_Idempotent — two loads of the same file produce
+// equivalent leaf certs.
 func TestLoadClientTLSConfig_Idempotent(t *testing.T) {
 	paths := generatePKI(t, t.TempDir())
 

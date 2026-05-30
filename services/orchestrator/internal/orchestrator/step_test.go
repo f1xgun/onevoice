@@ -484,7 +484,7 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 		"nil pendingRepo + manual-floor must emit EventError 'HITL not configured'")
 }
 
-// --- Plan 25a-05 Task 3: end-to-end billing smoke ---
+// --- end-to-end billing smoke ---
 
 // TestStepRun_BillingPostedE2E exercises the full chain from stepRun →
 // llm.Router.Chat → goroutine-fired logBilling → pkg/billingclient.LogUsage →
@@ -492,8 +492,8 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 // correct BusinessID + non-zero cost when BusinessID is set.
 //
 // We use the real wire.LLMRouter constructor + real pkg/billingclient (not
-// a mock) so the option-pass-through + cost-math from 25a-02 + endpoint shape
-// from 25a-04 are exercised together. The fake selector returns a fake
+// a mock) so the option-pass-through + router cost-math + internal billing
+// endpoint shape are exercised together. The fake selector returns a fake
 // provider whose ChatResponse has known token counts; the assertion pins
 // providerCost = inputTokens × in/1e6 + outputTokens × out/1e6.
 func TestStepRun_BillingPostedE2E(t *testing.T) {
@@ -573,12 +573,12 @@ func TestStepRun_BillingPostedE2E(t *testing.T) {
 	assert.Equal(t, 100, got.InputTokens)
 	assert.Equal(t, 50, got.OutputTokens)
 	assert.InDelta(t, 1.05e-3, got.ProviderCostUSD, 1e-9,
-		"provider_cost_usd = inputTokens × in/1e6 + outputTokens × out/1e6 = 1.05e-3 (LLMC-04)")
+		"provider_cost_usd = inputTokens × in/1e6 + outputTokens × out/1e6 = 1.05e-3")
 }
 
-// TestStepRun_BillingSkippedWhenBusinessIDNil — Plan 25a-02 nil-guard
-// invariant exercised through the full e2e path: empty state.BusinessID
-// MUST result in zero POSTs to the billing endpoint.
+// TestStepRun_BillingSkippedWhenBusinessIDNil — router's nil-guard invariant
+// exercised through the full e2e path: empty state.BusinessID MUST result
+// in zero POSTs to the billing endpoint.
 func TestStepRun_BillingSkippedWhenBusinessIDNil(t *testing.T) {
 	t.Setenv("LLM_MODEL", "anthropic/claude-sonnet-4-6")
 	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
@@ -632,7 +632,7 @@ func TestStepRun_BillingSkippedWhenBusinessIDNil(t *testing.T) {
 	rec.mu.Lock()
 	got := rec.count
 	rec.mu.Unlock()
-	assert.Equal(t, 0, got, "uuid.Nil BusinessID must NOT produce a billing POST (Plan 25a-02 nil-guard)")
+	assert.Equal(t, 0, got, "uuid.Nil BusinessID must NOT produce a billing POST (router nil-guard)")
 }
 
 // --- e2e fakes (separate from the unit-level fakes elsewhere) ---
@@ -670,10 +670,10 @@ func (f *e2eFakeSelector) Record(_ *llm.ModelProviderEntry, _ llm.Outcome) {}
 // divergence with the api-side ToolsRegistryCache, which is HTTP-backed and
 // lazily warmed). We exercise this via the public Run path (buildPendingBatch
 // is package-private) and assert on repo.insertedBatches.
-// --- Plan 25a-05: BusinessID propagation tests ---
+// --- BusinessID propagation tests ---
 
 // capturingLLM records every ChatRequest it receives so tests can assert on
-// BusinessID + ConversationID propagation through stepRun (Plan 25a-05).
+// BusinessID + ConversationID propagation through stepRun.
 type capturingLLM struct {
 	mu       sync.Mutex
 	requests []llm.ChatRequest
@@ -703,7 +703,7 @@ func (c *capturingLLM) lastRequest(t *testing.T) llm.ChatRequest {
 // TestStepRun_PropagatesBusinessID — when state.BusinessID is a valid UUID
 // string, the ChatRequest the orchestrator dispatches MUST carry the parsed
 // uuid.UUID in BusinessID so logBilling stamps the right business on every
-// usage_logs row (LLMC-05 / RESEARCH §"BusinessID propagation chain").
+// usage_logs row.
 func TestStepRun_PropagatesBusinessID(t *testing.T) {
 	bizID := uuid.New()
 	rec := &capturingLLM{}
@@ -744,11 +744,11 @@ func TestStepRun_PropagatesConversationID(t *testing.T) {
 	assert.Equal(t, "conv-forensic-123", got.ConversationID)
 }
 
-// TestStepRun_MalformedBusinessID_ParsesToNil — Pitfall §3 fail-closed
-// behavior: a non-UUID state.BusinessID (from a compromised orchestrator
-// state OR a bug elsewhere in the chain) MUST degrade to uuid.Nil so the
-// router's nil-guard skips the billing POST. Loss of one row is preferable
-// to writing a corrupt row.
+// TestStepRun_MalformedBusinessID_ParsesToNil — fail-closed behavior: a
+// non-UUID state.BusinessID (from a compromised orchestrator state OR a bug
+// elsewhere in the chain) MUST degrade to uuid.Nil so the router's nil-guard
+// skips the billing POST. Loss of one row is preferable to writing a corrupt
+// row.
 func TestStepRun_MalformedBusinessID_ParsesToNil(t *testing.T) {
 	rec := &capturingLLM{}
 	reg := toolregistry.NewRegistry()

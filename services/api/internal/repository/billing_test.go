@@ -245,9 +245,8 @@ func TestBillingRepository_GetDailySpend_FiltersByUTCDay(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// Test 9 — GetUserBalance is stubbed to (0, nil) for Phase 25a so the
-// interface compiles for downstream consumers; v1.5 billing UI ships the
-// real impl.
+// GetUserBalance is stubbed to (0, nil) today so the interface compiles for
+// downstream consumers; v1.5 billing UI ships the real impl.
 func TestBillingRepository_GetUserBalance_StubReturnsZero(t *testing.T) {
 	_, repo := newBillingRepoMock(t)
 
@@ -256,8 +255,8 @@ func TestBillingRepository_GetUserBalance_StubReturnsZero(t *testing.T) {
 	require.Equal(t, 0.0, balance)
 }
 
-// Test 10 — GetMonthlyUsage is stubbed to (nil, nil) for Phase 25a. v1.5
-// billing UI ships the real aggregation.
+// GetMonthlyUsage is stubbed to (nil, nil) today. v1.5 billing UI ships the
+// real aggregation.
 func TestBillingRepository_GetMonthlyUsage_StubReturnsEmpty(t *testing.T) {
 	_, repo := newBillingRepoMock(t)
 

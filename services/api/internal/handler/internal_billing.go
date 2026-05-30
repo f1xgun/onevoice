@@ -13,7 +13,7 @@ import (
 
 // maxBillingPayloadBytes caps the request body size on the internal billing
 // endpoint. A populated llm.UsageLog round-trips to well under 1 KB; 64 KB is
-// a generous DoS guard (T-25a-24).
+// a generous DoS guard.
 const maxBillingPayloadBytes = 64 * 1024
 
 // BillingService is the narrow write-only surface the internal billing
@@ -25,16 +25,15 @@ type BillingService interface {
 
 // InternalBillingHandler serves POST /internal/v1/billing/usage_logs on the
 // mTLS-protected :8443 listener. It is reached only via the orchestrator's
-// pkg/billingclient (plan 25a-03), gated by router-level
-// middleware.RequireServiceIdentity.
+// pkg/billingclient, gated by router-level middleware.RequireServiceIdentity.
 type InternalBillingHandler struct {
 	billing BillingService
 	log     *slog.Logger
 }
 
 // NewInternalBillingHandler wires the handler with a backing BillingService
-// (production: services/api/internal/repository.billingRepository from plan
-// 25a-02). A nil logger falls back to slog.Default().
+// (production: services/api/internal/repository.billingRepository).
+// A nil logger falls back to slog.Default().
 func NewInternalBillingHandler(b BillingService, log *slog.Logger) *InternalBillingHandler {
 	if log == nil {
 		log = slog.Default()
@@ -58,7 +57,7 @@ type billingErrorBody struct {
 //     token counts. Body is {"error":"invalid_payload","detail":"…"}.
 //   - 405 Method Not Allowed — non-POST verb.
 //   - 500 Internal Server Error — repository failure. Body is
-//     {"error":"transient"} (no internal details leaked; T-25a-25).
+//     {"error":"transient"} (no internal details leaked).
 func (h *InternalBillingHandler) LogUsage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeBillingError(w, http.StatusMethodNotAllowed, "method_not_allowed", "")

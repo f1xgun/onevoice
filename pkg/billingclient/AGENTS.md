@@ -2,10 +2,9 @@
 
 Mirrors `pkg/tokenclient/` in shape. The orchestrator's `pkg/llm.Router`
 uses this client (wired in `services/orchestrator/cmd/main.go` via
-`llm.WithBilling(...)` — landing in plan 25a-05) to `POST` every
-`*llm.UsageLog` row produced by a completed Chat() call to
-`services/api`'s `POST /internal/v1/billing/usage_logs` endpoint
-(mounted by plan 25a-04) over mTLS.
+`llm.WithBilling(...)`) to `POST` every `*llm.UsageLog` row produced by a
+completed Chat() call to `services/api`'s
+`POST /internal/v1/billing/usage_logs` endpoint over mTLS.
 
 ## Constructor
 
@@ -15,9 +14,8 @@ billingclient.New(baseURL string, httpClient *http.Client) *Client
 
 `httpClient == nil` builds a default 10s-timeout client whose transport
 honors the `ONEVOICE_MTLS_*` env triplet via `pkg/mtls`. The signature
-MUST stay byte-for-byte identical to `pkg/tokenclient.New` — Phase 25b's
-hypothetical router-side retry policy applies uniformly to both clients
-on the assumption.
+MUST stay byte-for-byte identical to `pkg/tokenclient.New` so a future
+router-side retry policy can apply uniformly to both clients.
 
 ## Sentinel errors
 
@@ -68,11 +66,10 @@ trade-off:
 - ❌ Adding a disk outbox under `~/.onevoice/billing/` — v1.5+ may add
   one, but it requires a separate plan with crash-safety review.
 - ❌ Adding `httpClient.Timeout` shorter than 10s — the per-call deadline
-  comes from the caller's context (`5s` set by `pkg/llm/router.go:logBilling`
-  in plan 25a-02).
+  comes from the caller's context (`5s` set by `pkg/llm/router.go:logBilling`).
 - ❌ Caching responses — `LogUsage` is a write-only POST.
 - ❌ Per-client retries — symmetry with `pkg/tokenclient` matters more
-  than micro-resilience; Phase 25b decides router-wide retry policy.
+  than micro-resilience; any router-wide retry policy belongs upstream.
 
 ## Compile-time guard
 
@@ -90,10 +87,10 @@ signal to update billingclient in lockstep with the orchestrator wiring.
 - `client_test.go` — 11 httptest-driven tests (2xx / 4xx / 5xx / network
   / ctx-canceled / nil-input / mTLS-enabled handshake).
 
-## Related plans
+## Related components
 
-- **25a-01** — mTLS substrate (`pkg/mtls`) that the default client wires.
-- **25a-02** — `pkg/llm.UsageLog` shape + JSON tags that this client serializes.
-- **25a-04** — `POST /internal/v1/billing/usage_logs` API handler that consumes the body.
-- **25a-05** — orchestrator-side wiring via `llm.WithBilling(billingclient.New(cfg.APIInternalURL, nil))`.
-- **25b** — hypothetical router-wide retry policy reading `errors.Is(err, ErrTransient)`.
+- mTLS substrate (`pkg/mtls`) that the default client wires.
+- `pkg/llm.UsageLog` shape + JSON tags that this client serializes.
+- `POST /internal/v1/billing/usage_logs` API handler that consumes the body.
+- Orchestrator-side wiring via `llm.WithBilling(billingclient.New(cfg.APIInternalURL, nil))`.
+- Hypothetical router-wide retry policy reading `errors.Is(err, ErrTransient)`.

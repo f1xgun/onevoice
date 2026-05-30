@@ -273,8 +273,8 @@ func mtlsTestHarness(t *testing.T) *mtlsHarness {
 	return h
 }
 
-// TestGetToken_mTLS_Success — Test B from the plan.
-// httptest.NewUnstartedServer + server-side mTLS config; client.New() with
+// TestGetToken_mTLS_Success — httptest.NewUnstartedServer + server-side mTLS
+// config; client.New() with
 // nil http.Client picks up the env-driven client cert and completes the
 // handshake; happy-path GET returns 200 and a parsed TokenResponse.
 func TestGetToken_mTLS_Success(t *testing.T) {
@@ -297,8 +297,8 @@ func TestGetToken_mTLS_Success(t *testing.T) {
 	assert.Equal(t, "mtls-ok", got.AccessToken)
 }
 
-// TestGetToken_mTLS_RejectsUnsignedClient — Test C from the plan.
-// Server requires client cert; client presents a cert signed by a
+// TestGetToken_mTLS_RejectsUnsignedClient — server requires client cert;
+// client presents a cert signed by a
 // DIFFERENT CA. Handshake fails → GetToken returns an error chained with
 // ErrTransient (network-class failure — TLS handshake failure is a
 // transport problem, not a 4xx from the API).
@@ -324,8 +324,8 @@ func TestGetToken_mTLS_RejectsUnsignedClient(t *testing.T) {
 		"unsigned client cert handshake failure must surface as ErrTransient; got %v", err)
 }
 
-// TestGetToken_mTLS_PlainHTTPRejected — Test D from the plan.
-// Server is TLS-only on https://; client makes plain http:// request →
+// TestGetToken_mTLS_PlainHTTPRejected — server is TLS-only on https://;
+// client makes plain http:// request →
 // server cannot serve the request (returns Go's stdlib "client sent an
 // HTTP request to an HTTPS server" 400). The test asserts the call fails
 // with NO success path — the plain-HTTP request CANNOT extract a token

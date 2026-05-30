@@ -19,8 +19,8 @@ import (
 // truth for these numbers lives in docs/llm-pricing.md alongside the operator
 // runbook for rate-card refresh. Adding a model means: (1) edit this map,
 // (2) edit docs/llm-pricing.md, (3) extend TestPriceFor_KnownModel in
-// llm_test.go. Pitfall §7: forgetting any one of the three drops billing rows
-// for that model to $0, which silently breaks Phase 25b's daily-spend gate.
+// llm_test.go. Forgetting any one of the three drops billing rows for that
+// model to $0, which silently breaks the daily-spend rate limiter.
 //
 // As-of date: 2026-05-30 (see docs/llm-pricing.md "Last verified").
 var modelPricing = map[string]struct {
@@ -96,7 +96,7 @@ func LLMRouter(cfg *config.Config, log *slog.Logger, extraOpts ...llm.RouterOpti
 // config, and registers (provider, model) entries in the registry for every
 // configured model ID. Each entry carries its rate-card pricing pulled from
 // priceFor so logBilling stamps the correct cost on the resulting usage_logs
-// row. Pitfall §7: registering ONLY cfg.LLMModel left the cheap-tier titler /
+// row. Registering ONLY cfg.LLMModel previously left the cheap-tier titler /
 // draft-reply rows at $0 because their model IDs were never present in the
 // registry — fixed here by iterating allConfiguredModelIDs.
 func buildProviderOpts(cfg *config.Config, reg *llm.Registry, log *slog.Logger) []llm.RouterOption {

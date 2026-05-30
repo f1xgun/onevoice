@@ -106,7 +106,7 @@ func IsEnabled() bool {
 //   - ClientCAs     — the dev CA root, used to verify the peer's client cert.
 //   - ClientAuth    — RequireAndVerifyClientCert: the listener REJECTS the
 //     handshake unless the client presents a cert signed by ClientCAs.
-//   - MinVersion    — TLS 1.2 (matches the threat model T-25a-02 mitigation).
+//   - MinVersion    — TLS 1.2 (matches the threat model mitigation floor).
 func LoadServerTLSConfig(p ServiceCertPaths) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(p.CertPath, p.KeyPath)
 	if err != nil {

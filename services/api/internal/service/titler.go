@@ -45,8 +45,8 @@ const (
 )
 
 // titleSystemPrompt returns the cheap-model instruction in the requested
-// locale (Phase D2). EN for language.English, RU otherwise — matches the
-// catalog default in pkg/i18n.lookup.
+// locale. EN for language.English, RU otherwise — matches the catalog
+// default in pkg/i18n.lookup.
 func titleSystemPrompt(tag language.Tag) string {
 	if tag == language.English {
 		return titleSystemPromptEn
@@ -151,9 +151,8 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 	// Parse businessID (string from the conversation document) into the
 	// typed uuid.UUID expected by ChatRequest.BusinessID so logBilling
 	// attributes the auto-title LLM call against the conversation's
-	// business (Plan 25a-05, user decision Q#5). Malformed values degrade
-	// to uuid.Nil — router's nil-guard skips billing rather than write a
-	// corrupt row (Pitfall §3 fail-closed).
+	// business. Malformed values degrade to uuid.Nil — router's nil-guard
+	// skips billing rather than write a corrupt row (fail-closed).
 	bizID := uuid.Nil
 	if businessID != "" {
 		if parsed, perr := uuid.Parse(businessID); perr == nil {
@@ -332,7 +331,7 @@ func untitledChatEnglish(t time.Time) string {
 	return fmt.Sprintf("Untitled chat %s %d", months[t.Month()-1], t.Day())
 }
 
-// untitledChatLocalized dispatches to the per-locale fallback (Phase D2). The
+// untitledChatLocalized dispatches to the per-locale fallback. The
 // "Untitled chat" prefix stays English in both branches because it's the
 // universally-recognized empty-state marker the FE renders as a placeholder
 // (matches the frontend i18n key chats.untitledFallback shape).

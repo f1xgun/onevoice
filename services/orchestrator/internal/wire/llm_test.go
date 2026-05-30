@@ -1,7 +1,7 @@
 // Package wire tests for LLMRouter. Pricing-table regression coverage is the
 // load-bearing contract: a future PR registering a new model without pricing
 // MUST fail TestLLMRouter_PricesAllConfiguredModels so cost rows never silently
-// land with zero USD per Pitfall §7.
+// land with zero USD.
 package wire
 
 import (
@@ -44,9 +44,9 @@ func discardLogger() *slog.Logger {
 // TestLLMRouter_PricesAllConfiguredModels — set LLM_MODEL + DRAFT_REPLY_MODEL
 // to two different model IDs; build the router; assert every configured model
 // resolves through priceFor with the modelPricing-table cost (3/15 for sonnet,
-// 1/5 for haiku). This is the Pitfall §7 regression guard: registering a new
-// model in modelPricing without verifying coverage here fails this test if
-// the orchestrator's configured-model accounting drifts.
+// 1/5 for haiku). This is the regression guard: registering a new model in
+// modelPricing without verifying coverage here fails this test if the
+// orchestrator's configured-model accounting drifts.
 func TestLLMRouter_PricesAllConfiguredModels(t *testing.T) {
 	t.Setenv("LLM_MODEL", "anthropic/claude-sonnet-4-6")
 	t.Setenv("DRAFT_REPLY_MODEL", "anthropic/claude-haiku-4-5")
@@ -79,7 +79,7 @@ func TestLLMRouter_PricesAllConfiguredModels(t *testing.T) {
 // TestLLMRouter_UnknownModel_ZeroCost — unrecognized model ID returns (0,0)
 // so the router still constructs (no panic) but billing logs zero cost.
 // Operator visibility: usage_logs rows for unknown models surface as
-// "model registered but cost=0" which the Phase 25b runbook treats as a
+// "model registered but cost=0" which the operator runbook treats as a
 // pricing-table-drift signal.
 func TestLLMRouter_UnknownModel_ZeroCost(t *testing.T) {
 	t.Setenv("LLM_MODEL", "foo/unknown-model")
@@ -139,8 +139,7 @@ func TestLLMRouter_PassesExtraOptions(t *testing.T) {
 }
 
 // TestPriceFor_KnownModel — pin sonnet/haiku/opus/gpt-4o-mini prices so a
-// rate-card edit must update docs/llm-pricing.md AND this test in lockstep
-// (T-25a-28).
+// rate-card edit must update docs/llm-pricing.md AND this test in lockstep.
 func TestPriceFor_KnownModel(t *testing.T) {
 	cases := []struct {
 		model   string

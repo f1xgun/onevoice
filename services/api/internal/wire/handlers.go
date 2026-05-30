@@ -82,10 +82,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 
 	internalTokenHandler := handler.NewInternalTokenHandler(svcs.Integration)
 
-	// 25a-04: internal billing write handler — POST
-	// /internal/v1/billing/usage_logs. Plan 25a-02 wires repos.Billing
-	// (Postgres-backed BillingRepository) which satisfies handler.BillingService
-	// via the LogUsage method.
+	// Internal billing write handler — POST /internal/v1/billing/usage_logs.
+	// repos.Billing (Postgres-backed BillingRepository) satisfies
+	// handler.BillingService via the LogUsage method.
 	internalBillingHandler := handler.NewInternalBillingHandler(repos.Billing, nil)
 
 	// AuthHandler gains audit + jwtSecret args so it
@@ -297,7 +296,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		OAuth:         oauthHandler,
 		Connect:       connectHandler,
 		InternalToken: internalTokenHandler,
-		// 25a-04: internal billing write path.
+		// Internal billing write path.
 		InternalBilling: internalBillingHandler,
 		ChatProxy:       chatProxyHandler,
 		Review:          reviewHandler,
@@ -308,7 +307,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Titler:          titlerHandler,
 		Search:          searchHandler,
 		Platforms:       platformsHandler,
-		// v2.0 RBAC (AUTHZ-01): static permission registry endpoint.
+		// v2.0 RBAC: static permission registry endpoint.
 		Permissions: handler.NewPermissionsHandler(),
 		// v2.0 RBAC: member + role management.
 		Members: membersHandler,

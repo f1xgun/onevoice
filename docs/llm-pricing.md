@@ -15,14 +15,14 @@ Sources:
 | anthropic/claude-opus-4-7   |           5.00 |           25.00 |
 | openai/gpt-4o-mini          |           0.15 |            0.60 |
 
-Cache modifiers (Anthropic 5-minute ephemeral cache, per Phase 25a-02
+Cache modifiers (Anthropic 5-minute ephemeral cache, applied by
 `pkg/llm.Router.logBilling`):
 
 - `CacheReadTokens` billed at 0.1× input rate
 - `CacheCreationTokens` billed at 1.25× input rate
 - `InputTokens` (post-cache) billed at 1.0× input rate
 
-Commission (Phase 25a-02 `pkg/llm.CommissionConfig`):
+Commission (`pkg/llm.CommissionConfig`):
 
 - Mode: percentage
 - Rate: 20% (informational only — v1.4 is free beta; the cost row carries
@@ -37,8 +37,8 @@ Commission (Phase 25a-02 `pkg/llm.CommissionConfig`):
    to include the new model + assert its exact rates.
 4. Run `make test-all` — the test enforces the dual-edit contract.
 
-Forgetting any of steps 1–3 drops cost rows for that model to $0 (Pitfall §7)
-and silently breaks Phase 25b's daily-spend rate limiter.
+Forgetting any of steps 1–3 drops cost rows for that model to $0 and
+silently breaks the daily-spend rate limiter.
 
 ## Configured models in v1.4
 

@@ -9,7 +9,7 @@ import (
 
 // UsageLog records LLM usage for billing.
 //
-// New (Phase 25a) fields:
+// Field notes:
 //   - BusinessID: required for non-system callers — Router skips logging when nil.
 //   - ConversationID: Mongo ObjectID hex; "" for system-level callers (titler,
 //     review_drafter); column is TEXT NULL in usage_logs.
@@ -77,8 +77,8 @@ func CalculateCommission(providerCost float64, mode, tier string) float64 {
 
 // Writer is the orchestrator-facing slice of BillingRepository. The Router's
 // fire-and-forget call site in router.go logBilling consumes only this single
-// method, so production wiring can satisfy it with a thin HTTP adapter (Plan
-// 25a-03 billingclient) without dragging the read methods into the
+// method, so production wiring can satisfy it with a thin HTTP adapter
+// (pkg/billingclient) without dragging the read methods into the
 // orchestrator's dependency surface.
 type Writer interface {
 	LogUsage(ctx context.Context, log *UsageLog) error
@@ -94,8 +94,8 @@ type BillingRepository interface {
 	GetUserBalance(ctx context.Context, userID uuid.UUID) (float64, error)
 
 	// GetDailySpend returns the SUM(provider_cost_usd + commission_usd) for the
-	// supplied business on the UTC calendar day containing `day`. Phase 25b's
-	// rate limiter consumes this as the daily spend gate.
+	// supplied business on the UTC calendar day containing `day`. The daily-spend
+	// rate limiter consumes this as its gate.
 	GetDailySpend(ctx context.Context, businessID uuid.UUID, day time.Time) (float64, error)
 
 	// GetMonthlyUsage returns all usage logs for a given month. v1.5 — stubbed

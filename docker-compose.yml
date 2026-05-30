@@ -328,7 +328,7 @@ services:
       MONGO_URI: mongodb://mongodb:27017
       MONGO_DB: onevoice
       REDIS_URL: redis://redis:6379/0
-      # Internal API URL used by future billingclient (25a-03) over mTLS.
+      # Internal API URL used by billingclient over mTLS.
       API_INTERNAL_URL: https://api:8443
       # Default — Anthropic Sonnet 4.6 for prompt-cache savings and Russian
       # quality. scripts/check-llm-defaults.sh asserts this fallback in CI;

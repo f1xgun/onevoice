@@ -58,9 +58,8 @@ type Repos struct {
 	// authz.MembershipLoader interface to keep the cache decoupled.
 	MembershipLoader authz.MembershipLoader
 
-	// Billing — Phase 25a Postgres-backed BillingRepository. Plan 25a-04
-	// wires it into the internal POST /internal/v1/billing/usage_logs
-	// handler; for now the field is populated but unused by any handler.
+	// Billing — Postgres-backed BillingRepository. Wired into the internal
+	// POST /internal/v1/billing/usage_logs handler.
 	Billing llm.BillingRepository
 }
 
