@@ -276,3 +276,18 @@ func TestLoad_SelfHostedEndpoints_StopsAtGap(t *testing.T) {
 	require.Len(t, cfg.SelfHostedEndpoints, 1)
 	assert.Equal(t, "llama3.1", cfg.SelfHostedEndpoints[0].Model)
 }
+
+// TestLoad_LocalFallback_InvalidIntFailsLoud — regression for WR-03.
+// Previously a non-integer LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR value was
+// silently coerced to the 2000 default. With the fix the operator's typo is
+// now surfaced as a boot error so misconfig fails loud rather than running
+// the api on a value the operator never chose.
+func TestLoad_LocalFallback_InvalidIntFailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("LLM_RATELIMIT_ON_REDIS_DOWN", "local_fallback")
+	t.Setenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR", "foo")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR")
+	assert.Contains(t, err.Error(), `"foo"`)
+}
