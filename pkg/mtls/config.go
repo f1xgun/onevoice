@@ -150,7 +150,7 @@ func LoadClientTLSConfig(p ServiceCertPaths) (*tls.Config, error) {
 // *x509.CertPool ready for tls.Config.ClientCAs / RootCAs. Returns a wrapped
 // fs error when the file is missing — callers must NOT panic.
 func loadCAPool(caPath string) (*x509.CertPool, error) {
-	pemBytes, err := os.ReadFile(caPath)
+	pemBytes, err := os.ReadFile(caPath) //nolint:gosec // caPath is an operator-supplied trust-store path (env), not user input
 	if err != nil {
 		return nil, fmt.Errorf("mtls: read CA bundle (%s): %w", caPath, err)
 	}
