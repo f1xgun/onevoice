@@ -100,11 +100,28 @@ func (h *DraftReplyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tag := i18n.LocaleFromContext(r.Context())
 	messages := buildDraftReplyPrompt(req, tag)
 
+	// Parse req.BusinessID into the typed uuid.UUID expected by
+	// ChatRequest.BusinessID so logBilling attributes the cost row to the
+	// review's business. Empty / malformed values degrade to uuid.Nil
+	// (router skips billing — fail-closed) and a warn log surfaces upstream
+	// drift. Plan 25a-05 / Pitfall §3.
+	bizID := uuid.Nil
+	if req.BusinessID != "" {
+		if parsed, perr := uuid.Parse(req.BusinessID); perr == nil {
+			bizID = parsed
+		} else {
+			slog.Warn("draft-reply: malformed business_id, billing will be skipped",
+				"business_id", req.BusinessID, "error", perr)
+		}
+	}
+
 	chatReq := llm.ChatRequest{
 		// uuid.Nil → system-level call (skips per-user rate limiting in router).
-		// Billing still records the call against UserID=nil, which is fine for
-		// platform-side draft generation.
+		// BusinessID carries the conversation's business so billing attributes
+		// the draft-reply LLM call against the right business (Plan 25a-05,
+		// user decision Q#5).
 		UserID:      uuid.Nil,
+		BusinessID:  bizID,
 		Model:       h.model,
 		Messages:    messages,
 		MaxTokens:   draftReplyMaxTokens,
