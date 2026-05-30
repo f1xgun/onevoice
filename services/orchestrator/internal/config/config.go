@@ -12,6 +12,12 @@ import (
 // tool-dispatch requests time to drain before SIGKILL.
 const defaultShutdownTimeout = 30 * time.Second
 
+// defaultAPIInternalURL is the in-cluster mTLS endpoint the orchestrator dials
+// for internal API calls (billing usage_logs, future internal endpoints) when
+// API_INTERNAL_URL env is unset. Matches docker-compose service DNS + the API's
+// internal :8443 listener.
+const defaultAPIInternalURL = "https://api:8443"
+
 // Config holds orchestrator configuration loaded from environment.
 type Config struct {
 	Port     string
@@ -137,7 +143,7 @@ func Load() (*Config, error) {
 		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
 		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
 
-		APIInternalURL: getEnv("API_INTERNAL_URL", "https://api:8443"),
+		APIInternalURL: getEnv("API_INTERNAL_URL", defaultAPIInternalURL),
 
 		SelfHostedEndpoints: parseIndexedEndpoints(),
 	}, nil
