@@ -224,7 +224,7 @@ func TestLogUsage_NilBusinessID_IsInvalidPayload(t *testing.T) {
 	assert.Equal(t, before+1, counterValue("invalid_payload"))
 }
 
-// Test 8: cancelled context before Do() → error chained with context.Canceled;
+// Test 8: canceled context before Do() → error chained with context.Canceled;
 // counter reason="transient" +1 (network-class failure).
 func TestLogUsage_ContextCancelled(t *testing.T) {
 	disableMTLSEnv(t)
@@ -238,16 +238,16 @@ func TestLogUsage_ContextCancelled(t *testing.T) {
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // already cancelled at call time
+	cancel() // already canceled at call time
 
 	before := counterValue("transient")
 	client := New(srv.URL, nil)
 	err := client.LogUsage(ctx, log)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, context.Canceled),
-		"cancelled context must chain context.Canceled; got %v", err)
+		"canceled context must chain context.Canceled; got %v", err)
 	assert.True(t, errors.Is(err, ErrTransient),
-		"cancelled context is network-class failure → ErrTransient; got %v", err)
+		"canceled context is network-class failure → ErrTransient; got %v", err)
 	assert.Equal(t, before+1, counterValue("transient"))
 }
 
