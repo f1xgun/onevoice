@@ -86,16 +86,16 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Ev
 // decodeSnapshot reads batch.ModelMessages and returns the RunState fields it
 // carries. Two shapes are accepted:
 //
-//   - Plan 24-02 envelope: {"v":2,"messages":[...],"system_platform":"...","system_business":"..."}
+//   - Versioned envelope: {"v":2,"messages":[...],"system_platform":"...","system_business":"..."}
 //     Messages is system-free; SystemPlatform/SystemBusiness travel separately
 //     and are wired into llm.ChatRequest.SystemBlocks on the next stepRun.
-//   - Legacy raw array: [{"role":"system",...}, ...] (pre Plan 24-02). Messages
-//     still carries a leading role:"system" entry; SystemPlatform/Business
-//     stay empty so stepRun falls through to provider-side legacy scrub.
+//   - Legacy raw array: [{"role":"system",...}, ...]. Messages still carries a
+//     leading role:"system" entry; SystemPlatform/Business stay empty so
+//     stepRun falls through to provider-side legacy scrub.
 //
 // Distinguishing shape: a versioned envelope begins with '{' as the first
 // non-whitespace byte, a legacy raw array begins with '['. Resume logs a
-// debug entry on legacy batches so operators can confirm in-flight pre-24-02
+// debug entry on legacy batches so operators can confirm in-flight legacy
 // batches drained naturally.
 func decodeSnapshot(raw []byte) (messages []llm.Message, platform, business string, legacy bool, err error) {
 	if len(raw) == 0 {
@@ -129,8 +129,8 @@ func decodeSnapshot(raw []byte) (messages []llm.Message, platform, business stri
 // Resume stays trivially inspectable.
 func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.PendingToolCallBatch, req ResumeRequest, out chan<- Event) {
 	// 1. Reconstruct state from the snapshot. decodeSnapshot accepts both
-	// the Plan 24-02 envelope and the legacy raw-array shape; pre-24-02
-	// batches in flight at deploy time drain through the legacy fallback.
+	// the versioned envelope and the legacy raw-array shape; legacy batches
+	// in flight at deploy time drain through the legacy fallback.
 	messages, platform, business, legacy, err := decodeSnapshot(batch.ModelMessages)
 	if err != nil {
 		out <- Event{Type: EventError, Content: fmt.Sprintf("corrupt snapshot: %v", err)}

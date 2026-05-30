@@ -10,9 +10,8 @@ const (
 // Per-model MaxTokens defaults (max output tokens).
 //
 // Anthropic returns HTTP 400 if `max_tokens` is missing, so we always send a
-// non-zero value (see Phase 24 RESEARCH §Pitfall #2). 8192 / 4096 are well below
-// each model's per-model output cap (64k–128k) — conservative defaults that
-// keep cost predictable until Phase 25 introduces a per-conversation cap.
+// non-zero value. 8192 / 4096 are well below each model's per-model output cap
+// (64k–128k) — conservative defaults that keep cost predictable.
 const (
 	maxTokensSonnetDefault  int64 = 8192
 	maxTokensHaikuDefault   int64 = 4096
@@ -30,8 +29,7 @@ const (
 //
 // SDK NOTE: Sonnet 4.6 and Opus 4.7 have NO Go const in anthropic-sdk-go v1.22.1;
 // callers must pass the raw string via `anthropic.Model("claude-sonnet-4-6")`.
-// Drop the literal usage at every call site when the SDK ships consts. See
-// Phase 24 RESEARCH §Pitfall #4.
+// Drop the literal usage at every call site when the SDK ships consts.
 var defaultMaxTokensByModel = map[string]int64{
 	"claude-sonnet-4-6":          maxTokensSonnetDefault,
 	"claude-haiku-4-5":           maxTokensHaikuDefault,

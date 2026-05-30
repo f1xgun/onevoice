@@ -23,9 +23,8 @@ type Config struct {
 	// services/api/internal/config/config.go::Load. The two cheap-tier
 	// callsites are kept separate (rather than a unified CHEAP_MODEL var) so a
 	// future tuning round can route titler at one model and draft_reply at
-	// another without API surface churn. Per Plan 24-03 RESEARCH §"Open Q #1"
-	// decision (SPLIT). DraftReply does not use tools — routing it at any
-	// chat-completion model is safe (threat T-24-03-05).
+	// another without API surface churn. DraftReply does not use tools —
+	// routing it at any chat-completion model is safe.
 	DraftReplyModel string
 	LLMTier         string
 	MaxIterations   int

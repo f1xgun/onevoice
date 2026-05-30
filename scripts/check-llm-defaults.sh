@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Phase 24 LLM default-model lint guard.
+# LLM default-model lint guard.
 #
 # Asserts .env.example and docker-compose.yml carry the Anthropic Sonnet 4.6
-# default + Haiku 4.5 cheap fallbacks established by Plan 24-03. A future PR
-# that silently reverts these defaults to satisfy a personal dev setup fails
-# CI before merging.
+# default + Haiku 4.5 cheap fallbacks. A future PR that silently reverts these
+# defaults to satisfy a personal dev setup fails CI before merging.
 #
-# Wired into `make lint-all`. See
-# .planning/phases/24-llm-quality-streaming-wins/24-03-PLAN.md for context.
+# Wired into `make lint-all`.
 set -euo pipefail
 
 fail=0
@@ -33,8 +31,8 @@ check_pattern "docker-compose.yml" 'DRAFT_REPLY_MODEL: \$\{DRAFT_REPLY_MODEL:-an
 
 if [[ $fail -ne 0 ]]; then
   echo ""
-  echo "Phase 24 LLM default-model lint guard failed."
-  echo "Re-set the defaults per .planning/phases/24-llm-quality-streaming-wins/24-03-PLAN.md"
+  echo "LLM default-model lint guard failed."
+  echo "Re-set the defaults to anthropic/claude-sonnet-4-6 (LLM_MODEL) and anthropic/claude-haiku-4-5 (TITLER_MODEL, DRAFT_REPLY_MODEL)."
   exit 1
 fi
 

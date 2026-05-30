@@ -58,9 +58,9 @@ func (p *OpenAIProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, error
 }
 
 // concatSystemBlocks joins llm.SystemBlock.Text values with "\n\n" — the
-// OpenAI-family concatenation convention for the Plan 24-02 SystemBlocks
-// channel. CacheBoundary is silently ignored: OpenAI / OpenRouter / SelfHosted
-// do not expose a comparable prompt-cache surface (RESEARCH §Pitfall #7).
+// OpenAI-family concatenation convention for the SystemBlocks channel.
+// CacheBoundary is silently ignored: OpenAI / OpenRouter / SelfHosted do not
+// expose a comparable prompt-cache surface.
 func concatSystemBlocks(blocks []llm.SystemBlock) string {
 	if len(blocks) == 0 {
 		return ""

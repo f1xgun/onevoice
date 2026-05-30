@@ -46,16 +46,15 @@ type FunctionDefinition struct {
 }
 
 // SystemBlock is one segment of a multi-block system prompt. SystemBlocks are
-// the canonical channel for system content as of Phase 24 Plan 02 — they
-// replace the legacy "scrub role:'system' out of Messages" path that providers
-// previously relied on.
+// the canonical channel for system content — they replace the legacy "scrub
+// role:'system' out of Messages" path that providers previously relied on.
 //
 // CacheBoundary is a hint to providers that this block is the LAST member of a
 // cache-eligible prefix. Anthropic stamps `cache_control: ephemeral` on the
-// LAST block in the slice whose CacheBoundary is true (see Pattern 2 in
-// 24-RESEARCH.md). Providers that do not implement prompt caching (OpenAI,
-// OpenRouter, SelfHosted) silently ignore the flag and concatenate every block
-// into one leading `role:"system"` message.
+// LAST block in the slice whose CacheBoundary is true. Providers that do not
+// implement prompt caching (OpenAI, OpenRouter, SelfHosted) silently ignore
+// the flag and concatenate every block into one leading `role:"system"`
+// message.
 type SystemBlock struct {
 	Text          string `json:"text"`
 	CacheBoundary bool   `json:"cache_boundary,omitempty"`
@@ -63,11 +62,11 @@ type SystemBlock struct {
 
 // ChatRequest represents a request to generate a chat completion.
 //
-// SystemBlocks is the preferred channel for system-prompt content as of Plan
-// 24-02. When non-empty, providers consume it directly and assume Messages is
-// system-free. When empty, providers fall back to scrubbing `role:"system"`
-// entries out of Messages (legacy behavior — preserved so non-migrated callers
-// like services/api/internal/service/titler.go continue to work).
+// SystemBlocks is the preferred channel for system-prompt content. When
+// non-empty, providers consume it directly and assume Messages is system-free.
+// When empty, providers fall back to scrubbing `role:"system"` entries out of
+// Messages (legacy behavior — preserved so non-migrated callers like
+// services/api/internal/service/titler.go continue to work).
 type ChatRequest struct {
 	UserID       uuid.UUID        `json:"user_id"` // Use uuid.Nil for system-level calls
 	Model        string           `json:"model"`
@@ -99,12 +98,12 @@ type ChatResponse struct {
 // CacheReadTokens / CacheCreationTokens are populated only by providers that
 // surface prompt-cache breakdowns (currently Anthropic; OpenAI/OpenRouter leave
 // them zero — OpenAI does not expose a comparable cache surface). InputTokens
-// post-cache means "tokens consumed AFTER the last cache breakpoint" — Phase 25
-// billing math must compute total billable input as
+// post-cache means "tokens consumed AFTER the last cache breakpoint" — billing
+// math must compute total billable input as
 //
 //	CacheReadTokens*0.1 + CacheCreationTokens*1.25 + InputTokens*1.0
 //
-// for the 5-minute ephemeral cache TTL (see Phase 24 RESEARCH §Pitfall #7).
+// for the 5-minute ephemeral cache TTL.
 type TokenUsage struct {
 	InputTokens         int `json:"input_tokens"`
 	OutputTokens        int `json:"output_tokens"`

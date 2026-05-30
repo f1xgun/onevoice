@@ -98,9 +98,8 @@ func TestConfig_DraftReplyModel_DefaultsToLLMModel(t *testing.T) {
 }
 
 // TestConfig_DraftReplyModel_RespectsEnv proves an explicit DRAFT_REPLY_MODEL
-// overrides LLM_MODEL — the whole point of the two-env-var split per Plan
-// 24-03 RESEARCH Open Q#1 (route draft_reply at cheap-tier independently of
-// the main chat model).
+// overrides LLM_MODEL — the whole point of the two-env-var split (route
+// draft_reply at cheap-tier independently of the main chat model).
 func TestConfig_DraftReplyModel_RespectsEnv(t *testing.T) {
 	t.Setenv("LLM_MODEL", "x")
 	t.Setenv("DRAFT_REPLY_MODEL", "y")

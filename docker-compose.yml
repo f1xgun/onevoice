@@ -174,9 +174,9 @@ services:
       # Auto-titler. TITLER_MODEL takes precedence; falls back to
       # LLM_MODEL when unset. At least one provider key must be present, or
       # the titler is left disabled and POST /conversations/{id}/regenerate-title
-      # returns 503. Phase 24 default: claude-haiku-4-5 (cheap-tier Anthropic).
+      # returns 503. Default: claude-haiku-4-5 (cheap-tier Anthropic).
       TITLER_MODEL: ${TITLER_MODEL:-anthropic/claude-haiku-4-5}
-      # Phase 24 default — Anthropic Sonnet 4.6. See orchestrator block above
+      # Default — Anthropic Sonnet 4.6. See orchestrator block above
       # for rationale; scripts/check-llm-defaults.sh asserts this fallback.
       LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
@@ -308,12 +308,12 @@ services:
       MONGO_URI: mongodb://mongodb:27017
       MONGO_DB: onevoice
       REDIS_URL: redis://redis:6379/0
-      # Phase 24 default — Anthropic Sonnet 4.6 for prompt-cache savings
-      # and Russian quality. scripts/check-llm-defaults.sh asserts this
-      # fallback in CI; do not revert without rotating the lint guard.
+      # Default — Anthropic Sonnet 4.6 for prompt-cache savings and Russian
+      # quality. scripts/check-llm-defaults.sh asserts this fallback in CI;
+      # do not revert without rotating the lint guard.
       LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-6}
-      # Cheap-tier model for the review_sync drafter. Phase 24 SPLIT decision
-      # (Plan 24-03 RESEARCH Open Q#1) keeps this independent of TITLER_MODEL.
+      # Cheap-tier model for the review_sync drafter. Kept as its own env
+      # var (rather than reusing TITLER_MODEL) so it can be tuned independently.
       DRAFT_REPLY_MODEL: ${DRAFT_REPLY_MODEL:-anthropic/claude-haiku-4-5}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

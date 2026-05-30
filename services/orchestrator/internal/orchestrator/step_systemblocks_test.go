@@ -15,7 +15,7 @@ import (
 )
 
 // captureLLM is a stubLLM-equivalent that captures the FIRST ChatRequest it
-// receives so Plan 24-02 wiring tests can assert SystemBlocks shape.
+// receives so SystemBlocks-wiring tests can assert its shape.
 type captureLLM struct {
 	mu     sync.Mutex
 	got    *llm.ChatRequest
@@ -96,7 +96,7 @@ func TestStepRun_NoLeadingSystemInMessages(t *testing.T) {
 	require.NotNil(t, req)
 	require.NotEmpty(t, req.Messages, "Messages must include the history")
 	assert.NotEqual(t, "system", req.Messages[0].Role,
-		"Messages[0] must NOT be a role:system entry — SystemBlocks owns that channel post Plan 24-02; got role=%q",
+		"Messages[0] must NOT be a role:system entry — SystemBlocks owns that channel; got role=%q",
 		req.Messages[0].Role,
 	)
 	// Sanity: history is preserved verbatim.

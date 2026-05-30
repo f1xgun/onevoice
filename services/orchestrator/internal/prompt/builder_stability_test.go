@@ -16,29 +16,26 @@ import (
 )
 
 // blockOneRuSHA256 is the locked sha256 of the Russian Block 1 (platform-wide
-// system prompt prefix). Rotated in Plan 24-03 when Block 1 was padded from
-// ~120 tokens to ~1957 estimated tokens to clear Anthropic Sonnet 4.6's
-// 1024-token cache minimum (without padding the cache would not engage and
-// Phase 24's "≥60% input cost reduction on turn 2+" success criterion could
-// not be met). If this hash changes, Anthropic's prompt-cache prefix
-// INVALIDATES on the next deploy and every business pays full input cost on
-// its first turn — so the change MUST be deliberate. To rotate the hash:
-// re-run TestSystemPromptHash_Stability_LockedHash with -v, copy the printed
-// sha256 into this constant, and document the prompt change in the PR
-// description.
+// system prompt prefix). Block 1 is padded to ~1957 estimated tokens to clear
+// Anthropic Sonnet 4.6's 1024-token cache minimum (without padding the cache
+// would not engage and the prompt-cache savings would not materialize). If
+// this hash changes, Anthropic's prompt-cache prefix INVALIDATES on the next
+// deploy and every business pays full input cost on its first turn — so the
+// change MUST be deliberate. To rotate the hash: re-run
+// TestSystemPromptHash_Stability_LockedHash with -v, copy the printed sha256
+// into this constant, and document the prompt change in the PR description.
 const blockOneRuSHA256 = "8b9b193fcc0dd9addcfbd6fb136bdb4dcda11592a3b6b7e7819626ecff379acf"
 
-// blockOneEnSHA256 is the locked sha256 of the English Block 1. Rotated in
-// Plan 24-03 alongside the RU hash (Block 1 padded to ~1189 estimated tokens,
-// safely above Sonnet 4.6's 1024-token cache floor). See blockOneRuSHA256 doc
-// comment for rotation procedure.
+// blockOneEnSHA256 is the locked sha256 of the English Block 1 (padded to
+// ~1189 estimated tokens, safely above Sonnet 4.6's 1024-token cache floor).
+// See blockOneRuSHA256 doc comment for rotation procedure.
 const blockOneEnSHA256 = "55cec729cbf2888143b4e14c32dcab38facad9b8a95af93a16accb4b923ce9bd"
 
 // TestSystemPromptHash_Stability proves Block 1 (platform-wide) is BYTE-
 // IDENTICAL across BusinessContext variations for the same locale — this is
-// the regression guard for Anthropic's cross-business prompt-cache prefix
-// (D-03). If any business-state field leaks into Block 1, this test fails
-// and the cache prefix churns per business (RESEARCH §Pitfall #3).
+// the regression guard for Anthropic's cross-business prompt-cache prefix.
+// If any business-state field leaks into Block 1, this test fails and the
+// cache prefix churns per business, defeating the cache.
 func TestSystemPromptHash_Stability(t *testing.T) {
 	tag := language.Russian
 	a, _, _ := prompt.BuildSplit(prompt.BusinessContext{
