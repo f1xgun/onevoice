@@ -3,6 +3,7 @@ package wire
 import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
 
@@ -56,6 +57,11 @@ type Repos struct {
 	// query surface as BusinessMembership but exposed as the typed
 	// authz.MembershipLoader interface to keep the cache decoupled.
 	MembershipLoader authz.MembershipLoader
+
+	// Billing — Phase 25a Postgres-backed BillingRepository. Plan 25a-04
+	// wires it into the internal POST /internal/v1/billing/usage_logs
+	// handler; for now the field is populated but unused by any handler.
+	Billing llm.BillingRepository
 }
 
 // Repositories constructs every domain repository against the connections
@@ -83,5 +89,6 @@ func Repositories(h *DBHandles) *Repos {
 		EmailVerificationToken: repository.NewEmailVerificationTokenRepository(h.PG),
 		UserConsents:           repository.NewUserConsentsRepository(h.PG),
 		MembershipLoader:       repository.NewMembershipLoader(h.PG),
+		Billing:                repository.NewBillingRepository(h.PG),
 	}
 }
