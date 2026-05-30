@@ -19,8 +19,10 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/f1xgun/onevoice/pkg/billingclient"
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/mtls"
@@ -56,10 +58,19 @@ func run(log *slog.Logger, cfg *config.Config) error {
 
 	// Surface the mTLS posture at startup so a misconfigured deploy is
 	// visible in the first log line rather than during the first internal
-	// HTTP call. tokenclient + future billingclient pick up the same env.
+	// HTTP call. tokenclient + billingclient pick up the same env.
 	log.Info("mtls", "enabled", mtls.IsEnabled())
 
-	router, err := wire.LLMRouter(cfg, log)
+	// Plan 25a-05: wire pkg/billingclient against the api service's mTLS
+	// internal :8443 listener. Passing nil http.Client makes billingclient's
+	// default transport honor ONEVOICE_MTLS_* env (same shape as tokenclient
+	// from 25a-01), so no per-service drift. WithBilling threads it through
+	// to llm.Router.logBilling — every successful Chat() call with a non-Nil
+	// BusinessID now persists a usage_logs row.
+	billingHTTP := billingclient.New(cfg.APIInternalURL, nil)
+	log.Info("billing client wired", "url", cfg.APIInternalURL)
+
+	router, err := wire.LLMRouter(cfg, log, llm.WithBilling(billingHTTP))
 	if err != nil {
 		return err
 	}
