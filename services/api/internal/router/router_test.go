@@ -106,8 +106,8 @@ func buildTestRouter(t *testing.T) *chi.Mux {
 	cache := authz.NewCacheForTest(&fakeLoader{}, time.Second, time.Second)
 	hc := health.New()
 	handlers := buildTestHandlers()
-	// Phase 21-04 + Phase 23.4: nil users / nil pool / nil lock — all middleware
-	// gates degrade to pass-through for the router structure tests.
+	// nil users / nil pool / nil lock — all middleware gates degrade to
+	// pass-through for the router structure tests.
 	return router.Setup(handlers, []byte("test-secret"), nil, hc, []string{"http://localhost:3000"}, router.RateLimits{Register: 10, Login: 10, Chat: 10, HITL: 10}, cache, nil, nil, nil)
 }
 
@@ -164,12 +164,11 @@ func TestRouter_CreateBusinessRegistered(t *testing.T) {
 	assert.True(t, found, "POST /api/v1/businesses must be registered")
 }
 
-// TestRouter_XFFFromUntrustedPeerIgnored proves the chi.RealIP removal
-// (Phase 23-06, WR-01): a request with X-Forwarded-For matching a
-// would-be-trusted CIDR but a TCP peer OUTSIDE TRUSTED_PROXY_CIDRS
-// must reach the handler with r.RemoteAddr unchanged — so the Phase
-// 23.4 middleware.ClientIP correctly returns the TCP peer (not the
-// spoofed XFF) and the lockout key is bound to the attacker's /16.
+// TestRouter_XFFFromUntrustedPeerIgnored proves the chi.RealIP removal: a
+// request with X-Forwarded-For matching a would-be-trusted CIDR but a TCP
+// peer OUTSIDE TRUSTED_PROXY_CIDRS must reach the handler with r.RemoteAddr
+// unchanged — so middleware.ClientIP correctly returns the TCP peer (not
+// the spoofed XFF) and the lockout key is bound to the attacker's /16.
 //
 // We mount a fresh chi router with the SAME global middleware stack as
 // router.Setup (minus RealIP, which is the contract under test) and
@@ -213,7 +212,7 @@ func TestRouter_XFFFromUntrustedPeerIgnored(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	// r.RemoteAddr MUST be the TCP peer, NOT rewritten from XFF.
 	require.Equal(t, "9.9.9.9:443", capturedRemoteAddr,
-		"chi.RealIP removed in Phase 23-06 — r.RemoteAddr must equal the actual TCP peer")
+		"chi.RealIP is intentionally not mounted — r.RemoteAddr must equal the actual TCP peer")
 	// middleware.ClientIP MUST return the TCP peer host (9.9.9.9),
 	// ignoring the spoofed XFF because 9.9.9.9 is not in any trusted CIDR.
 	require.Equal(t, "9.9.9.9", capturedClientIP,

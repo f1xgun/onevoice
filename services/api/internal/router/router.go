@@ -98,21 +98,21 @@ type Handlers struct {
 // middleware reads users.deletion_requested_at from on every write
 // request. May be nil — when nil, the grace gate degrades to pass-
 // through (legacy/test compat).
-// lock is the Phase 23.4 (OPS-04) lockout state that gates /auth/login. May be
-// nil — when nil, LockoutMiddleware is skipped and Login degrades to legacy
-// behavior (no brute-force throttle beyond chi-level rate limit).
+// lock is the lockout state that gates /auth/login. May be nil — when nil,
+// LockoutMiddleware is skipped and Login degrades to legacy behavior (no
+// brute-force throttle beyond chi-level rate limit).
 func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *health.Checker, allowedOrigins []string, rateLimits RateLimits, authzCache *authz.Cache, users middleware.UserLookup, pgPool *pgxpool.Pool, lock *lockout.Lockout) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.CorrelationID())
-	// chi's RealIP middleware was removed 2026-05-26 (Phase 23-06, WR-01):
-	// it rewrites r.RemoteAddr from X-Forwarded-For unconditionally with no
-	// trust-set knob, which lets an attacker spoof the upstream peer IP and
-	// bypass the Phase 23.4 TRUSTED_PROXY_CIDRS trust gate in
-	// middleware.ClientIP. middleware.ClientIP is now the single source of
-	// truth for "did this XFF entry come from a trusted proxy?".
+	// chi's RealIP middleware was intentionally removed: it rewrites
+	// r.RemoteAddr from X-Forwarded-For unconditionally with no trust-set
+	// knob, which lets an attacker spoof the upstream peer IP and bypass
+	// the TRUSTED_PROXY_CIDRS trust gate in middleware.ClientIP.
+	// middleware.ClientIP is now the single source of truth for "did this
+	// XFF entry come from a trusted proxy?".
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
@@ -135,11 +135,11 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public routes (no auth)
 		r.With(middleware.RateLimit(redisClient, rateLimits.Register, time.Minute)).Post("/auth/register", handlers.Auth.Register)
-		// Phase 23.4 (D-21): LockoutMiddleware mounted on /auth/login ONLY.
-		// NOT on /auth/register (rate-limited at the outbox layer in Phase 21).
-		// NOT on /auth/password-reset (D-20 self-unlock — adding lockout there
-		// would defeat the whole point). NOT on /auth/refresh (cookie-bearer
-		// auth, brute-force has nothing to brute against).
+		// LockoutMiddleware mounted on /auth/login ONLY.
+		// NOT on /auth/register (rate-limited at the outbox layer).
+		// NOT on /auth/password-reset (self-unlock path — adding lockout
+		// there would defeat the whole point). NOT on /auth/refresh
+		// (cookie-bearer auth, brute-force has nothing to brute against).
 		// Order matters: lockout BEFORE rate-limit so a locked account
 		// returns 423 (not 429) — the 423 carries retry_after_seconds the
 		// frontend needs for the lockout UI.

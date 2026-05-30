@@ -98,8 +98,7 @@ func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(
 //
 // The scope parameter is appended to the Redis key to keep separate buckets per
 // route family (e.g. "chat", "invite_accept"). Without this, every consumer of
-// this middleware would share a single user-scoped bucket — see WR-01 in
-// .planning/phases/03-invitations-api-accept-flow/03-REVIEW.md for the rationale.
+// this middleware would share a single user-scoped bucket.
 func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration, scope string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -173,12 +172,11 @@ func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration,
 // getClientIP extracts the client IP address from the request
 // Checks X-Forwarded-For header first (for proxied requests), then falls back to RemoteAddr.
 //
-// SECURITY NOTE (Phase 23-06): this helper still reads X-Forwarded-For
-// and X-Real-IP unconditionally. Rate-limit keying is best-effort —
-// a sophisticated attacker can rotate XFF to avoid per-IP buckets — but
-// tightening it is out of scope for the WR-01 gap-closure plan. For
-// security-sensitive client IP (lockout/captcha), call
-// middleware.ClientIP which is the trust-gated source of truth.
+// SECURITY NOTE: this helper still reads X-Forwarded-For and X-Real-IP
+// unconditionally. Rate-limit keying is best-effort — a sophisticated
+// attacker can rotate XFF to avoid per-IP buckets. For security-sensitive
+// client IP (lockout/captcha), call middleware.ClientIP which is the
+// trust-gated source of truth.
 func getClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header (comma-separated list, first is client)
 	xff := r.Header.Get("X-Forwarded-For")

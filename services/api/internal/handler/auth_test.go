@@ -219,8 +219,8 @@ func TestRegister(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// Phase 23.4 (OPS-05 / D-24): Register now emits a machine-readable
-				// code so the frontend can render a Russian string via i18n catalog.
+				// Register emits a machine-readable code so the frontend can
+				// render a Russian string via the i18n catalog.
 				assert.Contains(t, body, `"code":"register_internal"`)
 				assert.NotContains(t, body, "database") // Should not leak internal details
 			},
@@ -505,7 +505,7 @@ func TestRefreshToken(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// Phase 23.4 (OPS-05 / D-24): RefreshToken emits machine-readable code.
+				// RefreshToken emits a machine-readable code.
 				assert.Contains(t, body, `"code":"refresh_internal"`)
 				assert.NotContains(t, body, "redis") // Should not leak internal details
 			},
@@ -597,7 +597,7 @@ func TestLogout(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// Phase 23.4 (OPS-05 / D-24): Logout emits machine-readable code.
+				// Logout emits a machine-readable code.
 				assert.Contains(t, body, `"code":"logout_internal"`)
 				assert.NotContains(t, body, "redis") // Should not leak internal details
 			},
@@ -764,7 +764,7 @@ func TestChangePassword(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// Phase 23.4 (OPS-05 / D-24): ChangePassword emits machine-readable code.
+				// ChangePassword emits a machine-readable code.
 				assert.Contains(t, body, `"code":"change_password_internal"`)
 				assert.NotContains(t, body, "database") // no internal detail leak
 			},
@@ -894,9 +894,9 @@ func TestRegister_AutoLoginFailure(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	body := w.Body.String()
-	// Phase 23.4 (OPS-05 / D-24): auto-login failure emits a distinct code
-	// (auto_login_failed) so the frontend can tell the user "account was
-	// created but login failed, please sign in manually".
+	// Auto-login failure emits a distinct code (auto_login_failed) so the
+	// frontend can tell the user "account was created but login failed,
+	// please sign in manually".
 	assert.Contains(t, body, `"code":"auto_login_failed"`)
 	assert.NotContains(t, body, "auto-login") // no internal detail leak
 
@@ -976,7 +976,7 @@ func TestMe(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// Phase 23.4 (OPS-05 / D-24): Me emits machine-readable code.
+				// Me emits a machine-readable code.
 				assert.Contains(t, body, `"code":"get_user_internal"`)
 				assert.NotContains(t, body, "database") // Should not leak internal details
 			},
@@ -1239,7 +1239,7 @@ func TestUpdatePreferredLocale(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				// Phase 23.4 (OPS-05 / D-24): UpdatePreferredLocale emits machine-readable code.
+				// UpdatePreferredLocale emits a machine-readable code.
 				assert.Contains(t, body, `"code":"update_locale_internal"`)
 				assert.NotContains(t, body, "postgres") // no internal detail leak
 			},
@@ -1294,8 +1294,8 @@ func newLockoutFallbackHandler(t *testing.T) (*AuthHandler, *MockUserService, *m
 	return h, mockService, mr
 }
 
-// TestLogin_LockoutFallback_UsesTrustedProxyClientIP is the regression guard
-// for Phase 23-05 (CR-01). Scenario:
+// TestLogin_LockoutFallback_UsesTrustedProxyClientIP regression-guards the
+// captcha/lockout fallback path. Scenario:
 //
 //   - TCP peer 9.9.9.9 — OUTSIDE every default trusted CIDR.
 //   - X-Forwarded-For: 178.154.250.5 — a value INSIDE the default Yandex
@@ -1304,11 +1304,10 @@ func newLockoutFallbackHandler(t *testing.T) (*AuthHandler, *MockUserService, *m
 //     directly), so middleware.LoginClientIP(r.Context()) is "" and the
 //     handler MUST take the fallback path.
 //
-// Before 23-05 the fallback was the legacy handler.clientIP helper, which
-// read XFF unconditionally and would have keyed the lockout to the spoofed
-// /16 (178.154.0.0/16). After 23-05 the fallback is middleware.ClientIP,
-// which IGNORES XFF because the TCP peer is not in TRUSTED_PROXY_CIDRS,
-// so the lockout is keyed to the attacker's REAL /16 (9.9.0.0/16).
+// The fallback must be middleware.ClientIP (not the deleted legacy local
+// helper), which IGNORES XFF because the TCP peer is not in
+// TRUSTED_PROXY_CIDRS, so the lockout is keyed to the attacker's REAL /16
+// (9.9.0.0/16), not the spoofed /16 (178.154.0.0/16).
 func TestLogin_LockoutFallback_UsesTrustedProxyClientIP(t *testing.T) {
 	require.NoError(t, middleware.InitTrustedProxies("")) // installs default Yandex LB CIDRs
 

@@ -156,7 +156,7 @@ func TestLockoutMiddleware_KeyUsesEmailHashAndNet16(t *testing.T) {
 }
 
 func TestLockoutMiddleware_DifferentNet16_NotLocked(t *testing.T) {
-	// T-23.4-03 mitigation: attacker on one /16 locking (email, their_/16)
+	// Cross-/16 isolation: attacker on one /16 locking (email, their_/16)
 	// must NOT affect (email, victim_/16). Victim continues to log in.
 	lock, _ := newTestLock(t)
 	require.NoError(t, middleware.InitTrustedProxies("10.0.0.0/8"))

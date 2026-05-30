@@ -1,6 +1,6 @@
 'use client';
 
-// Phase 23.4 (OPS-04) — Yandex SmartCaptcha invisible-mode widget.
+// Yandex SmartCaptcha invisible-mode widget.
 //
 // Loaded only when the backend signals captcha_required (HTTP 400 with
 // {code: "captcha_required"}). Renders an invisible <div>, injects the
@@ -9,7 +9,7 @@
 //
 // The token is sent on the *next* /auth/login POST as the X-Captcha-Token
 // header. The backend forwards it to https://smartcaptcha.yandexcloud.net/validate
-// for server-side validation (D-22).
+// for server-side validation.
 //
 // Reference: https://yandex.cloud/en/docs/smartcaptcha/concepts/widget-methods
 

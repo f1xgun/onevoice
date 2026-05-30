@@ -81,8 +81,8 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// Phase 23-01: per-dep readiness check timeout. Defensive default + clamp
-	// so an operator typo (or zero/negative explicit value) can't disable the
+	// Per-dep readiness check timeout. Defensive default + clamp so an
+	// operator typo (or zero/negative explicit value) can't disable the
 	// safety net. Matches the API service's HealthCheckTimeout semantics.
 	healthCheckTimeout := 2 * time.Second
 	if v := os.Getenv("HEALTH_CHECK_TIMEOUT"); v != "" {

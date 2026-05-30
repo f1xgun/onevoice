@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # OneVoice nightly backup: pg_dump + mongodump → restic → Yandex Object Storage.
 # Run via BusyBox crond inside the dedicated alpine backup container.
-# OPS-01 / OPS-06 (Phase 23-03).
 set -euo pipefail
 
 # crond invokes scripts in a minimal env — pick up RESTIC_PASSWORD and the

@@ -99,9 +99,9 @@ func TestClear_RemovesKey(t *testing.T) {
 }
 
 func TestClearAllForEmail_RemovesPerIPVariants(t *testing.T) {
-	// D-20 self-unlock: password-reset doesn't know which /16 buckets hold
-	// the failure counts. ClearAllForEmail must enumerate via SCAN and
-	// remove every variant for the email_hash.
+	// Self-unlock: password-reset doesn't know which /16 buckets hold the
+	// failure counts. ClearAllForEmail must enumerate via SCAN and remove
+	// every variant for the email_hash.
 	l, _ := newTestLockout(t, lockout.Config{})
 	ctx := context.Background()
 

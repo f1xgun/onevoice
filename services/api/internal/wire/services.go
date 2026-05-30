@@ -97,13 +97,12 @@ type Services struct {
 	// same tx as the user row.
 	Consent *service.ConsentService
 
-	// Phase 23.4 (OPS-04): brute-force / credential-stuffing defense on
-	// /auth/login. Lockout is non-nil whenever h.Redis is non-nil
-	// (Redis is the storage layer); SmartCaptcha is non-nil always
-	// (Noop impl when SMARTCAPTCHA_SECRET_KEY is empty so the handler
-	// has a stable dependency to inject). Both consumed by AuthHandler
-	// via WithLockout in wire/handlers.go and by router.go which mounts
-	// the LockoutMiddleware on /auth/login (D-21 — only that route).
+	// Brute-force / credential-stuffing defense on /auth/login. Lockout is
+	// non-nil whenever h.Redis is non-nil (Redis is the storage layer);
+	// SmartCaptcha is non-nil always (Noop impl when SMARTCAPTCHA_SECRET_KEY
+	// is empty so the handler has a stable dependency to inject). Both
+	// consumed by AuthHandler via WithLockout in wire/handlers.go and by
+	// router.go which mounts the LockoutMiddleware on /auth/login.
 	Lockout      *lockout.Lockout
 	SmartCaptcha service.SmartCaptchaVerifier
 
@@ -436,12 +435,11 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		consentSetter.SetRegisterConsentService(s.Consent)
 	}
 
-	// Phase 23.4 (OPS-04): lockout + SmartCaptcha wiring.
+	// Lockout + SmartCaptcha wiring.
 	//
 	// InitTrustedProxies installs the TRUSTED_PROXY_CIDRS allowlist used by
-	// middleware.ClientIP (D-19). An invalid CIDR is fatal — we want to fail
-	// fast rather than silently degrade to "trust nothing" and lock the
-	// wrong IPs.
+	// middleware.ClientIP. An invalid CIDR is fatal — we want to fail fast
+	// rather than silently degrade to "trust nothing" and lock the wrong IPs.
 	if err := middleware.InitTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
 		return nil, fmt.Errorf("wire: init trusted proxies: %w", err)
 	}

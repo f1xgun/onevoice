@@ -9,7 +9,7 @@ import (
 	"sync"
 )
 
-// Phase 23.4 (D-19) — trusted-proxy ClientIP helper.
+// Trusted-proxy ClientIP helper.
 //
 // The default chi RealIP middleware trusts X-Forwarded-For unconditionally,
 // which lets an attacker spoof an IP and either (a) pin the lockout counter
@@ -77,7 +77,7 @@ func InitTrustedProxies(csv string) error {
 //  2. If the peer IP is in any trusted CIDR, return the leftmost
 //     X-Forwarded-For entry — the upstream LB has vouched for it.
 //  3. Otherwise return the peer IP and IGNORE X-Forwarded-For. Client-set
-//     XFF from a non-LB peer is attacker-controlled (T-23.4-01).
+//     XFF from a non-LB peer is attacker-controlled.
 //
 // Falls back to r.RemoteAddr unchanged when SplitHostPort fails or the
 // host is not a parseable IP — preserves forensic value over correctness.
@@ -113,10 +113,10 @@ func ClientIP(r *http.Request) string {
 // caller should treat "" as "skip lockout for this request" per the
 // middleware fall-through pattern).
 //
-// /16 (per D-18) blunts shared-NAT collisions while still binding to the
-// network neighborhood. A /32 would let an attacker on a mobile carrier
-// hop IPs and avoid the counter; a /8 would let one bad neighbor on AWS
-// lock out every other AWS customer.
+// /16 blunts shared-NAT collisions while still binding to the network
+// neighborhood. A /32 would let an attacker on a mobile carrier hop IPs
+// and avoid the counter; a /8 would let one bad neighbor on AWS lock out
+// every other AWS customer.
 func Net16(ip string) string {
 	parsed := net.ParseIP(ip)
 	if parsed == nil {

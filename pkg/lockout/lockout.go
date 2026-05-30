@@ -84,9 +84,9 @@ func New(rdb *redis.Client, cfg Config) *Lockout {
 }
 
 // emailHash returns the lowercase-trimmed sha256 hex of email. The lowercase
-// fold + trim are deliberate (D-18 — case-insensitive emails must collapse
-// to the same key, otherwise an attacker rotating Foo@/foo@/FOO@ casing
-// would never trip the counter).
+// fold + trim are deliberate — case-insensitive emails must collapse to the
+// same key, otherwise an attacker rotating Foo@/foo@/FOO@ casing would never
+// trip the counter.
 func emailHash(email string) string {
 	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
 	return hex.EncodeToString(sum[:])
@@ -128,8 +128,7 @@ func (l *Lockout) RecordFailure(ctx context.Context, email, ipNet16 string) (int
 // GetTier returns the current Tier for the (email, /16 IP) tuple. A missing
 // key is TierNormal (no prior failures). A Redis error returns TierNormal
 // + err so the caller can decide fail-open vs fail-closed (the middleware
-// fails open per T-23.4-07 — Redis outage must not lock every legitimate
-// user out).
+// fails open — a Redis outage must not lock every legitimate user out).
 func (l *Lockout) GetTier(ctx context.Context, email, ipNet16 string) (Tier, error) {
 	v, err := l.rdb.Get(ctx, l.keyFor(email, ipNet16)).Int()
 	if errors.Is(err, redis.Nil) {
@@ -175,9 +174,9 @@ func (l *Lockout) Clear(ctx context.Context, email, ipNet16 string) error {
 }
 
 // ClearAllForEmail enumerates every per-/16 variant of the email's lockout
-// keys and deletes them. Used by password-reset (D-20 self-unlock) where
-// the operator/legitimate user does not necessarily know which /16
-// buckets accumulated failures.
+// keys and deletes them. Used by password-reset self-unlock where the
+// operator/legitimate user does not necessarily know which /16 buckets
+// accumulated failures.
 //
 // SCAN is safe under load (non-blocking, cursor-based). The MATCH glob is
 // anchored on prefix:hash: so it never iterates beyond this email's keys.

@@ -46,7 +46,7 @@ type Option func(*Checker)
 
 // WithCheckTimeout overrides the default 2s per-check deadline. Values ≤0
 // are ignored so an operator misconfiguration (zero / negative) can't disable
-// the safety net. Threat T-23.1-04 — never panic on bad input.
+// the safety net — never panic on bad input.
 func WithCheckTimeout(d time.Duration) Option {
 	return func(c *Checker) {
 		if d > 0 {

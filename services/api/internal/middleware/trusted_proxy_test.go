@@ -81,7 +81,7 @@ func TestNet16_IPv4(t *testing.T) {
 }
 
 func TestNet16_IPv6_ReturnsEmpty(t *testing.T) {
-	// IPv6 bucketing TBD (v1.5); for now Net16 returns "" and the lockout
+	// IPv6 bucketing TBD; for now Net16 returns "" and the lockout
 	// middleware treats that as "skip lockout for this request".
 	assert.Equal(t, "", middleware.Net16("fe80::1"))
 	assert.Equal(t, "", middleware.Net16("::1"))
