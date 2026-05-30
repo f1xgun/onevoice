@@ -63,9 +63,9 @@ type Handlers struct {
 	OAuth         *oauth.OAuthHandler     // true OAuth code-flow (VK / Yandex / Google)
 	Connect       *connect.ConnectHandler // paste-flow integrations (Telegram bot-token, VK community access token)
 	InternalToken *handler.InternalTokenHandler
-	// 25a-04: POST /internal/v1/billing/usage_logs — internal-only billing
-	// write path consumed by the orchestrator (via pkg/billingclient). Lives
-	// under the same mTLS-protected SetupInternal mux as InternalToken.
+	// POST /internal/v1/billing/usage_logs — internal-only billing write path
+	// consumed by the orchestrator (via pkg/billingclient). Lives under the
+	// same mTLS-protected SetupInternal mux as InternalToken.
 	InternalBilling *handler.InternalBillingHandler
 	ChatProxy       *handler.ChatProxyHandler
 	Review          *handler.ReviewHandler
@@ -253,7 +253,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			}
 
 			r.Put("/auth/password", handlers.Auth.ChangePassword)
-			// i18n Phase A3: persist the user's UI language choice
+			// i18n: persist the user's UI language choice
 			// ('ru'|'en'). Sits next to /auth/me/password as a sibling
 			// account-self-service endpoint; the frontend syncs the cookie ↔
 			// DB on login via GET /auth/me reading preferred_locale + this
@@ -263,7 +263,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// /members/{userId}).
 			r.Patch("/auth/locale", handlers.Auth.UpdatePreferredLocale)
 
-			// v2.0 RBAC (AUTHZ-01): static permission registry.
+			// v2.0 RBAC: static permission registry.
 			// Auth-required (any logged-in user) — no business scope.
 			if handlers.Permissions != nil {
 				r.Get("/permissions", handlers.Permissions.List)
@@ -300,7 +300,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// Business-scoped subtree — single chokepoint via RequireBusinessAccess.
 			// Every route under /businesses/{id}/... is gated by this middleware, which:
 			// - parses and validates the business UUID from the URL
-			// - looks up membership (404 on non-member, not 403 — AUTHZ-05)
+			// - looks up membership (404 on non-member, not 403)
 			// - injects BusinessContext into ctx with the caller's role + permissions
 			r.Route("/businesses/{id}", func(r chi.Router) {
 				r.Use(authz.RequireBusinessAccess(authzCache, middleware.GetUserID))
@@ -504,9 +504,9 @@ func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 
 	r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
 
-	// 25a-04: billing write path. Gated by RequireServiceIdentity so only
-	// the orchestrator (or api self-call) can append usage rows. Defense
-	// in depth on top of the listener-level mTLS handshake.
+	// Billing write path. Gated by RequireServiceIdentity so only the
+	// orchestrator (or api self-call) can append usage rows. Defense in depth
+	// on top of the listener-level mTLS handshake.
 	if handlers.InternalBilling != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireServiceIdentity(internalServiceIdentityAllowlist, nil))

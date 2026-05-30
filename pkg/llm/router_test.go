@@ -295,7 +295,7 @@ func TestRouter_Billing_LoggedAfterSuccess(t *testing.T) {
 
 	billing := &MockBillingRepository{}
 	userID := uuid.New()
-	businessID := uuid.New() // Phase 25a: non-nil BusinessID required to bill.
+	businessID := uuid.New() // Non-nil BusinessID required to bill.
 
 	r := llm.NewRouter(registry,
 		llm.WithProvider(&stubProvider{
@@ -342,8 +342,8 @@ func TestRouter_Billing_LoggedAfterSuccess(t *testing.T) {
 	assert.InDelta(t, 0.00132, log.UserCostUSD, 1e-9)
 }
 
-// Phase 25a Test 1 — Chat() with a non-nil BusinessID must produce a UsageLog
-// carrying that exact BusinessID. Locks the propagation chain
+// Chat() with a non-nil BusinessID must produce a UsageLog carrying that
+// exact BusinessID. Locks the propagation chain
 // ChatRequest.BusinessID → logBilling → UsageLog.BusinessID.
 func TestRouter_Billing_PersistsBusinessID(t *testing.T) {
 	entry := healthyEntry("gpt-4", "openai", 1.0, 3.0, 300)
@@ -379,9 +379,9 @@ func TestRouter_Billing_PersistsBusinessID(t *testing.T) {
 	assert.Equal(t, businessID, last.BusinessID)
 }
 
-// Phase 25a Test 2 — Chat() with BusinessID == uuid.Nil must NOT call the
-// Writer at all (system-level callers titler/draft_reply currently pass
-// uuid.Nil; Plan 25a-05 will retro-fit them).
+// Chat() with BusinessID == uuid.Nil must NOT call the Writer at all
+// (system-level callers titler/draft_reply currently pass uuid.Nil; the
+// wiring layer retro-fits them with real BusinessIDs at call sites).
 func TestRouter_Billing_SkipsWhenBusinessIDNil(t *testing.T) {
 	entry := healthyEntry("gpt-4", "openai", 1.0, 3.0, 300)
 	registry := newTestRegistry(entry)
@@ -412,7 +412,7 @@ func TestRouter_Billing_SkipsWhenBusinessIDNil(t *testing.T) {
 		"LogUsage must NOT be called when ChatRequest.BusinessID is uuid.Nil")
 }
 
-// Phase 25a Test 3 — Cache reads are billed at 0.1× the input rate.
+// Cache reads are billed at 0.1× the input rate.
 // Locks the cache-aware formula to 1e-9 precision.
 //
 //	billable_input = 1000 + 10000*0.1 = 2000
@@ -457,7 +457,7 @@ func TestRouter_Billing_CacheReadDiscounted(t *testing.T) {
 	assert.Equal(t, 1000, last.InputTokens)
 }
 
-// Phase 25a Test 4 — Cache writes are billed at 1.25× the input rate.
+// Cache writes are billed at 1.25× the input rate.
 //
 //	billable_input = 0 + 10000*1.25 + 0 = 12500
 //	provider_cost  = 12500 * 3 / 1_000_000 = 3.75e-5 USD
@@ -499,8 +499,8 @@ func TestRouter_Billing_CacheWritesPriced(t *testing.T) {
 	assert.Equal(t, 10000, last.CacheCreationTokens)
 }
 
-// Phase 25a Test 5 — Conversation ID propagates verbatim from ChatRequest into
-// the UsageLog. Mongo ObjectID hex strings are passed through as-is.
+// Conversation ID propagates verbatim from ChatRequest into the UsageLog.
+// Mongo ObjectID hex strings are passed through as-is.
 func TestRouter_Billing_PersistsConversationID(t *testing.T) {
 	entry := healthyEntry("gpt-4", "openai", 1.0, 3.0, 300)
 	registry := newTestRegistry(entry)

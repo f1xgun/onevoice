@@ -228,7 +228,7 @@ func TestRouter_XFFFromUntrustedPeerIgnored(t *testing.T) {
 	require.Equal(t, "9.9.0.0/16", apimiddleware.Net16(capturedClientIP))
 }
 
-// --- 25a-04: internal billing route smoke tests ---
+// --- internal billing route smoke tests ---
 
 // stubBilling is the minimal handler.BillingService implementation for
 // internal-router tests. It never returns an error so success-path tests

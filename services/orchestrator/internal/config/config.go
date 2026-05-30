@@ -60,11 +60,10 @@ type Config struct {
 	AnthropicAPIKey  string
 
 	// APIInternalURL is the base URL of the API service's mTLS-protected
-	// internal :8443 listener. Plan 25a-05 wires pkg/billingclient against
-	// it for the orchestrator → api billing POST hop. Defaults to
-	// "https://api:8443" which matches the docker-compose env contract
-	// flipped in Plan 25a-01. Must be HTTPS — the substrate from 25a-01
-	// requires mTLS on this endpoint.
+	// internal :8443 listener. pkg/billingclient is wired against it for the
+	// orchestrator → api billing POST hop. Defaults to "https://api:8443"
+	// which matches the docker-compose env contract. Must be HTTPS — the
+	// mTLS substrate requires it on this endpoint.
 	APIInternalURL string
 
 	SelfHostedEndpoints []SelfHostedEndpoint

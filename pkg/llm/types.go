@@ -69,8 +69,8 @@ type SystemBlock struct {
 // services/api/internal/service/titler.go continue to work).
 type ChatRequest struct {
 	UserID         uuid.UUID        `json:"user_id"`                   // Use uuid.Nil for system-level calls
-	BusinessID     uuid.UUID        `json:"business_id,omitempty"`     // Phase 25a — Router skips billing when uuid.Nil
-	ConversationID string           `json:"conversation_id,omitempty"` // Phase 25a — Mongo ObjectID hex (forensic queries)
+	BusinessID     uuid.UUID        `json:"business_id,omitempty"`     // Router skips billing when uuid.Nil
+	ConversationID string           `json:"conversation_id,omitempty"` // Mongo ObjectID hex (forensic queries)
 	Model          string           `json:"model"`
 	Messages       []Message        `json:"messages"`
 	SystemBlocks   []SystemBlock    `json:"system_blocks,omitempty"`

@@ -3,20 +3,19 @@
 // billingRepository implements pkg/llm.BillingRepository for Postgres
 // (production wiring). The orchestrator's Router consumes only the narrow
 // Writer slice (LogUsage) — read methods exist here for services/api
-// consumers (Phase 25b rate limiter via GetDailySpend; v1.5 billing UI via
+// consumers (daily-spend rate limiter via GetDailySpend; v1.5 billing UI via
 // GetUserBalance / GetMonthlyUsage).
 //
-// Two methods are live for Phase 25a:
+// Live methods:
 //   - LogUsage      — write path; rejects uuid.Nil BusinessID defense-in-depth
 //     (the DB column is also NOT NULL).
-//   - GetDailySpend — read path for Phase 25b's daily-spend rate limiter;
-//     filters strictly by UTC calendar day so the limiter's
-//     "did this business exceed today's cap" check is wall-clock
-//     deterministic.
+//   - GetDailySpend — read path for the daily-spend rate limiter; filters
+//     strictly by UTC calendar day so the limiter's "did this business
+//     exceed today's cap" check is wall-clock deterministic.
 //
-// Two methods are stubbed (TODO v1.5): GetUserBalance + GetMonthlyUsage.
-// Both return zero values + nil so callers compile against the interface
-// today; the billing UI plan ships the implementations.
+// Stubbed (TODO v1.5): GetUserBalance + GetMonthlyUsage. Both return zero
+// values + nil so callers compile against the interface today; the billing
+// UI ships the implementations.
 
 package repository
 
@@ -107,8 +106,8 @@ func (r *billingRepository) LogUsage(ctx context.Context, log *llm.UsageLog) err
 }
 
 // GetDailySpend returns the sum of (provider_cost_usd + commission_usd) for
-// the supplied business over the UTC calendar day containing `day`. Phase 25b
-// rate-limit policy reads this as the daily spend gate.
+// the supplied business over the UTC calendar day containing `day`. The
+// daily-spend rate-limit policy reads this as its gate.
 //
 // Day boundaries:
 //   - We normalize the supplied `day` to its UTC year/month/day. A caller in
@@ -146,15 +145,15 @@ func (r *billingRepository) GetDailySpend(ctx context.Context, businessID uuid.U
 }
 
 // GetUserBalance — TODO(v1.5): credit-balance schema lands with the billing UI.
-// Phase 25a returns 0, nil so handlers and the BillingRepository contract
-// remain satisfied; Phase 25b does not call this method.
+// Returns 0, nil today so handlers and the BillingRepository contract remain
+// satisfied; the daily-spend rate limiter does not call this method.
 func (r *billingRepository) GetUserBalance(_ context.Context, _ uuid.UUID) (float64, error) {
 	return 0, nil
 }
 
 // GetMonthlyUsage — TODO(v1.5): consumed by the per-user usage panel in the
-// billing UI. Phase 25a returns nil, nil; aggregation queries land alongside
-// the UI plan.
+// billing UI. Returns nil, nil today; aggregation queries land alongside the
+// UI implementation.
 func (r *billingRepository) GetMonthlyUsage(_ context.Context, _ uuid.UUID, _, _ int) ([]llm.UsageLog, error) {
 	return nil, nil
 }

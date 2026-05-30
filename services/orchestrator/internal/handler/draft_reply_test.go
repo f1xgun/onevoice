@@ -166,7 +166,7 @@ func TestFormatExampleReview_RatingPrefix(t *testing.T) {
 	}
 }
 
-// --- Phase D2: locale-aware draft-reply prompt ---
+// --- locale-aware draft-reply prompt ---
 
 func TestFormatExampleReview_EnglishLocale(t *testing.T) {
 	if got := formatExampleReview("hi", 4, language.English); !strings.HasPrefix(got, "Review (4/5)") {
@@ -310,10 +310,10 @@ func TestApiDrafterWireCompatibility(t *testing.T) {
 	}
 }
 
-// TestDraftReply_PassesBusinessIDFromRequest pins LLMC-05 for the draft-reply
-// path: the handler MUST parse req.BusinessID into ChatRequest.BusinessID so
-// the resulting cost row attributes to the correct business (user decision
-// Q#5, Plan 25a-05).
+// TestDraftReply_PassesBusinessIDFromRequest pins business-attribution for
+// the draft-reply path: the handler MUST parse req.BusinessID into
+// ChatRequest.BusinessID so the resulting cost row attributes to the correct
+// business.
 func TestDraftReply_PassesBusinessIDFromRequest(t *testing.T) {
 	bizID := "11111111-2222-3333-4444-555555555555"
 	chatter := &fakeChatter{
@@ -338,10 +338,10 @@ func TestDraftReply_PassesBusinessIDFromRequest(t *testing.T) {
 	}
 }
 
-// TestDraftReply_MalformedBusinessID_DegradesToNil — Pitfall §3 fail-closed:
-// non-UUID business_id (e.g. legacy "b1" sentinel) does NOT crash the handler
-// and BusinessID lands as uuid.Nil so the router skips billing instead of
-// writing a corrupt row.
+// TestDraftReply_MalformedBusinessID_DegradesToNil — fail-closed: non-UUID
+// business_id (e.g. legacy "b1" sentinel) does NOT crash the handler and
+// BusinessID lands as uuid.Nil so the router skips billing instead of writing
+// a corrupt row.
 func TestDraftReply_MalformedBusinessID_DegradesToNil(t *testing.T) {
 	chatter := &fakeChatter{
 		resp: &llm.ChatResponse{Content: "ok", Provider: "openrouter"},

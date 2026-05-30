@@ -61,12 +61,12 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// HTTP call. tokenclient + billingclient pick up the same env.
 	log.Info("mtls", "enabled", mtls.IsEnabled())
 
-	// Plan 25a-05: wire pkg/billingclient against the api service's mTLS
-	// internal :8443 listener. Passing nil http.Client makes billingclient's
-	// default transport honor ONEVOICE_MTLS_* env (same shape as tokenclient
-	// from 25a-01), so no per-service drift. WithBilling threads it through
-	// to llm.Router.logBilling — every successful Chat() call with a non-Nil
-	// BusinessID now persists a usage_logs row.
+	// Wire pkg/billingclient against the api service's mTLS internal :8443
+	// listener. Passing nil http.Client makes billingclient's default
+	// transport honor ONEVOICE_MTLS_* env (same shape as tokenclient) so
+	// there is no per-service drift. WithBilling threads it through to
+	// llm.Router.logBilling — every successful Chat() call with a non-Nil
+	// BusinessID persists a usage_logs row.
 	billingHTTP := billingclient.New(cfg.APIInternalURL, nil)
 	log.Info("billing client wired", "url", cfg.APIInternalURL)
 
@@ -133,7 +133,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wi
 	// LocaleResolver runs after correlation but before logger/recoverer so
 	// the resolved language.Tag is available to every downstream handler
 	// (chat / draft-reply / tool list) for prompt-builder localization.
-	// See pkg/i18n + Phase A1 of `.planning/i18n-readiness/PLAN.md`.
+	// See pkg/i18n.
 	r.Use(i18n.LocaleMiddleware)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)

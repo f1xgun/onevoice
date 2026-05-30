@@ -177,7 +177,7 @@ jobs:
         env:
           GOWORK: "off"
 
-      # HI-01: enforce AUTHZ-09 chokepoint via custom analyzer at tools/lint-rbac.
+      # Enforce the RBAC chokepoint via the custom analyzer at tools/lint-rbac.
       # Without this step, a new business-scoped route that bypasses
       # authz.RequireBusinessAccess / Can / BusinessContextFromCtx would land
       # in main with green CI — entire chokepoint would depend on dev discipline.

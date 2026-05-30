@@ -14,10 +14,10 @@ import "errors"
 //     the metric means a Grafana panel can be cross-referenced against an
 //     errors.Is(err, ErrTransient) log filter without ambiguity.
 //
-//  2. Phase 25b may introduce router-side retry policy. By matching the
-//     tokenclient precedent (ErrTransient retryable, others terminal),
-//     a single router-wide retry policy can apply uniformly across both
-//     clients without per-client logic.
+//  2. A future router-side retry policy can match the tokenclient
+//     precedent (ErrTransient retryable, others terminal) so a single
+//     router-wide retry policy applies uniformly across both clients
+//     without per-client logic.
 //
 // Sentinel mapping (mirrored in client.go):
 //

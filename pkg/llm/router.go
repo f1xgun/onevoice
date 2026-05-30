@@ -28,11 +28,11 @@ type RateLimitChecker interface {
 // provider for this model?" to Selector so neither concern has to reason
 // about the other.
 //
-// The billing field is the narrow Writer interface (Phase 25a) so production
-// can wire a Writer-only HTTP adapter (Plan 25a-03 billingclient) without
-// the orchestrator depending on read-path methods. Any BillingRepository
-// also satisfies Writer, so existing WithBilling(BillingRepository) callers
-// continue to compile unchanged.
+// The billing field is the narrow Writer interface so production can wire a
+// Writer-only HTTP adapter (pkg/billingclient) without the orchestrator
+// depending on read-path methods. Any BillingRepository also satisfies
+// Writer, so existing WithBilling(BillingRepository) callers continue to
+// compile unchanged.
 type Router struct {
 	registry    *Registry
 	selector    Selector
@@ -57,8 +57,8 @@ func WithRateLimitChecker(rlc RateLimitChecker) RouterOption {
 
 // WithBilling sets the billing writer for usage logging. Accepts the narrow
 // Writer interface so production can pass a Writer-only HTTP adapter
-// (Plan 25a-03 pkg/billingclient); any BillingRepository also satisfies
-// Writer via interface embedding, so existing callers continue to work.
+// (pkg/billingclient); any BillingRepository also satisfies Writer via
+// interface embedding, so existing callers continue to work.
 func WithBilling(w Writer) RouterOption {
 	return func(r *Router) { r.billing = w }
 }
@@ -154,8 +154,8 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 	resp.Provider = entry.Provider
 	// Skip billing for system-level callers (titler, review_drafter) that
 	// pass uuid.Nil BusinessID. The usage_logs.business_id column is NOT NULL
-	// and the repository rejects nil-BusinessID rows; Plan 25a-05 will
-	// retro-fit those callers to pass real BusinessIDs.
+	// and the repository rejects nil-BusinessID rows; system callers are
+	// retro-fitted to pass real BusinessIDs at the wiring layer.
 	if r.billing != nil && req.BusinessID != uuid.Nil {
 		go r.logBilling(context.Background(), req, entry, resp)
 	}

@@ -1,15 +1,14 @@
 // Package billingclient is the orchestrator's HTTP client for the internal
 // billing-substrate endpoint. Mirrors pkg/tokenclient byte-for-byte in code
 // shape (constructor signature, sentinel errors, mTLS-aware default
-// http.Client) so a future Phase 25b router-side retry policy can apply
-// uniformly to both clients via errors.Is(err, ErrTransient).
+// http.Client) so a future router-side retry policy can apply uniformly to
+// both clients via errors.Is(err, ErrTransient).
 //
 // The orchestrator's pkg/llm.Router wires `*Client` into Router.billing via
-// llm.WithBilling(...) (plan 25a-05). Each completed Chat() call spawns a
-// fire-and-forget `go r.logBilling(...)` that calls `LogUsage` with a 5s
-// context deadline. The error return is logged + counted but never blocks
-// the user-visible LLM response — see pkg/billingclient/AGENTS.md for the
-// silent-loss policy.
+// llm.WithBilling(...). Each completed Chat() call spawns a fire-and-forget
+// `go r.logBilling(...)` that calls `LogUsage` with a 5s context deadline.
+// The error return is logged + counted but never blocks the user-visible
+// LLM response — see pkg/billingclient/AGENTS.md for the silent-loss policy.
 package billingclient
 
 import (
@@ -28,7 +27,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/mtls"
 )
 
-// usageLogsPath is the API endpoint mounted by plan 25a-04. Kept as a
+// usageLogsPath is the API endpoint that consumes UsageLog rows. Kept as a
 // package-level const so the test suite and the call site can never drift.
 const usageLogsPath = "/internal/v1/billing/usage_logs"
 
@@ -58,7 +57,7 @@ type Client struct {
 // honors the ONEVOICE_MTLS_* env triplet via pkg/mtls (see defaultHTTPClient).
 //
 // The constructor signature MUST remain `New(baseURL string, httpClient
-// *http.Client) *Client` to match pkg/tokenclient — Phase 25a-05's wiring
+// *http.Client) *Client` to match pkg/tokenclient — the orchestrator wiring
 // site assumes both clients share this shape.
 func New(baseURL string, httpClient *http.Client) *Client {
 	if httpClient == nil {

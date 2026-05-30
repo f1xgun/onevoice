@@ -1,6 +1,6 @@
--- Phase 25a: Billing substrate — integration-test mirror of
+-- Billing substrate — integration-test mirror of
 -- migrations/postgres/000018_phase_25a_usage_logs.up.sql.
--- Per project_migration_dual_path convention, this path uses uuid_generate_v4()
+-- Per the dual-path migration convention, this path uses uuid_generate_v4()
 -- (the test fixture seeds uuid-ossp). Production path uses gen_random_uuid().
 -- Schema is otherwise identical column-for-column.
 

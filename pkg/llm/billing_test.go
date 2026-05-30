@@ -37,9 +37,9 @@ func TestUsageLog(t *testing.T) {
 	assert.Equal(t, 0.0018, log.UserCostUSD)
 }
 
-// Phase 25a Test 7 — Marshal/Unmarshal UsageLog with all new fields populated;
-// verifies the JSON tags on BusinessID, ConversationID, RequestID, and the cache
-// token columns ship the wire format Plan 25a-03 (billingclient) will rely on.
+// Marshal/Unmarshal UsageLog with all new fields populated; verifies the JSON
+// tags on BusinessID, ConversationID, RequestID, and the cache token columns
+// ship the wire format pkg/billingclient relies on.
 func TestUsageLog_JSONRoundTrip(t *testing.T) {
 	created := time.Date(2026, 5, 30, 14, 0, 0, 0, time.UTC)
 	in := llm.UsageLog{
@@ -120,9 +120,9 @@ func TestBillingRepository_Interface(t *testing.T) {
 	var _ llm.BillingRepository = (*MockBillingRepository)(nil)
 }
 
-// MockBillingRepository implements BillingRepository for testing. Phase 25a
-// extends it with a Logs slice + LastLog helper so the new router tests can
-// assert per-log fields populated by logBilling under the async goroutine.
+// MockBillingRepository implements BillingRepository for testing. Exposes
+// a Logs slice + LastLog helper so router tests can assert per-log fields
+// populated by logBilling under the async goroutine.
 type MockBillingRepository struct {
 	mu   sync.Mutex
 	logs []llm.UsageLog
@@ -166,9 +166,9 @@ func (m *MockBillingRepository) GetUserBalance(_ context.Context, _ uuid.UUID) (
 	return 10.0, nil // Mock balance
 }
 
-// GetDailySpend (Phase 25a signature) — returns the preloaded value from
-// DailySpendByBusiness, or sums the captured logs by business when the map is
-// nil. Falls back to 0 when neither is populated.
+// GetDailySpend returns the preloaded value from DailySpendByBusiness, or
+// sums the captured logs by business when the map is nil. Falls back to 0
+// when neither is populated.
 func (m *MockBillingRepository) GetDailySpend(_ context.Context, businessID uuid.UUID, _ time.Time) (float64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

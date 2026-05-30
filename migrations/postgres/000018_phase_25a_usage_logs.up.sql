@@ -1,6 +1,6 @@
--- Phase 25a: Billing substrate. user_id nullable + ON DELETE SET NULL preserves
+-- Billing substrate. user_id nullable + ON DELETE SET NULL preserves
 -- business-level history when accounts are deleted. business_id ON DELETE CASCADE
--- matches audit_logs precedent (000008_audit_log_infrastructure.up.sql).
+-- matches the audit_logs precedent (000008_audit_log_infrastructure.up.sql).
 --
 -- Cache token columns (cache_read_tokens, cache_creation_tokens) are populated
 -- only by providers that surface prompt-cache breakdowns (Anthropic today; OpenAI
@@ -30,7 +30,7 @@ CREATE TABLE usage_logs (
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Phase 25b daily-spend aggregation: WHERE business_id = $1 AND created_at >= $2 AND < $3
+-- Daily-spend aggregation: WHERE business_id = $1 AND created_at >= $2 AND < $3
 CREATE INDEX idx_usage_logs_business_created_at
     ON usage_logs(business_id, created_at DESC);
 

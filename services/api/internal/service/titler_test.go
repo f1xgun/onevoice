@@ -292,7 +292,7 @@ func TestGenerateAndSave_PreRedact(t *testing.T) {
 	}
 }
 
-// --- Phase D2: locale-aware title prompt ---
+// --- locale-aware title prompt ---
 
 // TestGenerateAndSave_EnglishLocale_UsesEnglishPrompt: when the ctx carries
 // language.English, both the system instruction and the user-template
@@ -366,10 +366,9 @@ func TestGenerateAndSave_RussianLocale_KeepsRussianPrompt(t *testing.T) {
 	}
 }
 
-// TestTitler_PassesBusinessIDToLLM pins LLMC-05 for the titler path: the
-// businessID parameter MUST be parsed into ChatRequest.BusinessID so the
-// resulting cost row attributes to the conversation's business (user
-// decision Q#5, Plan 25a-05).
+// TestTitler_PassesBusinessIDToLLM pins business-attribution for the titler
+// path: the businessID parameter MUST be parsed into ChatRequest.BusinessID
+// so the resulting cost row attributes to the conversation's business.
 func TestTitler_PassesBusinessIDToLLM(t *testing.T) {
 	captureLogs(t)
 
@@ -384,14 +383,14 @@ func TestTitler_PassesBusinessIDToLLM(t *testing.T) {
 		t.Fatal("router.Chat was not invoked")
 	}
 	if got := router.lastReq.BusinessID.String(); got != bizID {
-		t.Fatalf("ChatRequest.BusinessID = %q, want %q (Plan 25a-05 LLMC-05)", got, bizID)
+		t.Fatalf("ChatRequest.BusinessID = %q, want %q", got, bizID)
 	}
 }
 
-// TestTitler_MalformedBusinessID_DegradesToNil — Pitfall §3 fail-closed:
-// a non-UUID businessID (e.g. legacy "b1" sentinel from chat_proxy tests)
-// MUST land as uuid.Nil so the router skips billing rather than write a
-// corrupt row. The titler still runs the full pipeline (no early return).
+// TestTitler_MalformedBusinessID_DegradesToNil — fail-closed: a non-UUID
+// businessID (e.g. legacy "b1" sentinel from chat_proxy tests) MUST land as
+// uuid.Nil so the router skips billing rather than write a corrupt row. The
+// titler still runs the full pipeline (no early return).
 func TestTitler_MalformedBusinessID_DegradesToNil(t *testing.T) {
 	captureLogs(t)
 

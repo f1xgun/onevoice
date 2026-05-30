@@ -125,9 +125,9 @@ func TestConfig_DraftReplyModel_PropagatesEmptyWhenLLMModelMissing(t *testing.T)
 }
 
 // TestConfig_APIInternalURL_DefaultHTTPS pins the default `https://api:8443`
-// for the orchestrator → api billing hop. mTLS substrate from 25a-01 requires
-// HTTPS on this endpoint; a plain-HTTP default would silently bypass mTLS at
-// startup and surface only when the first billing POST hit a TLS-only listener.
+// for the orchestrator → api billing hop. The mTLS substrate requires HTTPS
+// on this endpoint; a plain-HTTP default would silently bypass mTLS at startup
+// and only surface when the first billing POST hit a TLS-only listener.
 func TestConfig_APIInternalURL_DefaultHTTPS(t *testing.T) {
 	t.Setenv("LLM_MODEL", "gpt-4o-mini")
 	t.Setenv("API_INTERNAL_URL", "") // explicitly clear
@@ -135,7 +135,7 @@ func TestConfig_APIInternalURL_DefaultHTTPS(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 	assert.Equal(t, "https://api:8443", cfg.APIInternalURL,
-		"default must be HTTPS — Plan 25a-01 mTLS listener requires it")
+		"default must be HTTPS — the mTLS listener requires it")
 }
 
 // TestConfig_APIInternalURL_RespectsEnv proves operator override wins.

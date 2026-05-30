@@ -15,9 +15,9 @@ import (
 type ctxKeyServiceIdentity struct{}
 
 // RequireServiceIdentity gates internal :8443 routes by the client cert's
-// CommonName. The mTLS substrate (plan 25a-01) already verifies the cert
-// chain at the listener; this middleware applies the per-route allowlist on
-// top of that.
+// CommonName. The mTLS substrate (pkg/mtls) already verifies the cert chain
+// at the listener; this middleware applies the per-route allowlist on top
+// of that.
 //
 // Behavior:
 //   - If a peer cert is present, the Subject.CommonName must appear in

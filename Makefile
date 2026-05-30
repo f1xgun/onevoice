@@ -175,7 +175,7 @@ migrate-down: ## Rollback migrations
 	@echo "Rolling back migrations..."
 	@migrate -path $(MIGRATION_PATH) -database "postgres://postgres:postgres@localhost:5432/onevoice?sslmode=disable" down 1
 
-verify-rbac-backfill: ## Phase 1 v2.0 RBAC: assert backfill produced no orphans/duplicates/missing-owners (exit non-zero on any violation)
+verify-rbac-backfill: ## v2.0 RBAC: assert backfill produced no orphans/duplicates/missing-owners (exit non-zero on any violation)
 	@psql "postgres://postgres:postgres@localhost:5432/onevoice?sslmode=disable" \
 	    -v ON_ERROR_STOP=1 \
 	    -f scripts/verify-rbac-backfill.sql
@@ -261,8 +261,8 @@ certs: ## Generate mTLS certificates for internal communication
 	@rm -f certs/ca.srl
 	@echo "Certificates generated in certs/"
 
-# mTLS certs — Phase 25a-01. The dev CA + per-service leaf certs that the
-# API internal :8443 listener and tokenclient mTLS use. Idempotent: running
+# mTLS certs: dev CA + per-service leaf certs that the API internal :8443
+# listener and tokenclient mTLS use. Idempotent: running
 # again with an existing infra/mtls/certs/ca.crt is a no-op.
 mtls-certs: ## Generate dev CA + per-service leaf certs into infra/mtls/certs/ (idempotent)
 	@bash scripts/gen-mtls-certs.sh

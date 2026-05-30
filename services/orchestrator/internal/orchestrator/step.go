@@ -116,10 +116,10 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		// stamps cache_control on it; Block 2 (per-business) does not — keeps
 		// the cache prefix byte-stable across businesses.
 		//
-		// BusinessID + ConversationID populate the billing-attribution fields
-		// (Plan 25a-05). parseBizID degrades a malformed/empty value to
-		// uuid.Nil so the router's nil-guard skips billing instead of writing
-		// a corrupt row (Pitfall §3 fail-closed posture).
+		// BusinessID + ConversationID populate the billing-attribution fields.
+		// parseBizID degrades a malformed/empty value to uuid.Nil so the
+		// router's nil-guard skips billing instead of writing a corrupt row
+		// (fail-closed posture).
 		llmReq := llm.ChatRequest{
 			UserID:         state.UserUUID,
 			BusinessID:     parseBizID(state.BusinessID),
@@ -268,11 +268,10 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 // from the chat_proxy → stream.go → orchestrator handler request body chain)
 // into a uuid.UUID for ChatRequest.BusinessID. Empty and malformed values
 // degrade to uuid.Nil so the router's nil-guard skips the billing POST
-// rather than emit a corrupt row (Pitfall §3 fail-closed). A warn log fires
-// on malformed input so operators can trace upstream corruption.
+// rather than emit a corrupt row (fail-closed). A warn log fires on
+// malformed input so operators can trace upstream corruption.
 //
 // uuid.MustParse would panic — unacceptable on a hot-path llm.Chat call.
-// Plan 25a-05.
 func parseBizID(s string) uuid.UUID {
 	if s == "" {
 		return uuid.Nil
