@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -56,12 +57,40 @@ func (p *OpenAIProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, error
 	return result, nil
 }
 
-// Chat sends a request and returns the complete response
-func (p *OpenAIProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
-	start := time.Now()
+// concatSystemBlocks joins llm.SystemBlock.Text values with "\n\n" — the
+// OpenAI-family concatenation convention for the SystemBlocks channel.
+// CacheBoundary is silently ignored: OpenAI / OpenRouter / SelfHosted do not
+// expose a comparable prompt-cache surface.
+func concatSystemBlocks(blocks []llm.SystemBlock) string {
+	if len(blocks) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		parts = append(parts, b.Text)
+	}
+	return strings.Join(parts, "\n\n")
+}
 
-	msgs := make([]openai.ChatCompletionMessage, len(req.Messages))
-	for i, m := range req.Messages {
+// projectOpenAIMessages renders the openai-compatible message slice for both
+// Chat and ChatStream. When req.SystemBlocks is non-empty, a single leading
+// role:"system" message carries the concatenated blocks; the caller-supplied
+// Messages slice is assumed system-free. When SystemBlocks is empty, every
+// Messages entry (including any role:"system") is forwarded verbatim — this is
+// the back-compat fallback for non-migrated callers.
+func projectOpenAIMessages(req llm.ChatRequest) []openai.ChatCompletionMessage {
+	estimated := len(req.Messages)
+	if len(req.SystemBlocks) > 0 {
+		estimated++
+	}
+	msgs := make([]openai.ChatCompletionMessage, 0, estimated)
+	if len(req.SystemBlocks) > 0 {
+		msgs = append(msgs, openai.ChatCompletionMessage{
+			Role:    "system",
+			Content: concatSystemBlocks(req.SystemBlocks),
+		})
+	}
+	for _, m := range req.Messages {
 		msg := openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
 		if m.ToolCallID != "" {
 			msg.ToolCallID = m.ToolCallID
@@ -80,8 +109,16 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.Ch
 			}
 			msg.ToolCalls = oaiToolCalls
 		}
-		msgs[i] = msg
+		msgs = append(msgs, msg)
 	}
+	return msgs
+}
+
+// Chat sends a request and returns the complete response
+func (p *OpenAIProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	start := time.Now()
+
+	msgs := projectOpenAIMessages(req)
 
 	oaiReq := openai.ChatCompletionRequest{
 		Model:       req.Model,
@@ -145,28 +182,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.Ch
 
 // ChatStream returns a channel of incremental responses
 func (p *OpenAIProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
-	msgs := make([]openai.ChatCompletionMessage, len(req.Messages))
-	for i, m := range req.Messages {
-		msg := openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
-		if m.ToolCallID != "" {
-			msg.ToolCallID = m.ToolCallID
-		}
-		if len(m.ToolCalls) > 0 {
-			oaiToolCalls := make([]openai.ToolCall, len(m.ToolCalls))
-			for j, tc := range m.ToolCalls {
-				oaiToolCalls[j] = openai.ToolCall{
-					ID:   tc.ID,
-					Type: openai.ToolType(tc.Type),
-					Function: openai.FunctionCall{
-						Name:      tc.Function.Name,
-						Arguments: tc.Function.Arguments,
-					},
-				}
-			}
-			msg.ToolCalls = oaiToolCalls
-		}
-		msgs[i] = msg
-	}
+	msgs := projectOpenAIMessages(req)
 
 	oaiReq := openai.ChatCompletionRequest{
 		Model:       req.Model,

@@ -83,6 +83,47 @@ func TestLoad_SelfHostedEndpoints_MissingModel_Skipped(t *testing.T) {
 	assert.Empty(t, cfg.SelfHostedEndpoints)
 }
 
+// TestConfig_DraftReplyModel_DefaultsToLLMModel pins the graceful-fallback
+// contract for DRAFT_REPLY_MODEL: when the operator only sets LLM_MODEL,
+// the draft_reply handler MUST route at the main chat model rather than
+// erroring or running with an empty model string.
+func TestConfig_DraftReplyModel_DefaultsToLLMModel(t *testing.T) {
+	t.Setenv("LLM_MODEL", "x")
+	t.Setenv("DRAFT_REPLY_MODEL", "")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "x", cfg.DraftReplyModel,
+		"DRAFT_REPLY_MODEL unset must fall back to LLM_MODEL — mirrors the TitlerModel pattern in services/api/internal/config")
+}
+
+// TestConfig_DraftReplyModel_RespectsEnv proves an explicit DRAFT_REPLY_MODEL
+// overrides LLM_MODEL — the whole point of the two-env-var split (route
+// draft_reply at cheap-tier independently of the main chat model).
+func TestConfig_DraftReplyModel_RespectsEnv(t *testing.T) {
+	t.Setenv("LLM_MODEL", "x")
+	t.Setenv("DRAFT_REPLY_MODEL", "y")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "y", cfg.DraftReplyModel,
+		"explicit DRAFT_REPLY_MODEL must win over LLM_MODEL fallback")
+}
+
+// TestConfig_DraftReplyModel_PropagatesEmptyWhenLLMModelMissing asserts that
+// when LLM_MODEL itself is missing Load returns an error (matching the
+// existing required-field behavior at TestLoad_MissingLLMModel) — so
+// DraftReplyModel never needs to handle the empty-LLM-Model case at
+// runtime; the boot fails fast first.
+func TestConfig_DraftReplyModel_PropagatesEmptyWhenLLMModelMissing(t *testing.T) {
+	t.Setenv("LLM_MODEL", "")
+	t.Setenv("DRAFT_REPLY_MODEL", "")
+
+	_, err := config.Load()
+	assert.ErrorContains(t, err, "LLM_MODEL",
+		"missing LLM_MODEL must still error — DraftReplyModel inherits the same fail-fast")
+}
+
 func TestLoad_SelfHostedEndpoints_StopsAtGap(t *testing.T) {
 	t.Setenv("LLM_MODEL", "gpt-4o-mini")
 	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")

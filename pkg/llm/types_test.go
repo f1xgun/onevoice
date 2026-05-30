@@ -117,6 +117,35 @@ func TestTokenUsage_Fields(t *testing.T) {
 	})
 }
 
+func TestTokenUsage_CacheFieldsJSONOmitempty(t *testing.T) {
+	t.Run("zero cache fields are omitted from JSON", func(t *testing.T) {
+		usage := TokenUsage{InputTokens: 5}
+		data, err := json.Marshal(usage)
+		require.NoError(t, err)
+		s := string(data)
+		assert.NotContains(t, s, "cache_read_tokens")
+		assert.NotContains(t, s, "cache_creation_tokens")
+	})
+
+	t.Run("populated cache fields appear in JSON", func(t *testing.T) {
+		usage := TokenUsage{
+			InputTokens:         5,
+			CacheReadTokens:     42,
+			CacheCreationTokens: 17,
+		}
+		data, err := json.Marshal(usage)
+		require.NoError(t, err)
+		s := string(data)
+		assert.Contains(t, s, `"cache_read_tokens":42`)
+		assert.Contains(t, s, `"cache_creation_tokens":17`)
+
+		var decoded TokenUsage
+		require.NoError(t, json.Unmarshal(data, &decoded))
+		assert.Equal(t, 42, decoded.CacheReadTokens)
+		assert.Equal(t, 17, decoded.CacheCreationTokens)
+	})
+}
+
 func TestStrategy_Values(t *testing.T) {
 	tests := []struct {
 		name     string
