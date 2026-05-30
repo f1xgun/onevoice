@@ -16,17 +16,23 @@ import (
 )
 
 // blockOneRuSHA256 is the locked sha256 of the Russian Block 1 (platform-wide
-// system prompt prefix) as of Plan 24-02. If this hash changes, Anthropic's
-// prompt-cache prefix INVALIDATES on the next deploy and every business pays
-// full input cost on its first turn — so the change MUST be deliberate. To
-// rotate the hash: re-run TestSystemPromptHash_Stability_LockedHash with -v,
-// copy the printed sha256 into this constant, and document the prompt change
-// in the PR description.
-const blockOneRuSHA256 = "7a90ed758fe0d3e25b00d72f661bdf535a9c31f45af6c26f6111c1364b79f07d"
+// system prompt prefix). Rotated in Plan 24-03 when Block 1 was padded from
+// ~120 tokens to ~1957 estimated tokens to clear Anthropic Sonnet 4.6's
+// 1024-token cache minimum (without padding the cache would not engage and
+// Phase 24's "≥60% input cost reduction on turn 2+" success criterion could
+// not be met). If this hash changes, Anthropic's prompt-cache prefix
+// INVALIDATES on the next deploy and every business pays full input cost on
+// its first turn — so the change MUST be deliberate. To rotate the hash:
+// re-run TestSystemPromptHash_Stability_LockedHash with -v, copy the printed
+// sha256 into this constant, and document the prompt change in the PR
+// description.
+const blockOneRuSHA256 = "23d85b9b418a145e0f1dc913dfd3756778ea1cd09558fe602db0511828366a8e"
 
-// blockOneEnSHA256 is the locked sha256 of the English Block 1. See
-// blockOneRuSHA256 doc comment for rotation procedure.
-const blockOneEnSHA256 = "e361dc62966f822eb943286269a1093adad38451f8f497f046c57e856f13fbb5"
+// blockOneEnSHA256 is the locked sha256 of the English Block 1. Rotated in
+// Plan 24-03 alongside the RU hash (Block 1 padded to ~1189 estimated tokens,
+// safely above Sonnet 4.6's 1024-token cache floor). See blockOneRuSHA256 doc
+// comment for rotation procedure.
+const blockOneEnSHA256 = "55cec729cbf2888143b4e14c32dcab38facad9b8a95af93a16accb4b923ce9bd"
 
 // TestSystemPromptHash_Stability proves Block 1 (platform-wide) is BYTE-
 // IDENTICAL across BusinessContext variations for the same locale — this is
