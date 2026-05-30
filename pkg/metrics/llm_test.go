@@ -87,7 +87,7 @@ func TestRecordLLMRequest_ErrorStatus(t *testing.T) {
 	}
 }
 
-// counterValue returns the current value of a counter labelled by model only.
+// counterValue returns the current value of a counter labeled by model only.
 // Returns 0 if the metric family or sample is missing.
 func counterValue(t *testing.T, name, model string) float64 {
 	t.Helper()

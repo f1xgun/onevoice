@@ -7,10 +7,21 @@ const (
 	claudeOpus4_7ContextLength   = 1_000_000
 )
 
+// Per-model MaxTokens defaults (max output tokens).
+//
+// Anthropic returns HTTP 400 if `max_tokens` is missing, so we always send a
+// non-zero value (see Phase 24 RESEARCH §Pitfall #2). 8192 / 4096 are well below
+// each model's per-model output cap (64k–128k) — conservative defaults that
+// keep cost predictable until Phase 25 introduces a per-conversation cap.
+const (
+	maxTokensSonnetDefault  int64 = 8192
+	maxTokensHaikuDefault   int64 = 4096
+	maxTokensOpusDefault    int64 = 8192
+	maxTokensUnknownDefault int64 = 4096
+)
+
 // defaultMaxTokensByModel resolves `MaxTokens` defaults that we send to the
-// Anthropic API when the caller leaves `ChatRequest.MaxTokens=0`. Anthropic
-// returns HTTP 400 if `max_tokens` is missing, so this fallback is mandatory
-// for every Anthropic call (see Phase 24 RESEARCH §Pitfall #2).
+// Anthropic API when the caller leaves `ChatRequest.MaxTokens=0`.
 //
 // PRICING NOTE: as of 2026-05-30 per platform.claude.com/docs/en/about-claude/pricing
 //   - Sonnet 4.6 ($3 / $15 per MTok)
@@ -22,21 +33,22 @@ const (
 // Drop the literal usage at every call site when the SDK ships consts. See
 // Phase 24 RESEARCH §Pitfall #4.
 var defaultMaxTokensByModel = map[string]int64{
-	"claude-sonnet-4-6":           8192,
-	"claude-haiku-4-5":            4096,
-	"claude-haiku-4-5-20251001":   4096,
-	"claude-opus-4-7":             8192,
-	"claude-opus-4-6":             8192,
-	"claude-sonnet-4-5":           8192,
-	"claude-sonnet-4-5-20250929":  8192,
+	"claude-sonnet-4-6":          maxTokensSonnetDefault,
+	"claude-haiku-4-5":           maxTokensHaikuDefault,
+	"claude-haiku-4-5-20251001":  maxTokensHaikuDefault,
+	"claude-opus-4-7":            maxTokensOpusDefault,
+	"claude-opus-4-6":            maxTokensOpusDefault,
+	"claude-sonnet-4-5":          maxTokensSonnetDefault,
+	"claude-sonnet-4-5-20250929": maxTokensSonnetDefault,
 }
 
 // defaultMaxTokensFor returns the MaxTokens default for the given model id.
-// Unknown models fall back to 4096 — a safe lower bound that still produces
-// usable agent-loop responses for any current Anthropic model.
+// Unknown models fall back to `maxTokensUnknownDefault` — a safe lower bound
+// that still produces usable agent-loop responses for any current Anthropic
+// model.
 func defaultMaxTokensFor(model string) int64 {
 	if v, ok := defaultMaxTokensByModel[model]; ok {
 		return v
 	}
-	return 4096
+	return maxTokensUnknownDefault
 }

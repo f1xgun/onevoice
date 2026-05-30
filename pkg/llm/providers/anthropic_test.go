@@ -34,7 +34,7 @@ func TestAnthropicProvider_Chat_Live(t *testing.T) {
 
 	resp, err := p.Chat(context.Background(), llm.ChatRequest{
 		UserID:    uuid.New(),
-		Model:     "claude-3-haiku-20240307",
+		Model:     "claude-haiku-4-5",
 		Messages:  []llm.Message{{Role: "user", Content: "Say hi"}},
 		MaxTokens: 10,
 	})
