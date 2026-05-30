@@ -26,7 +26,7 @@ import (
 // re-run TestSystemPromptHash_Stability_LockedHash with -v, copy the printed
 // sha256 into this constant, and document the prompt change in the PR
 // description.
-const blockOneRuSHA256 = "23d85b9b418a145e0f1dc913dfd3756778ea1cd09558fe602db0511828366a8e"
+const blockOneRuSHA256 = "8b9b193fcc0dd9addcfbd6fb136bdb4dcda11592a3b6b7e7819626ecff379acf"
 
 // blockOneEnSHA256 is the locked sha256 of the English Block 1. Rotated in
 // Plan 24-03 alongside the RU hash (Block 1 padded to ~1189 estimated tokens,
