@@ -207,7 +207,7 @@ func (c *Client) GetDailySpend(ctx context.Context, businessID uuid.UUID, day ti
 	dayStr := day.UTC().Format("2006-01-02")
 	url := fmt.Sprintf("%s%s?business_id=%s&date=%s", c.baseURL, dailySpendPath, businessID, dayStr)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return 0, fmt.Errorf("billingclient: build request: %w", err)
 	}
