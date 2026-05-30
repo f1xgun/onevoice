@@ -151,7 +151,7 @@ func mapStopReason(sr anthropic.StopReason) string {
 // Anthropic's split (system blocks + message slice) representation.
 //
 // Routing rules:
-//   - req.SystemBlocks (Plan 24-02) → preferred channel. When non-empty, every
+//   - req.SystemBlocks → preferred channel. When non-empty, every
 //     SystemBlock is mapped to a TextBlockParam (Text/Type only — cache_control
 //     stamping is the caller's job, see Chat() below). req.Messages is assumed
 //     system-free in this branch; any stray role:"system" entry is logged via
@@ -238,7 +238,7 @@ func buildAnthropicMessagesV2(req llm.ChatRequest) ([]anthropic.TextBlockParam, 
 //     split: Block 1 (CacheBoundary=true) caches the platform prefix, Block 2
 //     (per-business) does not.
 //   - When req.SystemBlocks is empty: legacy fallback — stamp the LAST
-//     scrubbed block (Plan 24-01 behavior preserved for non-migrated callers).
+//     scrubbed block (legacy behavior preserved for non-migrated callers).
 func stampSystemCacheControl(req llm.ChatRequest, systemBlocks []anthropic.TextBlockParam) {
 	if len(systemBlocks) == 0 {
 		return
@@ -259,7 +259,7 @@ func stampSystemCacheControl(req llm.ChatRequest, systemBlocks []anthropic.TextB
 		}
 		return
 	}
-	// Legacy scrub path — stamp the last block (Plan 24-01).
+	// Legacy scrub path — stamp the last block.
 	systemBlocks[len(systemBlocks)-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
 }
 
@@ -268,8 +268,8 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm
 	start := time.Now()
 	systemBlocks, msgs := buildAnthropicMessagesV2(req)
 
-	// LLMQ-02 / Plan 24-02: stamp cache_control on the LAST CacheBoundary=true
-	// system block (or the last legacy-scrub block when SystemBlocks is empty).
+	// Stamp cache_control on the LAST CacheBoundary=true system block (or the
+	// last legacy-scrub block when SystemBlocks is empty).
 	stampSystemCacheControl(req, systemBlocks)
 
 	maxTokens := int64(req.MaxTokens)
@@ -314,8 +314,8 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm
 		}
 	}
 
-	// LLMQ-02 metric emission. Safe even on cache misses — the helper skips
-	// zero-valued counters so we don't pollute Grafana with empty time series.
+	// Prompt-cache metric emission. Safe even on cache misses — the helper
+	// skips zero-valued counters so we don't pollute Grafana with empty series.
 	metrics.RecordLLMCacheUsage(
 		req.Model,
 		int(resp.Usage.CacheReadInputTokens),
@@ -341,11 +341,11 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm
 
 // ChatStream returns a channel of incremental responses.
 //
-// MaxTokens defaulting (24.4) is applied identically to Chat. Cache control on
-// system / tools is intentionally NOT applied here — Plan 24-02 + 24-04 own the
-// streaming-cache surface (current ChatStream only handles text_delta events,
-// not tool_use deltas, so streaming a turn that ends in tool_use silently
-// drops the tool call — see RESEARCH §Pitfall #5).
+// MaxTokens defaulting is applied identically to Chat. Cache control on
+// system / tools is intentionally NOT applied here — the streaming-cache
+// surface lives elsewhere (current ChatStream only handles text_delta events,
+// not tool_use deltas, so streaming a turn that ends in tool_use would
+// silently drop the tool call).
 func (p *AnthropicProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
 	systemBlocks, msgs := buildAnthropicMessagesV2(req)
 

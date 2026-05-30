@@ -6,11 +6,11 @@ import "strings"
 //
 // The orchestrator's agent-loop builds a ChatRequest without knowing which
 // provider will serve it (the router picks based on registered API keys).
-// Phase 24 introduced Anthropic-side defaults in pkg/llm/providers, but those
-// only fire on the direct Anthropic path — when traffic routes through
-// OpenRouter the request reaches the OpenRouter API with no max_tokens cap,
-// and OpenRouter then asks the model for its full output window (e.g.
-// 65_536 tokens for Sonnet 4.6) which trips paid-credit limits.
+// The Anthropic-side defaults in pkg/llm/providers only fire on the direct
+// Anthropic path — when traffic routes through OpenRouter the request reaches
+// the OpenRouter API with no max_tokens cap, and OpenRouter then asks the
+// model for its full output window (e.g. 65_536 tokens for Sonnet 4.6) which
+// trips paid-credit limits.
 //
 // This map lives at the pkg/llm boundary so step.go (and any other caller)
 // can stamp a sensible cap regardless of which provider will execute the

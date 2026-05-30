@@ -17,8 +17,7 @@ import (
 // Locale steers BOTH the section labels ("## Бизнес" vs "## Business") AND
 // the language-directive line at the end of the rules block ("Общайся на
 // русском языке" vs "Respond in English"). The directive is load-bearing —
-// it is the single string that flips the LLM's output language. Phase D of
-// `.planning/i18n-readiness/PLAN.md` documents the rationale.
+// it is the single string that flips the LLM's output language.
 //
 // Locale may be any language.Tag, including the zero Tag — Build normalizes
 // it via i18n.NormalizeToSupported before any internal helper sees it, so
@@ -73,7 +72,7 @@ type ProjectContext struct {
 // Build is retained as a back-compat wrapper over BuildSplit for callers that
 // still want a single concatenated system message (titler, draft_reply). New
 // callers should prefer BuildSplit + llm.ChatRequest.SystemBlocks for the
-// two-block Anthropic prompt cache split (Plan 24-02).
+// two-block Anthropic prompt cache split.
 func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []llm.Message {
 	platform, business, msgs := BuildSplit(ctx, proj, history)
 	system := platform + "\n" + business
@@ -105,12 +104,11 @@ func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []l
 // Block 1 byte-stability across BusinessContext variations is guarded by
 // TestSystemPromptHash_Stability (builder_stability_test.go).
 //
-// Reordering note (Plan 24-02): the legacy single-block builder emitted
-// preamble → Business → Tone → Now → Integrations → Rules. Splitting it
-// reorders to preamble → Rules → Business → Tone → Now → Integrations
-// because the cache prefix MUST be platform-only. RESEARCH §Pattern 2:
-// rules-first ordering is in fact preferred — platform rules lead the prompt
-// and carry the cache_control marker.
+// Reordering note: the legacy single-block builder emitted preamble → Business
+// → Tone → Now → Integrations → Rules. Splitting it reorders to preamble →
+// Rules → Business → Tone → Now → Integrations because the cache prefix MUST
+// be platform-only — rules-first ordering is in fact preferred: platform
+// rules lead the prompt and carry the cache_control marker.
 func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message) (platform, business string, msgs []llm.Message) {
 	tag := i18n.NormalizeToSupported(ctx.Locale)
 	platform = buildPlatformBlock(tag)
@@ -134,15 +132,14 @@ func buildPlatformBlock(tag language.Tag) string {
 }
 
 // buildPlatformBlockRu is the Russian platform prefix. The trailing language
-// directive "Общайся на русском языке" is load-bearing (see Phase D of
-// .planning/i18n-readiness/PLAN.md) and MUST remain at the end of Block 1
-// so it appears just before the per-business business block in the
-// concatenated prompt.
+// directive "Общайся на русском языке" is load-bearing and MUST remain at the
+// end of Block 1 so it appears just before the per-business business block in
+// the concatenated prompt.
 //
-// Block 1 size invariant (Plan 24-03): this block is padded to comfortably
-// exceed Anthropic Sonnet 4.6's 1024-token cache minimum (≥ ~1100 tokens
-// per locale). Tests TestSystemPromptHash_Stability_LockedHash pin the
-// per-locale sha256, so any rewording requires hash rotation.
+// Block 1 size invariant: this block is padded to comfortably exceed Anthropic
+// Sonnet 4.6's 1024-token cache minimum (≥ ~1100 tokens per locale). Tests
+// TestSystemPromptHash_Stability_LockedHash pin the per-locale sha256, so any
+// rewording requires hash rotation.
 func buildPlatformBlockRu() string {
 	var sb strings.Builder
 	sb.WriteString("Ты — AI-ассистент для управления цифровым присутствием бизнеса в OneVoice — многоагентной платформе, объединяющей Telegram, ВКонтакте и Яндекс.Бизнес под единым диалоговым интерфейсом. Ты работаешь от имени владельца бизнеса: каждое твоё действие напрямую отражается на публичных страницах, каналах и отзывах. Поэтому действуй осознанно, лаконично и без лишней самопрезентации.\n")
@@ -193,7 +190,7 @@ func buildPlatformBlockRu() string {
 
 // buildPlatformBlockEn is the English platform prefix. See buildPlatformBlockRu
 // for the load-bearing-directive invariant and the Block 1 size invariant
-// (Plan 24-03 padding to ≥ 1100 tokens for Anthropic cache compatibility).
+// (padded to ≥ 1100 tokens for Anthropic cache compatibility).
 func buildPlatformBlockEn() string {
 	var sb strings.Builder
 	sb.WriteString("You are an AI assistant for managing a business's digital presence inside OneVoice — a multi-agent platform that unifies Telegram, VK, and Yandex.Business behind a single conversational interface. You act on behalf of the business owner: every action you take is reflected on public channels, profiles, and reviews. Behave deliberately, stay concise, and skip self-promotion.\n")

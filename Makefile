@@ -138,10 +138,10 @@ check-legal-versions-parity: ## Verify pkg/legalconfig and frontend/lib/legal ve
 # comment block).
 check-legal-versions: check-legal-versions-parity ## Alias for check-legal-versions-parity
 
-# Phase 24 LLM default-model lint guard. Asserts .env.example +
-# docker-compose.yml carry the Anthropic Sonnet 4.6 / Haiku 4.5 defaults
-# established by Plan 24-03 so a future PR cannot silently revert them.
-check-llm-defaults: ## Verify Phase 24 LLM_MODEL / TITLER_MODEL / DRAFT_REPLY_MODEL defaults
+# LLM default-model lint guard. Asserts .env.example + docker-compose.yml
+# carry the Anthropic Sonnet 4.6 / Haiku 4.5 defaults so a future PR cannot
+# silently revert them.
+check-llm-defaults: ## Verify LLM_MODEL / TITLER_MODEL / DRAFT_REPLY_MODEL defaults
 	@echo "Checking LLM default models..."
 	@bash scripts/check-llm-defaults.sh
 

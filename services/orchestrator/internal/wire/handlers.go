@@ -40,8 +40,8 @@ func Handlers(orch *orchestrator.Orchestrator, registry *toolregistry.Registry, 
 		Tools:    handler.NewInternalToolsHandler(registry),
 		ToolsAll: handler.NewInternalToolsAllHandler(registry),
 		// DraftReply routes at cfg.DraftReplyModel (defaults to cfg.LLMModel
-		// when DRAFT_REPLY_MODEL env is unset; see config.Load). Phase 24
-		// SPLIT decision — see Plan 24-03 RESEARCH §"Open Q #1".
+		// when DRAFT_REPLY_MODEL env is unset; see config.Load). Kept as its
+		// own env var so titler and drafter can be tuned independently.
 		DraftReply: handler.NewDraftReplyHandler(router, cfg.DraftReplyModel),
 	}
 }

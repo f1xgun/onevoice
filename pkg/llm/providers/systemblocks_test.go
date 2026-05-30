@@ -172,7 +172,7 @@ func TestSelfHosted_SystemBlocksConcatenated(t *testing.T) {
 // TestAnthropic_SystemBlocksPreferredOverScrub asserts that when both
 // SystemBlocks and a legacy role:"system" Messages entry are present, the
 // SystemBlocks channel wins — the role:"system" entry is treated as a wiring
-// bug rather than re-emitted (Plan 24-02 contract).
+// bug rather than re-emitted.
 func TestAnthropic_SystemBlocksPreferredOverScrub(t *testing.T) {
 	var captured []byte
 	srv := captureBodyServer(t, &captured, minimalMessageResponse("claude-haiku-4-5", "end_turn"))
@@ -208,8 +208,8 @@ func TestAnthropic_SystemBlocksPreferredOverScrub(t *testing.T) {
 
 // TestAnthropic_CacheBoundaryStampsLastFlagged proves that when multiple
 // blocks carry CacheBoundary=true, the LAST such block gets cache_control —
-// even when a non-flagged block follows. Plan 24-02 RESEARCH §Pattern 2:
-// "Anthropic stamps cache_control on the LAST block marked CacheBoundary=true."
+// even when a non-flagged block follows. Contract: cache_control is stamped on
+// the LAST block marked CacheBoundary=true.
 func TestAnthropic_CacheBoundaryStampsLastFlagged(t *testing.T) {
 	var captured []byte
 	srv := captureBodyServer(t, &captured, minimalMessageResponse("claude-haiku-4-5", "end_turn"))
@@ -241,9 +241,9 @@ func TestAnthropic_CacheBoundaryStampsLastFlagged(t *testing.T) {
 }
 
 // TestAnthropic_LegacyScrubFallback asserts that when SystemBlocks is empty,
-// the legacy role:"system" scrub path is preserved with Plan 24-01's
-// cache_control on the last scrubbed block. This is the back-compat fallback
-// for non-migrated callers (titler, draft_reply).
+// the legacy role:"system" scrub path is preserved with cache_control on the
+// last scrubbed block. This is the back-compat fallback for non-migrated
+// callers (titler, draft_reply).
 func TestAnthropic_LegacyScrubFallback(t *testing.T) {
 	var captured []byte
 	srv := captureBodyServer(t, &captured, minimalMessageResponse("claude-haiku-4-5", "end_turn"))
@@ -264,6 +264,6 @@ func TestAnthropic_LegacyScrubFallback(t *testing.T) {
 	require.Len(t, systemArr, 1)
 	assert.Equal(t, "X", systemArr[0].(map[string]interface{})["text"])
 	cc, has := systemArr[0].(map[string]interface{})["cache_control"]
-	require.True(t, has, "legacy scrub path must keep Plan 24-01 cache_control")
+	require.True(t, has, "legacy scrub path must keep cache_control on last block")
 	assert.Equal(t, "ephemeral", cc.(map[string]interface{})["type"])
 }

@@ -22,7 +22,7 @@ var (
 	// llmCacheReadTokens / llmCacheCreateTokens / llmInputTokensAfterBreakpoint
 	// expose Anthropic prompt-cache token breakdown for Grafana to compute
 	// `llm_cache_hit_ratio`. Labeled by `model` only — MUST NOT add user,
-	// business, or content labels (Phase 24 T-24-01-02 mitigation: label
+	// business, or content labels (cardinality / PII mitigation: label
 	// expansion requires PII review).
 	llmCacheReadTokens = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "llm_cache_read_tokens_total",
@@ -58,8 +58,8 @@ func RecordLLMRequest(model, provider, status string, duration time.Duration) {
 //	  + llm_cache_create_tokens_total
 //	  + llm_input_tokens_after_breakpoint_total
 //
-// SECURITY (T-24-01-03): callers MUST NOT pass raw message content here; emit
-// only integer token counts.
+// SECURITY: callers MUST NOT pass raw message content here; emit only integer
+// token counts.
 func RecordLLMCacheUsage(model string, cacheRead, cacheCreate, inputAfter int) {
 	if cacheRead > 0 {
 		llmCacheReadTokens.WithLabelValues(model).Add(float64(cacheRead))

@@ -38,12 +38,12 @@ const (
 // PendingToolCallBatch.ModelMessages at pause time and reconstructed at
 // resume time by Resume.
 type RunState struct {
-	// Messages is the conversation history forwarded to the LLM. As of Plan
-	// 24-02 it MUST NOT carry a leading role:"system" entry — system content
-	// lives on SystemPlatform / SystemBusiness and is wired into
-	// llm.ChatRequest.SystemBlocks by stepRun. Legacy Resume snapshots (pre
-	// Plan 24-02) may still contain a leading system message; Resume detects
-	// that shape and falls back to the legacy scrub path (see resume.go).
+	// Messages is the conversation history forwarded to the LLM. It MUST NOT
+	// carry a leading role:"system" entry — system content lives on
+	// SystemPlatform / SystemBusiness and is wired into
+	// llm.ChatRequest.SystemBlocks by stepRun. Legacy Resume snapshots may
+	// still contain a leading system message; Resume detects that shape and
+	// falls back to the legacy scrub path (see resume.go).
 	Messages []llm.Message
 
 	// SystemPlatform is Block 1 of the two-block system prompt — the
@@ -111,10 +111,10 @@ type RunState struct {
 //nolint:unparam // StepOutcome consumed by Resume — see resume.go.
 func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- Event) (StepOutcome, string, error) {
 	for state.Iter < o.options.MaxIterations {
-		// 1. Call the LLM. Plan 24-02: SystemBlocks is the canonical channel
-		// for system content. Block 1 (platform) carries CacheBoundary=true so
-		// Anthropic stamps cache_control on it; Block 2 (per-business) does
-		// not — keeps the cache prefix byte-stable across businesses.
+		// 1. Call the LLM. SystemBlocks is the canonical channel for system
+		// content. Block 1 (platform) carries CacheBoundary=true so Anthropic
+		// stamps cache_control on it; Block 2 (per-business) does not — keeps
+		// the cache prefix byte-stable across businesses.
 		llmReq := llm.ChatRequest{
 			UserID:    state.UserUUID,
 			Model:     state.Model,
@@ -257,17 +257,17 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 	return OutcomeMaxIterations, "", nil
 }
 
-// modelMessagesSnapshotV2 is the Plan 24-02 versioned envelope that wraps the
-// pre-Phase-24 raw []llm.Message blob. Versioning lets Resume distinguish
-// post-24-02 batches (where Messages is system-free and SystemPlatform/
-// SystemBusiness travel alongside) from legacy batches (where Messages still
-// has a leading role:"system" entry and the envelope fields are absent).
+// modelMessagesSnapshotV2 is the versioned envelope that wraps the raw
+// []llm.Message blob. Versioning lets Resume distinguish v2 batches (where
+// Messages is system-free and SystemPlatform/SystemBusiness travel alongside)
+// from legacy batches (where Messages still has a leading role:"system" entry
+// and the envelope fields are absent).
 //
-// Marshaling: post-24-02 batches always emit V=2. Legacy batches written
-// pre-24-02 unmarshal as raw []llm.Message — Resume detects the JSON shape and
-// falls through to the legacy scrub path.
+// Marshaling: new batches always emit V=2. Legacy batches unmarshal as raw
+// []llm.Message — Resume detects the JSON shape and falls through to the
+// legacy scrub path.
 type modelMessagesSnapshotV2 struct {
-	V              int           `json:"v"` // 2 — Plan 24-02 envelope
+	V              int           `json:"v"` // 2 — versioned envelope
 	Messages       []llm.Message `json:"messages"`
 	SystemPlatform string        `json:"system_platform,omitempty"`
 	SystemBusiness string        `json:"system_business,omitempty"`
