@@ -1018,3 +1018,59 @@ func TestRouter_RetryOnce_ChatStreamUnchanged(t *testing.T) {
 	assert.Len(t, sel.records, 1,
 		"ChatStream must walk Pick (single candidate), not the retry list")
 }
+
+// End-to-end shape: register two real registry entries for the same model
+// (one openai, one anthropic). Drive Chat through Router. Verify the
+// successful response carries the sibling's Provider name and the
+// captured billing row attributes to the sibling.
+func TestRouter_RetryOnce_E2E_OpenAIToAnthropic(t *testing.T) {
+	const model = "anthropic/claude-sonnet-4-6"
+	openaiEntry := healthyEntry(model, "openai", 3.0, 15.0, 200)
+	anthropicEntry := healthyEntry(model, "anthropic", 3.0, 15.0, 250)
+	registry := newTestRegistry(openaiEntry, anthropicEntry)
+
+	openaiFailing := &sequenceProvider{
+		name: "openai",
+		responses: []seqResponse{
+			{nil, transientAPIError(503)},
+		},
+	}
+	anthropicWinning := &sequenceProvider{
+		name: "anthropic",
+		responses: []seqResponse{
+			{&llm.ChatResponse{
+				Content: "hello from anthropic",
+				Usage:   llm.TokenUsage{InputTokens: 250, OutputTokens: 80},
+			}, nil},
+		},
+	}
+
+	billing := &MockBillingRepository{}
+	r := llm.NewRouter(registry,
+		llm.WithProvider(openaiFailing),
+		llm.WithProvider(anthropicWinning),
+		llm.WithBilling(billing),
+	)
+
+	resp, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      model,
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "hello from anthropic", resp.Content)
+	assert.Equal(t, "anthropic", resp.Provider,
+		"successful response must attribute to the sibling that served it")
+	assert.Equal(t, 1, openaiFailing.callCount)
+	assert.Equal(t, 1, anthropicWinning.callCount)
+
+	assert.Eventually(t, func() bool { return billing.LastLog() != nil },
+		200*time.Millisecond, 10*time.Millisecond)
+	last := billing.LastLog()
+	require.NotNil(t, last)
+	assert.Equal(t, "anthropic", last.Provider)
+	assert.Equal(t, 250, last.InputTokens)
+	assert.Equal(t, 80, last.OutputTokens)
+	assert.Equal(t, 1, billing.CallCount(),
+		"the failed openai attempt must NOT have been billed")
+}
