@@ -663,6 +663,12 @@ type e2eFakeSelector struct {
 func (f *e2eFakeSelector) Pick(_ string, _ llm.Strategy) (*llm.ModelProviderEntry, llm.Provider, error) {
 	return f.entry, f.prov, nil
 }
+func (f *e2eFakeSelector) Candidates(_ string, _ llm.Strategy) []llm.Candidate {
+	if f.entry == nil {
+		return nil
+	}
+	return []llm.Candidate{{Entry: f.entry, Provider: f.prov}}
+}
 func (f *e2eFakeSelector) Record(_ *llm.ModelProviderEntry, _ llm.Outcome) {}
 
 // TestBuildPendingBatch_PopulatesFloorAtPauseManual verifies that every
