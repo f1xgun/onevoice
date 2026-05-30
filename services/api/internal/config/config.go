@@ -382,9 +382,11 @@ func Load() (*Config, error) {
 	}
 	cfg.LocalFallbackRequestsPerHour = 2000
 	if v := os.Getenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR"); v != "" {
-		if n, perr := strconv.Atoi(v); perr == nil {
-			cfg.LocalFallbackRequestsPerHour = n
+		n, perr := strconv.Atoi(v)
+		if perr != nil {
+			return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be a positive integer, got %q: %w", v, perr)
 		}
+		cfg.LocalFallbackRequestsPerHour = n
 	}
 	if cfg.RedisDownPolicy == "local_fallback" && cfg.LocalFallbackRequestsPerHour <= 0 {
 		return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be > 0 when LLM_RATELIMIT_ON_REDIS_DOWN=local_fallback")

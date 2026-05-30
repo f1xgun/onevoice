@@ -254,6 +254,19 @@ func TestConfig_LocalFallback_DefaultRate(t *testing.T) {
 	assert.Equal(t, 2000, cfg.LocalFallbackRequestsPerHour)
 }
 
+// TestConfig_LocalFallback_InvalidIntFailsLoud — regression for WR-03.
+// Previously a non-integer env value was silently swallowed and the loader
+// kept the 2000 default. With a non-integer value the operator's typo is now
+// surfaced as a boot error instead of being coerced into the default rate.
+func TestConfig_LocalFallback_InvalidIntFailsLoud(t *testing.T) {
+	t.Setenv("LLM_RATELIMIT_ON_REDIS_DOWN", "local_fallback")
+	t.Setenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR", "foo")
+	_, err := requireLoad(t)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR")
+	assert.Contains(t, err.Error(), `"foo"`)
+}
+
 func TestConfig_LocalFallbackWindow_Default(t *testing.T) {
 	cfg, err := requireLoad(t)
 	require.NoError(t, err)
