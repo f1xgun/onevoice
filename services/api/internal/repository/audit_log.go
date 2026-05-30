@@ -1,7 +1,7 @@
 // Package repository — audit_log.go
 //
 // auditLogRepository implements domain.AuditLogRepository (Plan
-// 19-01 interface declaration; this file is the 
+// 19-01 interface declaration; this file is the
 // Postgres implementation). Mirrors invitation.go for the squirrel + pgx/v5
 // + pgxPool-interface pattern so unit tests can inject pgxmock.PgxPoolIface
 // without touching production wiring.
@@ -297,7 +297,7 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 
 // DeleteOlderThan removes every audit_logs row with created_at strictly
 // older than the supplied cutoff and returns the affected row count for
-// observability (audit_logs_retention_deleted_total counter, 
+// observability (audit_logs_retention_deleted_total counter,
 // wire.sweep). The retention sweep computes cutoff = now - 365d once
 // per 24h tick under pg_try_advisory_lock so concurrent sweeps across
 // replicas can't double-delete. A plain DELETE (no LIMIT, no batching) is

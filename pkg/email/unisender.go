@@ -73,7 +73,7 @@ func NewUnisenderSender(cfg UnisenderConfig) (*UnisenderSender, error) {
 	return &UnisenderSender{cfg: cfg, client: client}, nil
 }
 
-// unisenderRequest mirrors the exact JSON the API accepts. See 
+// unisenderRequest mirrors the exact JSON the API accepts. See
 // §1 and the Unisender Go endpoint reference. NOTE: fields are NOT
 // tagged with `omitempty` — Unisender is permissive about empty strings
 // but rejects unexpected shapes; explicit is safer.

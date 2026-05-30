@@ -26,7 +26,7 @@ type Repos struct {
 	AuditLog           domain.AuditLogRepository
 
 	// email_outbox repository. Concrete pointer (not a
-	// domain interface) because the worker and downstream 
+	// domain interface) because the worker and downstream
 	// services depend on the methods directly — there is no need for
 	// the indirection.
 	EmailOutbox *repository.EmailOutboxRepository

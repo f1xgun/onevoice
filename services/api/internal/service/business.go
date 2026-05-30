@@ -47,7 +47,7 @@ type BusinessService interface {
 	// matches Business.ToolApprovals contract.
 	//
 	// Caller is expected to have passed `authz.Can(ctx, PermBusinessRead)` at
-	// the handler layer; the service is a thin data wrapper since 
+	// the handler layer; the service is a thin data wrapper since
 	// (CLEAN-01) removed the legacy b.UserID != actor ownership check.
 	GetToolApprovals(ctx context.Context, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
 	// UpdateToolApprovals replaces the businesses.settings.tool_approvals
