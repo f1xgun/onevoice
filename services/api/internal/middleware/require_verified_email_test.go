@@ -179,7 +179,7 @@ func TestRequireVerifiedEmail_NoUserIDPassesThrough(t *testing.T) {
 }
 
 // TestRequireVerifiedEmail_UserNotFoundReturns401 covers the post-deletion
-// race (Phase 21-04 hard-deletes the user mid-flight).
+// race (hard-deletes the user mid-flight).
 func TestRequireVerifiedEmail_UserNotFoundReturns401(t *testing.T) {
 	uid := uuid.New()
 	users := &fakeUserLookup{err: domain.ErrUserNotFound}

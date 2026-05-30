@@ -13,7 +13,7 @@ import (
 )
 
 // Entry is the value passed to Logger.Log. Details is pre-marshaled JSON so
-// the typed builders own the marshaling step (D-10: no map[string]any).
+// the typed builders own the marshaling step (no map[string]any).
 type Entry struct {
 	Action     string
 	Resource   string
@@ -23,7 +23,7 @@ type Entry struct {
 }
 
 // Logger is the public audit-write surface. The single Log method is
-// intentionally non-blocking and non-error-returning (D-05 fire-and-forget).
+// intentionally non-blocking and non-error-returning (fire-and-forget).
 //
 // Callers do not need to handle errors — terminal failures (3 retries
 // exhausted) increment audit_log_write_failures_total and log via slog.
@@ -34,7 +34,7 @@ type Logger interface {
 // UserResolver returns the email-at-event for a given userID, or "" + error
 // if the user cannot be resolved (e.g. deleted post-event). The audit
 // logger calls this BEFORE the INSERT so the row survives the user being
-// hard-deleted later (Phase 21 ACCT-06).
+// hard-deleted later.
 //
 // Defined in this package (not domain) to avoid importing the API
 // repository layer into pkg/audit. Production wiring (wire/services.go)
@@ -54,11 +54,11 @@ func (NopUserResolver) EmailByID(context.Context, uuid.UUID) (string, error) {
 }
 
 // NewLogger returns a Logger that persists to repo asynchronously, with
-// bounded retry (D-06) and a fail-open metric increment (D-07).
+// bounded retry and a fail-open metric increment.
 //
 // Backward-compatible — uses NopUserResolver so existing call sites keep
 // working without touching user_email_at_event. Production wiring SHOULD
-// use NewLoggerWithResolver (Phase 21 ACCT-06) to populate the
+// use NewLoggerWithResolver to populate the
 // user_email_at_event column for post-delete audit retention.
 func NewLogger(repo domain.AuditLogRepository) Logger {
 	return &loggerImpl{repo: repo, resolver: NopUserResolver{}}
@@ -66,7 +66,7 @@ func NewLogger(repo domain.AuditLogRepository) Logger {
 
 // NewLoggerWithResolver returns a Logger that additionally populates
 // AuditLog.UserEmailAtEvent on every write by calling resolver.EmailByID
-// BEFORE the INSERT (Phase 21 ACCT-06). Resolver failure NEVER blocks
+// BEFORE the INSERT. Resolver failure NEVER blocks
 // the audit row — slog.Warn + empty string fallback.
 //
 // If resolver is nil, falls back to NopUserResolver (matches NewLogger
@@ -90,7 +90,7 @@ const (
 
 // Log spawns a goroutine that persists the entry asynchronously. The
 // request context is passed in for slog correlation only; the actual DB
-// write uses a detached context.Background()-derived ctx so a
+// write uses a detached context.Background-derived ctx so a
 // response-time cancellation does not abort the write (Pitfall 1).
 func (l *loggerImpl) Log(ctx context.Context, e Entry) {
 	go l.write(ctx, e)
@@ -107,10 +107,10 @@ func (l *loggerImpl) write(reqCtx context.Context, e Entry) {
 		Resource:   e.Resource,
 		Details:    e.Details,
 		// ID + CreatedAt are filled by the DB
-		// (DEFAULT gen_random_uuid() / now()).
+		// (DEFAULT gen_random_uuid / now).
 	}
 
-	// ACCT-06: snapshot email at write-time so audit_logs survives user delete.
+	// snapshot email at write-time so audit_logs survives user delete.
 	// Resolver failure must NEVER block the audit row — log and leave
 	// UserEmailAtEvent empty (the user_id FK will be NULLed on delete, so
 	// we lose identity for this single event but preserve the action history).
@@ -151,11 +151,10 @@ func (l *loggerImpl) write(reqCtx context.Context, e Entry) {
 
 // fail records a terminal failure: increments the metric + slog. NEVER
 // includes e.Details in the slog attrs — Details may contain emails / IPs
-// per D-07.
 func (l *loggerImpl) fail(reqCtx context.Context, e Entry, lastErr error) {
 	IncWriteFailure(e.Action)
 	// Use the REQUEST ctx for slog so the correlation_id stays attached.
-	// NEVER log e.Details — it may contain emails / IPs per D-07.
+	// NEVER log e.Details — it may contain emails / IPs.
 	slog.ErrorContext(reqCtx, "audit log write failed",
 		"action", e.Action,
 		"business_id", e.BusinessID,

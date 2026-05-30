@@ -100,7 +100,7 @@ describe('NavRail', () => {
     expect(screen.queryByText('+ Новый проект')).toBeNull();
   });
 
-  it('renders within a w-14 (or w-16) narrow rail container (56–64 px per D-14)', () => {
+  it('renders within a w-14 (or w-16) narrow rail container (56–64 px)', () => {
     const { container } = render(
       <Wrapper>
         <NavRail />

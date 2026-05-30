@@ -1,26 +1,26 @@
 package integration
 
-// Phase 21b (ACCT-01) — Password reset integration tests.
+// Password reset integration tests.
 //
 // Coverage matrix (per 21-02-PLAN.md Task 9 + verification gate):
-//   1. TestPasswordReset_TimingParity     — D-15: p50/p99 delta ≤ 50ms
-//                                            between known-email and
-//                                            unknown-email branches over
-//                                            100 iterations each. The
-//                                            load-bearing anti-enumeration
-//                                            check (PITFALLS §1.1).
-//   2. TestPasswordReset_HappyPath         — request → email_outbox row →
-//                                            POST confirm → login with the
-//                                            new password (200) → login with
-//                                            the old password (401).
-//   3. TestPasswordReset_TokenReuse_Defense — second confirm with the same
-//                                              token returns 400
-//                                              reset_token_invalid (atomic
-//                                              consume; PITFALLS §1.3).
-//   4. TestPasswordReset_ExpiredToken_Defense — manually-aged token (UPDATE
-//                                                expires_at = NOW() - 1m)
-//                                                rejected as
-//                                                reset_token_invalid.
+// 1. TestPasswordReset_TimingParity — : p50/p99 delta ≤ 50ms
+// between known-email and
+// unknown-email branches over
+// 100 iterations each. The
+// load-bearing anti-enumeration
+// check (PITFALLS §1.1).
+// 2. TestPasswordReset_HappyPath         — request → email_outbox row →
+// POST confirm → login with the
+// new password (200) → login with
+// the old password (401).
+// 3. TestPasswordReset_TokenReuse_Defense — second confirm with the same
+// token returns 400
+// reset_token_invalid (atomic
+// consume; PITFALLS §1.3).
+// 4. TestPasswordReset_ExpiredToken_Defense — manually-aged token (UPDATE
+// expires_at = NOW - 1m)
+// rejected as
+// reset_token_invalid.
 //
 // Harness: these tests run against the live API + Postgres + Redis from
 // test/integration/docker-compose.test.yml. They require pgPool to be
@@ -178,7 +178,7 @@ func fetchUserIDByEmail(t *testing.T, email string) string {
 	return id
 }
 
-// cleanupPasswordReset wipes the rows Phase 21b touches between tests so
+// cleanupPasswordReset wipes the rows touches between tests so
 // each test starts from a clean slate. cleanupDatabase (in main_test.go)
 // only TRUNCATEs the legacy 3 tables.
 func cleanupPasswordReset(t *testing.T) {
@@ -193,7 +193,7 @@ func cleanupPasswordReset(t *testing.T) {
 	cleanupDatabase(t) // users + businesses + Redis flush
 }
 
-// --- Test 1: TIMING PARITY (D-15) --------------------------------------
+// --- Test 1: TIMING PARITY --------------------------------------
 
 func TestPasswordReset_TimingParity(t *testing.T) {
 	if pgPool == nil {

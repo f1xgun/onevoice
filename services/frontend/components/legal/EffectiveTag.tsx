@@ -1,4 +1,4 @@
-// Phase 22-02 — Surface A/B/C shared «Действует с {date} · версия {v}» tag.
+// Surface A/B/C shared «Действует с {date} · версия {v}» tag.
 //
 // Per UI-SPEC §A Verbatim copy table: legal.shared.effectiveTag =
 // «Действует с {effectiveFrom} · версия {version}». Note the middle-dot

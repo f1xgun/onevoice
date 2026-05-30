@@ -1,18 +1,18 @@
 // Package repository — email_verification_token.go
 //
 // EmailVerificationTokenRepository owns SQL for email_verification_tokens
-// (Phase 21c, ACCT-02). Mirrors PasswordResetTokenRepository's shape:
+// Mirrors PasswordResetTokenRepository's shape:
 // single-statement atomic consume (PITFALLS §1.1 → ErrVerifyTokenInvalid
 // for every failure mode), SHA-256 hash storage (BYTEA UNIQUE), no
 // plaintext at rest.
 //
 // The `email` column captures the address the token was issued for so the
 // historical row survives a user changing their pre-verification email
-// (D-21 invalidates outstanding tokens but the snapshot stays).
+// (invalidates outstanding tokens but the snapshot stays).
 //
 // Caller controls tx lifecycle. Insert + InvalidateAllForUser run inside
 // the caller-supplied tx so they commit atomically with the email outbox
-// enqueue (Phase 21a guarantees no orphan emails when the tx rolls back).
+// enqueue (guarantees no orphan emails when the tx rolls back).
 // ConsumeAtomic also runs inside the caller's tx so the email_verified
 // flag flip on users commits alongside the token consume.
 package repository
@@ -38,7 +38,7 @@ type EmailVerificationTokenRepository struct {
 	psql sq.StatementBuilderType
 }
 
-// NewEmailVerificationTokenRepository constructs the Phase 21c repo.
+// NewEmailVerificationTokenRepository constructs the repo.
 // Returns the concrete pointer (matches password_reset_token, email_outbox)
 // — the EmailVerificationService consumes the methods directly with no
 // need for a domain interface.
@@ -119,7 +119,7 @@ func (r *EmailVerificationTokenRepository) ConsumeAtomic(
 }
 
 // LookupExpired returns (true, nil) if a row exists for tokenHash with
-// expires_at <= NOW() AND consumed_at IS NULL — used by the handler to
+// expires_at <= NOW AND consumed_at IS NULL — used by the handler to
 // distinguish "expired" from "unknown / consumed" purely for UX (Surface 3
 // verify_token_expired vs verify_token_invalid copy). This is a READ
 // query, NOT another consume — the actual consume already failed with
@@ -147,7 +147,7 @@ func (r *EmailVerificationTokenRepository) LookupExpired(
 }
 
 // InvalidateAllForUser marks every unconsumed token for a user as
-// consumed. Used by ChangeEmailBeforeVerify (D-21) so an in-flight
+// consumed. Used by ChangeEmailBeforeVerify so an in-flight
 // verification link cannot still verify the new (changed) address. Also
 // used by RequestResend to revoke older outstanding links before issuing
 // a fresh one.

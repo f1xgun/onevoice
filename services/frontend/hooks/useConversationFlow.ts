@@ -1,7 +1,7 @@
 // useConversationFlow — single state machine for the chat conversation,
 // merging the messages/streaming half (formerly useChat) and the HITL
 // approval half (formerly usePendingApprovalFlow) that ChatWindow always
-// consumed together. Phase 19 D-19 originally split these into sibling
+// consumed together. originally split these into sibling
 // hooks for a "single writer for messages" invariant; in practice the
 // split required ChatWindow to wire two bidirectional callbacks
 // (chat.onApprovalRequired ↔ approvalFlow.setPending and
@@ -457,8 +457,8 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
       }
 
       // 2) Open the resume SSE — extends the existing assistant message
-      //    via applyEventToLastAssistant. Each `done` frame triggers the
-      //    same conversations cache invalidation as the live path.
+      // via applyEventToLastAssistant. Each `done` frame triggers the
+      // same conversations cache invalidation as the live path.
       const controller = new AbortController();
       resumeAbortRef.current = controller;
       // Track whether the server emitted a real `done` so the finally

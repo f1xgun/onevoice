@@ -12,7 +12,7 @@ import (
 
 // newUserConsentsRepoMock — pgxmock harness mirroring
 // newEmailVerificationTokenRepoMock for stylistic uniformity with the
-// rest of the Phase 21 repo tests.
+// rest of the repo tests.
 func newUserConsentsRepoMock(t *testing.T) (pgxmock.PgxPoolIface, *UserConsentsRepository) {
 	t.Helper()
 	mock, err := pgxmock.NewPool()

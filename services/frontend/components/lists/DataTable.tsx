@@ -1,6 +1,6 @@
 // components/lists/DataTable.tsx — OneVoice (Linen) generic list primitive.
 //
-// Phase 19 / D-21 — composition primitive. NOT a monolithic FilterableTable.
+// composition primitive. NOT a monolithic FilterableTable.
 // Filter / search state lives in sibling hooks (useDataTableFilters,
 // useDataTableSearch). This component only owns rendering: header row,
 // scroll-x wrapper, skeleton fallback, empty fallback, and optional row
@@ -12,7 +12,7 @@
 // posts/page.tsx aesthetic (Linen design system), gives callers full
 // control over column widths via Tailwind grid-cols-[…] in `gridTemplate`.
 //
-// Anti-pattern (D-21): do NOT bake filter/search/pagination state in.
+// Anti-pattern: do NOT bake filter/search/pagination state in.
 // Composition over monolith.
 'use client';
 import { Fragment, useState, type ReactNode } from 'react';

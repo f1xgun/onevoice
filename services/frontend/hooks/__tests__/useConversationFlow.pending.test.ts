@@ -7,7 +7,7 @@ import { useAuthStore } from '@/lib/auth';
 import { mockSSEResponse, sseLine } from '@/test-utils/sse-mock';
 
 // useConversationFlow (replaces the previous useChat + usePendingApprovalFlow
-// split, Phase 19 D-19). The pendingApproval state, resolveApproval action,
+// split). The pendingApproval state, resolveApproval action,
 // and live chat stream all live in one hook now, so these tests target the
 // single hook directly instead of the previous useChatWithApprovalFlow
 // wrapper that bridged the two siblings.
@@ -22,7 +22,7 @@ vi.mock('@/lib/stores/business', () => ({
     selector({ activeBusinessId: 'biz-test' }),
 }));
 
-// useConversationFlow consumes useQueryClient() so it can invalidate
+// useConversationFlow consumes useQueryClient so it can invalidate
 // ['conversations'] on chat SSE 'done'. All renderHook calls wrap a
 // QueryClientProvider — the React Query cache is unused by these test
 // scenarios (they cover SSE pause / resume / hydration paths) but the hook
@@ -147,7 +147,7 @@ describe('useConversationFlow — SSE tool_approval_required arrival', () => {
       await result.current.sendMessage('anything');
     });
 
-    // abort() must not be invoked on the tool_approval_required path.
+    // abort must not be invoked on the tool_approval_required path.
     expect(abortSpy).not.toHaveBeenCalled();
     expect(result.current.pendingApproval).not.toBeNull();
   });

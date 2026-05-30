@@ -193,7 +193,7 @@ func TestReConsent_ErrConsentMissingOnEmptyPolicies(t *testing.T) {
 }
 
 // TestReConsent_ErrConsentMissingOnUnknownSlug asserts a slug not in
-// legalconfig.AllSlugs() returns ErrConsentMissing (currentVersion
+// legalconfig.AllSlugs returns ErrConsentMissing (currentVersion
 // returns "" → caught by the slug-validation branch).
 func TestReConsent_ErrConsentMissingOnUnknownSlug(t *testing.T) {
 	svc := NewConsentService(nil, &fakeConsentRepo{}, &fakeAccountDeletion{}, nopAuditLogger{}, currentVersionV1)
@@ -205,7 +205,7 @@ func TestReConsent_ErrConsentMissingOnUnknownSlug(t *testing.T) {
 
 // TestWithdrawPDN_DelegatesToDeletionWithReason asserts that
 // WithdrawPDN calls AccountDeletionService.RequestDeletion with
-// reason="consent_withdrawn" and empty password (D-13 literal). When
+// reason="consent_withdrawn" and empty password (literal). When
 // RequestDeletion errors, the error surfaces unchanged (no MarkWithdrawn).
 func TestWithdrawPDN_DelegatesToDeletionWithReason(t *testing.T) {
 	repo := &fakeConsentRepo{}
@@ -214,7 +214,7 @@ func TestWithdrawPDN_DelegatesToDeletionWithReason(t *testing.T) {
 	err := svc.WithdrawPDN(context.Background(), uuid.New(), "1.2.3.4", "UA")
 	require.ErrorIs(t, err, domain.ErrDeletionAlreadyPending)
 	require.Equal(t, "consent_withdrawn", del.calledReason)
-	require.Equal(t, "", del.calledPassword, "WithdrawPDN must pass empty password — D-13 / 152-ФЗ Art. 21")
+	require.Equal(t, "", del.calledPassword, "WithdrawPDN must pass empty password — 152-ФЗ Art. 21")
 	require.Empty(t, repo.withdrawnCalls, "MarkWithdrawn must NOT run when deletion fails")
 }
 

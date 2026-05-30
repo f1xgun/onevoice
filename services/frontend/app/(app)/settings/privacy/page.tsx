@@ -1,4 +1,4 @@
-// Phase 22-02 — Surface F: /settings/privacy.
+// Surface F: /settings/privacy.
 //
 // Renders the WithdrawalPanel inside the settings shell. Mirrors
 // settings/account/page.tsx for layout consistency.

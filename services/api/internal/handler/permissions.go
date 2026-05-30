@@ -7,17 +7,17 @@ import (
 )
 
 // PermissionsHandler exposes the static permission registry as a JSON
-// endpoint. Phase 1 ships GET /api/v1/permissions; the endpoint sits
+// endpoint. ships GET /api/v1/permissions; the endpoint sits
 // behind the existing authMiddleware (any authenticated user) per
-// AUTHZ-01 / CONTEXT decision D-15.
+// AUTHZ-01 / CONTEXT decision.
 //
-// The handler holds no state: AllPermissions() returns a fresh slice on
+// The handler holds no state: AllPermissions returns a fresh slice on
 // every call and the body is computed in the request goroutine.
 type PermissionsHandler struct{}
 
 // NewPermissionsHandler constructs a zero-dependency handler. It exists
 // for symmetry with the project's NewXxxHandler convention; future
-// versions (Phase 5 descriptions) may take dependencies and benefit from
+// versions (descriptions) may take dependencies and benefit from
 // the seam.
 func NewPermissionsHandler() *PermissionsHandler {
 	return &PermissionsHandler{}

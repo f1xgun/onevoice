@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react';
 import { act } from 'react';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
-describe('useDebouncedValue — Phase 19 / SEARCH-04', () => {
+describe('useDebouncedValue', () => {
   afterEach(() => {
     vi.useRealTimers();
   });

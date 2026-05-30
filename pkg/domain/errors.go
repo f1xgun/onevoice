@@ -30,7 +30,7 @@ var (
 	ErrTokenNotFound = errors.New("token not found")
 )
 
-// Password reset errors — Phase 21b (ACCT-01).
+// Password reset errors —.
 //
 // PITFALLS §1.1: the repository ConsumeAtomic statement collapses
 // (expired | already-consumed | unknown-hash) → ErrResetTokenInvalid so the
@@ -48,7 +48,7 @@ var (
 	ErrResetTokenCollision = errors.New("password reset token hash collision")
 )
 
-// Email verification errors — Phase 21c (ACCT-02).
+// Email verification errors —.
 //
 // Same PITFALLS §1.1 collapse as password reset: the atomic-consume
 // statement in EmailVerificationTokenRepository.ConsumeAtomic merges
@@ -75,7 +75,7 @@ var (
 	ErrEmailTaken         = errors.New("email already used by another account")
 )
 
-// Consent errors — Phase 22 (LEGAL-01..06).
+// Consent errors —.
 //
 // ErrConsentMissing fires when /auth/consents or POST /auth/register is
 // submitted without all three slugs (tos, privacy, pdn) at the current
@@ -92,7 +92,7 @@ var (
 	ErrConsentVersionMismatch = errors.New("consent version mismatch (operator bumped policy mid-review)")
 )
 
-// Account deletion errors — Phase 21-04 (ACCT-03).
+// Account deletion errors —.
 //
 // ErrDeletionAlreadyPending fires when a second DELETE /users/me comes in
 // while the user already has deletion_requested_at set and not canceled.
@@ -168,7 +168,7 @@ var (
 	// sqlstate 23505). Handler maps this to HTTP 409 role_name_taken.
 	ErrRoleNameTaken = errors.New("role name already taken in this business")
 
-	// ErrRoleInUse is returned by Phase 5 RolesHandler.Delete when the role has
+	// ErrRoleInUse is returned by RolesHandler.Delete when the role has
 	// member_count > 0 and the request lacks `?reassign_to=<otherRoleId>`. Mapped
 	// to HTTP 422 role_in_use. The repository never returns this — the handler
 	// decides based on CountMembersByRole result.
@@ -198,7 +198,7 @@ var (
 // ErrSearchIndexNotReady is returned by SearchService.Search while the
 // startup-time EnsureSearchIndexes call has not completed. Maps to
 // HTTP 503 + Retry-After: 5 in the search handler. Flips to ready via
-// Searcher.MarkIndexesReady() in main.go AFTER EnsureSearchIndexes returns nil.
+// Searcher.MarkIndexesReady in main.go AFTER EnsureSearchIndexes returns nil.
 var (
 	ErrInvalidScope        = errors.New("search: invalid scope (business_id and user_id required)")
 	ErrSearchIndexNotReady = errors.New("search: index not ready")

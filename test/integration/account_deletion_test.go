@@ -1,13 +1,13 @@
 package integration
 
-// Phase 21-04 (ACCT-03 / ACCT-05) — Account deletion integration tests.
+// Account deletion integration tests.
 //
 // Coverage matrix (per 21-04-PLAN.md Task 12 + verification gate):
-//   1. TestDeleteAccount_HappyPath              — 204 + soft-delete columns set + outbox rows (confirm + warning) + audit row
-//   2. TestDeleteAccount_SoleOwnerReturns409    — 409 with body.code=sole_owner_of_businesses + businesses array; users row untouched
-//   3. TestDeleteAccount_PasswordWrong_Returns401 — 401 with body.code=password_invalid; users row untouched; no audit row
-//   4. TestPendingInvitationsRevokedOnDelete    — pending invitations get revoked_at on user's deletion
-//   5. TestRequireVerifiedEmail_DoesNotGateDeleteOrRestore — unverified user can DELETE; verified user can POST restore
+// 1. TestDeleteAccount_HappyPath              — 204 + soft-delete columns set + outbox rows (confirm + warning) + audit row
+// 2. TestDeleteAccount_SoleOwnerReturns409    — 409 with body.code=sole_owner_of_businesses + businesses array; users row untouched
+// 3. TestDeleteAccount_PasswordWrong_Returns401 — 401 with body.code=password_invalid; users row untouched; no audit row
+// 4. TestPendingInvitationsRevokedOnDelete    — pending invitations get revoked_at on user's deletion
+// 5. TestRequireVerifiedEmail_DoesNotGateDeleteOrRestore — unverified user can DELETE; verified user can POST restore
 //
 // Harness: these tests run against the live API + Postgres + Redis from
 // test/integration/docker-compose.test.yml. They require pgPool to be
@@ -237,7 +237,7 @@ func TestRestore_AfterDelete(t *testing.T) {
 			Scan(&canceledAt, &deletedAt)
 		require.NoError(t, err)
 		require.NotNil(t, canceledAt, "deletion_canceled_at should be set after restore")
-		require.Nil(t, deletedAt, "deleted_at should be cleared after restore (D-32)")
+		require.Nil(t, deletedAt, "deleted_at should be cleared after restore")
 	}
 }
 

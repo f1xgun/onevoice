@@ -1,4 +1,4 @@
-// Phase 21-04 (ACCT-03) — Surface 9: sole-owner-of-businesses 409
+// Surface 9: sole-owner-of-businesses 409
 // conflict dialog. Triggered when DELETE /users/me returns
 // `409 {code: "sole_owner_of_businesses", businesses: [...]}`.
 //

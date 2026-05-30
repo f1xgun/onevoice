@@ -14,13 +14,13 @@ import (
 // passwordResetErrorBody is the JSON shape returned by writePasswordResetError.
 // Discriminates failure modes via `code` so the frontend's error_mapping.ts
 // (services/frontend/lib/error_mapping.ts) can render the correct RU/EN
-// copy + CTA per 21-CROSS-PLAN-CONTRACTS.md §4.
+// copy + CTA.
 type passwordResetErrorBody struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
-// EmailVerificationErrorStatus maps Phase 21-03 verification public codes
+// EmailVerificationErrorStatus maps verification public codes
 // to canonical HTTP status codes. Mirrors the frontend
 // services/frontend/lib/error_mapping.ts COPY map (21-CROSS-PLAN-CONTRACTS
 // §4) so the backend and frontend agree on the wire shape.
@@ -44,12 +44,12 @@ func EmailVerificationErrorStatus(code string) int {
 	}
 }
 
-// writePasswordResetError maps the three Phase 21b sentinels to public
+// writePasswordResetError maps the three sentinels to public
 // {code, message} responses. PITFALLS §1.1: expired / unknown / consumed
 // all collapse to reset_token_invalid by the time we reach here — the
 // reset_token_expired code is reserved for a future "look up first,
 // then mutate" service path and is mapped so the frontend already learns
-// it (matches 21-CROSS-PLAN-CONTRACTS.md §4 COPY map).
+// it (matches COPY map).
 func writePasswordResetError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, service.ErrResetTokenInvalid):
@@ -73,10 +73,32 @@ func writePasswordResetError(w http.ResponseWriter, r *http.Request, err error) 
 	}
 }
 
+// Machine-readable error code constants. The frontend resolves each code to
+// a Russian string via the i18n catalog (messages/ru.json under
+// common.errors.*).
+const (
+	// Lockout / SmartCaptcha codes for /auth/login.
+	ErrCodeAccountLocked   = "account_locked"
+	ErrCodeCaptchaRequired = "captcha_required"
+	ErrCodeCaptchaInvalid  = "captcha_invalid"
+
+	// Internal-error codes for the auth handler family.
+	ErrCodeRegisterInternal       = "register_internal"        // Register, post-create
+	ErrCodeAutoLoginFailed        = "auto_login_failed"        // Register, auto-login
+	ErrCodeRefreshInternal        = "refresh_internal"         // RefreshToken
+	ErrCodeLogoutInternal         = "logout_internal"          // Logout
+	ErrCodeGetUserInternal        = "get_user_internal"        // Me
+	ErrCodeChangePasswordInternal = "change_password_internal" // ChangePassword
+	ErrCodeUpdateLocaleInternal   = "update_locale_internal"   // UpdatePreferredLocale
+)
+
+// writeJSONCodeError is defined in auth.go. It emits a {"code":"<code>"}
+// response body that the frontend's error_mapping.ts routes on.
+
 // writeAuthzInvariantError centralizes the authz sentinel -> HTTP mapping
-// shared by members.go, roles.go, and any future Phase 5 role-mutation
+// shared by members.go, roles.go, and any future role-mutation
 // handlers. Always writes a JSON body of the form {"error":"<code>"}
-// matching the contract documented in 02-PATTERNS.md §Error Mapping.
+// matching the contract documented in §Error Mapping.
 //
 // op is a short identifier ("update_member_role", "remove_member", etc.)
 // included in the slog.ErrorContext fallback line for triage.
@@ -109,7 +131,7 @@ func writeAuthzInvariantError(ctx context.Context, w http.ResponseWriter, op str
 
 // invitationStateBody is the JSON shape returned by writeInvitationStateError
 // for the 410-gone family. Reason discriminates the cause for UI mapping
-// (CONTEXT D-19 refusal matrix). Token-existence enumeration is defended via
+// (refusal matrix). Token-existence enumeration is defended via
 // uniform 410 across miss/accepted/revoked/expired — only the reason field
 // differs, and "unknown" is the safe default for ErrInvitationNotFound.
 type invitationStateBody struct {
@@ -118,18 +140,18 @@ type invitationStateBody struct {
 }
 
 // writeInvitationStateError maps invitation-state sentinel errors to the
-// CONTEXT D-19 refusal matrix. INVITE-09 (already_member → 409) and
-// INVITE-10 (expired/revoked → 410). Body shape:
+// refusal matrix. (already_member → 409) and
+// (expired/revoked → 410). Body shape:
 //
 //	410 → {"error":"gone","reason":"expired|revoked|accepted|unknown"}
 //	409 → {"error":"already_member"}
 //	500 → {"error":"internal_server_error"} (fall-through)
 //
-// CONTEXT D-19: ErrInvitationNotFound collapses to 410 with reason="unknown"
+// ErrInvitationNotFound collapses to 410 with reason="unknown"
 // to defend against token-existence enumeration. The handler caller for
 // REVOKE (which scopes by inviteId not token) MUST use writeRevokeError
 // instead — the not-found case there means a cross-tenant attempt and
-// returns 404 (D-11).
+// returns 404.
 func writeInvitationStateError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrInvitationExpired):
@@ -150,7 +172,7 @@ func writeInvitationStateError(w http.ResponseWriter, err error) {
 
 // writeRevokeError is the special-case mapper for the DELETE revoke endpoint
 // where ErrInvitationNotFound means "row doesn't exist OR is cross-tenant"
-// and MUST return 404 (CONTEXT D-11), not 410 — the handler scopes by
+// and MUST return 404, not 410 — the handler scopes by
 // {inviteId} (a UUID under owner control) not by an opaque token, so
 // information leakage via 404-vs-410 discrimination is not a concern.
 //

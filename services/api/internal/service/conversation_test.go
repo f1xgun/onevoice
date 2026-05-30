@@ -91,7 +91,7 @@ func (s *stubConversationRepo) ScopedConversationIDs(_ context.Context, _, _ str
 	return nil, nil
 }
 
-// MongoConversationsCleanup stub — Phase 21-04 hard-delete sweeper interface.
+// MongoConversationsCleanup stub — hard-delete sweeper interface.
 // Tests in this file don't exercise the cleanup path; default to (0, nil).
 func (s *stubConversationRepo) MongoConversationsCleanup(_ context.Context, _, _ string) (int64, error) {
 	return 0, nil
@@ -264,10 +264,10 @@ func TestNewConversationService_NilDep_ReturnsError(t *testing.T) {
 
 // TestMoveToProject_HappyPath_WithProject covers the canonical
 // move-to-named-project flow. Asserts:
-//   - GetByID called twice (initial fetch + post-update refetch)
-//   - UpdateProjectAssignment called with the parsed projectID
-//   - Project name flows into the system note
-//   - Returned conversation reflects the new project_id
+// - GetByID called twice (initial fetch + post-update refetch)
+// - UpdateProjectAssignment called with the parsed projectID
+// - Project name flows into the system note
+// - Returned conversation reflects the new project_id
 func TestMoveToProject_HappyPath_WithProject(t *testing.T) {
 	requesterUser := uuid.New()
 	businessID := uuid.New()

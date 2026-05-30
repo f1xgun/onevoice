@@ -4,8 +4,8 @@ import (
 	"testing"
 )
 
-// TestEntity_Load_DefaultsWhenEnvUnset verifies that Load() returns
-// the placeholder defaults specified in D-19/D-22 when no LEGAL_* env
+// TestEntity_Load_DefaultsWhenEnvUnset verifies that Load returns
+// the placeholder defaults specified in / when no LEGAL_* env
 // vars are set. t.Setenv guarantees the cleanup pops back to ambient
 // state for sibling tests.
 func TestEntity_Load_DefaultsWhenEnvUnset(t *testing.T) {
@@ -29,7 +29,7 @@ func TestEntity_Load_DefaultsWhenEnvUnset(t *testing.T) {
 	}
 }
 
-// TestEntity_Load_ReadsAllFour verifies that Load() reflects every
+// TestEntity_Load_ReadsAllFour verifies that Load reflects every
 // LEGAL_* env var when populated. Mirrors the production-deploy story
 // where the operator fills in the 4 values from docs/runbook-rkn-filing.md.
 func TestEntity_Load_ReadsAllFour(t *testing.T) {
@@ -54,9 +54,9 @@ func TestEntity_Load_ReadsAllFour(t *testing.T) {
 }
 
 // TestEntity_IsPlaceholder_TrueWhenAnyFieldIsPlaceholderOrEmpty asserts
-// the 22-CONTEXT D-22 invariant: if any of the 4 fields is still a
-// placeholder or blank, IsPlaceholder() reports true so the frontend +
-// pre-launch checklist (D-29) can flag the deployment as not yet
+// the 22- invariant: if any of the 4 fields is still a
+// placeholder or blank, IsPlaceholder reports true so the frontend +
+// pre-launch checklist can flag the deployment as not yet
 // production-ready.
 func TestEntity_IsPlaceholder_TrueWhenAnyFieldIsPlaceholderOrEmpty(t *testing.T) {
 	cases := []struct {
@@ -97,7 +97,7 @@ func TestEntity_IsPlaceholder_TrueWhenAnyFieldIsPlaceholderOrEmpty(t *testing.T)
 // TestCurrentVersion_ReturnsConstantPerSlug verifies the build's policy
 // version map. Bumping any of these constants in versions.go triggers
 // ReConsentModal for every user whose user_consents.policy_version is
-// stale (D-10).
+// stale.
 func TestCurrentVersion_ReturnsConstantPerSlug(t *testing.T) {
 	cases := map[PolicySlug]string{
 		PolicyTOS:     TOSVersion,

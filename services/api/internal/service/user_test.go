@@ -42,7 +42,7 @@ func (m *mockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	return nil, domain.ErrUserNotFound
 }
 
-// Phase 21-04: GetByIDIncludingDeleted satisfies the widened
+// GetByIDIncludingDeleted satisfies the widened
 // domain.UserRepository interface. Reuses getByIDFunc when set so the
 // existing test cases continue to drive both the soft-delete-filtered
 // and the deletion-aware code paths.
@@ -952,7 +952,7 @@ func TestGenerateTokens(t *testing.T) {
 	})
 }
 
-// --- Phase 21-03 Register tx-flow ---------------------------------------
+// --- Register tx-flow ---------------------------------------
 
 // fakeRegisterTx is a minimal pgx.Tx double for tests that exercise the
 // Register tx-flow without bringing up Postgres. Only Begin / Commit /
@@ -1056,7 +1056,7 @@ func TestUserService_Register_TxFlow_AtomicSuccess(t *testing.T) {
 	require.Equal(t, 1, consents.insertCnt)
 	require.Equal(t, 1, verify.issueCnt)
 
-	// Consent shape matches D-40.
+	// Consent shape matches.
 	require.Equal(t, "service_operation", consents.lastPurpose)
 	require.Equal(t, "pre-v22", consents.lastPolicy)
 

@@ -1,15 +1,15 @@
 // Package handler — invitations.go
 //
-// InvitationsHandler implements INVITE-01..11:
+// InvitationsHandler implements :
 //
-//	POST   /api/v1/businesses/{id}/invitations             → Create        (PermMembersInvite + INVITE-01..04)
-//	GET    /api/v1/businesses/{id}/invitations             → ListPending   (PermMembersInvite + INVITE-05)
-//	DELETE /api/v1/businesses/{id}/invitations/{inviteId}  → Revoke        (PermMembersInvite + INVITE-06)
-//	GET    /api/v1/invitations/{token}                      → Preview       (PUBLIC, token IS auth — D-04)
-//	POST   /api/v1/invitations/{token}/accept               → Accept        (auth-required, INVITE-07..11)
+//	POST /api/v1/businesses/{id}/invitations → Create (PermMembersInvite)
+//	GET /api/v1/businesses/{id}/invitations → ListPending (PermMembersInvite)
+//	DELETE /api/v1/businesses/{id}/invitations/{inviteId} → Revoke (PermMembersInvite)
+//	GET /api/v1/invitations/{token} → Preview (PUBLIC, token IS auth — )
+//	POST /api/v1/invitations/{token}/accept → Accept (auth-required)
 //
 // Mirrors members.go for poolBeginner + memberCacheInvalidator + tx-then-commit-
-// then-invalidate ordering. The accept handler implements CONTEXT D-15's
+// then-invalidate ordering. The accept handler implements 's
 // 7-step ordering with conditional-UPDATE race safety per 03-RESEARCH §"Accept-
 // Flow Concurrency".
 package handler
@@ -37,10 +37,10 @@ import (
 )
 
 const (
-	invitationDefaultExpirySeconds = 7 * 24 * 3600  // 604800 — CONTEXT D-18
+	invitationDefaultExpirySeconds = 7 * 24 * 3600  // 604800 —
 	invitationMinExpirySeconds     = 3600           // 1 hour
 	invitationMaxExpirySeconds     = 30 * 24 * 3600 // 2592000 — 30 days
-	invitationPendingCap           = 20             // INVITE-04
+	invitationPendingCap           = 20
 )
 
 // InvitationsHandler is constructed in wire/handlers.go (plan 03-05).
@@ -59,7 +59,7 @@ type InvitationsHandler struct {
 
 // NewInvitationsHandler — every dep is required.
 //
-// Phase 19 Wave 4 (19-04): adds `auditLogger` so Create/Revoke/Accept emit
+// adds `auditLogger` so Create/Revoke/Accept emit
 // rbac.invitation_* audit events AFTER the transaction commits.
 func NewInvitationsHandler(
 	ir domain.InvitationRepository,
@@ -112,12 +112,12 @@ func NewInvitationsHandler(
 
 type createInvitationRequest struct {
 	RoleID    uuid.UUID `json:"role_id"`
-	ExpiresIn int       `json:"expires_in,omitempty"` // seconds; CONTEXT D-18; range [3600, 2592000]
+	ExpiresIn int       `json:"expires_in,omitempty"` // seconds; ; range [3600, 2592000]
 }
 
 type createInvitationResponse struct {
 	ID        uuid.UUID `json:"id"`
-	Token     string    `json:"token"` // raw token — returned ONCE per INVITE-01 / D-08
+	Token     string    `json:"token"` // raw token — returned ONCE per /
 	RoleID    uuid.UUID `json:"role_id"`
 	ExpiresAt string    `json:"expires_at"` // RFC3339
 	CreatedAt string    `json:"created_at"`
@@ -167,12 +167,12 @@ func parseInvitationIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, 
 // computeTokenHash hashes the URL-supplied raw token using the same
 // hex(sha256(raw)) representation as repository.GenerateInvitationToken.
 // SECURITY:
-//   - Hash equality on the UNIQUE token_hash B-tree index is the timing-safe
-//     primitive (research §"Token Hashing & Lookup"). The repository's
-//     GetByTokenHash adds an explicit subtle.ConstantTimeCompare on the
-//     already-retrieved hash as a no-op defense-in-depth check and to
-//     satisfy the literal INVITE-02 contract phrase.
-//   - Never log the raw token or the hash. Only invitation_id is safe to log.
+// - Hash equality on the UNIQUE token_hash B-tree index is the timing-safe
+// primitive (research §"Token Hashing & Lookup"). The repository's
+// GetByTokenHash adds an explicit subtle.ConstantTimeCompare on the
+// already-retrieved hash as a no-op defense-in-depth check and to
+// satisfy the literal contract phrase.
+// - Never log the raw token or the hash. Only invitation_id is safe to log.
 func computeTokenHash(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
@@ -182,24 +182,24 @@ func computeTokenHash(raw string) string {
 
 // Create handles POST /api/v1/businesses/{id}/invitations.
 //
-// INVITE-01: returns the raw token EXACTLY ONCE in the response body.
-// INVITE-03: expires_in defaults to 7 days, range [1h, 30d].
-// INVITE-04: 21st pending invitation per business → 429 too_many_pending.
-// CONTEXT D-12a: cross-tenant role validation (CR-01 mirror from members.go:200).
-// CONTEXT D-12b: CheckEscalationSubset at create time (system Owner exempt).
-// CONTEXT D-14 + RESEARCH OQ-01: pgx.Serializable for the cap invariant.
+// returns the raw token EXACTLY ONCE in the response body.
+// expires_in defaults to 7 days, range [1h, 30d].
+// 21st pending invitation per business → 429 too_many_pending.
+// a: cross-tenant role validation (mirror from members.go:200).
+// b: CheckEscalationSubset at create time (system Owner exempt).
+// + RESEARCH OQ-01: pgx.Serializable for the cap invariant.
 //
 // Order:
-//  1. BusinessContext + Can(PermMembersInvite)
-//  2. JSON decode + expires_in range validation
-//  3. role lookup + CR-01 cross-tenant check
-//  4. CheckEscalationSubset
-//  5. GenerateInvitationToken
-//  6. BeginTx(Serializable)
-//  7. CountPendingByBusinessInTx; >= 20 → 429
-//  8. CreateInTx
-//  9. tx.Commit()
-//  10. 201 + raw token in response (NO InvalidateMember — no membership changed yet)
+// 1. BusinessContext + Can(PermMembersInvite)
+// 2. JSON decode + expires_in range validation
+// 3. role lookup + cross-tenant check
+// 4. CheckEscalationSubset
+// 5. GenerateInvitationToken
+// 6. BeginTx(Serializable)
+// 7. CountPendingByBusinessInTx; >= 20 → 429
+// 8. CreateInTx
+// 9. tx.Commit
+// 10. 201 + raw token in response (NO InvalidateMember — no membership changed yet)
 func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -229,7 +229,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CR-01 (CONTEXT D-12a): role must belong to this business OR be a system role.
+	// (a): role must belong to this business OR be a system role.
 	role, err := h.roleRepo.GetByID(r.Context(), req.RoleID)
 	if err != nil {
 		if errors.Is(err, domain.ErrRoleNotFound) {
@@ -244,7 +244,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CONTEXT D-12b: escalation-subset (system Owner exempt inside CheckEscalationSubset).
+	// b: escalation-subset (system Owner exempt inside CheckEscalationSubset).
 	rolePerms := make([]authz.Permission, 0, len(role.Permissions))
 	for _, p := range role.Permissions {
 		rolePerms = append(rolePerms, authz.Permission(p))
@@ -260,7 +260,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CONTEXT D-14 + RESEARCH OQ-01: Serializable so the cap holds under
+	// + RESEARCH OQ-01: Serializable so the cap holds under
 	// concurrent creates. RepeatableRead in Postgres is Snapshot Isolation
 	// and does NOT detect insert phantoms. See 03-RESEARCH.md §"20-Pending
 	// Cap Concurrency".
@@ -305,7 +305,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// SECURITY (T-03-02): never log rawToken or hash. invitation_id is safe.
+	// SECURITY: never log rawToken or hash. invitation_id is safe.
 	slog.InfoContext(r.Context(), "invitation created",
 		"business_id", bc.BusinessID,
 		"actor_user_id", bc.UserID,
@@ -313,24 +313,24 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"role_id", inv.RoleID,
 	)
 
-	// Phase 19 audit (D-14, D-29/D-30): emit rbac.invitation_created AFTER
+	// emit rbac.invitation_created AFTER
 	// tx.Commit. Details capture invitation_id + role_id + expires_at only —
-	// NEVER the raw token or token_hash (T-19-16 mitigation).
+	// NEVER the raw token or token_hash.
 	audit.LogInvitationCreated(r.Context(), h.audit, bc.BusinessID, bc.UserID, inv.ID, inv.RoleID, inv.ExpiresAt)
 
 	writeJSON(w, http.StatusCreated, createInvitationResponse{
 		ID:        inv.ID,
-		Token:     rawToken, // INVITE-01 / D-08: the ONLY response that includes the raw token
+		Token:     rawToken, // / : the ONLY response that includes the raw token
 		RoleID:    inv.RoleID,
 		ExpiresAt: inv.ExpiresAt.Format(time.RFC3339),
 		CreatedAt: inv.CreatedAt.Format(time.RFC3339),
 	})
 }
 
-// ListPending handles GET /api/v1/businesses/{id}/invitations. INVITE-05.
+// ListPending handles GET /api/v1/businesses/{id}/invitations.
 //
 // Returns pending invitations (not accepted, not revoked, not expired)
-// hydrated with role_name and inviter email per CONTEXT D-17. NEVER includes
+// hydrated with role_name and inviter email. NEVER includes
 // a raw token — the raw token is returned exactly once at create time.
 func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
@@ -374,7 +374,7 @@ func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request)
 }
 
 // Revoke handles DELETE /api/v1/businesses/{id}/invitations/{inviteId}.
-// INVITE-06; CONTEXT D-10 (204 No Content); D-11 (404 cross-tenant, 410 terminal).
+// (204 No Content); (404 cross-tenant, 410 terminal).
 //
 // Permission: PermMembersInvite. Repository scopes by (id, businessID) for
 // defense-in-depth; writeRevokeError distinguishes 404 from 410.
@@ -398,7 +398,7 @@ func (h *InvitationsHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Phase 19 audit (D-29/D-30): emit rbac.invitation_revoked AFTER successful
+	// emit rbac.invitation_revoked AFTER successful
 	// repo update.
 	audit.LogInvitationRevoked(r.Context(), h.audit, bc.BusinessID, bc.UserID, invID)
 
@@ -408,17 +408,17 @@ func (h *InvitationsHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		"invitation_id", invID,
 	)
 
-	w.WriteHeader(http.StatusNoContent) // CONTEXT D-10
+	w.WriteHeader(http.StatusNoContent)
 }
 
-// Preview handles GET /api/v1/invitations/{token} — PUBLIC. CONTEXT D-04..D-07.
+// Preview handles GET /api/v1/invitations/{token} — PUBLIC..
 //
 // The token IS the auth (matches OAuth callback model). Refusal matrix
-// mirrors Accept (CONTEXT D-19) — uniform 410 for unknown/expired/revoked/
+// mirrors Accept — uniform 410 for unknown/expired/revoked/
 // accepted to defend against token-existence enumeration. NO 409 here
 // because the preview doesn't know who's calling.
 //
-// Information-minimization (D-06): no created_by/inviter identity, no token,
+// Information-minimization: no created_by/inviter identity, no token,
 // no token_hash.
 func (h *InvitationsHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	rawToken := chi.URLParam(r, "token")
@@ -457,7 +457,7 @@ func (h *InvitationsHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SECURITY (T-03-02): no token/hash in the slog line.
+	// SECURITY: no token/hash in the slog line.
 	slog.InfoContext(r.Context(), "invitation preview",
 		"business_id", inv.BusinessID,
 		"invitation_id", inv.ID,
@@ -473,16 +473,16 @@ func (h *InvitationsHandler) Preview(w http.ResponseWriter, r *http.Request) {
 }
 
 // Accept handles POST /api/v1/invitations/{token}/accept — auth-required.
-// INVITE-07..11; CONTEXT D-15 7-step ordering; RESEARCH §"Accept-Flow Concurrency".
+// 7-step ordering; RESEARCH §"Accept-Flow Concurrency".
 //
-// Order (D-15):
-//  1. BeginTx(RepeatableRead)
-//  2. invitationRepo.GetByTokenHash → 410 on miss/non-pending
-//  3. membershipRepo.GetByBusinessUser → 409 already_member, NO consume (INVITE-09)
-//  4. membershipRepo.Insert(tx) → PK collision → 409 already_member
-//  5. invitationRepo.MarkAcceptedInTx → RowsAffected=0 → 410 with discriminator
-//  6. tx.Commit()
-//  7. invalidator.InvalidateMember (AFTER commit, NEVER before — INVITE-11)
+// Order:
+// 1. BeginTx(RepeatableRead)
+// 2. invitationRepo.GetByTokenHash → 410 on miss/non-pending
+// 3. membershipRepo.GetByBusinessUser → 409 already_member, NO consume
+// 4. membershipRepo.Insert(tx) → PK collision → 409 already_member
+// 5. invitationRepo.MarkAcceptedInTx → RowsAffected=0 → 410 with discriminator
+// 6. tx.Commit
+// 7. invalidator.InvalidateMember (AFTER commit, NEVER before — )
 func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -530,8 +530,8 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 3: already-a-member? 409 + rollback (token NOT consumed — INVITE-09).
-	// CONTEXT D-15 step 2 / RESEARCH OQ-05: drop the != "deleted" clause. The
+	// Step 3: already-a-member? 409 + rollback (token NOT consumed — ).
+	// step 2 / RESEARCH OQ-05: drop the != "deleted" clause. The
 	// status enum is 'active' | 'suspended'; soft-delete is by row removal.
 	existing, err := h.membershipRepo.GetByBusinessUser(r.Context(), inv.BusinessID, userID)
 	if err != nil && !errors.Is(err, domain.ErrMembershipNotFound) {
@@ -540,7 +540,7 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 	}
 	if existing != nil {
 		// 409 already_member; tx rolls back via defer; MarkAcceptedInTx
-		// is NEVER called → token NOT consumed. INVITE-09 acceptance.
+		// is NEVER called → token NOT consumed. acceptance.
 		writeInvitationStateError(w, domain.ErrAlreadyMember)
 		return
 	}
@@ -567,7 +567,7 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 5: race-safe single-use guarantee (INVITE-08).
+	// Step 5: race-safe single-use guarantee.
 	// On RowsAffected=0 the repo classifies the terminal state and returns
 	// the right sentinel; writeInvitationStateError maps to 410 with reason.
 	if err := h.invitationRepo.MarkAcceptedInTx(r.Context(), tx, inv.ID, userID); err != nil {
@@ -581,14 +581,14 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// Step 7: AFTER commit, NEVER before — INVITE-11 / CONTEXT D-15 step 7.
+	// Step 7: AFTER commit, NEVER before — / step 7.
 	h.invalidator.InvalidateMember(inv.BusinessID, userID)
 
-	// Phase 19 audit (D-29/D-30): emit rbac.invitation_accepted AFTER
+	// emit rbac.invitation_accepted AFTER
 	// commit + cache invalidation. accepterUserID == granted member.
 	audit.LogInvitationAccepted(r.Context(), h.audit, inv.BusinessID, userID, inv.ID, inv.RoleID)
 
-	// SECURITY (T-03-02): no token/hash in the slog line.
+	// SECURITY: no token/hash in the slog line.
 	slog.InfoContext(r.Context(), "invitation accepted",
 		"business_id", inv.BusinessID,
 		"user_id", userID,

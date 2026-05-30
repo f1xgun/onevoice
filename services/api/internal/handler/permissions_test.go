@@ -14,8 +14,8 @@ import (
 // 200 OK, application/json, {"groups": [...]}, seven PermissionGroups in
 // declared order (business, members, roles, integrations, content, billing,
 // audit), and that the first group's first permission is `business.read`
-// with a non-empty Russian description (Phase 5-01 populated all descriptions
-// for tooltip UX; Phase 19-01 added the `audit` group).
+// with a non-empty Russian description (populated all descriptions
+// for tooltip UX; added the `audit` group).
 //
 // This is the only test the plan specifies — auth/401-path testing belongs to
 // authMiddleware (covered in its own tests) and the route wiring is Plan G.
@@ -51,12 +51,12 @@ func TestPermissionsHandler_List_HappyPath(t *testing.T) {
 	assert.Equal(t, "audit", body.Groups[6].Resource)
 
 	// Sample permission name format — first business permission must be
-	// `business.read` per pkg/authz.AllPermissions() declaration order.
+	// `business.read` per pkg/authz.AllPermissions declaration order.
 	require.NotEmpty(t, body.Groups[0].Permissions)
 	assert.Equal(t, "business.read", body.Groups[0].Permissions[0].Name)
 	assert.NotEmpty(t, body.Groups[0].Permissions[0].Description, "Phase 5-01 populates descriptions for tooltip UX")
 
-	// Phase 19-01: audit group has exactly one permission, audit.read.
+	// audit group has exactly one permission, audit.read.
 	require.Len(t, body.Groups[6].Permissions, 1, "audit group has exactly one permission")
 	assert.Equal(t, "audit.read", body.Groups[6].Permissions[0].Name)
 	assert.NotEmpty(t, body.Groups[6].Permissions[0].Description, "audit.read must have a Russian description for tooltip UX")

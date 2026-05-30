@@ -1,12 +1,12 @@
-// Phase 22-02 — Reads NEXT_PUBLIC_LEGAL_* environment variables for the
+// Reads NEXT_PUBLIC_LEGAL_* environment variables for the
 // 152-ФЗ Art. 14 §3 data controller block (Surfaces A, C, contact) and
 // the Footer copyright/contact line (Surface G).
 //
-// When any are missing or still placeholders, isPlaceholder() returns
-// true and consumers render fallback copy + console.warn (D-22). Per
-// D-21 the .env.example ships with these placeholders + comments
+// When any are missing or still placeholders, isPlaceholder returns
+// true and consumers render fallback copy + console.warn. Per
+// the.env.example ships with these placeholders + comments
 // instructing the operator to fill them in before staging deploy; the
-// Phase 22-03 launch checklist asserts non-placeholder.
+// launch checklist asserts non-placeholder.
 
 export interface LegalEntity {
   name: string;
@@ -15,7 +15,7 @@ export interface LegalEntity {
   emailPdn: string;
 }
 
-// PLACEHOLDER_NAME is the literal D-22 mandates when LEGAL_ENTITY_NAME
+// PLACEHOLDER_NAME is the literal mandates when LEGAL_ENTITY_NAME
 // is unset. Render it verbatim so a deploy-time check can grep for the
 // string and flag the operator handoff as incomplete.
 const PLACEHOLDER_NAME = '[Юридическое лицо — будет обновлено]';

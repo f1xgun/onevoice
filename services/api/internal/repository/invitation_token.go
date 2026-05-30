@@ -1,7 +1,7 @@
 // Package repository — invitation_token.go
 //
 // GenerateInvitationToken produces the raw URL-safe invitation token
-// (returned to the inviter ONCE at create time, per CONTEXT D-08 / INVITE-01)
+// (returned to the inviter ONCE at create time, )
 // and the hex-encoded sha256 hash that gets persisted in
 // invitations.token_hash. The 32 random bytes give 256 bits of entropy
 // — well above the 128-bit floor for unguessable opaque tokens.
@@ -10,7 +10,7 @@
 // without %-encoding gymnastics. Length is constant: 32 bytes → 43
 // base64-RawURL chars, 0 padding. sha256 → 32 bytes → 64 hex chars.
 //
-// Lookup correctness (INVITE-02 spec phrase "crypto/subtle.ConstantTimeCompare")
+// Lookup correctness (spec phrase "crypto/subtle.ConstantTimeCompare")
 // is satisfied STRUCTURALLY by hash equality on the UNIQUE token_hash B-tree
 // index — Postgres index lookup is content-time-bounded by depth, not by the
 // byte-by-byte hash content. DO NOT add an in-process subtle.ConstantTimeCompare
@@ -27,9 +27,9 @@ import (
 )
 
 // GenerateInvitationToken returns (raw, hash, err).
-//   - raw: 43-char base64-RawURL string suitable for embedding in an /invite/<token> URL.
-//   - hash: 64-char lowercase hex sha256 of raw — persisted in invitations.token_hash.
-//   - err: only on crypto/rand.Read failure (essentially never; OS entropy starvation).
+// - raw: 43-char base64-RawURL string suitable for embedding in an /invite/<token> URL.
+// - hash: 64-char lowercase hex sha256 of raw — persisted in invitations.token_hash.
+// - err: only on crypto/rand.Read failure (essentially never; OS entropy starvation).
 func GenerateInvitationToken() (raw, hash string, err error) {
 	var buf [32]byte
 	if _, err := rand.Read(buf[:]); err != nil {

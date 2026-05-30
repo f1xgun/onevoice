@@ -1,4 +1,4 @@
-// Phase 22-02 — Surface A/B/C shared page header. Composes the page
+// Surface A/B/C shared page header. Composes the page
 // title (32px/500 per UI-SPEC §A typography scale) and the EffectiveTag
 // «Действует с …» row. Mounted by the three (public)/legal/*/page.tsx
 // async server components and the contact page.

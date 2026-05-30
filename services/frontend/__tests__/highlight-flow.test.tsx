@@ -40,7 +40,7 @@ function HighlightFlowHarness({
   );
 }
 
-describe('highlight-flow integration — Phase 19 / D-08 / SEARCH-04', () => {
+describe('highlight-flow integration', () => {
   beforeEach(() => {
     replaceMock.mockReset();
     setHighlight(null);

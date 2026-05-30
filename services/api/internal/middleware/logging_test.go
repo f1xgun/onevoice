@@ -122,7 +122,7 @@ func TestResponseWriter_WriteWithoutWriteHeader(t *testing.T) {
 	assert.Equal(t, http.StatusOK, wrapped.status)
 }
 
-// --- Phase 21b: D-16 / PITFALLS §1.4 query-string scrubbing -----------
+// --- : / PITFALLS §1.4 query-string scrubbing -----------
 
 // TestRequestLogger_StripsTokenFromConfirmPath asserts the access-log
 // belt-and-suspenders defense: requests to /auth/password-reset/confirm

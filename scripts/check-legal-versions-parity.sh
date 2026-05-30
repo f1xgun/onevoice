@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# check-legal-versions-parity.sh — Phase 22 policy-version drift guard.
+# check-legal-versions-parity.sh — policy-version drift guard.
 #
 # Asserts pkg/legalconfig/versions.go and services/frontend/lib/legal/versions.ts
 # carry IDENTICAL version strings for tos / privacy / pdn. Drift between the two
 # would mean users see one version in the ReConsentModal but the server validates
 # another — a silent-failure class (409 version_mismatch loops, or worse,
-# accepted-with-wrong-version audit rows). T-22F-09 / T-22D-08 mitigation.
+# accepted-with-wrong-version audit rows). / mitigation.
 #
 # Wired into `make lint-all` so a PR bumping the Go const without the TS const
 # (or vice versa) fails CI before merge.
@@ -65,8 +65,8 @@ if [[ ${#MISMATCH[@]} -gt 0 ]]; then
   exit 1
 fi
 
-# T-22F-12 mitigation — RU/EN policy frontmatter parity.
-# D-09 declares the Russian text the legal source-of-truth; the EN translation
+# mitigation — RU/EN policy frontmatter parity.
+# declares the Russian text the legal source-of-truth; the EN translation
 # is "for convenience". When a policy is bumped, both *.ru.md AND *.en.md
 # frontmatter must move together — otherwise users on /?locale=en see a stale
 # `version`/`effective_from` while the server happily accepts the RU value.

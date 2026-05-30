@@ -2,7 +2,7 @@
 // rendered inside the DataTable's `skeleton` slot. Matches the
 // posts-table grid template so the page doesn't reflow when data lands.
 //
-// Extracted from posts/page.tsx as part of Phase 19 / 19-12.
+// Extracted from posts/page.tsx as part of.
 import { Skeleton } from '@/components/ui/skeleton';
 
 const SKELETON_ROW_COUNT = 5;

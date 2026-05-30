@@ -59,7 +59,7 @@ interface Props {
   disabled?: boolean;
   canConnect?: boolean;
   canDisconnect?: boolean;
-  // Phase 20 / ONB-04: render a "Preview" badge + tooltip on platforms whose
+  // render a "Preview" badge + tooltip on platforms whose
   // backend agent does not yet route every tool the LLM might attempt.
   // Today only google_business sets this (2 of N tools implemented per
   // services/agent-google-business/internal/agent/handler.go:63-71).
@@ -260,8 +260,8 @@ function ChannelList({
   // query so the row re-renders with the resolved name. Tracked per-id
   // so we don't loop if the lookup permanently yields nothing.
   //
-  //   - VK:               metadata.community_name (groups.getById, ~200ms)
-  //   - yandex_business:  metadata.business_name  (agent get_info RPA, ~30s)
+  // - VK:               metadata.community_name (groups.getById, ~200ms)
+  // - yandex_business:  metadata.business_name  (agent get_info RPA, ~30s)
   useEffect(() => {
     if (!activeBusinessId || !canRefresh) return;
     integrations.forEach((i) => {

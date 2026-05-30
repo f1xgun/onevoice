@@ -1,4 +1,4 @@
-// Phase 21-04 (ACCT-03) — Surface 10: persistent deletion-grace banner.
+// Surface 10: persistent deletion-grace banner.
 //
 // Renders only when useAuthStore.user.accountDeletion is non-null. Red
 // strip sticky to top of every (app) route. Outranks the verification

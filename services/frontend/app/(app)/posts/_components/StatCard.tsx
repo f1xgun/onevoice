@@ -1,7 +1,7 @@
 // app/(app)/posts/_components/StatCard.tsx — Linen stat card for the
 // posts page top-strip (4-card geometry).
 //
-// Extracted from posts/page.tsx as part of Phase 19 / 19-12 to keep the
+// Extracted from posts/page.tsx as part of to keep the
 // page shell under the SC-01 LOC ceiling.
 import { MonoLabel } from '@/components/ui/mono-label';
 

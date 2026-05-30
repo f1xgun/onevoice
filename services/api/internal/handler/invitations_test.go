@@ -177,7 +177,7 @@ func TestInvitationsHandler_Create_HappyPath(t *testing.T) {
 	userID := uuid.New()
 	roleID := uuid.New()
 
-	// System role (BusinessID nil) — passes CR-01.
+	// System role (BusinessID nil) — passes.
 	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
 		ID:          roleID,
 		BusinessID:  nil,
@@ -199,7 +199,7 @@ func TestInvitationsHandler_Create_HappyPath(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code, "body=%s", w.Body.String())
 	var resp createInvitationResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	require.NotEmpty(t, resp.Token, "INVITE-01: token must be present in create response")
+	require.NotEmpty(t, resp.Token, "token must be present in create response")
 	require.Equal(t, roleID, resp.RoleID)
 	require.NoError(t, f.mockPool.ExpectationsWereMet())
 }
@@ -226,7 +226,7 @@ func TestInvitationsHandler_Create_CrossTenantRoleID_400(t *testing.T) {
 	userID := uuid.New()
 	roleID := uuid.New()
 
-	// Role belongs to a DIFFERENT business — CR-01 / D-12a / T-03-04.
+	// Role belongs to a DIFFERENT business — / /.
 	f.roleRepo.On("GetByID", mock.Anything, roleID).Return(&domain.Role{
 		ID: roleID, BusinessID: &otherBizID, Name: "custom", Permissions: []string{},
 	}, nil)
@@ -368,8 +368,8 @@ func TestInvitationsHandler_ListPending_HappyPath_NoRawTokens(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
-	require.NotContains(t, body, "secret-hash", "INVITE-05: response must NOT include token_hash")
-	require.NotContains(t, body, "\"token\"", "INVITE-05: response must NOT include raw token")
+	require.NotContains(t, body, "secret-hash", "response must NOT include token_hash")
+	require.NotContains(t, body, "\"token\"", "response must NOT include raw token")
 	require.Contains(t, body, "alice@example.com")
 }
 
@@ -520,7 +520,7 @@ func TestInvitationsHandler_Accept_RefusalMatrix(t *testing.T) {
 			},
 			wantStatus:  http.StatusConflict,
 			wantSubstr:  []string{`"already_member"`},
-			mustNotCall: []string{"MarkAcceptedInTx", "Insert", "InvalidateMember"}, // INVITE-09: token NOT consumed
+			mustNotCall: []string{"MarkAcceptedInTx", "Insert", "InvalidateMember"}, // token NOT consumed
 		},
 		{
 			name: "pending_valid_happy",
@@ -590,7 +590,7 @@ func TestInvitationsHandler_Accept_NoJWT_401(t *testing.T) {
 }
 
 func TestInvitationsHandler_Accept_HappyPath_InvalidateAfterCommit(t *testing.T) {
-	// Critical INVITE-11 assertion: pgxmock.ExpectationsWereMet enforces
+	// Critical assertion: pgxmock.ExpectationsWereMet enforces
 	// strict ORDER (BeginTx → ... → Commit). MockCacheInvalidator.AssertCalled
 	// confirms invalidator was invoked. Together they prove
 	// "Invalidate AFTER Commit" — not strictly literal-ordering but
@@ -627,7 +627,7 @@ func TestInvitationsHandler_Accept_HappyPath_InvalidateAfterCommit(t *testing.T)
 }
 
 func TestInvitationsHandler_Accept_CommitFails_NoInvalidate(t *testing.T) {
-	// If Commit fails, Invalidate MUST NOT fire (T-03-10 mitigation).
+	// If Commit fails, Invalidate MUST NOT fire.
 	f := newInvitationFixture(t)
 	userID := uuid.New()
 	bizID := uuid.New()
@@ -659,7 +659,7 @@ func TestInvitationsHandler_Accept_CommitFails_NoInvalidate(t *testing.T) {
 // --- Tests: Token never logged ---
 
 func TestInvitationsHandler_Accept_TokenNotLogged(t *testing.T) {
-	// T-03-02 — capture slog default output and assert raw token + hash absent.
+	// capture slog default output and assert raw token + hash absent.
 	var buf bytes.Buffer
 	prevLog := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -723,8 +723,8 @@ func TestInvitationsHandler_Preview_PublicNoAuth(t *testing.T) {
 	body := w.Body.String()
 	require.Contains(t, body, "Acme")
 	require.Contains(t, body, "editor")
-	require.NotContains(t, body, "created_by", "D-06: information minimization — no inviter identity")
-	require.NotContains(t, body, "\"token\"", "D-09: never expose raw token")
+	require.NotContains(t, body, "created_by", "information minimization — no inviter identity")
+	require.NotContains(t, body, "\"token\"", "never expose raw token")
 	require.NotContains(t, body, "token_hash", "never expose token_hash")
 }
 

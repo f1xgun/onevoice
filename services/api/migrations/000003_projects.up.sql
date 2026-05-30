@@ -1,4 +1,4 @@
--- Phase 15: Projects Foundation — per-business chat groupings with system prompt override,
+-- Projects Foundation — per-business chat groupings with system prompt override,
 -- typed tool-whitelist mode, optional allowed_tools list, and quick-actions strings.
 
 CREATE TABLE IF NOT EXISTS projects (

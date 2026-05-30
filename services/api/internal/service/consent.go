@@ -1,23 +1,23 @@
 // Package service — consent.go
 //
-// Phase 22 (22-01 / LEGAL-01..06): ConsentService orchestrates the
+// ConsentService orchestrates the
 // three consent flows that Register, ReConsentModal, and Withdraw use.
 //
-//   - RecordRegistrationConsents (D-17): called inside userService.Register's
-//     tx. Performs three UpsertConsent calls (tos, privacy, pdn) at the
-//     build's currentVersion + writes a single tx-scoped audit row via
-//     LogConsentRecordedTx (D-28).
-//   - ReConsent (D-11): opens its own tx. Validates every submitted (slug,
-//     version) matches legalconfig.CurrentVersion(slug); mismatch returns
-//     domain.ErrConsentVersionMismatch (handler maps to 409). UPSERTs the
-//     three rows + writes LogConsentReconsentedTx in the same tx.
-//   - WithdrawPDN (D-13, D-14): calls AccountDeletionService.RequestDeletion
-//     with reason="consent_withdrawn" (skips password check), then opens a
-//     tx and sets user_consents.withdrawn_at=NOW() + writes
-//     LogConsentWithdrawnTx. ErrDeletionAlreadyPending surfaces unchanged.
-//   - DiffAgainstCurrent (D-11): /auth/me reads the user's three rows and
-//     returns a slice of PolicyDiff entries when any policy_version is
-//     stale (or rows missing — pre-v22 backfill case).
+// - RecordRegistrationConsents: called inside userService.Register's
+// tx. Performs three UpsertConsent calls (tos, privacy, pdn) at the
+// build's currentVersion + writes a single tx-scoped audit row via
+// LogConsentRecordedTx.
+// - ReConsent: opens its own tx. Validates every submitted (slug,
+// version) matches legalconfig.CurrentVersion(slug); mismatch returns
+// domain.ErrConsentVersionMismatch (handler maps to 409). UPSERTs the
+// three rows + writes LogConsentReconsentedTx in the same tx.
+// - WithdrawPDN: calls AccountDeletionService.RequestDeletion
+// with reason="consent_withdrawn" (skips password check), then opens a
+// tx and sets user_consents.withdrawn_at=NOW + writes
+// LogConsentWithdrawnTx. ErrDeletionAlreadyPending surfaces unchanged.
+// - DiffAgainstCurrent: /auth/me reads the user's three rows and
+// returns a slice of PolicyDiff entries when any policy_version is
+// stale (or rows missing — pre-v22 backfill case).
 package service
 
 import (
@@ -76,7 +76,7 @@ type AccountDeletionForConsent interface {
 
 // CurrentVersionFunc is the build's current-version + sha256 lookup —
 // returns (version, sha256) for a slug. The sha256 is empty when the
-// policy text loader isn't yet wired (Phase 22-02 fills it in).
+// policy text loader isn't yet wired (fills it in).
 type CurrentVersionFunc func(slug legalconfig.PolicySlug) (version, sha256 string)
 
 // ConsentService — see file docstring.
@@ -88,7 +88,7 @@ type ConsentService struct {
 	currentVersion  CurrentVersionFunc
 }
 
-// NewConsentService constructs the Phase 22 ConsentService. All
+// NewConsentService constructs the ConsentService. All
 // dependencies must be non-nil. currentVersion supplies the build's
 // active policy versions — typically a closure over legalconfig.
 func NewConsentService(
@@ -110,12 +110,12 @@ func NewConsentService(
 // RecordRegistrationConsents is the Register-flow entry point. Runs
 // inside the caller's tx — does NOT open its own. The Register flow's
 // tx-defer-rollback guarantees the consent rows + user row commit
-// together (D-17 atomic-Register invariant).
+// together (atomic-Register invariant).
 //
 // policies must contain exactly the three slugs (tos, privacy, pdn) at
 // the build's currentVersion — the handler validates this before
 // invoking. Loops over the policies and calls UpsertConsent for each;
-// writes ONE consolidated LogConsentRecordedTx audit row (D-28).
+// writes ONE consolidated LogConsentRecordedTx audit row.
 func (s *ConsentService) RecordRegistrationConsents(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ip, userAgent string, policies []PolicyAccepted) error {
 	purposes := make([]string, 0, len(policies))
 	var policyVersion, policySHA256 string
@@ -133,7 +133,7 @@ func (s *ConsentService) RecordRegistrationConsents(ctx context.Context, tx pgx.
 		purposes = append(purposes, p.Slug)
 		// Use the first policy's version + sha256 as the canonical pair
 		// for the audit row. All three are bumped in lockstep by Phase
-		// 22 (D-08 / D-10), so the values match across the slice.
+		// 22, so the values match across the slice.
 		if policyVersion == "" {
 			policyVersion = p.Version
 			policySHA256 = p.SHA256
@@ -204,8 +204,8 @@ func (s *ConsentService) ReConsent(ctx context.Context, userID uuid.UUID, ip, us
 }
 
 // WithdrawPDN handles POST /users/me/consents/pdn/withdraw. Triggers
-// the Phase 21-04 account-deletion flow with reason="consent_withdrawn"
-// (skips password check; D-13). On success, sets user_consents.withdrawn_at
+// the account-deletion flow with reason="consent_withdrawn"
+// (skips password check). On success, sets user_consents.withdrawn_at
 // for the pdn row and writes LogConsentWithdrawnTx in the same tx.
 //
 // ErrDeletionAlreadyPending surfaces unchanged so the handler returns 423.

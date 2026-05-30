@@ -1,6 +1,6 @@
 // app/(app)/posts/_helpers.ts — page-local pure helpers.
 //
-// Extracted from the original posts/page.tsx as part of Phase 19 / 19-12
+// Extracted from the original posts/page.tsx as part of
 // (DataTable adoption). Keeping these in a sibling _helpers.ts (Next
 // convention: `_`-prefix means "not a route") lets the page shell stay
 // under the SC-01 LOC ceiling while preserving co-location.
@@ -36,7 +36,7 @@ export function firstLink(post: Post): string | null {
 }
 
 // Helper stays pure: caller hands in the active date-fns locale via
-// `getDateFnsLocale(useLocale())` so this module never has to import a
+// `getDateFnsLocale(useLocale)` so this module never has to import a
 // next-intl runtime hook (and the `_helpers.ts` server-helper
 // invariant is preserved).
 export function nextScheduledLabel(posts: Post[], locale: DateFnsLocale): string {
