@@ -3,14 +3,18 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitl"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/pkg/sse"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
@@ -96,6 +100,37 @@ type RunState struct {
 	// Iter is the 0-based iteration counter. Pause persists this value
 	// so resume can continue at Iter+1.
 	Iter int
+
+	// AccumulatedInputTokens is the running sum of Usage.InputTokens across
+	// all LLM calls in this conversation. Persisted in the pause snapshot so
+	// a resumed turn does not reset the budget to zero.
+	AccumulatedInputTokens int
+
+	// AccumulatedOutputTokens is the parallel running sum on the output axis.
+	AccumulatedOutputTokens int
+}
+
+// ErrConversationTokenCap fires when the per-conversation token budget on
+// either axis (input or output) is exhausted. Distinct from MaxIterations
+// because the cap is a softer / earlier guard.
+var ErrConversationTokenCap = errors.New("conversation token cap exceeded")
+
+// Friendly user-facing text for the conversation_token_cap SSE error. The
+// frontend keys off Event.Code rather than parsing this string, so the
+// content is just the human-readable fallback. Two locales only — no
+// pkg/i18n catalog migration.
+const (
+	conversationCapMessageRU = "Этот диалог достиг лимита токенов. Создайте новый чат, чтобы продолжить."
+	conversationCapMessageEN = "This conversation has reached its token limit. Start a new chat to continue."
+)
+
+// friendlyConversationCapMessage returns the cap message in the locale
+// resolved off the request context. The cap-hit code stays in Event.Code.
+func friendlyConversationCapMessage(ctx context.Context) string {
+	if i18n.LocaleFromContext(ctx) == language.English {
+		return conversationCapMessageEN
+	}
+	return conversationCapMessageRU
 }
 
 // stepRun is the single shared loop body used by both Run (fresh turns) and
@@ -143,6 +178,38 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			case <-ctx.Done():
 			}
 			return OutcomeError, "", err
+		}
+
+		// Accumulate per-conversation token counts BEFORE the no-tool-calls
+		// terminal branch so the cap gate fires uniformly on both terminal
+		// and tool-call iterations. A single mid-iter overshoot (Usage
+		// returns more than the cap on one response) is covered by the same
+		// check because the comparison is against the running sum.
+		state.AccumulatedInputTokens += resp.Usage.InputTokens
+		state.AccumulatedOutputTokens += resp.Usage.OutputTokens
+		if o.options.ConversationInputCap > 0 && state.AccumulatedInputTokens >= o.options.ConversationInputCap {
+			metrics.LLMConversationCapHit.WithLabelValues("input").Inc()
+			select {
+			case out <- Event{
+				Type:    EventError,
+				Code:    "conversation_token_cap",
+				Content: friendlyConversationCapMessage(ctx),
+			}:
+			case <-ctx.Done():
+			}
+			return OutcomeError, "", ErrConversationTokenCap
+		}
+		if o.options.ConversationOutputCap > 0 && state.AccumulatedOutputTokens >= o.options.ConversationOutputCap {
+			metrics.LLMConversationCapHit.WithLabelValues("output").Inc()
+			select {
+			case out <- Event{
+				Type:    EventError,
+				Code:    "conversation_token_cap",
+				Content: friendlyConversationCapMessage(ctx),
+			}:
+			case <-ctx.Done():
+			}
+			return OutcomeError, "", ErrConversationTokenCap
 		}
 
 		// 2. No tool calls → terminal (done)
@@ -299,6 +366,13 @@ type modelMessagesSnapshotV2 struct {
 	Messages       []llm.Message `json:"messages"`
 	SystemPlatform string        `json:"system_platform,omitempty"`
 	SystemBusiness string        `json:"system_business,omitempty"`
+	// Accumulated token counts persisted so a paused turn that resumes after
+	// a human approval continues with the same per-conversation budget. Both
+	// fields use omitempty so pre-cap snapshots stay byte-identical and
+	// legacy V1/V2 batches without these fields hydrate at 0 — correct
+	// behavior because pre-cap turns were not subject to the cap.
+	AccumulatedInputTokens  int `json:"accumulated_input_tokens,omitempty"`
+	AccumulatedOutputTokens int `json:"accumulated_output_tokens,omitempty"`
 }
 
 // buildPendingBatch assembles the PendingToolCallBatch that will be persisted
@@ -308,10 +382,12 @@ type modelMessagesSnapshotV2 struct {
 // SystemBlocks so Resume can rebuild RunState after a process restart.
 func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCall) *domain.PendingToolCallBatch {
 	snapshot := modelMessagesSnapshotV2{
-		V:              2,
-		Messages:       state.Messages,
-		SystemPlatform: state.SystemPlatform,
-		SystemBusiness: state.SystemBusiness,
+		V:                       2,
+		Messages:                state.Messages,
+		SystemPlatform:          state.SystemPlatform,
+		SystemBusiness:          state.SystemBusiness,
+		AccumulatedInputTokens:  state.AccumulatedInputTokens,
+		AccumulatedOutputTokens: state.AccumulatedOutputTokens,
 	}
 	msgSnapshot, err := json.Marshal(snapshot)
 	if err != nil {

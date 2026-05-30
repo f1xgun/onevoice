@@ -17,9 +17,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/language"
 
 	"github.com/f1xgun/onevoice/pkg/billingclient"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
@@ -835,4 +837,179 @@ func TestBuildPendingBatch_PopulatesFloorAtPauseManual(t *testing.T) {
 		assert.Equal(t, domain.ToolFloorManual, c.FloorAtPause,
 			"Calls[%d].FloorAtPause = %q, want %q", i, c.FloorAtPause, domain.ToolFloorManual)
 	}
+}
+
+// ---------------------------------------------------------------------
+// Conversation token cap tests
+// ---------------------------------------------------------------------
+
+// makeToolCallResponse builds a synthetic LLM response that requests one auto
+// tool call. The Usage values are stamped on so the cap accumulator can drive.
+func makeToolCallResponse(toolName string, inputTokens, outputTokens int) *llm.ChatResponse {
+	args, _ := json.Marshal(map[string]interface{}{"text": "go"})
+	return &llm.ChatResponse{
+		FinishReason: "tool_calls",
+		ToolCalls: []llm.ToolCall{{
+			ID:       "call_" + toolName,
+			Type:     llm.ToolCallTypeFunction,
+			Function: llm.FunctionCall{Name: toolName, Arguments: string(args)},
+		}},
+		Usage: llm.TokenUsage{InputTokens: inputTokens, OutputTokens: outputTokens},
+	}
+}
+
+// TestStepRun_ConversationCap_PreIter — three iters of 20k tokens each, cap
+// 50k → blocks on iter 3.
+func TestStepRun_ConversationCap_PreIter(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		makeToolCallResponse("auto_tool", 20000, 0),
+		makeToolCallResponse("auto_tool", 20000, 0),
+		makeToolCallResponse("auto_tool", 20000, 0),
+	}}
+	reg := newRegistryWithFloor("auto_tool", domain.ToolFloorAuto, nil)
+	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{
+		MaxIterations:        10,
+		ConversationInputCap: 50000,
+	})
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "go"}},
+	})
+	require.NoError(t, err)
+
+	evts := drainEvents(events)
+	errs := findEvents(evts, orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "conversation_token_cap", errs[0].Code)
+	assert.NotEmpty(t, errs[0].Content)
+
+	// Exactly three Chat calls were made (sums to 60k > 50k on the third).
+	assert.Equal(t, 3, stub.idx, "must make 3 LLM calls before tripping the cap")
+}
+
+// TestStepRun_ConversationCap_MidIter — single response carries 60k input.
+func TestStepRun_ConversationCap_MidIter(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		makeToolCallResponse("auto_tool", 60000, 0),
+	}}
+	reg := newRegistryWithFloor("auto_tool", domain.ToolFloorAuto, nil)
+	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{
+		MaxIterations:        10,
+		ConversationInputCap: 50000,
+	})
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "go"}},
+	})
+	require.NoError(t, err)
+	evts := drainEvents(events)
+
+	errs := findEvents(evts, orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "conversation_token_cap", errs[0].Code)
+	assert.Equal(t, 1, stub.idx, "must trip on first iter — no second LLM call")
+	assert.Empty(t, findEvents(evts, orchestrator.EventToolCall),
+		"tool calls must NOT be dispatched once the cap fires")
+}
+
+// TestStepRun_ConversationCap_OutputAxis — cap on the output axis is
+// independent of input.
+func TestStepRun_ConversationCap_OutputAxis(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		makeToolCallResponse("auto_tool", 1000, 11000),
+	}}
+	reg := newRegistryWithFloor("auto_tool", domain.ToolFloorAuto, nil)
+	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{
+		MaxIterations:         10,
+		ConversationInputCap:  50000,
+		ConversationOutputCap: 10000,
+	})
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "go"}},
+	})
+	require.NoError(t, err)
+	evts := drainEvents(events)
+
+	errs := findEvents(evts, orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "conversation_token_cap", errs[0].Code)
+}
+
+// TestStepRun_ConversationCap_Disabled — caps at 0 means the loop runs to
+// MaxIterations as before.
+func TestStepRun_ConversationCap_Disabled(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{Content: "ok", FinishReason: "stop", Usage: llm.TokenUsage{InputTokens: 1_000_000, OutputTokens: 1_000_000}},
+	}}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{
+		MaxIterations: 10,
+		// caps unset (zero) — gate disabled.
+	})
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+	evts := drainEvents(events)
+	assert.NotEmpty(t, findEvents(evts, orchestrator.EventDone))
+	assert.Empty(t, findEvents(evts, orchestrator.EventError))
+}
+
+// TestStepRun_ConversationCap_FriendlyMessageRussian — default locale = RU.
+func TestStepRun_ConversationCap_FriendlyMessageRussian(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{Content: "stop", FinishReason: "stop", Usage: llm.TokenUsage{InputTokens: 100000}},
+	}}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{
+		MaxIterations:        5,
+		ConversationInputCap: 50000,
+	})
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+	errs := findEvents(drainEvents(events), orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "conversation_token_cap", errs[0].Code)
+	assert.Contains(t, errs[0].Content, "лимита токенов")
+}
+
+// TestStepRun_ConversationCap_FriendlyMessageEnglish — locale=en switches the
+// fallback content string.
+func TestStepRun_ConversationCap_FriendlyMessageEnglish(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{Content: "stop", FinishReason: "stop", Usage: llm.TokenUsage{InputTokens: 100000}},
+	}}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.NewWithOptions(stub, reg, orchestrator.Options{
+		MaxIterations:        5,
+		ConversationInputCap: 50000,
+	})
+	// language.English wins over middleware default.
+	ctx := i18nWithEnglish(t)
+	events, err := orch.Run(ctx, orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+	errs := findEvents(drainEvents(events), orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "conversation_token_cap", errs[0].Code)
+	assert.Contains(t, errs[0].Content, "token limit")
+}
+
+// i18nWithEnglish injects language.English into a fresh context for the
+// English-locale cap tests. Kept private to step_test.go so the helper does
+// not leak into production code.
+func i18nWithEnglish(t *testing.T) context.Context {
+	t.Helper()
+	return i18n.WithLocale(context.Background(), language.English)
 }
