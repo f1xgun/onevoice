@@ -310,6 +310,60 @@ func TestApiDrafterWireCompatibility(t *testing.T) {
 	}
 }
 
+// TestDraftReply_PassesBusinessIDFromRequest pins LLMC-05 for the draft-reply
+// path: the handler MUST parse req.BusinessID into ChatRequest.BusinessID so
+// the resulting cost row attributes to the correct business (user decision
+// Q#5, Plan 25a-05).
+func TestDraftReply_PassesBusinessIDFromRequest(t *testing.T) {
+	bizID := "11111111-2222-3333-4444-555555555555"
+	chatter := &fakeChatter{
+		resp: &llm.ChatResponse{Content: "Thanks!", Provider: "openrouter"},
+	}
+	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini")
+
+	req := postBody(t, DraftReplyRequest{
+		BusinessID: bizID,
+		ReviewText: "Great service",
+		Rating:     5,
+	})
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	got := chatter.gotReq.BusinessID.String()
+	if got != bizID {
+		t.Errorf("ChatRequest.BusinessID = %q, want %q", got, bizID)
+	}
+}
+
+// TestDraftReply_MalformedBusinessID_DegradesToNil — Pitfall §3 fail-closed:
+// non-UUID business_id (e.g. legacy "b1" sentinel) does NOT crash the handler
+// and BusinessID lands as uuid.Nil so the router skips billing instead of
+// writing a corrupt row.
+func TestDraftReply_MalformedBusinessID_DegradesToNil(t *testing.T) {
+	chatter := &fakeChatter{
+		resp: &llm.ChatResponse{Content: "ok", Provider: "openrouter"},
+	}
+	h := NewDraftReplyHandler(chatter, "openai/gpt-4o-mini")
+
+	req := postBody(t, DraftReplyRequest{
+		BusinessID: "not-a-uuid",
+		ReviewText: "x",
+		Rating:     5,
+	})
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if chatter.gotReq.BusinessID.String() != "00000000-0000-0000-0000-000000000000" {
+		t.Errorf("malformed business_id must degrade to uuid.Nil, got %q", chatter.gotReq.BusinessID)
+	}
+}
+
 // Light reader so we don't get unused-import warnings on io if future tests
 // shrink. Kept inline to be removable in one line if it ever becomes noise.
 var _ = io.EOF

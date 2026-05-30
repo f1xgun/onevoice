@@ -366,6 +366,53 @@ func TestGenerateAndSave_RussianLocale_KeepsRussianPrompt(t *testing.T) {
 	}
 }
 
+// TestTitler_PassesBusinessIDToLLM pins LLMC-05 for the titler path: the
+// businessID parameter MUST be parsed into ChatRequest.BusinessID so the
+// resulting cost row attributes to the conversation's business (user
+// decision Q#5, Plan 25a-05).
+func TestTitler_PassesBusinessIDToLLM(t *testing.T) {
+	captureLogs(t)
+
+	const bizID = "11111111-2222-3333-4444-555555555555"
+	router := &fakeRouter{returnContent: "Заголовок"}
+	repo := &fakeConvRepo{}
+	tt := NewTitler(router, repo, "test-model")
+
+	tt.GenerateAndSave(context.Background(), bizID, "conv-1", "u", "a")
+
+	if router.lastReq == nil {
+		t.Fatal("router.Chat was not invoked")
+	}
+	if got := router.lastReq.BusinessID.String(); got != bizID {
+		t.Fatalf("ChatRequest.BusinessID = %q, want %q (Plan 25a-05 LLMC-05)", got, bizID)
+	}
+}
+
+// TestTitler_MalformedBusinessID_DegradesToNil — Pitfall §3 fail-closed:
+// a non-UUID businessID (e.g. legacy "b1" sentinel from chat_proxy tests)
+// MUST land as uuid.Nil so the router skips billing rather than write a
+// corrupt row. The titler still runs the full pipeline (no early return).
+func TestTitler_MalformedBusinessID_DegradesToNil(t *testing.T) {
+	captureLogs(t)
+
+	router := &fakeRouter{returnContent: "Заголовок"}
+	repo := &fakeConvRepo{}
+	tt := NewTitler(router, repo, "test-model")
+
+	tt.GenerateAndSave(context.Background(), "not-a-uuid", "conv-1", "u", "a")
+
+	if router.lastReq == nil {
+		t.Fatal("router.Chat was not invoked")
+	}
+	if got := router.lastReq.BusinessID.String(); got != "00000000-0000-0000-0000-000000000000" {
+		t.Fatalf("malformed businessID must degrade to uuid.Nil, got %q", got)
+	}
+	// Title still persisted — malformed BusinessID does not abort the pipeline.
+	if len(repo.updateCalls) != 1 {
+		t.Fatalf("expected 1 UpdateTitleIfPending call even with malformed bizID, got %d", len(repo.updateCalls))
+	}
+}
+
 func TestUntitledChatLocalized(t *testing.T) {
 	// Both fallback formats are stable across deploys — pin them so a typo
 	// in either months table doesn't quietly change persisted titles.

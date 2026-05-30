@@ -148,9 +148,26 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 	redactedAssistant := security.RedactPII(assistantMsg)
 	promptLen := len(redactedUser) + len(redactedAssistant)
 
+	// Parse businessID (string from the conversation document) into the
+	// typed uuid.UUID expected by ChatRequest.BusinessID so logBilling
+	// attributes the auto-title LLM call against the conversation's
+	// business (Plan 25a-05, user decision Q#5). Malformed values degrade
+	// to uuid.Nil — router's nil-guard skips billing rather than write a
+	// corrupt row (Pitfall §3 fail-closed).
+	bizID := uuid.Nil
+	if businessID != "" {
+		if parsed, perr := uuid.Parse(businessID); perr == nil {
+			bizID = parsed
+		} else {
+			slog.WarnContext(ctx, "auto-title: malformed business_id, billing will be skipped",
+				"business_id", businessID, "error", perr)
+		}
+	}
+
 	req := llm.ChatRequest{
-		UserID: uuid.Nil, // system-level call, no rate-limit attribution
-		Model:  t.model,
+		UserID:     uuid.Nil, // system-level call, no rate-limit attribution
+		BusinessID: bizID,    // billing attribution: titler row owned by the business (user Q#5)
+		Model:      t.model,
 		Messages: []llm.Message{
 			{Role: "system", Content: titleSystemPrompt(tag)},
 			{Role: "user", Content: fmt.Sprintf(userTemplate(tag), redactedUser, redactedAssistant)},
