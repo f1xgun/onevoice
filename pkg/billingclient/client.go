@@ -31,6 +31,11 @@ import (
 // package-level const so the test suite and the call site can never drift.
 const usageLogsPath = "/internal/v1/billing/usage_logs"
 
+// dailySpendPath is the API endpoint that returns the per-business spend over
+// a UTC calendar day. Same constant discipline as usageLogsPath so the route
+// declaration and the client call can never disagree on the path.
+const dailySpendPath = "/internal/v1/billing/daily_spend"
+
 // defaultHTTPTimeout is the per-request transport timeout. The caller's
 // context deadline (5s set by pkg/llm/router.go logBilling) is the real
 // gate; this value is the safety net for callers that pass context.Background().
@@ -175,3 +180,59 @@ func (c *Client) LogUsage(ctx context.Context, log *llm.UsageLog) error {
 // If pkg/llm.Writer ever gains a method, the build break here is the
 // earliest signal to update billingclient in lockstep.
 var _ llm.Writer = (*Client)(nil)
+
+// dailySpendResponse mirrors the JSON envelope the API returns on the GET
+// daily_spend endpoint. Kept as a package-private type so the contract has a
+// single home and tests cannot drift from the wire shape.
+type dailySpendResponse struct {
+	DailySpendUSD float64 `json:"daily_spend_usd"`
+}
+
+// GetDailySpend fetches the per-business cumulative LLM spend for the UTC
+// calendar day containing `day` from the API's internal billing endpoint.
+//
+// Day is always interpreted in UTC; callers in other time zones still receive
+// the UTC-day window the billing repository pins to.
+//
+// Outcomes mirror LogUsage's sentinel discipline so a future router-side
+// retry policy can branch uniformly via errors.Is:
+//
+//	network failure       → ErrTransient
+//	HTTP 200              → (value, nil)
+//	HTTP 400              → ErrInvalidPayload
+//	HTTP 5xx              → ErrTransient
+//	other non-2xx         → bare error, no sentinel
+//	200 with malformed body → ErrInvalidPayload
+func (c *Client) GetDailySpend(ctx context.Context, businessID uuid.UUID, day time.Time) (float64, error) {
+	dayStr := day.UTC().Format("2006-01-02")
+	url := fmt.Sprintf("%s%s?business_id=%s&date=%s", c.baseURL, dailySpendPath, businessID, dayStr)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("billingclient: build request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("%w: request: %w", ErrTransient, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		var payload dailySpendResponse
+		if decErr := json.NewDecoder(resp.Body).Decode(&payload); decErr != nil {
+			return 0, fmt.Errorf("%w: decode body: %w", ErrInvalidPayload, decErr)
+		}
+		return payload.DailySpendUSD, nil
+	case resp.StatusCode == http.StatusBadRequest:
+		return 0, fmt.Errorf("%w: api 400", ErrInvalidPayload)
+	case resp.StatusCode >= http.StatusInternalServerError:
+		return 0, fmt.Errorf("%w: status %d", ErrTransient, resp.StatusCode)
+	default:
+		// 401/403/404/418 etc — likely a proxy / auth misconfig. Surface
+		// without a sentinel so the daily-spend gate fails closed at the
+		// caller without retrying.
+		return 0, fmt.Errorf("billingclient: unexpected status %d", resp.StatusCode)
+	}
+}
