@@ -1,7 +1,11 @@
 package router_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +22,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/health"
+	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/oauth"
@@ -221,4 +226,70 @@ func TestRouter_XFFFromUntrustedPeerIgnored(t *testing.T) {
 	// not the spoofed-LB /16 — proves the lockout/captcha gate is bound
 	// to the real attacker.
 	require.Equal(t, "9.9.0.0/16", apimiddleware.Net16(capturedClientIP))
+}
+
+// --- 25a-04: internal billing route smoke tests ---
+
+// stubBilling is the minimal handler.BillingService implementation for
+// internal-router tests. It never returns an error so success-path tests
+// can assert 204.
+type stubBilling struct{}
+
+func (stubBilling) LogUsage(_ context.Context, _ *llm.UsageLog) error { return nil }
+
+// buildTestInternalRouter wires SetupInternal with a fake billing repo so
+// the route's middleware stack is exercised end-to-end without DB.
+func buildTestInternalRouter(t *testing.T) http.Handler {
+	t.Helper()
+	hc := health.New()
+	h := buildTestHandlers()
+	// Inject internal billing handler.
+	h.InternalBilling = handler.NewInternalBillingHandler(stubBilling{}, nil)
+	return router.SetupInternal(h, hc)
+}
+
+// Test 8: SetupInternal applies RequireServiceIdentity to /billing/usage_logs.
+// With MTLS enabled and no peer cert, the route returns 403.
+func TestSetupInternal_BillingRoute_AppliesMTLSMiddleware(t *testing.T) {
+	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
+	r := buildTestInternalRouter(t)
+
+	body := bytes.NewReader([]byte(`{"business_id":"` + uuid.New().String() + `","model":"x","provider":"y"}`))
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/billing/usage_logs", body)
+	req.Header.Set("Content-Type", "application/json")
+	// req.TLS == nil — RequireServiceIdentity must 403.
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+// Test 9: SetupInternal allows orchestrator CN on /billing/usage_logs.
+// With MTLS enabled and peer cert CN=orchestrator, the route returns 204.
+func TestSetupInternal_BillingRoute_AllowsOrchestratorCN(t *testing.T) {
+	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
+	r := buildTestInternalRouter(t)
+
+	body := bytes.NewReader([]byte(`{"business_id":"` + uuid.New().String() + `","model":"x","provider":"y"}`))
+	req := httptest.NewRequest(http.MethodPost, "/internal/v1/billing/usage_logs", body)
+	req.Header.Set("Content-Type", "application/json")
+	cert := &x509.Certificate{Subject: pkix.Name{CommonName: "orchestrator"}}
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+// Bonus: billing route NOT mounted on the PUBLIC /api/v1 router.
+func TestRouter_PublicRouter_DoesNotMountBillingRoute(t *testing.T) {
+	r := buildTestRouter(t)
+	found := false
+	_ = chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if strings.Contains(route, "billing/usage_logs") {
+			found = true
+		}
+		return nil
+	})
+	assert.False(t, found, "POST /internal/v1/billing/usage_logs must NOT be on the public mux")
 }
