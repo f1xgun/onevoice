@@ -188,7 +188,7 @@ func TestWriteRevokeError_RevokedDelegates(t *testing.T) {
 // --- TestErrorMapping_PasswordReset_* ----------------------
 //
 // writePasswordResetError owns the public {code, message} mapping for
-// the three password-reset sentinels declared in 
+// the three password-reset sentinels declared in
 // §4. Tests below guard the contract against silent drift — every code
 // the frontend's error_mapping.ts COPY map expects MUST be emitted by
 // the backend on the documented error.

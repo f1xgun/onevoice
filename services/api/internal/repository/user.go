@@ -111,7 +111,7 @@ func (a *UserResetExtAdapter) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, us
 	return a.inner.UpdateEmailInTx(ctx, tx, userID, newEmail)
 }
 
-// MarkEmailVerifiedInTx delegates to the inner concrete repo. 
+// MarkEmailVerifiedInTx delegates to the inner concrete repo.
 // POST /auth/verify-email/confirm flips email_verified + sets
 // email_verified_at inside the same tx as token consume.
 func (a *UserResetExtAdapter) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {

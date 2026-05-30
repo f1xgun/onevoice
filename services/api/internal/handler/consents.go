@@ -1,6 +1,6 @@
 // Package handler — consents.go
 //
-//. Three endpoints:
+// Three endpoints:
 //
 // - POST /auth/consents — submit the re-consent modal (Surface E).
 // 409 version_mismatch when the build's currentVersion has bumped

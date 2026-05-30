@@ -236,7 +236,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			}
 		})
 
-		// Protected routes (require auth + write-gated by 
+		// Protected routes (require auth + write-gated by
 		// grace middleware when pgPool is provided).
 		r.Group(func(r chi.Router) {
 			// Auth middleware
@@ -448,7 +448,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				}
 
 				// audit log read endpoint. Gated by
-				// PermAuditRead inside the handler (Owner+Admin via 
+				// PermAuditRead inside the handler (Owner+Admin via
 				// seed). RequireBusinessAccess (above) handles the membership
 				// + business-id validation; the handler handles the
 				// permission check + cursor/filter validation.

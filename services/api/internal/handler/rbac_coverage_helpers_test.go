@@ -409,7 +409,7 @@ func seedSuspendedMembership(t *testing.T, pool *pgxpool.Pool, bizID, userID, ro
 // seedCustomRole inserts a non-system role row scoped to the given business
 // and returns its ID. Used by substituteURLParams so PATCH /roles/{roleId}
 // and DELETE /roles/{roleId} validate UUID parse + reach the repo layer
-// where the authz gates (401 / 403 / 404) fire as expected. 
+// where the authz gates (401 / 403 / 404) fire as expected.
 // mirror of seedInvitation.
 //
 // permissions is a single-row JSONB literal: '[]' (empty). The walker uses

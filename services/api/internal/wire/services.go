@@ -167,7 +167,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		//
 		// NewLoggerWithResolver injects a tiny
 		// adapter wrapping UserRepository.GetByID so loggerImpl.write can
-		// snapshot user_email_at_event BEFORE the INSERT. After 
+		// snapshot user_email_at_event BEFORE the INSERT. After
 		// hard-deletes a user, the audit row's FK becomes NULL but the
 		// email survives for 152-ФЗ forensic queries.
 		AuditLogger: audit.NewLoggerWithResolver(repos.AuditLog, userResolverAdapter{repo: repos.User}),

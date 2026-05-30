@@ -140,7 +140,7 @@ func (s *userService) SetRegisterCollaborators(
 	s.registerAudit = auditLogger
 }
 
-// SetRegisterConsentService wires the 
+// SetRegisterConsentService wires the
 // ConsentService into Register. When set, RegisterWithContext writes
 // THREE user_consents rows (tos, privacy, pdn) in the same tx as the
 // user row + verify token + outbox enqueue. The legacy single
@@ -261,7 +261,7 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 // enqueue. Audit row written synchronously inside the tx.
 //
 // When consentSvc is nil (e.g. tests not wiring it), falls back to the
-// single 'service_operation' INSERT path so the 
+// single 'service_operation' INSERT path so the
 // behavior stays intact.
 //
 // The handler (auth.Register) is responsible for validating the

@@ -24,8 +24,10 @@
 //
 //	HTTP 412 Precondition Failed
 //	{
+//
 // "code": "email_verification_required",
 // "verifiedDeadline": "<ISO8601 created_at + 7 days>"
+//
 //	}
 //
 // The middleware reads users.email_verified from the DB on every request

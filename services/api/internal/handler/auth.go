@@ -234,7 +234,7 @@ type RegisterConsents struct {
 
 // RegisterRequest represents the registration request payload.
 //
-// clients MUST submit `consents`. The 
+// clients MUST submit `consents`. The
 // legacy clients (no consents field) still work — the handler treats a
 // missing/empty consents block as "all stale" and returns 400
 // consent_required, which is the safe behavior: forcing a UI

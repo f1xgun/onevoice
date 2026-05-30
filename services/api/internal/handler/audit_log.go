@@ -12,7 +12,7 @@
 //
 // Cursor pagination uses pkg/audit.EncodeCursor / DecodeCursor so the
 // opaque token round-trips between the handler and the next request
-// transparently. RBAC guard: PermAuditRead (Owner+Admin via 
+// transparently. RBAC guard: PermAuditRead (Owner+Admin via
 // seed). RequireBusinessAccess middleware on the parent /businesses/{id}
 // subtree already enforces membership; the handler-level Can check
 // gates the more specific permission per the audit category.
