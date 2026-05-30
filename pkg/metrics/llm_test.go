@@ -86,3 +86,63 @@ func TestRecordLLMRequest_ErrorStatus(t *testing.T) {
 		t.Fatal("error sample not found — error status should be recorded")
 	}
 }
+
+// counterValue returns the current value of a counter labelled by model only.
+// Returns 0 if the metric family or sample is missing.
+func counterValue(t *testing.T, name, model string) float64 {
+	t.Helper()
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	mf := findMetric(families, name)
+	if mf == nil {
+		return 0
+	}
+	s := findSample(mf, map[string]string{"model": model})
+	if s == nil {
+		return 0
+	}
+	return s.GetCounter().GetValue()
+}
+
+func TestRecordLLMCacheUsage_EmitsCounters(t *testing.T) {
+	const model = "claude-haiku-4-5-metric-test"
+
+	baseRead := counterValue(t, "llm_cache_read_tokens_total", model)
+	baseCreate := counterValue(t, "llm_cache_create_tokens_total", model)
+	baseInput := counterValue(t, "llm_input_tokens_after_breakpoint_total", model)
+
+	RecordLLMCacheUsage(model, 100, 50, 200)
+
+	if got := counterValue(t, "llm_cache_read_tokens_total", model); got != baseRead+100 {
+		t.Errorf("cache_read: expected +100 from %f, got %f", baseRead, got)
+	}
+	if got := counterValue(t, "llm_cache_create_tokens_total", model); got != baseCreate+50 {
+		t.Errorf("cache_create: expected +50 from %f, got %f", baseCreate, got)
+	}
+	if got := counterValue(t, "llm_input_tokens_after_breakpoint_total", model); got != baseInput+200 {
+		t.Errorf("input_after: expected +200 from %f, got %f", baseInput, got)
+	}
+}
+
+func TestRecordLLMCacheUsage_ZeroArgsAreNoOp(t *testing.T) {
+	const model = "claude-haiku-4-5-zero-test"
+
+	baseRead := counterValue(t, "llm_cache_read_tokens_total", model)
+	baseCreate := counterValue(t, "llm_cache_create_tokens_total", model)
+	baseInput := counterValue(t, "llm_input_tokens_after_breakpoint_total", model)
+
+	// Only cacheCreate is positive; the other two args should be skipped.
+	RecordLLMCacheUsage(model, 0, 25, 0)
+
+	if got := counterValue(t, "llm_cache_read_tokens_total", model); got != baseRead {
+		t.Errorf("cache_read should not change on zero arg, got %f -> %f", baseRead, got)
+	}
+	if got := counterValue(t, "llm_cache_create_tokens_total", model); got != baseCreate+25 {
+		t.Errorf("cache_create: expected +25 from %f, got %f", baseCreate, got)
+	}
+	if got := counterValue(t, "llm_input_tokens_after_breakpoint_total", model); got != baseInput {
+		t.Errorf("input_after should not change on zero arg, got %f -> %f", baseInput, got)
+	}
+}

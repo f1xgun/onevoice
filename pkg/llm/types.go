@@ -72,10 +72,22 @@ type ChatResponse struct {
 }
 
 // TokenUsage tracks token consumption for a request.
+//
+// CacheReadTokens / CacheCreationTokens are populated only by providers that
+// surface prompt-cache breakdowns (currently Anthropic; OpenAI/OpenRouter leave
+// them zero — OpenAI does not expose a comparable cache surface). InputTokens
+// post-cache means "tokens consumed AFTER the last cache breakpoint" — Phase 25
+// billing math must compute total billable input as
+//
+//	CacheReadTokens*0.1 + CacheCreationTokens*1.25 + InputTokens*1.0
+//
+// for the 5-minute ephemeral cache TTL (see Phase 24 RESEARCH §Pitfall #7).
 type TokenUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	InputTokens         int `json:"input_tokens"`
+	OutputTokens        int `json:"output_tokens"`
+	TotalTokens         int `json:"total_tokens"`
+	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
 }
 
 // StreamChunk represents an incremental response in a streaming chat completion.
