@@ -69,7 +69,6 @@ func TestGetTier_Boundaries(t *testing.T) {
 		{100, lockout.TierLocked},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run("", func(t *testing.T) {
 			l, _ := newTestLockout(t, lockout.Config{})
 			ctx := context.Background()

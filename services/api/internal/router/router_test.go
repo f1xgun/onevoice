@@ -200,7 +200,7 @@ func TestRouter_XFFFromUntrustedPeerIgnored(t *testing.T) {
 	mux.Use(chimiddleware.Recoverer)
 	mux.Post("/probe", probe)
 
-	req := httptest.NewRequest(http.MethodPost, "/probe", nil)
+	req := httptest.NewRequest(http.MethodPost, "/probe", http.NoBody)
 	// TCP peer outside any trusted CIDR.
 	req.RemoteAddr = "9.9.9.9:443"
 	// XFF that WOULD match a trusted CIDR (Yandex Cloud LB range

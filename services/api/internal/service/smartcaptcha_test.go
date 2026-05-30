@@ -21,7 +21,7 @@ func TestYandexSmartCaptcha_OK(t *testing.T) {
 	}))
 	defer stub.Close()
 
-	v := newYandexSmartCaptchaForTest("secret", stub.URL, nil)
+	v := newYandexSmartCaptchaForTest("secret", stub.URL)
 	err := v.Verify(context.Background(), "tok", "1.2.3.4")
 	assert.NoError(t, err)
 }
@@ -33,7 +33,7 @@ func TestYandexSmartCaptcha_Failed(t *testing.T) {
 	}))
 	defer stub.Close()
 
-	v := newYandexSmartCaptchaForTest("secret", stub.URL, nil)
+	v := newYandexSmartCaptchaForTest("secret", stub.URL)
 	err := v.Verify(context.Background(), "tok", "1.2.3.4")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrCaptchaInvalid), "expected ErrCaptchaInvalid, got %v", err)
@@ -48,7 +48,7 @@ func TestYandexSmartCaptcha_NetworkError(t *testing.T) {
 	addr := stub.URL
 	stub.Close()
 
-	v := newYandexSmartCaptchaForTest("secret", addr, nil)
+	v := newYandexSmartCaptchaForTest("secret", addr)
 	err := v.Verify(context.Background(), "tok", "1.2.3.4")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrCaptchaTransient), "expected ErrCaptchaTransient, got %v", err)
@@ -72,7 +72,7 @@ func TestYandexSmartCaptcha_BodyShape(t *testing.T) {
 	}))
 	defer stub.Close()
 
-	v := newYandexSmartCaptchaForTest("the-secret", stub.URL, nil)
+	v := newYandexSmartCaptchaForTest("the-secret", stub.URL)
 	require.NoError(t, v.Verify(context.Background(), "the-token", "9.8.7.6"))
 
 	assert.Equal(t, http.MethodPost, gotMethod)
@@ -93,7 +93,7 @@ func TestYandexSmartCaptcha_OmitsIPWhenEmpty(t *testing.T) {
 	}))
 	defer stub.Close()
 
-	v := newYandexSmartCaptchaForTest("the-secret", stub.URL, nil)
+	v := newYandexSmartCaptchaForTest("the-secret", stub.URL)
 	require.NoError(t, v.Verify(context.Background(), "the-token", ""))
 
 	_, hasIP := gotForm["ip"]
@@ -108,7 +108,7 @@ func TestYandexSmartCaptcha_GarbageResponse_Transient(t *testing.T) {
 	}))
 	defer stub.Close()
 
-	v := newYandexSmartCaptchaForTest("secret", stub.URL, nil)
+	v := newYandexSmartCaptchaForTest("secret", stub.URL)
 	err := v.Verify(context.Background(), "tok", "1.2.3.4")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrCaptchaTransient), "expected ErrCaptchaTransient, got %v", err)
