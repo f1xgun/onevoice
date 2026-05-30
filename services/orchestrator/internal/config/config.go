@@ -18,6 +18,31 @@ const defaultShutdownTimeout = 30 * time.Second
 // internal :8443 listener.
 const defaultAPIInternalURL = "https://api:8443"
 
+// Cost-guard defaults. These are documented in .env.example and
+// docs/llm-cost-guards.md; operators tune via env.
+const (
+	// defaultConversationInputCap stops the agent loop once the running input
+	// budget for a single conversation hits this many tokens.
+	defaultConversationInputCap = 50000
+
+	// defaultConversationOutputCap is the parallel limit on output tokens.
+	defaultConversationOutputCap = 10000
+
+	// defaultLocalFallbackRequestsPerHour roughly matches the "$10/h" ceiling
+	// at the v1.4 average per-request cost (~$0.005). Operators tune in
+	// docs/llm-cost-guards.md.
+	defaultLocalFallbackRequestsPerHour = 2000
+
+	// defaultLocalFallbackWindow is how long the limiter consults the in-
+	// process bucket before re-probing Redis.
+	defaultLocalFallbackWindow = 30 * time.Second
+
+	// redisDownPolicyBlock / redisDownPolicyLocalFallback are the literal
+	// values accepted by LLM_RATELIMIT_ON_REDIS_DOWN.
+	redisDownPolicyBlock         = "block"
+	redisDownPolicyLocalFallback = "local_fallback"
+)
+
 // Config holds orchestrator configuration loaded from environment.
 type Config struct {
 	Port     string
@@ -67,6 +92,30 @@ type Config struct {
 	APIInternalURL string
 
 	SelfHostedEndpoints []SelfHostedEndpoint
+
+	// Cost-guard knobs.
+	//
+	// FreeTierDailySpendUSD overrides DefaultTierLimits["free"].DailySpendUSD
+	// at wire time. 0 keeps the compiled default; -1 disables the gate
+	// (unlimited); positive sets the dollar cap.
+	FreeTierDailySpendUSD float64
+
+	// ConversationInputCap / ConversationOutputCap configure the per-
+	// conversation agent-loop token budget. 0 disables that axis.
+	ConversationInputCap  int
+	ConversationOutputCap int
+
+	// RedisDownPolicy selects the behavior when Redis fails: "block"
+	// (default, fail-closed) or "local_fallback" (in-process bucket).
+	RedisDownPolicy string
+
+	// LocalFallbackRequestsPerHour is the bucket rate when policy is
+	// local_fallback. Required (>0) when policy is local_fallback.
+	LocalFallbackRequestsPerHour int
+
+	// LocalFallbackWindow is how long after a Redis failure the limiter
+	// consults the in-process bucket before retrying Redis. Default 30s.
+	LocalFallbackWindow time.Duration
 }
 
 // SelfHostedEndpoint holds configuration for one self-hosted LLM inference endpoint.
@@ -124,6 +173,58 @@ func Load() (*Config, error) {
 		draftReplyModel = model
 	}
 
+	// Cost-guard knobs. Parse defensively: parse errors keep the default and
+	// log a warning; semantically invalid combinations (unknown policy, or
+	// local_fallback with zero rate) are hard boot errors so a misconfigured
+	// deploy refuses to start instead of silently disabling the limiter.
+	conversationInputCap := defaultConversationInputCap
+	if v := os.Getenv("LLM_CONVERSATION_INPUT_CAP"); v != "" {
+		if n, perr := strconv.Atoi(v); perr == nil && n >= 0 {
+			conversationInputCap = n
+		}
+	}
+	conversationOutputCap := defaultConversationOutputCap
+	if v := os.Getenv("LLM_CONVERSATION_OUTPUT_CAP"); v != "" {
+		if n, perr := strconv.Atoi(v); perr == nil && n >= 0 {
+			conversationOutputCap = n
+		}
+	}
+
+	var freeTierDailySpendUSD float64
+	if v := os.Getenv("LLM_FREE_TIER_DAILY_SPEND_USD"); v != "" {
+		if f, perr := strconv.ParseFloat(v, 64); perr == nil {
+			freeTierDailySpendUSD = f
+		}
+	}
+
+	redisDownPolicy := redisDownPolicyBlock
+	if v := os.Getenv("LLM_RATELIMIT_ON_REDIS_DOWN"); v != "" {
+		switch v {
+		case redisDownPolicyBlock, redisDownPolicyLocalFallback:
+			redisDownPolicy = v
+		default:
+			return nil, fmt.Errorf("LLM_RATELIMIT_ON_REDIS_DOWN must be %q or %q, got %q",
+				redisDownPolicyBlock, redisDownPolicyLocalFallback, v)
+		}
+	}
+
+	localFallbackRequestsPerHour := defaultLocalFallbackRequestsPerHour
+	if v := os.Getenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR"); v != "" {
+		if n, perr := strconv.Atoi(v); perr == nil {
+			localFallbackRequestsPerHour = n
+		}
+	}
+	if redisDownPolicy == redisDownPolicyLocalFallback && localFallbackRequestsPerHour <= 0 {
+		return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be > 0 when LLM_RATELIMIT_ON_REDIS_DOWN=local_fallback")
+	}
+
+	localFallbackWindow := defaultLocalFallbackWindow
+	if v := os.Getenv("LLM_LOCAL_FALLBACK_WINDOW"); v != "" {
+		if d, perr := time.ParseDuration(v); perr == nil && d > 0 {
+			localFallbackWindow = d
+		}
+	}
+
 	return &Config{
 		Port:               getEnv("PORT", "8090"),
 		LLMModel:           model,
@@ -145,6 +246,13 @@ func Load() (*Config, error) {
 		APIInternalURL: getEnv("API_INTERNAL_URL", defaultAPIInternalURL),
 
 		SelfHostedEndpoints: parseIndexedEndpoints(),
+
+		FreeTierDailySpendUSD:        freeTierDailySpendUSD,
+		ConversationInputCap:         conversationInputCap,
+		ConversationOutputCap:        conversationOutputCap,
+		RedisDownPolicy:              redisDownPolicy,
+		LocalFallbackRequestsPerHour: localFallbackRequestsPerHour,
+		LocalFallbackWindow:          localFallbackWindow,
 	}, nil
 }
 
