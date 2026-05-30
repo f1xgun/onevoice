@@ -193,8 +193,16 @@ func NewWithHITL(
 func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, error) {
 	ch := make(chan Event, 32)
 
+	// BuildSplit emits the two-block system prompt. Block 1 (platform) carries
+	// cache_control via SystemBlocks[0].CacheBoundary in stepRun; Block 2
+	// (business) does not. Messages no longer carries a leading role:"system"
+	// entry — SystemBlocks is the canonical channel.
+	platform, business, history := prompt.BuildSplit(req.BusinessContext, req.ProjectContext, req.Messages)
+
 	state := &RunState{
-		Messages:                 prompt.Build(req.BusinessContext, req.ProjectContext, req.Messages),
+		Messages:                 history,
+		SystemPlatform:           platform,
+		SystemBusiness:           business,
 		AvailableTools:           o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools),
 		BusinessApprovals:        req.BusinessApprovals,
 		ProjectApprovalOverrides: req.ProjectApprovalOverrides,

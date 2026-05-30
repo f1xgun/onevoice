@@ -38,8 +38,24 @@ const (
 // PendingToolCallBatch.ModelMessages at pause time and reconstructed at
 // resume time by Resume.
 type RunState struct {
-	// Messages is the full LLM conversation including the built system prompt.
+	// Messages is the conversation history forwarded to the LLM. It MUST NOT
+	// carry a leading role:"system" entry — system content lives on
+	// SystemPlatform / SystemBusiness and is wired into
+	// llm.ChatRequest.SystemBlocks by stepRun. Legacy Resume snapshots may
+	// still contain a leading system message; Resume detects that shape and
+	// falls back to the legacy scrub path (see resume.go).
 	Messages []llm.Message
+
+	// SystemPlatform is Block 1 of the two-block system prompt — the
+	// platform-wide prefix that Anthropic caches via cache_control:ephemeral.
+	// Byte-stable per locale (asserted by TestSystemPromptHash_Stability).
+	SystemPlatform string
+
+	// SystemBusiness is Block 2 of the two-block system prompt — the per-
+	// business prefix (name, integrations, current time, optional project
+	// block). NEVER carries cache_control: every business has distinct bytes
+	// here and stamping it would defeat cross-business cache reuse.
+	SystemBusiness string
 
 	// AvailableTools is the whitelist-filtered tool set for this turn.
 	AvailableTools []llm.ToolDefinition
@@ -95,13 +111,23 @@ type RunState struct {
 //nolint:unparam // StepOutcome consumed by Resume — see resume.go.
 func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- Event) (StepOutcome, string, error) {
 	for state.Iter < o.options.MaxIterations {
-		// 1. Call the LLM
+		// 1. Call the LLM. SystemBlocks is the canonical channel for system
+		// content. Block 1 (platform) carries CacheBoundary=true so Anthropic
+		// stamps cache_control on it; Block 2 (per-business) does not — keeps
+		// the cache prefix byte-stable across businesses.
 		llmReq := llm.ChatRequest{
-			UserID:   state.UserUUID,
-			Model:    state.Model,
-			Messages: state.Messages,
-			Tools:    state.AvailableTools,
-			Tier:     state.Tier,
+			UserID:    state.UserUUID,
+			Model:     state.Model,
+			Messages:  state.Messages,
+			Tools:     state.AvailableTools,
+			Tier:      state.Tier,
+			MaxTokens: llm.DefaultMaxTokensFor(state.Model),
+		}
+		if state.SystemPlatform != "" || state.SystemBusiness != "" {
+			llmReq.SystemBlocks = []llm.SystemBlock{
+				{Text: state.SystemPlatform, CacheBoundary: true},
+				{Text: state.SystemBusiness},
+			}
 		}
 		resp, err := o.llm.Chat(ctx, llmReq)
 		if err != nil {
@@ -231,19 +257,42 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 	return OutcomeMaxIterations, "", nil
 }
 
+// modelMessagesSnapshotV2 is the versioned envelope that wraps the raw
+// []llm.Message blob. Versioning lets Resume distinguish v2 batches (where
+// Messages is system-free and SystemPlatform/SystemBusiness travel alongside)
+// from legacy batches (where Messages still has a leading role:"system" entry
+// and the envelope fields are absent).
+//
+// Marshaling: new batches always emit V=2. Legacy batches unmarshal as raw
+// []llm.Message — Resume detects the JSON shape and falls through to the
+// legacy scrub path.
+type modelMessagesSnapshotV2 struct {
+	V              int           `json:"v"` // 2 — versioned envelope
+	Messages       []llm.Message `json:"messages"`
+	SystemPlatform string        `json:"system_platform,omitempty"`
+	SystemBusiness string        `json:"system_business,omitempty"`
+}
+
 // buildPendingBatch assembles the PendingToolCallBatch that will be persisted
 // at pause time. ProjectID is threaded through from RunState so the
 // TOCTOU re-check can load the project's approval_overrides at resolve time.
-// ModelMessages is the full state.Messages snapshot
-// as JSON so Resume can rebuild RunState after a process restart.
+// ModelMessages carries a versioned snapshot of the conversation history +
+// SystemBlocks so Resume can rebuild RunState after a process restart.
 func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCall) *domain.PendingToolCallBatch {
-	msgSnapshot, err := json.Marshal(state.Messages)
+	snapshot := modelMessagesSnapshotV2{
+		V:              2,
+		Messages:       state.Messages,
+		SystemPlatform: state.SystemPlatform,
+		SystemBusiness: state.SystemBusiness,
+	}
+	msgSnapshot, err := json.Marshal(snapshot)
 	if err != nil {
 		// Snapshot marshal failure is silently tolerated here — Resume will
 		// fail cleanly with EventError "corrupt snapshot" if this ever
-		// happens. llm.Message is plain JSON so this is only theoretical.
+		// happens. llm.Message + strings are plain JSON so this is only
+		// theoretical.
 		slog.Warn("stepRun: failed to marshal messages snapshot", "error", err, "batch_id", batchID)
-		msgSnapshot = []byte("[]")
+		msgSnapshot = []byte(`{"v":2,"messages":[]}`)
 	}
 	calls := make([]domain.PendingCall, 0, len(manualCalls))
 	for _, tc := range manualCalls {

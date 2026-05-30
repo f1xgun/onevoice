@@ -64,28 +64,7 @@ func (p *OpenRouterProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, e
 func (p *OpenRouterProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	start := time.Now()
 
-	msgs := make([]openai.ChatCompletionMessage, len(req.Messages))
-	for i, m := range req.Messages {
-		msg := openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
-		if m.ToolCallID != "" {
-			msg.ToolCallID = m.ToolCallID
-		}
-		if len(m.ToolCalls) > 0 {
-			oaiToolCalls := make([]openai.ToolCall, len(m.ToolCalls))
-			for j, tc := range m.ToolCalls {
-				oaiToolCalls[j] = openai.ToolCall{
-					ID:   tc.ID,
-					Type: openai.ToolType(tc.Type),
-					Function: openai.FunctionCall{
-						Name:      tc.Function.Name,
-						Arguments: tc.Function.Arguments,
-					},
-				}
-			}
-			msg.ToolCalls = oaiToolCalls
-		}
-		msgs[i] = msg
-	}
+	msgs := projectOpenAIMessages(req)
 
 	oaiReq := openai.ChatCompletionRequest{
 		Model:       req.Model,
@@ -148,28 +127,7 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req llm.ChatRequest) (*ll
 
 // ChatStream returns a channel of incremental responses
 func (p *OpenRouterProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
-	msgs := make([]openai.ChatCompletionMessage, len(req.Messages))
-	for i, m := range req.Messages {
-		msg := openai.ChatCompletionMessage{Role: m.Role, Content: m.Content}
-		if m.ToolCallID != "" {
-			msg.ToolCallID = m.ToolCallID
-		}
-		if len(m.ToolCalls) > 0 {
-			oaiToolCalls := make([]openai.ToolCall, len(m.ToolCalls))
-			for j, tc := range m.ToolCalls {
-				oaiToolCalls[j] = openai.ToolCall{
-					ID:   tc.ID,
-					Type: openai.ToolType(tc.Type),
-					Function: openai.FunctionCall{
-						Name:      tc.Function.Name,
-						Arguments: tc.Function.Arguments,
-					},
-				}
-			}
-			msg.ToolCalls = oaiToolCalls
-		}
-		msgs[i] = msg
-	}
+	msgs := projectOpenAIMessages(req)
 
 	oaiReq := openai.ChatCompletionRequest{
 		Model:       req.Model,

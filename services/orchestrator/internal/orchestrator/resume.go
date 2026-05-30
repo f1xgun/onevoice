@@ -83,20 +83,68 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Ev
 	return ch, nil
 }
 
+// decodeSnapshot reads batch.ModelMessages and returns the RunState fields it
+// carries. Two shapes are accepted:
+//
+//   - Versioned envelope: {"v":2,"messages":[...],"system_platform":"...","system_business":"..."}
+//     Messages is system-free; SystemPlatform/SystemBusiness travel separately
+//     and are wired into llm.ChatRequest.SystemBlocks on the next stepRun.
+//   - Legacy raw array: [{"role":"system",...}, ...]. Messages still carries a
+//     leading role:"system" entry; SystemPlatform/Business stay empty so
+//     stepRun falls through to provider-side legacy scrub.
+//
+// Distinguishing shape: a versioned envelope begins with '{' as the first
+// non-whitespace byte, a legacy raw array begins with '['. Resume logs a
+// debug entry on legacy batches so operators can confirm in-flight legacy
+// batches drained naturally.
+func decodeSnapshot(raw []byte) (messages []llm.Message, platform, business string, legacy bool, err error) {
+	if len(raw) == 0 {
+		return nil, "", "", false, nil
+	}
+	// Skip leading whitespace to find the first JSON token.
+	i := 0
+	for i < len(raw) && (raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\n' || raw[i] == '\r') {
+		i++
+	}
+	if i >= len(raw) {
+		return nil, "", "", false, nil
+	}
+	if raw[i] == '{' {
+		var env modelMessagesSnapshotV2
+		if uErr := json.Unmarshal(raw, &env); uErr != nil {
+			return nil, "", "", false, uErr
+		}
+		return env.Messages, env.SystemPlatform, env.SystemBusiness, false, nil
+	}
+	// Legacy array shape.
+	var msgs []llm.Message
+	if uErr := json.Unmarshal(raw, &msgs); uErr != nil {
+		return nil, "", "", false, uErr
+	}
+	return msgs, "", "", true, nil
+}
+
 // resumeGoroutine is the body of the spawned resume goroutine. Extracted so
 // tests can be written against narrower helpers and so the spawn wrapper in
 // Resume stays trivially inspectable.
 func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.PendingToolCallBatch, req ResumeRequest, out chan<- Event) {
-	// 1. Reconstruct state from the snapshot.
-	var messages []llm.Message
-	if len(batch.ModelMessages) > 0 {
-		if err := json.Unmarshal(batch.ModelMessages, &messages); err != nil {
-			out <- Event{Type: EventError, Content: fmt.Sprintf("corrupt snapshot: %v", err)}
-			return
-		}
+	// 1. Reconstruct state from the snapshot. decodeSnapshot accepts both
+	// the versioned envelope and the legacy raw-array shape; legacy batches
+	// in flight at deploy time drain through the legacy fallback.
+	messages, platform, business, legacy, err := decodeSnapshot(batch.ModelMessages)
+	if err != nil {
+		out <- Event{Type: EventError, Content: fmt.Sprintf("corrupt snapshot: %v", err)}
+		return
+	}
+	if legacy {
+		slog.DebugContext(ctx, "resume: legacy snapshot detected — using provider scrub fallback",
+			"batch_id", batch.ID,
+		)
 	}
 	state := &RunState{
 		Messages:                 messages,
+		SystemPlatform:           platform,
+		SystemBusiness:           business,
 		AvailableTools:           o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools),
 		BusinessApprovals:        req.BusinessApprovals,
 		ProjectApprovalOverrides: req.ProjectApprovalOverrides,
