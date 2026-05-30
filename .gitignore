@@ -41,6 +41,12 @@ minio_data/
 
 # Certificates
 certs/
+# But preserve the gitignore stub inside infra/mtls/certs so the dev cert
+# directory exists as a tracked path (cert contents stay gitignored via
+# infra/mtls/certs/.gitignore).
+!infra/mtls/certs/
+infra/mtls/certs/*
+!infra/mtls/certs/.gitignore
 
 # Temporary
 tmp/
