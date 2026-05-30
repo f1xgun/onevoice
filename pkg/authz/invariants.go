@@ -36,7 +36,7 @@ const (
 	OwnerChangeUnspecified OwnerChangeKind = iota
 
 	// OwnerChangeDemote — actor is changing MemberUserID's role to a
-	// non-owner role on the given business. Triggered by 
+	// non-owner role on the given business. Triggered by
 	// PATCH /businesses/{id}/members/{userId}.
 	OwnerChangeDemote
 

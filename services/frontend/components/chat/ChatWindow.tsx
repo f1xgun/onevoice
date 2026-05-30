@@ -36,7 +36,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   const tChat = useTranslations('chat.window');
   // Single conversation state machine — formerly split into useChat +
   // usePendingApprovalFlow with bidirectional callbacks and a ref-trick
-  // to break the forward-reference between two hook calls. 
+  // to break the forward-reference between two hook calls.
   // was the original split; it was reverted in favor of a single hook
   // when production experience showed the two halves were always co-owned
   // by this component and the "single writer for messages" invariant was

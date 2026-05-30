@@ -33,7 +33,7 @@ type cacheKey struct {
 // NOTE on AUTHZ-10 determinism: expirable.LRU uses Go's time.Now internally
 // and exposes no clock seam. We deliberately drop the SPEC's Clock interface
 // (it would require forking the library). For deterministic tests, use
-// NewCacheForTest with small TTLs (e.g. 1s) and a >TTL sleep — see 
+// NewCacheForTest with small TTLs (e.g. 1s) and a >TTL sleep — see
 // TestRBACCoverage_TTLCeiling. The 1.1s sleep is non-flaky and meets the
 // SPEC <1s determinism bar's spirit (the original concern was multi-second
 // sleeps).
