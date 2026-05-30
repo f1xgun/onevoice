@@ -14,8 +14,19 @@ const defaultShutdownTimeout = 30 * time.Second
 
 // Config holds orchestrator configuration loaded from environment.
 type Config struct {
-	Port            string
-	LLMModel        string
+	Port     string
+	LLMModel string
+	// DraftReplyModel is a cheap-tier model used to draft AI-suggested replies
+	// in the review_sync pipeline (services/orchestrator/internal/handler/
+	// draft_reply.go). Falls back to LLMModel when DRAFT_REPLY_MODEL env is
+	// unset, which mirrors the TitlerModel fallback in
+	// services/api/internal/config/config.go::Load. The two cheap-tier
+	// callsites are kept separate (rather than a unified CHEAP_MODEL var) so a
+	// future tuning round can route titler at one model and draft_reply at
+	// another without API surface churn. Per Plan 24-03 RESEARCH §"Open Q #1"
+	// decision (SPLIT). DraftReply does not use tools — routing it at any
+	// chat-completion model is safe (threat T-24-03-05).
+	DraftReplyModel string
 	LLMTier         string
 	MaxIterations   int
 	NATSUrl         string
@@ -91,9 +102,20 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// DraftReplyModel mirrors the TitlerModel fallback pattern in
+	// services/api/internal/config/config.go: explicit DRAFT_REPLY_MODEL wins;
+	// otherwise reuse LLMModel so the review_sync drafter still has a model
+	// to call against. We resolve the fallback at Load time (not inside the
+	// handler) so the redacted startup log records the effective model.
+	draftReplyModel := os.Getenv("DRAFT_REPLY_MODEL")
+	if draftReplyModel == "" {
+		draftReplyModel = model
+	}
+
 	return &Config{
 		Port:               getEnv("PORT", "8090"),
 		LLMModel:           model,
+		DraftReplyModel:    draftReplyModel,
 		LLMTier:            getEnv("LLM_TIER", "free"),
 		MaxIterations:      maxIter,
 		NATSUrl:            getEnv("NATS_URL", "nats://localhost:4222"),
