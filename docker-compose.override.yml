@@ -1,0 +1,30 @@
+# docker-compose.override.yml — dev-mode overlay
+#
+# This file is auto-merged by `docker compose` on every command. Keep it
+# small and dev-focused.
+#
+# mTLS bring-up (dev):
+#   The base docker-compose.yml mounts ./infra/mtls/certs into every
+#   service under /etc/onevoice/mtls. Operators MUST run:
+#
+#       make mtls-certs          # or: bash scripts/gen-mtls-certs.sh
+#
+#   ONCE before the first `docker compose up`. The script is idempotent —
+#   re-running it is a no-op when ca.crt already exists. Use `make
+#   clean-certs` to force regeneration.
+#
+#   Production deploys do NOT use this script — see infra/mtls/README.md
+#   "Dev vs Prod CA divergence" for the secrets-manager hand-off.
+#
+#   To opt OUT of mTLS in a local dev run (e.g. to talk to api:8443 with
+#   plain `curl` for one-off debugging), uncomment the block below.
+#   Doing so disables client-cert verification globally — never check
+#   that in.
+#
+# services:
+#   api:
+#     environment:
+#       ONEVOICE_MTLS_ENABLED: "false"
+#   orchestrator:
+#     environment:
+#       ONEVOICE_MTLS_ENABLED: "false"

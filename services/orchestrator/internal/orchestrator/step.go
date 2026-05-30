@@ -115,13 +115,20 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		// content. Block 1 (platform) carries CacheBoundary=true so Anthropic
 		// stamps cache_control on it; Block 2 (per-business) does not — keeps
 		// the cache prefix byte-stable across businesses.
+		//
+		// BusinessID + ConversationID populate the billing-attribution fields.
+		// parseBizID degrades a malformed/empty value to uuid.Nil so the
+		// router's nil-guard skips billing instead of writing a corrupt row
+		// (fail-closed posture).
 		llmReq := llm.ChatRequest{
-			UserID:    state.UserUUID,
-			Model:     state.Model,
-			Messages:  state.Messages,
-			Tools:     state.AvailableTools,
-			Tier:      state.Tier,
-			MaxTokens: llm.DefaultMaxTokensFor(state.Model),
+			UserID:         state.UserUUID,
+			BusinessID:     parseBizID(state.BusinessID),
+			ConversationID: state.ConversationID,
+			Model:          state.Model,
+			Messages:       state.Messages,
+			Tools:          state.AvailableTools,
+			Tier:           state.Tier,
+			MaxTokens:      llm.DefaultMaxTokensFor(state.Model),
 		}
 		if state.SystemPlatform != "" || state.SystemBusiness != "" {
 			llmReq.SystemBlocks = []llm.SystemBlock{
@@ -255,6 +262,27 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 	case <-ctx.Done():
 	}
 	return OutcomeMaxIterations, "", nil
+}
+
+// parseBizID converts the string-form BusinessID carried on RunState (sourced
+// from the chat_proxy → stream.go → orchestrator handler request body chain)
+// into a uuid.UUID for ChatRequest.BusinessID. Empty and malformed values
+// degrade to uuid.Nil so the router's nil-guard skips the billing POST
+// rather than emit a corrupt row (fail-closed). A warn log fires on
+// malformed input so operators can trace upstream corruption.
+//
+// uuid.MustParse would panic — unacceptable on a hot-path llm.Chat call.
+func parseBizID(s string) uuid.UUID {
+	if s == "" {
+		return uuid.Nil
+	}
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		slog.Warn("stepRun: malformed BusinessID, billing will be skipped",
+			"business_id", s, "error", err)
+		return uuid.Nil
+	}
+	return parsed
 }
 
 // modelMessagesSnapshotV2 is the versioned envelope that wraps the raw

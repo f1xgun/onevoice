@@ -124,6 +124,30 @@ func TestConfig_DraftReplyModel_PropagatesEmptyWhenLLMModelMissing(t *testing.T)
 		"missing LLM_MODEL must still error — DraftReplyModel inherits the same fail-fast")
 }
 
+// TestConfig_APIInternalURL_DefaultHTTPS pins the default `https://api:8443`
+// for the orchestrator → api billing hop. The mTLS substrate requires HTTPS
+// on this endpoint; a plain-HTTP default would silently bypass mTLS at startup
+// and only surface when the first billing POST hit a TLS-only listener.
+func TestConfig_APIInternalURL_DefaultHTTPS(t *testing.T) {
+	t.Setenv("LLM_MODEL", "gpt-4o-mini")
+	t.Setenv("API_INTERNAL_URL", "") // explicitly clear
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "https://api:8443", cfg.APIInternalURL,
+		"default must be HTTPS — the mTLS listener requires it")
+}
+
+// TestConfig_APIInternalURL_RespectsEnv proves operator override wins.
+func TestConfig_APIInternalURL_RespectsEnv(t *testing.T) {
+	t.Setenv("LLM_MODEL", "gpt-4o-mini")
+	t.Setenv("API_INTERNAL_URL", "https://api-staging.example.com:9443")
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "https://api-staging.example.com:9443", cfg.APIInternalURL)
+}
+
 func TestLoad_SelfHostedEndpoints_StopsAtGap(t *testing.T) {
 	t.Setenv("LLM_MODEL", "gpt-4o-mini")
 	t.Setenv("SELF_HOSTED_0_URL", "http://vm1:11434/v1")

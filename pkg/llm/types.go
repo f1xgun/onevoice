@@ -68,16 +68,18 @@ type SystemBlock struct {
 // Messages (legacy behavior — preserved so non-migrated callers like
 // services/api/internal/service/titler.go continue to work).
 type ChatRequest struct {
-	UserID       uuid.UUID        `json:"user_id"` // Use uuid.Nil for system-level calls
-	Model        string           `json:"model"`
-	Messages     []Message        `json:"messages"`
-	SystemBlocks []SystemBlock    `json:"system_blocks,omitempty"`
-	Tools        []ToolDefinition `json:"tools,omitempty"`
-	MaxTokens    int              `json:"max_tokens,omitempty"`
-	Temperature  float64          `json:"temperature,omitempty"`
-	TopP         float64          `json:"top_p,omitempty"`
-	Stop         []string         `json:"stop,omitempty"`
-	RequestID    string           `json:"request_id,omitempty"` // For tracing
+	UserID         uuid.UUID        `json:"user_id"`                   // Use uuid.Nil for system-level calls
+	BusinessID     uuid.UUID        `json:"business_id,omitempty"`     // Router skips billing when uuid.Nil
+	ConversationID string           `json:"conversation_id,omitempty"` // Mongo ObjectID hex (forensic queries)
+	Model          string           `json:"model"`
+	Messages       []Message        `json:"messages"`
+	SystemBlocks   []SystemBlock    `json:"system_blocks,omitempty"`
+	Tools          []ToolDefinition `json:"tools,omitempty"`
+	MaxTokens      int              `json:"max_tokens,omitempty"`
+	Temperature    float64          `json:"temperature,omitempty"`
+	TopP           float64          `json:"top_p,omitempty"`
+	Stop           []string         `json:"stop,omitempty"`
+	RequestID      string           `json:"request_id,omitempty"` // For tracing
 	// Routing metadata
 	Tier     string   `json:"tier,omitempty"`     // Subscription tier for rate limiting
 	Strategy Strategy `json:"strategy,omitempty"` // Routing strategy (default: StrategyCost)

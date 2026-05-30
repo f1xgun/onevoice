@@ -19,10 +19,13 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/f1xgun/onevoice/pkg/billingclient"
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/logger"
 	"github.com/f1xgun/onevoice/pkg/metrics"
+	"github.com/f1xgun/onevoice/pkg/mtls"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/wire"
@@ -53,7 +56,21 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	router, err := wire.LLMRouter(cfg, log)
+	// Surface the mTLS posture at startup so a misconfigured deploy is
+	// visible in the first log line rather than during the first internal
+	// HTTP call. tokenclient + billingclient pick up the same env.
+	log.Info("mtls", "enabled", mtls.IsEnabled())
+
+	// Wire pkg/billingclient against the api service's mTLS internal :8443
+	// listener. Passing nil http.Client makes billingclient's default
+	// transport honor ONEVOICE_MTLS_* env (same shape as tokenclient) so
+	// there is no per-service drift. WithBilling threads it through to
+	// llm.Router.logBilling — every successful Chat() call with a non-Nil
+	// BusinessID persists a usage_logs row.
+	billingHTTP := billingclient.New(cfg.APIInternalURL, nil)
+	log.Info("billing client wired", "url", cfg.APIInternalURL)
+
+	router, err := wire.LLMRouter(cfg, log, llm.WithBilling(billingHTTP))
 	if err != nil {
 		return err
 	}
@@ -116,7 +133,7 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, h *wi
 	// LocaleResolver runs after correlation but before logger/recoverer so
 	// the resolved language.Tag is available to every downstream handler
 	// (chat / draft-reply / tool list) for prompt-builder localization.
-	// See pkg/i18n + Phase A1 of `.planning/i18n-readiness/PLAN.md`.
+	// See pkg/i18n.
 	r.Use(i18n.LocaleMiddleware)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)

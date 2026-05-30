@@ -27,11 +27,17 @@ type RateLimitChecker interface {
 // rate limiting, billing, prometheus metrics — and delegates "which
 // provider for this model?" to Selector so neither concern has to reason
 // about the other.
+//
+// The billing field is the narrow Writer interface so production can wire a
+// Writer-only HTTP adapter (pkg/billingclient) without the orchestrator
+// depending on read-path methods. Any BillingRepository also satisfies
+// Writer, so existing WithBilling(BillingRepository) callers continue to
+// compile unchanged.
 type Router struct {
 	registry    *Registry
 	selector    Selector
 	rateLimiter RateLimitChecker
-	billing     BillingRepository
+	billing     Writer
 	providers   map[string]Provider
 	commission  CommissionConfig
 }
@@ -49,9 +55,12 @@ func WithRateLimitChecker(rlc RateLimitChecker) RouterOption {
 	return func(r *Router) { r.rateLimiter = rlc }
 }
 
-// WithBilling sets the billing repository for usage logging.
-func WithBilling(br BillingRepository) RouterOption {
-	return func(r *Router) { r.billing = br }
+// WithBilling sets the billing writer for usage logging. Accepts the narrow
+// Writer interface so production can pass a Writer-only HTTP adapter
+// (pkg/billingclient); any BillingRepository also satisfies Writer via
+// interface embedding, so existing callers continue to work.
+func WithBilling(w Writer) RouterOption {
+	return func(r *Router) { r.billing = w }
 }
 
 // WithProvider registers a Provider implementation by name.
@@ -143,7 +152,11 @@ func (r *Router) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 	}
 
 	resp.Provider = entry.Provider
-	if r.billing != nil {
+	// Skip billing for system-level callers (titler, review_drafter) that
+	// pass uuid.Nil BusinessID. The usage_logs.business_id column is NOT NULL
+	// and the repository rejects nil-BusinessID rows; system callers are
+	// retro-fitted to pass real BusinessIDs at the wiring layer.
+	if r.billing != nil && req.BusinessID != uuid.Nil {
 		go r.logBilling(context.Background(), req, entry, resp)
 	}
 	return resp, nil
@@ -167,12 +180,43 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 			}
 			return out, 0, nil
 		})
+	// ChatStream does not bill; the terminal turn (non-streaming) accounts the cost.
 	return ch, err
 }
 
-// logBilling calculates costs and logs a UsageLog entry.
+// cachePricingMultiplierRead is Anthropic's cache-read rate as a fraction of
+// the model's input rate. A cache hit is billed at 0.1× the input list price.
+const cachePricingMultiplierRead = 0.1
+
+// cachePricingMultiplierCreation is Anthropic's cache-write rate as a fraction
+// of the model's input rate. A cache write is billed at 1.25× the input list
+// price (the 5-minute ephemeral cache tier).
+const cachePricingMultiplierCreation = 1.25
+
+// billingPostTimeout bounds the per-call deadline applied inside logBilling so
+// that a hung downstream billing endpoint cannot accumulate goroutines forever.
+const billingPostTimeout = 5 * time.Second
+
+// logBilling computes the cache-aware provider cost and forwards a UsageLog
+// entry to the configured Writer. The billable-input formula reflects the
+// Anthropic cache-pricing model (see TokenUsage doc):
+//
+//	billable_input = InputTokens*1.0 + CacheReadTokens*0.1 + CacheCreationTokens*1.25
+//	provider_cost  = billable_input * InputCostPer1MTok / 1_000_000
+//	             + OutputTokens   * OutputCostPer1MTok / 1_000_000
+//
+// Providers that do not surface cache breakdowns (OpenAI, OpenRouter,
+// SelfHosted) leave CacheReadTokens / CacheCreationTokens at zero, so the
+// formula collapses to InputTokens × InputCostPer1MTok / 1_000_000 — the
+// pre-Phase-25a behavior.
 func (r *Router) logBilling(ctx context.Context, req ChatRequest, entry *ModelProviderEntry, resp *ChatResponse) {
-	inputCostUSD := float64(resp.Usage.InputTokens) * entry.InputCostPer1MTok / tokensPerMillion
+	ctx, cancel := context.WithTimeout(ctx, billingPostTimeout)
+	defer cancel()
+
+	billableInput := float64(resp.Usage.InputTokens) +
+		float64(resp.Usage.CacheReadTokens)*cachePricingMultiplierRead +
+		float64(resp.Usage.CacheCreationTokens)*cachePricingMultiplierCreation
+	inputCostUSD := billableInput * entry.InputCostPer1MTok / tokensPerMillion
 	outputCostUSD := float64(resp.Usage.OutputTokens) * entry.OutputCostPer1MTok / tokensPerMillion
 	providerCost := inputCostUSD + outputCostUSD
 
@@ -180,16 +224,21 @@ func (r *Router) logBilling(ctx context.Context, req ChatRequest, entry *ModelPr
 	commission := CalculateCommission(providerCost, r.commission.Mode, tier)
 
 	_ = r.billing.LogUsage(ctx, &UsageLog{
-		ID:              uuid.New(),
-		UserID:          req.UserID,
-		Model:           req.Model,
-		Provider:        entry.Provider,
-		InputTokens:     resp.Usage.InputTokens,
-		OutputTokens:    resp.Usage.OutputTokens,
-		ProviderCostUSD: providerCost,
-		CommissionUSD:   commission,
-		UserCostUSD:     providerCost + commission,
-		UserTier:        tier,
-		CreatedAt:       time.Now(),
+		ID:                  uuid.New(),
+		BusinessID:          req.BusinessID,
+		UserID:              req.UserID,
+		ConversationID:      req.ConversationID,
+		RequestID:           req.RequestID,
+		Model:               req.Model,
+		Provider:            entry.Provider,
+		InputTokens:         resp.Usage.InputTokens,
+		OutputTokens:        resp.Usage.OutputTokens,
+		CacheReadTokens:     resp.Usage.CacheReadTokens,
+		CacheCreationTokens: resp.Usage.CacheCreationTokens,
+		ProviderCostUSD:     providerCost,
+		CommissionUSD:       commission,
+		UserCostUSD:         providerCost + commission,
+		UserTier:            tier,
+		CreatedAt:           time.Now(),
 	})
 }

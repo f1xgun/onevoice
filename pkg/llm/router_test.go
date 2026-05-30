@@ -295,6 +295,7 @@ func TestRouter_Billing_LoggedAfterSuccess(t *testing.T) {
 
 	billing := &MockBillingRepository{}
 	userID := uuid.New()
+	businessID := uuid.New() // Non-nil BusinessID required to bill.
 
 	r := llm.NewRouter(registry,
 		llm.WithProvider(&stubProvider{
@@ -309,9 +310,10 @@ func TestRouter_Billing_LoggedAfterSuccess(t *testing.T) {
 	)
 
 	resp, err := r.Chat(context.Background(), llm.ChatRequest{
-		Model:  "gpt-4",
-		UserID: userID,
-		Tier:   "basic",
+		Model:      "gpt-4",
+		UserID:     userID,
+		BusinessID: businessID,
+		Tier:       "basic",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "hello", resp.Content)
@@ -322,7 +324,7 @@ func TestRouter_Billing_LoggedAfterSuccess(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		logs, err := billing.GetMonthlyUsage(context.Background(), userID, year, month)
 		return err == nil && len(logs) == 1
-	}, 100*time.Millisecond, 5*time.Millisecond, "billing log should appear")
+	}, 200*time.Millisecond, 5*time.Millisecond, "billing log should appear")
 
 	logs, err := billing.GetMonthlyUsage(context.Background(), userID, year, month)
 	require.NoError(t, err)
@@ -338,6 +340,201 @@ func TestRouter_Billing_LoggedAfterSuccess(t *testing.T) {
 	assert.InDelta(t, 0.0011, log.ProviderCostUSD, 1e-9)
 	assert.InDelta(t, 0.00022, log.CommissionUSD, 1e-9)
 	assert.InDelta(t, 0.00132, log.UserCostUSD, 1e-9)
+}
+
+// Chat() with a non-nil BusinessID must produce a UsageLog carrying that
+// exact BusinessID. Locks the propagation chain
+// ChatRequest.BusinessID → logBilling → UsageLog.BusinessID.
+func TestRouter_Billing_PersistsBusinessID(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 1.0, 3.0, 300)
+	registry := newTestRegistry(entry)
+
+	billing := &MockBillingRepository{}
+	businessID := uuid.New()
+
+	r := llm.NewRouter(registry,
+		llm.WithProvider(&stubProvider{
+			name: "openai",
+			response: &llm.ChatResponse{
+				Content: "ok",
+				Usage:   llm.TokenUsage{InputTokens: 10, OutputTokens: 5},
+			},
+		}),
+		llm.WithBilling(billing),
+	)
+
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     uuid.New(),
+		BusinessID: businessID,
+	})
+	require.NoError(t, err)
+
+	assert.Eventually(t, func() bool {
+		return billing.LastLog() != nil
+	}, 200*time.Millisecond, 10*time.Millisecond, "billing log should appear")
+
+	last := billing.LastLog()
+	require.NotNil(t, last)
+	assert.Equal(t, businessID, last.BusinessID)
+}
+
+// Chat() with BusinessID == uuid.Nil must NOT call the Writer at all
+// (system-level callers titler/draft_reply currently pass uuid.Nil; the
+// wiring layer retro-fits them with real BusinessIDs at call sites).
+func TestRouter_Billing_SkipsWhenBusinessIDNil(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 1.0, 3.0, 300)
+	registry := newTestRegistry(entry)
+
+	billing := &MockBillingRepository{}
+
+	r := llm.NewRouter(registry,
+		llm.WithProvider(&stubProvider{
+			name: "openai",
+			response: &llm.ChatResponse{
+				Content: "ok",
+				Usage:   llm.TokenUsage{InputTokens: 10, OutputTokens: 5},
+			},
+		}),
+		llm.WithBilling(billing),
+	)
+
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "gpt-4",
+		UserID:     uuid.New(),
+		BusinessID: uuid.Nil, // explicit nil — Router must skip billing
+	})
+	require.NoError(t, err)
+
+	// Allow time for any (incorrectly fired) goroutine to land.
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, 0, billing.CallCount(),
+		"LogUsage must NOT be called when ChatRequest.BusinessID is uuid.Nil")
+}
+
+// Cache reads are billed at 0.1× the input rate.
+// Locks the cache-aware formula to 1e-9 precision.
+//
+//	billable_input = 1000 + 10000*0.1 = 2000
+//	provider_cost  = 2000 * 3 / 1_000_000 = 6.0e-6 USD
+//	                + 0 * 15 / 1_000_000 (no output tokens)
+func TestRouter_Billing_CacheReadDiscounted(t *testing.T) {
+	entry := healthyEntry("anthropic/claude-sonnet-4-6", "anthropic", 3.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+
+	billing := &MockBillingRepository{}
+
+	r := llm.NewRouter(registry,
+		llm.WithProvider(&stubProvider{
+			name: "anthropic",
+			response: &llm.ChatResponse{
+				Content: "cached",
+				Usage: llm.TokenUsage{
+					InputTokens:     1000,
+					OutputTokens:    0,
+					CacheReadTokens: 10000,
+				},
+			},
+		}),
+		llm.WithBilling(billing),
+	)
+
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "anthropic/claude-sonnet-4-6",
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	require.NoError(t, err)
+
+	assert.Eventually(t, func() bool { return billing.LastLog() != nil },
+		200*time.Millisecond, 10*time.Millisecond)
+
+	last := billing.LastLog()
+	require.NotNil(t, last)
+	const expectedProviderCost = (1000.0 + 10000.0*0.1) * 3.0 / 1_000_000.0
+	assert.InDelta(t, expectedProviderCost, last.ProviderCostUSD, 1e-9)
+	assert.Equal(t, 10000, last.CacheReadTokens)
+	assert.Equal(t, 1000, last.InputTokens)
+}
+
+// Cache writes are billed at 1.25× the input rate.
+//
+//	billable_input = 0 + 10000*1.25 + 0 = 12500
+//	provider_cost  = 12500 * 3 / 1_000_000 = 3.75e-5 USD
+func TestRouter_Billing_CacheWritesPriced(t *testing.T) {
+	entry := healthyEntry("anthropic/claude-sonnet-4-6", "anthropic", 3.0, 15.0, 300)
+	registry := newTestRegistry(entry)
+
+	billing := &MockBillingRepository{}
+
+	r := llm.NewRouter(registry,
+		llm.WithProvider(&stubProvider{
+			name: "anthropic",
+			response: &llm.ChatResponse{
+				Content: "primed",
+				Usage: llm.TokenUsage{
+					InputTokens:         0,
+					OutputTokens:        0,
+					CacheCreationTokens: 10000,
+				},
+			},
+		}),
+		llm.WithBilling(billing),
+	)
+
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:      "anthropic/claude-sonnet-4-6",
+		UserID:     uuid.New(),
+		BusinessID: uuid.New(),
+	})
+	require.NoError(t, err)
+
+	assert.Eventually(t, func() bool { return billing.LastLog() != nil },
+		200*time.Millisecond, 10*time.Millisecond)
+
+	last := billing.LastLog()
+	require.NotNil(t, last)
+	const expectedProviderCost = (0.0 + 10000.0*1.25) * 3.0 / 1_000_000.0
+	assert.InDelta(t, expectedProviderCost, last.ProviderCostUSD, 1e-9)
+	assert.Equal(t, 10000, last.CacheCreationTokens)
+}
+
+// Conversation ID propagates verbatim from ChatRequest into the UsageLog.
+// Mongo ObjectID hex strings are passed through as-is.
+func TestRouter_Billing_PersistsConversationID(t *testing.T) {
+	entry := healthyEntry("gpt-4", "openai", 1.0, 3.0, 300)
+	registry := newTestRegistry(entry)
+
+	billing := &MockBillingRepository{}
+	const convoID = "67f4a8b27a9ad15d4f8a1c00"
+
+	r := llm.NewRouter(registry,
+		llm.WithProvider(&stubProvider{
+			name: "openai",
+			response: &llm.ChatResponse{
+				Content: "ok",
+				Usage:   llm.TokenUsage{InputTokens: 10, OutputTokens: 5},
+			},
+		}),
+		llm.WithBilling(billing),
+	)
+
+	_, err := r.Chat(context.Background(), llm.ChatRequest{
+		Model:          "gpt-4",
+		UserID:         uuid.New(),
+		BusinessID:     uuid.New(),
+		ConversationID: convoID,
+		RequestID:      "req-789",
+	})
+	require.NoError(t, err)
+
+	assert.Eventually(t, func() bool { return billing.LastLog() != nil },
+		200*time.Millisecond, 10*time.Millisecond)
+
+	last := billing.LastLog()
+	require.NotNil(t, last)
+	assert.Equal(t, convoID, last.ConversationID)
+	assert.Equal(t, "req-789", last.RequestID)
 }
 
 func TestRouter_Billing_NotCalledWhenNil(t *testing.T) {

@@ -12,6 +12,12 @@ import (
 // tool-dispatch requests time to drain before SIGKILL.
 const defaultShutdownTimeout = 30 * time.Second
 
+// defaultAPIInternalURL is the in-cluster mTLS endpoint the orchestrator dials
+// for internal API calls (billing usage_logs, future internal endpoints) when
+// API_INTERNAL_URL env is unset. Matches docker-compose service DNS + the API's
+// internal :8443 listener.
+const defaultAPIInternalURL = "https://api:8443"
+
 // Config holds orchestrator configuration loaded from environment.
 type Config struct {
 	Port     string
@@ -52,6 +58,13 @@ type Config struct {
 	OpenRouterAPIKey string
 	OpenAIAPIKey     string
 	AnthropicAPIKey  string
+
+	// APIInternalURL is the base URL of the API service's mTLS-protected
+	// internal :8443 listener. pkg/billingclient is wired against it for the
+	// orchestrator → api billing POST hop. Defaults to "https://api:8443"
+	// which matches the docker-compose env contract. Must be HTTPS — the
+	// mTLS substrate requires it on this endpoint.
+	APIInternalURL string
 
 	SelfHostedEndpoints []SelfHostedEndpoint
 }
@@ -128,6 +141,8 @@ func Load() (*Config, error) {
 		OpenRouterAPIKey: os.Getenv("OPENROUTER_API_KEY"),
 		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
 		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
+
+		APIInternalURL: getEnv("API_INTERNAL_URL", defaultAPIInternalURL),
 
 		SelfHostedEndpoints: parseIndexedEndpoints(),
 	}, nil
