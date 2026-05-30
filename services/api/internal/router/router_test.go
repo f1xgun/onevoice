@@ -296,3 +296,57 @@ func TestRouter_PublicRouter_DoesNotMountBillingRoute(t *testing.T) {
 	})
 	assert.False(t, found, "POST /internal/v1/billing/usage_logs must NOT be on the public mux")
 }
+
+// --- WR-04: GET /internal/v1/billing/daily_spend mTLS + public-mount guards ---
+//
+// Mirrors the POST usage_logs tests above so the GET route's security
+// invariants are pinned by tests instead of code inspection. A future PR that
+// moved the route outside the RequireServiceIdentity group (or onto the
+// public mux) would now fail a test rather than silently exposing the
+// daily-spend probe off-cluster.
+
+// TestSetupInternal_DailySpendRoute_AppliesMTLSMiddleware — request with no
+// peer cert returns 403 (mTLS gate active).
+func TestSetupInternal_DailySpendRoute_AppliesMTLSMiddleware(t *testing.T) {
+	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
+	r := buildTestInternalRouter(t)
+
+	url := "/internal/v1/billing/daily_spend?business_id=" + uuid.New().String() + "&date=2026-05-30"
+	req := httptest.NewRequest(http.MethodGet, url, http.NoBody)
+	// req.TLS == nil — RequireServiceIdentity must 403.
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+// TestSetupInternal_DailySpendRoute_AllowsOrchestratorCN — request with the
+// orchestrator's peer cert passes the gate and reaches the handler (200).
+func TestSetupInternal_DailySpendRoute_AllowsOrchestratorCN(t *testing.T) {
+	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
+	r := buildTestInternalRouter(t)
+
+	url := "/internal/v1/billing/daily_spend?business_id=" + uuid.New().String() + "&date=2026-05-30"
+	req := httptest.NewRequest(http.MethodGet, url, http.NoBody)
+	cert := &x509.Certificate{Subject: pkix.Name{CommonName: "orchestrator"}}
+	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+// TestRouter_PublicRouter_DoesNotMountDailySpendRoute — the daily_spend
+// route must NOT appear on the public /api/v1 mux. Defense in depth on top
+// of the mTLS listener split.
+func TestRouter_PublicRouter_DoesNotMountDailySpendRoute(t *testing.T) {
+	r := buildTestRouter(t)
+	found := false
+	_ = chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if strings.Contains(route, "billing/daily_spend") {
+			found = true
+		}
+		return nil
+	})
+	assert.False(t, found, "GET /internal/v1/billing/daily_spend must NOT be on the public mux")
+}
