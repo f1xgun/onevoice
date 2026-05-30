@@ -53,6 +53,14 @@ type Config struct {
 	OpenAIAPIKey     string
 	AnthropicAPIKey  string
 
+	// APIInternalURL is the base URL of the API service's mTLS-protected
+	// internal :8443 listener. Plan 25a-05 wires pkg/billingclient against
+	// it for the orchestrator → api billing POST hop. Defaults to
+	// "https://api:8443" which matches the docker-compose env contract
+	// flipped in Plan 25a-01. Must be HTTPS — the substrate from 25a-01
+	// requires mTLS on this endpoint.
+	APIInternalURL string
+
 	SelfHostedEndpoints []SelfHostedEndpoint
 }
 
@@ -128,6 +136,8 @@ func Load() (*Config, error) {
 		OpenRouterAPIKey: os.Getenv("OPENROUTER_API_KEY"),
 		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
 		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
+
+		APIInternalURL: getEnv("API_INTERNAL_URL", "https://api:8443"),
 
 		SelfHostedEndpoints: parseIndexedEndpoints(),
 	}, nil
