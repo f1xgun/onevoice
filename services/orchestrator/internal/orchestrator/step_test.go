@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -482,6 +483,123 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 // divergence with the api-side ToolsRegistryCache, which is HTTP-backed and
 // lazily warmed). We exercise this via the public Run path (buildPendingBatch
 // is package-private) and assert on repo.insertedBatches.
+// --- Plan 25a-05: BusinessID propagation tests ---
+
+// capturingLLM records every ChatRequest it receives so tests can assert on
+// BusinessID + ConversationID propagation through stepRun (Plan 25a-05).
+type capturingLLM struct {
+	mu       sync.Mutex
+	requests []llm.ChatRequest
+	resp     *llm.ChatResponse
+}
+
+func (c *capturingLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.requests = append(c.requests, req)
+	if c.resp != nil {
+		return c.resp, nil
+	}
+	return &llm.ChatResponse{Content: "ok", FinishReason: "stop"}, nil
+}
+
+func (c *capturingLLM) lastRequest(t *testing.T) llm.ChatRequest {
+	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.requests) == 0 {
+		t.Fatalf("capturingLLM.Chat was never called")
+	}
+	return c.requests[len(c.requests)-1]
+}
+
+// TestStepRun_PropagatesBusinessID — when state.BusinessID is a valid UUID
+// string, the ChatRequest the orchestrator dispatches MUST carry the parsed
+// uuid.UUID in BusinessID so logBilling stamps the right business on every
+// usage_logs row (LLMC-05 / RESEARCH §"BusinessID propagation chain").
+func TestStepRun_PropagatesBusinessID(t *testing.T) {
+	bizID := uuid.New()
+	cap := &capturingLLM{}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(cap, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      bizID.String(),
+		ConversationID:  "conv-x",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := cap.lastRequest(t)
+	assert.Equal(t, bizID, got.BusinessID, "stepRun must thread state.BusinessID into ChatRequest.BusinessID")
+}
+
+// TestStepRun_PropagatesConversationID — ChatRequest.ConversationID lands
+// the conversation's Mongo ObjectID hex from RunState so usage_logs rows can
+// be forensically grouped per-chat-turn.
+func TestStepRun_PropagatesConversationID(t *testing.T) {
+	cap := &capturingLLM{}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(cap, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      uuid.New().String(),
+		ConversationID:  "conv-forensic-123",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := cap.lastRequest(t)
+	assert.Equal(t, "conv-forensic-123", got.ConversationID)
+}
+
+// TestStepRun_MalformedBusinessID_ParsesToNil — Pitfall §3 fail-closed
+// behavior: a non-UUID state.BusinessID (from a compromised orchestrator
+// state OR a bug elsewhere in the chain) MUST degrade to uuid.Nil so the
+// router's nil-guard skips the billing POST. Loss of one row is preferable
+// to writing a corrupt row.
+func TestStepRun_MalformedBusinessID_ParsesToNil(t *testing.T) {
+	cap := &capturingLLM{}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(cap, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      "not-a-uuid",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := cap.lastRequest(t)
+	assert.Equal(t, uuid.Nil, got.BusinessID,
+		"malformed BusinessID must parse to uuid.Nil so router skips billing (fail-closed)")
+}
+
+// TestStepRun_EmptyBusinessID_ParsesToNil — empty BusinessID maps to
+// uuid.Nil same as malformed: legacy callers + system contexts continue
+// to work, just without a billing row.
+func TestStepRun_EmptyBusinessID_ParsesToNil(t *testing.T) {
+	cap := &capturingLLM{}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(cap, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      "",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := cap.lastRequest(t)
+	assert.Equal(t, uuid.Nil, got.BusinessID)
+}
+
 func TestBuildPendingBatch_PopulatesFloorAtPauseManual(t *testing.T) {
 	manualArgs1, _ := json.Marshal(map[string]interface{}{"text": "hi"})
 	manualArgs2, _ := json.Marshal(map[string]interface{}{"text": "yo"})
