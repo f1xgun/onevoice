@@ -11,7 +11,7 @@ export interface ExpiredApprovalBannerProps {
    * Optional callback invoked after the user dismisses the banner. The banner
    * self-manages its visibility via internal state — parents use this hook for
    * telemetry or to clear related UI state. Not persisted across page reloads;
-   * the server-side TTL remains the source of truth (Phase 16 D-19).
+   * the server-side TTL remains the source of truth.
    */
   onDismiss?: () => void;
 }

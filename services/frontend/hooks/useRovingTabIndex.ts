@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 /**
- * Phase 19 / Plan 19-05 / D-17 — roving-tabindex hook for chat-list portions
+ * roving-tabindex hook for chat-list portions
  * of the sidebar (ProjectSection, UnassignedBucket, PinnedSection).
  *
- * Behavior contract (locked at D-17, 19-CONTEXT.md):
+ * Behavior contract (locked at, 19-CONTEXT.md):
  *   - Tab enters the list ONCE — focus lands on the first item.
  *   - ArrowDown / ArrowUp move focus between items (wrap-around).
  *   - Home / End jump to the first / last item.

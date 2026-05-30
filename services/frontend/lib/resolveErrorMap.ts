@@ -7,17 +7,17 @@ import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 // Request-scoped error-map factories (Phase B1).
 //
 // Each factory takes a namespaced translator and returns a closure over
-// that translator. React consumers use the matching `useXxxError()` hook,
+// that translator. React consumers use the matching `useXxxError` hook,
 // which calls `useTranslations(...)` and memoizes the closure on the
 // translator's identity. The closure is safe to pass to event handlers
 // and React Query mutation callbacks.
 //
 // Strings live under:
-//   common.errors.*               → resolve/resume flow
-//   team.errors.*                 → /members mutations
-//   invite.accept.errors.*        → invitation accept/preview
-//   team.invite.errors.*          → invite-form 429
-//   roles.errors.*                → /roles mutations
+// common.errors.*               → resolve/resume flow
+// team.errors.*                 → /members mutations
+// invite.accept.errors.*        → invitation accept/preview
+// team.invite.errors.*          → invite-form 429
+// roles.errors.*                → /roles mutations
 //
 // Tests pass a translator stub that returns the key — they assert mapping
 // BEHAVIOR (which key the branch picks), not the localized copy.
@@ -160,7 +160,7 @@ export function useMapInviteError(): (err: unknown) => string {
 
 /**
  * Maps backend errors from `/businesses/{id}/roles/...` mutations to a
- * localized toast string. Recognised codes (Plan 05-03):
+ * localized toast string. Recognised codes:
  *   - 403 cannot_grant_unowned_permissions → roles.errors.cannotGrantUnowned
  *   - 422 self_lockout                     → roles.errors.selfLockout
  *   - 422 system_role_immutable            → roles.errors.systemRoleImmutable
@@ -170,7 +170,7 @@ export function useMapInviteError(): (err: unknown) => string {
  *
  * Callers surface the result via `toast.error(...)`. DeleteRoleDialog
  * intercepts `role_in_use` separately (race-recovery in-place swap,
- * CONTEXT D-10) BEFORE calling the closure — see Plan 05-06.
+ * ) BEFORE calling the closure — see.
  */
 export function createMapRoleError(tRolesErrors: TranslateFn): (err: unknown) => string {
   return (err) => {

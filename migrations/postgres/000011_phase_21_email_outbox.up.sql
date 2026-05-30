@@ -1,5 +1,5 @@
--- Phase 21a (Account Lifecycle / Email Infrastructure): email_outbox
--- transactional outbox per .planning/research/ARCHITECTURE.md §1.3.
+-- (Account Lifecycle / Email Infrastructure): email_outbox
+-- transactional outbox per §1.3.
 --
 -- Callers Enqueue a row INSIDE the same transaction that creates the
 -- originating record (e.g. password_reset_tokens). The outbox worker
@@ -7,9 +7,9 @@
 -- ~5s poll interval, hits the Unisender Go API, and transitions
 -- status: 'pending' -> 'sent' (success) or 'pending' -> 'pending'
 -- with attempts++ and next_attempt_at += exp-backoff (transient) or
--- 'pending' -> 'failed' after 5 attempts (D-07).
+-- 'pending' -> 'failed' after 5 attempts.
 --
--- Prod path: gen_random_uuid() per services/api/AGENTS.md.
+-- Prod path: gen_random_uuid per services/api/AGENTS.md.
 -- Integration-test mirror at services/api/migrations/000009_phase_21_email_outbox.up.sql.
 
 CREATE TABLE email_outbox (

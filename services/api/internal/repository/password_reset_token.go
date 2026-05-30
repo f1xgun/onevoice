@@ -1,22 +1,22 @@
 // Package repository — password_reset_token.go
 //
 // PasswordResetTokenRepository owns SQL for password_reset_tokens
-// (Phase 21b, ACCT-01). The cornerstone is ConsumeAtomic — a single
+// The cornerstone is ConsumeAtomic — a single
 // statement that atomically marks a token as used and returns the
 // owning user_id. Zero rows returned ⇒ ErrResetTokenInvalid regardless
 // of whether the token was unknown, expired, or already consumed
 // (PITFALLS §1.1: never distinguish failure modes to the caller).
 //
 // Token storage discipline:
-//   - Only SHA-256 hashes are persisted in token_hash (BYTEA UNIQUE).
-//     The plaintext token never touches the DB.
-//   - The atomic-consume statement's WHERE clause IS the comparison —
-//     pgx encodes the BYTEA argument and Postgres compares byte-by-byte
-//     server-side, removing the need for crypto/subtle in the lookup path.
+// - Only SHA-256 hashes are persisted in token_hash (BYTEA UNIQUE).
+// The plaintext token never touches the DB.
+// - The atomic-consume statement's WHERE clause IS the comparison —
+// pgx encodes the BYTEA argument and Postgres compares byte-by-byte
+// server-side, removing the need for crypto/subtle in the lookup path.
 //
 // Caller controls tx lifecycle. Insert and InvalidateAllForUser run
 // inside the caller-supplied tx so they commit atomically with the email
-// outbox enqueue (Phase 21a guarantees no orphan emails when the tx
+// outbox enqueue (guarantees no orphan emails when the tx
 // rolls back). ConsumeAtomic also runs inside the caller's tx so the
 // password update + refresh-token wipe in PasswordResetService commit
 // alongside the consume.
@@ -38,13 +38,13 @@ import (
 // PasswordResetTokenRepository owns SQL for password_reset_tokens.
 // Constructor takes the pgxPool interface (already in pool.go) so unit
 // tests can pass pgxmock.PgxPoolIface — matches the EmailOutboxRepository
-// pattern established in Phase 21a.
+// pattern established in.
 type PasswordResetTokenRepository struct {
 	pool pgxPool
 	psql sq.StatementBuilderType
 }
 
-// NewPasswordResetTokenRepository constructs the Phase 21b password reset
+// NewPasswordResetTokenRepository constructs the password reset
 // token repository. Returns the concrete pointer (matches
 // EmailOutboxRepository) — the PasswordResetService consumes the methods
 // directly with no need for a domain interface.

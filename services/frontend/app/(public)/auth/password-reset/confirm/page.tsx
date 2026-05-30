@@ -1,6 +1,6 @@
 'use client';
 
-// Phase 21b (ACCT-01) — Surface 2: /auth/password-reset/confirm.
+// Surface 2: /auth/password-reset/confirm.
 //
 // Scanner-protection (PITFALLS §1.5): GET only renders this client-side
 // page; the page mounts with the form HIDDEN behind a manual reveal
@@ -30,19 +30,19 @@ import { Label } from '@/components/ui/label';
 import { mapErrorCode } from '@/lib/error_mapping';
 
 // Backend POST /auth/password-reset/confirm reply contract:
-//   204 → success (redirect to /login)
-//   400 → {code: reset_token_invalid | reset_token_expired | password_too_weak}
+// 204 → success (redirect to /login)
+// 400 → {code: reset_token_invalid | reset_token_expired | password_too_weak}
 // MIN_PASSWORD_LEN is the client-side validation floor (mirrors the
 // backend handler validator `min=8` and PasswordResetService's len check).
 const HTTP_NO_CONTENT = 204;
 const MIN_PASSWORD_LEN = 8;
 
 // PageState drives the reveal-then-form UX:
-//   - reveal       → only the «Задать новый пароль» CTA shown (form hidden)
-//   - form         → form mounted, user typing
-//   - submitting   → POST in flight, fields disabled
-//   - token_error  → 400 reset_token_invalid / reset_token_expired (or missing token)
-//   - weak_password → 400 password_too_weak — form stays mounted so user retries
+// - reveal       → only the «Задать новый пароль» CTA shown (form hidden)
+// - form         → form mounted, user typing
+// - submitting   → POST in flight, fields disabled
+// - token_error  → 400 reset_token_invalid / reset_token_expired (or missing token)
+// - weak_password → 400 password_too_weak — form stays mounted so user retries
 type PageState = 'reveal' | 'form' | 'submitting' | 'token_error' | 'weak_password';
 
 export default function PasswordResetConfirmPage() {

@@ -195,7 +195,7 @@ func (m *MockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	return args.Get(0).(*domain.User), args.Error(1)
 }
 
-// GetByIDIncludingDeleted stub — Phase 21-04. Handler tests for
+// GetByIDIncludingDeleted stub —. Handler tests for
 // members / invitations don't exercise the soft-delete path; route
 // through GetByID so existing testify expectations still match.
 func (m *MockUserRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
@@ -238,7 +238,7 @@ func businessContextWith(ctx context.Context, businessID, userID uuid.UUID, perm
 }
 
 // newMembersHandlerForTest constructs a MembersHandler with the given dependencies
-// using the mockable pool interface. Phase 19: audit defaults to audit.Nop()
+// using the mockable pool interface. : audit defaults to audit.Nop
 // so existing tests don't have to thread a logger through every call site.
 func newMembersHandlerForTest(
 	mr domain.BusinessMembershipRepository,
@@ -366,7 +366,7 @@ func TestMembersHandler_UpdateMemberRole_HappyPath(t *testing.T) {
 	// Commit
 	mockPool.ExpectCommit()
 
-	// CR-01: handler now validates role belongs to this business before tx.
+	// handler now validates role belongs to this business before tx.
 	// Return a system role (BusinessID=nil) so the validation passes.
 	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
 		ID:         newRoleID,
@@ -415,7 +415,7 @@ func TestMembersHandler_UpdateMemberRole_LastOwnerRefuses(t *testing.T) {
 	newRoleID := uuid.New()
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 
-	// CR-01: handler validates role belongs to this business before opening tx.
+	// handler validates role belongs to this business before opening tx.
 	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
 		ID:         newRoleID,
 		BusinessID: nil,
@@ -515,7 +515,7 @@ func TestMembersHandler_UpdateMemberRole_InvalidUserIDParam(t *testing.T) {
 	assertErrorCode(t, w, "invalid_user_id")
 }
 
-// CR-01: cross-business role rejection. An admin of business A passes a role
+// cross-business role rejection. An admin of business A passes a role
 // UUID that exists, but whose BusinessID points at business B. Expect 400
 // invalid_role_id, no UpdateRoleInTx call, no cache invalidation.
 func TestMembersHandler_UpdateMemberRole_RejectsCrossBusinessRole(t *testing.T) {
@@ -552,7 +552,7 @@ func TestMembersHandler_UpdateMemberRole_RejectsCrossBusinessRole(t *testing.T) 
 	inv.AssertNotCalled(t, "InvalidateMember")
 }
 
-// CR-01: unknown role_id → 400 invalid_role_id, never reaches UpdateRoleInTx.
+// unknown role_id → 400 invalid_role_id, never reaches UpdateRoleInTx.
 func TestMembersHandler_UpdateMemberRole_RejectsUnknownRole(t *testing.T) {
 	mr := &MockBusinessMembershipRepository{}
 	rr := &MockRoleRepository{}

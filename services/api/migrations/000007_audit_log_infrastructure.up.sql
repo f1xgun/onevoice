@@ -1,9 +1,9 @@
--- Phase 19: Audit log infrastructure (integration-test mirror).
+-- Audit log infrastructure (integration-test mirror).
 -- This path has NO prior audit_logs definition (verified via grep), so we CREATE
 -- the table with its final target shape in one step. Production path (000008 in
 -- migrations/postgres/) ALTERs an existing table because that path created
 -- audit_logs in its 000001 init script.
--- Uses uuid_generate_v4() per services/api/AGENTS.md dual-path convention.
+-- Uses uuid_generate_v4 per services/api/AGENTS.md dual-path convention.
 
 BEGIN;
 

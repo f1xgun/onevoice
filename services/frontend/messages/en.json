@@ -277,7 +277,17 @@
       "resumeStream": "Couldn't resume — reload the page",
       "alreadyHandled": "Error: this action was already handled",
       "outOfScope": "Denied: this action is outside your business scope",
-      "policyRevoked": "Denied: this tool is blocked by current policy"
+      "policyRevoked": "Denied: this tool is blocked by current policy",
+      "account_locked": "Account temporarily locked.",
+      "captcha_required": "Please complete the captcha check.",
+      "captcha_invalid": "Captcha check failed. Please try again.",
+      "register_internal": "Could not create your account. Please try again later.",
+      "auto_login_failed": "Account created, but automatic sign-in failed. Please sign in manually.",
+      "refresh_internal": "Your session has expired. Please sign in again.",
+      "logout_internal": "Could not sign you out.",
+      "get_user_internal": "Could not load your account.",
+      "change_password_internal": "Could not change your password.",
+      "update_locale_internal": "Could not save your interface language."
     },
     "approvalSwitch": {
       "recommendedTitle": "recommended mode",
@@ -1354,7 +1364,12 @@
       "register": "Sign up",
       "submit": "Log in",
       "submitting": "Logging in…",
-      "invalidCredentials": "Invalid email or password"
+      "invalidCredentials": "Invalid email or password",
+      "lockoutTitle": "Account temporarily locked",
+      "lockoutBody": "Too many failed login attempts. Try again in {minutes} min or reset your password.",
+      "lockoutResetCta": "Reset password",
+      "captchaRequired": "Please complete the captcha check and try again.",
+      "captchaInvalid": "Captcha check failed. Please try again."
     },
     "register": {
       "nameLabel": "What should we call you",

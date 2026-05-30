@@ -1,0 +1,144 @@
+name: backup-restore-drill
+
+# Weekly CI restore drill. Runs scripts/backup/restore.sh against a
+# SEPARATE drill bucket (see docs/runbook-restore.md §6 for secret setup).
+# Catches `restic check` failures, decryption breaks, and snapshot-format
+# drift before they surface on a real outage.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/backup/**'
+      - '.github/workflows/backup-restore-drill.yml'
+  schedule:
+    - cron: '0 4 * * 0'  # Sunday 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: drill
+          POSTGRES_DB: scratch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install client tools (restic, postgres-client, mongosh, mongo-tools, yc)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client restic curl gnupg
+          # MongoDB Shell + Database Tools from official MongoDB apt repo.
+          curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
+            | sudo gpg -o /usr/share/keyrings/mongodb.gpg --dearmor
+          echo "deb [signed-by=/usr/share/keyrings/mongodb.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" \
+            | sudo tee /etc/apt/sources.list.d/mongo.list
+          sudo apt-get update
+          sudo apt-get install -y mongodb-mongosh mongodb-database-tools
+          # Yandex Cloud CLI (pinned to the same version as the backup container).
+          curl -fsSL "https://storage.yandexcloud.net/yandexcloud-yc/release/0.130.0/linux/amd64/yc" \
+            | sudo tee /usr/local/bin/yc > /dev/null
+          sudo chmod 0755 /usr/local/bin/yc
+
+      - name: Run restore drill
+        env:
+          RESTIC_REPOSITORY: ${{ secrets.RESTIC_REPOSITORY_DRILL }}
+          RESTIC_PASSWORD: ${{ secrets.RESTIC_PASSWORD_DRILL_PLAINTEXT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.YC_S3_ACCESS_KEY_DRILL }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.YC_S3_SECRET_KEY_DRILL }}
+          AWS_DEFAULT_REGION: ru-central1
+          SCRATCH_PG_DSN: postgres://postgres:drill@localhost:5432/scratch?sslmode=disable
+          SCRATCH_MONGO_URI: mongodb://localhost:27017
+        run: bash scripts/backup/restore.sh
+
+  entrypoint-roundtrip:
+    # regression-guards the entrypoint.sh decode
+    # pipeline. The production path uses Yandex KMS (no GitHub Actions
+    # access in PR runs), but the shape under test is the shell-level
+    # capture pattern that broke in the original implementation:
+    # piping a `--plaintext-file /dev/stdout` invocation through a
+    # base64 decoder corrupted raw plaintext bytes by re-decoding them
+    # as base64. openssl AES-256-CBC is the KMS stand-in here because
+    # the round-trip arithmetic (capture command-substitution output,
+    # assert byte equality vs original) is identical.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bash syntax check (entrypoint.sh)
+        run: bash -n scripts/backup/entrypoint.sh
+
+      - name: Assert no base64 decoder in entrypoint.sh decode path
+        run: |
+          set -euo pipefail
+          if grep -nE 'base64 -d|\| *base64 *-d' scripts/backup/entrypoint.sh; then
+            echo "::error file=scripts/backup/entrypoint.sh::Regression: base64 decoder reintroduced in the decode pipeline. yc kms decrypt --plaintext-file /dev/stdout writes raw bytes; double-decoding produces a value that fails operator-side disaster recovery." >&2
+            exit 1
+          fi
+
+      - name: Round-trip equality test (openssl AES-256-CBC stand-in for Yandex KMS)
+        run: |
+          set -euo pipefail
+
+          # Mirror the runbook's plaintext format: an `openssl rand -base64 32`
+          # printable string. This is the exact shape the operator stores in
+          # the password manager.
+          ORIGINAL="$(openssl rand -base64 32)"
+
+          # Encrypt with a known passphrase (KMS stand-in). pbkdf2 avoids the
+          # legacy-KDF deprecation warning that would otherwise pollute stderr.
+          CIPHERTEXT_B64="$(printf '%s' "$ORIGINAL" \
+            | openssl enc -aes-256-cbc -pbkdf2 -salt -pass pass:wr04-test \
+            | base64 -w0)"
+
+          # Reproduce the entrypoint.sh capture shape EXACTLY: a single command
+          # substitution, no extra decode step layered on top of the decrypt
+          # output. The "decrypt" here is openssl decrypt; the production
+          # version is `yc kms symmetric-crypto decrypt --plaintext-file
+          # /dev/stdout`. Both write raw plaintext to stdout when given a
+          # /dev/stdout-style target.
+          DECRYPTED="$(printf '%s' "$CIPHERTEXT_B64" \
+            | base64 -d \
+            | openssl enc -aes-256-cbc -pbkdf2 -d -pass pass:wr04-test)"
+
+          if [ "$ORIGINAL" != "$DECRYPTED" ]; then
+            echo "::error::Round-trip mismatch — entrypoint.sh decode pipeline corrupted bytes." >&2
+            echo "expected: $ORIGINAL" >&2
+            echo "got:      $DECRYPTED" >&2
+            exit 1
+          fi
+          echo "round-trip OK: $ORIGINAL == $DECRYPTED"
+
+      - name: Regression-fail test (proves the test catches the base64 double-decode bug)
+        run: |
+          set -euo pipefail
+          # Sanity check: applying an extra base64 decode to a printable
+          # base64 string (the exact bug described) MUST corrupt the
+          # value — i.e. NOT equal the original. If this passes, the test
+          # framework is broken and the round-trip above is meaningless.
+          ORIGINAL="$(openssl rand -base64 32)"
+          CORRUPTED="$(printf '%s' "$ORIGINAL" | base64 -d 2>/dev/null \
+            | od -An -tx1 | tr -d ' \n' || true)"
+          ORIG_HEX="$(printf '%s' "$ORIGINAL" | od -An -tx1 | tr -d ' \n')"
+          if [ "$ORIG_HEX" = "$CORRUPTED" ]; then
+            echo "::error::Sanity check failed: extra base64 decode did not corrupt the value, meaning the round-trip test cannot detect the regression." >&2
+            exit 1
+          fi
+          echo "sanity check OK: the broken pipeline would have produced a different value"

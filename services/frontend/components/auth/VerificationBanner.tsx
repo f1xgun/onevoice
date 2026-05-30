@@ -1,16 +1,16 @@
-// Phase 21-03 (ACCT-02) — Surface 4: Persistent verification banner.
+// Surface 4: Persistent verification banner.
 //
 // Renders only when useAuthStore.user.emailVerified === false. Sticks to
 // the top of every (app) route until the user verifies. Two inline
 // actions:
-//   1. «Отправить письмо снова» → POST /auth/verify-email/resend
-//      with a 60s cooldown on success/throttle (matches the backend's
-//      1/min rate limit per D-24).
-//   2. «Я ошибся в email» → opens the EmailChangeBeforeVerifyModal
-//      (D-21 escape hatch for dead email-on-file).
+// 1. «Отправить письмо снова» → POST /auth/verify-email/resend
+// with a 60s cooldown on success/throttle (matches the backend's
+// 1/min rate limit ).
+// 2. «Я ошибся в email» → opens the EmailChangeBeforeVerifyModal
+// (escape hatch for dead email-on-file).
 //
 // The banner cohabits with StickyAlert's `sticky top-0` semantics.
-// Future deletion-grace banner (Phase 21-04) will outrank it; for now
+// Future deletion-grace banner will outrank it; for now
 // this is the only sticky alert in (app).
 
 'use client';

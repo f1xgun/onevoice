@@ -1,8 +1,8 @@
-// Phase 21-04 (ACCT-03) — Surface 7: /settings/account "Опасная зона"
+// Surface 7: /settings/account "Опасная зона"
 // section. Single Danger Zone card with the «Удалить аккаунт» button
 // that opens DeleteConfirmModal (Surface 8). The full flow:
-//   DeleteConfirmModal → on 409 → SoleOwnerBlockedModal (Surface 9)
-//                      → on 204 → redirect /login + success toast
+// DeleteConfirmModal → on 409 → SoleOwnerBlockedModal (Surface 9)
+// → on 204 → redirect /login + success toast
 //
 // Verbatim RU copy via i18n keys under account.deletion.* (which are
 // also referenced by DeletionGraceBanner / DeleteConfirmModal /

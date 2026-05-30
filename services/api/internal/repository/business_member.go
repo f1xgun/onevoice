@@ -40,7 +40,7 @@ func NewBusinessMembershipRepository(pool pgxPool) domain.BusinessMembershipRepo
 }
 
 // Insert writes the membership row using the supplied pgx.Tx. Callers
-// dual-write inside service.business.Create() (Plan G / DATA-06): begin tx,
+// dual-write inside service.business.Create (Plan G / DATA-06): begin tx,
 // insert businesses, call Insert here, commit both or roll both back.
 //
 // Maps pgx duplicate-key errors (sqlstate 23505) to domain.ErrMembershipExists.
@@ -141,7 +141,7 @@ func (r *businessMembershipRepository) UpdateRole(ctx context.Context, businessI
 // UpdateRoleInTx is the transaction-scoped variant of UpdateRole. The UPDATE
 // executes on the supplied pgx.Tx so it participates in the caller's
 // RepeatableRead transaction alongside EnsureOwnerExistsAfter's SELECT FOR
-// UPDATE, preserving the isolation guarantee (CR-01).
+// UPDATE, preserving the isolation guarantee.
 // Returns domain.ErrMembershipNotFound when no row matched.
 func (r *businessMembershipRepository) UpdateRoleInTx(ctx context.Context, tx pgx.Tx, businessID, userID, newRoleID, actorUserID uuid.UUID) error {
 	if tx == nil {
@@ -191,7 +191,7 @@ func (r *businessMembershipRepository) Delete(ctx context.Context, businessID, u
 // DeleteInTx is the transaction-scoped variant of Delete. The DELETE executes
 // on the supplied pgx.Tx so it participates in the caller's RepeatableRead
 // transaction alongside EnsureOwnerExistsAfter's SELECT FOR UPDATE, preserving
-// the isolation guarantee (G-07 fix — mirrors CR-01 / UpdateRoleInTx).
+// the isolation guarantee (G-07 fix — mirrors / UpdateRoleInTx).
 // Returns domain.ErrMembershipNotFound when no row matched.
 func (r *businessMembershipRepository) DeleteInTx(ctx context.Context, tx pgx.Tx, businessID, userID uuid.UUID) error {
 	if tx == nil {
@@ -293,8 +293,8 @@ func (r *businessMembershipRepository) ListByUser(ctx context.Context, userID uu
 }
 
 // ListUserIDsByRole returns the user_id values for every business_members row
-// holding roleID in the given business. Phase 5 RolesHandler.Delete captures
-// this set BEFORE tx.Commit() so it can fanout authz.InvalidateMember per
+// holding roleID in the given business. RolesHandler.Delete captures
+// this set BEFORE tx.Commit so it can fanout authz.InvalidateMember per
 // affected user AFTER commit succeeds (Open Question A2: InvalidateRole alone
 // evicts only the role-perms entry, NOT the per-member membership entry that
 // caches the OLD role_id).

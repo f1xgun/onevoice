@@ -19,7 +19,7 @@ const baseResult: SearchResult = {
   lastMessageAt: '2026-04-27T12:00:00Z',
 };
 
-describe('SearchResultRow — Phase 19 / D-07', () => {
+describe('SearchResultRow', () => {
   it('renders title + snippet + date and links to /chat/{id}?highlight={topMessageId}', () => {
     render(<SearchResultRow result={baseResult} query="hello" />);
     // Title row link is the first interactive link (the snippet duplicate is aria-hidden).
@@ -73,7 +73,7 @@ describe('SearchResultRow — Phase 19 / D-07', () => {
   });
 });
 
-describe('renderHighlightedSnippet — Phase 19 / D-09', () => {
+describe('renderHighlightedSnippet', () => {
   it('returns the raw string when no marks supplied', () => {
     const out = renderHighlightedSnippet('hello world');
     expect(out).toBe('hello world');

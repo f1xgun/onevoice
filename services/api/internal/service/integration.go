@@ -24,7 +24,7 @@ type TokenRefresher interface {
 
 // ConnectParams holds parameters for connecting a new platform integration.
 //
-// Phase 19 Wave 4 (19-04): ActorID is the user_id of whoever is performing
+// ActorID is the user_id of whoever is performing
 // the connect, threaded through so the service can emit a single
 // integration.connected audit row with the correct attribution instead of
 // scattering audit calls across the 6 handler-layer Connect call sites.
@@ -80,8 +80,8 @@ var _ IntegrationService = (*integrationService)(nil)
 // NewIntegrationService creates a new integration service instance.
 // refresher can be nil for platforms that don't use token refresh.
 //
-// Phase 19 Wave 4 (19-04): auditLogger receives integration.connected and
-// integration.token_rotated events. nil-safe via audit.Nop() at the caller
+// auditLogger receives integration.connected and
+// integration.token_rotated events. nil-safe via audit.Nop at the caller
 // but production wiring always passes svcs.AuditLogger.
 func NewIntegrationService(repo domain.IntegrationRepository, enc *crypto.Encryptor, refresher TokenRefresher, auditLogger audit.Logger) IntegrationService {
 	if auditLogger == nil {
@@ -151,7 +151,7 @@ func (s *integrationService) GetByBusinessAndPlatform(ctx context.Context, busin
 
 // UpdateMetadata replaces the metadata jsonb of an integration. Token
 // fields are preserved untouched — callers that need to rotate tokens
-// should go through Connect() which handles encryption.
+// should go through Connect which handles encryption.
 func (s *integrationService) UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -283,7 +283,7 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, err
 	}
 
-	// Phase 19 audit (D-14, D-29/D-30): emit integration.connected AFTER
+	// emit integration.connected AFTER
 	// the repo write succeeds. Details carry platform + external_id only —
 	// NEVER token material. Fire-and-forget — Logger spawns its own goroutine.
 	// ActorID may be uuid.Nil for legacy/system flows; the audit row still
@@ -378,7 +378,7 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 				return nil, fmt.Errorf("persist refreshed tokens: %w", err)
 			}
 
-			// Phase 19 audit (D-29/D-30): emit integration.token_rotated AFTER
+			// emit integration.token_rotated AFTER
 			// repo.Update succeeds. user_id is intentionally nil — this is a
 			// background system event with no human actor (the builder records
 			// user_id=NULL).

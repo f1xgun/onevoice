@@ -60,7 +60,7 @@ function mockGetMessages(responseBody: unknown) {
   return fetchMock;
 }
 
-describe('ChatWindow — Phase 17 HITL integration (Invariants 5 + 9)', () => {
+describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({

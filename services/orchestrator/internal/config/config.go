@@ -24,6 +24,11 @@ type Config struct {
 	// deadline — the request context still governs overall cancellation.
 	ToolExecTimeout time.Duration
 
+	// HealthCheckTimeout caps any single dep ping inside /health/ready.
+	// Checks run concurrently (pkg/health.ReadyHandler), so total wall-clock
+	// budget = HealthCheckTimeout (max, not sum). Default 2s.
+	HealthCheckTimeout time.Duration
+
 	// MongoDB connection. The
 	// orchestrator writes pending_tool_calls batches at pause time, so it
 	// needs its own Mongo connection (avoids a circular dependency where
@@ -76,14 +81,25 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Per-dep readiness check timeout. Defensive default + clamp so an
+	// operator typo (or zero/negative explicit value) can't disable the
+	// safety net. Matches the API service's HealthCheckTimeout semantics.
+	healthCheckTimeout := 2 * time.Second
+	if v := os.Getenv("HEALTH_CHECK_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			healthCheckTimeout = d
+		}
+	}
+
 	return &Config{
-		Port:            getEnv("PORT", "8090"),
-		LLMModel:        model,
-		LLMTier:         getEnv("LLM_TIER", "free"),
-		MaxIterations:   maxIter,
-		NATSUrl:         getEnv("NATS_URL", "nats://localhost:4222"),
-		ShutdownTimeout: shutdownTimeout,
-		ToolExecTimeout: toolExecTimeout,
+		Port:               getEnv("PORT", "8090"),
+		LLMModel:           model,
+		LLMTier:            getEnv("LLM_TIER", "free"),
+		MaxIterations:      maxIter,
+		NATSUrl:            getEnv("NATS_URL", "nats://localhost:4222"),
+		ShutdownTimeout:    shutdownTimeout,
+		ToolExecTimeout:    toolExecTimeout,
+		HealthCheckTimeout: healthCheckTimeout,
 
 		MongoURI: getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDB:  getEnv("MONGO_DB", "onevoice"),

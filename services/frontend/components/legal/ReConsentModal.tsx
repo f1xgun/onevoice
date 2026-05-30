@@ -1,12 +1,12 @@
-// Phase 22-02 — Surface E: forced re-consent modal.
+// Surface E: forced re-consent modal.
 //
 // Renders when useAuthStore.user.requiresReconsent is non-null AND the
-// user is not in the email-verification gate (D-11 modal precedence —
+// user is not in the email-verification gate (modal precedence —
 // EmailVerifiedRequiredModal still wins). Non-dismissible:
-//   - Escape suppressed via onEscapeKeyDown preventDefault
-//   - Backdrop click suppressed via onPointerDownOutside preventDefault
-//   - role="alertdialog" so screen readers treat it as a forced
-//     interruption requiring acknowledgement
+// - Escape suppressed via onEscapeKeyDown preventDefault
+// - Backdrop click suppressed via onPointerDownOutside preventDefault
+// - role="alertdialog" so screen readers treat it as a forced
+// interruption requiring acknowledgement
 //
 // Only two exits: «Принять и продолжить» (POST /auth/consents → reload)
 // or «Выйти» (logout → /login). On 409 version_mismatch the modal
@@ -66,7 +66,7 @@ export function ReConsentModal({ policies }: ReConsentModalProps) {
     try {
       // Best-effort server-side logout to invalidate the refresh
       // cookie. If it fails (network, 5xx) we still bounce to /login —
-      // the in-memory token is dropped via logout().
+      // the in-memory token is dropped via logout.
       await api.post('/auth/logout').catch(() => undefined);
     } finally {
       logout();
@@ -79,7 +79,7 @@ export function ReConsentModal({ policies }: ReConsentModalProps) {
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[oklch(0.20_0.012_60/0.55)] data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
-          // Phase 22-02 UI-SPEC §E: aria contract uses role="alertdialog"
+          // UI-SPEC §E: aria contract uses role="alertdialog"
           // (forced interruption requiring acknowledgement, not just
           // "dialog"). Both Escape AND outside-click are explicit no-ops
           // so the user has no involuntary exit path.

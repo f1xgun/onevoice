@@ -25,15 +25,15 @@ type cacheKey struct {
 	UserID     uuid.UUID
 }
 
-// Cache is the two-level RBAC cache (CONTEXT D-06).
+// Cache is the two-level RBAC cache.
 // Membership LRU: (businessID, userID) -> CachedMember (RoleID + Status + JoinedAt). 1024 entries, 30s TTL.
 // Role LRU: roleID -> CachedRole (Permissions). 256 entries, 30s TTL.
-// InvalidateMember and InvalidateRole are O(1) deletes (CONTEXT D-07 — no fanout).
+// InvalidateMember and InvalidateRole are O(1) deletes (no fanout).
 //
-// NOTE on AUTHZ-10 determinism: expirable.LRU uses Go's time.Now() internally
+// NOTE on AUTHZ-10 determinism: expirable.LRU uses Go's time.Now internally
 // and exposes no clock seam. We deliberately drop the SPEC's Clock interface
 // (it would require forking the library). For deterministic tests, use
-// NewCacheForTest with small TTLs (e.g. 1s) and a >TTL sleep — see Plan 02-07
+// NewCacheForTest with small TTLs (e.g. 1s) and a >TTL sleep — see
 // TestRBACCoverage_TTLCeiling. The 1.1s sleep is non-flaky and meets the
 // SPEC <1s determinism bar's spirit (the original concern was multi-second
 // sleeps).
@@ -57,12 +57,12 @@ func NewCache(loader MembershipLoader) *Cache {
 }
 
 // NewCacheForTest constructs a Cache with INJECTABLE TTLs for both caches.
-// ONLY for use by tests (Plan 02-07 TestRBACCoverage_TTLCeiling). Production
+// ONLY for use by tests (TestRBACCoverage_TTLCeiling). Production
 // callers must use NewCache(loader). Sizes are kept small (16/16) — tests
 // do not exercise eviction. Panics on nil loader.
 //
 // Honors the SPEC AUTHZ-10 <1s determinism bar by allowing TTL=1s with a
-// 1.1s sleep instead of multi-second sleeps; see Plan 02-07.
+// 1.1s sleep instead of multi-second sleeps; see.
 func NewCacheForTest(loader MembershipLoader, membershipTTL, roleTTL time.Duration) *Cache {
 	if loader == nil {
 		panic("authz.NewCacheForTest: loader cannot be nil")
@@ -109,28 +109,27 @@ func (c *Cache) GetRole(ctx context.Context, roleID uuid.UUID) (CachedRole, erro
 }
 
 // InvalidateMember deletes the cached membership for (businessID, userID).
-// O(1). Call AFTER tx.Commit() per AUTHZ-04 / MEMBER-05.
+// O(1). Call AFTER tx.Commit per AUTHZ-04 / MEMBER-05.
 func (c *Cache) InvalidateMember(businessID, userID uuid.UUID) {
 	c.members.Remove(cacheKey{BusinessID: businessID, UserID: userID})
 }
 
 // InvalidateRole deletes the cached role permissions for roleID.
 // O(1). Membership entries holding RoleID=roleID stay valid; their next
-// GetRole() lookup misses and refreshes permissions (CONTEXT D-07).
+// GetRole lookup misses and refreshes permissions.
 // The businessID parameter is kept in the public API to match
 // AUTHZ-04's documented two-arg shape, but the cache is keyed by roleID
 // alone (roles are unique across businesses by UUID).
 //
-// WR-02: production callers will land in Phase 5 — every role-mutation
+// production callers will land in — every role-mutation
 // handler (PUT /roles/{id}, DELETE /roles/{id}) MUST call this AFTER
-// tx.Commit(), the same post-commit ordering MEMBER-05 documents for
+// tx.Commit, the same post-commit ordering MEMBER-05 documents for
 // InvalidateMember. Without the call, every member holding the edited
-// role evaluates Can() against the stale permission slice for up to
+// role evaluates Can against the stale permission slice for up to
 // the cache TTL (~30 s).
 //
-// TODO(Phase 5): wire InvalidateRole into role-mutation endpoints.
-// See `.planning/roadmap` Phase 5 (custom roles) — the role-update
-// handler must call this exactly once per successful mutation.
+// TODO: wire InvalidateRole into role-mutation endpoints — the role-update
+// handler for custom roles must call this exactly once per successful mutation.
 func (c *Cache) InvalidateRole(businessID, roleID uuid.UUID) {
 	_ = businessID
 	c.roles.Remove(roleID)

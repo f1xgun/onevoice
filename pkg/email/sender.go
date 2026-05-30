@@ -9,7 +9,7 @@ import (
 // email_outbox table columns so the worker can construct it from a
 // database row without translation.
 type Message struct {
-	To       string // single recipient — multi-recipient is YAGNI for Phase 21
+	To       string // single recipient — multi-recipient is YAGNI for
 	Subject  string
 	BodyText string
 	BodyHTML string // optional; "" means text-only

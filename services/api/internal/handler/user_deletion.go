@@ -1,8 +1,8 @@
 // Package handler — user_deletion.go
 //
-// Phase 21-04 (ACCT-03, ACCT-05): DELETE /api/v1/users/me and POST
+// DELETE /api/v1/users/me and POST
 // /api/v1/users/me/restore. Both routes are JWT-required but NOT
-// wrapped by RequireVerifiedEmail* (D-30: right to erasure cannot be
+// wrapped by RequireVerifiedEmail* (right to erasure cannot be
 // gated by verification) and NOT wrapped by BlockWritesDuringGrace
 // (the restore endpoint is the explicit escape hatch from the grace
 // state; the delete endpoint is idempotent — second call returns 423
@@ -29,7 +29,7 @@ import (
 // can pass an in-memory double (mirrors PasswordResetServiceAPI and
 // EmailVerificationServiceAPI).
 //
-// Phase 22 / D-13: RequestDeletion grew a trailing `reason` parameter so
+// RequestDeletion grew a trailing `reason` parameter so
 // ConsentService.WithdrawPDN can pass "consent_withdrawn" to bypass the
 // bcrypt check. The user_deletion.go Delete handler always passes "".
 type AccountDeletionServiceAPI interface {
@@ -45,7 +45,7 @@ type UserDeletionHandler struct {
 	allowedOrigins []string
 }
 
-// NewUserDeletionHandler constructs the Phase 21-04 handler. The
+// NewUserDeletionHandler constructs the handler. The
 // allowedOrigins slice is the CORS_ALLOWED_ORIGINS values — used by
 // Restore for the Origin-header CSRF check (T-DEL-10). The handler
 // requires all dependencies to be non-nil; wire/handlers.go enforces.
@@ -105,10 +105,10 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Phase 22 / D-13: pass reason="" so the bcrypt password check runs.
+	// pass reason="" so the bcrypt password check runs.
 	// ConsentService.WithdrawPDN is the only caller that passes the
 	// "consent_withdrawn" reason (skips the password check).
-	err = h.service.RequestDeletion(r.Context(), userID, req.Password, clientIP(r), r.UserAgent(), "")
+	err = h.service.RequestDeletion(r.Context(), userID, req.Password, middleware.ClientIP(r), r.UserAgent(), "")
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -177,7 +177,7 @@ func (h *UserDeletionHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.CancelDeletion(r.Context(), userID, clientIP(r), r.UserAgent())
+	err = h.service.CancelDeletion(r.Context(), userID, middleware.ClientIP(r), r.UserAgent())
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -216,7 +216,7 @@ func (h *UserDeletionHandler) originAllowed(origin string) bool {
 
 // asSoleOwnerErr type-asserts via duck-typing so the handler doesn't
 // import the service package's concrete type. The contract: the error
-// satisfies an interface{Businesses() []SoleOwnerEntry}-shaped helper
+// satisfies an interface{Businesses []SoleOwnerEntry}-shaped helper
 // via reflection through the errors.As path. For directness we accept
 // any error that errors.As-resolves to *service.ErrSoleOwnerBusinesses
 // — but to keep the import graph one-way (service does NOT import
@@ -228,7 +228,7 @@ func (h *UserDeletionHandler) originAllowed(origin string) bool {
 // the wire layer constructs against. The wire helper is registered
 // via a package-level hook so this file stays import-cycle-free.
 //
-// Phase 21-04 wires SoleOwnerExtractor in wire/handlers.go using a
+// wires SoleOwnerExtractor in wire/handlers.go using a
 // closure that calls errors.As against the service-package error.
 type soleOwnerEntry struct {
 	ID   uuid.UUID

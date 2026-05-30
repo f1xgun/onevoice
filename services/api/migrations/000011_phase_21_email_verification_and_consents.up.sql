@@ -1,5 +1,5 @@
--- Phase 21 (21-03 / ACCT-02): integration-test mirror of prod 000013.
--- Same schema; uuid_generate_v4() per services/api/AGENTS.md dual-path convention.
+-- integration-test mirror of prod 000013.
+-- Same schema; uuid_generate_v4 per services/api/AGENTS.md dual-path convention.
 -- See migrations/postgres/000013_phase_21_email_verification_and_consents.up.sql
 -- for the canonical comments.
 

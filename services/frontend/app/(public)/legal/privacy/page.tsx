@@ -1,7 +1,7 @@
-// Phase 22-02 — Surface A: Privacy Policy page (/legal/privacy).
+// Surface A: Privacy Policy page (legal/privacy).
 //
 // Async Server Component. Reads content/legal/privacy.{locale}.md at
-// render time via loadLegalDoc(), renders the body markdown via
+// render time via loadLegalDoc, renders the body markdown via
 // react-markdown, mounts LegalPageHeader (title + EffectiveTag) and
 // DataControllerBlock (Art. 14 §3) below the body. Public route —
 // reachable without auth (legal documents must always be accessible

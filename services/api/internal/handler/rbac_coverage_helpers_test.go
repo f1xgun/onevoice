@@ -3,13 +3,13 @@
 package handler_test
 
 // rbac_coverage_helpers_test.go — test fixtures, JWT minting, DB seeding, and
-// setupTestEnv for the Plan 02-07 AUTHZ-10 route-walker integration tests.
+// setupTestEnv for the AUTHZ-10 route-walker integration tests.
 //
 // All helpers are only compiled with the "integration" build tag so they
 // cannot run during the normal unit-test pass. They require:
-//   - TEST_POSTGRES_URL: PostgreSQL DSN for the integration-test database.
-//   - TEST_MONGO_URL:    MongoDB URI for the integration-test database.
-//   - TEST_MONGO_DB:     MongoDB database name (default: "onevoice_test").
+// - TEST_POSTGRES_URL: PostgreSQL DSN for the integration-test database.
+// - TEST_MONGO_URL:    MongoDB URI for the integration-test database.
+// - TEST_MONGO_DB:     MongoDB database name (default: "onevoice_test").
 //
 // The test PostgreSQL must have the RBAC migrations applied
 // (services/api/migrations/000005_rbac_data_model.up.sql).
@@ -92,9 +92,9 @@ func setupTestEnv(t *testing.T) *testEnv {
 	}
 
 	// PostgreSQL pool.
-	// pgxpool uses default max-conns (max(4, runtime.NumCPU()*4)).
+	// pgxpool uses default max-conns (max(4, runtime.NumCPU*4)).
 	// TODO(02.4-if-needed): if test instability returns after G-07 fix,
-	// set MaxConns=10 explicitly via pgxpool.ParseConfig + pool.Config().MaxConns.
+	// set MaxConns=10 explicitly via pgxpool.ParseConfig + pool.Config.MaxConns.
 	pool, err := pgxpool.New(context.Background(), connStr)
 	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
@@ -156,8 +156,8 @@ func setupTestEnv(t *testing.T) *testEnv {
 			HITL:     cfg.RateLimitHITL,
 		},
 		svcs.AuthzCache,
-		nil, // Phase 21-03 soft-restrict UserLookup — tests pass nil for pass-through.
-		nil, // Phase 21-04 deletion grace pool — tests pass nil for pass-through.
+		nil, // soft-restrict UserLookup — tests pass nil for pass-through.
+		nil, // deletion grace pool — tests pass nil for pass-through.
 	)
 
 	return &testEnv{
@@ -172,10 +172,10 @@ func setupTestEnv(t *testing.T) *testEnv {
 // cache for one constructed via authz.NewCacheForTest with small TTLs.
 //
 // Used ONLY by TestRBACCoverage_TTLCeiling (HIGH #1 + HIGH #2). The approach:
-//  1. Call wiring.BuildHandlers to get the full handler set + pool.
-//  2. Build a separate authz.Cache with short TTLs via NewCacheForTest.
-//  3. Rebuild the router (router.Setup) passing the test cache — so the
-//     RequireBusinessAccess middleware uses the short-TTL cache.
+// 1. Call wiring.BuildHandlers to get the full handler set + pool.
+// 2. Build a separate authz.Cache with short TTLs via NewCacheForTest.
+// 3. Rebuild the router (router.Setup) passing the test cache — so the
+// RequireBusinessAccess middleware uses the short-TTL cache.
 //
 // This duplicates the router.Setup call for TTL tests only; documented in
 // 02-07-SUMMARY. The Clock interface is intentionally absent (HIGH #2 —
@@ -261,7 +261,7 @@ func setupTestEnvWithTTL(t *testing.T, ttl time.Duration) *testEnv {
 // requests. Mirrors setupTestEnvWithTTL's shape: full wire/ build + custom
 // router.Setup invocation with router.RateLimits{Login: limit, ...}.
 //
-// T-03-09 mitigation requires the rate-limit test to ACTUALLY run (the plan
+// mitigation requires the rate-limit test to ACTUALLY run (the plan
 // forbids t.Skip in the integration test); this helper makes it cheap enough
 // to pass within the per-test budget by lowering Login from the default 100
 // to whatever the caller passes.
@@ -333,7 +333,7 @@ func setupTestEnvWithLoginRateLimit(t *testing.T, limit int) *testEnv {
 
 // mintJWT signs a JWT token claiming the given userID using the test secret.
 // Note: AccessTokenClaims no longer carries a Role field — per-business RBAC
-// lives entirely in business_members (Phase 6, CLEAN-02). Walker tests rely
+// lives entirely in business_members (CLEAN-02). Walker tests rely
 // solely on the user_id sub claim for the membership lookup.
 func mintJWT(t *testing.T, secret []byte, userID uuid.UUID) string {
 	t.Helper()
@@ -409,12 +409,12 @@ func seedSuspendedMembership(t *testing.T, pool *pgxpool.Pool, bizID, userID, ro
 // seedCustomRole inserts a non-system role row scoped to the given business
 // and returns its ID. Used by substituteURLParams so PATCH /roles/{roleId}
 // and DELETE /roles/{roleId} validate UUID parse + reach the repo layer
-// where the authz gates (401 / 403 / 404) fire as expected. Plan 05-03
+// where the authz gates (401 / 403 / 404) fire as expected.
 // mirror of seedInvitation.
 //
 // permissions is a single-row JSONB literal: '[]' (empty). The walker uses
 // the viewer JWT which lacks PermRolesUpdate / PermRolesDelete, so the
-// handler's authz.Can() returns 403 before any permission-content validation.
+// handler's authz.Can returns 403 before any permission-content validation.
 func seedCustomRole(t *testing.T, pool *pgxpool.Pool, businessID uuid.UUID) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
@@ -432,7 +432,7 @@ func seedCustomRole(t *testing.T, pool *pgxpool.Pool, businessID uuid.UUID) uuid
 // authz walker — the row exists so UUID parse + repo lookup succeed and
 // the authz gates (401 / 403 / 404) fire as expected.
 //
-// Plan 03-06 Task 1 helper. token_hash is unique-per-row so concurrent
+// Task 1 helper. token_hash is unique-per-row so concurrent
 // walker iterations don't collide on the UNIQUE constraint.
 func seedInvitation(t *testing.T, pool *pgxpool.Pool, businessID, roleID, createdByUserID uuid.UUID) uuid.UUID {
 	t.Helper()
@@ -451,19 +451,19 @@ func seedInvitation(t *testing.T, pool *pgxpool.Pool, businessID, roleID, create
 // An empty body slice is treated as no body (uses http.NoBody).
 //
 // Context deadline is route-aware (G-06):
-//   - Routes whose URL contains "/stream" (SSE endpoints): 10 s — prevents the
-//     heartbeat ticker from hanging the entire test suite.
-//   - All other routes: 60 s — generous enough for slow DB operations under test
-//     contention (e.g. RepeatableRead + SELECT FOR UPDATE in EnsureOwnerExistsAfter
-//     called by DELETE /members/{userId}).
+// - Routes whose URL contains "/stream" (SSE endpoints): 10 s — prevents the
+// heartbeat ticker from hanging the entire test suite.
+// - All other routes: 60 s — generous enough for slow DB operations under test
+// contention (e.g. RepeatableRead + SELECT FOR UPDATE in EnsureOwnerExistsAfter
+// called by DELETE /members/{userId}).
 func doAuthedRequest(t *testing.T, env *testEnv, method, url, jwtToken string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	// Route-aware context deadline (G-06 fix):
-	//   - SSE/streaming routes (path contains "/stream") block ServeHTTP on their
-	//     heartbeat ticker; use a short 10s bound so the walker can advance.
-	//   - All other routes get 60s — generous enough for slow DB operations under
-	//     test contention (e.g. RepeatableRead + SELECT FOR UPDATE in
-	//     EnsureOwnerExistsAfter called by DELETE /members/{userId}).
+	// - SSE/streaming routes (path contains "/stream") block ServeHTTP on their
+	// heartbeat ticker; use a short 10s bound so the walker can advance.
+	// - All other routes get 60s — generous enough for slow DB operations under
+	// test contention (e.g. RepeatableRead + SELECT FOR UPDATE in
+	// EnsureOwnerExistsAfter called by DELETE /members/{userId}).
 	timeout := 60 * time.Second
 	if strings.Contains(url, "/stream") {
 		timeout = 10 * time.Second

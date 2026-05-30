@@ -1,12 +1,12 @@
-// hooks/useDataTableFilters.ts — Phase 19 / D-21 composition primitive.
+// hooks/useDataTableFilters.ts — composition primitive.
 //
 // Owns filter state for list pages (posts, reviews, future). Exposes:
-//   - `filters`        — the current filter values
-//   - `setFilter(k,v)` — partial-update one key
-//   - `queryString()`  — URLSearchParams string suitable for use in
-//                         TanStack Query keys + fetch URLs
+// - `filters`        — the current filter values
+// - `setFilter(k,v)` — partial-update one key
+// - `queryString`  — URLSearchParams string suitable for use in
+// TanStack Query keys + fetch URLs
 //
-// `queryString()` skips entries whose value is the empty string OR the
+// `queryString` skips entries whose value is the empty string OR the
 // literal `'all'` — preserves the existing posts/page.tsx semantics
 // (current at lines 80-84 of the pre-split file): `'all'` means "no filter",
 // not a server-side enum value.

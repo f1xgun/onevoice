@@ -1,22 +1,22 @@
 // Package service — email_verification.go
 //
-// EmailVerificationService implements ACCT-02: prove ownership of the
+// EmailVerificationService implements : prove ownership of the
 // user's email address without breaking the Register auto-login flow
-// (D-20). Three orchestration methods:
+// Three orchestration methods:
 //
-//   - RequestResend (D-24): rate-limited 1/min + 5/hr per user. Issues a
-//     fresh 32-byte token + enqueues the verification email inside one tx.
-//   - ConfirmVerify (D-22, D-23): atomic consume + flip
-//     users.email_verified=TRUE in one tx. Returns NO session material —
-//     no cookies, no JWT (T-VE-02 mitigation). Returns the userID for the
-//     handler to record on the audit row.
-//   - ChangeEmailBeforeVerify (D-21): escape hatch for users with a dead
-//     email-on-file. Allowed ONLY when email_verified=false. Updates
-//     users.email, invalidates ALL outstanding verification tokens, and
-//     issues a fresh one — all in one tx.
+// - RequestResend: rate-limited 1/min + 5/hr per user. Issues a
+// fresh 32-byte token + enqueues the verification email inside one tx.
+// - ConfirmVerify: atomic consume + flip
+// users.email_verified=TRUE in one tx. Returns NO session material —
+// no cookies, no JWT (T-VE-02 mitigation). Returns the userID for the
+// handler to record on the audit row.
+// - ChangeEmailBeforeVerify: escape hatch for users with a dead
+// email-on-file. Allowed ONLY when email_verified=false. Updates
+// users.email, invalidates ALL outstanding verification tokens, and
+// issues a fresh one — all in one tx.
 //
 // Issuance is also exposed as IssueAndEnqueueTx so UserService.Register
-// can call it inside the Register tx (D-17: token + outbox enqueue must
+// can call it inside the Register tx (token + outbox enqueue must
 // commit atomically with the user_consents INSERT and the user row).
 package service
 
@@ -39,13 +39,13 @@ import (
 )
 
 const (
-	// verifyTokenTTL — D-18 (RU email providers defer delivery hours;
+	// verifyTokenTTL — (RU email providers defer delivery hours;
 	// 24h is too tight, 7d is too loose. 72h is the compromise.).
 	verifyTokenTTL = 72 * time.Hour
-	// verifyTokenEntropyBytes — D-17 (256 bits).
+	// verifyTokenEntropyBytes — (256 bits).
 	verifyTokenEntropyBytes = 32
 	// verifyResendMinWindow / verifyResendHourMax / verifyResendHourWindow —
-	// D-24: 1/min and 5/hr per user.
+	// 1/min and 5/hr per user.
 	verifyResendMinWindow  = 60 * time.Second
 	verifyResendHourMax    = 5
 	verifyResendHourWindow = 3600 * time.Second
@@ -73,7 +73,7 @@ type EmailVerificationService struct {
 	tokenTTL  time.Duration
 }
 
-// NewEmailVerificationService constructs the Phase 21-03 service. All deps
+// NewEmailVerificationService constructs the service. All deps
 // are required.
 func NewEmailVerificationService(
 	pool *pgxpool.Pool,
@@ -94,7 +94,7 @@ func NewEmailVerificationService(
 	}
 }
 
-// RequestResend (D-24): per-user 1/min + 5/hr Redis rate limit. Returns
+// RequestResend: per-user 1/min + 5/hr Redis rate limit. Returns
 // domain.ErrAlreadyVerified if the user is already verified (handler maps
 // to HTTP 403) — saves the resend cost and signals UX that no banner
 // should render.
@@ -146,7 +146,7 @@ func (s *EmailVerificationService) RequestResend(ctx context.Context, userID uui
 	return tx.Commit(ctx)
 }
 
-// ConfirmVerify (D-22, D-23): scanner-safe atomic consume. Returns the
+// ConfirmVerify: scanner-safe atomic consume. Returns the
 // userID for the handler to record on the audit row's UserID. Returns
 // (uuid.Nil, domain.ErrVerifyTokenInvalid) when the token is unknown,
 // already consumed, or expired (PITFALLS §1.1 collapse).
@@ -181,7 +181,7 @@ func (s *EmailVerificationService) ConfirmVerify(ctx context.Context, plaintextT
 
 // IsTokenExpired distinguishes invalid-vs-expired for the handler's UX
 // branch (Surface 3). Returns (true, nil) if a row exists with
-// consumed_at IS NULL AND expires_at <= NOW(). Always returns (false, nil)
+// consumed_at IS NULL AND expires_at <= NOW. Always returns (false, nil)
 // for unknown / already-consumed tokens — they're indistinguishable from
 // expired-then-consumed via the live atomic path, but the UX-side error
 // code stays distinct purely as a hint to the user.
@@ -190,15 +190,15 @@ func (s *EmailVerificationService) IsTokenExpired(ctx context.Context, plaintext
 	return s.tokens.LookupExpired(ctx, hashArr[:])
 }
 
-// ChangeEmailBeforeVerify (D-21): allowed ONLY when user.email_verified=false.
+// ChangeEmailBeforeVerify: allowed ONLY when user.email_verified=false.
 // Updates users.email, invalidates all outstanding verification tokens for
 // the user, and issues a fresh token + outbox enqueue — all in one tx.
 //
 // Returns:
-//   - domain.ErrAlreadyVerified — handler maps to HTTP 403.
-//   - domain.ErrEmailTaken      — handler maps to HTTP 409 (UNIQUE-violation
-//     races to the same sentinel via UpdateEmailInTx).
-//   - oldEmail (first return) for the handler to write on the audit row.
+// - domain.ErrAlreadyVerified — handler maps to HTTP 403.
+// - domain.ErrEmailTaken      — handler maps to HTTP 409 (UNIQUE-violation
+// races to the same sentinel via UpdateEmailInTx).
+// - oldEmail (first return) for the handler to write on the audit row.
 func (s *EmailVerificationService) ChangeEmailBeforeVerify(ctx context.Context, userID uuid.UUID, newEmail string) (oldEmail string, err error) {
 	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
@@ -238,7 +238,7 @@ func (s *EmailVerificationService) ChangeEmailBeforeVerify(ctx context.Context, 
 }
 
 // IssueAndEnqueueTx is the cross-call helper used by RequestResend,
-// ChangeEmailBeforeVerify, AND UserService.Register (D-17 — Register also
+// ChangeEmailBeforeVerify, AND UserService.Register (Register also
 // composes the user_consents INSERT + outbox enqueue + token issue in one
 // tx). Exported so the user service can call it directly.
 func (s *EmailVerificationService) IssueAndEnqueueTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, email string) error {

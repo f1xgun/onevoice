@@ -42,7 +42,7 @@ const { api } = await import('@/lib/api');
 const { useBusinessStore } = await import('@/lib/stores/business');
 const { queryClient } = await import('@/lib/queryClient');
 
-describe('404 interceptor (CONTEXT D-16)', () => {
+describe('404 interceptor', () => {
   let clearFn: ReturnType<typeof vi.fn>;
   let invalidateFn: ReturnType<typeof vi.fn>;
 
@@ -143,7 +143,7 @@ import { toast } from 'sonner';
 const { useBusinessStore: bStore } = await import('@/lib/stores/business');
 const { queryClient: qc } = await import('@/lib/queryClient');
 
-describe('404 interceptor — warning toast (UI-RBAC-04)', () => {
+describe('404 interceptor — warning toast', () => {
   let clearFn: ReturnType<typeof vi.fn>;
   let invalidateFn: ReturnType<typeof vi.fn>;
 

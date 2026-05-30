@@ -1,10 +1,10 @@
-// Phase 22-02 — Filesystem loader for content/legal/*.md (D-07, D-08).
+// Filesystem loader for content/legal/*.md.
 //
 // Reads the per-locale Markdown file, parses gray-matter frontmatter
 // (version, effective_from, title, showsController), and computes a
 // SHA-256 over the body content. The hash is what the user's consent
 // row pins to: server stores the same hash on POST /auth/register and
-// POST /auth/consents (Plan 22-01) so we can prove which exact text
+// POST /auth/consents so we can prove which exact text
 // the user accepted, not just which version string.
 //
 // Server Components only (uses node:fs + node:crypto). Called from the

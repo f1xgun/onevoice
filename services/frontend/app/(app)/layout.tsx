@@ -14,21 +14,21 @@ import { NavRail } from '@/components/sidebar/NavRail';
 import { ProjectPane } from '@/components/sidebar/ProjectPane';
 import { BusinessRequiredGuard } from '@/components/BusinessRequiredGuard';
 import { PermissionsCacheGuard } from '@/components/PermissionsCacheGuard';
-// Phase 21-03 (ACCT-02): persistent yellow banner when emailVerified===false.
+// persistent yellow banner when emailVerified===false.
 // Mounted inside the <main> scroll container so it cohabits with route
 // content (sticky top-0 keeps it visible while the page scrolls).
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
-// Phase 21-04 (ACCT-03): persistent RED banner when accountDeletion !== null.
+// persistent RED banner when accountDeletion !== null.
 // UI-SPEC Surface 10: outranks VerificationBanner — mounts ABOVE so the
 // deletion-grace state visually wins when both could fire (the user
 // can be both unverified AND mid-grace).
 import { DeletionGraceBanner } from '@/components/account/DeletionGraceBanner';
-// Phase 22-02 (D-25/D-26): site-wide Footer mounted at the bottom of
-// BOTH desktop and mobile <main> branches (Phase 21 verification GAP
+// site-wide Footer mounted at the bottom of
+// BOTH desktop and mobile <main> branches (verification GAP
 // taught us: forget the mobile branch and the banner / footer never
 // renders on phones).
 import { Footer } from '@/components/layout/Footer';
-// Phase 22-02 (D-11): forced re-consent modal — z-50 portal that
+// forced re-consent modal — z-50 portal that
 // renders OUTSIDE <main> when the user has stale policy versions and
 // is past the email-verification gate. Mutually exclusive with
 // EmailVerifiedRequiredModal per the modal-precedence rule (UI-SPEC
@@ -120,8 +120,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // /projects/* only. Other authenticated routes show NavRail + content.
   const showProjectPane = pathname.startsWith('/chat') || pathname.startsWith('/projects');
 
-  // Phase 22-02 (D-11): ReConsentModal rendering condition. The
-  // EmailVerifiedRequiredModal (Phase 21-03) still takes precedence —
+  // ReConsentModal rendering condition. The
+  // EmailVerifiedRequiredModal still takes precedence —
   // we must NOT render both. We read the user's email-verification
   // state from emailVerified===false combined with the active
   // verification deadline (existing convention; the explicit
@@ -134,7 +134,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <BusinessRequiredGuard>
       <>
-        {/* Phase 5 RBAC: invalidate per-business permissions cache on every
+        {/* RBAC: invalidate per-business permissions cache on every
             business switch. Mounted here so it's active for the entire (app)
             shell but only after BusinessRequiredGuard resolves a valid
             activeBusinessId. Renders no DOM. */}
@@ -230,7 +230,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </main>
           </div>
         )}
-        {/* Phase 22-02 Surface E (D-11): forced re-consent. Portal-mounted
+        {/* forced re-consent. Portal-mounted
             at the top level so the modal sits OUTSIDE <main> and reaches
             z-50 above any banners. Mutually exclusive with the email-
             verification modal — that one still wins (UI-SPEC §Modal

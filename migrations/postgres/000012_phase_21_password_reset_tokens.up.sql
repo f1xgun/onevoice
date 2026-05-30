@@ -1,5 +1,5 @@
--- Phase 21b (Account Lifecycle / Password Reset): password_reset_tokens
--- per .planning/research/ARCHITECTURE.md §1.3 and 21-CONTEXT.md D-08/D-09/D-12.
+-- (Account Lifecycle / Password Reset): password_reset_tokens
+-- per §1.3 and 21-CONTEXT.md //.
 --
 -- Token storage: SHA-256 hash only (BYTEA), never plaintext. Lookup uses
 -- atomic UPDATE…WHERE…RETURNING in PasswordResetTokenRepository.ConsumeAtomic
@@ -8,21 +8,21 @@
 --
 -- Atomic consume statement shape (single round-trip, race-safe by Postgres
 -- row-level locking on UPDATE):
---   UPDATE password_reset_tokens
---      SET consumed_at = NOW()
---    WHERE token_hash = $1
---      AND consumed_at IS NULL
---      AND expires_at > NOW()
---   RETURNING user_id;
+-- UPDATE password_reset_tokens
+-- SET consumed_at = NOW
+-- WHERE token_hash = $1
+-- AND consumed_at IS NULL
+-- AND expires_at > NOW
+-- RETURNING user_id;
 --
 -- Indexes:
---   idx_password_reset_tokens_user     — supports InvalidateAllForUser
---   idx_password_reset_tokens_expires  — partial; supports a future cron sweep
---                                        of expired/unconsumed tokens
+-- idx_password_reset_tokens_user     — supports InvalidateAllForUser
+-- idx_password_reset_tokens_expires  — partial; supports a future cron sweep
+-- of expired/unconsumed tokens
 --
--- Prod path: gen_random_uuid() per services/api/AGENTS.md.
+-- Prod path: gen_random_uuid per services/api/AGENTS.md.
 -- Integration-test mirror at
---   services/api/migrations/000010_phase_21_password_reset_tokens.up.sql.
+-- services/api/migrations/000010_phase_21_password_reset_tokens.up.sql.
 
 CREATE TABLE password_reset_tokens (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),

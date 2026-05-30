@@ -1,7 +1,7 @@
-// Phase 22-02 — Shared shell for /legal/{privacy,terms,consent,contact}.
+// Shared shell for /legal/{privacy,terms,consent,contact}.
 // Server Component (no 'use client'): wraps the page body in an article
 // container with a 70ch reading width per UI-SPEC §A Spacing. Footer is
-// mounted by the parent (public)/layout.tsx (D-26).
+// mounted by the parent (public)/layout.tsx.
 
 import type { ReactNode } from 'react';
 

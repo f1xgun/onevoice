@@ -87,8 +87,8 @@ func TestReadyHandler_OneFailing(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
-	if body["status"] != "not_ready" {
-		t.Fatalf("expected status=not_ready, got %v", body["status"])
+	if body["status"] != "unhealthy" {
+		t.Fatalf("expected status=unhealthy, got %v", body["status"])
 	}
 
 	checks, ok := body["checks"].(map[string]interface{})
@@ -97,6 +97,13 @@ func TestReadyHandler_OneFailing(t *testing.T) {
 	}
 	if checks["cache"] != "connection refused" {
 		t.Fatalf("expected cache=connection refused, got %v", checks["cache"])
+	}
+	failed, ok := body["failed"].([]interface{})
+	if !ok {
+		t.Fatalf("failed field missing or wrong type: %v", body["failed"])
+	}
+	if len(failed) != 1 || failed[0] != "cache" {
+		t.Fatalf("expected failed=[cache], got %v", failed)
 	}
 }
 
@@ -143,8 +150,8 @@ func TestReadyHandler_AllFailing(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
-	if body["status"] != "not_ready" {
-		t.Fatalf("expected status=not_ready, got %v", body["status"])
+	if body["status"] != "unhealthy" {
+		t.Fatalf("expected status=unhealthy, got %v", body["status"])
 	}
 
 	checks, ok := body["checks"].(map[string]interface{})
@@ -156,6 +163,15 @@ func TestReadyHandler_AllFailing(t *testing.T) {
 	}
 	if checks["cache"] != "cache timeout" {
 		t.Fatalf("expected cache error, got %v", checks["cache"])
+	}
+
+	failed, ok := body["failed"].([]interface{})
+	if !ok {
+		t.Fatalf("failed field missing or wrong type: %v", body["failed"])
+	}
+	// failed[] must be alphabetically sorted for stable serialization.
+	if len(failed) != 2 || failed[0] != "cache" || failed[1] != "db" {
+		t.Fatalf("expected failed=[cache db] (sorted), got %v", failed)
 	}
 }
 
@@ -183,8 +199,8 @@ func TestReadyHandler_ContextTimeout(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
-	if body["status"] != "not_ready" {
-		t.Fatalf("expected status=not_ready, got %v", body["status"])
+	if body["status"] != "unhealthy" {
+		t.Fatalf("expected status=unhealthy, got %v", body["status"])
 	}
 
 	checks, ok := body["checks"].(map[string]interface{})
@@ -290,8 +306,8 @@ func TestReadyHandler_MixedResults(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
-	if body["status"] != "not_ready" {
-		t.Fatalf("expected status=not_ready, got %v", body["status"])
+	if body["status"] != "unhealthy" {
+		t.Fatalf("expected status=unhealthy, got %v", body["status"])
 	}
 
 	checks, ok := body["checks"].(map[string]interface{})
@@ -306,5 +322,151 @@ func TestReadyHandler_MixedResults(t *testing.T) {
 	}
 	if checks["queue"] != "queue down" {
 		t.Fatalf("expected queue error, got %v", checks["queue"])
+	}
+}
+
+// TestReadyHandler_Concurrent_DoesNotExceedBudget verifies that ReadyHandler
+// runs all checks in parallel: 4 checks each sleeping 1.5s must complete
+// well under the sum-of-checks (6s) and within roughly the per-check budget.
+// Serial execution would exceed 6s; concurrent execution finishes in ~1.5s.
+func TestReadyHandler_Concurrent_DoesNotExceedBudget(t *testing.T) {
+	c := New() // default WithCheckTimeout(2s)
+	for _, name := range []string{"a", "b", "c", "d"} {
+		c.AddCheck(name, func(ctx context.Context) error {
+			select {
+			case <-time.After(1500 * time.Millisecond):
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	c.ReadyHandler().ServeHTTP(rec, req)
+	elapsed := time.Since(start)
+
+	if elapsed > 2500*time.Millisecond {
+		t.Fatalf("expected ReadyHandler to finish within 2.5s (concurrent), took %s — checks ran serially", elapsed)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if body["status"] != "ready" {
+		t.Fatalf("expected status=ready, got %v (body=%s)", body["status"], rec.Body.String())
+	}
+}
+
+// TestReadyHandler_AnyFailure_Returns503_WithFailedList asserts that the
+// JSON body carries a `failed[]` slice naming the failing dep(s) so
+// operators can grep logs without inspecting the full checks map.
+func TestReadyHandler_AnyFailure_Returns503_WithFailedList(t *testing.T) {
+	c := New()
+	c.AddCheck("postgres", func(ctx context.Context) error { return nil })
+	c.AddCheck("mongo", func(ctx context.Context) error { return nil })
+	c.AddCheck("nats", func(ctx context.Context) error { return nil })
+	c.AddCheck("redis", func(ctx context.Context) error {
+		return errors.New("connection refused")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	c.ReadyHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if body["status"] != "unhealthy" {
+		t.Fatalf("expected status=unhealthy, got %v", body["status"])
+	}
+
+	failed, ok := body["failed"].([]interface{})
+	if !ok {
+		t.Fatalf("failed field missing or wrong type: %v", body["failed"])
+	}
+	if len(failed) != 1 || failed[0] != "redis" {
+		t.Fatalf("expected failed=[redis], got %v", failed)
+	}
+
+	checks, ok := body["checks"].(map[string]interface{})
+	if !ok {
+		t.Fatal("checks field missing or wrong type")
+	}
+	// All four names must appear in the checks map.
+	for _, name := range []string{"postgres", "mongo", "nats", "redis"} {
+		if _, present := checks[name]; !present {
+			t.Fatalf("expected %s to appear in checks map; got %v", name, checks)
+		}
+	}
+	if checks["redis"] != "connection refused" {
+		t.Fatalf("expected redis=connection refused, got %v", checks["redis"])
+	}
+}
+
+// TestReadyHandler_PerCheckTimeoutFiresWhileOthersComplete confirms the
+// per-check WithCheckTimeout option is honored: one slow check trips its
+// own deadline; the three quick checks still report ok.
+func TestReadyHandler_PerCheckTimeoutFiresWhileOthersComplete(t *testing.T) {
+	c := New(WithCheckTimeout(1 * time.Second))
+	c.AddCheck("slow", func(ctx context.Context) error {
+		select {
+		case <-time.After(5 * time.Second):
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+	for _, name := range []string{"fast1", "fast2", "fast3"} {
+		c.AddCheck(name, func(ctx context.Context) error { return nil })
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	c.ReadyHandler().ServeHTTP(rec, req)
+	elapsed := time.Since(start)
+
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("expected per-check timeout (~1s) to bound the handler, took %s", elapsed)
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 (slow check timed out), got %d (body=%s)", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	failed, ok := body["failed"].([]interface{})
+	if !ok {
+		t.Fatalf("failed field missing or wrong type: %v", body["failed"])
+	}
+	if len(failed) != 1 || failed[0] != "slow" {
+		t.Fatalf("expected failed=[slow], got %v", failed)
+	}
+
+	checks, ok := body["checks"].(map[string]interface{})
+	if !ok {
+		t.Fatal("checks field missing or wrong type")
+	}
+	for _, fast := range []string{"fast1", "fast2", "fast3"} {
+		if checks[fast] != "ok" {
+			t.Fatalf("expected %s=ok, got %v", fast, checks[fast])
+		}
 	}
 }

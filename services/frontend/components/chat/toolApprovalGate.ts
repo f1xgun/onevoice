@@ -22,7 +22,7 @@ export interface JsonEditOption {
  *   1. Key renames (`type === 'key'`) → reject (UI-09).
  *   2. Nested edits (parentName set and non-empty) → reject (HITL-07, Pitfall 3).
  *   3. Non-scalar values (not string/number/boolean) → reject (HITL-L4).
- *   4. keyName must be in editableFields → otherwise reject (D-15 per-tool
+ *  4. keyName must be in editableFields → otherwise reject ( per-tool
  *      whitelist).
  *
  * Returns `true` when the edit should be accepted, `false` otherwise.

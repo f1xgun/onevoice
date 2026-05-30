@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"go.mongodb.org/mongo-driver/v2/mongo"
+
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/pkg/logger"
@@ -46,7 +48,7 @@ func main() {
 func run(log *slog.Logger, cfg *config.Config) error {
 	log.Info("starting onevoice api server")
 
-	// Phase 22 M-04 (T-22D-02 enforcement): refuse to start when LEGAL_*
+	// M-04 (enforcement): refuse to start when LEGAL_*
 	// env vars are still placeholder AND the operator explicitly opted into
 	// strict mode via LEGAL_ENFORCE=strict (production deploys per
 	// docs/runbook-launch-readiness.md §6). Non-strict (dev/local) just
@@ -92,23 +94,23 @@ func run(log *slog.Logger, cfg *config.Config) error {
 	// shared *orchestratorclient.Client is reused.
 	go wire.RunToolApprovalStartupValidation(ctx, handles.PG, svcs.OrchClient, cfg.OrchestratorFetchTimeout)
 
-	// Phase 19 Wave 3: audit-log retention sweep. Application-level
+	// audit-log retention sweep. Application-level
 	// replacement for pg_cron (NOT available in postgres:16-alpine —
-	// CONTEXT D-17 REVISED). Ticks every 24h, acquires
+	// REVISED). Ticks every 24h, acquires
 	// pg_try_advisory_lock(hashtext('audit_logs_retention')::bigint) to
 	// serialize across replicas, then DELETEs audit_logs rows older than
 	// 365d. Non-blocking: spawns its own goroutine and returns. Lifecycle
 	// is bound to ctx (SIGTERM cancels the sweep).
 	wire.StartRetentionSweep(ctx, handles.PG, repos.AuditLog)
 
-	// Phase 21a: email_outbox drain worker. Lifecycle bound to ctx.
+	// email_outbox drain worker. Lifecycle bound to ctx.
 	// Mirrors StartRetentionSweep. Logs to slog under "email_outbox worker".
 	// Sender is NoopSender in dev (empty UNISENDER_API_KEY) and
 	// UnisenderSender in production — see wire/email.go.
 	emailSender := wire.BuildEmailSender(log, cfg)
 	wire.StartOutboxWorker(ctx, log, repos.EmailOutbox, emailSender, cfg.OutboxPollInterval, cfg.OutboxMaxAttempts)
 
-	// Phase 21-04 (ACCT-03 / D-31): hourly hard-delete sweeper +
+	// hourly hard-delete sweeper +
 	// 6h T-7 warning sweeper. Lifecycle bound to ctx so SIGTERM
 	// cleanly cancels both goroutines. Skipped when AccountDeletion
 	// service is nil (legacy/test deploys).
@@ -122,9 +124,16 @@ func run(log *slog.Logger, cfg *config.Config) error {
 		return err
 	}
 
-	hc := health.New()
-	hc.AddCheck("postgres", func(ctx context.Context) error { return handles.PG.Ping(ctx) })
-	hc.AddCheck("redis", func(ctx context.Context) error { return handles.Redis.Ping(ctx).Err() })
+	// Single source of truth for dep checks lives in
+	// pkg/health/wiring.go::RegisterDefaultChecks. Pass every dep handle
+	// the API service owns; the helper skips nil args silently so
+	// orchestrator (which has no PG/Redis) can call the same helper.
+	hc := health.New(health.WithCheckTimeout(cfg.HealthCheckTimeout))
+	var mongoClient *mongo.Client
+	if handles.Mongo != nil {
+		mongoClient = handles.Mongo.Client()
+	}
+	health.RegisterDefaultChecks(hc, handles.PG, mongoClient, handles.Redis, handles.NATS)
 
 	return runServers(ctx, log, cfg, handlers, hc, svcs, handles, repos)
 }
@@ -140,15 +149,18 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 		HITL:     cfg.RateLimitHITL,
 		Consents: cfg.RateLimitConsents,
 	}
-	// Phase 2 v2.0 RBAC: authzCache is owned by wire.Services and gates the
+	// v2.0 RBAC: authzCache is owned by wire.Services and gates the
 	// /businesses/{id}/... subtree via authz.RequireBusinessAccess inside
 	// router.Setup.
-	// Phase 21-03 (ACCT-02): repos.User is the UserLookup for the
-	// RequireVerifiedEmailDay0/Day7 soft-restrict middleware (D-26..D-29).
-	// Phase 21-04 (ACCT-03 / D-34): handles.PG is the pool the
+	// repos.User is the UserLookup for the
+	// RequireVerifiedEmailDay0/Day7 soft-restrict middleware.
+	// handles.PG is the pool the
 	// BlockWritesDuringGrace middleware reads users.deletion_requested_at
 	// from on every write request.
-	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User, handles.PG)
+	// svcs.Lockout enables LockoutMiddleware on /auth/login. Nil-safe —
+	// when Redis was unavailable at boot the middleware is skipped and
+	// Login degrades to legacy behavior.
+	r := router.Setup(handlers, []byte(cfg.JWTSecret), handles.Redis, hc, cfg.CORSAllowedOrigins, rateLimits, svcs.AuthzCache, repos.User, handles.PG, svcs.Lockout)
 
 	addr := ":" + cfg.Port
 	srv := &http.Server{
@@ -208,8 +220,8 @@ func runServers(ctx context.Context, log *slog.Logger, cfg *config.Config, handl
 	return nil
 }
 
-// runHardDeleteSweeper — Phase 21-04 (ACCT-03 / D-31). Hourly cron entry
-// that hard-deletes users whose deletion_requested_at < NOW() - 30d.
+// runHardDeleteSweeper —. Hourly cron entry
+// that hard-deletes users whose deletion_requested_at < NOW - 30d.
 // The 30-day grace is forgiving of an hour of cadence imprecision.
 //
 // Each batch is processed in its own service-level TX via FOR UPDATE
@@ -242,7 +254,7 @@ func runHardDeleteSweeper(ctx context.Context, log *slog.Logger, svc *service.Ac
 	}
 }
 
-// runDeletionWarningSweeper — Phase 21-04 (ACCT-03 / D-35). Every 6h
+// runDeletionWarningSweeper —. Every 6h
 // it scans the T-7 window (22d23h..23d ago) and enqueues a warning
 // email per user, deduped via ExistsBySubjectAndRecipient. The 1h-wide
 // sweep window with 6h cadence guarantees coverage — no T-7 email

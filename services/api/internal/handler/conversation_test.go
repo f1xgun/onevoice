@@ -129,7 +129,7 @@ func (m *MockConversationRepository) ScopedConversationIDs(_ context.Context, _,
 	return nil, nil
 }
 
-// MongoConversationsCleanup stub — Phase 21-04. Handler tests don't
+// MongoConversationsCleanup stub —. Handler tests don't
 // exercise the hard-delete sweeper path so the no-op is sufficient.
 func (m *MockConversationRepository) MongoConversationsCleanup(_ context.Context, _, _ string) (int64, error) {
 	return 0, nil
@@ -1093,8 +1093,8 @@ func TestListConversations_JSONShape(t *testing.T) {
 	assert.Equal(t, "biz-1", item["businessId"])
 	assert.Equal(t, "proj-1", item["projectId"])
 	// `pinnedAt` is the timestamp string; assert merely that it's non-empty
-	// and parseable. Exact value depends on the test fixture (now() at the
-	// pinnedAt := time.Now().UTC() statement above).
+	// and parseable. Exact value depends on the test fixture (now at the
+	// pinnedAt := time.Now.UTC statement above).
 	pa, ok := item["pinnedAt"].(string)
 	require.True(t, ok, "pinnedAt must serialize as a string (ISO timestamp)")
 	assert.NotEmpty(t, pa)
@@ -1930,7 +1930,7 @@ func TestConversation_Pin_Success(t *testing.T) {
 func TestConversation_Pin_CrossTenant_Returns404(t *testing.T) {
 	// Repo's scope filter mismatch returns ErrConversationNotFound; the handler
 	// MUST map this to a uniform 404 (NEVER 403 — uniform 404 is the industry
-	// standard against existence enumeration; threat T-19-02-01).
+	// standard against existence enumeration; threat -01).
 	userID := uuid.New()
 	businessID := uuid.New()
 	convID := "507f1f77bcf86cd799439011"

@@ -1,4 +1,4 @@
-// Phase 22-02 — Surface D: two required-consent checkboxes for the
+// Surface D: two required-consent checkboxes for the
 // Register form. Wires the Linen <Checkbox> (Radix-based, exposes
 // `onCheckedChange` not a native ref) into react-hook-form via
 // <Controller>, so formState.isValid evaluates to false until BOTH

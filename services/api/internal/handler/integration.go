@@ -29,10 +29,10 @@ type IntegrationHandler struct {
 
 // NewIntegrationHandler creates a new integration handler instance.
 //
-// Phase 19 Wave 4 (19-04): auditLogger receives the integration.disconnected
+// auditLogger receives the integration.disconnected
 // event emitted from DeleteIntegration. Connected + token_rotated are emitted
-// from the service layer (one call site per action — D-29). nil-safe via
-// audit.Nop() so existing handler tests that pass nil still work.
+// from the service layer (one call site per action — ). nil-safe via
+// audit.Nop so existing handler tests that pass nil still work.
 func NewIntegrationHandler(integrationService IntegrationService, _ BusinessService, auditLogger audit.Logger) (*IntegrationHandler, error) {
 	if integrationService == nil {
 		return nil, fmt.Errorf("NewIntegrationHandler: integrationService cannot be nil")
@@ -124,7 +124,7 @@ func (h *IntegrationHandler) DeleteIntegration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Phase 19 audit (D-14, D-29/D-30): emit integration.disconnected AFTER
+	// emit integration.disconnected AFTER
 	// the row is deleted. We captured platform from the pre-delete fetch above
 	// so the audit row records what was disconnected. Fire-and-forget.
 	audit.LogIntegrationDisconnected(r.Context(), h.audit, bc.BusinessID, bc.UserID, integrationID, target.Platform)

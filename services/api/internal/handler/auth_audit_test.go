@@ -92,7 +92,7 @@ func TestAuthHandler_AuditLoginSuccess_RecordsUserIDAndDetails(t *testing.T) {
 	assert.Contains(t, details, "test-agent/1.0")
 }
 
-// TestAuthHandler_AuditLoginFailed_NilUserIDWithAttemptedEmail verifies D-31:
+// TestAuthHandler_AuditLoginFailed_NilUserIDWithAttemptedEmail verifies :
 // failed login must record user_id=nil and capture the attempted email in
 // Details for brute-force analysis.
 func TestAuthHandler_AuditLoginFailed_NilUserIDWithAttemptedEmail(t *testing.T) {
@@ -122,7 +122,7 @@ func TestAuthHandler_AuditLoginFailed_NilUserIDWithAttemptedEmail(t *testing.T) 
 	e := entries[0]
 	assert.Equal(t, audit.ActionLoginFailed, e.Action)
 	assert.Equal(t, "user", e.Resource)
-	assert.Nil(t, e.UserID, "D-31: failed login MUST record user_id=nil")
+	assert.Nil(t, e.UserID, "failed login MUST record user_id=nil")
 	assert.Nil(t, e.BusinessID)
 	details := string(e.Details)
 	assert.Contains(t, details, "intruder@example.com", "Details must capture attempted_email")

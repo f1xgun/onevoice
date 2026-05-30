@@ -1,7 +1,7 @@
 package audit
 
 // Action constants. Format: {category}.{verb}_{noun}. The category prefix
-// groups events for the frontend tab filter (D-11/D-22). Adding a new
+// groups events for the frontend tab filter. Adding a new
 // action means: const here, builder in builders.go, Details struct in
 // details.go, frontend i18n label in messages/ru.json.
 //
@@ -25,7 +25,7 @@ const (
 	ActionLogout          = "auth.logout"
 	ActionPasswordChanged = "auth.password_changed"
 	ActionUserRegistered  = "auth.user_registered"
-	// Phase 21b — Password reset (ACCT-01).
+	// Password reset.
 	// ActionPasswordResetUnknownEmail is the timing-parity dummy row written
 	// when an unknown email submits a reset request — symmetric DB load to
 	// the known-email branch defends against enumeration (PITFALLS §1.1).
@@ -33,7 +33,7 @@ const (
 	ActionPasswordResetCompleted    = "auth.password_reset_completed"
 	ActionPasswordResetUnknownEmail = "auth.password_reset_request_unknown_email"
 
-	// Phase 21c — Email verification + soft-restrict (ACCT-02, ACCT-05, D-42).
+	// Email verification + soft-restrict.
 	// ActionEmailVerificationLinkViewed is reserved for future GET-side
 	// telemetry (currently the GET handler renders only a button and
 	// emits nothing; the action exists so we can flip telemetry on
@@ -42,15 +42,15 @@ const (
 	// — captures the old vs new email pair so the audit trail records
 	// pre-verification email churn.
 	// ActionConsentRecorded fires once per Register, alongside the
-	// user_consents INSERT (D-40).
+	// user_consents INSERT.
 	ActionEmailVerificationLinkViewed = "auth.email_verification_link_viewed"
 	ActionEmailVerified               = "auth.email_verified"
 	ActionEmailChangedBeforeVerify    = "auth.email_changed_before_verify"
 	ActionConsentRecorded             = "auth.consent_recorded"
 
-	// Phase 22 — legal compliance scaffolding (LEGAL-01..06, D-27).
+	// legal compliance scaffolding.
 	// ActionConsentRecorded (auth.consent_recorded) above is REUSED from
-	// Phase 21 — same constant, now used with new purposes (tos, privacy,
+	// same constant, now used with new purposes (tos, privacy,
 	// pdn) instead of service_operation. The four below are NEW.
 	//
 	// ActionConsentReconsentRequired fires when /auth/me decides the user
@@ -58,7 +58,7 @@ const (
 	// debug «why am I seeing this modal?».
 	// ActionConsentReconsented fires when the user submits POST /auth/consents.
 	// ActionConsentWithdrawn fires when POST /users/me/consents/pdn/withdraw
-	// triggers the deletion flow (D-13/D-14: TOS/Privacy/PDN withdrawal
+	// triggers the deletion flow (TOS/Privacy/PDN withdrawal
 	// is functionally identical — all three lead to account deletion).
 	// ActionConsentPolicyVersionBumped fires once per environment per
 	// version bump — system event (UserID nil).
@@ -67,7 +67,7 @@ const (
 	ActionConsentWithdrawn           = "auth.consent_withdrawn"
 	ActionConsentPolicyVersionBumped = "auth.consent_policy_version_bumped"
 
-	// Phase 21-04 — Account deletion lifecycle (ACCT-03, ACCT-05, D-42).
+	// Account deletion lifecycle.
 	//
 	// ActionDeletionRequested fires when the user submits DELETE
 	// /users/me with the correct password — soft-deletes the row and
@@ -82,7 +82,7 @@ const (
 	// AccountDeletionService.HardDeleteSweeper INSIDE the same PG TX
 	// as the actual users-row DELETE so the audit row survives the
 	// row deletion via audit_logs.user_id ON DELETE SET NULL +
-	// user_email_at_event (ACCT-06, landed by 21-03).
+	// user_email_at_event (landed by 21-03).
 	ActionDeletionRequested = "account.deletion_requested"
 	ActionDeletionCanceled  = "account.deletion_canceled"
 	ActionSoleOwnerBlocked  = "account.sole_owner_blocked"

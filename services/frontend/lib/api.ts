@@ -20,7 +20,7 @@ export const api = axios.create({
 //
 // Server-rendered code paths (RSC, route handlers, server actions) MUST
 // NOT route through `lib/api.ts` — they have no access to `document`,
-// so `readClientLocale()` would silently fall back to DEFAULT_LOCALE
+// so `readClientLocale` would silently fall back to DEFAULT_LOCALE
 // and ship the wrong user's locale to the backend. Server code should
 // construct its own fetcher (or use the next-intl server APIs) and
 // set `Accept-Language` from the incoming request's cookie / header.
@@ -155,7 +155,7 @@ api.interceptors.response.use(
   }
 );
 
-// 404 interceptor (D-16): on /businesses/{id}/... 404, the active business
+// 404 interceptor: on /businesses/{id}/.. 404, the active business
 // is stale (server-side membership removed). Clear the store + re-fetch
 // the list + show a sonner warning toast. The redirect to /onboarding or
 // /chat happens implicitly via BusinessRequiredGuard on the next render

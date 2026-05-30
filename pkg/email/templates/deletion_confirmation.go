@@ -1,6 +1,6 @@
 // Package templates owns the Russian-primary email body builders for
-// Phase 21 transactional emails. Each template ships both a plain-text
-// fallback (REQUIRED by Unisender Go per CONTEXT D-01) and an HTML
+// transactional emails. Each template ships both a plain-text
+// fallback (REQUIRED by Unisender Go ) and an HTML
 // variant. Linen palette is rendered as hex fallbacks because email
 // clients don't process OKLCH.
 package templates
@@ -11,18 +11,18 @@ import (
 )
 
 // DeletionConfirmationSubject is the verbatim subject line from
-// UI-SPEC Surface 12 / Phase 21-04 / D-31. Exported as a constant so
+// UI-SPEC Surface 12 /. Exported as a constant so
 // the integration tests can assert against the outbox row.
 const DeletionConfirmationSubject = "Удаление аккаунта запланировано — OneVoice"
 
 // DeletionT7WarningSubject is the verbatim subject line from
-// UI-SPEC Surface 12 / Phase 21-04 / D-35. Exported as a constant so
+// UI-SPEC Surface 12 /. Exported as a constant so
 // the warning sweeper can dedupe via ExistsBySubjectAndRecipient.
 const DeletionT7WarningSubject = "Удаление аккаунта — осталось 7 дней"
 
 // DeletionConfirmationText builds the plain-text body sent immediately
 // after a successful DELETE /users/me. Verbatim RU copy from CONTEXT
-// D-31 + UI-SPEC Surface 12.
+// + UI-SPEC Surface 12.
 //
 // deletionAt is requestedAt + 30 days — the moment the hard-delete
 // sweeper will run.

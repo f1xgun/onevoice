@@ -14,8 +14,8 @@ import (
 )
 
 // newEmailVerificationTokenRepoMock — mirrors newPasswordResetTokenRepoMock
-// to keep Phase 21 repo tests stylistically uniform (pgxmock instead of
-// real Postgres per the Phase 21-01 deviation precedent).
+// to keep repo tests stylistically uniform (pgxmock instead of
+// real Postgres per the deviation precedent).
 func newEmailVerificationTokenRepoMock(t *testing.T) (pgxmock.PgxPoolIface, *EmailVerificationTokenRepository) {
 	t.Helper()
 	mock, err := pgxmock.NewPool()
@@ -101,7 +101,7 @@ func TestEmailVerificationTokenRepository_ConsumeAtomic_SecondAttemptFails(t *te
 }
 
 // TestEmailVerificationTokenRepository_ConsumeAtomic_ExpiredFails — same
-// mechanism as SecondAttemptFails: expires_at > NOW() filter drops the
+// mechanism as SecondAttemptFails: expires_at > NOW filter drops the
 // row, UPDATE returns zero rows. PITFALLS §1.1 collapse.
 func TestEmailVerificationTokenRepository_ConsumeAtomic_ExpiredFails(t *testing.T) {
 	mock, repo := newEmailVerificationTokenRepoMock(t)

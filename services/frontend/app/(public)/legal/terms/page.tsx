@@ -1,6 +1,6 @@
-// Phase 22-02 — Surface B: Terms of Service page (/legal/terms).
+// Surface B: Terms of Service page (legal/terms).
 // Mirrors privacy/page.tsx but loads slug='terms' and skips
-// DataControllerBlock (frontmatter showsController=false per D-08).
+// DataControllerBlock (frontmatter showsController=false ).
 
 import ReactMarkdown from 'react-markdown';
 import { getLocale } from 'next-intl/server';

@@ -1,23 +1,23 @@
 // Package repository — audit_log.go
 //
-// auditLogRepository implements domain.AuditLogRepository (Phase 19 Plan
-// 19-01 interface declaration; this file is the Wave 3 (Plan 19-03)
+// auditLogRepository implements domain.AuditLogRepository (Plan
+// 19-01 interface declaration; this file is the
 // Postgres implementation). Mirrors invitation.go for the squirrel + pgx/v5
 // + pgxPool-interface pattern so unit tests can inject pgxmock.PgxPoolIface
 // without touching production wiring.
 //
 // Three methods:
-//   - Insert     — append-only write of an audit row. Called by the async
-//     pkg/audit.Logger goroutine. Safe with BusinessID==nil and
-//     UserID==nil (D-01 / D-31: system-wide and failed-login entries).
-//   - ListByBusiness — read path for GET /businesses/{id}/audit-logs (Plan
-//     19-05). Always pins business_id, then refines with the typed
-//     AuditLogFilter. Cursor uses the (created_at, id) tuple-comparison
-//     primitive: `(created_at, id) < ($cursorT, $cursorID)`. Tie-break by
-//     id covers same-microsecond collisions at high write rates.
-//   - DeleteOlderThan — bounded DELETE used by the retention sweep (Plan
-//     19-03 wire.StartRetentionSweep). Returns the rows-affected count
-//     for the audit_logs_retention_deleted_total Prometheus counter.
+// - Insert     — append-only write of an audit row. Called by the async
+// pkg/audit.Logger goroutine. Safe with BusinessID==nil and
+// UserID==nil (system-wide and failed-login entries).
+// - ListByBusiness — read path for GET /businesses/{id}/audit-logs (Plan
+// 19-05). Always pins business_id, then refines with the typed
+// AuditLogFilter. Cursor uses the (created_at, id) tuple-comparison
+// primitive: `(created_at, id) < ($cursorT, $cursorID)`. Tie-break by
+// id covers same-microsecond collisions at high write rates.
+// - DeleteOlderThan — bounded DELETE used by the retention sweep (Plan
+// 19-03 wire.StartRetentionSweep). Returns the rows-affected count
+// for the audit_logs_retention_deleted_total Prometheus counter.
 package repository
 
 import (
@@ -35,9 +35,9 @@ import (
 
 const (
 	// defaultListLimit is applied when AuditLogFilter.Limit <= 0.
-	// 50 mirrors the default page size on /settings/team (Phase 6 RBAC).
+	// 50 mirrors the default page size on /settings/team (RBAC).
 	defaultListLimit = 50
-	// maxListLimit caps user-requested page sizes. The handler (Plan 19-05)
+	// maxListLimit caps user-requested page sizes. The handler
 	// is also expected to clamp, but the repo enforces defense-in-depth so
 	// a malformed handler cannot trigger an unbounded scan.
 	maxListLimit = 200
@@ -51,7 +51,7 @@ type auditLogRepository struct {
 // Compile-time check that auditLogRepository satisfies the domain interface.
 var _ domain.AuditLogRepository = (*auditLogRepository)(nil)
 
-// NewAuditLogRepository returns the Phase 19 Plan 19-03 concrete
+// NewAuditLogRepository returns the concrete
 // implementation of domain.AuditLogRepository. Both *pgxpool.Pool
 // (production) and pgxmock.PgxPoolIface (unit tests) satisfy the
 // constructor via the package-local pgxPool interface defined in pool.go.
@@ -60,7 +60,7 @@ func NewAuditLogRepository(pool pgxPool) domain.AuditLogRepository {
 }
 
 // Insert appends an audit_logs row. id + created_at are filled by the DB
-// (DEFAULT gen_random_uuid() / now()) so the application does not need to
+// (DEFAULT gen_random_uuid / now) so the application does not need to
 // generate them. BusinessID and UserID are nullable on the table; we pass
 // the *uuid.UUID values straight through so pgx encodes NULL when nil.
 // Details defaults to "{}" when the caller passes an empty payload — the
@@ -75,7 +75,7 @@ func (r *auditLogRepository) Insert(ctx context.Context, log *domain.AuditLog) e
 	if len(details) == 0 {
 		details = json.RawMessage(`{}`)
 	}
-	// Phase 21-03 / ACCT-06: persist user_email_at_event as NULL when the
+	// persist user_email_at_event as NULL when the
 	// caller left it empty so the column stores meaningful values only.
 	// Storing "" everywhere would defeat ad-hoc queries like
 	// `WHERE user_email_at_event IS NULL`.
@@ -99,7 +99,7 @@ func (r *auditLogRepository) Insert(ctx context.Context, log *domain.AuditLog) e
 
 // ListByBusiness paginates audit_logs scoped to a single business. The
 // (created_at DESC, id DESC) order matches the composite index
-// idx_audit_logs_business_created (Plan 19-01) plus the id tie-break, so
+// idx_audit_logs_business_created plus the id tie-break, so
 // every keyset cursor lookup is an index range scan.
 //
 // Cursor predicate: when BOTH CursorTime and CursorID are non-nil, the
@@ -109,7 +109,7 @@ func (r *auditLogRepository) Insert(ctx context.Context, log *domain.AuditLog) e
 // boundary is hit. Tie-break by id eliminates the same-microsecond
 // collision risk that affects pure timestamp cursors.
 //
-// Limit clamping: 0 → 50, > 200 → 200. The handler (Plan 19-05) clamps
+// Limit clamping: 0 → 50, > 200 → 200. The handler clamps
 // independently; this is defense-in-depth.
 func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid.UUID, f domain.AuditLogFilter) ([]domain.AuditLog, error) {
 	limit := f.Limit
@@ -183,12 +183,12 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 // AuditLogRow carries an audit_logs row enriched with the actor's email and
 // display name from a single LEFT JOIN users in ListByBusinessWithActors.
 // The frontend wants both columns so the page renders without a second
-// round-trip (D-21b); the JOIN lives in the repo (per RESEARCH §"DTO
+// round-trip; the JOIN lives in the repo (per RESEARCH §"DTO
 // Enrichment Strategy") so the handler does NOT implement a per-row
 // fan-out into UserRepository.GetByID (avoids N+1).
 //
 // ActorEmail is "" when audit_logs.user_id IS NULL (failed-login rows per
-// D-31) or when LEFT JOIN found no matching users row (unlikely but
+// ) or when LEFT JOIN found no matching users row (unlikely but
 // defensive against deleted users). The handler maps "" → nil pointer so
 // the JSON contract surfaces actor_email: null which the frontend renders
 // as "Неизвестен ({attempted_email})" by reading details.attempted_email.
@@ -297,8 +297,8 @@ func (r *auditLogRepository) ListByBusinessWithActors(ctx context.Context, busin
 
 // DeleteOlderThan removes every audit_logs row with created_at strictly
 // older than the supplied cutoff and returns the affected row count for
-// observability (audit_logs_retention_deleted_total counter, Plan 19-03
-// wire.sweep). The retention sweep computes cutoff = now() - 365d once
+// observability (audit_logs_retention_deleted_total counter,
+// wire.sweep). The retention sweep computes cutoff = now - 365d once
 // per 24h tick under pg_try_advisory_lock so concurrent sweeps across
 // replicas can't double-delete. A plain DELETE (no LIMIT, no batching) is
 // acceptable here because the cutoff is 365d out and the composite index

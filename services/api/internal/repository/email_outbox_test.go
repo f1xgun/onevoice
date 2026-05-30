@@ -96,7 +96,7 @@ func TestEmailOutbox_Enqueue_Rollback(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// Phase 21-04 (21-CROSS-PLAN-CONTRACTS §3): Enqueue now ACCEPTS nil tx
+// (21-CROSS-PLAN-CONTRACTS §3): Enqueue now ACCEPTS nil tx
 // and falls back to a pool INSERT so sweeper-driven sends (T-7 deletion
 // warning) can enqueue without a surrounding business tx. This test
 // previously asserted rejection — it now asserts the fallback path
@@ -122,7 +122,7 @@ func TestEmailOutbox_Enqueue_NilTxFallsBackToPool(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestEmailOutbox_EnqueueDeferred_Tx — Phase 21-04 §2a. The deferred
+// TestEmailOutbox_EnqueueDeferred_Tx — §2a. The deferred
 // variant writes an explicit next_attempt_at so the worker won't pick
 // the row up until then (used by the T-7 deletion warning enqueue at
 // request-deletion time, scheduled +23 days).
@@ -153,7 +153,7 @@ func TestEmailOutbox_EnqueueDeferred_Tx(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestEmailOutbox_ExistsBySubjectAndRecipient — Phase 21-04 §2b. Returns
+// TestEmailOutbox_ExistsBySubjectAndRecipient — §2b. Returns
 // true if a row exists for (to_email, subject) in ANY status. Used by
 // the warning sweeper to dedupe.
 func TestEmailOutbox_ExistsBySubjectAndRecipient(t *testing.T) {
@@ -187,7 +187,7 @@ func TestEmailOutbox_ExistsBySubjectAndRecipient_FalseWhenAbsent(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestEmailOutbox_CancelPendingBySubjectAndRecipient — Phase 21-04. On
+// TestEmailOutbox_CancelPendingBySubjectAndRecipient —. On
 // POST /users/me/restore, the pending T-7 warning row should be
 // canceled so the user doesn't receive the warning after restoring.
 func TestEmailOutbox_CancelPendingBySubjectAndRecipient(t *testing.T) {
@@ -211,7 +211,7 @@ func TestEmailOutbox_DrainPending_ReturnsDuePendingOnly(t *testing.T) {
 
 	// Mock returns the single due+pending row. The query's WHERE clause
 	// is the load-bearing assertion: it filters status='pending' AND
-	// next_attempt_at <= NOW() server-side, and orders ASC. Pgxmock
+	// next_attempt_at <= NOW server-side, and orders ASC. Pgxmock
 	// regex-matches the SQL and replays the rows we hand it.
 	mock.ExpectQuery(`SELECT id, to_email, subject, body_text, COALESCE\(body_html, ''\), attempts, created_at\s+FROM email_outbox\s+WHERE status = 'pending'\s+AND next_attempt_at <= NOW\(\)\s+ORDER BY next_attempt_at ASC\s+LIMIT \$1`).
 		WithArgs(10).
@@ -282,7 +282,7 @@ func TestEmailOutbox_MarkSent_Idempotent(t *testing.T) {
 // TestEmailOutbox_Reschedule_ExpBackoff verifies that newAttempts=3
 // (currentAttempts=2 + 1) results in a `8 seconds-formatted backoff
 // interval of 480 seconds (8 minutes) being passed as the bind value.
-// The DB-side NOW() + interval addition is opaque to the mock; the
+// The DB-side NOW + interval addition is opaque to the mock; the
 // load-bearing assertion is the formatted "480 seconds" interval bind.
 func TestEmailOutbox_Reschedule_ExpBackoff(t *testing.T) {
 	mock, repo := newEmailOutboxRepoMock(t)

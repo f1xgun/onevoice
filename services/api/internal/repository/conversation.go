@@ -215,18 +215,18 @@ func (r *conversationRepository) TransitionToAutoPending(ctx context.Context, id
 // EnsureConversationIndexes creates compound indexes on the conversations
 // collection idempotently at API startup. Two named indexes are managed here:
 //
-//  1. conversations_user_biz_title_status — DO NOT MODIFY.
-//     Backs the auto-titler's atomic UpdateTitleIfPending lookups
-//     and the sidebar queries that surface auto_pending rows
-//     distinctly.
+// 1. conversations_user_biz_title_status — DO NOT MODIFY.
+// Backs the auto-titler's atomic UpdateTitleIfPending lookups
+// and the sidebar queries that surface auto_pending rows
+// distinctly.
 //
-//  2. conversations_user_biz_proj_pinned_recency. NEW
-//     index — DOES NOT extend or replace the title_status index (locked).
-//     Compound shape `{user_id, business_id, project_id, pinned_at:-1,
-//     last_message_at:-1}` follows ESR (Equality, Sort, Range) — equality on
-//     user/business/project, descending sort on pinned_at then
-//     last_message_at — so the sidebar PinnedSection's
-//     "pinned-then-recent" sort is index-served per project.
+// 2. conversations_user_biz_proj_pinned_recency. NEW
+// index — DOES NOT extend or replace the title_status index (locked).
+// Compound shape `{user_id, business_id, project_id, pinned_at:-1,
+// last_message_at:-1}` follows ESR (Equality, Sort, Range) — equality on
+// user/business/project, descending sort on pinned_at then
+// last_message_at — so the sidebar PinnedSection's
+// "pinned-then-recent" sort is index-served per project.
 //
 // Pattern: mirrors EnsurePendingToolCallsIndexes (pending_tool_call.go:62-94).
 // CreateMany silently succeeds when specs match existing indexes; we swallow
@@ -268,13 +268,13 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 	return nil
 }
 
-// MongoConversationsCleanup — Phase 21-04 hard-delete sweeper.
+// MongoConversationsCleanup — hard-delete sweeper.
 //
 // For every conversation owned by `userID`, sets user_id=null + records the
 // original email under user_email_at_delete + adds deleted_owner=true. The
 // documents themselves are NOT deleted — business-level history stays
 // intact even after the user disappears (152-ФЗ + GDPR right-to-be-
-// forgotten compromise per D-37; per project memory:
+// forgotten compromise per ; per project memory:
 // "Mongo `conversations` deletion handling: set `user_id=null`, store
 // `user_email_at_delete`, add `deleted_owner=true` flag").
 //

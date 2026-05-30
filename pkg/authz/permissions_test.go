@@ -67,10 +67,10 @@ func TestPermissionConstantsExist(t *testing.T) {
 }
 
 // TestAllPermissions_DescriptionsNotEmpty asserts every permission has a
-// non-empty Description after Phase 5 fill (05-CONTEXT D-13). This is the
+// non-empty Description after fill (05-). This is the
 // CI guard against regressing UI-RBAC-09 (the PermissionTree Info tooltip
 // depends on description text). Adding a new permission requires filling
-// Description in permissions.go AllPermissions().
+// Description in permissions.go AllPermissions.
 func TestAllPermissions_DescriptionsNotEmpty(t *testing.T) {
 	t.Parallel()
 	groups := AllPermissions()
