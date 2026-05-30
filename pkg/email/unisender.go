@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// defaultUnisenderEndpoint is the locked endpoint per D-01 / STACK.md §1.
+// defaultUnisenderEndpoint is the locked endpoint per /.
 // Override via UnisenderConfig.Endpoint for tests (mock server URL).
 const defaultUnisenderEndpoint = "https://go1.unisender.ru/ru/transactional/api/v1/email/send.json"
 
@@ -73,7 +73,7 @@ func NewUnisenderSender(cfg UnisenderConfig) (*UnisenderSender, error) {
 	return &UnisenderSender{cfg: cfg, client: client}, nil
 }
 
-// unisenderRequest mirrors the exact JSON the API accepts. See STACK.md
+// unisenderRequest mirrors the exact JSON the API accepts. See 
 // §1 and the Unisender Go endpoint reference. NOTE: fields are NOT
 // tagged with `omitempty` — Unisender is permissive about empty strings
 // but rejects unexpected shapes; explicit is safer.
@@ -110,9 +110,9 @@ type unisenderResponse struct {
 // success; wraps ErrTransient or ErrPermanent on failure per the
 // classification rules:
 //
-//   - Transient: network errors, context cancel, 5xx status, 429 status,
-//     body status != "success", malformed 2xx JSON.
-//   - Permanent: marshalling errors, 4xx status (except 429).
+// - Transient: network errors, context cancel, 5xx status, 429 status,
+// body status != "success", malformed 2xx JSON.
+// - Permanent: marshalling errors, 4xx status (except 429).
 func (s *UnisenderSender) Send(ctx context.Context, msg Message) (string, error) {
 	reqBody := unisenderRequest{
 		Message: unisenderMessage{
@@ -164,7 +164,7 @@ func (s *UnisenderSender) Send(ctx context.Context, msg Message) (string, error)
 	if parsed.Status != "success" {
 		// Body-level error. Provider sometimes returns 200 + status=error
 		// for temporary issues; map to transient unless the code looks
-		// permanent. For Phase 21 we accept the simpler rule "200 +
+		// permanent. For we accept the simpler rule "200 +
 		// status!=success → transient" and rely on the 5-attempt cap.
 		return "", fmt.Errorf("email: unisender body status=%s code=%s msg=%s: %w", parsed.Status, parsed.Code, parsed.Message, ErrTransient)
 	}

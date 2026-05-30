@@ -1,31 +1,31 @@
 // Package middleware — require_verified_email.go
 //
-// Phase 21-03 (ACCT-02 / D-26..D-30): soft-restrict middleware. Two
+// soft-restrict middleware. Two
 // variants over a shared helper:
 //
-//   - RequireVerifiedEmailDay0: hard-blocks unverified users IMMEDIATELY
-//     (regardless of account age). Decorates POST /integrations/*,
-//     POST /invitations, PATCH /users/me/email — attacker surfaces that
-//     cannot be granted to unverified users at any time.
+// - RequireVerifiedEmailDay0: hard-blocks unverified users IMMEDIATELY
+// (regardless of account age). Decorates POST /integrations/*,
+// POST /invitations, PATCH /users/me/email — attacker surfaces that
+// cannot be granted to unverified users at any time.
 //
-//   - RequireVerifiedEmailDay7: blocks unverified users ONLY after the
-//     7-day grace window has elapsed (NOW() - created_at >= 7d).
-//     Decorates POST /chat/{id}, POST /businesses — full conversion
-//     access is preserved during the grace window so soft-restrict is
-//     truly soft.
+// - RequireVerifiedEmailDay7: blocks unverified users ONLY after the
+// 7-day grace window has elapsed (NOW - created_at >= 7d).
+// Decorates POST /chat/{id}, POST /businesses — full conversion
+// access is preserved during the grace window so soft-restrict is
+// truly soft.
 //
-// Routes that NEVER decorate (D-30):
-//   - DELETE /users/me                  — right to erasure cannot be gated
-//   - /auth/verify-email/* and resend   — the verify path itself
-//   - PATCH /auth/email-before-verify   — escape hatch for dead email-on-file
-//   - GET /api/v1/*                     — read endpoints are banner-only
+// Routes that NEVER decorate:
+// - DELETE /users/me                  — right to erasure cannot be gated
+// - /auth/verify-email/* and resend   — the verify path itself
+// - PATCH /auth/email-before-verify   — escape hatch for dead email-on-file
+// - GET /api/v1/*                     — read endpoints are banner-only
 //
 // Response shape on block:
 //
 //	HTTP 412 Precondition Failed
 //	{
-//	  "code": "email_verification_required",
-//	  "verifiedDeadline": "<ISO8601 created_at + 7 days>"
+// "code": "email_verification_required",
+// "verifiedDeadline": "<ISO8601 created_at + 7 days>"
 //	}
 //
 // The middleware reads users.email_verified from the DB on every request
@@ -48,7 +48,7 @@ import (
 )
 
 // emailVerifyGraceDuration mirrors the handler-side constant
-// (handler.emailVerifyGraceDuration). Both must agree on D-28's 7-day
+// (handler.emailVerifyGraceDuration). Both must agree on 's 7-day
 // grace value; the duplication is intentional to avoid a circular
 // import (middleware → handler → middleware).
 const emailVerifyGraceDuration = 7 * 24 * time.Hour
@@ -60,13 +60,13 @@ type UserLookup interface {
 }
 
 // RequireVerifiedEmailDay0 hard-blocks unverified users regardless of
-// account age. Decorates the routes from CONTEXT D-26.
+// account age. Decorates the routes from.
 func RequireVerifiedEmailDay0(users UserLookup) func(http.Handler) http.Handler {
 	return requireVerifiedEmail(users, false)
 }
 
 // RequireVerifiedEmailDay7 blocks unverified users ONLY after the 7-day
-// grace window has elapsed. Decorates the routes from CONTEXT D-28.
+// grace window has elapsed. Decorates the routes from.
 func RequireVerifiedEmailDay7(users UserLookup) func(http.Handler) http.Handler {
 	return requireVerifiedEmail(users, true)
 }
@@ -86,7 +86,7 @@ func requireVerifiedEmail(users UserLookup, respectGrace bool) func(http.Handler
 			if err != nil {
 				if errors.Is(err, domain.ErrUserNotFound) {
 					// User existed at JWT-issue time but was deleted since
-					// (Phase 21-04). The 401 is more correct than 500 — the
+					// The 401 is more correct than 500 — the
 					// caller's JWT no longer maps to a real account.
 					writeAuthError(w, "user_not_found", http.StatusUnauthorized)
 					return

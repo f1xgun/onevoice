@@ -9,7 +9,7 @@
 //
 // "Owner" for the last-owner invariant (AUTHZ-06) is defined as
 // "member with role_id = SystemRoleOwnerID" — NOT "member with all
-// permissions" — per CONTEXT decision D-13. System roles are immutable
+// permissions" — per CONTEXT decision. System roles are immutable
 // (is_system=true); enforcement of that immutability is application-side
 // in Phases 2/5.
 package domain

@@ -109,7 +109,7 @@ func TestWriteAuthzInvariantError_WrappedErrors(t *testing.T) {
 	assert.Equal(t, "last_owner", body.Error)
 }
 
-// --- writeInvitationStateError branch coverage (CONTEXT D-19 refusal matrix) ---
+// --- writeInvitationStateError branch coverage (refusal matrix) ---
 
 func TestWriteInvitationStateError_Expired(t *testing.T) {
 	w := httptest.NewRecorder()
@@ -135,7 +135,7 @@ func TestWriteInvitationStateError_Accepted(t *testing.T) {
 }
 
 func TestWriteInvitationStateError_NotFound_CollapsesToUnknown(t *testing.T) {
-	// CONTEXT D-19: ErrInvitationNotFound → 410 with reason "unknown" to
+	// ErrInvitationNotFound → 410 with reason "unknown" to
 	// defend against token-existence enumeration.
 	w := httptest.NewRecorder()
 	writeInvitationStateError(w, domain.ErrInvitationNotFound)
@@ -159,10 +159,10 @@ func TestWriteInvitationStateError_GenericFallthrough(t *testing.T) {
 	require.Contains(t, w.Body.String(), `"error":"internal_server_error"`)
 }
 
-// --- writeRevokeError branch coverage (CONTEXT D-11 — 404 vs 410 split) ---
+// --- writeRevokeError branch coverage (404 vs 410 split) ---
 
 func TestWriteRevokeError_NotFound(t *testing.T) {
-	// CONTEXT D-11: revoke handler distinguishes 404 (not exist OR cross-tenant)
+	// revoke handler distinguishes 404 (not exist OR cross-tenant)
 	// from 410 (already terminal). NotFound → 404, not 410.
 	w := httptest.NewRecorder()
 	writeRevokeError(w, domain.ErrInvitationNotFound)
@@ -185,10 +185,10 @@ func TestWriteRevokeError_RevokedDelegates(t *testing.T) {
 	require.Contains(t, w.Body.String(), `"reason":"revoked"`)
 }
 
-// --- Phase 21b: TestErrorMapping_PasswordReset_* ----------------------
+// --- TestErrorMapping_PasswordReset_* ----------------------
 //
 // writePasswordResetError owns the public {code, message} mapping for
-// the three password-reset sentinels declared in 21-CROSS-PLAN-CONTRACTS.md
+// the three password-reset sentinels declared in 
 // §4. Tests below guard the contract against silent drift — every code
 // the frontend's error_mapping.ts COPY map expects MUST be emitted by
 // the backend on the documented error.

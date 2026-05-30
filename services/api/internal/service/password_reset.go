@@ -1,32 +1,32 @@
 // Package service — password_reset.go
 //
-// PasswordResetService implements ACCT-01: a no-enumeration password
+// PasswordResetService implements : a no-enumeration password
 // recovery flow that lets a user prove control of their email and
 // pick a new password without operator intervention.
 //
-// Hard contracts (lifted from .planning/phases/21-account-lifecycle/21-CONTEXT.md):
+// Hard contracts (lifted from ):
 //
-//   - D-08: token is 32 bytes of crypto/rand, base64url-encoded for the
-//     URL; only its SHA-256 hash is persisted.
-//   - D-09: token TTL = 30 minutes.
-//   - D-10: RequestReset NEVER returns a non-nil error to the caller.
-//     Confirm uses (reset_token_invalid | reset_token_expired |
-//     password_too_weak) for the three failure modes.
-//   - D-12: ConsumeAtomic is a single UPDATE…RETURNING. Confirm's
-//     password update + refresh-token wipe run in the same tx as the
-//     consume (refresh wipe is Redis-side, executed after tx.Commit).
-//   - D-13: all of the user's refresh-token entries in Redis are deleted
-//     on a successful confirm — keyed by tokenID and stored at
-//     `onevoice:auth:refresh_token:<tokenID>` with value=<user_id>. We
-//     scan the key-space and delete every key whose value matches.
-//     (CONTEXT D-13 was drafted assuming a `refresh:user:<id>:*` key
-//     pattern; the on-disk implementation uses `onevoice:auth:refresh_token:<tokenID>`
-//     so the wipe scans + filters by value.)
-//   - D-14: per-email rate limit = 3/hr via Redis INCR + EXPIRE 3600.
-//     4th+ requests still respond identically — handler returns 204 —
-//     but no email is sent.
-//   - D-15: symmetric load — unknown-email branch writes a dummy
-//     audit_log row so DB write cost is constant in both branches.
+// - token is 32 bytes of crypto/rand, base64url-encoded for the
+// URL; only its SHA-256 hash is persisted.
+// - token TTL = 30 minutes.
+// - RequestReset NEVER returns a non-nil error to the caller.
+// Confirm uses (reset_token_invalid | reset_token_expired |
+// password_too_weak) for the three failure modes.
+// - ConsumeAtomic is a single UPDATE…RETURNING. Confirm's
+// password update + refresh-token wipe run in the same tx as the
+// consume (refresh wipe is Redis-side, executed after tx.Commit).
+// - all of the user's refresh-token entries in Redis are deleted
+// on a successful confirm — keyed by tokenID and stored at
+// `onevoice:auth:refresh_token:<tokenID>` with value=<user_id>. We
+// scan the key-space and delete every key whose value matches.
+// (was drafted assuming a `refresh:user:<id>:*` key
+// pattern; the on-disk implementation uses `onevoice:auth:refresh_token:<tokenID>`
+// so the wipe scans + filters by value.)
+// - per-email rate limit = 3/hr via Redis INCR + EXPIRE 3600.
+// 4th+ requests still respond identically — handler returns 204 —
+// but no email is sent.
+// - symmetric load — unknown-email branch writes a dummy
+// audit_log row so DB write cost is constant in both branches.
 //
 // PITFALLS §1.1 (no enumeration): the ONLY error a confirm caller ever
 // sees for token problems is ErrResetTokenInvalid — expired and unknown
@@ -56,25 +56,25 @@ import (
 )
 
 const (
-	// resetTokenTTL — D-09.
+	// resetTokenTTL —.
 	resetTokenTTL = 30 * time.Minute
-	// resetTokenEntropyBytes — D-08 (256 bits).
+	// resetTokenEntropyBytes — (256 bits).
 	resetTokenEntropyBytes = 32
 	// resetMinPasswordLen — handler validator enforces this; service
 	// double-checks BEFORE consuming the token (PITFALLS §1.2: a weak
 	// password must not burn the user's token).
 	resetMinPasswordLen = 8
-	// resetRateLimitMax — D-14: 3 requests / hour / email.
+	// resetRateLimitMax — : 3 requests / hour / email.
 	resetRateLimitMax    = 3
 	resetRateLimitWindow = time.Hour
 	// resetConfirmURLBase — public URL embedded in the email body.
 	// TODO: source from cfg.PublicURL once 21-04 wires in the public host
-	// (D-04 keeps the default for v1.4).
+	// (keeps the default for v1.4).
 	resetConfirmURLBase = "https://onevoice.app/auth/password-reset/confirm"
 	// resetEmailSubject — RU primary per CONTEXT D-decisions.
 	resetEmailSubject = "Восстановление пароля — OneVoice"
 	// resetRefreshScanBatch — page size for the Redis SCAN that wipes the
-	// user's refresh tokens during password reset (D-13). 256 is a balance
+	// user's refresh tokens during password reset. 256 is a balance
 	// between roundtrips and per-page work; Redis docs recommend ~100-1000.
 	resetRefreshScanBatch int64 = 256
 )
@@ -135,20 +135,20 @@ func NewPasswordResetService(
 	}
 }
 
-// RequestReset implements D-10/D-14/D-15/PITFALLS §1.1. Always returns nil.
+// RequestReset implements ///PITFALLS §1.1. Always returns nil.
 //
 // Flow:
-//  1. Rate-limit gate FIRST so its cost is paid in BOTH email-known and
-//     email-unknown branches — keeps timing parity.
-//  2. UserRepo.GetByEmail. Unknown → write dummy audit row (symmetric DB
-//     load) and return.
-//  3. If rate-limited → write the standard "requested" audit row WITH
-//     rate_limited=true in metadata, no email sent.
-//  4. Generate 32-byte token, base64url-encode, sha256, open tx.
-//  5. Invalidate older outstanding tokens for the user.
-//  6. Insert the new token row.
-//  7. Enqueue the outbox row (same tx — atomicity per Phase 21a).
-//  8. tx.Commit; emit audit row.
+// 1. Rate-limit gate FIRST so its cost is paid in BOTH email-known and
+// email-unknown branches — keeps timing parity.
+// 2. UserRepo.GetByEmail. Unknown → write dummy audit row (symmetric DB
+// load) and return.
+// 3. If rate-limited → write the standard "requested" audit row WITH
+// rate_limited=true in metadata, no email sent.
+// 4. Generate 32-byte token, base64url-encode, sha256, open tx.
+// 5. Invalidate older outstanding tokens for the user.
+// 6. Insert the new token row.
+// 7. Enqueue the outbox row (same tx — atomicity ).
+// 8. tx.Commit; emit audit row.
 //
 // Any error in steps 2-8 still returns nil to the caller. Internal
 // failures get logged via slog + audit so they're forensically visible
@@ -159,7 +159,7 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 	user, err := s.userRepo.GetByEmail(ctx, emailAddr)
 	switch {
 	case errors.Is(err, domain.ErrUserNotFound):
-		// Symmetric-load branch (PITFALLS §1.1, D-15). Dummy audit row.
+		// Symmetric-load branch (PITFALLS §1.1). Dummy audit row.
 		s.audit(ctx, audit.ActionPasswordResetUnknownEmail, nil, map[string]any{
 			"attempted_email": emailAddr,
 			"ip":              clientIP,
@@ -236,19 +236,19 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, emailAddr, clie
 	return nil
 }
 
-// ConfirmReset implements D-10/D-12/D-13.
+// ConfirmReset implements //.
 //
-//   - newPassword length validated BEFORE the consume so a weak password
-//     doesn't burn the user's one-shot token (PITFALLS §1.2).
-//   - sha256(plaintextToken) → ConsumeAtomic in a tx.
-//   - bcrypt new password → UpdatePasswordHashInTx (same tx).
-//   - tx.Commit.
-//   - After commit: delete every refresh-token Redis key whose value is
-//     the affected user_id. The wipe is intentionally NOT inside the
-//     Postgres tx — Redis and Postgres can't share one — but it runs
-//     AFTER the commit, so the password change is the durable event;
-//     a Redis hiccup leaves the user with stale-but-soon-expiring
-//     refresh tokens (15-min access TTL bounds the exposure).
+// - newPassword length validated BEFORE the consume so a weak password
+// doesn't burn the user's one-shot token (PITFALLS §1.2).
+// - sha256(plaintextToken) → ConsumeAtomic in a tx.
+// - bcrypt new password → UpdatePasswordHashInTx (same tx).
+// - tx.Commit.
+// - After commit: delete every refresh-token Redis key whose value is
+// the affected user_id. The wipe is intentionally NOT inside the
+// Postgres tx — Redis and Postgres can't share one — but it runs
+// AFTER the commit, so the password change is the durable event;
+// a Redis hiccup leaves the user with stale-but-soon-expiring
+// refresh tokens (15-min access TTL bounds the exposure).
 func (s *PasswordResetService) ConfirmReset(ctx context.Context, plaintextToken, newPassword, clientIP, userAgent string) error {
 	if len(newPassword) < resetMinPasswordLen {
 		return ErrPasswordTooWeak
@@ -283,7 +283,7 @@ func (s *PasswordResetService) ConfirmReset(ctx context.Context, plaintextToken,
 		return fmt.Errorf("password reset: tx commit: %w", err)
 	}
 
-	// Best-effort post-commit refresh-token wipe (D-13). Errors here are
+	// Best-effort post-commit refresh-token wipe. Errors here are
 	// logged but do not poison the success response — the new password
 	// IS in place; stale refresh tokens expire naturally at access TTL.
 	if err := s.wipeRefreshTokens(ctx, userID); err != nil {
@@ -362,7 +362,7 @@ func (s *PasswordResetService) wipeRefreshTokens(ctx context.Context, userID uui
 }
 
 // audit fires a fire-and-forget audit row. Details are pre-marshaled here
-// because pkg/audit.Entry takes json.RawMessage (D-10: no map[string]any
+// because pkg/audit.Entry takes json.RawMessage (no map[string]any
 // at the boundary — but the boundary IS this function; the pre-marshal
 // happens HERE so the rest of the service can pass map[string]any
 // ergonomically).

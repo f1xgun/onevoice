@@ -14,7 +14,7 @@ import (
 // importing the full service package in tests. Matches the public method set
 // of *service.ProjectService one-for-one.
 //
-// Phase 19 Wave 4 (19-04): Create / Update / DeleteCascade take an actorID so
+// Create / Update / DeleteCascade take an actorID so
 // the service layer emits project.* audit events with the correct attribution.
 type ProjectService interface {
 	Create(ctx context.Context, businessID, actorID uuid.UUID, input service.CreateProjectInput) (*domain.Project, error)
@@ -28,10 +28,10 @@ type ProjectService interface {
 // ConversationService is the handler-facing view of the
 // *service.ConversationService concrete type. Owns conversation operations
 // that cross multiple repository reads/writes:
-//   - MoveToProject — multi-repo write transition (move + system note).
-//   - OpenChat      — multi-repo read composite (messages + pending
-//     batches) returning the fully-projected ChatView the handler
-//     JSON-encodes verbatim.
+// - MoveToProject — multi-repo write transition (move + system note).
+// - OpenChat      — multi-repo read composite (messages + pending
+// batches) returning the fully-projected ChatView the handler
+// JSON-encodes verbatim.
 //
 // Declared as an interface so conversation_test.go can swap in a noop
 // fake for handler tests that don't exercise these paths.

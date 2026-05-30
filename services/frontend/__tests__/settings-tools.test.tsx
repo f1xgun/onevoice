@@ -123,7 +123,7 @@ function setupDefaultMocks() {
   });
 }
 
-describe('ToolsPageClient — /settings/tools (POLICY-05)', () => {
+describe('ToolsPageClient — /settings/tools', () => {
   beforeEach(() => {
     apiGet.mockReset();
     bizApiGet.mockReset();

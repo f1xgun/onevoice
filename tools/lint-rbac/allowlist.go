@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// AllowlistEntry mirrors the CONTEXT D-13 schema.
+// AllowlistEntry mirrors the schema.
 type AllowlistEntry struct {
 	Route   string `json:"route"`
 	Reason  string `json:"reason"`
@@ -17,7 +17,7 @@ type AllowlistEntry struct {
 }
 
 // ParseAllowlist reads .rbac-migration-allowlist (or returns [] on missing file) and
-// fails on any past-date entry per CONTEXT D-13.
+// fails on any past-date entry.
 func ParseAllowlist(path string, now time.Time) ([]AllowlistEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -58,7 +58,7 @@ func ParseAllowlist(path string, now time.Time) ([]AllowlistEntry, error) {
 	return entries, nil
 }
 
-// IsAllowed reports whether route matches any allowlist entry. Phase 2
+// IsAllowed reports whether route matches any allowlist entry. 
 // ships exact-string matching (no chi pattern compilation); the
 // allowlist is empty so the matcher's behaviour is moot until v2.1.
 func IsAllowed(route string, entries []AllowlistEntry) bool {

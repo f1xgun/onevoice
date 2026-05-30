@@ -1,4 +1,4 @@
-// Phase 22-02 — Surface D helper: parses inline `[label](href)` markdown
+// Surface D helper: parses inline `[label](href)` markdown
 // inside a checkbox label and renders anchors with target="_blank" +
 // rel="noopener noreferrer" so the user can read the linked policy in a
 // new tab without losing unsubmitted Register form state (UI-SPEC §D

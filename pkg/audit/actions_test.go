@@ -21,21 +21,21 @@ func TestActionConstants(t *testing.T) {
 		"auth.logout":              ActionLogout,
 		"auth.password_changed":    ActionPasswordChanged,
 		"auth.user_registered":     ActionUserRegistered,
-		// Phase 21b — Password reset (ACCT-01).
+		// Password reset.
 		"auth.password_reset_requested":             ActionPasswordResetRequested,
 		"auth.password_reset_completed":             ActionPasswordResetCompleted,
 		"auth.password_reset_request_unknown_email": ActionPasswordResetUnknownEmail,
-		// Phase 21c — Email verification + soft-restrict (ACCT-02, D-42).
+		// Email verification + soft-restrict.
 		"auth.email_verification_link_viewed": ActionEmailVerificationLinkViewed,
 		"auth.email_verified":                 ActionEmailVerified,
 		"auth.email_changed_before_verify":    ActionEmailChangedBeforeVerify,
 		"auth.consent_recorded":               ActionConsentRecorded,
-		// Phase 21-04 — Account deletion lifecycle (ACCT-03, D-42).
+		// Account deletion lifecycle.
 		"account.deletion_requested": ActionDeletionRequested,
 		"account.deletion_canceled":  ActionDeletionCanceled,
 		"account.sole_owner_blocked": ActionSoleOwnerBlocked,
 		"account.user_self_deleted":  ActionUserSelfDeleted,
-		// Phase 22 — Legal compliance scaffolding (LEGAL-01..06, D-27).
+		// Legal compliance scaffolding.
 		// ActionConsentRecorded above is reused with new purposes
 		// (tos/privacy/pdn) — same constant, new Details.Purposes.
 		"auth.consent_reconsent_required":    ActionConsentReconsentRequired,
@@ -54,7 +54,7 @@ func TestActionConstants(t *testing.T) {
 	for expected, got := range tests {
 		require.Equal(t, expected, got)
 	}
-	require.Len(t, tests, 36, "expected 36 audit actions (21 base + 3 Phase 21b password reset + 4 Phase 21c verify + 4 Phase 21-04 deletion + 4 Phase 22 consent)")
+	require.Len(t, tests, 36, "expected 36 audit actions (base + password reset + email verify + account deletion + consent)")
 }
 
 func TestActionCategory(t *testing.T) {
@@ -66,7 +66,7 @@ func TestActionCategory(t *testing.T) {
 	require.Equal(t, "integration", ActionCategory(ActionIntegrationTokenRotated))
 	require.Equal(t, "business", ActionCategory(ActionBusinessCreated))
 	require.Equal(t, "project", ActionCategory(ActionProjectDeleted))
-	// Phase 21-04 (account.* lifecycle).
+	// (account.* lifecycle).
 	require.Equal(t, "account", ActionCategory(ActionDeletionRequested))
 	require.Equal(t, "account", ActionCategory(ActionDeletionCanceled))
 	require.Equal(t, "account", ActionCategory(ActionSoleOwnerBlocked))

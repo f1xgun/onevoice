@@ -18,7 +18,7 @@ import (
 )
 
 // newPasswordResetTokenRepoMock returns a fresh pgxmock pool + repo.
-// Mirrors newEmailOutboxRepoMock to keep Phase 21 repository tests
+// Mirrors newEmailOutboxRepoMock to keep repository tests
 // stylistically uniform.
 func newPasswordResetTokenRepoMock(t *testing.T) (pgxmock.PgxPoolIface, *PasswordResetTokenRepository) {
 	t.Helper()
@@ -117,7 +117,7 @@ func TestPasswordResetTokenRepository_ConsumeAtomic_AlreadyConsumed(t *testing.T
 }
 
 // TestPasswordResetTokenRepository_ConsumeAtomic_Expired asserts that an
-// expired token (expires_at < NOW()) is rejected with the SAME sentinel
+// expired token (expires_at < NOW) is rejected with the SAME sentinel
 // as already-consumed and non-existent — PITFALLS §1.1 forbids
 // distinguishing failure modes at the repository layer.
 func TestPasswordResetTokenRepository_ConsumeAtomic_Expired(t *testing.T) {

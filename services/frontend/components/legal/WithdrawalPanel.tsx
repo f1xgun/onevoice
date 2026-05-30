@@ -1,10 +1,10 @@
-// Phase 22-02 — Surface F: PDN withdrawal panel inside /settings/privacy.
+// Surface F: PDN withdrawal panel inside /settings/privacy.
 //
-// Fetches the user's three consent rows via listMyConsents(), renders
+// Fetches the user's three consent rows via listMyConsents, renders
 // one card per slug. The PDN row carries a destructive «Отозвать
 // согласие на ПДн» button that opens an AlertDialog confirming
-// destruction. On confirm → withdrawPDN() → server triggers the
-// Phase 21-04 RequestDeletion flow (30-day grace). 423 is treated as
+// destruction. On confirm → withdrawPDN → server triggers the
+// RequestDeletion flow (30-day grace). 423 is treated as
 // success since the deletion is already pending (UI-SPEC §F edge case).
 //
 // If user.accountDeletion is already non-null, the button is hidden in

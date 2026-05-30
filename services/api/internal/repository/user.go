@@ -30,14 +30,14 @@ func NewUserRepository(pool *pgxpool.Pool) domain.UserRepository {
 
 // UserResetExtAdapter is the public façade exposing GetByEmail +
 // UpdatePasswordHashInTx — the slice of UserRepository the
-// PasswordResetService (Phase 21b) consumes. Returned as a concrete type
+// PasswordResetService consumes. Returned as a concrete type
 // (not an interface) so wire/repositories.go can construct it without
 // importing the service package (and avoid the type-assertion dance).
 type UserResetExtAdapter struct {
 	inner *userRepository
 }
 
-// NewUserResetExtAdapter constructs the Phase 21b extension repo. Re-uses
+// NewUserResetExtAdapter constructs the extension repo. Re-uses
 // the same connection pool as NewUserRepository — both struct values
 // share state through the pgxpool's connection multiplex.
 func NewUserResetExtAdapter(pool *pgxpool.Pool) *UserResetExtAdapter {
@@ -54,14 +54,14 @@ func (a *UserResetExtAdapter) GetByEmail(ctx context.Context, email string) (*do
 	return a.inner.GetByEmail(ctx, email)
 }
 
-// GetByID delegates to the inner concrete repo. Phase 21-03: needed by
+// GetByID delegates to the inner concrete repo. : needed by
 // EmailVerificationService.RequestResend + ChangeEmailBeforeVerify which
 // must load the user state (email_verified + email) before mutating.
 func (a *UserResetExtAdapter) GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 	return a.inner.GetByID(ctx, userID)
 }
 
-// GetByIDIncludingDeleted delegates to the inner concrete repo. Phase 21-04:
+// GetByIDIncludingDeleted delegates to the inner concrete repo. :
 // AccountDeletionService.RequestDeletion calls this so it can detect a
 // soft-deleted user and return ErrDeletionAlreadyPending instead of
 // ErrUserNotFound on the retry path.
@@ -69,7 +69,7 @@ func (a *UserResetExtAdapter) GetByIDIncludingDeleted(ctx context.Context, userI
 	return a.inner.GetByIDIncludingDeleted(ctx, userID)
 }
 
-// Phase 21-04 delegates: account deletion lifecycle on the same adapter
+// delegates: account deletion lifecycle on the same adapter
 // so AccountDeletionService consumes a single tx-aware user-repo seam.
 
 func (a *UserResetExtAdapter) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
@@ -92,7 +92,7 @@ func (a *UserResetExtAdapter) HardDeleteInTx(ctx context.Context, tx pgx.Tx, use
 	return a.inner.HardDeleteInTx(ctx, tx, userID)
 }
 
-// CreateInTx delegates to the inner concrete repo. Phase 21-03:
+// CreateInTx delegates to the inner concrete repo. :
 // UserService.Register uses this so the user row commits atomically with
 // the user_consents + email_verification_tokens + email_outbox INSERTs.
 func (a *UserResetExtAdapter) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain.User) error {
@@ -104,15 +104,15 @@ func (a *UserResetExtAdapter) UpdatePasswordHashInTx(ctx context.Context, tx pgx
 	return a.inner.UpdatePasswordHashInTx(ctx, tx, userID, bcryptHash)
 }
 
-// UpdateEmailInTx delegates to the inner concrete repo. Phase 21-03 D-21:
+// UpdateEmailInTx delegates to the inner concrete repo. :
 // PATCH /auth/email-before-verify mutates users.email inside the same tx
 // as token invalidation + fresh-token issuance.
 func (a *UserResetExtAdapter) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, newEmail string) error {
 	return a.inner.UpdateEmailInTx(ctx, tx, userID, newEmail)
 }
 
-// MarkEmailVerifiedInTx delegates to the inner concrete repo. Phase 21-03
-// D-22: POST /auth/verify-email/confirm flips email_verified + sets
+// MarkEmailVerifiedInTx delegates to the inner concrete repo. 
+// POST /auth/verify-email/confirm flips email_verified + sets
 // email_verified_at inside the same tx as token consume.
 func (a *UserResetExtAdapter) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	return a.inner.MarkEmailVerifiedInTx(ctx, tx, userID)
@@ -146,7 +146,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
-// CreateInTx inserts a user inside the caller-supplied tx. Phase 21-03:
+// CreateInTx inserts a user inside the caller-supplied tx. :
 // UserService.Register opens a tx so the user_consents + email_verification_tokens
 // + email_outbox INSERTs commit atomically with the user row (no half-registered
 // user with no verification email).
@@ -184,7 +184,7 @@ func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain
 	return nil
 }
 
-// GetByID — Phase 21-04 D-41: filters `deleted_at IS NULL` so a soft-deleted
+// GetByID — : filters `deleted_at IS NULL` so a soft-deleted
 // user (deletion requested, inside the 30-day grace window) looks like
 // ErrUserNotFound to every read path. Deletion-aware code paths
 // (AccountDeletionService, BlockWritesDuringGrace middleware, /auth/me)
@@ -228,7 +228,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 	return &user, nil
 }
 
-// GetByIDIncludingDeleted — Phase 21-04. Same SELECT as GetByID minus the
+// GetByIDIncludingDeleted —. Same SELECT as GetByID minus the
 // `deleted_at IS NULL` filter. Used by handlers that need to read the
 // accountDeletion state of a soft-deleted user (e.g. /auth/me must
 // surface the grace banner; POST /users/me/restore must find the row
@@ -271,7 +271,7 @@ func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UU
 	return &user, nil
 }
 
-// GetByEmail — Phase 21-04 D-41: filters `deleted_at IS NULL` so the same
+// GetByEmail — : filters `deleted_at IS NULL` so the same
 // email can be re-registered post-purge without colliding with a
 // soft-deleted account during the grace window (the legacy UNIQUE
 // constraint on users.email still applies, so during the 30-day grace the
@@ -345,7 +345,7 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 // UpdatePasswordHashInTx sets users.password_hash + updated_at for the
 // given userID inside the caller-supplied tx. Used by PasswordResetService
 // to commit the password update in the same transaction as the token
-// consume (Phase 21b D-12).
+// consume.
 //
 // NOT part of the domain.UserRepository interface — the interface stays
 // tx-free for callers that don't compose transactions. Service callers
@@ -372,7 +372,7 @@ func (r *userRepository) UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, 
 }
 
 // UpdateEmailInTx sets users.email for the given userID inside the
-// caller-supplied tx. Phase 21-03 D-21: PATCH /auth/email-before-verify
+// caller-supplied tx. : PATCH /auth/email-before-verify
 // runs this alongside InvalidateAllForUser + a fresh token issue + outbox
 // enqueue, all in one tx.
 //
@@ -406,8 +406,8 @@ func (r *userRepository) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID 
 }
 
 // MarkEmailVerifiedInTx flips users.email_verified=TRUE and stamps
-// email_verified_at=NOW() for the given userID inside the caller-supplied
-// tx. Phase 21-03 D-22: POST /auth/verify-email/confirm runs this in the
+// email_verified_at=NOW for the given userID inside the caller-supplied
+// tx. : POST /auth/verify-email/confirm runs this in the
 // same tx as the token consume so a partial state (token consumed but
 // flag not flipped) cannot occur on a connection drop.
 func (r *userRepository) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
@@ -426,7 +426,7 @@ func (r *userRepository) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, u
 	return nil
 }
 
-// RequestDeletionInTx — Phase 21-04. Sets deleted_at + deletion_requested_at
+// RequestDeletionInTx —. Sets deleted_at + deletion_requested_at
 // + updated_at on the user row inside the caller-supplied tx. The
 // `deletion_requested_at IS NULL` guard makes this idempotent: a second
 // concurrent call surfaces ErrDeletionAlreadyPending so the handler can
@@ -465,7 +465,7 @@ func (r *userRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, use
 	return nil
 }
 
-// CancelDeletion — Phase 21-04. Atomic UPDATE...RETURNING that clears
+// CancelDeletion —. Atomic UPDATE..RETURNING that clears
 // deleted_at and stamps deletion_canceled_at iff the user is currently
 // inside the 30-day grace window. Returns:
 //
@@ -514,7 +514,7 @@ func (r *userRepository) CancelDeletion(ctx context.Context, userID uuid.UUID, g
 	return false, domain.ErrAlreadyPurged
 }
 
-// EnumeratePendingDeletionsInTx — Phase 21-04 hard-delete sweeper helper.
+// EnumeratePendingDeletionsInTx — hard-delete sweeper helper.
 // Claims a batch of soft-deleted users whose 30-day grace has elapsed via
 // `FOR UPDATE SKIP LOCKED` so concurrent sweepers + the cancel endpoint
 // don't deadlock or race-clobber. Returns up to `limit` IDs ordered oldest-
@@ -546,7 +546,7 @@ func (r *userRepository) EnumeratePendingDeletionsInTx(ctx context.Context, tx p
 	return ids, nil
 }
 
-// EnumerateUpcomingDeletions — Phase 21-04 warning sweeper helper.
+// EnumerateUpcomingDeletions — warning sweeper helper.
 // Returns users whose deletion_requested_at falls between `fromTime`
 // (exclusive) and `toTime` (inclusive) — the T-7 window the
 // AccountDeletionService.WarningSweeper covers. Pool-based (no tx
@@ -590,11 +590,11 @@ func (r *userRepository) EnumerateUpcomingDeletions(ctx context.Context, fromTim
 	return out, nil
 }
 
-// HardDeleteInTx — Phase 21-04 hard-delete sweeper. Issues `DELETE FROM
+// HardDeleteInTx — hard-delete sweeper. Issues `DELETE FROM
 // users WHERE id = $1` inside the caller-supplied tx. The caller is
 // responsible for writing the user_self_deleted audit row BEFORE the
 // DELETE (in the same tx) so the FK SET NULL behavior (audit_logs.user_id
-// from 21-03 ACCT-06) has somewhere to land. After DELETE, the audit
+// from 21-03 ) has somewhere to land. After DELETE, the audit
 // row's FK becomes NULL but user_email_at_event preserves the email for
 // 152-ФЗ forensic queries.
 func (r *userRepository) HardDeleteInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {

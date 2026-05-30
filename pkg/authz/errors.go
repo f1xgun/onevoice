@@ -6,7 +6,7 @@
 // - pkg/domain/errors.go = aggregate-level not-found / exists errors.
 // - pkg/authz/errors.go  = cross-cutting authorization invariant errors.
 //
-// Handlers in Phase 2 (member mutations) and Phase 5 (role mutations) wrap
+// Handlers in (member mutations) and (role mutations) wrap
 // these with HTTP status codes:
 //
 //	ErrLastOwner                       → 422 last_owner
@@ -22,7 +22,7 @@ import "errors"
 // would leave a business with zero members holding the system owner role.
 //
 // "Owner" is defined as "member with role_id = SystemRoleOwnerID" — NOT
-// "member with all permissions" — per CONTEXT decision D-13.
+// "member with all permissions" — per CONTEXT decision.
 var ErrLastOwner = errors.New("last_owner: operation would leave business with zero owners")
 
 // ErrCannotGrantUnownedPermissions is returned by CheckEscalationSubset when
@@ -38,6 +38,6 @@ var ErrSelfLockout = errors.New("self_lockout: edit would remove actor's own rol
 
 // ErrSystemRoleImmutable is returned by CheckSystemRoleImmutable when an
 // actor attempts to mutate a system role (owner/admin/editor/viewer).
-// Phase 2 ships the sentinel for Phase 5 role-mutation handlers; no Phase
+// ships the sentinel for role-mutation handlers; no Phase
 // 2 endpoint surfaces it directly.
 var ErrSystemRoleImmutable = errors.New("system_role_immutable: system role cannot be modified")

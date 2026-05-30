@@ -82,23 +82,23 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 
 	internalTokenHandler := handler.NewInternalTokenHandler(svcs.Integration)
 
-	// Phase 19 Wave 4 (19-04): AuthHandler gains audit + jwtSecret args so it
+	// AuthHandler gains audit + jwtSecret args so it
 	// can emit auth.* audit events and extract userID from refresh-token
 	// claims before Redis invalidation during Logout.
 	authHandler, err := handler.NewAuthHandler(svcs.User, cfg.SecureCookies, svcs.AuditLogger, []byte(cfg.JWTSecret))
 	if err != nil {
 		return nil, fmt.Errorf("wire: create auth handler: %w", err)
 	}
-	// Phase 21b (ACCT-01): inject password-reset service via setter to keep
+	// inject password-reset service via setter to keep
 	// NewAuthHandler's signature stable across the rest of the codebase.
 	if svcs.PasswordReset != nil {
 		authHandler.SetPasswordResetService(svcs.PasswordReset)
 	}
-	// Phase 21-03 (ACCT-02): inject email-verification service via setter.
+	// inject email-verification service via setter.
 	if svcs.EmailVerification != nil {
 		authHandler.SetEmailVerificationService(svcs.EmailVerification)
 	}
-	// Phase 21-04 (ACCT-03): /auth/me must surface accountDeletion state
+	// /auth/me must surface accountDeletion state
 	// for soft-deleted users so they can render the grace banner +
 	// click restore. Wire the deletion-aware GetByIDIncludingDeleted
 	// pathway through the existing UserResetExt adapter.
@@ -116,7 +116,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	if err != nil {
 		return nil, fmt.Errorf("wire: create business handler: %w", err)
 	}
-	// Phase 19 Wave 4 (19-04): + svcs.AuditLogger for integration.disconnected
+	// + svcs.AuditLogger for integration.disconnected
 	// audit events from the handler-level Delete path.
 	integrationHandler, err := handler.NewIntegrationHandler(svcs.Integration, svcs.Business, svcs.AuditLogger)
 	if err != nil {
@@ -202,17 +202,17 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		GoogleBusiness: cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "",
 	})
 
-	// Phase 2 v2.0 RBAC handlers — members, roles, permissions registry.
-	// Phase 19 Wave 4 (19-04): MembersHandler gains svcs.AuditLogger so
+	// v2.0 RBAC handlers — members, roles, permissions registry.
+	// MembersHandler gains svcs.AuditLogger so
 	// rbac.role_granted + rbac.member_removed audit events fire AFTER tx.Commit.
 	membersHandler, err := handler.NewMembersHandler(repos.BusinessMembership, repos.Role, repos.User, h.PG, svcs.AuthzCache, svcs.AuditLogger)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create members handler: %w", err)
 	}
-	// Phase 5 — extended signature: + membership repo (Delete fanout target
+	// extended signature: + membership repo (Delete fanout target
 	// lookup) + pool (RepeatableRead tx for Create/Update/Delete) + invalidator
 	// (InvalidateRole AFTER commit + InvalidateMember fanout per reassigned user).
-	// Phase 19 Wave 4 (19-04): + svcs.AuditLogger for rbac.role_* audit events.
+	// + svcs.AuditLogger for rbac.role_* audit events.
 	rolesHandler, err := handler.NewRolesHandler(
 		repos.Role,
 		repos.BusinessMembership,
@@ -224,9 +224,9 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create roles handler: %w", err)
 	}
 
-	// Phase 3 v2.0 RBAC: invitations handler — 5 endpoints (3 business-scoped,
+	// v2.0 RBAC: invitations handler — 5 endpoints (3 business-scoped,
 	// 1 auth-only token, 1 public token). See plan 03-04 / 03-05.
-	// Phase 19 Wave 4 (19-04): + svcs.AuditLogger for rbac.invitation_* audit events.
+	// + svcs.AuditLogger for rbac.invitation_* audit events.
 	invitationsHandler, err := handler.NewInvitationsHandler(
 		repos.Invitation,
 		repos.BusinessMembership,
@@ -241,7 +241,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create invitations handler: %w", err)
 	}
 
-	// Phase 19 Wave 5 (19-05): audit-log read handler. repos.AuditLog is
+	// audit-log read handler. repos.AuditLog is
 	// typed as the domain interface (Insert/ListByBusiness/DeleteOlderThan)
 	// which does NOT include ListByBusinessWithActors — that method
 	// returns a repository-package AuditLogRow type that intentionally
@@ -258,7 +258,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 	}
 	auditLogHandler := handler.NewAuditLogHandler(auditLister)
 
-	// Phase 21-04 (ACCT-03): DELETE /users/me + POST /users/me/restore.
+	// DELETE /users/me + POST /users/me/restore.
 	// The handler needs the AccountDeletionService + the CORS-allowed
 	// origins for the Restore endpoint's Origin-header CSRF check
 	// (T-DEL-10). When svcs.AccountDeletion is nil (legacy/test deploys),
@@ -268,16 +268,16 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		userDeletionHandler = handler.NewUserDeletionHandler(svcs.AccountDeletion, cfg.CORSAllowedOrigins)
 	}
 
-	// Phase 22 (LEGAL-01..06): /auth/consents + /users/me/consents +
+	// /auth/consents + /users/me/consents +
 	// /users/me/consents/pdn/withdraw. The handler needs the
 	// ConsentService for write paths + the UserConsents repo for the
 	// GET list path. CORS-allowed origins back the Origin-header
-	// CSRF check on the two write endpoints (T-22-01 mitigation).
+	// CSRF check on the two write endpoints.
 	var consentsHandler *handler.ConsentsHandler
 	if svcs.Consent != nil {
 		consentsHandler = handler.NewConsentsHandler(svcs.Consent, repos.UserConsents, cfg.CORSAllowedOrigins)
 	}
-	// Phase 22: inject the ConsentDiffer into the auth handler so /auth/me
+	// inject the ConsentDiffer into the auth handler so /auth/me
 	// populates requiresReconsent. Always wired when svcs.Consent is set.
 	if svcs.Consent != nil {
 		authHandler.SetConsentDiffer(svcs.Consent)
@@ -300,19 +300,19 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Titler:        titlerHandler,
 		Search:        searchHandler,
 		Platforms:     platformsHandler,
-		// Phase 1 v2.0 RBAC (AUTHZ-01): static permission registry endpoint.
+		// v2.0 RBAC (AUTHZ-01): static permission registry endpoint.
 		Permissions: handler.NewPermissionsHandler(),
-		// Phase 2 v2.0 RBAC: member + role management.
+		// v2.0 RBAC: member + role management.
 		Members: membersHandler,
 		Roles:   rolesHandler,
-		// Phase 3 v2.0 RBAC: invitation lifecycle (Create/ListPending/Revoke/Preview/Accept).
+		// v2.0 RBAC: invitation lifecycle (Create/ListPending/Revoke/Preview/Accept).
 		Invitations: invitationsHandler,
-		// Phase 19 Wave 5 (19-05): audit-log read handler. Bound to
+		// audit-log read handler. Bound to
 		// GET /businesses/{id}/audit-logs via router.Setup.
 		AuditLog: auditLogHandler,
-		// Phase 21-04 (ACCT-03): DELETE /users/me + POST /users/me/restore.
+		// DELETE /users/me + POST /users/me/restore.
 		UserDeletion: userDeletionHandler,
-		// Phase 22 (LEGAL-01..06): /auth/consents + /users/me/consents + .../pdn/withdraw.
+		// /auth/consents + /users/me/consents +../pdn/withdraw.
 		Consents: consentsHandler,
 		// Telemetry handler is zero-dep; constructed inline.
 		Telemetry: &handler.TelemetryHandler{},

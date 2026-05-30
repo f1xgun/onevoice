@@ -3,14 +3,14 @@ import { render } from '@testing-library/react';
 
 import { Checkbox } from '@/components/ui/checkbox';
 
-// Phase 5 / Plan 05-05 — extended Checkbox primitive renders BOTH a Check glyph
+// extended Checkbox primitive renders BOTH a Check glyph
 // (on `data-state=checked`) AND a Minus glyph (on `data-state=indeterminate`).
 //
 // The actual glyph swap is a Tailwind concern not testable in jsdom, so these
 // tests assert the data-state contract — that's the wire between Radix and the
 // Tailwind variants `group-data-[state=*]/cb:*`.
 //
-// PermissionTree (D-12) depends on this contract: a partially-selected group
+// PermissionTree depends on this contract: a partially-selected group
 // renders <Checkbox checked="indeterminate" />, which MUST surface as
 // `aria-checked="mixed"` (Radix sets this automatically).
 describe('Checkbox (Phase 5 indeterminate glyph)', () => {

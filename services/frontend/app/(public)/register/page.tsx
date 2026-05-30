@@ -23,7 +23,7 @@ import { AuthShell } from '@/components/auth/AuthShell';
 import { ConsentCheckboxes } from '@/components/auth/ConsentCheckboxes';
 import { MonoLabel } from '@/components/ui/mono-label';
 
-// Phase 22-02 (D-15): zod schema field identifiers for the two
+// zod schema field identifiers for the two
 // required-consent checkboxes. Constants (not inline literals) so the
 // i18next no-literal-string lint rule isn't false-tripped — these are
 // schema keys, not user-facing copy.
@@ -35,7 +35,7 @@ export default function RegisterPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const tReg = useTranslations('auth.register');
   const tValidation = useTranslations('validation');
-  // Phase 22-02 (D-16): the consent_required toast lives in the new
+  // the consent_required toast lives in the new
   // 'register.errors' namespace ("Мы обновили документы — пожалуйста,
   // перезагрузите страницу и подтвердите новые версии согласий.").
   const tRegErrors = useTranslations('register.errors');
@@ -51,7 +51,7 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting, isValid },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
-    // Phase 22-02 (D-15): submit button must stay disabled until BOTH
+    // submit button must stay disabled until BOTH
     // checkboxes are ticked. mode:'onChange' so isValid reflects the
     // current checkbox state in real time rather than only after a
     // submit attempt.
@@ -60,9 +60,9 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: RegisterInput) => {
     try {
-      // Phase 22-02 (D-16): registration POST body carries the current
+      // registration POST body carries the current
       // policy versions from lib/legal/versions.ts. Backend cross-checks
-      // each slug against pkg/legalconfig.CurrentVersion(); on drift it
+      // each slug against pkg/legalconfig.CurrentVersion; on drift it
       // returns 400 consent_required.
       const res = await api.post(API_PATHS.AUTH.REGISTER, {
         name: data.name,
@@ -75,7 +75,7 @@ export default function RegisterPage() {
         },
       });
       setAuth(res.data.user, res.data.accessToken);
-      // Phase 5 / Phase 5 review HIGH-02: drop ALL session-scoped React Query
+      // review : drop ALL session-scoped React Query
       // caches before the next render so a fresh actor never observes a prior
       // actor's permissions array. removeQueries is required (not just
       // invalidateQueries): invalidate marks data stale but keeps the
@@ -93,7 +93,7 @@ export default function RegisterPage() {
       const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data
         ?.message;
-      // Phase 22-02 (D-16): 400 consent_required → toast prompting reload.
+      // 400 consent_required → toast prompting reload.
       // Server saw a stale version string; the user's lib/legal/versions.ts
       // is older than the build deployed mid-session. Reload re-fetches
       // the latest version constants from the bundle.
@@ -179,7 +179,7 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        {/* Phase 22-02 Surface D (D-15): two required-consent checkboxes
+        {/* two required-consent checkboxes
             before the submit. Submit stays disabled until isValid (both
             literal(true)). */}
         <ConsentCheckboxes

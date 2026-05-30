@@ -16,7 +16,7 @@ import (
 // the outer ReadyHandler budget (default 2s, see defaultCheckTimeout) so a
 // hung dep fails fast and surfaces in `failed[]` rather than tripping the
 // outer per-check context timeout — the latter would still work but the
-// dedicated inner deadline keeps the err.Error() string meaningful (e.g.
+// dedicated inner deadline keeps the err.Error string meaningful (e.g.
 // pgxpool/ Ping returns its own deadline error) for operator log scrape.
 const innerCheckTimeout = 1500 * time.Millisecond
 
@@ -27,7 +27,7 @@ const innerCheckTimeout = 1500 * time.Millisecond
 //
 // This is the SINGLE source of truth for health-check registration; both
 // services/api/cmd/main.go and services/orchestrator/cmd/main.go call it
-// directly. Per D-16 (amended 2026-05-25) the helper lives in pkg/health
+// directly. Per (amended 2026-05-25) the helper lives in pkg/health
 // rather than services/api/internal/wire so the orchestrator (which sits
 // outside services/api/internal/) can import it under Go's internal-package
 // visibility rules.

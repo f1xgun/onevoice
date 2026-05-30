@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 export interface LeafCheckboxProps {
   /** Permission key — comes from the catalog (e.g. catalog[i].permissions[j].name). */
   leafName: string;
-  /** Russian description — comes from the catalog (Plan 05-01 filled these in pkg/authz). */
+  /** Russian description — comes from the catalog ( filled these in pkg/authz). */
   description: string;
   /** Whether this leaf is currently selected in the form value. */
   checked: boolean;
@@ -25,25 +25,25 @@ export interface LeafCheckboxProps {
 /**
  * One permission leaf — checkbox + monospace permission name + Info icon tooltip.
  *
- * D-12: disabled leaves (actor lacks the permission) render with `opacity-60`
+ * disabled leaves (actor lacks the permission) render with `opacity-60`
  * and show «У вас нет этого права» on tooltip hover/focus. Radix Checkbox in
  * disabled state removes itself from tab order — the keyboard-tooltip-
  * discoverability tradeoff is documented in RESEARCH §Pitfall 10 and accepted
  * for v2.0.
  *
- * D-13: enabled leaves show the permission's Russian description from the
- * catalog (Plan 05-01 filled these in pkg/authz/permissions.go). The Info icon
+ * enabled leaves show the permission's Russian description from the
+ * catalog ( filled these in pkg/authz/permissions.go). The Info icon
  * is the tooltip's trigger — it has `tabIndex=0` so keyboard users can focus
  * it even when the checkbox itself is disabled.
  *
  * UI-RBAC-11: this component holds NO hardcoded permission keys; every leaf
  * name comes from props (sourced from the catalog).
  *
- * LOW-03 (Phase 5 review) — known a11y limitation, tracked for v2.1:
+ * LOW-03 ( review) — known a11y limitation, tracked for v2.1:
  * the trigger's `aria-label={tooltipText}` and the TooltipContent both
  * render the same text. A screen reader focusing the Info icon will
  * announce the description twice (once from the label, once from the
- * tooltip popup). Out of scope for Phase 5 — a proper fix needs to either
+ * tooltip popup). Out of scope for — a proper fix needs to either
  * lift the description into `aria-describedby` on the checkbox itself, or
  * drop the trigger's `aria-label` in favor of a generic "info" label and
  * rely solely on TooltipContent for the description. Both options touch

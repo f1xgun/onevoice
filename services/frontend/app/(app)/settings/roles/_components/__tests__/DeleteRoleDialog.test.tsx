@@ -110,7 +110,7 @@ describe('DeleteRoleDialog — D-08 smart variant branching', () => {
   });
 });
 
-describe('DeleteRoleDialog — D-10 race recovery', () => {
+describe('DeleteRoleDialog — race recovery', () => {
   it('on simple-variant 422 role_in_use → flips to picker in-place (dialog stays open)', async () => {
     const err = {
       isAxiosError: true,

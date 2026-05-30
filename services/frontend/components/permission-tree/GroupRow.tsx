@@ -25,7 +25,7 @@ export interface GroupRowProps {
 }
 
 /**
- * Pure-function tri-state derivation (D-12 invariant).
+ * Pure-function tri-state derivation ( invariant).
  *
  * Returns 'checked' only when every actor-enabled leaf is selected. Disabled
  * leaves are NEVER part of the count — they preserve whatever the role
@@ -49,7 +49,7 @@ export function computeGroupState(
 }
 
 /**
- * Pure-function group-toggle handler (D-12 invariant).
+ * Pure-function group-toggle handler ( invariant).
  *
  * Flips ONLY the actor-enabled leaves; disabled leaves stay in their current
  * state. 'unchecked' / 'indeterminate' both flip to 'all enabled selected';
@@ -72,13 +72,13 @@ export function handleGroupToggle(
     enabledKeys.forEach((k) => next.add(k));
   }
   // Actor-disabled leaves (those NOT in enabledKeys) stay untouched — that's
-  // the D-12 invariant the backend relies on for the escalation-subset check.
+  // the invariant the backend relies on for the escalation-subset check.
   onChange(Array.from(next));
 }
 
 /**
  * Group header row: tri-state checkbox + chevron + resource label + N/M count.
- * Wraps a `<Collapsible defaultOpen>` (D-11) so every group is expanded on
+ * Wraps a `<Collapsible defaultOpen>` so every group is expanded on
  * first paint — RBAC discoverability matters more than vertical density for
  * the v2.0 catalog of 21 permissions.
  */

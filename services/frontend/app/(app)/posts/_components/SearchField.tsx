@@ -1,7 +1,7 @@
 // app/(app)/posts/_components/SearchField.tsx — Linen ⌘K search
 // affordance for the posts page filter bar.
 //
-// Extracted from posts/page.tsx as part of Phase 19 / 19-12.
+// Extracted from posts/page.tsx as part of.
 import { Search } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 

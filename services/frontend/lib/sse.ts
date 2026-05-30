@@ -1,7 +1,7 @@
 // Pure helpers for parsing and applying server-sent-event frames the chat
 // SSE stream emits. Extracted from `hooks/useChat.ts` so both the chat
 // hook and the resume-flow sibling hook can share a single implementation
-// (Phase 19, plan 19-10).
+// (plan 19-10).
 //
 // These functions are pure: no React state, no module-scoped mutation.
 // Tests live alongside in `lib/__tests__/sse.test.ts`.

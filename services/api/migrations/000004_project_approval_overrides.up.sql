@@ -1,4 +1,4 @@
--- Phase 16 (POLICY-03, POLICY-06): per-project tool-approval overrides.
+-- per-project tool-approval overrides.
 --
 -- Integration-test path (services/api/migrations/). Matches the production
 -- migration at migrations/postgres/000005_project_approval_overrides.up.sql

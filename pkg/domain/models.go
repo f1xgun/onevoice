@@ -12,25 +12,25 @@ type User struct {
 	Email        string    `json:"email" db:"email"`
 	PasswordHash string    `json:"-" db:"password_hash"`
 	// PreferredLocale is the user's chosen UI language ('ru' | 'en').
-	// Persisted in users.preferred_locale (migration 000010 prod / 000008 test — i18n Phase A3; renumbered in Phase 20 Plan 20-01).
+	// Persisted in users.preferred_locale (migration 000010 prod / 000008 test — i18n Phase A3; renumbered in ).
 	// DB default 'ru'; CHECK constraint enforces the two-value enum. The frontend
 	// reads this on /auth/me to seed the locale cookie and writes it via
 	// PATCH /auth/locale. Snake-case json tag mirrors the DB column name so the
 	// existing /me response shape exposes it without a custom serializer.
 	PreferredLocale string `json:"preferred_locale" db:"preferred_locale"`
-	// EmailVerified — Phase 21-03 / ACCT-02 / D-19. JSON-hidden by default;
+	// EmailVerified — / /. JSON-hidden by default;
 	// the /auth/me handler surfaces it via a wrapper struct (MeResponse) so
 	// other endpoints listing users don't accidentally leak the flag.
 	EmailVerified bool `json:"-" db:"email_verified"`
 	// EmailVerifiedAt is set when the user POSTs the verify-email link.
 	// JSON-hidden — surfaced only via /auth/me's wrapper.
 	EmailVerifiedAt *time.Time `json:"-" db:"email_verified_at"`
-	// Phase 21-04 / ACCT-03: account-deletion lifecycle. All three are
+	// account-deletion lifecycle. All three are
 	// pointer-time.Time so they can be nil (the "no pending deletion" state).
 	// JSON-hidden — /auth/me exposes them via a typed accountDeletion field
 	// on MeResponse so other endpoints listing users don't accidentally
 	// leak them. GetByID / GetByEmail filter `deleted_at IS NULL` so a
-	// soft-deleted user becomes "not found" everywhere reads happen (D-41);
+	// soft-deleted user becomes "not found" everywhere reads happen;
 	// use GetByIDIncludingDeleted when the deletion-aware code path needs to
 	// inspect these fields.
 	DeletedAt           *time.Time `json:"-" db:"deleted_at"`
@@ -95,11 +95,11 @@ type Subscription struct {
 // BusinessID is nullable for system-wide events (e.g. failed login before
 // the user is known). UserID is nullable for the same reason: a failed
 // login attempt against a non-existent or wrong-password account has no
-// resolvable user (D-31).
+// resolvable user.
 //
 // Details is stored as raw JSONB; typed constructors live in pkg/audit and
 // marshal their own typed Details structs into this field. Callers must
-// not write map[string]interface{} (D-10).
+// not write map[string]interface{}.
 type AuditLog struct {
 	ID         uuid.UUID       `json:"id" db:"id"`
 	BusinessID *uuid.UUID      `json:"businessId" db:"business_id"`
@@ -108,8 +108,8 @@ type AuditLog struct {
 	Resource   string          `json:"resource" db:"resource"`
 	Details    json.RawMessage `json:"details" db:"details"`
 	// UserEmailAtEvent is the actor's email captured at write-time by
-	// pkg/audit/logger.go via a UserResolver lookup. Phase 21-03 / ACCT-06:
-	// after Phase 21-04's hard-delete fires, user_id may be NULL (FK SET
+	// pkg/audit/logger.go via a UserResolver lookup. / :
+	// after 's hard-delete fires, user_id may be NULL (FK SET
 	// NULL) but this column preserves identity so 152-ФЗ audit queries
 	// still resolve the actor. Empty string when UserID is nil OR the
 	// resolver returned an error (failure NEVER blocks the audit row).
@@ -129,9 +129,9 @@ type RefreshToken struct {
 // the generic Business.Settings map. The storage format inside Settings is:
 //
 //	settings["tool_approvals"] = map[string]interface{}{
-//	    "telegram__send_channel_post": "manual",
-//	    "vk__send_post":               "auto",
-//	    ...
+// "telegram__send_channel_post": "manual",
+// "vk__send_post":               "auto",
+// ...
 //	}
 //
 // Returns a non-nil empty map when Settings is nil, when the tool_approvals

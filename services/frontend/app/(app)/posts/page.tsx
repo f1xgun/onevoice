@@ -1,6 +1,6 @@
 // app/(app)/posts/page.tsx — OneVoice (Linen) Posts page.
 //
-// Phase 19 / 19-12 — pilot adoption of the <DataTable> + useDataTableFilters
+// pilot adoption of the <DataTable> + useDataTableFilters
 // + useDataTableSearch composition primitives. Filter / search state moves
 // out of inline useState into the sibling hooks; the table block becomes
 // `<DataTable<Post>>` with a Column<Post>[] config.
@@ -11,8 +11,8 @@
 // (so switching businesses can't surface cross-tenant posts).
 //
 // Layout per design_handoff_onevoice 2/mocks/mock-posts.jsx:
-//   PageHeader → stat strip (4 cards) → filter bar (platform select, status
-//   tabs, ⌘K search) → expandable posts table.
+// PageHeader → stat strip (4 cards) → filter bar (platform select, status
+// tabs, ⌘K search) → expandable posts table.
 //
 // Data contract is unchanged: GET /businesses/{id}/posts?status&platform →
 // { posts: Post[] }. Aggregate counters in the stat strip are derived
@@ -217,7 +217,7 @@ export default function PostsPage() {
         sub={tPosts('subtitle')}
         actions={
           canCreate ? (
-            // Phase 20 (Plan 20-02) / ONB-03: button is intentionally disabled
+            // button is intentionally disabled
             // until a chat-with-prefill flow exists. Tooltip directs users to
             // the existing chat-based post-publishing path (telegram__send_channel_post
             // tool already handles "опубликуй пост в Telegram" requests via the

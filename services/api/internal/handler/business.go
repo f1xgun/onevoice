@@ -34,13 +34,13 @@ type BusinessService interface {
 	Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 	// Update applies a business profile edit; actorUserID is threaded through
-	// for the Phase 19 service-layer audit emission (D-29/D-30).
+	// for the service-layer audit emission.
 	Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error)
 	// ListMembershipsByUser powers GET /api/v1/businesses.
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]service.MembershipSummary, error)
 	// Tool-approval methods. Permission enforcement (PermBusinessRead /
 	// PermBusinessUpdate) is at the handler layer via authz.Can — the
-	// service is a thin data wrapper since Phase 6 (CLEAN-01).
+	// service is a thin data wrapper since (CLEAN-01).
 	GetToolApprovals(ctx context.Context, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
 	UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }

@@ -236,7 +236,7 @@ export default function IntegrationsPage() {
         >
           {activePlatforms.map((p) => {
             const platformIntegrations = getIntegrationsForPlatform(p.id);
-            // Phase 20 / ONB-04: google_business is in Preview until the missing
+            // google_business is in Preview until the missing
             // GBP tool routes land (currently only get_reviews + reply_review are
             // implemented in services/agent-google-business/internal/agent/handler.go).
             // Re-promote by removing the isPreview prop once the agent routes

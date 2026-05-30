@@ -114,7 +114,7 @@ function Wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-describe('AppLayout route-conditional ProjectPane (D-14)', () => {
+describe('AppLayout route-conditional ProjectPane', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // AppLayout's nav-rail + project-pane only render under `isDesktop`.

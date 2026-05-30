@@ -28,7 +28,7 @@ type ValidationTranslator = (
 //
 // Forms declared inside the React tree should call
 // `const t = useTranslations('validation')` and then wrap the schema in
-// `useMemo(() => createXxxSchema(t), [t])` so the schema is rebuilt with
+// `useMemo( => createXxxSchema(t), [t])` so the schema is rebuilt with
 // the active locale's strings on every re-render. Server-side callers
 // pass an async-resolved `t` from `getServerTranslator('validation')`.
 //
@@ -48,7 +48,7 @@ export function createLoginSchema(t: ValidationTranslator) {
 export function createRegisterSchema(t: ValidationTranslator) {
   const minChars = (count: number) => t('minChars', { count });
   const maxChars = (count: number) => t('maxChars', { count });
-  // Phase 22-02 (D-15) — two independent required-consent checkboxes.
+  // two independent required-consent checkboxes.
   // Both validate as literal(true), so unticked / partially-ticked
   // submits surface FieldErrors independently per UI-SPEC §D state
   // matrix. The error message reuses the validation namespace
@@ -153,11 +153,11 @@ export const businessToolApprovalsResponseSchema = z.object({
 export type BusinessToolApprovalsResponse = z.infer<typeof businessToolApprovalsResponseSchema>;
 
 // ---------------------------------------------------------------------------
-// Phase 4 RBAC — members, roles, invitations.
+// RBAC — members, roles, invitations.
 //
-// Every response body from the Phase 2/3 endpoints is parsed with `.parse`
+// Every response body from the endpoints is parsed with `.parse`
 // (not `safeParse`) so malformed data throws at the API seam rather than
-// crashing the UI later. See plan 04-02 threat T-04-02-01.
+// crashing the UI later. See plan 04-02 threat -01.
 // ---------------------------------------------------------------------------
 
 export const memberSchema = z.object({
@@ -186,7 +186,7 @@ export const roleSchema = z.object({
   description: z.string().optional().default(''),
   permissions: z.array(z.string()),
   is_system: z.boolean(),
-  // Phase 5: populated by the role-list endpoint (GET /businesses/{id}/roles)
+  // populated by the role-list endpoint (GET /businesses/{id}/roles)
   // so the role list can render a «N участников» badge without a second fetch.
   // Optional because the POST/PATCH response does NOT include it (those return
   // the role document only — list/detail differ here by design).
@@ -195,15 +195,15 @@ export const roleSchema = z.object({
 export type Role = z.infer<typeof roleSchema>;
 export const rolesListSchema = z.array(roleSchema);
 
-// Phase 5 RBAC dynamic registry — schemas for /permissions (catalog) and
+// RBAC dynamic registry — schemas for /permissions (catalog) and
 // /businesses/{id}/me/permissions (effective).
 //
 // Catalog wire shape (services/api/internal/handler/permissions.go):
-//   { groups: [ { resource: string, permissions: [{name, description}] } ] }
+// { groups: [ { resource: string, permissions: [{name, description}] } ] }
 // Effective wire shape (services/api/internal/handler/permissions.go me handler):
-//   { permissions: string[] }
+// { permissions: string[] }
 //
-// Both endpoints come from Plan 05-03. The catalog is app-static (cached with
+// Both endpoints come from. The catalog is app-static (cached with
 // staleTime: Infinity); the effective list is per-actor-per-business (cached
 // with staleTime: 60_000 + refetchInterval: 60_000 per UI-RBAC-12).
 export const permissionMetaSchema = z.object({

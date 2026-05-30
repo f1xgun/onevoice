@@ -44,9 +44,9 @@ type ProjectService struct {
 // NewProjectService constructs a ProjectService. The repo parameter is the
 // single interface value that flows from cmd/main.go wiring.
 //
-// Phase 19 Wave 4 (19-04): auditLogger is the second arg so Create/Update/
+// auditLogger is the second arg so Create/Update/
 // DeleteCascade can emit project.* audit events AFTER the underlying repo
-// write succeeds. nil-safe via audit.Nop() so existing service tests don't
+// write succeeds. nil-safe via audit.Nop so existing service tests don't
 // have to thread a logger through every call site.
 func NewProjectService(repo domain.ProjectRepository, auditLogger audit.Logger) *ProjectService {
 	if auditLogger == nil {
@@ -56,10 +56,10 @@ func NewProjectService(repo domain.ProjectRepository, auditLogger audit.Logger) 
 }
 
 // validate checks the inputs against the four domain invariants:
-//   - name required
-//   - system_prompt length cap (4000 chars, enforced in 3 places total)
-//   - whitelist_mode is one of the 4 known enum values
-//   - when mode=explicit, allowed_tools must not be empty (anti-footgun)
+// - name required
+// - system_prompt length cap (4000 chars, enforced in 3 places total)
+// - whitelist_mode is one of the 4 known enum values
+// - when mode=explicit, allowed_tools must not be empty (anti-footgun)
 func (s *ProjectService) validate(input CreateProjectInput) error {
 	if input.Name == "" {
 		return domain.ErrProjectNameRequired
@@ -78,7 +78,7 @@ func (s *ProjectService) validate(input CreateProjectInput) error {
 
 // Create validates the input and persists a new project for businessID.
 //
-// Phase 19 Wave 4 (19-04): actorID identifies the user performing the
+// actorID identifies the user performing the
 // create so the service can emit a project.created audit row AFTER the
 // successful repo write.
 func (s *ProjectService) Create(ctx context.Context, businessID, actorID uuid.UUID, input CreateProjectInput) (*domain.Project, error) {
@@ -99,7 +99,7 @@ func (s *ProjectService) Create(ctx context.Context, businessID, actorID uuid.UU
 		return nil, err
 	}
 
-	// Phase 19 audit (D-29/D-30): emit project.created AFTER successful insert.
+	// emit project.created AFTER successful insert.
 	audit.LogProjectCreated(ctx, s.audit, businessID, actorID, p.ID, p.Name)
 
 	return p, nil
@@ -127,7 +127,7 @@ func (s *ProjectService) ListByBusinessID(ctx context.Context, businessID uuid.U
 // Update validates the input and applies edits if the project belongs to
 // businessID. Cross-business attempts map to ErrProjectNotFound.
 //
-// Phase 19 Wave 4 (19-04): actorID identifies the user performing the
+// actorID identifies the user performing the
 // update so the service can emit a project.updated audit row AFTER the
 // successful repo write.
 func (s *ProjectService) Update(ctx context.Context, businessID, id, actorID uuid.UUID, input UpdateProjectInput) (*domain.Project, error) {
@@ -152,7 +152,7 @@ func (s *ProjectService) Update(ctx context.Context, businessID, id, actorID uui
 		return nil, err
 	}
 
-	// Phase 19 audit (D-29/D-30): emit project.updated AFTER successful repo write.
+	// emit project.updated AFTER successful repo write.
 	audit.LogProjectUpdated(ctx, s.audit, businessID, actorID, id)
 
 	return p, nil
@@ -162,7 +162,7 @@ func (s *ProjectService) Update(ctx context.Context, businessID, id, actorID uui
 // assigned to it, returning the counts. Cross-business attempts map to
 // ErrProjectNotFound.
 //
-// Phase 19 Wave 4 (19-04): actorID is threaded so the service can emit a
+// actorID is threaded so the service can emit a
 // project.deleted audit row carrying blast-radius (deletedConversations).
 func (s *ProjectService) DeleteCascade(ctx context.Context, businessID, id, actorID uuid.UUID) (deletedConversations, deletedMessages int, err error) {
 	p, err := s.repo.GetByID(ctx, id)
@@ -177,7 +177,7 @@ func (s *ProjectService) DeleteCascade(ctx context.Context, businessID, id, acto
 		return convs, msgs, err
 	}
 
-	// Phase 19 audit (D-29/D-30): emit project.deleted AFTER successful cascade.
+	// emit project.deleted AFTER successful cascade.
 	// Details capture blast-radius (deletedConversations).
 	audit.LogProjectDeleted(ctx, s.audit, businessID, actorID, id, p.Name, convs)
 

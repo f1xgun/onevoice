@@ -76,7 +76,7 @@ func TestBuilder_LogLoginFailed_NoUserID(t *testing.T) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	require.Equal(t, ActionLoginFailed, c.last.Action)
-	require.Nil(t, c.last.UserID, "LogLoginFailed must leave UserID nil (D-31)")
+	require.Nil(t, c.last.UserID, "LogLoginFailed must leave UserID nil")
 	require.Nil(t, c.last.BusinessID)
 	var d LoginFailedDetails
 	require.NoError(t, json.Unmarshal(c.last.Details, &d))
@@ -154,7 +154,7 @@ func TestBuilder_AllBuildersExist_smoke(_ *testing.T) {
 	LogProjectDeleted(ctx, c, u, u, u, "n", 3)
 }
 
-// ---- Phase 22 consent builders (D-27, D-28) -----------------------------
+// ---- consent builders -----------------------------
 
 // TestLogConsentRecordedTx_InsertsRow asserts the tx-aware builder issues
 // one INSERT against audit_logs with the correct action + Details JSON.

@@ -1,20 +1,20 @@
 // Package handler — audit_log.go
 //
-// AuditLogHandler serves the Phase 19 read path:
+// AuditLogHandler serves the read path:
 //
 //	GET /api/v1/businesses/{id}/audit-logs
 //
-// Wave 5 (Plan 19-05). Backed by repository.AuditLogRepository's new
-// ListByBusinessWithActors method (Wave 5 too) which does the LEFT JOIN
+// Backed by repository.AuditLogRepository's new
+// ListByBusinessWithActors method (too) which does the LEFT JOIN
 // users in one query — the handler MUST NOT fan out per-row user lookups
 // into UserRepository, that would be the N+1 anti-pattern the join was
 // added to prevent (per 19-RESEARCH §"DTO Enrichment Strategy" + CHECK F-7).
 //
 // Cursor pagination uses pkg/audit.EncodeCursor / DecodeCursor so the
 // opaque token round-trips between the handler and the next request
-// transparently. RBAC guard: PermAuditRead (Owner+Admin via Phase 6
+// transparently. RBAC guard: PermAuditRead (Owner+Admin via 
 // seed). RequireBusinessAccess middleware on the parent /businesses/{id}
-// subtree already enforces membership; the handler-level Can() check
+// subtree already enforces membership; the handler-level Can check
 // gates the more specific permission per the audit category.
 package handler
 
@@ -127,7 +127,7 @@ var knownActions = map[string]struct{}{
 }
 
 // knownCategories is the closed set the frontend tab filter uses. Matches
-// the prefix list audit.ActionCategory() returns; "other" is intentionally
+// the prefix list audit.ActionCategory returns; "other" is intentionally
 // excluded because no live action emits an unknown prefix today and
 // accepting "other" would let a caller probe for prefix-drift.
 var knownCategories = map[string]struct{}{
@@ -151,14 +151,14 @@ const (
 // List handles GET /api/v1/businesses/{id}/audit-logs.
 //
 // Order of operations:
-//  1. BusinessContext from ctx (500 if missing — programmer error: route
-//     registered outside /businesses/{id} subtree)
-//  2. authz.Can(PermAuditRead) (403 forbidden if absent)
-//  3. Parse + validate query params (400 with code-specific error body)
-//  4. Repo call (single LEFT JOIN, no N+1)
-//  5. DTO build (ActorEmail "" → nil pointer so JSON emits null)
-//  6. Cursor build (only when page is full)
-//  7. 200 with {items, next_cursor}
+// 1. BusinessContext from ctx (500 if missing — programmer error: route
+// registered outside /businesses/{id} subtree)
+// 2. authz.Can(PermAuditRead) (403 forbidden if absent)
+// 3. Parse + validate query params (400 with code-specific error body)
+// 4. Repo call (single LEFT JOIN, no N+1)
+// 5. DTO build (ActorEmail "" → nil pointer so JSON emits null)
+// 6. Cursor build (only when page is full)
+// 7. 200 with {items, next_cursor}
 //
 // On repo error: 500 internal_server_error + slog.Error with biz_id +
 // the raw error. NEVER leak repo error details to the client (it could
@@ -270,7 +270,7 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:      l.CreatedAt,
 		}
 		// "" → nil-pointer mapping. Empty actor_email means either
-		// (a) audit_logs.user_id was NULL (failed-login per D-31) or
+		// (a) audit_logs.user_id was NULL (failed-login ) or
 		// (b) the LEFT JOIN found no matching users row (deleted user).
 		// Either way the JSON contract surfaces `actor_email: null`
 		// which the frontend handles by rendering
@@ -293,7 +293,7 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 	// itself. Subtle: a page that is exactly limit-sized AND happens to
 	// be the last page will return a non-nil cursor — the next request
 	// will get an empty page and stop. That's one wasted round-trip per
-	// stream-end and the cost of not over-fetching (Wave 3 picked the
+	// stream-end and the cost of not over-fetching (picked the
 	// simpler semantic over a +1 row sentinel).
 	var next *string
 	if len(rows) == limit {

@@ -43,7 +43,7 @@ func (m *MockUserService) Register(ctx context.Context, email, password string) 
 	return args.Get(0).(*domain.User), args.Error(1)
 }
 
-// RegisterWithContext — Phase 22 atomic-Register entry point. Tests
+// RegisterWithContext — atomic-Register entry point. Tests
 // that don't care about the consent payload may continue to mock
 // Register; tests that exercise /auth/register's new consent flow
 // mock this method explicitly.
@@ -226,7 +226,7 @@ func TestRegister(t *testing.T) {
 			},
 		},
 		{
-			// Phase 22 / D-15, D-16: missing consent payload → 400 consent_required.
+			// missing consent payload → 400 consent_required.
 			name:        "phase 22 consent missing",
 			requestBody: `{"email":"user@example.com","password":"password123"}`,
 			mockSetup:   func(m *MockUserService) {},
@@ -240,7 +240,7 @@ func TestRegister(t *testing.T) {
 			},
 		},
 		{
-			// Phase 22 / D-15: stale single slug → 400 with missing listing it.
+			// stale single slug → 400 with missing listing it.
 			name:        "phase 22 stale pdn version",
 			requestBody: `{"email":"user@example.com","password":"password123","consents":{"tos":"v1.0","privacy":"v1.0","pdn":"v0.9"}}`,
 			mockSetup:   func(m *MockUserService) {},
@@ -1005,7 +1005,7 @@ func TestMe(t *testing.T) {
 }
 
 // TestMe_Phase21_EmailVerifiedFalse_ReturnsBannerDeadline asserts the
-// Phase 21-03 MeResponse wrapper. Unverified user gets emailVerified:false
+// MeResponse wrapper. Unverified user gets emailVerified:false
 // + emailVerificationDeadline = created_at + 7 days exactly.
 func TestMe_Phase21_EmailVerifiedFalse_ReturnsBannerDeadline(t *testing.T) {
 	testUserID := uuid.MustParse("123e4567-e89b-12d3-a456-426614174000")
@@ -1274,7 +1274,7 @@ func TestUpdatePreferredLocale(t *testing.T) {
 //
 // The handler is NOT mounted behind LockoutMiddleware — that is the whole
 // point of these tests: they exercise the FALLBACK path where
-// middleware.LoginClientIP(r.Context()) returns "" and the handler must
+// middleware.LoginClientIP(r.Context) returns "" and the handler must
 // fall back through middleware.ClientIP (the trust-gated helper). Pre
 // 23-05 the fallback was the spoofable handler.clientIP helper; this test
 // is the regression guard that proves the fallback is now safe.
@@ -1297,12 +1297,12 @@ func newLockoutFallbackHandler(t *testing.T) (*AuthHandler, *MockUserService, *m
 // TestLogin_LockoutFallback_UsesTrustedProxyClientIP regression-guards the
 // captcha/lockout fallback path. Scenario:
 //
-//   - TCP peer 9.9.9.9 — OUTSIDE every default trusted CIDR.
-//   - X-Forwarded-For: 178.154.250.5 — a value INSIDE the default Yandex
-//     Cloud NLB CIDR (would be "trusted" if an attacker could spoof it).
-//   - LockoutMiddleware is NOT mounted (this unit test calls h.Login
-//     directly), so middleware.LoginClientIP(r.Context()) is "" and the
-//     handler MUST take the fallback path.
+// - TCP peer 9.9.9.9 — OUTSIDE every default trusted CIDR.
+// - X-Forwarded-For: 178.154.250.5 — a value INSIDE the default Yandex
+// Cloud NLB CIDR (would be "trusted" if an attacker could spoof it).
+// - LockoutMiddleware is NOT mounted (this unit test calls h.Login
+// directly), so middleware.LoginClientIP(r.Context) is "" and the
+// handler MUST take the fallback path.
 //
 // The fallback must be middleware.ClientIP (not the deleted legacy local
 // helper), which IGNORES XFF because the TCP peer is not in

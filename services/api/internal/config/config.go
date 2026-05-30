@@ -17,8 +17,8 @@ import (
 // linter doesn't flag them as magic numbers and so callers see semantic intent.
 //
 // Cryptographic key lengths are sourced from their owning packages:
-//   - JWT secret minimum: services/api/internal/auth.JWTSecretMinLen
-//   - Encryption key length: pkg/crypto.AES256KeyLen
+// - JWT secret minimum: services/api/internal/auth.JWTSecretMinLen
+// - Encryption key length: pkg/crypto.AES256KeyLen
 //
 // keeping a single source of truth across the API service.
 const (
@@ -129,11 +129,11 @@ type Config struct {
 
 	// HTTP server / orchestrator timeouts. All optional; defaults preserve
 	// the values that were hardcoded in services/api/cmd/main.go. Knob purpose:
-	//   HTTPReadTimeout       — http.Server.ReadTimeout for the public API.
-	//   HTTPReadHeaderTimeout — http.Server.ReadHeaderTimeout for the internal mTLS server.
-	//   HTTPIdleTimeout       — http.Server.IdleTimeout for keepalive sockets.
-	//   OrchestratorFetchTimeout — per-request budget on /internal/tools/* and
-	//                              token-refresh fan-out toward Google/etc.
+	// HTTPReadTimeout       — http.Server.ReadTimeout for the public API.
+	// HTTPReadHeaderTimeout — http.Server.ReadHeaderTimeout for the internal mTLS server.
+	// HTTPIdleTimeout       — http.Server.IdleTimeout for keepalive sockets.
+	// OrchestratorFetchTimeout — per-request budget on /internal/tools/* and
+	// token-refresh fan-out toward Google/etc.
 	HTTPReadTimeout          time.Duration
 	HTTPReadHeaderTimeout    time.Duration
 	HTTPIdleTimeout          time.Duration
@@ -147,12 +147,12 @@ type Config struct {
 	RateLimitLogin    int
 	RateLimitChat     int
 	RateLimitHITL     int
-	RateLimitConsents int // Phase 22 T-22-08 — per-minute budget for /auth/consents + /users/me/consents/pdn/withdraw
+	RateLimitConsents int // per-minute budget for /auth/consents + /users/me/consents/pdn/withdraw
 
 	// Shutdown
 	ShutdownTimeout time.Duration
 
-	// Phase 21a — transactional email infrastructure.
+	// transactional email infrastructure.
 	// UnisenderAPIKey: empty = NoopSender (dev/local); set = UnisenderSender.
 	// Operators: see docs/runbook-email-dns.md for the DKIM/SPF/DMARC
 	// pre-req that gates production sends.
@@ -162,10 +162,10 @@ type Config struct {
 	OutboxPollInterval time.Duration // default 5s
 	OutboxMaxAttempts  int           // default 5
 
-	// Phase 22 — Legal entity (152-ФЗ Art. 14 data controller). D-19, D-20.
+	// Legal entity (152-ФЗ Art. 14 data controller).,.
 	// When any of these is a placeholder, /legal/* renders fallback copy
-	// and the footer emits console.warn (D-22 — must not crash). Phase
-	// 22-03 launch checklist (D-29) verifies non-placeholder values in
+	// and the footer emits console.warn (must not crash). Phase
+	// 22-03 launch checklist verifies non-placeholder values in
 	// production. Frontend reads the mirrored NEXT_PUBLIC_LEGAL_* vars
 	// (see .env.example) so the data-controller block renders SSR-safe.
 	LegalEntityName string
@@ -184,17 +184,17 @@ type Config struct {
 	// LockoutFailThresholdCaptcha — counter at which TierCaptcha kicks in.
 	// LockoutFailThresholdLock    — counter at which TierLocked kicks in.
 	// LockoutDuration             — Redis TTL and lock window (also the
-	//                               retry_after_seconds value on 423 responses).
+	// retry_after_seconds value on 423 responses).
 	// SmartCaptchaSiteKey         — public key for the JS widget; exposed to
-	//                               the frontend via NEXT_PUBLIC_SMARTCAPTCHA_SITE_KEY.
+	// the frontend via NEXT_PUBLIC_SMARTCAPTCHA_SITE_KEY.
 	// SmartCaptchaSecretKey       — server-side validation secret. Empty = Noop
-	//                               verifier (captcha disabled).
+	// verifier (captcha disabled).
 	// TrustedProxyCIDRs           — comma-separated CIDR list controlling which
-	//                               X-Forwarded-For sources are trusted.
-	//                               Empty falls back to Yandex Cloud LB defaults.
+	// X-Forwarded-For sources are trusted.
+	// Empty falls back to Yandex Cloud LB defaults.
 	// SmartCaptchaFailOpen        — on ErrCaptchaTransient (Yandex unreachable):
-	//                               true → log+proceed (safer default);
-	//                               false → reject as 403.
+	// true → log+proceed (safer default);
+	// false → reject as 403.
 	LockoutFailThresholdCaptcha int
 	LockoutFailThresholdLock    int
 	LockoutDuration             time.Duration
@@ -285,21 +285,21 @@ func Load() (*Config, error) {
 		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
 		RateLimitChat:     getEnvInt("RATE_LIMIT_CHAT", 10),
 		RateLimitHITL:     getEnvInt("RATE_LIMIT_HITL", 10),
-		RateLimitConsents: getEnvInt("RATE_LIMIT_CONSENTS", 10), // Phase 22 T-22-08; 10/min/user is generous (genuine retry budget, blocks UPSERT thrash)
+		RateLimitConsents: getEnvInt("RATE_LIMIT_CONSENTS", 10), // 10/min/user is generous (genuine retry budget, blocks UPSERT thrash)
 
 		ShutdownTimeout: shutdownTimeout,
 
-		// Phase 21a — transactional email infrastructure.
+		// transactional email infrastructure.
 		UnisenderAPIKey:    os.Getenv("UNISENDER_API_KEY"),
 		UnisenderFromEmail: getEnv("UNISENDER_FROM_EMAIL", "noreply@onevoice.app"),
 		UnisenderFromName:  getEnv("UNISENDER_FROM_NAME", "OneVoice"),
 		OutboxPollInterval: getEnvDuration("OUTBOX_POLL_INTERVAL", 5*time.Second), //nolint:mnd // env-driven default
 		OutboxMaxAttempts:  getEnvInt("OUTBOX_MAX_ATTEMPTS", 5),                   //nolint:mnd // env-driven default
 
-		// Phase 22 — Legal entity (152-ФЗ Art. 14 data controller). D-19,
-		// D-20, D-21, D-22. Defaults render the «[Юридическое лицо — будет
+		// Legal entity (152-ФЗ Art. 14 data controller).,
+		// Defaults render the «[Юридическое лицо — будет
 		// обновлено]» / «—» stubs so the API boots without operator
-		// configuration; pre-launch checklist (D-29) catches placeholders.
+		// configuration; pre-launch checklist catches placeholders.
 		LegalEntityName: getEnv("LEGAL_ENTITY_NAME", "[Юридическое лицо — будет обновлено]"),
 		LegalINN:        os.Getenv("LEGAL_INN"),
 		LegalAddress:    os.Getenv("LEGAL_ADDRESS"),

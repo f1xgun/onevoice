@@ -1,10 +1,10 @@
--- Phase 1 v2.0 RBAC: roles, business_members, invitations + audit-hook columns,
+-- v2.0 RBAC: roles, business_members, invitations + audit-hook columns,
 -- system-role seeding (deterministic UUIDs declared in pkg/domain/system_roles.go),
 -- idempotent backfill of businesses.user_id, BEFORE DELETE trigger on users.
 --
--- Integration-test path: uses uuid_generate_v4() (matches services/api/migrations/000001_initial_schema.up.sql).
+-- Integration-test path: uses uuid_generate_v4 (matches services/api/migrations/000001_initial_schema.up.sql).
 -- Production mirror lives at migrations/postgres/000007_rbac_data_model.up.sql
--- and uses gen_random_uuid() — same logical schema, different UUID idiom per
+-- and uses gen_random_uuid — same logical schema, different UUID idiom per
 -- project_migration_dual_path memory.
 
 BEGIN;
@@ -58,14 +58,14 @@ CREATE TABLE IF NOT EXISTS invitations (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Index supports the per-business 20-pending cap query in Phase 3.
+-- Index supports the per-business 20-pending cap query in.
 CREATE INDEX IF NOT EXISTS idx_invitations_pending
     ON invitations(business_id)
     WHERE accepted_at IS NULL AND revoked_at IS NULL;
 
 -- 4. Seed system roles with deterministic UUIDs --------------------------
 -- These UUIDs are mirrored as constants in pkg/domain/system_roles.go
--- (D-03 in CONTEXT.md). Permission sets per ROLE-01.
+-- (in CONTEXT.md). Permission sets per ROLE-01.
 INSERT INTO roles (id, business_id, name, description, permissions, is_system) VALUES
 ('00000000-0000-0000-0000-000000000001', NULL, 'owner',  '', '[
     "business.read","business.update","business.delete","business.transfer_ownership",
@@ -109,11 +109,11 @@ FROM businesses
 WHERE user_id IS NOT NULL
 ON CONFLICT (business_id, user_id) DO NOTHING;
 
--- 6. BEFORE DELETE trigger on users (D-A / D-13) -------------------------
+-- 6. BEFORE DELETE trigger on users (D-A) -------------------------
 -- Refuses deletion if the user is the sole owner of any business. Hardcoded
 -- SQL (no EXECUTE format) — the trigger runs on row-level OLD only, no
 -- injection surface. Defines "owner" as "member with system owner role"
--- per AUTHZ-06 and CONTEXT decision D-13.
+-- per AUTHZ-06 and CONTEXT decision.
 CREATE OR REPLACE FUNCTION fn_refuse_sole_owner_delete() RETURNS trigger AS $$
 DECLARE
     sole_business_id UUID;

@@ -50,7 +50,7 @@ func TestAuditLogRepository_Insert_HappyPath(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// D-31: failed-login entries have nil BusinessID + nil UserID. Sanity check
+// failed-login entries have nil BusinessID + nil UserID. Sanity check
 // that the repo round-trips them straight through to pgx (which encodes
 // nil pointers as NULL) without panicking on nil pointer deref.
 func TestAuditLogRepository_Insert_LoginFailed_NilBusinessAndUser(t *testing.T) {
@@ -77,7 +77,7 @@ func TestAuditLogRepository_Insert_EmptyDetails_DefaultsToEmptyObject(t *testing
 	mock, repo := newAuditLogRepoMock(t)
 	biz, actor := uuid.New(), uuid.New()
 
-	// The squirrel binder pulls Values() args literally; we cannot easily
+	// The squirrel binder pulls Values args literally; we cannot easily
 	// assert the substituted "{}" payload via regex on the SQL because the
 	// JSON content is a positional bind variable. Match the arg directly:
 	// the 5th positional arg must be json.RawMessage(`{}`) and the 6th is
@@ -133,7 +133,7 @@ func TestAuditLogRepository_ListByBusiness_AllFiltersAndCursor(t *testing.T) {
 
 	// Order of squirrel args, mirroring the WHERE clause build order in
 	// ListByBusiness:
-	//   business_id, action(LIKE), action(=), user_id, created_at>=, created_at<, cursorTime, cursorID
+	// business_id, action(LIKE), action(=), user_id, created_at>=, created_at<, cursorTime, cursorID
 	mock.ExpectQuery(`SELECT .+ FROM audit_logs WHERE`).
 		WithArgs(
 			pgxmock.AnyArg(), // business_id
@@ -253,7 +253,7 @@ func TestAuditLogRepository_ListByBusiness_QueryError(t *testing.T) {
 	require.Contains(t, err.Error(), "query audit_log list")
 }
 
-// --- ListByBusinessWithActors (Plan 19-05 — LEFT JOIN users enrichment) ---
+// --- ListByBusinessWithActors (LEFT JOIN users enrichment) ---
 
 // newAuditLogRepoConcreteMock returns the underlying *auditLogRepository so
 // tests can call ListByBusinessWithActors — which is NOT on
@@ -338,8 +338,8 @@ func TestAuditLogRepository_ListByBusinessWithActors_AppliesAllFilters(t *testin
 	cursorID := uuid.New()
 
 	// Arg order mirrors WHERE-clause build order in ListByBusinessWithActors:
-	//   al.business_id, al.action LIKE, al.action =, al.user_id =,
-	//   al.created_at >=, al.created_at <, cursorTime, cursorID
+	// al.business_id, al.action LIKE, al.action =, al.user_id =,
+	// al.created_at >=, al.created_at <, cursorTime, cursorID
 	mock.ExpectQuery(`FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id WHERE`).
 		WithArgs(
 			pgxmock.AnyArg(),

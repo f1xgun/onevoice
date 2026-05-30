@@ -16,7 +16,7 @@ export interface PermissionTreeProps {
   onChange: (next: string[]) => void;
   /**
    * Set of permissions the actor (current user) holds. Used to disable leaves
-   * the actor cannot grant (D-12 + UI-RBAC-04 escalation-subset enforcement
+   * the actor cannot grant (UI-RBAC-04 escalation-subset enforcement
    * is a backend concern; this is the UX affordance per docs/security.md).
    */
   actorPermissions: Set<string>;
@@ -26,18 +26,18 @@ export interface PermissionTreeProps {
 
 /**
  * Tree of all permissions grouped by resource. Controlled component owned by
- * `RoleEditorForm` (Plan 05-07).
+ * `RoleEditorForm`.
  *
  * Catalog is fetched lazily on first mount via React Query (staleTime: Infinity,
- * gcTime: Infinity per Plan 05-04). 99% of users never see this tree, so no
+ * gcTime: Infinity ). 99% of users never see this tree, so no
  * app-boot waste.
  *
  * Locked behaviors:
- *   - D-11: All groups expanded by default (no chevron-click needed).
- *   - D-12: Group tri-state checkbox skips actor-disabled leaves on toggle —
+ *  - : All groups expanded by default (no chevron-click needed).
+ *  - : Group tri-state checkbox skips actor-disabled leaves on toggle —
  *     the tri-state is derived only over actor-enabled leaves so a partial
  *     actor never appears stuck on indeterminate.
- *   - D-13: Each leaf renders Info icon + Tooltip with the permission's
+ *  - : Each leaf renders Info icon + Tooltip with the permission's
  *     description (or «У вас нет этого права» if actor lacks it).
  *
  * UI-RBAC-11: every leaf key comes from `catalog[i].permissions[j].name` —

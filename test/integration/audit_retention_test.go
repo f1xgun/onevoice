@@ -1,21 +1,21 @@
 package integration
 
-// Phase 21-03 (ACCT-06) — Audit-log retention across hard-delete.
+// Audit-log retention across hard-delete.
 //
 // End-to-end gate for the FK CASCADE → SET NULL migration (000014/000012)
 // + the loggerImpl.write user_email_at_event population path:
 //
-//  1. Register a user.
-//  2. Trigger any audit-emitting action (Register itself emits
-//     auth.user_registered + auth.consent_recorded asynchronously).
-//  3. Poll for the audit row + assert user_email_at_event matches the
-//     registration email (resolver populated it BEFORE the INSERT).
-//  4. Hard-delete the user (DELETE FROM users WHERE id = $1; Phase 21-04
-//     will wrap this in a proper service path).
-//  5. Re-query the same audit row: user_id IS NULL (FK SET NULL) AND
-//     user_email_at_event still equals the original email.
+// 1. Register a user.
+// 2. Trigger any audit-emitting action (Register itself emits
+// auth.user_registered + auth.consent_recorded asynchronously).
+// 3. Poll for the audit row + assert user_email_at_event matches the
+// registration email (resolver populated it BEFORE the INSERT).
+// 4. Hard-delete the user (DELETE FROM users WHERE id = $1; 
+// will wrap this in a proper service path).
+// 5. Re-query the same audit row: user_id IS NULL (FK SET NULL) AND
+// user_email_at_event still equals the original email.
 //
-// This single test is the ACCT-06 acceptance gate: the FK migration is
+// This single test is the acceptance gate: the FK migration is
 // useless without the resolver, and the resolver is useless without the
 // FK migration. Asserting them together as one E2E is the contract.
 
@@ -56,7 +56,7 @@ func TestAuditLog_SurvivesUserDelete(t *testing.T) {
 	require.Equal(t, email, emailAtEvent,
 		"user_email_at_event MUST be populated by the audit logger's UserResolver before INSERT")
 
-	// Hard-delete the user. Phase 21-04 wraps this in a service path; the
+	// Hard-delete the user. wraps this in a service path; the
 	// SQL is the same primitive.
 	_, err := pgPool.Exec(context.Background(),
 		`DELETE FROM users WHERE id = $1`, userID)

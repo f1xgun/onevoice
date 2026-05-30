@@ -11,7 +11,7 @@ import (
 )
 
 // forbiddenKeyPattern catches any JSON key resembling secret material.
-// "attempted_email" is the single allowed exception (D-13).
+// "attempted_email" is the single allowed exception.
 var forbiddenKeyPattern = regexp.MustCompile(`(?i)token|secret|password|cookie|access_key|refresh_key|api_key|session`)
 
 // populatedSamples returns one filled instance of every Details struct so
@@ -56,7 +56,7 @@ func TestNoSensitiveFields_inDetailsJSON(t *testing.T) {
 			continue
 		}
 		for k := range m {
-			// D-13 allows the attempted_email field on failed-login rows.
+			// allows the attempted_email field on failed-login rows.
 			if k == "attempted_email" {
 				continue
 			}

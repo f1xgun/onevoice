@@ -1,7 +1,7 @@
 // app/(app)/posts/_components/StatusBadge.tsx — status pill for the
 // posts table.
 //
-// Extracted from posts/page.tsx as part of Phase 19 / 19-12.
+// Extracted from posts/page.tsx as part of.
 'use client';
 
 import { usePostStatusLabels } from '@/lib/constants/statuses';

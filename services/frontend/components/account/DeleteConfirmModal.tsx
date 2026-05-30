@@ -1,15 +1,15 @@
-// Phase 21-04 (ACCT-03) — Surface 8: account-deletion confirmation modal.
+// Surface 8: account-deletion confirmation modal.
 //
 // AlertDialog with verbatim RU copy from UI-SPEC. Composes:
-//   - Password re-entry (per OneVoice security model; not the
-//     "type УДАЛИТЬ" pattern)
-//   - Submit POSTs DELETE /api/v1/users/me
-//   - On 204: redirects to /login + success toast
-//   - On 401 password_invalid: inline field error «Неверный пароль»
-//   - On 409 sole_owner_of_businesses: closes self + opens
-//     SoleOwnerBlockedModal with the returned businesses payload
-//   - On 423 account_pending_deletion: closes self + reloads (the
-//     grace banner will mount on the next render)
+// - Password re-entry (per OneVoice security model; not the
+// "type УДАЛИТЬ" pattern)
+// - Submit POSTs DELETE /api/v1/users/me
+// - On 204: redirects to /login + success toast
+// - On 401 password_invalid: inline field error «Неверный пароль»
+// - On 409 sole_owner_of_businesses: closes self + opens
+// SoleOwnerBlockedModal with the returned businesses payload
+// - On 423 account_pending_deletion: closes self + reloads (the
+// grace banner will mount on the next render)
 
 'use client';
 

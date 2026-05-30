@@ -17,7 +17,6 @@ type cursorPayload struct {
 
 // cursorEncoding is the single source of truth for the cursor's base64
 // flavor. URL-safe + no padding so the token is safe in URL query strings
-// (D-19).
 var cursorEncoding = base64.URLEncoding.WithPadding(base64.NoPadding)
 
 // EncodeCursor builds the opaque pagination token from the last row's

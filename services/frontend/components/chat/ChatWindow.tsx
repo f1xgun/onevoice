@@ -36,7 +36,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
   const tChat = useTranslations('chat.window');
   // Single conversation state machine — formerly split into useChat +
   // usePendingApprovalFlow with bidirectional callbacks and a ref-trick
-  // to break the forward-reference between two hook calls. Phase 19 D-19
+  // to break the forward-reference between two hook calls. 
   // was the original split; it was reverted in favor of a single hook
   // when production experience showed the two halves were always co-owned
   // by this component and the "single writer for messages" invariant was
@@ -117,7 +117,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
   return (
     <div className="flex h-full flex-col">
-      {/* Chat header — Phase 18 / D-11 (USER OVERRIDE) Landmine 1:
+      {/* Chat header — (USER OVERRIDE) Landmine 1:
           isolated, memoized subtree subscribed via useQuery `select` to a
           primitive string. Rendered as a SIBLING of the message list and
           composer below so title changes do not destroy composer focus or
@@ -172,7 +172,7 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
         <div ref={bottomRef} />
       </div>
 
-      {/* Expired approval banner — sits above the card; owned by Plan 17-05. */}
+      {/* Expired approval banner — sits above the card; owned by. */}
       {pendingApproval?.status === 'expired' && <ExpiredApprovalBanner />}
 
       {/* Inline approval card — renders only when a pending batch exists. */}

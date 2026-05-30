@@ -1,9 +1,9 @@
-// Phase 21-03 (ACCT-02) — Surfaces 5 + 6: hard-block modal triggered by
+// Surfaces 5 + 6: hard-block modal triggered by
 // 412 email_verification_required. Two variants:
 //
-//   - day0: integrations / invitations — "Подтвердите email"
-//   - day7: chat / business-create after 7-day grace — "Подтвердите email,
-//     чтобы продолжить"
+// - day0: integrations / invitations — "Подтвердите email"
+// - day7: chat / business-create after 7-day grace — "Подтвердите email,
+// чтобы продолжить"
 //
 // Uses AlertDialog (not Dialog) so escape-key / click-outside don't
 // trivially dismiss the destructive flow. Primary action: «Отправить

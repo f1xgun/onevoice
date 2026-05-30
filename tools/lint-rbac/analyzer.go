@@ -20,7 +20,7 @@ var activeAllowlist []AllowlistEntry
 
 // Analyzer is the go/analysis.Analyzer that enforces AUTHZ-09.
 // No Requires — the check is purely syntactic (no type info needed for
-// the route-prefix detection per CONTEXT D-12 steps 1-3).
+// the route-prefix detection per steps 1-3).
 var Analyzer = &analysis.Analyzer{
 	Name: "rbac",
 	Doc:  "Detects business-scoped chi routes that skip authz.RequireBusinessAccess / authz.BusinessContextFromCtx / authz.Can.",
@@ -69,8 +69,8 @@ func isChiRouteToBusinessSubtree(call *ast.CallExpr) bool {
 // reported.
 //
 // NOTE: This check only scans the top-level statement list of the Route
-// func literal. Handlers nested inside r.Group() blocks within the same
-// Route are not inspected. If the router adopts r.Group() nesting under
+// func literal. Handlers nested inside r.Group blocks within the same
+// Route are not inspected. If the router adopts r.Group nesting under
 // /businesses/{id}, extend this function with recursive AST descent.
 func checkBusinessSubroute(pass *analysis.Pass, call *ast.CallExpr) {
 	funcLit, ok := call.Args[1].(*ast.FuncLit)

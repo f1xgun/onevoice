@@ -3,7 +3,7 @@
 // media thumbs, failure-strip + retry, per-platform results, and the
 // duplicate / open-link actions.
 //
-// Extracted from posts/page.tsx as part of Phase 19 / 19-12.
+// Extracted from posts/page.tsx as part of.
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';

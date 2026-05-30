@@ -1,31 +1,31 @@
 // Package repository — email_outbox.go
 //
 // EmailOutboxRepository owns every SQL statement against email_outbox,
-// the transactional outbox table introduced by Phase 21a (Account
+// the transactional outbox table introduced by (Account
 // Lifecycle / Email Infrastructure). Per services/api/AGENTS.md
 // layering, handlers and services do not query this table directly;
-// downstream Phase 21 services (PasswordResetService,
+// downstream services (PasswordResetService,
 // EmailVerificationService, AccountDeletionService) call Enqueue
 // inside the SAME transaction that creates the originating row, then
 // a background worker spawned in cmd/main.go drains pending rows via
 // DrainPending / MarkSent / Reschedule / MarkFailed.
 //
 // Atomicity guarantees:
-//   - Enqueue takes a pgx.Tx the CALLER controls. If the caller's
-//     Commit fails, the email vanishes alongside the originating row.
-//     No orphan emails are ever sent. TestEmailOutbox_Enqueue_Rollback
-//     proves this end-to-end.
-//   - MarkSent / Reschedule / MarkFailed all carry `WHERE id=$1 AND
-//     status='pending'` so the worker's at-least-once semantics never
-//     cause a double-update (T-INF-02 in the threat model). A row
-//     that's already been marked is silently a no-op.
+// - Enqueue takes a pgx.Tx the CALLER controls. If the caller's
+// Commit fails, the email vanishes alongside the originating row.
+// No orphan emails are ever sent. TestEmailOutbox_Enqueue_Rollback
+// proves this end-to-end.
+// - MarkSent / Reschedule / MarkFailed all carry `WHERE id=$1 AND
+// status='pending'` so the worker's at-least-once semantics never
+// cause a double-update (T-INF-02 in the threat model). A row
+// that's already been marked is silently a no-op.
 //
-// Retry policy (D-07):
-//   - Reschedule with currentAttempts == maxAttempts-1 (i.e. this is
-//     the Nth attempt and it failed) transitions the row to
-//     status='failed' instead of scheduling a retry.
-//   - Backoff is NOW() + (2^newAttempts) minutes: 1m, 2m, 4m, 8m,
-//     16m for newAttempts 0..4.
+// Retry policy:
+// - Reschedule with currentAttempts == maxAttempts-1 (i.e. this is
+// the Nth attempt and it failed) transitions the row to
+// status='failed' instead of scheduling a retry.
+// - Backoff is NOW + (2^newAttempts) minutes: 1m, 2m, 4m, 8m,
+// 16m for newAttempts 0..4.
 package repository
 
 import (
@@ -40,7 +40,7 @@ import (
 )
 
 // outboxBackoffBase is the exponential-backoff base in minutes.
-// nextAttempt = NOW() + (outboxBackoffBase ^ newAttempts) minutes.
+// nextAttempt = NOW + (outboxBackoffBase ^ newAttempts) minutes.
 // 2 gives 1m, 2m, 4m, 8m, 16m for newAttempts 0..4 — well within
 // the 30-minute reset-token TTL so a worst-case 5-attempt retry
 // still delivers before the token expires.
@@ -84,9 +84,9 @@ type EmailOutboxRepository struct {
 	pool pgxPool
 }
 
-// NewEmailOutboxRepository returns the Phase 21a concrete email_outbox
+// NewEmailOutboxRepository returns the concrete email_outbox
 // repository. Returns the concrete type (not a domain interface) because
-// the worker and downstream Phase 21b/21c/21d services depend on the
+// the worker and downstream /21d services depend on the
 // methods directly — there is no need for the indirection.
 func NewEmailOutboxRepository(pool pgxPool) *EmailOutboxRepository {
 	return &EmailOutboxRepository{pool: pool}
@@ -101,7 +101,7 @@ func NewEmailOutboxRepository(pool pgxPool) *EmailOutboxRepository {
 // The caller controls tx lifecycle (Begin/Commit/Rollback) — Enqueue
 // never starts or ends a transaction.
 //
-// Phase 21-04 extension (21-CROSS-PLAN-CONTRACTS §3): when tx == nil,
+// extension (21-CROSS-PLAN-CONTRACTS §3): when tx == nil,
 // Enqueue falls back to a pool.QueryRow INSERT so sweeper-driven sends
 // (e.g. the T-7 deletion warning sweeper) can enqueue without a
 // surrounding business transaction. Atomicity is still preserved in the
@@ -113,7 +113,7 @@ func (r *EmailOutboxRepository) Enqueue(ctx context.Context, tx pgx.Tx, in Outbo
 		RETURNING id`
 	var id uuid.UUID
 	if tx == nil {
-		// Phase 21-04: sweeper path with no business tx. Falls back to
+		// sweeper path with no business tx. Falls back to
 		// pool — single statement is atomic at the row level (no other row
 		// is involved). Safe because the dedupe check in the caller (e.g.
 		// ExistsBySubjectAndRecipient) precedes this call.
@@ -128,7 +128,7 @@ func (r *EmailOutboxRepository) Enqueue(ctx context.Context, tx pgx.Tx, in Outbo
 	return id, nil
 }
 
-// EnqueueDeferred — Phase 21-04 extension (21-CROSS-PLAN-CONTRACTS §2a).
+// EnqueueDeferred — extension (21-CROSS-PLAN-CONTRACTS §2a).
 // Same as Enqueue but writes an explicit `next_attempt_at` so the worker
 // won't pick the row up until then. Used for the T-7 deletion warning
 // email (23 days in the future at request-deletion time).
@@ -152,7 +152,7 @@ func (r *EmailOutboxRepository) EnqueueDeferred(ctx context.Context, tx pgx.Tx, 
 	return id, nil
 }
 
-// ExistsBySubjectAndRecipient — Phase 21-04 extension (21-CROSS-PLAN-CONTRACTS §2b).
+// ExistsBySubjectAndRecipient — extension (21-CROSS-PLAN-CONTRACTS §2b).
 // Returns true if at least one email_outbox row exists for (to_email,
 // subject) in ANY status (pending|sent|failed|canceled). Used by the
 // deletion-warning sweeper to dedupe: a single user must receive at most
@@ -168,7 +168,7 @@ func (r *EmailOutboxRepository) ExistsBySubjectAndRecipient(ctx context.Context,
 	return exists, nil
 }
 
-// CancelPendingBySubjectAndRecipient — Phase 21-04. When a user cancels
+// CancelPendingBySubjectAndRecipient —. When a user cancels
 // their pending deletion via POST /users/me/restore, the pending T-7
 // warning row (scheduled +23d in the future via EnqueueDeferred) should
 // be canceled so the user doesn't receive the warning after restoring.
@@ -186,7 +186,7 @@ func (r *EmailOutboxRepository) CancelPendingBySubjectAndRecipient(ctx context.C
 }
 
 // DrainPending returns up to `limit` rows where status='pending' AND
-// next_attempt_at <= NOW(), ordered by next_attempt_at ASC (oldest
+// next_attempt_at <= NOW, ordered by next_attempt_at ASC (oldest
 // first). The worker iterates the returned slice and calls Sender.Send
 // for each.
 //
@@ -239,7 +239,7 @@ func (r *EmailOutboxRepository) MarkSent(ctx context.Context, id uuid.UUID, prov
 		return fmt.Errorf("email_outbox: mark sent: %w", err)
 	}
 	// Note: we deliberately discard providerJobID — the column is not
-	// stored today. Phase 21d may add a provider_job_id column when
+	// stored today. may add a provider_job_id column when
 	// support tooling needs cross-referencing with the Unisender dashboard.
 	_ = providerJobID
 	// We intentionally do not error on "no rows affected" — that means
@@ -249,9 +249,9 @@ func (r *EmailOutboxRepository) MarkSent(ctx context.Context, id uuid.UUID, prov
 
 // Reschedule increments attempts and bumps next_attempt_at by
 // exp-backoff. When attempts reaches maxAttempts, the row transitions
-// to status='failed' instead of being rescheduled (D-07).
+// to status='failed' instead of being rescheduled.
 //
-// Backoff formula: NOW() + (2 ^ newAttempts) minutes.
+// Backoff formula: NOW + (2 ^ newAttempts) minutes.
 //
 //	currentAttempts=0 → newAttempts=1, wait  2m
 //	currentAttempts=1 → newAttempts=2, wait  4m

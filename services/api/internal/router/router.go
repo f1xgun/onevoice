@@ -22,14 +22,14 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
 )
 
-// Phase 21-04 grace-period constant (D-31). Mirrors
+// grace-period constant. Mirrors
 // service.AccountDeletionService.graceDays — the BlockWritesDuringGrace
 // middleware needs the value to compute the 423 body's deletionDate.
 const deletionGraceDaysForRouter = 30
 
 // passThroughMiddleware is a no-op middleware used by the soft-restrict
 // wrappers when the caller passes a nil UserLookup (legacy / test deploys
-// that don't wire Phase 21-03 yet). Preserves existing behavior in those
+// that don't wire yet). Preserves existing behavior in those
 // environments while keeping the route declarations uniform.
 func passThroughMiddleware(next http.Handler) http.Handler { return next }
 
@@ -51,7 +51,7 @@ type RateLimits struct {
 	Login    int
 	Chat     int
 	HITL     int
-	Consents int // Phase 22 (T-22-08): per-minute budget for /auth/consents + /users/me/consents/pdn/withdraw
+	Consents int // per-minute budget for /auth/consents + /users/me/consents/pdn/withdraw
 }
 
 // Handlers encapsulates all HTTP handlers
@@ -76,10 +76,10 @@ type Handlers struct {
 	Permissions   *handler.PermissionsHandler  // RBAC: static permission registry
 	Members       *handler.MembersHandler      // RBAC: member management
 	Roles         *handler.RolesHandler        // RBAC: role listing
-	Invitations   *handler.InvitationsHandler  // RBAC: invitation lifecycle (Phase 3)
-	AuditLog      *handler.AuditLogHandler     // Phase 19 Wave 5: audit-log read endpoint
-	UserDeletion  *handler.UserDeletionHandler // Phase 21-04: DELETE /users/me + restore (ACCT-03)
-	Consents      *handler.ConsentsHandler     // Phase 22: re-consent + withdraw + list (LEGAL-01..06)
+	Invitations   *handler.InvitationsHandler  // RBAC: invitation lifecycle
+	AuditLog      *handler.AuditLogHandler     // audit-log read endpoint
+	UserDeletion  *handler.UserDeletionHandler // DELETE /users/me + restore
+	Consents      *handler.ConsentsHandler     // re-consent + withdraw + list
 }
 
 // Setup creates and configures the Chi router with all routes and middleware.
@@ -89,12 +89,12 @@ type Handlers struct {
 // rateLimits controls per-endpoint per-minute request budgets — see the
 // RateLimits comment block above for the role of each field.
 // authzCache backs the RequireBusinessAccess middleware that gates the
-// /businesses/{id}/... subtree (Phase 2 v2.0 RBAC).
-// users is the UserLookup the Phase 21-03 soft-restrict middleware reads
-// email_verified from on every protected request (D-26..D-29 / ACCT-02).
+// /businesses/{id}/.. subtree (v2.0 RBAC).
+// users is the UserLookup the soft-restrict middleware reads
+// email_verified from on every protected request.
 // May be nil — when nil, the soft-restrict decorators degrade to
 // pass-through (legacy/test compat).
-// pgPool is the Phase 21-04 (D-34) shared pool the BlockWritesDuringGrace
+// pgPool is the shared pool the BlockWritesDuringGrace
 // middleware reads users.deletion_requested_at from on every write
 // request. May be nil — when nil, the grace gate degrades to pass-
 // through (legacy/test compat).
@@ -125,8 +125,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 	}))
 	// LocaleResolver runs after CORS/correlation but before SecurityHeaders /
 	// metrics / auth so even unauthenticated error responses can be localized
-	// off the Accept-Language header. See pkg/i18n + Phase A1 of
-	// `.planning/i18n-readiness/PLAN.md`.
+	// off the Accept-Language header. See pkg/i18n.
 	r.Use(i18n.LocaleMiddleware)
 	r.Use(middleware.SecurityHeaders())
 	r.Use(metrics.HTTPMiddleware)
@@ -153,10 +152,10 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		}
 		r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).Post("/auth/refresh", handlers.Auth.RefreshToken)
 
-		// Phase 21b — Password reset (ACCT-01).
+		// Password reset.
 		// No middleware.RateLimit chi wrapper: the handler does its own
 		// per-email Redis rate-limit inside the service so the
-		// timing-parity contract (CONTEXT D-15) is enforced uniformly.
+		// timing-parity contract is enforced uniformly.
 		// A chi RateLimit here would short-circuit before the service
 		// runs and skew the unknown-email branch.
 		//
@@ -168,13 +167,13 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		r.Post("/auth/password-reset/request", handlers.Auth.RequestPasswordReset)
 		r.Post("/auth/password-reset/confirm", handlers.Auth.ConfirmPasswordReset)
 
-		// Phase 21-03 — Email verification confirm (ACCT-02 / D-22, D-23).
+		// Email verification confirm.
 		// PUBLIC: no JWT required. The verify-email page in the FE is
 		// reachable when the user is logged out (e.g. clicks the link in
 		// another browser). Returns 204 with NO Set-Cookie / session
 		// material — T-VE-02 mitigation. NO GET handler — the FE renders
 		// a button-gated page off the ?token=… query string and POSTs
-		// only after the user clicks (scanner-protection per D-22).
+		// only after the user clicks (scanner-protection ).
 		r.Post("/auth/verify-email/confirm", handlers.Auth.VerifyConfirm)
 
 		// OAuth callback routes (public — state parameter validates session)
@@ -188,45 +187,45 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 		// Returns only non-sensitive metadata (name, description, status).
 		r.Get("/platforms", handlers.Platforms.List)
 
-		// Phase 3: public invitation preview — token IS the auth (CONTEXT D-04).
+		// public invitation preview — token IS the auth.
 		// Rate-limited per-IP with the Login budget — same threat model as login
-		// (automated abuse with no auth state). T-03-09 mitigation.
+		// (automated abuse with no auth state). mitigation.
 		if handlers.Invitations != nil {
 			r.With(middleware.RateLimit(redisClient, rateLimits.Login, time.Minute)).
 				Get("/invitations/{token}", handlers.Invitations.Preview)
 		}
 
-		// Phase 21-04 (ACCT-03 / D-30 / D-34): always-reachable
+		// always-reachable
 		// authenticated routes. These are NEVER decorated by
 		// BlockWritesDuringGrace because they are the user's escape
 		// hatches from the soft-deleted state (restore + delete +
 		// verify) OR they're idempotent reads (me + logout).
-		// Verify endpoints from 21-03 also live here (D-30: right to
+		// Verify endpoints from 21-03 also live here (right to
 		// erasure / right to verify cannot be gated by other
 		// middleware).
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(jwtSecret))
 			r.Post("/auth/logout", handlers.Auth.Logout)
 			r.Get("/auth/me", handlers.Auth.Me)
-			// Phase 21-03 verify resend + email-before-verify (D-21, D-24).
+			// verify resend + email-before-verify.
 			r.Post("/auth/verify-email/resend", handlers.Auth.VerifyResend)
 			r.Patch("/auth/email-before-verify", handlers.Auth.EmailBeforeVerify)
-			// Phase 21-04 — DELETE /users/me + POST /users/me/restore
-			// (ACCT-03). Always reachable: DELETE is idempotent (second
+			// DELETE /users/me + POST /users/me/restore
+			// Always reachable: DELETE is idempotent (second
 			// call surfaces 423 from the service layer, not the
 			// middleware); Restore is the explicit escape hatch.
 			if handlers.UserDeletion != nil {
 				r.Delete("/users/me", handlers.UserDeletion.Delete)
 				r.Post("/users/me/restore", handlers.UserDeletion.Restore)
 			}
-			// Phase 22 — re-consent + withdraw + list. Always reachable
-			// (D-30 precedent — right-to-erasure / right-to-withdraw
+			// re-consent + withdraw + list. Always reachable
+			// (precedent — right-to-erasure / right-to-withdraw
 			// cannot be gated by verification or grace per 152-ФЗ Art. 21).
-			// T-22-08 mitigation: per-user rate limit on the two write
+			// mitigation: per-user rate limit on the two write
 			// endpoints (Redis-backed, scope="consents"). GET stays
 			// unthrottled — listing your own consents is non-mutating and
 			// already userID-scoped. Withdrawal triggers the 30-day
-			// deletion flow per D-13, so abuse is naturally self-limiting,
+			// deletion flow , so abuse is naturally self-limiting,
 			// but the budget guards against accidental client retry loops.
 			if handlers.Consents != nil {
 				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Consents, time.Minute, "consents")).
@@ -237,12 +236,12 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			}
 		})
 
-		// Protected routes (require auth + write-gated by Phase 21-04
+		// Protected routes (require auth + write-gated by 
 		// grace middleware when pgPool is provided).
 		r.Group(func(r chi.Router) {
 			// Auth middleware
 			r.Use(middleware.Auth(jwtSecret))
-			// Phase 21-04 (D-34): block POST/PUT/PATCH/DELETE for users
+			// block POST/PUT/PATCH/DELETE for users
 			// inside the 30-day grace window. GETs bypass at the
 			// middleware layer (method-check guard).
 			if pgPool != nil {
@@ -260,7 +259,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// /members/{userId}).
 			r.Patch("/auth/locale", handlers.Auth.UpdatePreferredLocale)
 
-			// Phase 1 v2.0 RBAC (AUTHZ-01 / CONTEXT D-15): static permission registry.
+			// v2.0 RBAC (AUTHZ-01): static permission registry.
 			// Auth-required (any logged-in user) — no business scope.
 			if handlers.Permissions != nil {
 				r.Get("/permissions", handlers.Permissions.List)
@@ -268,10 +267,10 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			// BIZ-02 + BIZ-03 (auth-only, NOT business-scoped).
 			r.Get("/businesses", handlers.Business.ListUserBusinesses)
-			// Phase 21-03 (ACCT-02 / D-28): POST /businesses is gated by the
+			// POST /businesses is gated by the
 			// day-7 soft-restrict — unverified users get 7 days to convert
 			// before business creation is blocked. Listing remains open
-			// (read endpoints are banner-only per D-29).
+			// (read endpoints are banner-only ).
 			if users != nil {
 				r.With(middleware.RequireVerifiedEmailDay7(users)).
 					Post("/businesses", handlers.Business.CreateBusiness)
@@ -279,16 +278,16 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Post("/businesses", handlers.Business.CreateBusiness)
 			}
 
-			// Phase 19 manual review refresh — kicks the cross-business sync;
+			// manual review refresh — kicks the cross-business sync;
 			// no business scope so any authed user can trigger it.
 			r.Post("/reviews/refresh", handlers.Review.RefreshReviews)
 
 			r.Post("/telemetry", handlers.Telemetry.Ingest)
 
-			// Phase 3: invitation accept — auth-required, NOT business-scoped
+			// invitation accept — auth-required, NOT business-scoped
 			// (the {token} URL param targets a specific business inside the
 			// invitation row). Rate-limited per-user with Login budget for
-			// defense-in-depth (RESEARCH OQ-06). T-03-09 / T-03-10 mitigation.
+			// defense-in-depth (RESEARCH OQ-06). / mitigation.
 			if handlers.Invitations != nil {
 				r.With(middleware.RateLimitByUser(redisClient, rateLimits.Login, time.Minute, "invite_accept")).
 					Post("/invitations/{token}/accept", handlers.Invitations.Accept)
@@ -296,9 +295,9 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 
 			// Business-scoped subtree — single chokepoint via RequireBusinessAccess.
 			// Every route under /businesses/{id}/... is gated by this middleware, which:
-			//   - parses and validates the business UUID from the URL
-			//   - looks up membership (404 on non-member, not 403 — AUTHZ-05)
-			//   - injects BusinessContext into ctx with the caller's role + permissions
+			// - parses and validates the business UUID from the URL
+			// - looks up membership (404 on non-member, not 403 — AUTHZ-05)
+			// - injects BusinessContext into ctx with the caller's role + permissions
 			r.Route("/businesses/{id}", func(r chi.Router) {
 				r.Use(authz.RequireBusinessAccess(authzCache, middleware.GetUserID))
 
@@ -314,7 +313,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				// Integrations.
 				// GET endpoints (list / auth-url / communities / locations) are
 				// never gated by RequireVerifiedEmail* — read endpoints stay
-				// open to unverified users per D-29.
+				// open to unverified users.
 				r.Get("/integrations", handlers.Integration.ListIntegrations)
 				r.Delete("/integrations/{integrationId}", handlers.Integration.DeleteIntegration)
 
@@ -326,7 +325,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/integrations/google_business/auth-url", handlers.OAuth.GetGoogleAuthURL)
 				r.Get("/integrations/google_business/locations", handlers.OAuth.GoogleLocations)
 
-				// Phase 21-03 (ACCT-02 / D-26): day-0 hard-block on POST
+				// day-0 hard-block on POST
 				// /integrations/* — attacker surface for spam token connection.
 				// Each connect endpoint is wrapped individually so the
 				// decorator order stays explicit at the route declaration.
@@ -348,7 +347,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.With(integWith).Post("/integrations/telegram/refresh", handlers.Connect.RefreshTelegramLinkedGroup)
 
 				// Chat (rate-limited via env-tunable RateLimits.Chat).
-				// Phase 21-03 (ACCT-02 / D-28): day-7 soft-restrict gates
+				// day-7 soft-restrict gates
 				// chat — unverified users have 7-day grace; reads / history
 				// stay open. Layered AFTER RateLimitByUser so a throttled
 				// request short-circuits before the DB lookup.
@@ -376,15 +375,15 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Delete("/conversations/{id}", handlers.Conversation.DeleteConversation)
 				r.Get("/conversations/{id}/messages", handlers.Conversation.ListMessages)
 				r.Post("/conversations/{id}/move", handlers.Conversation.MoveConversation)
-				// Phase 19 (UI-03 / D-02): pin / unpin a conversation.
+				// (UI-03): pin / unpin a conversation.
 				r.Post("/conversations/{id}/pin", handlers.Conversation.Pin)
 				r.Post("/conversations/{id}/unpin", handlers.Conversation.Unpin)
-				// Phase 18 / TITLE-09: regenerate the auto-title for an existing chat.
+				// TITLE-09: regenerate the auto-title for an existing chat.
 				if handlers.Titler != nil {
 					r.Post("/conversations/{id}/regenerate-title", handlers.Titler.RegenerateTitle)
 				}
 
-				// Projects (Phase 15).
+				// Projects.
 				r.Get("/projects", handlers.Project.List)
 				r.Post("/projects", handlers.Project.Create)
 				r.Get("/projects/{id}", handlers.Project.Get)
@@ -393,7 +392,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/projects/{id}/conversation-count", handlers.Project.ConversationCount)
 
 				// Search.
-				// Phase 19 / Plan 19-03 / SEARCH-02: sidebar search.
+				// sidebar search.
 				if handlers.Search != nil {
 					r.Get("/search", handlers.Search.Search)
 				}
@@ -411,7 +410,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				r.Get("/tasks", handlers.AgentTask.ListTasks)
 				r.Get("/tasks/stream", handlers.AgentTask.StreamTasks)
 
-				// Members + roles (NEW — Phase 2 v2.0 RBAC).
+				// Members + roles (NEW — v2.0 RBAC).
 				if handlers.Members != nil {
 					r.Get("/members", handlers.Members.ListMembers)
 					r.Patch("/members/{userId}", handlers.Members.UpdateMemberRole)
@@ -419,22 +418,22 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 				}
 				if handlers.Roles != nil {
 					r.Get("/roles", handlers.Roles.List)
-					// Phase 5 RBAC role CRUD (ROLE-04..06). All gated by
+					// RBAC role CRUD (ROLE-04.06). All gated by
 					// RequireBusinessAccess (inherited from the subroute) +
-					// per-route Can() check inside the handler.
+					// per-route Can check inside the handler.
 					r.Post("/roles", handlers.Roles.Create)
 					r.Patch("/roles/{roleId}", handlers.Roles.Update)
 					r.Delete("/roles/{roleId}", handlers.Roles.Delete)
-					// Phase 5 UI-RBAC-08 — actor's effective permissions in
+					// UI-RBAC-08 — actor's effective permissions in
 					// the active business. No additional permission gate
 					// beyond RequireBusinessAccess (any member can read their
 					// own permissions).
 					r.Get("/me/permissions", handlers.Roles.MyPermissions)
 				}
 
-				// Phase 3: invitations CRUD — business-scoped under
+				// invitations CRUD — business-scoped under
 				// PermMembersInvite. Mirrors Members/Roles registration.
-				// Phase 21-03 (ACCT-02 / D-26): POST is gated by day-0
+				// POST is gated by day-0
 				// soft-restrict — unverified users cannot send invites
 				// (spam vector). GET and DELETE stay open.
 				if handlers.Invitations != nil {
@@ -448,8 +447,8 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 					r.Delete("/invitations/{inviteId}", handlers.Invitations.Revoke)
 				}
 
-				// Phase 19 Wave 5: audit log read endpoint. Gated by
-				// PermAuditRead inside the handler (Owner+Admin via Phase 6
+				// audit log read endpoint. Gated by
+				// PermAuditRead inside the handler (Owner+Admin via 
 				// seed). RequireBusinessAccess (above) handles the membership
 				// + business-id validation; the handler handles the
 				// permission check + cursor/filter validation.

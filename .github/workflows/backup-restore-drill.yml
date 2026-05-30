@@ -1,6 +1,6 @@
 name: backup-restore-drill
 
-# Weekly CI restore drill (D-04). Runs scripts/backup/restore.sh against a
+# Weekly CI restore drill. Runs scripts/backup/restore.sh against a
 # SEPARATE drill bucket (see docs/runbook-restore.md §6 for secret setup).
 # Catches `restic check` failures, decryption breaks, and snapshot-format
 # drift before they surface on a real outage.
@@ -68,7 +68,7 @@ jobs:
         run: bash scripts/backup/restore.sh
 
   entrypoint-roundtrip:
-    # Phase 23-07 / WR-04: regression-guards the entrypoint.sh decode
+    # regression-guards the entrypoint.sh decode
     # pipeline. The production path uses Yandex KMS (no GitHub Actions
     # access in PR runs), but the shape under test is the shell-level
     # capture pattern that broke in the original implementation:
@@ -89,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           if grep -nE 'base64 -d|\| *base64 *-d' scripts/backup/entrypoint.sh; then
-            echo "::error file=scripts/backup/entrypoint.sh::WR-04 regression: base64 decoder reintroduced in the decode pipeline. yc kms decrypt --plaintext-file /dev/stdout writes raw bytes; double-decoding produces a value that fails operator-side disaster recovery." >&2
+            echo "::error file=scripts/backup/entrypoint.sh::Regression: base64 decoder reintroduced in the decode pipeline. yc kms decrypt --plaintext-file /dev/stdout writes raw bytes; double-decoding produces a value that fails operator-side disaster recovery." >&2
             exit 1
           fi
 
@@ -126,11 +126,11 @@ jobs:
           fi
           echo "round-trip OK: $ORIGINAL == $DECRYPTED"
 
-      - name: Regression-fail test (proves the test catches WR-04)
+      - name: Regression-fail test (proves the test catches the base64 double-decode bug)
         run: |
           set -euo pipefail
           # Sanity check: applying an extra base64 decode to a printable
-          # base64 string (the exact bug WR-04 described) MUST corrupt the
+          # base64 string (the exact bug described) MUST corrupt the
           # value — i.e. NOT equal the original. If this passes, the test
           # framework is broken and the round-trip above is meaningless.
           ORIGINAL="$(openssl rand -base64 32)"
@@ -138,7 +138,7 @@ jobs:
             | od -An -tx1 | tr -d ' \n' || true)"
           ORIG_HEX="$(printf '%s' "$ORIGINAL" | od -An -tx1 | tr -d ' \n')"
           if [ "$ORIG_HEX" = "$CORRUPTED" ]; then
-            echo "::error::Sanity check failed: extra base64 decode did not corrupt the value, meaning the round-trip test cannot detect WR-04." >&2
+            echo "::error::Sanity check failed: extra base64 decode did not corrupt the value, meaning the round-trip test cannot detect the regression." >&2
             exit 1
           fi
           echo "sanity check OK: the broken pipeline would have produced a different value"

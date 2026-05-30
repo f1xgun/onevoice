@@ -2,16 +2,16 @@
 
 package handler_test
 
-// rbac_coverage_test.go — Plan 02-07 AUTHZ-10 route-walker integration tests.
+// rbac_coverage_test.go — AUTHZ-10 route-walker integration tests.
 //
 // TestRBACCoverage_AllBusinessRoutes: walks every chi route under
 // /api/v1/businesses/{id}/... and asserts the four-case authz trio per route.
 //
 // Sub-tests:
-//   - TestRBACCoverage_SuspendedMember   (MEDIUM #6)
-//   - TestRBACCoverage_CacheInvalidation (AUTHZ-04)
-//   - TestRBACCoverage_TTLCeiling        (HIGH #1 + HIGH #2)
-//   - TestRBACCoverage_LastOwnerSelfRemoval (MEDIUM #8 — exact 204)
+// - TestRBACCoverage_SuspendedMember   (MEDIUM #6)
+// - TestRBACCoverage_CacheInvalidation (AUTHZ-04)
+// - TestRBACCoverage_TTLCeiling        (HIGH #1 + HIGH #2)
+// - TestRBACCoverage_LastOwnerSelfRemoval (MEDIUM #8 — exact 204)
 //
 // LOW #9: rbac_check_total{result="allow"} increment assertion is integrated
 // into TestRBACCoverage_AllBusinessRoutes after the viewer GET trio.
@@ -122,8 +122,8 @@ func TestRBACCoverage_AllBusinessRoutes(t *testing.T) {
 	require.NoError(t, err)
 
 	// AUTHZ-10 acceptance: walker must find at least 37 business-scoped routes.
-	// Phase 2 baseline ~30 + Phase 3 invitations × 3 (POST/GET/DELETE) = 33,
-	// + Phase 5 routes × 4 (POST /roles, PATCH /roles/{roleId},
+	// baseline ~30 + invitations × 3 (POST/GET/DELETE) = 33,
+	// + routes × 4 (POST /roles, PATCH /roles/{roleId},
 	// DELETE /roles/{roleId}, GET /me/permissions) = 37.
 	require.GreaterOrEqual(t, walked, 37,
 		"AUTHZ-10: expected >=37 business-scoped routes "+
@@ -160,7 +160,7 @@ func TestRBACCoverage_SuspendedMember(t *testing.T) {
 		"suspended member 403 body must contain 'forbidden_suspended' (Plan 02-01 middleware contract)")
 }
 
-// TestRBACCoverage_SuspendedMember_MyPermissions — Phase 5 review HIGH-01.
+// TestRBACCoverage_SuspendedMember_MyPermissions — review.
 //
 // MyPermissions deliberately skips the per-route authz.Can(...) gate (any
 // active member can read their own permissions). This test pins the
@@ -273,9 +273,9 @@ func TestRBACCoverage_TTLCeiling(t *testing.T) {
 // TestRBACCoverage_LastOwnerSelfRemoval — MEDIUM #8 (committed to 204).
 //
 // Asserts:
-//  1. Sole-owner self-DELETE → 422 with body containing "last_owner".
-//  2. Non-last-owner self-DELETE → EXACTLY 204 No Content (MEDIUM #8 contract).
-//  3. Removed user's next GET → 404 (RequireBusinessAccess sees no membership).
+// 1. Sole-owner self-DELETE → 422 with body containing "last_owner".
+// 2. Non-last-owner self-DELETE → EXACTLY 204 No Content (MEDIUM #8 contract).
+// 3. Removed user's next GET → 404 (RequireBusinessAccess sees no membership).
 func TestRBACCoverage_LastOwnerSelfRemoval(t *testing.T) {
 	env := setupTestEnv(t)
 	teardownTestData(t, env.pool)
@@ -311,12 +311,12 @@ func TestRBACCoverage_LastOwnerSelfRemoval(t *testing.T) {
 }
 
 // substituteURLParams replaces chi URL placeholders with seeded UUIDs:
-//   - First {id} → bizID (the business ID from the outer r.Route)
-//   - Subsequent {id} → random UUID (sub-resource IDs not seeded)
-//   - {conversationID} → random UUID
-//   - {integrationId}  → random UUID
-//   - {batch_id}       → random UUID
-//   - {userId}         → a seeded viewer-role user (must exist for members routes)
+// - First {id} → bizID (the business ID from the outer r.Route)
+// - Subsequent {id} → random UUID (sub-resource IDs not seeded)
+// - {conversationID} → random UUID
+// - {integrationId}  → random UUID
+// - {batch_id}       → random UUID
+// - {userId}         → a seeded viewer-role user (must exist for members routes)
 //
 // Placeholders are replaced left-to-right; the first {id} is always the
 // business ID because chi.Walk emits the full pattern starting with
@@ -350,11 +350,11 @@ func substituteURLParams(t *testing.T, env *testEnv, bizID uuid.UUID, route stri
 		url = strings.ReplaceAll(url, "{userId}", memberID.String())
 	}
 	if strings.Contains(url, "{inviteId}") {
-		// Plan 03-06 Task 1: Seed a real pending invitation so DELETE
+		// Task 1: Seed a real pending invitation so DELETE
 		// /invitations/{inviteId} validates the UUID parse + reaches the repo
 		// layer (where the authz gates 401 / 404 still fire as expected). The
 		// viewer JWT used by the walker is a non-creator so DELETE attempts
-		// will hit the PermMembersInvite Can() gate before they hit the repo,
+		// will hit the PermMembersInvite Can gate before they hit the repo,
 		// which is exactly what the 4-case authz trio asserts.
 		ownerRoleID := uuid.MustParse(domain.SystemRoleOwnerID)
 		// Need a non-Nil createdByUserID — seed a fresh user as the creator.
@@ -363,11 +363,11 @@ func substituteURLParams(t *testing.T, env *testEnv, bizID uuid.UUID, route stri
 		url = strings.ReplaceAll(url, "{inviteId}", invID.String())
 	}
 	if strings.Contains(url, "{roleId}") {
-		// Plan 05-03 Task 3: Seed a real custom role so PATCH /roles/{roleId}
+		// Task 3: Seed a real custom role so PATCH /roles/{roleId}
 		// and DELETE /roles/{roleId} validate UUID parse + reach the repo
 		// layer (where the authz gates 401 / 404 still fire as expected). The
 		// viewer JWT used by the walker lacks PermRolesUpdate / PermRolesDelete
-		// so the handler's authz.Can() returns 403 before the repo lookup —
+		// so the handler's authz.Can returns 403 before the repo lookup —
 		// which is exactly what the 4-case authz trio asserts.
 		roleID := seedCustomRole(t, env.pool, bizID)
 		url = strings.ReplaceAll(url, "{roleId}", roleID.String())
@@ -382,22 +382,22 @@ func substituteURLParams(t *testing.T, env *testEnv, bizID uuid.UUID, route stri
 // only Case 3 (viewer 200) is skipped.
 //
 // Exempt rationale per route:
-//   - GET /conversations/{id}: requires a seeded conversation ObjectID in MongoDB.
-//   - GET /conversations/{id}/messages: same — conversation must exist.
-//   - GET /projects/{id}: requires a seeded project row (PG + Mongo).
-//   - GET /projects/{id}/conversation-count: same.
-//   - GET /reviews/{id}: requires a seeded review in MongoDB.
-//   - GET /posts/{id}: requires a seeded post in MongoDB.
-//   - GET /tasks/stream: SSE endpoint; httptest recorder does not buffer SSE.
-//   - GET /integrations/vk/communities: hits VK API externally.
-//   - GET /integrations/vk/community-auth-url: hits VK API externally.
-//   - GET /integrations/{provider}/auth-url: requires OAuth config in env.
-//   - GET /search: handler validates ?q= param (len ≥ 2) before authz BusinessContext
-//     check; walker sends no query param → 400 "query too short". Authz gate still
-//     tested via 401 + 404 cases.
-//   - GET /tool-approvals: service performs ownership check (b.UserID == actorUserID)
-//     after the RBAC gate; test viewer is not the business owner so service returns
-//     ErrBusinessNotFound → 404. Authz gate still tested via 401 + 404 cases.
+// - GET /conversations/{id}: requires a seeded conversation ObjectID in MongoDB.
+// - GET /conversations/{id}/messages: same — conversation must exist.
+// - GET /projects/{id}: requires a seeded project row (PG + Mongo).
+// - GET /projects/{id}/conversation-count: same.
+// - GET /reviews/{id}: requires a seeded review in MongoDB.
+// - GET /posts/{id}: requires a seeded post in MongoDB.
+// - GET /tasks/stream: SSE endpoint; httptest recorder does not buffer SSE.
+// - GET /integrations/vk/communities: hits VK API externally.
+// - GET /integrations/vk/community-auth-url: hits VK API externally.
+// - GET /integrations/{provider}/auth-url: requires OAuth config in env.
+// - GET /search: handler validates ?q= param (len ≥ 2) before authz BusinessContext
+// check; walker sends no query param → 400 "query too short". Authz gate still
+// tested via 401 + 404 cases.
+// - GET /tool-approvals: service performs ownership check (b.UserID == actorUserID)
+// after the RBAC gate; test viewer is not the business owner so service returns
+// ErrBusinessNotFound → 404. Authz gate still tested via 401 + 404 cases.
 func readPathExempt(method, route string) bool {
 	if method != http.MethodGet {
 		return false
@@ -441,11 +441,11 @@ func readPathExempt(method, route string) bool {
 // (viewer 403) is exempted.
 //
 // Exempt rationale per route:
-//   - POST /chat/{conversationID}: rate-limited + body validation; the rate
-//     limiter or body validator may fire before the authz PermContentCreate
-//     check when the request body is empty/invalid.
-//   - POST /chat/{id}/resume: HITL-gated; HITL handler may be nil.
-//   - POST /conversations/{id}/pending-tool-calls/{id}/resolve: same.
+// - POST /chat/{conversationID}: rate-limited + body validation; the rate
+// limiter or body validator may fire before the authz PermContentCreate
+// check when the request body is empty/invalid.
+// - POST /chat/{id}/resume: HITL-gated; HITL handler may be nil.
+// - POST /conversations/{id}/pending-tool-calls/{id}/resolve: same.
 func writePathExempt(method, route string) bool {
 	if method == http.MethodGet || method == http.MethodHead {
 		return false
@@ -455,7 +455,7 @@ func writePathExempt(method, route string) bool {
 		"/api/v1/businesses/{id}/chat/{id}/resume":                                   true,
 		"/api/v1/businesses/{id}/conversations/{id}/pending-tool-calls/{id}/resolve": true,
 		// G-11: handler validates required body field "hash" before reaching the
-		// authz Can() check; viewer with empty body gets 400 not 403. Authz gate
+		// authz Can check; viewer with empty body gets 400 not 403. Authz gate
 		// 401 (no JWT) and 404 (non-member) still assert correctly.
 		"/api/v1/businesses/{id}/integrations/telegram/verify": true,
 	}
