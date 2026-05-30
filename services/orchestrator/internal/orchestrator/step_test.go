@@ -1013,3 +1013,48 @@ func i18nWithEnglish(t *testing.T) context.Context {
 	t.Helper()
 	return i18n.WithLocale(context.Background(), language.English)
 }
+
+// erroringLLM returns the canned err from every Chat call. Used to drive the
+// translateChatError code paths.
+type erroringLLM struct{ err error }
+
+func (e *erroringLLM) Chat(_ context.Context, _ llm.ChatRequest) (*llm.ChatResponse, error) {
+	return nil, e.err
+}
+
+// TestStepRun_DailySpendExceeded_FriendlyEvent — when the Router surfaces
+// ErrDailySpendExceeded, step.go translates it to an SSE error event with
+// the machine-readable code.
+func TestStepRun_DailySpendExceeded_FriendlyEvent(t *testing.T) {
+	stub := &erroringLLM{err: llm.ErrDailySpendExceeded}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(stub, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+	evts := drainEvents(events)
+	errs := findEvents(evts, orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "daily_spend_exceeded", errs[0].Code)
+}
+
+// TestStepRun_RateLimitUnavailable_FriendlyEvent — parallel coverage for the
+// infra-failure sentinel.
+func TestStepRun_RateLimitUnavailable_FriendlyEvent(t *testing.T) {
+	stub := &erroringLLM{err: llm.ErrRateLimitUnavailable}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(stub, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+	evts := drainEvents(events)
+	errs := findEvents(evts, orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "rate_limit_unavailable", errs[0].Code)
+}
