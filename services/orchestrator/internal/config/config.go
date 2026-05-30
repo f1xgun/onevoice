@@ -93,6 +93,11 @@ type Config struct {
 
 	SelfHostedEndpoints []SelfHostedEndpoint
 
+	// RedisURL is the connection string the orchestrator dials for the
+	// rate-limiter's per-minute / per-month counters. Empty disables the
+	// rate-limiter wiring at boot.
+	RedisURL string
+
 	// Cost-guard knobs.
 	//
 	// FreeTierDailySpendUSD overrides DefaultTierLimits["free"].DailySpendUSD
@@ -246,6 +251,8 @@ func Load() (*Config, error) {
 		APIInternalURL: getEnv("API_INTERNAL_URL", defaultAPIInternalURL),
 
 		SelfHostedEndpoints: parseIndexedEndpoints(),
+
+		RedisURL: getEnv("REDIS_URL", ""),
 
 		FreeTierDailySpendUSD:        freeTierDailySpendUSD,
 		ConversationInputCap:         conversationInputCap,
