@@ -185,6 +185,23 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		registry := llm.NewRegistry()
 		routerOpts := LLMProviderOpts(cfg, registry, log)
 		if len(routerOpts) > 0 {
+			// api-side rate limiter shares the daily-spend policy with the
+			// orchestrator so titler / draft-reply spend honors the same cap.
+			// The in-process repoDailySpender avoids a billingclient HTTP hop —
+			// the api already holds the Postgres pool.
+			if h.Redis != nil && repos.Billing != nil {
+				rl, rlErr := BuildAPIRateLimiter(cfg, log, h.Redis, repos.Billing)
+				if rlErr != nil {
+					return nil, fmt.Errorf("api rate limiter: %w", rlErr)
+				}
+				routerOpts = append(routerOpts, llm.WithRateLimiter(rl))
+				log.Info("api rate limiter wired",
+					"policy", cfg.RedisDownPolicy,
+					"free_tier_daily_spend_usd", cfg.FreeTierDailySpendUSD,
+				)
+			} else {
+				log.Warn("api rate limiter disabled — Redis or billing repo unavailable")
+			}
 			llmRouter = llm.NewRouter(registry, routerOpts...)
 			log.Info("auto-titler: llm router constructed", "model", titlerModel, "providers", len(routerOpts))
 		} else {
