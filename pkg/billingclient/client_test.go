@@ -280,6 +280,138 @@ func TestNew_NilHTTPClient_DefaultTimeout(t *testing.T) {
 	assert.Equal(t, 10*time.Second, c.httpClient.Timeout)
 }
 
+// ---------------------------------------------------------------------
+// GetDailySpend tests
+// ---------------------------------------------------------------------
+
+// TestGetDailySpend_Success_200 — happy path: server returns the JSON envelope
+// and the client surfaces the float64 verbatim.
+func TestGetDailySpend_Success_200(t *testing.T) {
+	disableMTLSEnv(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/internal/v1/billing/daily_spend", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"daily_spend_usd": 0.42}`))
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL, nil)
+	got, err := client.GetDailySpend(context.Background(), uuid.New(), time.Now().UTC())
+	require.NoError(t, err)
+	assert.InDelta(t, 0.42, got, 1e-9)
+}
+
+// TestGetDailySpend_ServerError_IsTransient — 5xx surfaces as ErrTransient.
+func TestGetDailySpend_ServerError_IsTransient(t *testing.T) {
+	disableMTLSEnv(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL, nil)
+	_, err := client.GetDailySpend(context.Background(), uuid.New(), time.Now().UTC())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrTransient), "got %v", err)
+}
+
+// TestGetDailySpend_BadRequest_IsInvalidPayload — 400 surfaces as ErrInvalidPayload.
+func TestGetDailySpend_BadRequest_IsInvalidPayload(t *testing.T) {
+	disableMTLSEnv(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL, nil)
+	_, err := client.GetDailySpend(context.Background(), uuid.New(), time.Now().UTC())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrInvalidPayload), "got %v", err)
+}
+
+// TestGetDailySpend_NetworkError_IsTransient — connection refused → ErrTransient.
+func TestGetDailySpend_NetworkError_IsTransient(t *testing.T) {
+	disableMTLSEnv(t)
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	require.NoError(t, l.Close())
+
+	client := New("http://"+addr, &http.Client{Timeout: 500 * time.Millisecond})
+	_, err = client.GetDailySpend(context.Background(), uuid.New(), time.Now().UTC())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrTransient), "got %v", err)
+}
+
+// TestGetDailySpend_MalformedBody_IsInvalidPayload — 200 with non-JSON body
+// surfaces as ErrInvalidPayload because the response is malformed.
+func TestGetDailySpend_MalformedBody_IsInvalidPayload(t *testing.T) {
+	disableMTLSEnv(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`not json`))
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL, nil)
+	_, err := client.GetDailySpend(context.Background(), uuid.New(), time.Now().UTC())
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrInvalidPayload), "got %v", err)
+}
+
+// TestGetDailySpend_URLComposition — query params carry the UUID and the
+// UTC date in YYYY-MM-DD form regardless of the input time zone.
+func TestGetDailySpend_URLComposition(t *testing.T) {
+	disableMTLSEnv(t)
+
+	var seenQuery atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenQuery.Store(r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"daily_spend_usd": 0}`))
+	}))
+	defer srv.Close()
+
+	bizID := uuid.New()
+	// Input time is UTC+3 mid-afternoon — still maps to its UTC calendar day.
+	loc, err := time.LoadLocation("Europe/Moscow")
+	require.NoError(t, err)
+	day := time.Date(2026, 5, 30, 14, 0, 0, 0, loc) // 11:00 UTC same day
+
+	client := New(srv.URL, nil)
+	_, err = client.GetDailySpend(context.Background(), bizID, day)
+	require.NoError(t, err)
+
+	q, ok := seenQuery.Load().(string)
+	require.True(t, ok)
+	assert.Contains(t, q, "business_id="+bizID.String())
+	assert.Contains(t, q, "date=2026-05-30")
+}
+
+// TestGetDailySpend_UnexpectedStatus_NoSentinel — 418 surfaces as a plain
+// error without chaining ErrTransient or ErrInvalidPayload so callers fail
+// closed instead of retrying.
+func TestGetDailySpend_UnexpectedStatus_NoSentinel(t *testing.T) {
+	disableMTLSEnv(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL, nil)
+	_, err := client.GetDailySpend(context.Background(), uuid.New(), time.Now().UTC())
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, ErrTransient))
+	assert.False(t, errors.Is(err, ErrInvalidPayload))
+}
+
 // Test 11: ONEVOICE_MTLS_ENABLED=true + ephemeral CA wired → successful POST
 // over mTLS. Mirrors tokenclient's TestGetToken_mTLS_Success.
 func TestLogUsage_mTLS_WhenEnabled(t *testing.T) {
