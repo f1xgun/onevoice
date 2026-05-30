@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,12 +10,10 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
-// claudeContextLength is the context window size (in tokens) for Claude 3.5 family models.
-const claudeContextLength = 200_000
-
-// AnthropicProvider implements llm.Provider using the Anthropic API
+// AnthropicProvider implements llm.Provider using the Anthropic API.
 type AnthropicProvider struct {
 	client *anthropic.Client
 }
@@ -28,13 +27,17 @@ func NewAnthropic(apiKey string) *AnthropicProvider {
 	return &AnthropicProvider{client: &client}
 }
 
-// Name returns the provider identifier
+// Name returns the provider identifier.
 func (p *AnthropicProvider) Name() string { return "anthropic" }
 
-// HealthCheck verifies the provider is reachable by sending a minimal request
+// HealthCheck verifies the provider is reachable by sending a minimal request.
+//
+// Uses claude-haiku-4-5 — the cheapest current-generation model. The previous
+// pin to claude-3-haiku-20240307 is in the Sonnet 4 / Opus 4 deprecation cohort
+// (retires 2026-06-15 per Anthropic models overview).
 func (p *AnthropicProvider) HealthCheck(ctx context.Context) error {
 	_, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaude_3_Haiku_20240307,
+		Model:     anthropic.ModelClaudeHaiku4_5,
 		MaxTokens: 1,
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock("ping")),
@@ -46,65 +49,187 @@ func (p *AnthropicProvider) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// ListModels returns known Anthropic models (API doesn't have a list endpoint)
+// ListModels returns the current Claude catalog (Sonnet 4.6, Haiku 4.5, Opus
+// 4.7). The Anthropic API has no list endpoint, so this is a hand-maintained
+// table whose pricing must be kept in sync with anthropic_models.go.
+//
+// Pricing as of 2026-05-30 per platform.claude.com/docs/en/about-claude/pricing.
+// Sonnet 4.6 and Opus 4.7 do not have Go consts in anthropic-sdk-go v1.22.1; the
+// raw string literals here are required until the SDK ships them (see
+// anthropic_models.go ::SDK NOTE for the drop-on-SDK-bump checklist).
 func (p *AnthropicProvider) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
-	input3 := 3.0
-	output3 := 15.0
-	input5 := 1.0
-	output5 := 5.0
+	sonnet46In, sonnet46Out := 3.0, 15.0
+	haiku45In, haiku45Out := 1.0, 5.0
+	opus47In, opus47Out := 5.0, 25.0
 	return []llm.ModelInfo{
 		{
-			ID:                 "claude-3-5-sonnet-20241022",
-			Name:               "Claude 3.5 Sonnet",
+			ID:                 "claude-sonnet-4-6", // no SDK const yet — see anthropic_models.go ::SDK NOTE
+			Name:               "Claude Sonnet 4.6",
 			Provider:           "anthropic",
-			ContextLength:      claudeContextLength,
-			InputCostPer1MTok:  &input3,
-			OutputCostPer1MTok: &output3,
+			ContextLength:      claudeSonnet4_6ContextLength,
+			InputCostPer1MTok:  &sonnet46In,
+			OutputCostPer1MTok: &sonnet46Out,
 			SupportsToolUse:    true,
 			SupportsStreaming:  true,
 			SupportsVision:     true,
 		},
 		{
-			ID:                 "claude-3-5-haiku-20241022",
-			Name:               "Claude 3.5 Haiku",
+			ID:                 string(anthropic.ModelClaudeHaiku4_5),
+			Name:               "Claude Haiku 4.5",
 			Provider:           "anthropic",
-			ContextLength:      claudeContextLength,
-			InputCostPer1MTok:  &input5,
-			OutputCostPer1MTok: &output5,
+			ContextLength:      claudeHaiku4_5ContextLength,
+			InputCostPer1MTok:  &haiku45In,
+			OutputCostPer1MTok: &haiku45Out,
 			SupportsToolUse:    true,
 			SupportsStreaming:  true,
+			SupportsVision:     true,
+		},
+		{
+			ID:                 "claude-opus-4-7", // no SDK const yet — see anthropic_models.go ::SDK NOTE
+			Name:               "Claude Opus 4.7",
+			Provider:           "anthropic",
+			ContextLength:      claudeOpus4_7ContextLength,
+			InputCostPer1MTok:  &opus47In,
+			OutputCostPer1MTok: &opus47Out,
+			SupportsToolUse:    true,
+			SupportsStreaming:  true,
+			SupportsVision:     true,
 		},
 	}, nil
 }
 
-func buildAnthropicMessages(req llm.ChatRequest) ([]anthropic.TextBlockParam, []anthropic.MessageParam) {
+// toolsToAnthropic projects OneVoice's portable ToolDefinition slice into the
+// Anthropic SDK's ToolUnionParam slice. The last entry carries an ephemeral
+// cache_control breakpoint so the entire tool array participates in the prompt
+// prefix cache (Anthropic semantics: the cache prefix extends from the start
+// of the request up to and including the block bearing cache_control).
+func toolsToAnthropic(in []llm.ToolDefinition) []anthropic.ToolUnionParam {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]anthropic.ToolUnionParam, 0, len(in))
+	for _, t := range in {
+		schema := anthropic.ToolInputSchemaParam{
+			Properties: t.Function.Parameters["properties"],
+		}
+		if req, ok := t.Function.Parameters["required"].([]string); ok {
+			schema.Required = req
+		}
+		u := anthropic.ToolUnionParamOfTool(schema, t.Function.Name)
+		if t.Function.Description != "" {
+			u.OfTool.Description = anthropic.String(t.Function.Description)
+		}
+		out = append(out, u)
+	}
+	if last := len(out) - 1; last >= 0 && out[last].OfTool != nil {
+		out[last].OfTool.CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
+	return out
+}
+
+// mapStopReason projects Anthropic's StopReason enum into the FinishReason
+// strings the orchestrator expects (matching OpenAI conventions). The agent
+// loop branches on FinishReason == "stop" / "tool_calls" / "length"; emitting
+// raw Anthropic strings ("end_turn", "tool_use") silently breaks tool dispatch.
+func mapStopReason(sr anthropic.StopReason) string {
+	switch sr {
+	case anthropic.StopReasonToolUse:
+		return "tool_calls"
+	case anthropic.StopReasonMaxTokens:
+		return "length"
+	case anthropic.StopReasonEndTurn,
+		anthropic.StopReasonStopSequence,
+		anthropic.StopReasonPauseTurn,
+		anthropic.StopReasonRefusal:
+		return "stop"
+	default:
+		return string(sr)
+	}
+}
+
+// buildAnthropicMessagesV2 walks ChatRequest.Messages and projects them into
+// Anthropic's split (system blocks + message slice) representation.
+//
+// Routing rules:
+//   - role:"system"      → TextBlockParam appended to systemBlocks (preserves order)
+//   - role:"user"        → MessageParam{Role:user, Content:[text]}
+//   - role:"assistant"   → MessageParam{Role:assistant, Content:[text?, tool_use*]}
+//     where each entry in m.ToolCalls becomes a tool_use ContentBlock
+//   - role:"tool"        → MessageParam{Role:user, Content:[tool_result]} —
+//     Anthropic represents tool results as user-role messages
+//
+// Plan 24-02 will add ChatRequest.SystemBlocks as the preferred channel and
+// update this helper to prefer it over the role:"system" scrub.
+func buildAnthropicMessagesV2(req llm.ChatRequest) ([]anthropic.TextBlockParam, []anthropic.MessageParam) {
 	var systemBlocks []anthropic.TextBlockParam
-	var msgs []anthropic.MessageParam
+	msgs := make([]anthropic.MessageParam, 0, len(req.Messages))
+
 	for _, m := range req.Messages {
 		switch m.Role {
 		case "system":
-			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: m.Content, Type: "text"})
+			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{
+				Text: m.Content,
+				Type: "text",
+			})
 		case "user":
 			msgs = append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content)))
 		case "assistant":
-			msgs = append(msgs, anthropic.NewAssistantMessage(anthropic.NewTextBlock(m.Content)))
+			blocks := make([]anthropic.ContentBlockParamUnion, 0, 1+len(m.ToolCalls))
+			if m.Content != "" {
+				blocks = append(blocks, anthropic.NewTextBlock(m.Content))
+			}
+			for _, tc := range m.ToolCalls {
+				// Anthropic NewToolUseBlock accepts `input any`; the SDK's
+				// MarshalObject serializes json.RawMessage inline so the
+				// arguments JSON reaches the API unmodified.
+				var input any
+				if tc.Function.Arguments != "" {
+					input = json.RawMessage(tc.Function.Arguments)
+				} else {
+					input = json.RawMessage("{}")
+				}
+				blocks = append(blocks, anthropic.NewToolUseBlock(tc.ID, input, tc.Function.Name))
+			}
+			if len(blocks) == 0 {
+				blocks = append(blocks, anthropic.NewTextBlock(""))
+			}
+			msgs = append(msgs, anthropic.NewAssistantMessage(blocks...))
+		case "tool":
+			msgs = append(msgs, anthropic.NewUserMessage(
+				anthropic.NewToolResultBlock(m.ToolCallID, m.Content, false),
+			))
 		}
 	}
 	return systemBlocks, msgs
 }
 
-// Chat sends a request and returns the complete response
+// Chat sends a request and returns the complete response.
 func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	start := time.Now()
-	systemBlocks, msgs := buildAnthropicMessages(req)
+	systemBlocks, msgs := buildAnthropicMessagesV2(req)
+
+	// LLMQ-02: stamp cache_control on the LAST system block. Plan 24-02 will
+	// switch to honoring an explicit CacheBoundary flag on SystemBlocks so
+	// per-business text in Block 2 stays uncached.
+	if last := len(systemBlocks) - 1; last >= 0 {
+		systemBlocks[last].CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
+
+	maxTokens := int64(req.MaxTokens)
+	if maxTokens == 0 {
+		maxTokens = defaultMaxTokensFor(req.Model)
+	}
 
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(req.Model),
-		MaxTokens: int64(req.MaxTokens),
+		MaxTokens: maxTokens,
 		Messages:  msgs,
 	}
 	if len(systemBlocks) > 0 {
 		params.System = systemBlocks
+	}
+	if len(req.Tools) > 0 {
+		params.Tools = toolsToAnthropic(req.Tools)
 	}
 	params.Temperature = anthropic.Float(req.Temperature)
 
@@ -114,36 +239,74 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm
 	}
 
 	var content string
+	var toolCalls []llm.ToolCall
 	for _, block := range resp.Content {
-		if block.Type == "text" {
+		switch block.Type {
+		case "text":
 			content += block.Text
+		case "tool_use":
+			tu := block.AsToolUse()
+			toolCalls = append(toolCalls, llm.ToolCall{
+				ID:   tu.ID,
+				Type: llm.ToolCallTypeFunction,
+				Function: llm.FunctionCall{
+					Name:      tu.Name,
+					Arguments: string(tu.Input),
+				},
+			})
 		}
 	}
 
+	// LLMQ-02 metric emission. Safe even on cache misses — the helper skips
+	// zero-valued counters so we don't pollute Grafana with empty time series.
+	metrics.RecordLLMCacheUsage(
+		req.Model,
+		int(resp.Usage.CacheReadInputTokens),
+		int(resp.Usage.CacheCreationInputTokens),
+		int(resp.Usage.InputTokens),
+	)
+
 	return &llm.ChatResponse{
 		Content:      content,
-		FinishReason: string(resp.StopReason),
+		ToolCalls:    toolCalls,
+		FinishReason: mapStopReason(resp.StopReason),
 		Usage: llm.TokenUsage{
-			InputTokens:  int(resp.Usage.InputTokens),
-			OutputTokens: int(resp.Usage.OutputTokens),
-			TotalTokens:  int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
+			InputTokens:         int(resp.Usage.InputTokens),
+			OutputTokens:        int(resp.Usage.OutputTokens),
+			TotalTokens:         int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
+			CacheReadTokens:     int(resp.Usage.CacheReadInputTokens),
+			CacheCreationTokens: int(resp.Usage.CacheCreationInputTokens),
 		},
 		Latency:  time.Since(start),
 		Provider: "anthropic",
 	}, nil
 }
 
-// ChatStream returns a channel of incremental responses
+// ChatStream returns a channel of incremental responses.
+//
+// MaxTokens defaulting (24.4) is applied identically to Chat. Cache control on
+// system / tools is intentionally NOT applied here — Plan 24-02 + 24-04 own the
+// streaming-cache surface (current ChatStream only handles text_delta events,
+// not tool_use deltas, so streaming a turn that ends in tool_use silently
+// drops the tool call — see RESEARCH §Pitfall #5).
 func (p *AnthropicProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
-	systemBlocks, msgs := buildAnthropicMessages(req)
+	systemBlocks, msgs := buildAnthropicMessagesV2(req)
+
+	maxTokens := int64(req.MaxTokens)
+	if maxTokens == 0 {
+		maxTokens = defaultMaxTokensFor(req.Model)
+	}
 
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(req.Model),
-		MaxTokens: int64(req.MaxTokens),
+		MaxTokens: maxTokens,
 		Messages:  msgs,
 	}
 	if len(systemBlocks) > 0 {
 		params.System = systemBlocks
+	}
+	if len(req.Tools) > 0 {
+		params.Tools = toolsToAnthropic(req.Tools)
 	}
 	params.Temperature = anthropic.Float(req.Temperature)
 

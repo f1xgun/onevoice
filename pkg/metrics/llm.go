@@ -21,7 +21,7 @@ var (
 
 	// llmCacheReadTokens / llmCacheCreateTokens / llmInputTokensAfterBreakpoint
 	// expose Anthropic prompt-cache token breakdown for Grafana to compute
-	// `llm_cache_hit_ratio`. Labelled by `model` only — MUST NOT add user,
+	// `llm_cache_hit_ratio`. Labeled by `model` only — MUST NOT add user,
 	// business, or content labels (Phase 24 T-24-01-02 mitigation: label
 	// expansion requires PII review).
 	llmCacheReadTokens = promauto.NewCounterVec(prometheus.CounterOpts{
