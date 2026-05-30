@@ -62,36 +62,36 @@ type Services struct {
 	AgentTaskPublisher *platform.NATSTaskPublisher
 
 	// AuthzCache backs the RequireBusinessAccess middleware
-	// (Phase 2 v2.0 RBAC). Non-nil — the middleware panics on a nil cache
+	// (v2.0 RBAC). Non-nil — the middleware panics on a nil cache
 	// at request time.
 	AuthzCache *authz.Cache
 
 	// AuditLogger is the fire-and-forget async writer for audit_logs
-	// (Phase 19 Wave 2). Constructed once here and injected into every
+	// Constructed once here and injected into every
 	// service / handler that records security-sensitive mutations
-	// (wiring done in Plan 19-04). Safe to call from any goroutine; never
+	// (wiring done in ). Safe to call from any goroutine; never
 	// blocks the request path.
 	AuditLogger audit.Logger
 
-	// PasswordReset is the Phase 21b (ACCT-01) password-reset service.
+	// PasswordReset is the password-reset service.
 	// Wired into AuthHandler via SetPasswordResetService in
 	// wire/handlers.go.
 	PasswordReset *service.PasswordResetService
 
-	// EmailVerification is the Phase 21-03 (ACCT-02) email-verification +
+	// EmailVerification is the email-verification +
 	// soft-restrict service. Wired into AuthHandler via
 	// SetEmailVerificationService AND into UserService.Register via the
-	// shared IssueAndEnqueueTx helper (D-17: token + outbox enqueue must
+	// shared IssueAndEnqueueTx helper (token + outbox enqueue must
 	// commit in the same tx as the user_consents INSERT + user row).
 	EmailVerification *service.EmailVerificationService
 
-	// AccountDeletion is the Phase 21-04 (ACCT-03 / ACCT-05) account-
+	// AccountDeletion is the account-
 	// deletion service. Wired into UserDeletionHandler via the
 	// NewUserDeletionHandler constructor + into cmd/main.go via the
 	// runHardDeleteSweeper / runDeletionWarningSweeper goroutines.
 	AccountDeletion *service.AccountDeletionService
 
-	// Consent is the Phase 22 (LEGAL-01..06) consent orchestration
+	// Consent is the consent orchestration
 	// service. Wired into ConsentsHandler + into UserService.Register
 	// via SetRegisterConsentService so the 3-row UPSERT runs inside the
 	// same tx as the user row.
@@ -106,7 +106,7 @@ type Services struct {
 	Lockout      *lockout.Lockout
 	SmartCaptcha service.SmartCaptchaVerifier
 
-	// reviewSyncerCancel is captured so Close() can stop the background
+	// reviewSyncerCancel is captured so Close can stop the background
 	// ticker goroutine. nil when ReviewSyncer is nil.
 	reviewSyncerCancel context.CancelFunc
 }
@@ -124,9 +124,9 @@ func (s *Services) Close() {
 
 // StartReviewSyncer starts the background review-syncer ticker. Idempotent:
 // returns nil and does nothing if the syncer is nil. The ticker stops when
-// either the parent ctx cancels or Services.Close() is called.
+// either the parent ctx cancels or Services.Close is called.
 //
-// Kept separate from Services() so cmd/main.go can defer Close() before the
+// Kept separate from Services so cmd/main.go can defer Close before the
 // ticker starts (current behavior preserved verbatim from the legacy
 // inline `if reviewSyncer != nil { go reviewSyncer.Start(syncCtx) }` block).
 func (s *Services) StartReviewSyncer(ctx context.Context, log *slog.Logger, intervalMinutes int) {
@@ -160,14 +160,14 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	s := &Services{
 		TaskHub:    taskhub.New(),
 		OrchClient: orchClient,
-		// Phase 19 Wave 2: audit logger constructed once here and shared
+		// audit logger constructed once here and shared
 		// across every service / handler that records security-sensitive
 		// mutations. Async + bounded retry + metric-on-failure live inside
 		// pkg/audit; consumers just call AuditLogger.Log(ctx, entry).
 		//
-		// Phase 21-03 / ACCT-06: NewLoggerWithResolver injects a tiny
+		// NewLoggerWithResolver injects a tiny
 		// adapter wrapping UserRepository.GetByID so loggerImpl.write can
-		// snapshot user_email_at_event BEFORE the INSERT. After Phase 21-04
+		// snapshot user_email_at_event BEFORE the INSERT. After 
 		// hard-deletes a user, the audit row's FK becomes NULL but the
 		// email survives for 152-ФЗ forensic queries.
 		AuditLogger: audit.NewLoggerWithResolver(repos.AuditLog, userResolverAdapter{repo: repos.User}),
@@ -220,13 +220,13 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		return nil, fmt.Errorf("wire: create user service: %w", err)
 	}
 	s.User = userService
-	// Phase 1 v2.0 RBAC (DATA-06): BusinessService dual-writes
+	// v2.0 RBAC (DATA-06): BusinessService dual-writes
 	// businesses + business_members(role_id=owner) inside a single tx.
-	// Phase 19 Wave 4 (19-04): + AuditLogger emits business.created/updated
-	// AFTER tx.Commit succeeds (D-29/D-30).
+	// + AuditLogger emits business.created/updated
+	// AFTER tx.Commit succeeds.
 	s.Business = service.NewBusinessService(repos.Business, repos.BusinessMembership, repos.Role, h.PG, s.AuditLogger)
 
-	// Phase 2 v2.0 RBAC: authz cache backs the RequireBusinessAccess
+	// v2.0 RBAC: authz cache backs the RequireBusinessAccess
 	// middleware. The MembershipLoader queries (user_id, business_id) →
 	// (role_id, permissions) in one round-trip; the cache memoizes results
 	// keyed by (user_id, business_id) with explicit invalidation on member
@@ -244,7 +244,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 			&http.Client{Timeout: cfg.OrchestratorFetchTimeout},
 		)
 	}
-	// Phase 19 Wave 4 (19-04): IntegrationService emits integration.connected
+	// IntegrationService emits integration.connected
 	// and integration.token_rotated. ProjectService emits project.* events.
 	s.Integration = service.NewIntegrationService(repos.Integration, h.Enc, refresher, s.AuditLogger)
 	s.OAuth = service.NewOAuthService(h.Redis)
@@ -351,9 +351,9 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		orchClient,
 	)
 
-	// Phase 21b (ACCT-01) password reset service. Composes the
+	// password reset service. Composes the
 	// PasswordResetTokenRepository + the tx-aware user repo adapter +
-	// the email outbox (Phase 21a) + the shared audit logger + Redis
+	// the email outbox + the shared audit logger + Redis
 	// (rate-limit + post-commit refresh-token wipe).
 	s.PasswordReset = service.NewPasswordResetService(
 		h.PG,
@@ -364,7 +364,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		h.Redis,
 	)
 
-	// Phase 21-03 (ACCT-02) email verification service. Composes the
+	// email verification service. Composes the
 	// EmailVerificationTokenRepository + UserResetExt adapter (reused —
 	// satisfies service.VerifyUserRepo by structural typing) + outbox
 	// + Redis (1/min + 5/hr rate limit) + PublicURL for the link.
@@ -377,7 +377,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		cfg.PublicURL,
 	)
 
-	// Phase 21-04 (ACCT-03 / ACCT-05): account-deletion service. Composes
+	// account-deletion service. Composes
 	// the UserResetExt adapter (deletion methods land there alongside
 	// password-reset + verify) + the conversation repo (Mongo cleanup
 	// post-hard-delete) + the outbox (confirmation + T-7 warning) + the
@@ -390,10 +390,10 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		s.AuditLogger,
 	)
 
-	// Phase 22 (LEGAL-01..06 / D-17): ConsentService orchestrates the
+	// ConsentService orchestrates the
 	// three consent flows (Register UPSERTs, ReConsent modal, PDN
 	// withdrawal). currentVersion closure plumbs legalconfig.* version
-	// constants; sha256 stays empty until Phase 22-02 wires the policy
+	// constants; sha256 stays empty until wires the policy
 	// loader (the frontend computes it).
 	s.Consent = service.NewConsentService(
 		h.PG,
@@ -405,7 +405,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		},
 	)
 
-	// Phase 21-03 (ACCT-02 / D-17, D-40): wire the Register tx-flow
+	// wire the Register tx-flow
 	// collaborators so user_consents + email_verification_tokens +
 	// email_outbox commit atomically with the user row. The setter
 	// pattern keeps NewUserService's signature stable across phases.
@@ -426,7 +426,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 			s.AuditLogger,
 		)
 	}
-	// Phase 22 (LEGAL-01..06 / D-17): wire ConsentService into Register
+	// wire ConsentService into Register
 	// so RegisterWithContext writes 3 consent rows in the same tx as
 	// the user row + verify token + outbox enqueue.
 	if consentSetter, ok := s.User.(interface {
@@ -484,7 +484,7 @@ const toolsCacheTTL = 5 * time.Minute
 //
 // On lookup failure the adapter returns ("", err) — pkg/audit.loggerImpl
 // catches the error, slog.Warns, and leaves UserEmailAtEvent empty so the
-// audit row still writes (Phase 21-03 / ACCT-06 D-disposition).
+// audit row still writes (D-disposition).
 type userResolverAdapter struct {
 	repo domain.UserRepository
 }

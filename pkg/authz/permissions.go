@@ -1,8 +1,8 @@
 // Package authz — permissions.go
 //
-// The typed permission registry. Phase 1 ships the constants and the
-// AllPermissions() accessor; Phase 2 adds cache.go, check.go, loader.go to
-// this same package (CONTEXT D-10/D-11). All permissions are flat
+// The typed permission registry. ships the constants and the
+// AllPermissions accessor; adds cache.go, check.go, loader.go to
+// this same package. All permissions are flat
 // resource.action strings matching ^[a-z_]+\.[a-z_]+$ — no wildcards, no
 // hierarchy (REQUIREMENTS Out-of-Scope §"Hierarchical / wildcard").
 //
@@ -15,13 +15,13 @@
 package authz
 
 // Permission is a flat resource.action string. The named type lets handlers
-// pass typed values to authz.Can() (Phase 2) and gives the JSON encoder a
+// pass typed values to authz.Can and gives the JSON encoder a
 // stable wire shape via the underlying string.
 type Permission string
 
 // PermissionMeta is the registry entry for one permission. Description is a
 // short Russian imperative string consumed by the role-editor Info tooltip
-// (UI-RBAC-09 D-13). Adding a new permission requires filling Description
+// (UI-RBAC-09 ). Adding a new permission requires filling Description
 // here; the drift test in permissions_test.go fails CI when this is missed.
 type PermissionMeta struct {
 	Name        Permission `json:"name"`
@@ -40,7 +40,7 @@ type PermissionGroup struct {
 // Permission constants — exported names follow `Perm<Resource><Action>`
 // PascalCase. Adding a new permission means: add the const here, add it to
 // the appropriate group in AllPermissions, mirror it in the migration seed
-// (and re-run the Phase 1 drift test), and grant it to the relevant system
+// (and re-run the drift test), and grant it to the relevant system
 // roles in the seed JSONB arrays.
 const (
 	// business.*

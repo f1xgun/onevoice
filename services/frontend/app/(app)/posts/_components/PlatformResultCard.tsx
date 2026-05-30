@@ -1,7 +1,7 @@
 // app/(app)/posts/_components/PlatformResultCard.tsx — per-platform
 // result row inside the ExpandedPanel right column.
 //
-// Extracted from posts/page.tsx as part of Phase 19 / 19-12.
+// Extracted from posts/page.tsx as part of.
 import { useTranslations } from 'next-intl';
 import { ChannelMark } from '@/components/ui/channel-mark';
 import { CHANNEL_NAMES } from '@/lib/platforms';

@@ -1,7 +1,7 @@
 // app/(app)/posts/_components/MediaThumb.tsx — Linen thumbnail rendered
 // inside ExpandedPanel for each attached media file.
 //
-// Extracted from posts/page.tsx as part of Phase 19 / 19-12.
+// Extracted from posts/page.tsx as part of.
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 

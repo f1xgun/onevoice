@@ -1,31 +1,31 @@
 package integration
 
-// Phase 21-03 (ACCT-02) — Email verification integration tests.
+// Email verification integration tests.
 //
 // Coverage matrix (per 21-03-PLAN Task 12 + verification gate):
-//   1. TokenSingleUse                — second consume returns 400
-//                                      verify_token_invalid (atomic
-//                                      consume; PITFALLS §1.3).
-//   2. ScannerProtection             — GET /auth/verify-email?token=...
-//                                      does NOT mutate (the FE page
-//                                      renders only a button; the
-//                                      backend has no GET confirm
-//                                      handler — POST is the only
-//                                      consume path). T-VE-01 gate.
-//   3. NoCookiesIssued               — POST /verify-email/confirm with
-//                                      a valid token returns 204 with
-//                                      ZERO Set-Cookie headers (T-VE-02
-//                                      mitigation gate).
-//   4. ResendThrottle                — 2nd resend within 60s → 429
-//                                      verify_resend_throttled (D-24).
-//   5. ChangeEmail_OnlyBeforeVerify  — unverified user PATCH /email-before-verify
-//                                      changes the email + invalidates
-//                                      outstanding tokens + enqueues a
-//                                      new outbox row.
-//   6. ChangeEmail_BlockedWhenVerified — verified user PATCH returns 403
-//                                        email_already_verified.
-//   7. ChangeEmail_EmailTaken        — PATCH to another user's email
-//                                      returns 409 email_taken.
+// 1. TokenSingleUse                — second consume returns 400
+// verify_token_invalid (atomic
+// consume; PITFALLS §1.3).
+// 2. ScannerProtection             — GET /auth/verify-email?token=...
+// does NOT mutate (the FE page
+// renders only a button; the
+// backend has no GET confirm
+// handler — POST is the only
+// consume path). T-VE-01 gate.
+// 3. NoCookiesIssued               — POST /verify-email/confirm with
+// a valid token returns 204 with
+// ZERO Set-Cookie headers (T-VE-02
+// mitigation gate).
+// 4. ResendThrottle                — 2nd resend within 60s → 429
+// verify_resend_throttled.
+// 5. ChangeEmail_OnlyBeforeVerify  — unverified user PATCH /email-before-verify
+// changes the email + invalidates
+// outstanding tokens + enqueues a
+// new outbox row.
+// 6. ChangeEmail_BlockedWhenVerified — verified user PATCH returns 403
+// email_already_verified.
+// 7. ChangeEmail_EmailTaken        — PATCH to another user's email
+// returns 409 email_taken.
 //
 // Harness: same shape as password_reset_test.go. Tests skip when
 // pgPool == nil (TEST_POSTGRES_URL not set; local-dev without docker).
@@ -120,7 +120,7 @@ func extractVerifyToken(t *testing.T, body string) string {
 	return m[1]
 }
 
-// cleanupVerify wipes the Phase 21-03 tables between tests.
+// cleanupVerify wipes the tables between tests.
 func cleanupVerify(t *testing.T) {
 	t.Helper()
 	if pgPool != nil {
@@ -142,7 +142,7 @@ func TestEmailVerify_TokenSingleUse(t *testing.T) {
 	cleanupVerify(t)
 	_ = setupTestUser(t, "single-use@example.com", "password123")
 
-	// Register enqueues a verification email atomically (D-17). Grab its token.
+	// Register enqueues a verification email atomically. Grab its token.
 	body := fetchLatestVerifyOutboxBody(t, "single-use@example.com")
 	token := extractVerifyToken(t, body)
 
@@ -224,7 +224,7 @@ func TestVerifyConfirm_NoCookiesIssued(t *testing.T) {
 		"verify-confirm MUST NOT issue cookies — T-VE-02")
 }
 
-// --- Test 4: resend throttle (D-24 — 1/min) ------------------------------
+// --- Test 4: resend throttle (1/min) ------------------------------
 
 func TestEmailVerify_ResendThrottleOnePerMinute(t *testing.T) {
 	if pgPool == nil {
@@ -247,7 +247,7 @@ func TestEmailVerify_ResendThrottleOnePerMinute(t *testing.T) {
 	require.Equal(t, "verify_resend_throttled", body["code"])
 }
 
-// --- Test 5: change email BEFORE verify (D-21 happy path) ---------------
+// --- Test 5: change email BEFORE verify (happy path) ---------------
 
 func TestEmailChange_OnlyBeforeVerify_Allowed(t *testing.T) {
 	if pgPool == nil {

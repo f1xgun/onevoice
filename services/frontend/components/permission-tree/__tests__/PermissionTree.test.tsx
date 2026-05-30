@@ -15,8 +15,8 @@ import type { PermissionGroup } from '@/lib/schemas';
 
 import { PermissionTree } from '../PermissionTree';
 
-// Plan 05-05 Task 3 — integration tests for D-11 (all expanded by default),
-// D-13 (Info icon tooltip) and UI-RBAC-11 (catalog-driven rendering).
+// Task 3 — integration tests for (all expanded by default),
+// (Info icon tooltip) and UI-RBAC-11 (catalog-driven rendering).
 //
 // The mock catalog uses arbitrary resource + permission names — the tree must
 // render whatever the catalog returns, never hardcoded names. This is exactly
@@ -77,7 +77,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('PermissionTree (D-11 + D-13 + UI-RBAC-11)', () => {
+describe('PermissionTree', () => {
   it('renders Skeleton block (aria-busy) while catalog is loading', () => {
     // Resolved promise that never settles within the test: keep isLoading=true.
     mockedGetCatalog.mockImplementation(() => new Promise(() => {}));
@@ -85,7 +85,7 @@ describe('PermissionTree (D-11 + D-13 + UI-RBAC-11)', () => {
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
   });
 
-  it('D-11: every group is expanded by default — all leaves visible without chevron click', async () => {
+  it('every group is expanded by default — all leaves visible without chevron click', async () => {
     mockedGetCatalog.mockResolvedValue(CATALOG);
     renderTree();
     await waitFor(() => {
@@ -123,7 +123,7 @@ describe('PermissionTree (D-11 + D-13 + UI-RBAC-11)', () => {
     expect(onChange).toHaveBeenCalledWith(['business.read']);
   });
 
-  it('D-12 wiring: clicking a group checkbox toggles all enabled leaves at once', async () => {
+  it('wiring: clicking a group checkbox toggles all enabled leaves at once', async () => {
     mockedGetCatalog.mockResolvedValue(CATALOG);
     const onChange = vi.fn();
     renderTree({
@@ -139,7 +139,7 @@ describe('PermissionTree (D-11 + D-13 + UI-RBAC-11)', () => {
     expect([...next].sort()).toEqual(['roles.read', 'roles.update'].sort());
   });
 
-  it('D-13: disabled leaf renders «У вас нет этого права» tooltip aria-label', async () => {
+  it('disabled leaf renders «У вас нет этого права» tooltip aria-label', async () => {
     mockedGetCatalog.mockResolvedValue(CATALOG);
     renderTree({
       // Actor lacks roles.create — the leaf must render disabled tooltip text.

@@ -1,7 +1,7 @@
-/** Phase 19 / Plan 19-04 — search result type, mirrors backend service.SearchResult.
+/** search result type, mirrors backend service.SearchResult.
  *
  * Backend: `services/api/internal/service/search.go SearchResult` (camelCase JSON,
- * Phase 18 D-06 convention). The `marks` field carries `[start, end]` byte offsets
+ *  convention). The `marks` field carries `[start, end]` byte offsets
  * (UTF-8) into the `snippet` string — frontend wraps each range in <mark>.
  *
  * Cross-tenant scope is enforced server-side; the frontend MAY pass `project_id`

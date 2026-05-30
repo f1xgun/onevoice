@@ -64,7 +64,7 @@ function Wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-describe('Cmd/Ctrl-K global focus listener (D-11)', () => {
+describe('Cmd/Ctrl-K global focus listener', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

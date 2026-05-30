@@ -34,22 +34,22 @@ import { useMapRoleError } from '@/lib/resolveErrorMap';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/lib/schemas';
 
-// DeleteRoleDialog — the D-08 / D-09 / D-10 nucleus of the roles list flow.
+// DeleteRoleDialog — the / / nucleus of the roles list flow.
 //
-//   - D-08 smart variant: the dialog opens in 'simple' (plain confirm) when
-//     the cached role.member_count is 0, and in 'picker' (Select required)
-//     when it's >0. This lets the most-common case (delete an unused role)
-//     resolve in one click.
-//   - D-09 reassign ordering: when in picker mode, the Select shows system
-//     roles first in fixed Owner→Admin→Editor→Viewer order, then custom
-//     roles A→Z. Targets the actor can't grant (escalation guard) render
-//     disabled.
-//   - D-10 race recovery: when the dialog opened in 'simple' but the
-//     backend rejects the DELETE with 422 role_in_use (someone else
-//     assigned a member between cache read and click), the dialog
-//     SILENTLY invalidates+refetches the roles cache and flips itself to
-//     'picker' WITHOUT closing. Radix preserves focus; users see the body
-//     swap in-place rather than a close-then-reopen flash.
+// -  smart variant: the dialog opens in 'simple' (plain confirm) when
+// the cached role.member_count is 0, and in 'picker' (Select required)
+// when it's >0. This lets the most-common case (delete an unused role)
+// resolve in one click.
+// -  reassign ordering: when in picker mode, the Select shows system
+// roles first in fixed Owner→Admin→Editor→Viewer order, then custom
+// roles A→Z. Targets the actor can't grant (escalation guard) render
+// disabled.
+// -  race recovery: when the dialog opened in 'simple' but the
+// backend rejects the DELETE with 422 role_in_use (someone else
+// assigned a member between cache read and click), the dialog
+// SILENTLY invalidates+refetches the roles cache and flips itself to
+// 'picker' WITHOUT closing. Radix preserves focus; users see the body
+// swap in-place rather than a close-then-reopen flash.
 
 const SYSTEM_ORDER = ['owner', 'admin', 'editor', 'viewer'] as const;
 
@@ -71,7 +71,7 @@ export interface ReassignOption {
 }
 
 // Pure helper — testable without React. Builds the ordered Select option
-// list per D-09. Exported so the test suite can exercise edge cases
+// list. Exported so the test suite can exercise edge cases
 // (escalation guard, self-exclusion) directly against the function.
 export function buildReassignOptions({
   allRoles,
@@ -92,7 +92,7 @@ export function buildReassignOptions({
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
   // Localized labels for system roles. Keys are stable Go-side names
-  // (Plan 05-03 catalog), so a static map is the right call here — adding
+  // (catalog), so a static map is the right call here — adding
   // a new system role is a backend release event, not user input.
   const SYSTEM_LABEL_RU: Record<string, string> = {
     owner: 'Владелец',
@@ -101,7 +101,7 @@ export function buildReassignOptions({
     viewer: 'Наблюдатель',
   };
 
-  // Escalation guard (D-09): the actor cannot grant a permission they
+  // Escalation guard: the actor cannot grant a permission they
   // don't themselves hold. Backend re-checks this on the DELETE call
   // (cannot_grant_unowned_permissions), but the UI disables the option
   // up-front so the user never picks a doomed target.
@@ -146,7 +146,7 @@ export function DeleteRoleDialog({
   const qc = useQueryClient();
   const deleteMut = useDeleteRole(businessId);
 
-  // Initial variant (D-08) — recomputed when the dialog re-opens for a
+  // Initial variant — recomputed when the dialog re-opens for a
   // different role (the role prop is stable per-mount because the parent
   // owns dialog state per-role, but `open` toggles).
   const initialVariant: 'simple' | 'picker' = (role.member_count ?? 0) > 0 ? 'picker' : 'simple';
@@ -189,7 +189,7 @@ export function DeleteRoleDialog({
   }, [variant, reassignToId, firstEligible]);
 
   async function handleConfirm() {
-    // NIT-03 (Phase 5 review): on success this handler does NOT invalidate
+    // NIT-03 (review): on success this handler does NOT invalidate
     // the roles cache itself — useDeleteRole.onSuccess (lib/hooks/useRoles.ts)
     // already invalidates ROLES + PERMISSIONS + MEMBERS for the active
     // business. Duplicating the invalidation here would be a cheap no-op
@@ -207,7 +207,7 @@ export function DeleteRoleDialog({
       toast.success(t('toastSuccess'));
       onOpenChange(false);
     } catch (err) {
-      // D-10 race recovery: the optimistic "member_count=0 → simple variant"
+      // race recovery: the optimistic "member_count=0 → simple variant"
       // assumption raced with a concurrent assign. The backend returns
       // 422 role_in_use. Swap to picker in-place — DO NOT close + reopen
       // (Radix focus would jump, UX would feel buggy).

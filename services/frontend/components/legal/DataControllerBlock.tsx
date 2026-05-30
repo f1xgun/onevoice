@@ -1,11 +1,11 @@
-// Phase 22-02 — Surface A/C/contact: 152-ФЗ Art. 14 §3 data controller
+// Surface A/C/contact: 152-ФЗ Art. 14 §3 data controller
 // block. Renders the legal entity's reqisites (наименование, ИНН,
 // юридический адрес, e-mail для запросов по ПДн) read from
-// NEXT_PUBLIC_LEGAL_* envs via loadLegalEntity().
+// NEXT_PUBLIC_LEGAL_* envs via loadLegalEntity.
 //
 // Mounted by the page-level Server Components conditionally on
 // frontmatter `showsController: true`. Marked 'use client' because
-// isPlaceholder() emits a console.warn in development (D-22) which
+// isPlaceholder emits a console.warn in development which
 // requires a browser context.
 
 'use client';
@@ -18,7 +18,7 @@ export function DataControllerBlock() {
   const t = useTranslations('legal.shared');
   const entity = loadLegalEntity();
 
-  // Dev-only warning when env vars are still placeholders (D-22). Kept
+  // Dev-only warning when env vars are still placeholders. Kept
   // in an effect so SSR output is identical to client-rendered output;
   // the warning fires once per page mount in the browser console.
   useEffect(() => {

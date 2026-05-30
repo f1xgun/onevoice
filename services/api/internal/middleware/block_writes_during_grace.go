@@ -1,6 +1,6 @@
 // Package middleware — block_writes_during_grace.go
 //
-// Phase 21-04 (ACCT-03 / D-34): write-gate middleware that returns 423
+// write-gate middleware that returns 423
 // Locked on POST/PUT/PATCH/DELETE during the 30-day deletion grace
 // window. Reads (GET/HEAD/OPTIONS) bypass the gate so the user can
 // still browse history and click restore.

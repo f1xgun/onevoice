@@ -109,7 +109,7 @@ func TestLogger_TerminalFailureIncrementsMetric(t *testing.T) {
 	require.Equal(t, before+1, after, "expected one failure increment on auth category")
 }
 
-// --- Phase 21-03 / ACCT-06 — UserResolver populates user_email_at_event ---
+// --- / — UserResolver populates user_email_at_event ---
 
 // fakeUserResolver is a programmable stub for the EmailByID lookup. If
 // errResult is non-nil it returns ("", errResult); otherwise (emailResult, nil).

@@ -46,7 +46,7 @@ test-frontend: ## Run frontend tests
 	@echo "Running frontend tests..."
 	@cd services/frontend && pnpm test
 
-# Phase 19 / Plan 19-05 — BLOCKING accessibility gate.
+# BLOCKING accessibility gate.
 #
 # Runs vitest only on the axe-core audit suite. The audit fails (non-zero
 # exit) when any `critical` or `serious` violation is detected on the
@@ -124,7 +124,7 @@ lint-migrations: ## Verify migration parity (no duplicate versions, paired up/do
 	@echo "Checking migration parity..."
 	@./scripts/check-migrations-parity.sh
 
-# Phase 22-03 — Asserts pkg/legalconfig/versions.go and
+# Asserts pkg/legalconfig/versions.go and
 # services/frontend/lib/legal/versions.ts carry IDENTICAL version strings
 # for tos / privacy / pdn. Drift causes 409 version_mismatch loops or
 # accepted-with-wrong-version audit rows. Wired into lint-all so a PR

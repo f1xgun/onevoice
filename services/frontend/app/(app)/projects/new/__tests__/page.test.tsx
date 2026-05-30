@@ -22,7 +22,7 @@ vi.mock('@/components/projects/ProjectForm', () => ({
   },
 }));
 
-describe('NewProjectPage — post-create behaviour (GAP-04)', () => {
+describe('NewProjectPage — post-create behaviour', () => {
   beforeEach(() => {
     push.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
@@ -46,7 +46,7 @@ describe('NewProjectPage — post-create behaviour (GAP-04)', () => {
     expect(calls[0][0]).toContain('создан');
   });
 
-  it('does NOT redirect to Phase 19 placeholder /projects/:id/chats (regression guard)', () => {
+  it('does NOT redirect to the deprecated /projects/:id/chats placeholder (regression guard)', () => {
     render(<NewProjectPage />);
     capturedOnSaved!({ id: 'p1', name: 'Отзывы' });
     expect(push).not.toHaveBeenCalledWith(expect.stringMatching(/\/projects\/.*\/chats/));

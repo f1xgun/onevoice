@@ -1,5 +1,5 @@
-// Phase 21-03 (ACCT-02) — Surface 4 secondary: escape hatch for users
-// with a dead pre-verification email (D-21). Renders a Dialog (NOT
+// Surface 4 secondary: escape hatch for users
+// with a dead pre-verification email. Renders a Dialog (NOT
 // AlertDialog — non-destructive edit) with a single email field.
 //
 // On success the modal closes + a toast confirms. The banner stays

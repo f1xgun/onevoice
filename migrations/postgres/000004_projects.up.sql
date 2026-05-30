@@ -1,13 +1,13 @@
--- Phase 15: Projects Foundation — per-business chat groupings with system prompt override,
+-- Projects Foundation — per-business chat groupings with system prompt override,
 -- typed tool-whitelist mode, optional allowed_tools list, and quick-actions strings.
 --
--- NOTE: This is the PRODUCTION path (migrations/postgres/). It uses gen_random_uuid()
+-- NOTE: This is the PRODUCTION path (migrations/postgres/). It uses gen_random_uuid
 -- to match migrations/postgres/000001_init.up.sql. The integration-test copy at
--- services/api/migrations/000003_projects.up.sql uses uuid_generate_v4() because that
+-- services/api/migrations/000003_projects.up.sql uses uuid_generate_v4 because that
 -- path's 000001 loads the uuid-ossp extension. The two files are logically equivalent
 -- (same schema, same constraints, same indexes) but use the UUID function appropriate
 -- to each path. See services/api/AGENTS.md "Database Migrations" + 15-VERIFICATION.md
--- GAP-01 for context.
+-- for context.
 
 CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

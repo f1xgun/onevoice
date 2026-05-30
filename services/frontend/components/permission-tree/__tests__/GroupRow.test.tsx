@@ -4,7 +4,7 @@ import type { PermissionGroup } from '@/lib/schemas';
 
 import { computeGroupState, handleGroupToggle } from '../GroupRow';
 
-// Plan 05-05 Task 3 — pure-function unit tests for the locked D-12 invariant.
+// Task 3 — pure-function unit tests for the locked invariant.
 //
 // computeGroupState + handleGroupToggle are extracted as exports so the
 // tri-state contract is auditable without DOM/RTL plumbing. The integration
@@ -25,7 +25,7 @@ const ACTOR_FULL = new Set(['roles.read', 'roles.create', 'roles.update', 'roles
 const ACTOR_PARTIAL = new Set(['roles.read', 'roles.update']); // missing create + delete
 const ACTOR_EMPTY = new Set<string>();
 
-describe('computeGroupState (D-12 invariant)', () => {
+describe('computeGroupState (invariant)', () => {
   it('returns "unchecked" when no leaves selected', () => {
     expect(computeGroupState(GROUP, new Set(), ACTOR_FULL)).toBe('unchecked');
   });
@@ -77,7 +77,7 @@ describe('computeGroupState (D-12 invariant)', () => {
   });
 });
 
-describe('handleGroupToggle (D-12: skips disabled leaves)', () => {
+describe('handleGroupToggle (skips disabled leaves)', () => {
   it('toggles ON: adds every actor-enabled leaf; disabled leaves stay', () => {
     let result: string[] = [];
     handleGroupToggle(GROUP, 'unchecked', ['roles.delete'], ACTOR_PARTIAL, (n) => {

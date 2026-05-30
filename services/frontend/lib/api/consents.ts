@@ -1,10 +1,10 @@
-// Phase 22-02 — Frontend client for the Plan 22-01 backend consent
+// Frontend client for the backend consent
 // endpoints (mirrors the shape of lib/api/account.ts).
 //
-// Endpoints (Plan 22-01 D-30 contract):
-//   POST /api/v1/auth/consents                        → 204 / 409 / 401 / 423
-//   POST /api/v1/users/me/consents/pdn/withdraw       → 204 / 423
-//   GET  /api/v1/users/me/consents                    → { consents: ConsentRecord[] }
+// Endpoints (contract):
+// POST /api/v1/auth/consents                        → 204 / 409 / 401 / 423
+// POST /api/v1/users/me/consents/pdn/withdraw       → 204 / 423
+// GET  /api/v1/users/me/consents                    → { consents: ConsentRecord[] }
 //
 // All POSTs include credentials:'include' so the backend's Origin CSRF
 // guard (mirrors user_deletion.go shape per 22-01 SUMMARY line 151)
@@ -78,7 +78,7 @@ export async function postReconsent(policies: ConsentPolicy[]): Promise<void> {
 /**
  * withdrawPDN sends POST /api/v1/users/me/consents/pdn/withdraw with no
  * body. Backend triggers AccountDeletionService.RequestDeletion(reason=
- * 'consent_withdrawn') from Phase 21-04 (same 30-day grace + restore
+ * 'consent_withdrawn') from (same 30-day grace + restore
  * window). Returns void on 204; throws on non-204 with the same shape.
  * 423 account_pending_deletion is treated as success by the caller per
  * UI-SPEC §F edge case.

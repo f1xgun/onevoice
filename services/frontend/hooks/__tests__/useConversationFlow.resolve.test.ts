@@ -1,6 +1,6 @@
 // Tests for `useConversationFlow` — the merged hook that replaces the
-// previous useChat + usePendingApprovalFlow sibling split (Phase 19
-// plan 19-10, decision D-19). Assertions from the pre-merge resolve /
+// previous useChat + usePendingApprovalFlow sibling split (
+// plan 19-10, decision ). Assertions from the pre-merge resolve /
 // hydration suites are reproduced byte-identically; only the test setup
 // changes (renderHook now targets the merged hook directly instead of
 // the old `useChatWithApprovalFlow` wrapper that bridged the siblings).
@@ -8,12 +8,12 @@
 // Tests use two patterns:
 //
 // (A) Direct hook tests: render `useConversationFlow` and inspect any of
-//     pendingApproval / resolveApproval / toast / fetch / messages /
-//     isStreaming. The merged hook owns the full state machine so a
-//     single renderHook covers what the old setup needed two for.
+// pendingApproval / resolveApproval / toast / fetch / messages /
+// isStreaming. The merged hook owns the full state machine so a
+// single renderHook covers what the old setup needed two for.
 //
 // (B) ChatWindow integration tests: render `<ChatWindow>` and inspect
-//     the real component tree.
+// the real component tree.
 
 import { createElement, type ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -97,7 +97,7 @@ function hydratedFlow(conversationId: string, fetchMock: ReturnType<typeof vi.fn
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hydration tests — moved verbatim from hooks/__tests__/useChat.hydration.test.ts
-// (D-16 wiring-only updates: `useChat(string)` → `usePendingApprovalFlow({…})`).
+// (wiring-only updates: `useChat(string)` → `usePendingApprovalFlow({…})`).
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('useConversationFlow — hydration from GET /messages pendingApprovals', () => {
@@ -114,11 +114,11 @@ describe('useConversationFlow — hydration from GET /messages pendingApprovals'
     vi.restoreAllMocks();
   });
 
-  // Note: After the Phase 19 hook split, `useChat` is the sole fetcher of
+  // Note: After the hook split, `useChat` is the sole fetcher of
   // GET /messages (preserving the single round-trip invariant). Hydration
   // tests therefore exercise the combined `useChatWithApprovalFlow` wiring;
   // assertions on `result.current.pendingApproval` remain byte-identical
-  // (D-16: wiring-only test changes).
+  // (wiring-only test changes).
 
   it('hydrates pendingApproval from a non-empty pendingApprovals array on mount', async () => {
     const fetchMock = vi.fn();
@@ -283,7 +283,7 @@ describe('useConversationFlow — hydration from GET /messages pendingApprovals'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Resolve tests — moved verbatim from hooks/__tests__/useChat.resolve.test.ts
-// (D-16 wiring-only updates).
+// (wiring-only updates).
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('useConversationFlow.resolveApproval — happy path', () => {
@@ -585,7 +585,7 @@ describe('useConversationFlow.resolveApproval — tool_name echo guard', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// New approval-flow-specific tests (Phase 19, plan 19-10 acceptance criteria).
+// New approval-flow-specific tests (plan 19-10 acceptance criteria).
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('useConversationFlow — sanitization & contracts', () => {

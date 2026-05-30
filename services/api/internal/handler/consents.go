@@ -1,17 +1,17 @@
 // Package handler — consents.go
 //
-// Phase 22 (22-01 / LEGAL-01..06). Three endpoints:
+//. Three endpoints:
 //
-//   - POST /auth/consents — submit the re-consent modal (Surface E).
-//     409 version_mismatch when the build's currentVersion has bumped
-//     since the modal was rendered; 400 consent_required on missing
-//     slugs; 204 on success.
-//   - GET /users/me/consents — Surface F (Withdraw / status list).
-//   - POST /users/me/consents/pdn/withdraw — Surface F danger CTA.
-//     Triggers the Phase 21-04 deletion flow (D-13); 423 when the
-//     account is already mid-deletion.
+// - POST /auth/consents — submit the re-consent modal (Surface E).
+// 409 version_mismatch when the build's currentVersion has bumped
+// since the modal was rendered; 400 consent_required on missing
+// slugs; 204 on success.
+// - GET /users/me/consents — Surface F (Withdraw / status list).
+// - POST /users/me/consents/pdn/withdraw — Surface F danger CTA.
+// Triggers the deletion flow; 423 when the
+// account is already mid-deletion.
 //
-// All three routes JWT-required + always-reachable (D-30 precedent):
+// All three routes JWT-required + always-reachable (precedent):
 // they are NOT wrapped by RequireVerifiedEmail* or BlockWritesDuringGrace
 // because the right-to-erasure / right-to-withdraw cannot be gated by
 // other middleware (152-ФЗ Art. 21).
@@ -36,7 +36,7 @@ import (
 
 // ConsentsServiceAPI is the slice of *service.ConsentService the handler
 // consumes. Declared as an interface so handler tests can pass an
-// in-memory double (mirrors the rest of the Phase 21 service-API
+// in-memory double (mirrors the rest of the service-API
 // boundaries).
 type ConsentsServiceAPI interface {
 	ReConsent(ctx context.Context, userID uuid.UUID, ip, userAgent string, policies []service.PolicyAccepted) error
@@ -51,17 +51,16 @@ type ConsentsListerAPI interface {
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]repository.Consent, error)
 }
 
-// ConsentsHandler owns the three Phase 22 consent endpoints.
+// ConsentsHandler owns the three consent endpoints.
 type ConsentsHandler struct {
 	service        ConsentsServiceAPI
 	repo           ConsentsListerAPI
 	allowedOrigins []string
 }
 
-// NewConsentsHandler constructs the Phase 22 consent handler. The
+// NewConsentsHandler constructs the consent handler. The
 // allowedOrigins slice is the CORS_ALLOWED_ORIGINS values — used for
 // the Origin-header CSRF check on the two side-effecting endpoints
-// (T-22-01 mitigation).
 func NewConsentsHandler(svc ConsentsServiceAPI, repo ConsentsListerAPI, allowedOrigins []string) *ConsentsHandler {
 	return &ConsentsHandler{
 		service:        svc,
@@ -102,7 +101,7 @@ type consentRequiredBody struct {
 // validation fails before the service runs; 409 version_mismatch when
 // the service detects the build's currentVersion has bumped since the
 // submitted version; 403 origin_not_allowed when the Origin header is
-// blank or unmatched (T-22-01 / D-30 CSRF discipline).
+// blank or unmatched (CSRF discipline).
 func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 	if !h.originAllowed(r.Header.Get("Origin")) {
 		writeJSONCodeError(w, http.StatusForbidden, "origin_not_allowed")
@@ -162,7 +161,7 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, domain.ErrConsentVersionMismatch):
 		// Surface the build's currentVersion for the frontend to reload.
 		// PolicyTOS / PolicyPrivacy / PolicyPDN are bumped in lockstep
-		// for v1.4 (D-08 / D-10); we return the TOS version as the
+		// for v1.4; we return the TOS version as the
 		// canonical bump signal.
 		writeJSON(w, http.StatusConflict, versionMismatchBody{
 			Code:           "version_mismatch",
@@ -183,7 +182,7 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 // WithdrawPDN handles POST /users/me/consents/pdn/withdraw.
 //
 // 204 on success; 423 account_pending_deletion when the user is already
-// in the grace window (Phase 21-04 envelope reused); 403 when the
+// in the grace window (envelope reused); 403 when the
 // Origin header is missing/unmatched.
 func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 	if !h.originAllowed(r.Header.Get("Origin")) {

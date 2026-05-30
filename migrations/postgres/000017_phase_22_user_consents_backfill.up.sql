@@ -1,10 +1,10 @@
--- Phase 22 (22-01 / D-12): lazy backfill of pre-v22 consents.
--- Phase 21 wrote ONE row per user with purpose='service_operation' policy_version='pre-v22'.
--- Phase 22 needs THREE rows per user (tos, privacy, pdn) so the diff against currentVersion
--- triggers ReConsentModal cleanly (D-10, D-11).
+-- lazy backfill of pre-v22 consents.
+-- wrote ONE row per user with purpose='service_operation' policy_version='pre-v22'.
+-- needs THREE rows per user (tos, privacy, pdn) so the diff against currentVersion
+-- triggers ReConsentModal cleanly.
 --
 -- Idempotent: ON CONFLICT (user_id, purpose) DO NOTHING — safe to re-run.
--- The original service_operation rows STAY (D-02 / audit lineage).
+-- The original service_operation rows STAY (audit lineage).
 
 BEGIN;
 

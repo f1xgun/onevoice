@@ -1,12 +1,12 @@
 // Package repository — user_consents.go
 //
-// Phase 21 introduced the table (000013) with columns (id, user_id, purpose,
+// introduced the table (000013) with columns (id, user_id, purpose,
 // policy_version, policy_sha256, accepted_at) + unique index (user_id, purpose).
-// Phase 22 (000016) adds (withdrawn_at, ip, user_agent) — forensic columns for
-// 152-ФЗ Art. 21 (proof of withdrawal) and D-18 (forensic record at consent moment).
+// (000016) adds (withdrawn_at, ip, user_agent) — forensic columns for
+// 152-ФЗ Art. 21 (proof of withdrawal) and (forensic record at consent moment).
 //
 // All mutating methods take a caller-controlled pgx.Tx so consent writes
-// stay inside the Register / ReConsent / Withdraw transaction (D-17, D-28).
+// stay inside the Register / ReConsent / Withdraw transaction.
 package repository
 
 import (
@@ -25,7 +25,7 @@ type UserConsentsRepository struct {
 	psql sq.StatementBuilderType
 }
 
-// NewUserConsentsRepository constructs the Phase 21 user_consents repo.
+// NewUserConsentsRepository constructs the user_consents repo.
 // Returns the concrete pointer (matches password_reset_token,
 // email_verification_token).
 func NewUserConsentsRepository(pool pgxPool) *UserConsentsRepository {
@@ -37,8 +37,8 @@ func NewUserConsentsRepository(pool pgxPool) *UserConsentsRepository {
 
 // Insert records consent for a (user, purpose) pair inside the
 // caller-supplied tx. The UNIQUE index on (user_id, purpose) protects
-// against duplicates. Phase 21 calls this exactly once per Register; the
-// Phase 22 RecordRegistrationConsents path uses UpsertConsent instead.
+// against duplicates. calls this exactly once per Register; the
+// RecordRegistrationConsents path uses UpsertConsent instead.
 //
 // Kept for backward compatibility with the legacy single-INSERT
 // Register fallback path (tests / pre-Phase-21 deploys).
@@ -77,7 +77,7 @@ type UpsertConsentInput struct {
 // supplied tx. ON CONFLICT (user_id, purpose) DO UPDATE bumps
 // policy_version, policy_sha256, accepted_at, ip, user_agent and clears
 // withdrawn_at. The row id is preserved across re-consent — forensic
-// invariant per D-03 (re-consent does NOT create a new row; withdrawal
+// invariant per (re-consent does NOT create a new row; withdrawal
 // does NOT delete the row).
 //
 // NULLIF + ::INET handle the case where the caller passes IP="" (e.g.
@@ -147,10 +147,10 @@ func (r *UserConsentsRepository) ListByUser(ctx context.Context, userID uuid.UUI
 	return out, nil
 }
 
-// MarkWithdrawn sets withdrawn_at=NOW() on the (user, purpose) row if
+// MarkWithdrawn sets withdrawn_at=NOW on the (user, purpose) row if
 // it isn't already withdrawn. The IS NULL guard makes the operation
 // idempotent — a duplicate withdrawal call is a no-op (zero rows
-// updated, no error). Per D-03 / 152-ФЗ Art. 21 forensic invariant, the
+// updated, no error). Per / 152-ФЗ Art. 21 forensic invariant, the
 // row is NEVER deleted.
 func (r *UserConsentsRepository) MarkWithdrawn(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purpose string) error {
 	const q = `UPDATE user_consents

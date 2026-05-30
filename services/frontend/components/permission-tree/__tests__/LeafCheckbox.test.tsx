@@ -6,8 +6,8 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 
 import { LeafCheckbox } from '../LeafCheckbox';
 
-// Plan 05-05 Task 3 — LeafCheckbox covers D-12 (disabled leaves are no-op +
-// «У вас нет этого права» tooltip) and D-13 (Info icon + description tooltip
+// Task 3 — LeafCheckbox covers (disabled leaves are no-op +
+// «У вас нет этого права» tooltip) and (Info icon + description tooltip
 // for enabled leaves).
 
 function renderLeaf(props: Partial<React.ComponentProps<typeof LeafCheckbox>> = {}) {
@@ -26,7 +26,7 @@ function renderLeaf(props: Partial<React.ComponentProps<typeof LeafCheckbox>> = 
   );
 }
 
-describe('LeafCheckbox (D-12 + D-13)', () => {
+describe('LeafCheckbox', () => {
   it('enabled leaf: clicking the checkbox fires onToggle(true)', async () => {
     const onToggle = vi.fn();
     renderLeaf({ onToggle });
@@ -61,7 +61,7 @@ describe('LeafCheckbox (D-12 + D-13)', () => {
     expect(li.className).not.toContain('opacity-60');
   });
 
-  it('D-13: enabled leaf — tooltip trigger aria-label exposes the description', () => {
+  it('enabled leaf — tooltip trigger aria-label exposes the description', () => {
     renderLeaf({ description: 'Редактировать название' });
     // The aria-label on the tooltip trigger is the description text. Tested
     // via the accessibility tree rather than mounting the portal'd tooltip
@@ -69,7 +69,7 @@ describe('LeafCheckbox (D-12 + D-13)', () => {
     expect(screen.getByLabelText('Редактировать название')).toBeInTheDocument();
   });
 
-  it('D-12: disabled leaf — tooltip trigger aria-label is «У вас нет этого права»', () => {
+  it('disabled leaf — tooltip trigger aria-label is «У вас нет этого права»', () => {
     renderLeaf({ disabled: true, actorHas: false });
     expect(screen.getByLabelText('У вас нет этого права')).toBeInTheDocument();
   });

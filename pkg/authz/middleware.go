@@ -21,13 +21,13 @@ import (
 type UserIDExtractor func(ctx context.Context) (uuid.UUID, error)
 
 // RequireBusinessAccess returns chi-style middleware that:
-//  1. Parses chi.URLParam(r, "id") as a UUID -> 400 on invalid.
-//  2. Reads userID via the extractor -> 401 on missing.
-//  3. Looks up membership via cache (loader fallthrough) -> 404 on
-//     not-found (AUTHZ-05 — never 403, never leak business existence).
-//  4. 403 on status == "suspended".
-//  5. Loads role permissions via cache.
-//  6. Injects BusinessContext into ctx and calls next.ServeHTTP.
+// 1. Parses chi.URLParam(r, "id") as a UUID -> 400 on invalid.
+// 2. Reads userID via the extractor -> 401 on missing.
+// 3. Looks up membership via cache (loader fallthrough) -> 404 on
+// not-found (AUTHZ-05 — never 403, never leak business existence).
+// 4. 403 on status == "suspended".
+// 5. Loads role permissions via cache.
+// 6. Injects BusinessContext into ctx and calls next.ServeHTTP.
 //
 // 401 from upstream auth.Auth fires BEFORE this middleware in the chi
 // chain. Inputs to this middleware always carry an authenticated userID.
@@ -88,7 +88,7 @@ func RequireBusinessAccess(cache *Cache, extractUserID UserIDExtractor) func(htt
 				return
 			}
 
-			// WR-01: defensive copy. role.Permissions points at the slice
+			// defensive copy. role.Permissions points at the slice
 			// stored inside the cache entry; if any future code path mutates
 			// bc.Permissions (append, sort, in-place edit) it would corrupt
 			// the shared cache entry — and the bug would only fire on cache

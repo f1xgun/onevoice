@@ -39,7 +39,7 @@ func RateLimit(redisClient *redis.Client, limit int, window time.Duration) func(
 			// Build rate limit key: ratelimit:{ip}:{path}
 			key := fmt.Sprintf("ratelimit:%s:%s", clientIP, r.URL.Path)
 
-			// Note: ctx is derived from r.Context() to preserve request cancellation and correlation_id (BLG-06).
+			// Note: ctx is derived from r.Context to preserve request cancellation and correlation_id.
 			ctx := r.Context()
 
 			// Increment counter
@@ -122,7 +122,7 @@ func RateLimitByUser(redisClient *redis.Client, limit int, window time.Duration,
 				key = fmt.Sprintf("ratelimit:ip:%s:%s", getClientIP(r), scope)
 			}
 
-			// Note: ctx is derived from r.Context() to preserve request cancellation and correlation_id (BLG-06).
+			// Note: ctx is derived from r.Context to preserve request cancellation and correlation_id.
 			ctx := r.Context()
 
 			count, err := redisClient.Incr(ctx, key).Result()

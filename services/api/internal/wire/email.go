@@ -1,15 +1,15 @@
 // Package wire — email.go
 //
-// Phase 21a transactional email wiring. Lives in this dedicated file
-// (NOT databases.go) per CONTEXT D-06: Unisender is stateless HTTP
-// with no Close()-tracked resource, so it doesn't belong on DBHandles.
+// transactional email wiring. Lives in this dedicated file
+// (NOT databases.go) per : Unisender is stateless HTTP
+// with no Close-tracked resource, so it doesn't belong on DBHandles.
 //
 // Two public constructors:
-//   - BuildEmailSender(log, cfg) email.Sender — picks UnisenderSender
-//     when UNISENDER_API_KEY is set, falls back to NoopSender otherwise.
-//   - StartOutboxWorker(ctx, log, repo, sender, pollInterval, maxAttempts)
-//     spawns a non-blocking goroutine that polls email_outbox and
-//     drains pending rows. Lifecycle bound to ctx (SIGTERM cancels).
+// - BuildEmailSender(log, cfg) email.Sender — picks UnisenderSender
+// when UNISENDER_API_KEY is set, falls back to NoopSender otherwise.
+// - StartOutboxWorker(ctx, log, repo, sender, pollInterval, maxAttempts)
+// spawns a non-blocking goroutine that polls email_outbox and
+// drains pending rows. Lifecycle bound to ctx (SIGTERM cancels).
 package wire
 
 import (

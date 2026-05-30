@@ -1,11 +1,11 @@
--- Renumbered from 000009 to 000010 in Phase 20 (Plan 20-01) following rbac_cleanup renumber from 000008→000009.
+-- Renumbered from 000009 to 000010 in following rbac_cleanup renumber from 000008→000009.
 -- Phase A3 / i18n-readiness: persist the user's preferred UI locale on the
 -- users table so the frontend can sync cookie ↔ DB on login. Two valid values
 -- for now: 'ru' (default — back-compat) and 'en'. The CHECK constraint guards
 -- against typos / future drift; widening the allow-list is a follow-up
--- migration when we add more languages (see .planning/i18n-readiness/PLAN.md).
+-- migration when we add more languages (see ).
 --
--- Production path: idiomatic gen_random_uuid() not used here (no UUID inserts).
+-- Production path: idiomatic gen_random_uuid not used here (no UUID inserts).
 -- Integration-test mirror lives at services/api/migrations/000007_user_preferred_locale.up.sql.
 --
 -- Numbering note: the prod path already has TWO 000007_* migrations (rbac

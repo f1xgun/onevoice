@@ -2,13 +2,13 @@
 # check-migrations-parity.sh — dual-path migration sanity check.
 #
 # Enforces:
-#   1. No duplicate version numbers within migrations/postgres/ or services/api/migrations/.
-#   2. Every *.up.sql has a matching *.down.sql in the same directory.
-#   3. Reports (warning, not failure) when the two paths have different file counts —
-#      legitimate divergence is allowed but flagged for review.
+# 1. No duplicate version numbers within migrations/postgres/ or services/api/migrations/.
+# 2. Every *.up.sql has a matching *.down.sql in the same directory.
+# 3. Reports (warning, not failure) when the two paths have different file counts —
+# legitimate divergence is allowed but flagged for review.
 #
-# Wired into `make lint-all` post-Phase-20 (Plan 20-01) to prevent regression of the
-# ONB-02 duplicate-000008 collision.
+# Wired into `make lint-all` post-Phase-20 to prevent regression of the
+# duplicate-000008 collision.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

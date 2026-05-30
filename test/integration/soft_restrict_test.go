@@ -1,26 +1,26 @@
 package integration
 
-// Phase 21-03 (ACCT-02) — Soft-restrict middleware integration tests.
+// Soft-restrict middleware integration tests.
 //
 // Coverage matrix (per 21-03-PLAN Task 12 + verification gate):
-//   - Day0Blocks               — unverified user POST /api/v1/businesses
-//                                returns 412 email_verification_required
-//                                (POST /businesses is Day7-decorated in
-//                                this build; day0 routes are
-//                                business-scoped and require an existing
-//                                business — covered by ChatBlock below.)
-//   - Day7BlocksBusinessCreate — same as above (POST /businesses is the
-//                                cleanest day-7 surface to assert
-//                                without provisioning a business first).
-//   - DeleteUserAllowed        — t.Skip — DELETE /users/me is Phase
-//                                21-04 territory. Documented gate.
-//   - VerifyEndpointsAllowed   — POST /auth/verify-email/resend works
-//                                for unverified post-grace user (the
-//                                whole point of D-30: never gate the
-//                                verify path).
-//   - VerifiedUserUnrestricted — verified user with any created_at can
-//                                POST /businesses and the request
-//                                succeeds (no 412).
+// - Day0Blocks               — unverified user POST /api/v1/businesses
+// returns 412 email_verification_required
+// (POST /businesses is Day7-decorated in
+// this build; day0 routes are
+// business-scoped and require an existing
+// business — covered by ChatBlock below.)
+// - Day7BlocksBusinessCreate — same as above (POST /businesses is the
+// cleanest day-7 surface to assert
+// without provisioning a business first).
+// - DeleteUserAllowed        — t.Skip — DELETE /users/me is Phase
+// 21-04 territory. Documented gate.
+// - VerifyEndpointsAllowed   — POST /auth/verify-email/resend works
+// for unverified post-grace user (the
+// whole point of : never gate the
+// verify path).
+// - VerifiedUserUnrestricted — verified user with any created_at can
+// POST /businesses and the request
+// succeeds (no 412).
 //
 // Harness: same shape as password_reset_test.go.
 
@@ -115,7 +115,7 @@ func TestSoftRestrict_BusinessCreateAllowedWithinGrace(t *testing.T) {
 		"unverified user within 7-day grace must not be 412'd")
 }
 
-// --- VerifyEndpointsAllowed (D-30) --------------------------------------
+// --- VerifyEndpointsAllowed --------------------------------------
 
 func TestSoftRestrict_VerifyEndpointsAlwaysAllowed(t *testing.T) {
 	if pgPool == nil {
@@ -129,7 +129,7 @@ func TestSoftRestrict_VerifyEndpointsAlwaysAllowed(t *testing.T) {
 	defer resp.Body.Close()
 	// Either 204 (succeeded) or 429 (rate-limited from setup) — anything BUT 412.
 	require.NotEqual(t, httpSoftRestrictBlocked, resp.StatusCode,
-		"verify-email/resend must NEVER be gated by RequireVerifiedEmail (D-30)")
+		"verify-email/resend must NEVER be gated by RequireVerifiedEmail")
 }
 
 // --- VerifiedUserUnrestricted -------------------------------------------
@@ -149,8 +149,8 @@ func TestSoftRestrict_VerifiedUserUnrestricted(t *testing.T) {
 		"verified user (any age) must NOT be gated")
 }
 
-// --- DeleteUserAllowed (Phase 21-04 territory — documented skip) --------
+// --- DeleteUserAllowed — documented skip --------
 
 func TestSoftRestrict_DeleteUserAlwaysAllowed(t *testing.T) {
-	t.Skip("requires Phase 21-04 DELETE /users/me handler — soft-restrict matrix D-30")
+	t.Skip("requires DELETE /users/me handler — soft-restrict matrix")
 }

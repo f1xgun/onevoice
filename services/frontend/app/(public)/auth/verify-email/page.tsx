@@ -1,8 +1,8 @@
 'use client';
 
-// Phase 21-03 (ACCT-02) — Surface 3: /auth/verify-email?token=…
+// Surface 3: /auth/verify-email?token=…
 //
-// Scanner-protection (PITFALLS §2.1, D-22): GET-side only renders this
+// Scanner-protection (PITFALLS §2.1): GET-side only renders this
 // client-side page; the form is HIDDEN behind a manual «Подтвердить
 // email» button so headless prefetchers (Outlook Safe Links, Yandex 360)
 // that follow one redirect but never interact cannot consume the token.

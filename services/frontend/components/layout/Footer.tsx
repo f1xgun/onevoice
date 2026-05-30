@@ -1,5 +1,5 @@
-// Phase 22-02 — Surface G: site-wide footer mounted in BOTH
-// (public)/layout.tsx and (app)/layout.tsx (D-25/D-26). Surfaces the
+// Surface G: site-wide footer mounted in BOTH
+// (public)/layout.tsx and (app)/layout.tsx. Surfaces the
 // three legal links + operator copyright + PDN contact email so the
 // user always has an in-product path to the policies and the data
 // controller's inbox.

@@ -1,8 +1,8 @@
 // Package wire — retention_sweep.go
 //
 // Audit-log retention enforcement: a Go goroutine that ticks every 24h and
-// runs `DELETE FROM audit_logs WHERE created_at < now() - 365d`. Replaces
-// the original PLAN's pg_cron approach (CONTEXT D-17 REVISED 2026-05-22 —
+// runs `DELETE FROM audit_logs WHERE created_at < now - 365d`. Replaces
+// the original PLAN's pg_cron approach (REVISED 2026-05-22 —
 // the project's postgres:16-alpine image does not ship pg_cron and Alpine
 // is not supported upstream). See 19-RESEARCH.md "Open Item 1" for the
 // reasoning trail.
@@ -13,7 +13,6 @@
 // {result="locked"} and skips to the next tick. The advisory-lock key
 // namespace is application-private (hashtext of a deliberately unique
 // string), so it cannot collide with another sweep elsewhere in the codebase
-// (T-19-14 mitigation).
 //
 // Lifecycle: StartRetentionSweep spawns the goroutine and returns
 // immediately. The goroutine exits when its ctx is canceled (the api's
@@ -35,7 +34,7 @@ import (
 )
 
 const (
-	// retentionPeriod is the maximum age (D-17 365 days).
+	// retentionPeriod is the maximum age (365 days).
 	retentionPeriod = 365 * 24 * time.Hour
 	// retentionTick is the sweep cadence. 24h matches the original
 	// (defunct) pg_cron schedule from the PLAN.
@@ -46,7 +45,7 @@ const (
 	retentionWarmup = 60 * time.Second
 
 	// advisoryLockSQL acquires the per-application advisory lock that
-	// gates the DELETE across replicas. hashtext() collapses the string
+	// gates the DELETE across replicas. hashtext collapses the string
 	// key into a stable bigint Postgres uses internally. ::bigint avoids
 	// the int4 overflow path that two-arg pg_try_advisory_lock takes.
 	advisoryLockSQL = "SELECT pg_try_advisory_lock(hashtext('audit_logs_retention')::bigint)"
@@ -57,7 +56,7 @@ const (
 	advisoryUnlockSQL = "SELECT pg_advisory_unlock(hashtext('audit_logs_retention')::bigint)"
 )
 
-// lockExecutor is the narrow pool subset that sweep() needs: QueryRow for
+// lockExecutor is the narrow pool subset that sweep needs: QueryRow for
 // the pg_try_advisory_lock bool and Exec for the unlock. *pgxpool.Pool
 // satisfies it directly; pgxmock.PgxPoolIface satisfies it in tests. This
 // is the same dependency-injection pattern as repository.pgxPool (pool.go).

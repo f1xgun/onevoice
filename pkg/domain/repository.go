@@ -12,15 +12,15 @@ import (
 
 type UserRepository interface {
 	Create(ctx context.Context, user *User) error
-	// GetByID filters `deleted_at IS NULL` per D-41 — soft-deleted users
+	// GetByID filters `deleted_at IS NULL` per — soft-deleted users
 	// look like ErrUserNotFound to every handler that reads via this method.
 	// Deletion-aware code paths (AccountDeletionService, BlockWritesDuringGrace
 	// middleware) call GetByIDIncludingDeleted instead.
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
-	// GetByIDIncludingDeleted — Phase 21-04. Returns the row even if
+	// GetByIDIncludingDeleted —. Returns the row even if
 	// deleted_at IS NOT NULL. The /auth/me handler uses this so users
 	// inside the 30-day grace window can still see their accountDeletion
-	// state and exercise restore (D-30).
+	// state and exercise restore.
 	GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	Update(ctx context.Context, user *User) error
@@ -37,8 +37,8 @@ type UserRepository interface {
 type BusinessRepository interface {
 	Create(ctx context.Context, business *Business) error
 	// CreateInTx inserts the business inside a caller-supplied transaction.
-	// Used by service.business.Create() to dual-write businesses +
-	// business_members atomically (DATA-06, Phase 1 v2.0 RBAC).
+	// Used by service.business.Create to dual-write businesses +
+	// business_members atomically (DATA-06, v2.0 RBAC).
 	CreateInTx(ctx context.Context, tx pgx.Tx, business *Business) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Business, error)
 	Update(ctx context.Context, business *Business) error
@@ -69,16 +69,16 @@ type IntegrationRepository interface {
 // ProjectRepository is declared in project.go to keep all project-related
 // domain types in one file. See pkg/domain/project.go.
 
-// BusinessMembershipRepository — Phase 1 v2.0 RBAC.
+// BusinessMembershipRepository — v2.0 RBAC.
 //
 // The full method surface is declared here so Phases 2/3/5 add
-// implementations, not interface churn. Phase 1 implements ONLY Insert and
-// GetByBusinessUser (CONTEXT decision D-07); the rest return
+// implementations, not interface churn. implements ONLY Insert and
+// GetByBusinessUser (CONTEXT decision ); the rest return
 // ErrMembershipNotFound or are unimplemented in the Phase-1 repo and will
 // be filled in later phases.
 //
-// Insert takes a pgx.Tx (NOT a pool) because service.business.Create()
-// dual-writes businesses + business_members atomically (DATA-06 / D-14).
+// Insert takes a pgx.Tx (NOT a pool) because service.business.Create
+// dual-writes businesses + business_members atomically (DATA-06).
 // Other methods take a context only and use the pool internally.
 type BusinessMembershipRepository interface {
 	// Insert is transaction-scoped: callers BEGIN a tx, INSERT into
@@ -90,48 +90,48 @@ type BusinessMembershipRepository interface {
 	// (businessID, userID). Returns ErrMembershipNotFound on no rows.
 	GetByBusinessUser(ctx context.Context, businessID, userID uuid.UUID) (*BusinessMember, error)
 
-	// --- Below: declared in Phase 1, IMPLEMENTED in later phases. ---
+	// --- Below: declared in, IMPLEMENTED in later phases. ---
 
 	// ListByBusiness returns active+suspended members of a business with
-	// their role_id. Used by Phase 2 GET /businesses/{id}/members.
+	// their role_id. Used by GET /businesses/{id}/members.
 	ListByBusiness(ctx context.Context, businessID uuid.UUID) ([]BusinessMember, error)
 
 	// ListByUser returns memberships the user has across businesses. Used
-	// by Phase 2 GET /businesses (user-scoped list).
+	// by GET /businesses (user-scoped list).
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]BusinessMember, error)
 
 	// CountOwnersByBusiness returns the number of active members holding
-	// SystemRoleOwnerID for a given business. Phase 1 includes this in the
+	// SystemRoleOwnerID for a given business. includes this in the
 	// interface because EnsureOwnerExistsAfter (Plan D) calls a wrapped
 	// version inside its transaction. The unimplemented stub returns
-	// ErrMembershipNotFound until Phase 2.
+	// ErrMembershipNotFound until.
 	CountOwnersByBusiness(ctx context.Context, businessID uuid.UUID) (int, error)
 
 	// UpdateRole changes a membership's role_id and audit columns
-	// (role_changed_at/by). Phase 2 wires this from the demote/role-change
+	// (role_changed_at/by). wires this from the demote/role-change
 	// handler.
 	UpdateRole(ctx context.Context, businessID, userID, newRoleID, actorUserID uuid.UUID) error
 
 	// UpdateRoleInTx is the transaction-scoped variant of UpdateRole. Callers
 	// supply an open pgx.Tx so the UPDATE executes inside the same transaction
 	// as the EnsureOwnerExistsAfter SELECT FOR UPDATE, preserving the
-	// RepeatableRead isolation guarantee (CR-01).
+	// RepeatableRead isolation guarantee.
 	UpdateRoleInTx(ctx context.Context, tx pgx.Tx, businessID, userID, newRoleID, actorUserID uuid.UUID) error
 
-	// Delete removes a membership row. Phase 2 wires this from the
+	// Delete removes a membership row. wires this from the
 	// remove-member handler.
 	Delete(ctx context.Context, businessID, userID uuid.UUID) error
 
 	// DeleteInTx is the transaction-scoped variant of Delete. The DELETE executes
 	// on the supplied pgx.Tx so it participates in the caller's RepeatableRead
 	// transaction alongside EnsureOwnerExistsAfter's SELECT FOR UPDATE, preserving
-	// the isolation guarantee (G-07 fix — same shape as CR-01 for UpdateRoleInTx).
+	// the isolation guarantee (G-07 fix — same shape as for UpdateRoleInTx).
 	// Returns domain.ErrMembershipNotFound when no row matched.
 	DeleteInTx(ctx context.Context, tx pgx.Tx, businessID, userID uuid.UUID) error
 
 	// ListUserIDsByRole returns the user_id values for every business_members
-	// row holding roleID in the given business. Phase 5 RolesHandler.Delete
-	// captures this set BEFORE tx.Commit() so it can fanout
+	// row holding roleID in the given business. RolesHandler.Delete
+	// captures this set BEFORE tx.Commit so it can fanout
 	// authz.InvalidateMember per affected user AFTER commit succeeds (Open
 	// Question A2: InvalidateRole alone evicts only the role-perms entry, not
 	// the per-member membership entry that caches the OLD role_id).
@@ -140,7 +140,7 @@ type BusinessMembershipRepository interface {
 
 // RoleWithMemberCount augments a Role with the number of business_members
 // holding it in a specific business. Used by GET /businesses/{id}/roles for
-// the delete-with-reassignment UX (CONTEXT D-08 smart-branching). For system
+// the delete-with-reassignment UX (smart-branching). For system
 // roles the count is per-business (the JOIN is filtered by business_id), so
 // it reflects "how many local members hold this preset" — not the global
 // across-all-businesses count.
@@ -149,23 +149,23 @@ type RoleWithMemberCount struct {
 	MemberCount int `json:"member_count"`
 }
 
-// RoleRepository — Phase 1 declared the surface; Phase 2 added Get/List
-// implementations; Phase 5 adds full CRUD (CONTEXT D-08, ROLE-04..07).
+// RoleRepository — declared the surface; added Get/List
+// implementations; adds full CRUD (ROLE-04.07).
 //
 // Tx-aware siblings (CreateInTx, UpdateInTx, DeleteInTx, DeleteWithReassignInTx)
 // follow the same pattern as BusinessMembershipRepository.UpdateRoleInTx /
-// DeleteInTx (Phase 2): the handler opens RepeatableRead, composes the
+// DeleteInTx: the handler opens RepeatableRead, composes the
 // invariant check (CheckEscalationSubset / CheckSelfLockout / optional
 // EnsureOwnerExistsAfter) and the mutation in one tx, commits, then calls
-// authz.InvalidateRole AFTER tx.Commit() (AUTHZ-04 + ROLE-07).
+// authz.InvalidateRole AFTER tx.Commit (AUTHZ-04 + ROLE-07).
 type RoleRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Role, error)
 	ListSystem(ctx context.Context) ([]Role, error)
 	ListByBusiness(ctx context.Context, businessID uuid.UUID) ([]Role, error)
 
-	// ListByBusinessWithCounts is the Phase 5 variant returning system + custom
+	// ListByBusinessWithCounts is the variant returning system + custom
 	// roles with member_count populated via LEFT JOIN business_members. Used by
-	// GET /businesses/{id}/roles for the new response shape (CONTEXT D-08).
+	// GET /businesses/{id}/roles for the new response shape.
 	ListByBusinessWithCounts(ctx context.Context, businessID uuid.UUID) ([]RoleWithMemberCount, error)
 
 	// Create inserts a custom role (is_system=false). Returns ErrRoleNameTaken
@@ -193,7 +193,7 @@ type RoleRepository interface {
 	DeleteWithReassignInTx(ctx context.Context, tx pgx.Tx, businessID, oldRoleID, reassignToID, actorUserID uuid.UUID) error
 
 	// Reassign is the non-tx legacy signature retained for compatibility with
-	// Phase 1's interface declaration. Phase 5 prefers DeleteWithReassignInTx
+	// 's interface declaration. prefers DeleteWithReassignInTx
 	// which composes reassign + delete atomically.
 	Reassign(ctx context.Context, businessID, oldRoleID, newRoleID uuid.UUID) error
 
@@ -212,19 +212,19 @@ type RoleRepository interface {
 	GetByMemberInBusiness(ctx context.Context, businessID, userID uuid.UUID) (*Role, error)
 }
 
-// InvitationRepository — Phase 1 declares the surface; Phase 3 implements.
+// InvitationRepository — declares the surface; implements.
 //
-// Phase 3 extension (per 03-RESEARCH §"Domain Interface Update"):
-//   - CreateInTx + CountPendingByBusinessInTx: needed by the create handler
-//     under Serializable isolation so the 20-pending cap holds under
-//     concurrent creates (research P-09 / OQ-01).
-//   - MarkAcceptedInTx: needed by the accept handler so the conditional
-//     UPDATE (race-safe single-use guarantee) runs inside the same
-//     RepeatableRead tx as the membership INSERT.
-//   - Revoke takes businessID for defense-in-depth cross-tenant scoping
-//     (CONTEXT D-11: 404 not_found on cross-tenant revoke; OQ-02 picks
-//     interface-level scoping over handler-level pre-check, matching the
-//     ConversationRepository.Pin/Unpin convention at lines 170-175).
+// extension (per 03-RESEARCH §"Domain Interface Update"):
+// - CreateInTx + CountPendingByBusinessInTx: needed by the create handler
+// under Serializable isolation so the 20-pending cap holds under
+// concurrent creates (research P-09 / OQ-01).
+// - MarkAcceptedInTx: needed by the accept handler so the conditional
+// UPDATE (race-safe single-use guarantee) runs inside the same
+// RepeatableRead tx as the membership INSERT.
+// - Revoke takes businessID for defense-in-depth cross-tenant scoping
+// (404 not_found on cross-tenant revoke; OQ-02 picks
+// interface-level scoping over handler-level pre-check, matching the
+// ConversationRepository.Pin/Unpin convention at lines 170-175).
 type InvitationRepository interface {
 	Create(ctx context.Context, inv *Invitation) error
 	CreateInTx(ctx context.Context, tx pgx.Tx, inv *Invitation) error
@@ -256,7 +256,7 @@ type AuditLogFilter struct {
 //
 // Insert is the WRITE path used by pkg/audit goroutine writers. It must be
 // safe to call with AuditLog.BusinessID == nil and AuditLog.UserID == nil
-// (D-04b / D-31: failed-login entries).
+// (failed-login entries).
 //
 // ListByBusiness is the READ path used by GET /businesses/{id}/audit-logs.
 // It always filters by businessID; the filter struct refines further.
@@ -264,7 +264,7 @@ type AuditLogFilter struct {
 // (CursorTime, CursorID) tuple of the last row from the previous page to
 // fetch the next page; no rows match → []AuditLog{}.
 //
-// DeleteOlderThan is invoked by the retention sweep (Plan 19-03) inside the
+// DeleteOlderThan is invoked by the retention sweep inside the
 // pg_try_advisory_lock window. Returns the count of deleted rows for
 // observability.
 type AuditLogRepository interface {
@@ -319,10 +319,10 @@ type ConversationRepository interface {
 	// MaxScopedConversations (overflow logged + truncated). Empty
 	// businessID or userID returns ErrInvalidScope.
 	ScopedConversationIDs(ctx context.Context, businessID, userID string, projectID *string) ([]string, error)
-	// MongoConversationsCleanup — Phase 21-04 hard-delete sweeper.
+	// MongoConversationsCleanup — hard-delete sweeper.
 	// For each conversation owned by the deleted user, sets user_id=null,
 	// user_email_at_delete=<original email>, deleted_owner=true. Does NOT
-	// delete documents (business-level history stays intact — D-37). Best-
+	// delete documents (business-level history stays intact — ). Best-
 	// effort post-PG-TX (PG delete is source of truth; Mongo failure logged
 	// as warning, not rolled back). Returns matchedCount.
 	MongoConversationsCleanup(ctx context.Context, userID string, originalEmail string) (int64, error)
@@ -330,7 +330,7 @@ type ConversationRepository interface {
 
 // ConversationTitleHit is the per-row projection returned by
 // ConversationRepository.SearchTitles. Mirrors the BSON shape decoded from
-// a Find()+SetProjection that includes the $meta:textScore virtual field.
+// a Find+SetProjection that includes the $meta:textScore virtual field.
 //
 // Lives in pkg/domain (not services/api/internal/repository) so the
 // interface signature does not import the implementation package — Go's

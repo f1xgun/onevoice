@@ -1,9 +1,9 @@
--- Phase 22 (22-01 / D-12): lazy backfill of pre-v22 consents — test mirror
+-- lazy backfill of pre-v22 consents — test mirror
 -- of prod 000017. The INSERT…SELECT body references no UUID generation idiom
 -- so this is a clean byte-identical mirror.
 --
 -- Idempotent: ON CONFLICT (user_id, purpose) DO NOTHING — safe to re-run.
--- The original service_operation rows STAY (D-02 / audit lineage).
+-- The original service_operation rows STAY (audit lineage).
 
 BEGIN;
 

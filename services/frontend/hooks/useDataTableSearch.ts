@@ -1,4 +1,4 @@
-// hooks/useDataTableSearch.ts — Phase 19 / D-21 composition primitive.
+// hooks/useDataTableSearch.ts — composition primitive.
 //
 // Owns the (optionally debounced) text-search slice for list pages.
 // The caller supplies `searchableFields(row)` returning an array of

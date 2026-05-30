@@ -2,17 +2,17 @@
 
 package handler_test
 
-// Phase 3 plan 03-06 Task 2 — cross-cutting integration tests for invitations:
-//   - TestInvitations_Create_PendingCap_HardCeiling — INVITE-04 end-to-end
-//     (real PG, real Serializable tx, real cap enforcement under sequential load)
-//   - TestInvitations_Create_StressCap — INVITE-04 + threat T-03-07 (cap bypass
-//     under concurrent creates; spawns 25 goroutines and asserts count201<=20)
-//   - TestInvitations_Accept_FreshSession200 — INVITE-11 end-to-end
-//     (cache-invalidation propagation; new member's next call returns 200)
-//   - TestInvitations_RevokedThen410 — INVITE-06 round-trip
-//     (revoke → re-revoke 410 idempotent → accept-as-different-user 410 revoked)
-//   - TestInvitations_Preview_RateLimited — T-03-09 (public preview enumeration
-//     defense via per-IP rate limit; uses setupTestEnvWithLoginRateLimit helper)
+// plan 03-06 Task 2 — cross-cutting integration tests for invitations:
+// - TestInvitations_Create_PendingCap_HardCeiling — end-to-end
+// (real PG, real Serializable tx, real cap enforcement under sequential load)
+// - TestInvitations_Create_StressCap — + threat (cap bypass
+// under concurrent creates; spawns 25 goroutines and asserts count201<=20)
+// - TestInvitations_Accept_FreshSession200 — end-to-end
+// (cache-invalidation propagation; new member's next call returns 200)
+// - TestInvitations_RevokedThen410 — round-trip
+// (revoke → re-revoke 410 idempotent → accept-as-different-user 410 revoked)
+// - TestInvitations_Preview_RateLimited — (public preview enumeration
+// defense via per-IP rate limit; uses setupTestEnvWithLoginRateLimit helper)
 //
 // All tests are gated by //go:build integration and use the real Postgres in
 // test/integration/docker-compose.test.yml. They share helpers / mocks /
@@ -34,13 +34,13 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-// TestInvitations_Create_PendingCap_HardCeiling exercises INVITE-04:
-//  1. Owner creates 20 pending invitations → 20 succeed (201).
-//  2. The 21st returns 429 too_many_pending.
-//  3. Revoke one → next attempt returns 201.
+// TestInvitations_Create_PendingCap_HardCeiling exercises :
+// 1. Owner creates 20 pending invitations → 20 succeed (201).
+// 2. The 21st returns 429 too_many_pending.
+// 3. Revoke one → next attempt returns 201.
 //
 // Validates the pgx.Serializable-tx cap holds against real PG (RESEARCH OQ-01
-// refinement of CONTEXT D-14) under sequential load. The concurrent stress
+// refinement of ) under sequential load. The concurrent stress
 // test below covers the racy case.
 func TestInvitations_Create_PendingCap_HardCeiling(t *testing.T) {
 	env := setupTestEnv(t)
@@ -86,7 +86,7 @@ func TestInvitations_Create_PendingCap_HardCeiling(t *testing.T) {
 }
 
 // TestInvitations_Create_StressCap exercises the 20-pending cap under
-// concurrent creates (INVITE-04 + threat T-03-07: cap bypass under
+// concurrent creates (threat : cap bypass under
 // concurrency). Spawns 25 concurrent POST goroutines; asserts count201<=20
 // AND DB pending count <= 20, with no panics.
 //
@@ -147,7 +147,7 @@ func TestInvitations_Create_StressCap(t *testing.T) {
 		"total responses %d != %d (201=%d 429=%d 500=%d)",
 		count201+count429+count500, N, count201, count429, count500)
 	require.LessOrEqual(t, count201, 20,
-		"INVITE-04 / T-03-07 cap bypass: count201=%d > 20 — cap bypass under concurrency", count201)
+		"cap bypass: count201=%d > 20 — cap bypass under concurrency", count201)
 
 	// DB invariant: pending count must <= 20.
 	var dbPending int
@@ -157,22 +157,22 @@ func TestInvitations_Create_StressCap(t *testing.T) {
 		bizID).Scan(&dbPending)
 	require.NoError(t, err)
 	require.LessOrEqual(t, dbPending, 20,
-		"INVITE-04 DB invariant: pending count %d > 20 after concurrent stress (cap bypassed at DB tier)", dbPending)
+		"DB invariant: pending count %d > 20 after concurrent stress (cap bypassed at DB tier)", dbPending)
 }
 
-// TestInvitations_Accept_FreshSession200 exercises INVITE-11 end-to-end:
+// TestInvitations_Accept_FreshSession200 exercises end-to-end:
 // the cache-invalidation contract holds against the real authz LRU.
 //
 // Steps:
-//  1. Owner creates an invitation for editorRole.
-//  2. Capture the raw token from the create response.
-//  3. A different (non-member) user JWTs in and POSTs accept.
-//  4. The new member's NEXT request to a business-scoped GET returns 200
-//     within one cache-refresh cycle (not 404 — RequireBusinessAccess sees
-//     the freshly-inserted membership because InvalidateMember fired
-//     after Commit).
-//  5. Replay the same token: handler pre-classifies the now-AcceptedAt-set
-//     invitation and returns 410 reason="accepted" (D-19 / INVITE-08 lock).
+// 1. Owner creates an invitation for editorRole.
+// 2. Capture the raw token from the create response.
+// 3. A different (non-member) user JWTs in and POSTs accept.
+// 4. The new member's NEXT request to a business-scoped GET returns 200
+// within one cache-refresh cycle (not 404 — RequireBusinessAccess sees
+// the freshly-inserted membership because InvalidateMember fired
+// after Commit).
+// 5. Replay the same token: handler pre-classifies the now-AcceptedAt-set
+// invitation and returns 410 reason="accepted" (lock).
 func TestInvitations_Accept_FreshSession200(t *testing.T) {
 	env := setupTestEnv(t)
 	teardownTestData(t, env.pool)
@@ -193,7 +193,7 @@ func TestInvitations_Accept_FreshSession200(t *testing.T) {
 		Token string    `json:"token"`
 	}
 	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &createResp))
-	require.NotEmpty(t, createResp.Token, "INVITE-01: token must be present in create response")
+	require.NotEmpty(t, createResp.Token, "token must be present in create response")
 
 	// 2. New user — not yet a member — accepts.
 	newUserID := seedUser(t, env.pool)
@@ -213,36 +213,36 @@ func TestInvitations_Accept_FreshSession200(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, "accept should 200, body=%q", rec.Body.String())
 
 	// 4. Next business-scoped GET MUST return 200 (cache invalidated post-commit).
-	// INVITE-11 / SC-4 (one cache-refresh window): the editor role permissions
+	// / SC-4 (one cache-refresh window): the editor role permissions
 	// include integrations.read, so this returns 200 with the (empty) integrations
 	// list. If the cache wasn't invalidated, RequireBusinessAccess would still
 	// see no membership and return 404.
 	rec = doAuthedRequest(t, env, http.MethodGet, getURL, newUserJWT, nil)
 	require.Equal(t, http.StatusOK, rec.Code,
-		"INVITE-11: post-accept, new member's next GET MUST 200 within one cache-refresh window, got %d body=%q",
+		"post-accept, new member's next GET MUST 200 within one cache-refresh window, got %d body=%q",
 		rec.Code, rec.Body.String())
 
 	// 5. Replay the same token. The handler pre-classifies AcceptedAt != nil
-	// and returns 410 with reason="accepted" (D-19 row "already accepted",
-	// INVITE-08 single-use). The membership-check branch (which would have
+	// and returns 410 with reason="accepted" (row "already accepted",
+	// single-use). The membership-check branch (which would have
 	// returned 409 already_member) is unreachable because pre-classify fires
 	// FIRST in invitations.go:501-504.
 	rec = doAuthedRequest(t, env, http.MethodPost, acceptURL, newUserJWT, nil)
 	require.Equal(t, http.StatusGone, rec.Code,
 		"replay (token already accepted) should 410, got %d body=%q", rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), `"reason":"accepted"`,
-		"replay 410 body must carry reason=accepted (D-19 INVITE-08), got %q", rec.Body.String())
+		"replay 410 body must carry reason=accepted, got %q", rec.Body.String())
 }
 
-// TestInvitations_RevokedThen410 exercises INVITE-06 round-trip: a revoked
+// TestInvitations_RevokedThen410 exercises round-trip: a revoked
 // invitation refuses subsequent accept attempts with 410 gone (reason=revoked).
 //
 // Steps:
-//  1. Owner creates invitation; captures token + ID.
-//  2. Owner DELETEs (revokes) — 204.
-//  3. Owner DELETEs again (idempotent) — 410 reason="revoked" (D-11).
-//  4. Different user POSTs accept with the captured token — 410 reason="revoked"
-//     (Accept handler pre-classifies RevokedAt != nil before touching membership).
+// 1. Owner creates invitation; captures token + ID.
+// 2. Owner DELETEs (revokes) — 204.
+// 3. Owner DELETEs again (idempotent) — 410 reason="revoked".
+// 4. Different user POSTs accept with the captured token — 410 reason="revoked"
+// (Accept handler pre-classifies RevokedAt != nil before touching membership).
 func TestInvitations_RevokedThen410(t *testing.T) {
 	env := setupTestEnv(t)
 	teardownTestData(t, env.pool)
@@ -270,14 +270,14 @@ func TestInvitations_RevokedThen410(t *testing.T) {
 	rec := doAuthedRequest(t, env, http.MethodDelete, revokeURL, ownerJWT, nil)
 	require.Equal(t, http.StatusNoContent, rec.Code, "revoke should 204, body=%q", rec.Body.String())
 
-	// 3. Re-revoke (idempotency — 410 gone with reason=revoked). D-11.
+	// 3. Re-revoke (idempotency — 410 gone with reason=revoked).
 	rec = doAuthedRequest(t, env, http.MethodDelete, revokeURL, ownerJWT, nil)
 	require.Equal(t, http.StatusGone, rec.Code,
 		"re-revoke should 410 idempotent, got %d body=%q", rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), `"reason":"revoked"`)
 
 	// 4. New user attempts accept with the captured token → 410 with reason=revoked
-	// (INVITE-06 round-trip — accept pre-classifies RevokedAt != nil before
+	// (round-trip — accept pre-classifies RevokedAt != nil before
 	// reaching membership-check / MarkAcceptedInTx).
 	newUserID := seedUser(t, env.pool)
 	newUserJWT := mintJWT(t, env.jwtSecret, newUserID)
@@ -288,16 +288,16 @@ func TestInvitations_RevokedThen410(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"reason":"revoked"`)
 }
 
-// TestInvitations_Preview_RateLimited exercises T-03-09: the public preview
+// TestInvitations_Preview_RateLimited exercises : the public preview
 // endpoint enforces a per-IP rate limit using the Login budget. Hammer the
 // endpoint with budget+1 requests; the (budget+1)th must 429.
 //
 // Uses setupTestEnvWithLoginRateLimit to keep the test fast (limit=3 instead
-// of the default 100). Skip is NOT permitted — T-03-09 mitigation requires
+// of the default 100). Skip is NOT permitted — mitigation requires
 // the rate-limit test to actually run when integration env is available.
 //
 // The rawToken is a synthetic value that the repo lookup will surface as
-// ErrInvitationNotFound (handler maps to 410 reason="unknown" per D-19),
+// ErrInvitationNotFound (handler maps to 410 reason="unknown" ),
 // but the rate-limit middleware fires BEFORE the handler — so we don't need
 // a real invitation row, only a stable URL path that all 4 requests share.
 func TestInvitations_Preview_RateLimited(t *testing.T) {

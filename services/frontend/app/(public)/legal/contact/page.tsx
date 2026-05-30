@@ -1,4 +1,4 @@
-// Phase 22-02 — Surface A companion: /legal/contact page.
+// Surface A companion: /legal/contact page.
 // 152-ФЗ Art. 14 §2 — operator contact and 15-business-day SLA notice.
 // Server Component (uses getTranslations from next-intl/server).
 

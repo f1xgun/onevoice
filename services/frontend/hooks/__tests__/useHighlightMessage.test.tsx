@@ -31,7 +31,7 @@ function setHighlightParam(value: string | null) {
   if (value !== null) params.set('highlight', value);
 }
 
-describe('useHighlightMessage — Phase 19 / D-08 / SEARCH-04', () => {
+describe('useHighlightMessage', () => {
   beforeEach(() => {
     replaceMock.mockReset();
     setHighlightParam(null);
@@ -140,7 +140,7 @@ describe('useHighlightMessage — Phase 19 / D-08 / SEARCH-04', () => {
 });
 
 // Static-content test: globals.css must contain the flash keyframe + reduced-motion fallback.
-describe('globals.css — Phase 19 / D-08 flash keyframe', () => {
+describe('globals.css — flash keyframe', () => {
   it('contains @keyframes onevoice-flash + [data-highlight] + prefers-reduced-motion', async () => {
     const { readFileSync } = await import('fs');
     const path = await import('path');

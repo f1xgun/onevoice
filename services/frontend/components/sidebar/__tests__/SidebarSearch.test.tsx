@@ -66,7 +66,7 @@ function setLinuxUA() {
   });
 }
 
-describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
+describe('SidebarSearch', () => {
   beforeEach(() => {
     bizApiGet.mockReset();
     setupDefaultSearch();
@@ -98,7 +98,7 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
     expect(screen.getByPlaceholderText('Поиск... Ctrl-K')).toBeInTheDocument();
   });
 
-  it('does NOT fire /search when query is 1 char (D-13 min length 2)', async () => {
+  it('does NOT fire /search when query is 1 char ', async () => {
     const user = userEvent.setup();
     render(
       <Wrapper>
@@ -158,7 +158,7 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
     expect(document.activeElement).toBe(input);
   });
 
-  it('Esc clears input + closes popover + blurs (D-11)', async () => {
+  it('Esc clears input + closes popover + blurs', async () => {
     const user = userEvent.setup();
     render(
       <Wrapper>
@@ -176,7 +176,7 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
     expect(document.activeElement).not.toBe(input);
   });
 
-  it('shows «По всему бизнесу» checkbox on /chat/projects/{id} (D-10)', async () => {
+  it('shows «По всему бизнесу» checkbox on /chat/projects/{id}', async () => {
     pathnameValue = '/chat/projects/p-42';
     const user = userEvent.setup();
     render(
@@ -198,7 +198,7 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
     });
   });
 
-  it('omits project_id from /search when «По всему бизнесу» is toggled on (D-10)', async () => {
+  it('omits project_id from /search when «По всему бизнесу» is toggled on', async () => {
     pathnameValue = '/chat/projects/p-42';
     const user = userEvent.setup();
     render(
@@ -221,7 +221,7 @@ describe('SidebarSearch — Phase 19 / Plan 19-04 / SEARCH-04 + UI-06', () => {
     });
   });
 
-  it('does NOT render «По всему бизнесу» checkbox at /chat root (D-10)', async () => {
+  it('does NOT render «По всему бизнесу» checkbox at /chat root', async () => {
     pathnameValue = '/chat';
     const user = userEvent.setup();
     render(

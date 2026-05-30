@@ -10,7 +10,7 @@
 //
 // "Owner" for last-owner purposes means "member with role_id =
 // pkg/domain.SystemRoleOwnerID" — NOT "member with all permissions" — per
-// CONTEXT decision D-13. This keeps the check tractable and lets the
+// CONTEXT decision. This keeps the check tractable and lets the
 // system owner role stay immutable.
 package authz
 
@@ -36,18 +36,18 @@ const (
 	OwnerChangeUnspecified OwnerChangeKind = iota
 
 	// OwnerChangeDemote — actor is changing MemberUserID's role to a
-	// non-owner role on the given business. Triggered by Phase 2
+	// non-owner role on the given business. Triggered by 
 	// PATCH /businesses/{id}/members/{userId}.
 	OwnerChangeDemote
 
 	// OwnerChangeRemove — actor is removing MemberUserID from the business.
-	// Triggered by Phase 2 DELETE /businesses/{id}/members/{userId} and by
+	// Triggered by DELETE /businesses/{id}/members/{userId} and by
 	// the self-removal path (member removing themselves).
 	OwnerChangeRemove
 
 	// OwnerChangeRoleEditRemovesOwnerPerm — actor is editing a custom role
 	// (RoleID) that currently functions as owner-equivalent and the new
-	// permission set strips owner-equivalence. Phase 1 system owner role is
+	// permission set strips owner-equivalence. system owner role is
 	// is_system=true and is therefore not editable, so this path fires only
 	// for synthetic / future custom-role-as-owner paths exercised by Plan H
 	// integration tests for symmetry. RoleID is required.
@@ -98,7 +98,7 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 	// see a consistent snapshot. Snapshot of (user_id, role_id) is enough
 	// for the simulation.
 	//
-	// WR-03: filter status='active'. Suspended members cannot act
+	// filter status='active'. Suspended members cannot act
 	// (middleware returns 403 for status='suspended'); counting them as
 	// owners lets a business pass the invariant with one active + one
 	// suspended owner, then demote the active one — leaving an "owner"
@@ -223,7 +223,7 @@ func CheckEscalationSubset(actorRoleID uuid.UUID, actorPerms, proposedPerms []Pe
 // permissions.
 //
 // Recovery (when this fires) is "another admin edits the role" or "another
-// owner grants the actor a different role first." Phase 1 single-role-per-
+// owner grants the actor a different role first." single-role-per-
 // membership (PK on business_members) means the only escape is admin help
 // from another user.
 func CheckSelfLockout(actorUserID, actorRoleID, editedRoleID uuid.UUID, newPerms []Permission) error {
@@ -245,8 +245,8 @@ func CheckSelfLockout(actorUserID, actorRoleID, editedRoleID uuid.UUID, newPerms
 }
 
 // CheckSystemRoleImmutable returns ErrSystemRoleImmutable if role.IsSystem == true.
-// Phase 2 (ROLE-02) ships the guard for Phase 5 role-mutation endpoints;
-// no Phase 2 endpoint enforces it directly. Returns a non-sentinel error
+// (ROLE-02) ships the guard for role-mutation endpoints;
+// no endpoint enforces it directly. Returns a non-sentinel error
 // for nil input (defensive) so misuse fails loudly rather than silently
 // returning nil.
 func CheckSystemRoleImmutable(role *domain.Role) error {

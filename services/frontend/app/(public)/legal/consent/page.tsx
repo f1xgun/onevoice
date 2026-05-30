@@ -1,6 +1,6 @@
-// Phase 22-02 — Surface C: PDN Consent page (/legal/consent).
+// Surface C: PDN Consent page (legal/consent).
 // Standalone 152-ФЗ «Согласие на обработку персональных данных» —
-// post-1-September-2025 separate-document compliance (D-07).
+// post-1-September-2025 separate-document compliance.
 // Mounts DataControllerBlock per frontmatter showsController=true.
 
 import ReactMarkdown from 'react-markdown';

@@ -8,7 +8,7 @@ import (
 // DeletionT7WarningText is the T-7 warning email plain-text body. Sent
 // 23 days after deletion_requested_at (so the recipient sees it 7 days
 // before the hard-delete sweeper runs). Verbatim RU copy from
-// UI-SPEC Surface 12 / Phase 21-04 / D-35.
+// UI-SPEC Surface 12 /.
 //
 // deletionAt is requestedAt + 30 days — the moment the sweeper will run.
 func DeletionT7WarningText(email string, deletionAt time.Time) string {

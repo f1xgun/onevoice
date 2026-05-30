@@ -1,8 +1,8 @@
-// Phase 21-04 (ACCT-03) — frontend client for account-deletion endpoints.
+// frontend client for account-deletion endpoints.
 //
 // Endpoints:
-//   DELETE /api/v1/users/me          {password}  → 204 / 401 / 409 / 423
-//   POST   /api/v1/users/me/restore  (no body)   → 204 / 403 / 404 / 410
+// DELETE /api/v1/users/me          {password}  → 204 / 401 / 409 / 423
+// POST   /api/v1/users/me/restore  (no body)   → 204 / 403 / 404 / 410
 
 import { useAuthStore } from '@/lib/auth';
 

@@ -48,7 +48,7 @@ func TestMembersHandler_AuditRoleGranted_OnHappyPathCommit(t *testing.T) {
 			AddRow(targetID, newRoleID))
 	mockPool.ExpectCommit()
 
-	// Mocks — CR-01 role lookup + UpdateRoleInTx + read-back hydrate.
+	// Mocks — role lookup + UpdateRoleInTx + read-back hydrate.
 	rr.On("GetByID", mock.Anything, newRoleID).Return(&domain.Role{
 		ID: newRoleID, BusinessID: nil, Name: "viewer",
 	}, nil)

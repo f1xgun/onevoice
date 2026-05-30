@@ -1,6 +1,6 @@
 // __tests__/PlatformCard.test.tsx
 //
-// Phase 20 / ONB-04 regression guard for the Preview badge slot on
+// regression guard for the Preview badge slot on
 // <PlatformCard>. The badge is the user-visible signal that an
 // integration (today only `google_business`) is partially-implemented —
 // it shows up only when `isPreview={true}` is explicitly passed, uses
@@ -9,17 +9,17 @@
 // the default (Telegram/VK/Yandex.Business) path.
 //
 // Notes on test plumbing:
-//   - The global next-intl stub in `vitest.setup.ts` resolves
-//     `useTranslations('integrations.platformCard')` against the real
-//     `messages/{ru,en}.json` bundles, so we assert against the actual
-//     localized copy rather than mocking string returns.
-//   - Default test locale is `ru`; we flip to `en` via
-//     `globalThis.__setTestLocale('en')` for the EN assertions.
-//   - `PlatformCard` calls `useQueryClient` (TanStack Query) on every
-//     render, so the wrapper provides a fresh QueryClient per render.
-//   - With `integrations={[]}` the inner `ChannelList` is not mounted,
-//     which means `usePermission` is not exercised — no extra mocks
-//     needed beyond the business store.
+// - The global next-intl stub in `vitest.setup.ts` resolves
+// `useTranslations('integrations.platformCard')` against the real
+// `messages/{ru,en}.json` bundles, so we assert against the actual
+// localized copy rather than mocking string returns.
+// - Default test locale is `ru`; we flip to `en` via
+// `globalThis.__setTestLocale('en')` for the EN assertions.
+// - `PlatformCard` calls `useQueryClient` (TanStack Query) on every
+// render, so the wrapper provides a fresh QueryClient per render.
+// - With `integrations={[]}` the inner `ChannelList` is not mounted,
+// which means `usePermission` is not exercised — no extra mocks
+// needed beyond the business store.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
@@ -77,7 +77,7 @@ const baseProps = {
   canDisconnect: true,
 } as const;
 
-describe('<PlatformCard /> Preview badge (Phase 20 / ONB-04)', () => {
+describe('<PlatformCard /> Preview badge', () => {
   afterEach(() => {
     cleanup();
     // The global setup file resets the locale to `ru` in its own

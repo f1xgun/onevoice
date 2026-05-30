@@ -1,11 +1,11 @@
 // Package repository — invitation.go
 //
-// invitationRepository implements domain.InvitationRepository (Phase 1
-// declaration extended in Phase 3 plan 03-01). Mirrors business_member.go
+// invitationRepository implements domain.InvitationRepository (
+// declaration extended in plan 03-01). Mirrors business_member.go
 // line-for-line for the squirrel + pgx/v5 + InTx-sibling pattern.
 //
 // The load-bearing method is MarkAcceptedInTx: it uses a single conditional
-// UPDATE with RowsAffected gating to deliver INVITE-08's single-use
+// UPDATE with RowsAffected gating to deliver 's single-use
 // guarantee under concurrent accept attempts. The partial index
 // idx_invitations_pending on the table is NOT a unique constraint
 // (verified in 000007_rbac_data_model.up.sql:62-64); the conditional UPDATE
@@ -35,7 +35,7 @@ type invitationRepository struct {
 
 var _ domain.InvitationRepository = (*invitationRepository)(nil)
 
-// NewInvitationRepository returns the Phase 3 concrete implementation of
+// NewInvitationRepository returns the concrete implementation of
 // domain.InvitationRepository. Both *pgxpool.Pool (production) and
 // pgxmock.PgxPoolIface (unit tests) satisfy the constructor via pgxPool.
 func NewInvitationRepository(pool pgxPool) domain.InvitationRepository {
@@ -112,7 +112,7 @@ func (r *invitationRepository) wrapInsertError(execErr error) error {
 // GetByTokenHash — pool-based lookup. Hash equality on the UNIQUE B-tree
 // index is the timing-safe primitive (research §"Token Hashing & Lookup"
 // lines 64-80). The post-lookup subtle.ConstantTimeCompare call below is a
-// no-op defense-in-depth check that satisfies the literal INVITE-02 contract
+// no-op defense-in-depth check that satisfies the literal contract
 // phrase ("crypto/subtle.ConstantTimeCompare"); the row was already retrieved
 // by hash equality on the unique index, so the compare is structurally
 // guaranteed to succeed on every successful lookup.
@@ -137,10 +137,10 @@ func (r *invitationRepository) GetByTokenHash(ctx context.Context, tokenHash str
 		}
 		return nil, fmt.Errorf("query invitation by hash: %w", scanErr)
 	}
-	// INVITE-02: explicit subtle.ConstantTimeCompare on the (already-equal)
+	// explicit subtle.ConstantTimeCompare on the (already-equal)
 	// retrieved hash. The B-tree UNIQUE index lookup already established
 	// equality, so this compare is structurally a no-op — but it satisfies
-	// the literal REQUIREMENTS.md INVITE-02 contract phrase
+	// the literal REQUIREMENTS.md contract phrase
 	// ("crypto/subtle.ConstantTimeCompare") and forecloses regressions if
 	// the lookup ever switches to a non-unique-index path.
 	if subtle.ConstantTimeCompare([]byte(inv.TokenHash), []byte(tokenHash)) != 1 {
@@ -150,7 +150,7 @@ func (r *invitationRepository) GetByTokenHash(ctx context.Context, tokenHash str
 }
 
 // ListPendingByBusiness — only pending+valid (not accepted, not revoked, not expired).
-// Filter: accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now().
+// Filter: accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now.
 // Order: created_at DESC (newest first; matches the /settings/team UI hint).
 func (r *invitationRepository) ListPendingByBusiness(ctx context.Context, businessID uuid.UUID) ([]domain.Invitation, error) {
 	sql, args, err := r.sb.
@@ -236,7 +236,7 @@ func (r *invitationRepository) buildPendingCountSQL(businessID uuid.UUID) (sql s
 }
 
 // Revoke — defense-in-depth: scoped by (id, businessID). Cross-tenant revoke
-// attempts return ErrInvitationNotFound (handler maps to 404 per D-11).
+// attempts return ErrInvitationNotFound (handler maps to 404 ).
 // Already-revoked / accepted / expired invitations: RowsAffected=0 → caller
 // re-classifies via classifyTerminalState. The handler's writeRevokeError
 // helper (plan 03-03) maps NotFound → 404 and state-terminal → 410.
@@ -259,7 +259,7 @@ func (r *invitationRepository) Revoke(ctx context.Context, id, businessID uuid.U
 	}
 	if tag.RowsAffected() == 0 {
 		// Either: (a) row doesn't exist (or wrong businessID — cross-tenant)
-		//      or (b) already accepted/revoked/expired.
+		// or (b) already accepted/revoked/expired.
 		// Re-classify by reading the row scoped by (id, businessID); if no row
 		// at all → ErrInvitationNotFound; otherwise the appropriate state error.
 		return r.classifyTerminalState(ctx, nil, id, businessID)
@@ -287,10 +287,10 @@ func (r *invitationRepository) MarkAccepted(ctx context.Context, id, accepterUse
 	return nil
 }
 
-// MarkAcceptedInTx — race-safe single-use guarantee. INVITE-08.
+// MarkAcceptedInTx — race-safe single-use guarantee.
 //
 // The conditional UPDATE matches at most one row whose state is
-// (accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now()).
+// (accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now).
 // Two concurrent accept tx pairs: the first commits, the second's UPDATE
 // sees a snapshot that includes the first's accepted_at and matches zero
 // rows. RowsAffected=0 → re-classify and return the appropriate sentinel.

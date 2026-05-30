@@ -1,8 +1,8 @@
--- Phase 21a (Account Lifecycle / Email Infrastructure): email_outbox
--- transactional outbox per .planning/research/ARCHITECTURE.md §1.3.
+-- (Account Lifecycle / Email Infrastructure): email_outbox
+-- transactional outbox per §1.3.
 -- (See migrations/postgres/000011_phase_21_email_outbox.up.sql for full doc.)
 --
--- Integration-test path: uuid_generate_v4() per services/api/AGENTS.md.
+-- Integration-test path: uuid_generate_v4 per services/api/AGENTS.md.
 
 CREATE TABLE email_outbox (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

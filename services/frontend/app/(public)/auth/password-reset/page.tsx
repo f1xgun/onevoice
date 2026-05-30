@@ -1,12 +1,12 @@
 'use client';
 
-// Phase 21b (ACCT-01) — Surface 1: /auth/password-reset (request page).
+// Surface 1: /auth/password-reset (request page).
 //
 // Renders the email-only form inside <AuthShell>. On submit POSTs to
 // /api/v1/auth/password-reset/request and ALWAYS shows the same
 // confirmation panel afterwards regardless of whether the email was
 // registered — the backend always responds 204 (no-enumeration contract
-// per CONTEXT D-10 + PITFALLS §1.1) so the frontend treats both branches
+// + PITFALLS §1.1) so the frontend treats both branches
 // identically.
 //
 // All copy comes from auth.passwordReset.request.* in messages/{ru,en}.json.
@@ -130,7 +130,7 @@ export default function PasswordResetRequestPage() {
 
 function RequestPageEditorial() {
   // Reuses the auth.login.illustration namespace as the calm filler
-  // visual — Phase 21b doesn't ship its own editorial copy block; the
+  // visual — doesn't ship its own editorial copy block; the
   // existing login illustration is the lowest-risk placeholder.
   const t = useTranslations('auth.login.illustration');
   return (

@@ -29,7 +29,7 @@ function setup() {
   return { qc, wrapper };
 }
 
-describe('usePinConversation / useUnpinConversation — Phase 19 / Plan 19-02', () => {
+describe('usePinConversation / useUnpinConversation', () => {
   beforeEach(() => {
     bizApiPost.mockReset();
   });

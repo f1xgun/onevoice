@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Footer } from '@/components/layout/Footer';
 
 export default function PublicLayout({ children }: { children: ReactNode }) {
-  // Phase 22-02 (D-25/D-26): Footer mounted in BOTH (public) and (app)
+  // Footer mounted in BOTH (public) and (app)
   // layouts so the three legal links + operator contact are reachable
   // from every page including /login, /register, /legal/*.
   //

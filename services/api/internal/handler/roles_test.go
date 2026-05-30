@@ -71,7 +71,7 @@ func withRoleIDParam(r *http.Request, roleID string) *http.Request {
 }
 
 // newRolesHandlerForTest constructs a RolesHandler from test mocks.
-// Phase 19: audit defaults to audit.Nop() so existing tests don't have to
+// audit defaults to audit.Nop so existing tests don't have to
 // thread a logger through every call site.
 func newRolesHandlerForTest(
 	rr domain.RoleRepository,
@@ -409,7 +409,7 @@ func TestRolesHandler_Create(t *testing.T) {
 	})
 
 	t.Run("dedup_permissions", func(t *testing.T) {
-		// MED-04 (Phase 5 review): duplicate permission strings in the request
+		// MED-04 (review): duplicate permission strings in the request
 		// must be coalesced before persisting to the JSONB column.
 		rr := &MockRoleRepository{}
 		mr := &MockBusinessMembershipRepository{}

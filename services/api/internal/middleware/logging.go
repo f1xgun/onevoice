@@ -8,7 +8,7 @@ import (
 )
 
 // resetConfirmPathFragment matches any URL whose path contains the
-// password-reset confirm endpoint. Phase 21b D-16 + PITFALLS §1.4 require
+// password-reset confirm endpoint. + PITFALLS §1.4 require
 // belt-and-suspenders defense against token leakage via access logs /
 // downstream middleware: even though RequestLogger today only logs
 // r.URL.Path (which is query-string-free by Go stdlib semantics), a
@@ -47,7 +47,7 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Phase 21b D-16 + PITFALLS §1.4: defensively strip the
+			// + PITFALLS §1.4: defensively strip the
 			// query string from the URL on the password-reset confirm
 			// path. r.URL.Path is already query-string-free, so the
 			// existing slog.String("path", r.URL.Path) below is safe

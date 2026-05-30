@@ -1,8 +1,8 @@
--- Phase 21b password_reset_tokens — integration-test path mirror.
+-- password_reset_tokens — integration-test path mirror.
 -- See migrations/postgres/000012_phase_21_password_reset_tokens.up.sql for
 -- canonical doc + atomic-consume statement reference.
 --
--- Path-specific idiom: uuid_generate_v4() (uuid-ossp loaded in 000001).
+-- Path-specific idiom: uuid_generate_v4 (uuid-ossp loaded in 000001).
 
 CREATE TABLE password_reset_tokens (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

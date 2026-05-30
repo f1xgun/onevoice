@@ -1,5 +1,5 @@
--- Phase 22 (22-01 / LEGAL-01) revert: drop the forensic columns added by
--- 000016 up. The Phase 21 column set (id, user_id, purpose, policy_version,
+-- revert: drop the forensic columns added by
+-- 000016 up. The column set (id, user_id, purpose, policy_version,
 -- policy_sha256, accepted_at) is left untouched.
 
 BEGIN;

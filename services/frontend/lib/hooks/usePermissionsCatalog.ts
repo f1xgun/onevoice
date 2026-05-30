@@ -8,11 +8,10 @@ import type { PermissionGroup } from '@/lib/schemas';
 
 /**
  * Lazy fetch of the static permission catalog (all permissions grouped by
- * resource, in the registry order from `pkg/authz.AllPermissions()`).
+ * resource, in the registry order from `pkg/authz.AllPermissions`).
  *
  * Mounted by `PermissionTree` on the role-editor pages — 99% of users never
- * open `/settings/roles`, so this fires only when an editor mounts (Phase 5
- * D-14).
+ * open `/settings/roles`, so this fires only when an editor mounts (
  *
  * Cache discipline: `staleTime: Infinity` + `gcTime: Infinity` because the
  * catalog is static within a deploy. A new build/restart re-fetches at the
