@@ -129,9 +129,11 @@ type RefreshToken struct {
 // the generic Business.Settings map. The storage format inside Settings is:
 //
 //	settings["tool_approvals"] = map[string]interface{}{
+//
 // "telegram__send_channel_post": "manual",
 // "vk__send_post":               "auto",
 // ...
+//
 //	}
 //
 // Returns a non-nil empty map when Settings is nil, when the tool_approvals

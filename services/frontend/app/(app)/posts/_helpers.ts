@@ -1,6 +1,6 @@
 // app/(app)/posts/_helpers.ts — page-local pure helpers.
 //
-// Extracted from the original posts/page.tsx as part of 
+// Extracted from the original posts/page.tsx as part of
 // (DataTable adoption). Keeping these in a sibling _helpers.ts (Next
 // convention: `_`-prefix means "not a route") lets the page shell stay
 // under the SC-01 LOC ceiling while preserving co-location.

@@ -2,7 +2,6 @@
 // and the current policy versions. Imported by services/api
 // (for /auth/consents validation + /auth/me requiresReconsent diff) and
 // by future workers (RKN export, etc.). Mirrors services/frontend/lib/legal/.
-//
 package legalconfig
 
 import "os"
