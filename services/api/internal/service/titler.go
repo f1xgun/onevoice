@@ -45,8 +45,8 @@ const (
 )
 
 // titleSystemPrompt returns the cheap-model instruction in the requested
-// locale (Phase D2). EN for language.English, RU otherwise — matches the
-// catalog default in pkg/i18n.lookup.
+// locale. EN for language.English, RU otherwise — matches the catalog
+// default in pkg/i18n.lookup.
 func titleSystemPrompt(tag language.Tag) string {
 	if tag == language.English {
 		return titleSystemPromptEn
@@ -148,9 +148,25 @@ func (t *Titler) GenerateAndSave(ctx context.Context, businessID, conversationID
 	redactedAssistant := security.RedactPII(assistantMsg)
 	promptLen := len(redactedUser) + len(redactedAssistant)
 
+	// Parse businessID (string from the conversation document) into the
+	// typed uuid.UUID expected by ChatRequest.BusinessID so logBilling
+	// attributes the auto-title LLM call against the conversation's
+	// business. Malformed values degrade to uuid.Nil — router's nil-guard
+	// skips billing rather than write a corrupt row (fail-closed).
+	bizID := uuid.Nil
+	if businessID != "" {
+		if parsed, perr := uuid.Parse(businessID); perr == nil {
+			bizID = parsed
+		} else {
+			slog.WarnContext(ctx, "auto-title: malformed business_id, billing will be skipped",
+				"business_id", businessID, "error", perr)
+		}
+	}
+
 	req := llm.ChatRequest{
-		UserID: uuid.Nil, // system-level call, no rate-limit attribution
-		Model:  t.model,
+		UserID:     uuid.Nil, // system-level call, no rate-limit attribution
+		BusinessID: bizID,    // billing attribution: titler row owned by the business (user Q#5)
+		Model:      t.model,
 		Messages: []llm.Message{
 			{Role: "system", Content: titleSystemPrompt(tag)},
 			{Role: "user", Content: fmt.Sprintf(userTemplate(tag), redactedUser, redactedAssistant)},
@@ -315,7 +331,7 @@ func untitledChatEnglish(t time.Time) string {
 	return fmt.Sprintf("Untitled chat %s %d", months[t.Month()-1], t.Day())
 }
 
-// untitledChatLocalized dispatches to the per-locale fallback (Phase D2). The
+// untitledChatLocalized dispatches to the per-locale fallback. The
 // "Untitled chat" prefix stays English in both branches because it's the
 // universally-recognized empty-state marker the FE renders as a placeholder
 // (matches the frontend i18n key chats.untitledFallback shape).

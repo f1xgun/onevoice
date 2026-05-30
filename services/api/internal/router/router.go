@@ -63,23 +63,27 @@ type Handlers struct {
 	OAuth         *oauth.OAuthHandler     // true OAuth code-flow (VK / Yandex / Google)
 	Connect       *connect.ConnectHandler // paste-flow integrations (Telegram bot-token, VK community access token)
 	InternalToken *handler.InternalTokenHandler
-	ChatProxy     *handler.ChatProxyHandler
-	Review        *handler.ReviewHandler
-	Post          *handler.PostHandler
-	AgentTask     *handler.AgentTaskHandler
-	Telemetry     *handler.TelemetryHandler
-	Project       *handler.ProjectHandler
-	HITL          *handler.HITLHandler         // resolve + resume + GET /tools
-	Titler        *handler.TitlerHandler       // POST /conversations/{id}/regenerate-title
-	Search        *handler.SearchHandler       // GET /api/v1/search
-	Platforms     *handler.PlatformsHandler    // Public platform registry
-	Permissions   *handler.PermissionsHandler  // RBAC: static permission registry
-	Members       *handler.MembersHandler      // RBAC: member management
-	Roles         *handler.RolesHandler        // RBAC: role listing
-	Invitations   *handler.InvitationsHandler  // RBAC: invitation lifecycle
-	AuditLog      *handler.AuditLogHandler     // audit-log read endpoint
-	UserDeletion  *handler.UserDeletionHandler // DELETE /users/me + restore
-	Consents      *handler.ConsentsHandler     // re-consent + withdraw + list
+	// POST /internal/v1/billing/usage_logs — internal-only billing write path
+	// consumed by the orchestrator (via pkg/billingclient). Lives under the
+	// same mTLS-protected SetupInternal mux as InternalToken.
+	InternalBilling *handler.InternalBillingHandler
+	ChatProxy       *handler.ChatProxyHandler
+	Review          *handler.ReviewHandler
+	Post            *handler.PostHandler
+	AgentTask       *handler.AgentTaskHandler
+	Telemetry       *handler.TelemetryHandler
+	Project         *handler.ProjectHandler
+	HITL            *handler.HITLHandler         // resolve + resume + GET /tools
+	Titler          *handler.TitlerHandler       // POST /conversations/{id}/regenerate-title
+	Search          *handler.SearchHandler       // GET /api/v1/search
+	Platforms       *handler.PlatformsHandler    // Public platform registry
+	Permissions     *handler.PermissionsHandler  // RBAC: static permission registry
+	Members         *handler.MembersHandler      // RBAC: member management
+	Roles           *handler.RolesHandler        // RBAC: role listing
+	Invitations     *handler.InvitationsHandler  // RBAC: invitation lifecycle
+	AuditLog        *handler.AuditLogHandler     // audit-log read endpoint
+	UserDeletion    *handler.UserDeletionHandler // DELETE /users/me + restore
+	Consents        *handler.ConsentsHandler     // re-consent + withdraw + list
 }
 
 // Setup creates and configures the Chi router with all routes and middleware.
@@ -249,7 +253,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			}
 
 			r.Put("/auth/password", handlers.Auth.ChangePassword)
-			// i18n Phase A3: persist the user's UI language choice
+			// i18n: persist the user's UI language choice
 			// ('ru'|'en'). Sits next to /auth/me/password as a sibling
 			// account-self-service endpoint; the frontend syncs the cookie ↔
 			// DB on login via GET /auth/me reading preferred_locale + this
@@ -259,7 +263,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// /members/{userId}).
 			r.Patch("/auth/locale", handlers.Auth.UpdatePreferredLocale)
 
-			// v2.0 RBAC (AUTHZ-01): static permission registry.
+			// v2.0 RBAC: static permission registry.
 			// Auth-required (any logged-in user) — no business scope.
 			if handlers.Permissions != nil {
 				r.Get("/permissions", handlers.Permissions.List)
@@ -296,7 +300,7 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 			// Business-scoped subtree — single chokepoint via RequireBusinessAccess.
 			// Every route under /businesses/{id}/... is gated by this middleware, which:
 			// - parses and validates the business UUID from the URL
-			// - looks up membership (404 on non-member, not 403 — AUTHZ-05)
+			// - looks up membership (404 on non-member, not 403)
 			// - injects BusinessContext into ctx with the caller's role + permissions
 			r.Route("/businesses/{id}", func(r chi.Router) {
 				r.Use(authz.RequireBusinessAccess(authzCache, middleware.GetUserID))
@@ -477,6 +481,18 @@ func Setup(handlers *Handlers, jwtSecret []byte, redisClient *redis.Client, hc *
 	return r
 }
 
+// internalServiceIdentityAllowlist enumerates the client cert CNs permitted
+// to call any identity-gated /internal/v1 route. Kept narrow on purpose:
+//   - orchestrator: the primary caller (LLM router → billingclient).
+//   - api: defense-in-depth slot for the future case where the api service
+//     dials its own internal listener (e.g. titler self-bills). Today the
+//     api wires Repos.Billing directly in-process for those callers, so the
+//     entry is currently unused but reserved.
+//
+// Platform agents (telegram / vk / yandex_business / google_business) are
+// intentionally NOT allowlisted — they do not bill in v1.4.
+var internalServiceIdentityAllowlist = []string{"orchestrator", "api"}
+
 // SetupInternal creates the internal mTLS-protected router.
 func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 	r := chi.NewRouter()
@@ -487,6 +503,17 @@ func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 	r.Use(chimiddleware.Recoverer)
 
 	r.Get("/internal/v1/tokens", handlers.InternalToken.GetToken)
+
+	// Billing write path. Gated by RequireServiceIdentity so only the
+	// orchestrator (or api self-call) can append usage rows. Defense in depth
+	// on top of the listener-level mTLS handshake.
+	if handlers.InternalBilling != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireServiceIdentity(internalServiceIdentityAllowlist, nil))
+			r.Post("/internal/v1/billing/usage_logs", handlers.InternalBilling.LogUsage)
+		})
+	}
+
 	r.Get("/health/live", hc.LiveHandler())
 	r.Get("/health/ready", hc.ReadyHandler())
 	r.Get("/health", hc.LiveHandler()) // backward compat

@@ -1,22 +1,31 @@
 package orchestrator_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/f1xgun/onevoice/pkg/billingclient"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/config"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/orchestrator"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/prompt"
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
+	"github.com/f1xgun/onevoice/services/orchestrator/internal/wire"
 )
 
 // --- Mocks ---
@@ -475,6 +484,185 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 		"nil pendingRepo + manual-floor must emit EventError 'HITL not configured'")
 }
 
+// --- end-to-end billing smoke ---
+
+// TestStepRun_BillingPostedE2E exercises the full chain from stepRun →
+// llm.Router.Chat → goroutine-fired logBilling → pkg/billingclient.LogUsage →
+// httptest server. Proves the wiring lands a single UsageLog with the
+// correct BusinessID + non-zero cost when BusinessID is set.
+//
+// We use the real wire.LLMRouter constructor + real pkg/billingclient (not
+// a mock) so the option-pass-through + router cost-math + internal billing
+// endpoint shape are exercised together. The fake selector returns a fake
+// provider whose ChatResponse has known token counts; the assertion pins
+// providerCost = inputTokens × in/1e6 + outputTokens × out/1e6.
+func TestStepRun_BillingPostedE2E(t *testing.T) {
+	t.Setenv("LLM_MODEL", "anthropic/claude-sonnet-4-6")
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+	// 1. httptest server that captures the POST.
+	type captureRec struct {
+		mu     sync.Mutex
+		bodies [][]byte
+	}
+	rec := &captureRec{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		rec.mu.Lock()
+		rec.bodies = append(rec.bodies, body)
+		rec.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+
+	// 2. Build pkg/billingclient pointed at the httptest server.
+	bc := billingclient.New(srv.URL, nil)
+
+	// 3. Build a router with fake provider + WithBilling. The fakeSelector
+	// returns a known entry so we control input/output cost.
+	fakeProv := &e2eFakeProvider{resp: &llm.ChatResponse{
+		Content: "ok", FinishReason: "stop",
+		Usage: llm.TokenUsage{InputTokens: 100, OutputTokens: 50},
+	}}
+	fakeSel := &e2eFakeSelector{entry: &llm.ModelProviderEntry{
+		Model: "anthropic/claude-sonnet-4-6", Provider: "openrouter",
+		InputCostPer1MTok: 3.00, OutputCostPer1MTok: 15.00,
+		HealthStatus: llm.HealthStatusHealthy, Enabled: true,
+	}, prov: fakeProv}
+	logBuf := &bytes.Buffer{}
+	router, err := wire.LLMRouter(cfg, slog.New(slog.NewTextHandler(logBuf, nil)),
+		llm.WithBilling(bc),
+		llm.WithSelector(fakeSel),
+	)
+	require.NoError(t, err)
+
+	// 4. Run stepRun via the orchestrator with a real BusinessID.
+	bizID := uuid.New()
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(router, reg)
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      bizID.String(),
+		ConversationID:  "conv-e2e-1",
+		Model:           "anthropic/claude-sonnet-4-6",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	// 5. Wait for the fire-and-forget goroutine to land its POST.
+	require.Eventually(t, func() bool {
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		return len(rec.bodies) >= 1
+	}, 2*time.Second, 10*time.Millisecond, "billing POST never landed")
+
+	rec.mu.Lock()
+	bodies := append([][]byte{}, rec.bodies...)
+	rec.mu.Unlock()
+	require.Len(t, bodies, 1, "expected exactly one billing POST per Chat call")
+
+	// 6. Decode + assert the row carries the BusinessID and a real cost.
+	// providerCost = (100 × 3) / 1e6 + (50 × 15) / 1e6 = 3e-4 + 7.5e-4 = 1.05e-3
+	var got llm.UsageLog
+	require.NoError(t, json.Unmarshal(bodies[0], &got))
+	assert.Equal(t, bizID, got.BusinessID)
+	assert.Equal(t, 100, got.InputTokens)
+	assert.Equal(t, 50, got.OutputTokens)
+	assert.InDelta(t, 1.05e-3, got.ProviderCostUSD, 1e-9,
+		"provider_cost_usd = inputTokens × in/1e6 + outputTokens × out/1e6 = 1.05e-3")
+}
+
+// TestStepRun_BillingSkippedWhenBusinessIDNil — router's nil-guard invariant
+// exercised through the full e2e path: empty state.BusinessID MUST result
+// in zero POSTs to the billing endpoint.
+func TestStepRun_BillingSkippedWhenBusinessIDNil(t *testing.T) {
+	t.Setenv("LLM_MODEL", "anthropic/claude-sonnet-4-6")
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+	type captureRec struct {
+		mu    sync.Mutex
+		count int
+	}
+	rec := &captureRec{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		rec.mu.Lock()
+		rec.count++
+		rec.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	bc := billingclient.New(srv.URL, nil)
+	fakeProv := &e2eFakeProvider{resp: &llm.ChatResponse{
+		Content: "ok", FinishReason: "stop",
+		Usage: llm.TokenUsage{InputTokens: 100, OutputTokens: 50},
+	}}
+	fakeSel := &e2eFakeSelector{entry: &llm.ModelProviderEntry{
+		Model: "anthropic/claude-sonnet-4-6", Provider: "openrouter",
+		InputCostPer1MTok: 3.00, OutputCostPer1MTok: 15.00,
+		HealthStatus: llm.HealthStatusHealthy, Enabled: true,
+	}, prov: fakeProv}
+	logBuf := &bytes.Buffer{}
+	router, err := wire.LLMRouter(cfg, slog.New(slog.NewTextHandler(logBuf, nil)),
+		llm.WithBilling(bc),
+		llm.WithSelector(fakeSel),
+	)
+	require.NoError(t, err)
+
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(router, reg)
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      "", // intentionally empty
+		Model:           "anthropic/claude-sonnet-4-6",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	// Wait a beat so any pending goroutine has time to misbehave.
+	time.Sleep(200 * time.Millisecond)
+
+	rec.mu.Lock()
+	got := rec.count
+	rec.mu.Unlock()
+	assert.Equal(t, 0, got, "uuid.Nil BusinessID must NOT produce a billing POST (router nil-guard)")
+}
+
+// --- e2e fakes (separate from the unit-level fakes elsewhere) ---
+
+type e2eFakeProvider struct {
+	resp *llm.ChatResponse
+}
+
+func (f *e2eFakeProvider) Name() string { return "openrouter" }
+func (f *e2eFakeProvider) Chat(_ context.Context, _ llm.ChatRequest) (*llm.ChatResponse, error) {
+	return f.resp, nil
+}
+func (f *e2eFakeProvider) ChatStream(_ context.Context, _ llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	return nil, nil
+}
+func (f *e2eFakeProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) {
+	return nil, nil
+}
+func (f *e2eFakeProvider) HealthCheck(_ context.Context) error { return nil }
+
+type e2eFakeSelector struct {
+	entry *llm.ModelProviderEntry
+	prov  llm.Provider
+}
+
+func (f *e2eFakeSelector) Pick(_ string, _ llm.Strategy) (*llm.ModelProviderEntry, llm.Provider, error) {
+	return f.entry, f.prov, nil
+}
+func (f *e2eFakeSelector) Record(_ *llm.ModelProviderEntry, _ llm.Outcome) {}
+
 // TestBuildPendingBatch_PopulatesFloorAtPauseManual verifies that every
 // PendingCall persisted at orchestrator pause time must carry
 // FloorAtPause=ToolFloorManual so the resolve-time TOCTOU re-check can
@@ -482,6 +670,123 @@ func TestStepRun_NilPendingRepo_ManualFloor_EmitsConfigError(t *testing.T) {
 // divergence with the api-side ToolsRegistryCache, which is HTTP-backed and
 // lazily warmed). We exercise this via the public Run path (buildPendingBatch
 // is package-private) and assert on repo.insertedBatches.
+// --- BusinessID propagation tests ---
+
+// capturingLLM records every ChatRequest it receives so tests can assert on
+// BusinessID + ConversationID propagation through stepRun.
+type capturingLLM struct {
+	mu       sync.Mutex
+	requests []llm.ChatRequest
+	resp     *llm.ChatResponse
+}
+
+func (c *capturingLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.requests = append(c.requests, req)
+	if c.resp != nil {
+		return c.resp, nil
+	}
+	return &llm.ChatResponse{Content: "ok", FinishReason: "stop"}, nil
+}
+
+func (c *capturingLLM) lastRequest(t *testing.T) llm.ChatRequest {
+	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.requests) == 0 {
+		t.Fatalf("capturingLLM.Chat was never called")
+	}
+	return c.requests[len(c.requests)-1]
+}
+
+// TestStepRun_PropagatesBusinessID — when state.BusinessID is a valid UUID
+// string, the ChatRequest the orchestrator dispatches MUST carry the parsed
+// uuid.UUID in BusinessID so logBilling stamps the right business on every
+// usage_logs row.
+func TestStepRun_PropagatesBusinessID(t *testing.T) {
+	bizID := uuid.New()
+	rec := &capturingLLM{}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(rec, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      bizID.String(),
+		ConversationID:  "conv-x",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := rec.lastRequest(t)
+	assert.Equal(t, bizID, got.BusinessID, "stepRun must thread state.BusinessID into ChatRequest.BusinessID")
+}
+
+// TestStepRun_PropagatesConversationID — ChatRequest.ConversationID lands
+// the conversation's Mongo ObjectID hex from RunState so usage_logs rows can
+// be forensically grouped per-chat-turn.
+func TestStepRun_PropagatesConversationID(t *testing.T) {
+	rec := &capturingLLM{}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(rec, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      uuid.New().String(),
+		ConversationID:  "conv-forensic-123",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := rec.lastRequest(t)
+	assert.Equal(t, "conv-forensic-123", got.ConversationID)
+}
+
+// TestStepRun_MalformedBusinessID_ParsesToNil — fail-closed behavior: a
+// non-UUID state.BusinessID (from a compromised orchestrator state OR a bug
+// elsewhere in the chain) MUST degrade to uuid.Nil so the router's nil-guard
+// skips the billing POST. Loss of one row is preferable to writing a corrupt
+// row.
+func TestStepRun_MalformedBusinessID_ParsesToNil(t *testing.T) {
+	rec := &capturingLLM{}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(rec, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      "not-a-uuid",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := rec.lastRequest(t)
+	assert.Equal(t, uuid.Nil, got.BusinessID,
+		"malformed BusinessID must parse to uuid.Nil so router skips billing (fail-closed)")
+}
+
+// TestStepRun_EmptyBusinessID_ParsesToNil — empty BusinessID maps to
+// uuid.Nil same as malformed: legacy callers + system contexts continue
+// to work, just without a billing row.
+func TestStepRun_EmptyBusinessID_ParsesToNil(t *testing.T) {
+	rec := &capturingLLM{}
+	reg := toolregistry.NewRegistry()
+	orch := orchestrator.New(rec, reg)
+
+	events, err := orch.Run(context.Background(), orchestrator.RunRequest{
+		BusinessContext: prompt.BusinessContext{Name: "Test"},
+		Messages:        []llm.Message{{Role: "user", Content: "hi"}},
+		BusinessID:      "",
+	})
+	require.NoError(t, err)
+	_ = drainEvents(events)
+
+	got := rec.lastRequest(t)
+	assert.Equal(t, uuid.Nil, got.BusinessID)
+}
+
 func TestBuildPendingBatch_PopulatesFloorAtPauseManual(t *testing.T) {
 	manualArgs1, _ := json.Marshal(map[string]interface{}{"text": "hi"})
 	manualArgs2, _ := json.Marshal(map[string]interface{}{"text": "yo"})
