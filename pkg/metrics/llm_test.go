@@ -126,6 +126,39 @@ func TestRecordLLMCacheUsage_EmitsCounters(t *testing.T) {
 	}
 }
 
+// TestLLMDailySpendBlocked_Increments — counter compiles and increments
+// without panic for the tier label values used by the rate limiter.
+func TestLLMDailySpendBlocked_Increments(t *testing.T) {
+	for _, tier := range []string{"free", "basic", "pro", "enterprise"} {
+		LLMDailySpendBlocked.WithLabelValues(tier).Inc()
+	}
+}
+
+// TestLLMConversationCapHit_Increments — counter compiles for both axes.
+func TestLLMConversationCapHit_Increments(t *testing.T) {
+	for _, axis := range []string{"input", "output"} {
+		LLMConversationCapHit.WithLabelValues(axis).Inc()
+	}
+}
+
+// TestLLMRedisDownFallback_Increments — counter accepts all four documented
+// action labels without panic.
+func TestLLMRedisDownFallback_Increments(t *testing.T) {
+	for _, action := range []string{"block", "fallback", "fallback_blocked", "misconfigured"} {
+		LLMRedisDownFallback.WithLabelValues(action).Inc()
+	}
+}
+
+// TestLLMRouterRetry_Increments — counter accepts the cartesian product of the
+// result and attempt label vocabulary the router emits.
+func TestLLMRouterRetry_Increments(t *testing.T) {
+	for _, result := range []string{"success", "retrying", "exhausted", "nonretryable"} {
+		for _, attempt := range []string{"first", "second"} {
+			LLMRouterRetry.WithLabelValues(result, attempt).Inc()
+		}
+	}
+}
+
 func TestRecordLLMCacheUsage_ZeroArgsAreNoOp(t *testing.T) {
 	const model = "claude-haiku-4-5-zero-test"
 

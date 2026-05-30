@@ -51,7 +51,12 @@ const (
 // persist tool_call events with the LLM's real call ID on the assistant
 // Message.ToolCalls.
 type Event struct {
-	Type            EventType
+	Type EventType
+	// Code is a machine-readable discriminator on error events so downstream
+	// consumers (api proxy / frontend) can branch on the failure mode without
+	// parsing Content. Projected onto sse.Event.Code on the wire and stays
+	// absent (omitempty) for non-error events.
+	Code            string
 	Content         string
 	ToolCallID      string
 	ToolName        string
