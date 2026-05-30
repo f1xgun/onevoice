@@ -467,3 +467,105 @@ var _ toolregistry.ApprovalExecutor = (*instrumentedExecutor)(nil)
 // contexts; this no-op keeps the compiler happy if any edit trims a usage.
 var _ = fmt.Sprintf
 var _ = strings.Contains
+
+// ---------------------------------------------------------------------
+// Snapshot hydration tests (accumulated token counts)
+// ---------------------------------------------------------------------
+
+// snapshotWithAccumulated marshals a V2 snapshot envelope including the new
+// accumulated token-count fields. Used to drive resume hydration tests.
+func snapshotWithAccumulated(t *testing.T, accumIn, accumOut int) []byte {
+	t.Helper()
+	type envV2 struct {
+		V                       int           `json:"v"`
+		Messages                []llm.Message `json:"messages"`
+		SystemPlatform          string        `json:"system_platform,omitempty"`
+		SystemBusiness          string        `json:"system_business,omitempty"`
+		AccumulatedInputTokens  int           `json:"accumulated_input_tokens,omitempty"`
+		AccumulatedOutputTokens int           `json:"accumulated_output_tokens,omitempty"`
+	}
+	b, err := json.Marshal(envV2{
+		V:                       2,
+		Messages:                []llm.Message{{Role: "user", Content: "hi"}},
+		AccumulatedInputTokens:  accumIn,
+		AccumulatedOutputTokens: accumOut,
+	})
+	require.NoError(t, err)
+	return b
+}
+
+// TestResume_PreservesAccumulatedTokens — a paused snapshot with 40k input
+// hydrates the new RunState fields so the resumed loop's cap measurement
+// continues from the pre-pause budget rather than restarting at zero.
+func TestResume_PreservesAccumulatedTokens(t *testing.T) {
+	// LLM returns 15k input on the resumed call. Total 40k + 15k = 55k > 50k
+	// cap → error fires on the first iteration after resume.
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{Content: "boom", FinishReason: "stop", Usage: llm.TokenUsage{InputTokens: 15000}},
+	}}
+	reg := toolregistry.NewRegistry()
+	repo := newMockPendingRepo()
+
+	batch := batchWithCalls(t, "batch-acc", []domain.PendingCall{})
+	batch.ModelMessages = snapshotWithAccumulated(t, 40000, 5000)
+	repo.store["batch-acc"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{
+		MaxIterations:        10,
+		ConversationInputCap: 50000,
+	})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-acc"})
+	require.NoError(t, err)
+	evts := drainEvents(events)
+
+	errs := findEvents(evts, orchestrator.EventError)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "conversation_token_cap", errs[0].Code,
+		"resumed loop must use the hydrated accumulator, not reset to 0")
+}
+
+// TestResume_LegacyV1SnapshotZeroes — pre-cap snapshot (no accumulated_*
+// fields) hydrates with 0 so the resumed loop measures from zero. Pre-cap
+// turns were not subject to enforcement; this is the correct semantics.
+func TestResume_LegacyV1SnapshotZeroes(t *testing.T) {
+	stub := &stubLLM{responses: []*llm.ChatResponse{
+		{Content: "ok", FinishReason: "stop", Usage: llm.TokenUsage{InputTokens: 5000}},
+	}}
+	reg := toolregistry.NewRegistry()
+	repo := newMockPendingRepo()
+
+	batch := batchWithCalls(t, "batch-legacy", []domain.PendingCall{})
+	// Legacy V1 raw-array shape — no accumulated fields.
+	raw, err := json.Marshal([]llm.Message{{Role: "user", Content: "hi"}})
+	require.NoError(t, err)
+	batch.ModelMessages = raw
+	repo.store["batch-legacy"] = batch
+
+	orch := orchestrator.NewWithHITL(stub, reg, repo, orchestrator.Options{
+		MaxIterations:        10,
+		ConversationInputCap: 50000,
+	})
+	events, err := orch.Resume(context.Background(), orchestrator.ResumeRequest{BatchID: "batch-legacy"})
+	require.NoError(t, err)
+	evts := drainEvents(events)
+
+	// 5k from the new call sits under the 50k cap → no error.
+	assert.Empty(t, findEvents(evts, orchestrator.EventError),
+		"legacy snapshot must hydrate at 0 so the resumed turn does not falsely trip the cap")
+}
+
+// TestResume_AccumulatedTokensSurviveJSONRoundTrip — marshal/unmarshal of a
+// V2 snapshot preserves the new fields verbatim.
+func TestResume_AccumulatedTokensSurviveJSONRoundTrip(t *testing.T) {
+	raw := snapshotWithAccumulated(t, 12345, 6789)
+
+	var env struct {
+		V                       int           `json:"v"`
+		Messages                []llm.Message `json:"messages"`
+		AccumulatedInputTokens  int           `json:"accumulated_input_tokens,omitempty"`
+		AccumulatedOutputTokens int           `json:"accumulated_output_tokens,omitempty"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &env))
+	assert.Equal(t, 12345, env.AccumulatedInputTokens)
+	assert.Equal(t, 6789, env.AccumulatedOutputTokens)
+}
