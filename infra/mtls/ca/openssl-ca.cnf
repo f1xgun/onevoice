@@ -1,0 +1,21 @@
+# Minimal OpenSSL CA config for the OneVoice dev/test mTLS CA.
+# Used by scripts/gen-mtls-certs.sh when generating the root CA cert.
+#
+# This file is intentionally minimal: it describes a CA that can sign
+# server + client leaf certs. Production deploys use a different CA
+# (see infra/mtls/README.md "Dev vs Prod CA divergence").
+
+[ req ]
+distinguished_name = req_distinguished_name
+prompt             = no
+x509_extensions    = v3_ca
+
+[ req_distinguished_name ]
+CN = onevoice-dev-ca
+O  = OneVoice
+OU = Internal mTLS (dev)
+
+[ v3_ca ]
+basicConstraints     = critical, CA:TRUE
+keyUsage             = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
