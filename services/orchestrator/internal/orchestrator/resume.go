@@ -97,9 +97,23 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Ev
 // non-whitespace byte, a legacy raw array begins with '['. Resume logs a
 // debug entry on legacy batches so operators can confirm in-flight legacy
 // batches drained naturally.
-func decodeSnapshot(raw []byte) (messages []llm.Message, platform, business string, accumIn, accumOut int, legacy bool, err error) {
+// snapshotDecoded carries the decoded fields of a pause snapshot so the
+// resume goroutine can populate RunState without juggling a long return list.
+// Legacy V1 snapshots leave most fields zero — the `legacy` flag tells the
+// caller to expect a leading system message in Messages instead.
+type snapshotDecoded struct {
+	Messages                []llm.Message
+	SystemPlatform          string
+	SystemBusiness          string
+	AccumulatedInputTokens  int
+	AccumulatedOutputTokens int
+	Legacy                  bool
+}
+
+func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
+	var out snapshotDecoded
 	if len(raw) == 0 {
-		return nil, "", "", 0, 0, false, nil
+		return out, nil
 	}
 	// Skip leading whitespace to find the first JSON token.
 	i := 0
@@ -107,21 +121,28 @@ func decodeSnapshot(raw []byte) (messages []llm.Message, platform, business stri
 		i++
 	}
 	if i >= len(raw) {
-		return nil, "", "", 0, 0, false, nil
+		return out, nil
 	}
 	if raw[i] == '{' {
 		var env modelMessagesSnapshotV2
 		if uErr := json.Unmarshal(raw, &env); uErr != nil {
-			return nil, "", "", 0, 0, false, uErr
+			return snapshotDecoded{}, uErr
 		}
-		return env.Messages, env.SystemPlatform, env.SystemBusiness, env.AccumulatedInputTokens, env.AccumulatedOutputTokens, false, nil
+		out.Messages = env.Messages
+		out.SystemPlatform = env.SystemPlatform
+		out.SystemBusiness = env.SystemBusiness
+		out.AccumulatedInputTokens = env.AccumulatedInputTokens
+		out.AccumulatedOutputTokens = env.AccumulatedOutputTokens
+		return out, nil
 	}
 	// Legacy array shape.
 	var msgs []llm.Message
 	if uErr := json.Unmarshal(raw, &msgs); uErr != nil {
-		return nil, "", "", 0, 0, false, uErr
+		return snapshotDecoded{}, uErr
 	}
-	return msgs, "", "", 0, 0, true, nil
+	out.Messages = msgs
+	out.Legacy = true
+	return out, nil
 }
 
 // resumeGoroutine is the body of the spawned resume goroutine. Extracted so
@@ -131,20 +152,20 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 	// 1. Reconstruct state from the snapshot. decodeSnapshot accepts both
 	// the versioned envelope and the legacy raw-array shape; legacy batches
 	// in flight at deploy time drain through the legacy fallback.
-	messages, platform, business, accumIn, accumOut, legacy, err := decodeSnapshot(batch.ModelMessages)
+	snap, err := decodeSnapshot(batch.ModelMessages)
 	if err != nil {
 		out <- Event{Type: EventError, Content: fmt.Sprintf("corrupt snapshot: %v", err)}
 		return
 	}
-	if legacy {
+	if snap.Legacy {
 		slog.DebugContext(ctx, "resume: legacy snapshot detected — using provider scrub fallback",
 			"batch_id", batch.ID,
 		)
 	}
 	state := &RunState{
-		Messages:                 messages,
-		SystemPlatform:           platform,
-		SystemBusiness:           business,
+		Messages:                 snap.Messages,
+		SystemPlatform:           snap.SystemPlatform,
+		SystemBusiness:           snap.SystemBusiness,
 		AvailableTools:           o.tools.AvailableForWhitelist(ctx, req.ActiveIntegrations, req.WhitelistMode, req.AllowedTools),
 		BusinessApprovals:        req.BusinessApprovals,
 		ProjectApprovalOverrides: req.ProjectApprovalOverrides,
@@ -160,8 +181,8 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 		// continues to measure from the pre-pause budget. Legacy V1/V2
 		// snapshots without these fields land at zero — correct because
 		// pre-cap turns were not subject to enforcement.
-		AccumulatedInputTokens:  accumIn,
-		AccumulatedOutputTokens: accumOut,
+		AccumulatedInputTokens:  snap.AccumulatedInputTokens,
+		AccumulatedOutputTokens: snap.AccumulatedOutputTokens,
 	}
 
 	// Inject batch.BusinessID into the dispatch context so the NATS executor's

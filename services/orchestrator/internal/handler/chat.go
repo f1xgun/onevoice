@@ -262,12 +262,12 @@ func translateRunnerError(ctx context.Context, err error) sse.Event {
 // Friendly-message helpers — two-locale switch only. The wire shape's Code
 // field is the discriminator; Content is the human-readable fallback.
 const (
-	dailySpendRU         = "Достигнут дневной лимит расходов для этого бизнеса. Попробуйте завтра или свяжитесь с владельцем."
-	dailySpendEN         = "Daily spend limit reached for this business. Try again tomorrow or contact the owner."
-	rateLimitUnavailRU   = "Сервис ограничения запросов временно недоступен. Попробуйте позже."
-	rateLimitUnavailEN   = "Rate limiter is temporarily unavailable. Please try again shortly."
-	rateLimitExceededRU  = "Слишком много запросов. Подождите минуту и повторите."
-	rateLimitExceededEN  = "Too many requests. Wait a minute and try again."
+	dailySpendRU        = "Достигнут дневной лимит расходов для этого бизнеса. Попробуйте завтра или свяжитесь с владельцем."
+	dailySpendEN        = "Daily spend limit reached for this business. Try again tomorrow or contact the owner."
+	rateLimitUnavailRU  = "Сервис ограничения запросов временно недоступен. Попробуйте позже."
+	rateLimitUnavailEN  = "Rate limiter is temporarily unavailable. Please try again shortly."
+	rateLimitExceededRU = "Слишком много запросов. Подождите минуту и повторите."
+	rateLimitExceededEN = "Too many requests. Wait a minute and try again."
 )
 
 func friendlyDailySpendMessage(ctx context.Context) string {

@@ -136,12 +136,12 @@ func friendlyConversationCapMessage(ctx context.Context) string {
 // Friendly text for rate-limiter sentinels that surface mid-loop. Two-locale
 // switch matching the chat handler's bootstrap-error translation.
 const (
-	dailySpendInLoopRU         = "Достигнут дневной лимит расходов для этого бизнеса. Попробуйте завтра."
-	dailySpendInLoopEN         = "Daily spend limit reached for this business. Try again tomorrow."
-	rateLimitUnavailInLoopRU   = "Сервис ограничения запросов временно недоступен. Попробуйте позже."
-	rateLimitUnavailInLoopEN   = "Rate limiter is temporarily unavailable. Please try again shortly."
-	rateLimitExceededInLoopRU  = "Слишком много запросов. Подождите минуту и повторите."
-	rateLimitExceededInLoopEN  = "Too many requests. Wait a minute and try again."
+	dailySpendInLoopRU        = "Достигнут дневной лимит расходов для этого бизнеса. Попробуйте завтра."
+	dailySpendInLoopEN        = "Daily spend limit reached for this business. Try again tomorrow."
+	rateLimitUnavailInLoopRU  = "Сервис ограничения запросов временно недоступен. Попробуйте позже."
+	rateLimitUnavailInLoopEN  = "Rate limiter is temporarily unavailable. Please try again shortly."
+	rateLimitExceededInLoopRU = "Слишком много запросов. Подождите минуту и повторите."
+	rateLimitExceededInLoopEN = "Too many requests. Wait a minute and try again."
 )
 
 // translateChatError converts a Router-side rate-limiter sentinel into an SSE

@@ -81,19 +81,19 @@ func TestRateLimiter_CheckLimit(t *testing.T) {
 	userID := uuid.New()
 
 	// First request should pass
-	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free",100) // 100 tokens
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100) // 100 tokens
 	assert.NoError(t, err)
 	assert.True(t, allowed)
 
 	// 9 more requests (free tier: 10 req/min)
 	for i := 0; i < 9; i++ {
-		allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free",100)
+		allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100)
 		assert.NoError(t, err)
 		assert.True(t, allowed)
 	}
 
 	// 11th request should fail (exceeded 10 req/min)
-	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free",100)
+	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 100)
 	assert.NoError(t, err)
 	assert.False(t, allowed)
 }
@@ -113,12 +113,12 @@ func TestRateLimiter_TokenLimit(t *testing.T) {
 	userID := uuid.New()
 
 	// Use 4000 tokens (free tier: 5000 tok/min)
-	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free",4000)
+	allowed, err := limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 4000)
 	assert.NoError(t, err)
 	assert.True(t, allowed)
 
 	// Use 1500 more tokens (total 5500 > 5000 limit)
-	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free",1500)
+	allowed, err = limiter.CheckLimit(ctx, userID, uuid.Nil, "free", 1500)
 	assert.NoError(t, err)
 	assert.False(t, allowed) // Exceeds token limit
 }
@@ -133,10 +133,10 @@ type fakeDailySpender struct {
 	spend float64
 	err   error
 
-	called     bool
-	gotBizID   uuid.UUID
-	gotDay     time.Time
-	callCount  int
+	called    bool
+	gotBizID  uuid.UUID
+	gotDay    time.Time
+	callCount int
 }
 
 func (f *fakeDailySpender) GetDailySpend(_ context.Context, businessID uuid.UUID, day time.Time) (float64, error) {
@@ -147,15 +147,15 @@ func (f *fakeDailySpender) GetDailySpend(_ context.Context, businessID uuid.UUID
 	return f.spend, f.err
 }
 
-// freeTierWithCap returns a tier table where free has DailySpendUSD=cap and
-// per-minute/-month gates that won't fire for the small test volumes here.
-func freeTierWithCap(cap float64) llm.TierLimits {
+// freeTierWithCap returns a tier table where free has DailySpendUSD=dailyCap
+// and per-minute/-month gates that won't fire for the small test volumes here.
+func freeTierWithCap(dailyCap float64) llm.TierLimits {
 	return llm.TierLimits{
 		"free": llm.Limits{
 			RequestsPerMin: 10,
 			TokensPerMin:   5000,
 			TokensPerMonth: 100000,
-			DailySpendUSD:  cap,
+			DailySpendUSD:  dailyCap,
 		},
 	}
 }
@@ -246,17 +246,17 @@ func TestRateLimiter_DailySpend_BlocksBeforeRedis(t *testing.T) {
 // fires (treated as effectively at-cap); at spend = cap-1e-3 it does not.
 func TestRateLimiter_DailySpend_EpsilonNudge(t *testing.T) {
 	_, rdb := freshRedis(t)
-	cap := 1.0
+	dailyCap := 1.0
 
 	// Just under cap by an epsilon → fires.
-	atCap := &fakeDailySpender{spend: cap - 1e-12}
-	rlAtCap := llm.NewRateLimiter(rdb, freeTierWithCap(cap), llm.WithDailySpender(atCap))
+	atCap := &fakeDailySpender{spend: dailyCap - 1e-12}
+	rlAtCap := llm.NewRateLimiter(rdb, freeTierWithCap(dailyCap), llm.WithDailySpender(atCap))
 	_, err := rlAtCap.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
 	assert.True(t, errors.Is(err, llm.ErrDailySpendExceeded), "epsilon-below cap must fire, got %v", err)
 
 	// Clearly under cap → passes.
-	under := &fakeDailySpender{spend: cap - 1e-3}
-	rlUnder := llm.NewRateLimiter(rdb, freeTierWithCap(cap), llm.WithDailySpender(under))
+	under := &fakeDailySpender{spend: dailyCap - 1e-3}
+	rlUnder := llm.NewRateLimiter(rdb, freeTierWithCap(dailyCap), llm.WithDailySpender(under))
 	allowed, err := rlUnder.CheckLimit(context.Background(), uuid.New(), uuid.New(), "free", 0)
 	require.NoError(t, err)
 	assert.True(t, allowed)
