@@ -19,7 +19,7 @@ type ctxKeyServiceIdentity struct{}
 // chain at the listener; this middleware applies the per-route allowlist on
 // top of that.
 //
-// Behaviour:
+// Behavior:
 //   - If a peer cert is present, the Subject.CommonName must appear in
 //     `allowlist` (case-sensitive — defense against typos). Reject 403 if not.
 //   - If NO peer cert is present (r.TLS == nil OR PeerCertificates empty):

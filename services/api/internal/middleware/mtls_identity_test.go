@@ -68,7 +68,10 @@ func TestRequireServiceIdentity_RejectsUnlistedCN(t *testing.T) {
 	assert.False(t, called, "next handler must not run on rejected identity")
 }
 
-// TestRequireServiceIdentity_RejectsMissingCert_WhenMTLSEnabled.
+// TestRequireServiceIdentity_RejectsMissingCert_WhenMTLSEnabled: when
+// ONEVOICE_MTLS_ENABLED=true and the request has no peer cert, the middleware
+// must reject with 403 (the listener should have refused the handshake;
+// middleware is defense in depth).
 func TestRequireServiceIdentity_RejectsMissingCert_WhenMTLSEnabled(t *testing.T) {
 	t.Setenv("ONEVOICE_MTLS_ENABLED", "true")
 
@@ -87,7 +90,10 @@ func TestRequireServiceIdentity_RejectsMissingCert_WhenMTLSEnabled(t *testing.T)
 	assert.False(t, called, "next handler must not run when mtls required but no cert")
 }
 
-// TestRequireServiceIdentity_AllowsMissingCert_WhenMTLSDisabled.
+// TestRequireServiceIdentity_AllowsMissingCert_WhenMTLSDisabled: when
+// ONEVOICE_MTLS_ENABLED=false (unit-test mode without cert material), the
+// middleware sets the identity to "system" and continues so handler-only
+// tests still run.
 func TestRequireServiceIdentity_AllowsMissingCert_WhenMTLSDisabled(t *testing.T) {
 	t.Setenv("ONEVOICE_MTLS_ENABLED", "false")
 

@@ -82,6 +82,12 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 
 	internalTokenHandler := handler.NewInternalTokenHandler(svcs.Integration)
 
+	// 25a-04: internal billing write handler — POST
+	// /internal/v1/billing/usage_logs. Plan 25a-02 wires repos.Billing
+	// (Postgres-backed BillingRepository) which satisfies handler.BillingService
+	// via the LogUsage method.
+	internalBillingHandler := handler.NewInternalBillingHandler(repos.Billing, nil)
+
 	// AuthHandler gains audit + jwtSecret args so it
 	// can emit auth.* audit events and extract userID from refresh-token
 	// claims before Redis invalidation during Logout.
@@ -291,15 +297,17 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		OAuth:         oauthHandler,
 		Connect:       connectHandler,
 		InternalToken: internalTokenHandler,
-		ChatProxy:     chatProxyHandler,
-		Review:        reviewHandler,
-		Post:          postHandler,
-		AgentTask:     agentTaskHandler,
-		Project:       projectHandler,
-		HITL:          hitlHandler,
-		Titler:        titlerHandler,
-		Search:        searchHandler,
-		Platforms:     platformsHandler,
+		// 25a-04: internal billing write path.
+		InternalBilling: internalBillingHandler,
+		ChatProxy:       chatProxyHandler,
+		Review:          reviewHandler,
+		Post:            postHandler,
+		AgentTask:       agentTaskHandler,
+		Project:         projectHandler,
+		HITL:            hitlHandler,
+		Titler:          titlerHandler,
+		Search:          searchHandler,
+		Platforms:       platformsHandler,
 		// v2.0 RBAC (AUTHZ-01): static permission registry endpoint.
 		Permissions: handler.NewPermissionsHandler(),
 		// v2.0 RBAC: member + role management.
