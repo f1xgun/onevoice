@@ -9,6 +9,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
@@ -125,9 +126,9 @@ func classifyTelegramError(err error) error {
 // getSender retrieves a Sender and the resolved externalID for a tool request.
 // When externalID is empty, the first active integration for the business is used.
 func (h *Handler) getSender(ctx context.Context, req a2a.ToolRequest, externalID string) (Sender, string, error) {
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentTelegram, externalID)
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentTelegram, externalID)
 	if err != nil {
-		return nil, "", agentbase.WrapTokenFetchError(fmt.Errorf("fetch token: %w", err))
+		return nil, "", err
 	}
 	sender, err := h.senderFactory(info.AccessToken)
 	if err != nil {
@@ -231,10 +232,13 @@ func (h *Handler) sendNotification(ctx context.Context, req a2a.ToolRequest) (*a
 }
 
 func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	limitF, _ := req.Args["limit"].(float64)
-	limit := int(limitF)
-	if limit == 0 {
-		limit = 20
+	limit, err := a2a.GetIntParam(req.Args, "limit", domain.TelegramReviewLimitDefault)
+	if err != nil {
+		slog.Warn("telegram agent: invalid limit param, using default", "error", err)
+		limit = domain.TelegramReviewLimitDefault
+	}
+	if limit <= 0 {
+		limit = domain.TelegramReviewLimitDefault
 	}
 
 	sender, _, err := h.getSender(ctx, req, "")

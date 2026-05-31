@@ -1,6 +1,10 @@
 package telegram
 
-import "time"
+import (
+	"time"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+)
 
 // Network retry policy for transient TLS/connection errors. api.telegram.org
 // drops a non-trivial fraction of TLS handshakes on some networks; retrying
@@ -10,8 +14,9 @@ const (
 	defaultBotRetryDelay    = 500 * time.Millisecond
 )
 
-// Review-fetch defaults applied when callers omit a limit.
-const defaultReviewLimit = 500
+// Review-fetch defaults applied when callers omit a limit. Sourced from the
+// shared per-platform defaults so a change touches one file, not four.
+const defaultReviewLimit = domain.TelegramReviewLimitDefault
 
 // tokenRedactionMarker substitutes for the bot token in error messages
 // to prevent the credential from leaking through Go's net/url default
