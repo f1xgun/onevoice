@@ -177,6 +177,37 @@ export function isKnownPlatform(id: string): id is PlatformId {
   return id in PLATFORM_STATIC_META;
 }
 
+// Two-letter mono initials for the platform mark on integration cards.
+// Distinct from `shortLabel` (Latin codes used elsewhere) because the
+// integrations UI ships localized initials (e.g. Cyrillic 'ЯБ' for
+// yandex_business). Record<PlatformId, …> forces a new platform to declare
+// its initials at compile time.
+export const PLATFORM_INITIALS: Record<PlatformId, string> = {
+  telegram: 'TG',
+  vk: 'VK',
+  yandex_business: 'ЯБ',
+  google_business: 'GB',
+  '2gis': '2G',
+  avito: 'AV',
+  whatsapp: 'WA',
+};
+
+export function platformInitials(platform: string, fallbackLabel: string): string {
+  if (isKnownPlatform(platform)) return PLATFORM_INITIALS[platform];
+  return fallbackLabel.slice(0, 2).toUpperCase();
+}
+
+// Platform-specific metadata-field name carried on Integration documents.
+// Wired by both `getIntegrationDisplay` (read) and the lazy-refresh button
+// in PlatformCard (write — knows which endpoint to call). Keeping the
+// mapping here means adding a new platform with its own display field is
+// one entry instead of two switch arms.
+export const PLATFORM_DISPLAY_FIELD: Partial<Record<PlatformId, string>> = {
+  telegram: 'channel_title',
+  vk: 'community_name',
+  yandex_business: 'business_name',
+};
+
 // Reconnect CTA i18n key per platform. Single source of truth shared by
 // the chat IntegrationTokenInvalidBanner and the tasks-page explainError
 // so the two surfaces can't drift on label copy. Adding a new PlatformId
