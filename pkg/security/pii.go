@@ -71,9 +71,6 @@ var piiClasses = []piiClass{
 
 // RedactPII replaces every PII match in s with the placeholder "[Скрыто]".
 // Idempotent. Safe on empty string. UTF-8 / Cyrillic preserved.
-//
-// Used by the titler on the user message + assistant message BEFORE
-// they reach the cheap LLM endpoint (defense-in-depth).
 func RedactPII(s string) string {
 	out := s
 	for _, c := range piiClasses {
@@ -113,13 +110,11 @@ func ContainsPIIClass(s string) (string, bool) {
 	return "", false
 }
 
-// luhnValid implements the Luhn checksum used by major card schemes
-// (ISO/IEC 7812-1). It accepts the raw matched candidate (which may contain
-// space/dash separators), strips non-digit runes, requires 13–19 digits, and
-// returns true only when the checksum is divisible by 10.
-//
-// Uses Luhn to reject 16-digit IDs, order numbers, and other numeric
-// titles that the cc regex would otherwise over-match.
+// luhnValid implements the Luhn checksum (ISO/IEC 7812-1). It accepts the
+// raw matched candidate (which may contain space/dash separators), strips
+// non-digit runes, requires 13–19 digits, and returns true only when the
+// checksum is divisible by 10. Rejects 16-digit IDs, order numbers, and
+// other numeric titles that the cc regex would otherwise over-match.
 func luhnValid(card string) bool {
 	digits := make([]int, 0, 19)
 	for _, r := range card {

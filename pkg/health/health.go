@@ -1,4 +1,4 @@
-// Package health provides shared liveness / readiness HTTP handlers used by
+// Package health provides shared liveness / readiness HTTP handlers for
 // every OneVoice service. ReadyHandler runs all registered dependency checks
 // concurrently (sync.WaitGroup + per-check context.WithTimeout) so total
 // wall-clock cost is bounded by the slowest single check rather than the

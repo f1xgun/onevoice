@@ -14,10 +14,8 @@ import "os"
 // announces a new version. See https://dev.vk.com/reference/versions.
 const DefaultAPIVersion = "5.199"
 
-// APIVersion is the resolved &v= value used by every outbound VK URL.
-// Initialized from VK_API_VERSION at process start, falling back to
-// DefaultAPIVersion. Kept as a package-level var (not a const) so a
-// single env nudge re-pins every call site simultaneously.
+// APIVersion is the resolved &v= value for outbound VK URLs. Initialized
+// from VK_API_VERSION at process start, falling back to DefaultAPIVersion.
 var APIVersion = resolveAPIVersion()
 
 func resolveAPIVersion() string {
