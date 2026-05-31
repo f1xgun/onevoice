@@ -291,3 +291,94 @@ func TestLoad_LocalFallback_InvalidIntFailsLoud(t *testing.T) {
 	assert.Contains(t, err.Error(), "LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR")
 	assert.Contains(t, err.Error(), `"foo"`)
 }
+
+func TestConfig_PG_Defaults(t *testing.T) {
+	minTestEnv(t)
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, 25, cfg.PGMaxConns)
+	assert.Equal(t, 2, cfg.PGMinConns)
+	assert.Equal(t, 30*time.Minute, cfg.PGMaxConnLifetime)
+	assert.Equal(t, 15*time.Minute, cfg.PGMaxConnIdleTime)
+	assert.Equal(t, 1*time.Minute, cfg.PGHealthCheckPeriod)
+	assert.Equal(t, 3*time.Minute, cfg.PGMaxConnLifetimeJitter)
+}
+
+func TestConfig_PG_EnvOverride_MaxConns(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("PG_MAX_CONNS", "50")
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, 50, cfg.PGMaxConns)
+}
+
+func TestConfig_PG_EnvOverride_MinConns(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("PG_MIN_CONNS", "5")
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, 5, cfg.PGMinConns)
+}
+
+func TestConfig_PG_EnvOverride_Duration(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("PG_MAX_CONN_LIFETIME", "1h")
+	t.Setenv("PG_MAX_CONN_IDLE_TIME", "20m")
+	t.Setenv("PG_HEALTH_CHECK_PERIOD", "2m")
+	t.Setenv("PG_MAX_CONN_LIFETIME_JITTER", "5m")
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, time.Hour, cfg.PGMaxConnLifetime)
+	assert.Equal(t, 20*time.Minute, cfg.PGMaxConnIdleTime)
+	assert.Equal(t, 2*time.Minute, cfg.PGHealthCheckPeriod)
+	assert.Equal(t, 5*time.Minute, cfg.PGMaxConnLifetimeJitter)
+}
+
+func TestConfig_PG_InvalidInt_FailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("PG_MAX_CONNS", "abc")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PG_MAX_CONNS")
+}
+
+func TestConfig_PG_InvalidDuration_FailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("PG_MAX_CONN_LIFETIME", "10x")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PG_MAX_CONN_LIFETIME")
+}
+
+func TestConfig_PG_MaxConnsZero_FailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("PG_MAX_CONNS", "0")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "> 0")
+}
+
+func TestConfig_PG_MaxConnsExceedsInt32_FailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("PG_MAX_CONNS", "2147483648") // math.MaxInt32 + 1
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PG_MAX_CONNS")
+}
+
+func TestConfig_PG_MinConnsExceedsMax_FailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("PG_MIN_CONNS", "50")
+	t.Setenv("PG_MAX_CONNS", "10")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PG_MIN_CONNS")
+}
+
+func TestConfig_PG_MinConnsNegative_FailsLoud(t *testing.T) {
+	minTestEnv(t)
+	t.Setenv("PG_MIN_CONNS", "-1")
+	_, err := config.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PG_MIN_CONNS")
+}
