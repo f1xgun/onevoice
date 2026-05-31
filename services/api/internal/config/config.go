@@ -33,6 +33,11 @@ const (
 
 	// String literal used for env-var "true" comparisons.
 	envBoolTrue = "true"
+
+	// Per-user SSE concurrency cap default. 3 in-flight streams per user
+	// is generous for the free-beta single-pod deploy while still capping
+	// a single account from saturating orchestrator goroutines.
+	defaultSSEMaxPerUser = 3
 )
 
 // Default endpoint URLs for env-driven config. These are dev-mode
@@ -229,6 +234,12 @@ type Config struct {
 	FreeTierDailySpendUSD        float64
 	RedisDownPolicy              string
 	LocalFallbackRequestsPerHour int
+
+	// SSEMaxPerUser caps in-flight SSE streams per user (0 disables the
+	// gate). The Redis-down decision is governed by the same
+	// RedisDownPolicy + LocalFallbackRequestsPerHour pair as the LLM
+	// rate limiter so one operator knob spans both gates.
+	SSEMaxPerUser int
 }
 
 func Load() (*Config, error) {
@@ -390,6 +401,21 @@ func Load() (*Config, error) {
 	}
 	if cfg.RedisDownPolicy == "local_fallback" && cfg.LocalFallbackRequestsPerHour <= 0 {
 		return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be > 0 when LLM_RATELIMIT_ON_REDIS_DOWN=local_fallback")
+	}
+
+	// Per-user SSE concurrency cap. 0 disables the gate entirely.
+	// Fail-loud on non-integer input — silent default coercion has
+	// bitten cost-guard wiring before.
+	cfg.SSEMaxPerUser = defaultSSEMaxPerUser
+	if v := os.Getenv("SSE_MAX_PER_USER"); v != "" {
+		n, perr := strconv.Atoi(v)
+		if perr != nil {
+			return nil, fmt.Errorf("SSE_MAX_PER_USER must be a non-negative integer, got %q: %w", v, perr)
+		}
+		if n < 0 {
+			return nil, fmt.Errorf("SSE_MAX_PER_USER must be >= 0, got %d", n)
+		}
+		cfg.SSEMaxPerUser = n
 	}
 
 	// Validate required fields

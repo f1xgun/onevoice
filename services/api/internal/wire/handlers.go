@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/ratelimit"
+	"github.com/f1xgun/onevoice/pkg/ssecounter"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/handler"
 	"github.com/f1xgun/onevoice/services/api/internal/handler/connect"
@@ -171,6 +173,21 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		svcs.OrchClient, // single shared orchestrator client.
 		svcs.Titler,     // optional auto-titler; nil when titling is disabled.
 	)
+
+	// Per-user SSE concurrency cap. The Policy instance is the single
+	// shared source of truth for the Redis-down decision — future LLM
+	// rate-limiter wiring can compose the same instance so one operator
+	// knob governs both gates. SSE_MAX_PER_USER=0 disables the cap.
+	// Tests construct without a Redis client (h.Redis == nil), so skip
+	// the gate when Redis is unavailable rather than failing closed.
+	if h.Redis != nil && cfg.SSEMaxPerUser > 0 {
+		policy, perr := ratelimit.PolicyFromEnv(cfg.RedisDownPolicy, cfg.LocalFallbackRequestsPerHour)
+		if perr != nil {
+			return nil, fmt.Errorf("wire: build ratelimit policy: %w", perr)
+		}
+		sseCounter := ssecounter.New(h.Redis, cfg.SSEMaxPerUser, policy)
+		chatProxyHandler.SetSSECounter(sseCounter, cfg.LLMTier)
+	}
 
 	hitlHandler, err := handler.NewHITLHandler(svcs.HITL, svcs.Business, repos.Conversation)
 	if err != nil {
