@@ -1,0 +1,269 @@
+openapi: 3.0.3
+info:
+  title: OneVoice API — auth (POC subset)
+  version: 0.1.0-poc
+  description: |
+    Spec-first POC covering 4 authentication endpoints. The full API surface
+    is documented under services/api/AGENTS.md and docs/api-design.md; this
+    file is the contract source-of-truth for the subset that has been
+    migrated to generated types.
+
+    Error envelope diverges by endpoint:
+      - Free-form messages use {"error":"<string>"} (ErrorResponse).
+      - Machine-routable failures use {"code":"<code>"} (CodeErrorResponse)
+        — frontend i18n routes on the `code` field.
+servers:
+  - url: /api/v1
+
+paths:
+  /auth/login:
+    post:
+      operationId: login
+      summary: Exchange email + password for an access token and refresh cookie.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login succeeded; refresh token set as HttpOnly cookie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: |
+            Malformed body, validation failure, or `captcha_required` when
+            the lockout middleware demands a SmartCaptcha token but none was
+            supplied via `X-Captcha-Token`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          description: Invalid credentials. Lockout counter is incremented.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: SmartCaptcha verification failed (`captcha_invalid`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '423':
+          description: |
+            Account locked by the lockout middleware (`account_locked`).
+            Emitted before this handler runs; documented here for completeness.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Invalidate the refresh token bound to the request cookie.
+      tags: [auth]
+      responses:
+        '204':
+          description: Logout succeeded (or no cookie was present — idempotent).
+        '401':
+          description: Refresh token was supplied but is invalid or already revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Logout service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      summary: Rotate the refresh token cookie and mint a new access token.
+      tags: [auth]
+      responses:
+        '200':
+          description: Rotation succeeded; new refresh cookie set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+        '401':
+          description: Missing or invalid refresh cookie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure during rotation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /auth/me:
+    get:
+      operationId: getMe
+      summary: Return the authenticated user's profile and reconsent state.
+      tags: [auth]
+      responses:
+        '200':
+          description: Authenticated user payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          description: Missing or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User row not found (e.g. hard-deleted).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal lookup failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+components:
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    LoginResponse:
+      type: object
+      required: [user, accessToken]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+
+    RefreshTokenResponse:
+      type: object
+      required: [user, accessToken]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+
+    MeResponse:
+      description: |
+        Flattened user payload plus verification banner, deletion grace, and
+        reconsent fields so /auth/me renders in a single round-trip. The User
+        fields are merged into the response object (anonymous embedding on the
+        Go side); the frontend treats this as an extended User.
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [emailVerified]
+          properties:
+            emailVerified:
+              type: boolean
+            emailVerificationDeadline:
+              type: string
+              format: date-time
+              nullable: true
+            accountDeletion:
+              $ref: '#/components/schemas/AccountDeletionInfo'
+            requiresReconsent:
+              $ref: '#/components/schemas/RequiresReconsentInfo'
+
+    AccountDeletionInfo:
+      type: object
+      nullable: true
+      required: [requestedAt, scheduledDeletionAt, canRestoreUntil]
+      properties:
+        requestedAt:
+          type: string
+          format: date-time
+        scheduledDeletionAt:
+          type: string
+          format: date-time
+        canRestoreUntil:
+          type: string
+          format: date-time
+
+    RequiresReconsentInfo:
+      type: object
+      nullable: true
+      required: [policies]
+      properties:
+        policies:
+          type: array
+          items:
+            type: object
+            required: [slug, currentVersion]
+            properties:
+              slug:
+                type: string
+              currentVersion:
+                type: string
+              acceptedVersion:
+                type: string
+                nullable: true
+
+    User:
+      type: object
+      required: [id, email, preferred_locale, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        preferred_locale:
+          type: string
+          enum: [ru, en]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      description: Plain-text error envelope; emitted by writeJSONError.
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    CodeErrorResponse:
+      description: |
+        Machine-routable error envelope; emitted by writeJSONCodeError.
+        Frontend resolves `code` to a localized message via i18n catalog.
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
