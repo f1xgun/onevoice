@@ -212,19 +212,13 @@ type RoleRepository interface {
 	GetByMemberInBusiness(ctx context.Context, businessID, userID uuid.UUID) (*Role, error)
 }
 
-// InvitationRepository — declares the surface; implements.
-//
-// extension (per 03-RESEARCH §"Domain Interface Update"):
-// - CreateInTx + CountPendingByBusinessInTx: needed by the create handler
-// under Serializable isolation so the 20-pending cap holds under
-// concurrent creates (research P-09 / OQ-01).
-// - MarkAcceptedInTx: needed by the accept handler so the conditional
-// UPDATE (race-safe single-use guarantee) runs inside the same
-// RepeatableRead tx as the membership INSERT.
-// - Revoke takes businessID for defense-in-depth cross-tenant scoping
-// (404 not_found on cross-tenant revoke; OQ-02 picks
-// interface-level scoping over handler-level pre-check, matching the
-// ConversationRepository.Pin/Unpin convention at lines 170-175).
+// InvitationRepository surface:
+//   - CreateInTx + CountPendingByBusinessInTx: create handler runs under Serializable
+//     so the 20-pending cap holds under concurrent creates.
+//   - MarkAcceptedInTx: accept handler's conditional UPDATE (race-safe single-use
+//     guarantee) must run inside the same RepeatableRead tx as the membership INSERT.
+//   - Revoke takes businessID for defense-in-depth cross-tenant scoping (404 on
+//     cross-tenant revoke), matching ConversationRepository.Pin/Unpin convention.
 type InvitationRepository interface {
 	Create(ctx context.Context, inv *Invitation) error
 	CreateInTx(ctx context.Context, tx pgx.Tx, inv *Invitation) error

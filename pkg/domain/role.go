@@ -1,18 +1,7 @@
-// Package domain — role.go
-//
-// Role is one row of the roles table created in migration 000007/000005.
-// BusinessID is nullable (NULL = system preset; non-NULL = business-custom
-// role). Permissions is the flat resource.action JSONB array (see
+// BusinessID nullable: NULL = system preset, non-NULL = business-custom role.
+// Permissions is the flat resource.action JSONB array (see
 // pkg/authz/permissions.go for the typed registry). IsSystem=true rows are
-// immutable; enforcement is application-side in Phases 2/5.
-//
-// CreatedBy / UpdatedBy are the DATA-08 audit-hook columns — nullable,
-// populated by handlers in Phase 5.
-//
-// NOTE: The canonical Role identifier was freed up in Phase 1 by renaming
-// the legacy users.role enum (formerly type Role string) to UserRole — see
-// pkg/domain/roles.go header comment. Phase 6 (CLEAN-03) deletes the
-// legacy enum file along with the users.role column.
+// immutable; enforcement is application-side.
 package domain
 
 import (

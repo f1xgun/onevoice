@@ -96,11 +96,9 @@ func TestEmailOutbox_Enqueue_Rollback(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// (21-CROSS-PLAN-CONTRACTS §3): Enqueue now ACCEPTS nil tx
-// and falls back to a pool INSERT so sweeper-driven sends (T-7 deletion
-// warning) can enqueue without a surrounding business tx. This test
-// previously asserted rejection — it now asserts the fallback path
-// executes a single INSERT via the pool.
+// Enqueue accepts nil tx and falls back to a pool INSERT so sweeper-driven
+// sends can enqueue without a surrounding business tx; assert the fallback
+// path executes a single INSERT via the pool.
 func TestEmailOutbox_Enqueue_NilTxFallsBackToPool(t *testing.T) {
 	mock, repo := newEmailOutboxRepoMock(t)
 	ctx := context.Background()

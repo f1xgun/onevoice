@@ -22,13 +22,12 @@ import (
 // end-to-end against the live API + Postgres: it seeds 5 audit rows
 // (covering all 5 categories + one NULL-user failed-login), then hits the
 // endpoint as owner / viewer / unauthenticated to verify the full
-// auth + RBAC + cursor + filter contract that Plan 19-06 frontend consumes.
+// auth + RBAC + cursor + filter contract.
 //
 // Why insert audit rows directly via SQL (not via the live audit writer):
-// Wave 3's writer is async fire-and-forget. Triggering rows via real
-// mutations would race against the test's read; the direct INSERT path
-// also lets us pin created_at deterministically so cursor ordering is
-// reproducible.
+// the writer is async fire-and-forget. Triggering rows via real mutations
+// would race against the test's read; the direct INSERT path also lets us
+// pin created_at deterministically so cursor ordering is reproducible.
 //
 // Why seed the Viewer membership via raw SQL: the create-invitation +
 // accept-invitation flow requires the email-link side channel which the

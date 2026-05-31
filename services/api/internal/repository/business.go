@@ -20,8 +20,6 @@ type businessRepository struct {
 	sb   squirrel.StatementBuilderType
 }
 
-// Compile-time check that businessRepository satisfies domain.BusinessRepository.
-// Ensures CreateInTx (Phase 1 v2.0 RBAC) is wired through the interface.
 var _ domain.BusinessRepository = (*businessRepository)(nil)
 
 func NewBusinessRepository(pool *pgxpool.Pool) domain.BusinessRepository {
@@ -59,15 +57,9 @@ func (r *businessRepository) Create(ctx context.Context, business *domain.Busine
 	return nil
 }
 
-// CreateInTx inserts the business using a caller-supplied transaction.
-// Phase 1 v2.0 RBAC (DATA-06): service.business.Create wraps this and the
-// business_members insert in a single pgx.Tx so both rows commit or
-// neither does.
-//
-// The body mirrors Create above with two differences: (1) executes against
-// the caller-supplied tx instead of r.pool, (2) does not allocate a new
-// pool connection. The original Create remains for callers that don't
-// need transactional dual-write (e.g. legacy code paths and tests).
+// CreateInTx inserts the business using a caller-supplied transaction so the
+// service layer can wrap this and the business_members insert in a single tx
+// (both rows commit or neither does).
 func (r *businessRepository) CreateInTx(ctx context.Context, tx pgx.Tx, business *domain.Business) error {
 	if business.ID == uuid.Nil {
 		business.ID = uuid.New()
