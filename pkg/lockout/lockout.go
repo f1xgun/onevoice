@@ -174,9 +174,8 @@ func (l *Lockout) Clear(ctx context.Context, email, ipNet16 string) error {
 }
 
 // ClearAllForEmail enumerates every per-/16 variant of the email's lockout
-// keys and deletes them. Used by password-reset self-unlock where the
-// operator/legitimate user does not necessarily know which /16 buckets
-// accumulated failures.
+// keys and deletes them. For password-reset self-unlock where the caller
+// does not know which /16 buckets accumulated failures.
 //
 // SCAN is safe under load (non-blocking, cursor-based). The MATCH glob is
 // anchored on prefix:hash: so it never iterates beyond this email's keys.

@@ -3,9 +3,6 @@ package i18n
 // en is the English catalog. Keys may be omitted while migration is in
 // progress — TrTag falls back to the ru catalog when a key is missing here.
 //
-// Phase C1 mirrors the RU keys added for handler error strings with
-// idiomatic English equivalents.
-//
 //nolint:gosec // G101: catalog values describe sessionid/token cookies as user-visible copy, not credentials.
 var en = map[string]string{
 	"test.hello": "Hello, %s",

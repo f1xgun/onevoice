@@ -3,13 +3,8 @@
 // re-check).
 //
 // The package is DELIBERATELY dep-free: no persistence, no cache, no message
-// bus. It imports only pkg/domain. The identical logic lives in exactly one
-// place so that pause-time and resolve-time decisions can never diverge.
-//
-// This package is the public relocation of services/orchestrator/internal/hitl
-// so that services/api can import it — Go's internal-visibility rule blocks
-// direct import of the orchestrator's internal package. The orchestrator's
-// internal/hitl package now re-exports Resolve from here.
+// bus. It imports only pkg/domain. The identical logic lives in one place
+// so pause-time and resolve-time decisions cannot diverge.
 package hitl
 
 import (
@@ -62,12 +57,11 @@ func strictest(a, b domain.ToolFloor) domain.ToolFloor {
 	return a
 }
 
-// FloorOf is the registry-floor lookup signature consumed by Bucket. The
-// orchestrator's *toolregistry.Registry satisfies this shape directly via its
-// Floor method; tests can pass any func(string) domain.ToolFloor. The
+// FloorOf is the registry-floor lookup signature for Bucket. The
+// orchestrator's *toolregistry.Registry satisfies this shape directly via
+// its Floor method; tests can pass any func(string) domain.ToolFloor. The
 // indirection keeps pkg/hitl free of a dependency on the orchestrator's
-// internal registry while still letting Bucket apply the same registry-floor →
-// Resolve pipeline for every call in one place.
+// internal registry.
 type FloorOf func(toolName string) domain.ToolFloor
 
 // Bucket classifies a batch of LLM-proposed tool calls into the three

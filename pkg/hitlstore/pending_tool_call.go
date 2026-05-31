@@ -1,17 +1,9 @@
-// Package hitlstore provides the single Mongo-backed implementation of
+// Package hitlstore provides the Mongo-backed implementation of
 // domain.PendingToolCallRepository, shared between services/api (resolve
 // handler + reconciliation sweep + ListPending) and services/orchestrator
-// (pause-time persistence + resume-time MarkDispatched). Before this package
-// existed, two near-identical implementations lived in each service's
-// internal/repository/pending_tool_call.go — diverging on validation strictness
-// and index-creation responsibility despite documenting themselves as
-// "byte-for-byte mirrors". Lifting the impl to pkg/ ensures both services
-// genuinely share the same state-machine code; ordering invariants
-// (InsertPreparing → PromoteToPending), filter-based atomicity
-// (AtomicTransitionToResolving), and lazy-expiration virtualization
-// (GetByBatchID) cannot drift between processes.
+// (pause-time persistence + resume-time MarkDispatched).
 //
-// MongoDB constraints honored (anti-footgun #1):
+// MongoDB constraints:
 //   - MongoDB is deployed STANDALONE (docker-compose.yml uses `mongo:7`
 //     without --replSet). No multi-document transactions.
 //   - Atomicity is achieved via findOneAndUpdate filter constraints, NOT
@@ -38,26 +30,15 @@ import (
 // approval card.
 const pendingToolCallTTL = 24 * time.Hour
 
-// pendingToolCallRepo is the unified Mongo-backed implementation of
+// pendingToolCallRepo is the Mongo-backed implementation of
 // domain.PendingToolCallRepository. Owns every state-machine transition:
-//   - pause-time persist (Persist) — called by the orchestrator. Bundles
-//     "stage as preparing → promote to pending with TTL" so callers never see
-//     the intermediate state. The split write exists only to give
-//     ReconcileOrphanPreparing a recovery seam for crashes between the two
-//     underlying writes.
-//   - atomic transition (AtomicTransitionToResolving) — called by the API
-//     resolve handler,
-//   - decision recording (RecordDecisions) — called by the API resolve
-//     handler,
-//   - dispatch tracking (MarkDispatched) — called by the orchestrator after
-//     each NATS reply lands,
-//   - terminal transitions (MarkResolved, MarkExpired),
-//   - reads (GetByBatchID with lazy expiration, ListPendingByConversation),
-//   - reconciliation (ReconcileOrphanPreparing) — called by the API at
-//     startup.
+// Persist (stages preparing → promotes to pending), AtomicTransitionToResolving,
+// RecordDecisions, MarkDispatched, terminal MarkResolved / MarkExpired,
+// reads (GetByBatchID with lazy expiration, ListPendingByConversation), and
+// ReconcileOrphanPreparing for crash recovery.
 //
-// Both services construct one of these via NewPendingToolCallRepository; the
-// API additionally calls EnsurePendingToolCallsIndexes at startup to create
+// Both services construct one via NewPendingToolCallRepository; the API
+// additionally calls EnsurePendingToolCallsIndexes at startup to create
 // the TTL + compound indexes idempotently.
 type pendingToolCallRepo struct {
 	coll *mongo.Collection
@@ -216,8 +197,7 @@ func (r *pendingToolCallRepo) GetByBatchID(ctx context.Context, batchID string) 
 // ListPendingByConversation returns every batch for the conversation whose
 // status is pending OR resolving, sorted oldest-first. Resolved / expired /
 // preparing batches are filtered out — callers that need those use
-// GetByBatchID directly. This matches the shape consumed by
-// GET /conversations/{id}/messages for the pendingApprovals array.
+// GetByBatchID directly.
 func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, conversationID string) ([]*domain.PendingToolCallBatch, error) {
 	filter := bson.M{
 		"conversation_id": conversationID,
@@ -348,8 +328,7 @@ func (r *pendingToolCallRepo) MarkResolved(ctx context.Context, batchID string) 
 	return nil
 }
 
-// MarkExpired forcibly sets status="expired" on a batch — used by the
-// reconciliation path and by future admin tooling. Idempotent by status.
+// MarkExpired forcibly sets status="expired" on a batch. Idempotent by status.
 func (r *pendingToolCallRepo) MarkExpired(ctx context.Context, batchID string) error {
 	now := time.Now().UTC()
 	res, err := r.coll.UpdateOne(ctx,
