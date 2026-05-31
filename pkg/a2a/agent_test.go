@@ -3,6 +3,7 @@ package a2a_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -137,6 +138,38 @@ func TestAgent_Stop_WaitsForInflight(t *testing.T) {
 
 	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(200), "Stop() should block until handler completes")
 	assert.Equal(t, int32(1), called.Load(), "handler should have been called")
+}
+
+func TestAgent_Handle_StampsCodeFromCodedError(t *testing.T) {
+	transport := &fakeTransport{}
+	replyCh := make(chan []byte, 1)
+
+	handler := a2a.Exec(func(_ context.Context, _ a2a.ToolRequest) (*a2a.ToolResponse, error) {
+		return nil, a2a.NewCodedError("integration_token_invalid", errors.New("token revoked"))
+	})
+
+	agent := a2a.NewAgent(a2a.AgentTelegram, transport, handler)
+	require.NoError(t, agent.Start(context.Background()))
+
+	transport.publishFn = func(_ string, d []byte) error {
+		replyCh <- d
+		return nil
+	}
+
+	req := a2a.ToolRequest{TaskID: "t-code", Tool: "telegram__send_channel_post"}
+	data, _ := json.Marshal(req)
+	transport.Trigger("tasks.telegram", "_INBOX.code", data)
+
+	select {
+	case replyData := <-replyCh:
+		var resp a2a.ToolResponse
+		require.NoError(t, json.Unmarshal(replyData, &resp))
+		assert.False(t, resp.Success)
+		assert.Equal(t, "integration_token_invalid", resp.Code)
+		assert.Contains(t, resp.Error, "token revoked")
+	case <-time.After(time.Second):
+		t.Fatal("no reply published within timeout")
+	}
 }
 
 func TestAgent_Stop_NoInflight(t *testing.T) {
