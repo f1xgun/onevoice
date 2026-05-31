@@ -96,10 +96,26 @@ func (h *DBHandles) Close() {
 func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Config) (*DBHandles, error) {
 	h := &DBHandles{}
 
-	// PostgreSQL
+	// PostgreSQL — pool sizing comes from cfg.PG* env knobs (defaults
+	// 25 / 2 / 30m / 15m / 1m / 3m). ParseConfig → mutate → NewWithConfig
+	// is the pgxpool pattern that lets us tune MaxConns/MinConns/lifetimes
+	// without losing the DSN-driven settings (TLS, application_name, etc.).
 	pgConnStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		cfg.PostgresUser, cfg.PostgresPass, cfg.PostgresHost, cfg.PostgresPort, cfg.PostgresDB)
-	pgPool, err := pgxpool.New(ctx, pgConnStr)
+	pgPoolCfg, err := pgxpool.ParseConfig(pgConnStr)
+	if err != nil {
+		return nil, fmt.Errorf("wire: parse pg config: %w", err)
+	}
+	// config.Load() validates 0 < PGMaxConns <= math.MaxInt32 and
+	// 0 <= PGMinConns <= PGMaxConns, so these int→int32 conversions cannot
+	// overflow.
+	pgPoolCfg.MaxConns = int32(cfg.PGMaxConns) //nolint:gosec // bounded above by config.Load()
+	pgPoolCfg.MinConns = int32(cfg.PGMinConns) //nolint:gosec // bounded above by config.Load()
+	pgPoolCfg.MaxConnLifetime = cfg.PGMaxConnLifetime
+	pgPoolCfg.MaxConnIdleTime = cfg.PGMaxConnIdleTime
+	pgPoolCfg.HealthCheckPeriod = cfg.PGHealthCheckPeriod
+	pgPoolCfg.MaxConnLifetimeJitter = cfg.PGMaxConnLifetimeJitter
+	pgPool, err := pgxpool.NewWithConfig(ctx, pgPoolCfg)
 	if err != nil {
 		return nil, fmt.Errorf("wire: connect to postgres: %w", err)
 	}
