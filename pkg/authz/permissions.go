@@ -1,17 +1,13 @@
 // Package authz — permissions.go
 //
-// The typed permission registry. ships the constants and the
-// AllPermissions accessor; adds cache.go, check.go, loader.go to
-// this same package. All permissions are flat
-// resource.action strings matching ^[a-z_]+\.[a-z_]+$ — no wildcards, no
-// hierarchy (REQUIREMENTS Out-of-Scope §"Hierarchical / wildcard").
+// The typed permission registry. All permissions are flat resource.action
+// strings matching ^[a-z_]+\.[a-z_]+$ — no wildcards, no hierarchy.
 //
 // CHANGES TO THIS FILE MUST BE MIRRORED IN THE MIGRATION SEED.
 // migrations/postgres/000007_rbac_data_model.up.sql and
 // services/api/migrations/000005_rbac_data_model.up.sql each carry a
 // hardcoded JSONB array per system role; drift is caught by
-// test/integration/system_roles_test.go (Plan H) which queries the
-// seeded JSONB and asserts equality with the registry.
+// test/integration/system_roles_test.go.
 package authz
 
 // Permission is a flat resource.action string. The named type lets handlers
@@ -20,18 +16,17 @@ package authz
 type Permission string
 
 // PermissionMeta is the registry entry for one permission. Description is a
-// short Russian imperative string consumed by the role-editor Info tooltip
-// (UI-RBAC-09 ). Adding a new permission requires filling Description
-// here; the drift test in permissions_test.go fails CI when this is missed.
+// short Russian imperative string for the role-editor Info tooltip. Adding
+// a new permission requires filling Description here; the drift test in
+// permissions_test.go fails CI when this is missed.
 type PermissionMeta struct {
 	Name        Permission `json:"name"`
 	Description string     `json:"description"`
 }
 
-// PermissionGroup is the response shape returned by GET /api/v1/permissions
-// (Plan G). Resource is the lowercase resource segment ("business",
-// "members", etc.); Permissions are ordered by verb in registry order
-// (read, then mutating verbs).
+// PermissionGroup is the response shape returned by GET /api/v1/permissions.
+// Resource is the lowercase resource segment ("business", "members", etc.);
+// Permissions are ordered by verb in registry order (read, then mutating).
 type PermissionGroup struct {
 	Resource    string           `json:"resource"`
 	Permissions []PermissionMeta `json:"permissions"`

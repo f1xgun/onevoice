@@ -175,10 +175,9 @@ func (c *Client) LogUsage(ctx context.Context, log *llm.UsageLog) error {
 	}
 }
 
-// Compile-time assertion that *Client satisfies llm.Writer — the
-// orchestrator-facing interface consumed by pkg/llm.Router via WithBilling.
-// If pkg/llm.Writer ever gains a method, the build break here is the
-// earliest signal to update billingclient in lockstep.
+// Compile-time assertion that *Client satisfies llm.Writer (pkg/llm.Router
+// uses this via WithBilling). A build break here flags any drift if
+// pkg/llm.Writer gains a method.
 var _ llm.Writer = (*Client)(nil)
 
 // dailySpendResponse mirrors the JSON envelope the API returns on the GET

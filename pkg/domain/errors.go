@@ -66,8 +66,8 @@ var (
 // Maps to HTTP 429 verify_resend_throttled.
 //
 // ErrEmailTaken signals the new email in PATCH /auth/email-before-verify
-// is already used by another user. Maps to HTTP 409 email_taken. Bonus:
-// also returned by UpdateEmailInTx on UNIQUE-violation race.
+// is already used by another user. Maps to HTTP 409 email_taken. Also
+// returned by UpdateEmailInTx on UNIQUE-violation race.
 var (
 	ErrVerifyTokenInvalid = errors.New("email verification token invalid")
 	ErrAlreadyVerified    = errors.New("email already verified")

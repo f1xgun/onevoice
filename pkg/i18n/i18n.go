@@ -4,16 +4,13 @@
 // The package intentionally avoids heavier libraries (e.g. nicksnyder/go-i18n)
 // because the catalog is small (~60 keys at maturity), all formatting is
 // handled by fmt.Sprintf, and ICU plural rules belong on the frontend where
-// next-intl already covers them. See `.planning/i18n-readiness/PLAN.md` AD-2.
+// next-intl already covers them.
 //
-// Two consumers exist:
-//
-//  1. HTTP middleware (`services/{api,orchestrator}/internal/middleware/locale.go`)
-//     parses Accept-Language and stores the resolved tag in the request context
-//     via WithLocale. Handlers then call Tr(ctx, key) without threading the
-//     locale explicitly.
-//  2. LLM prompt builders (Phase D) read the tag off the chat-scoped context
-//     and pick the matching template / tool description.
+// HTTP middleware (`services/{api,orchestrator}/internal/middleware/locale.go`)
+// parses Accept-Language and stores the resolved tag in the request context
+// via WithLocale. Handlers then call Tr(ctx, key) without threading the
+// locale explicitly. LLM prompt builders read the tag off the chat-scoped
+// context and pick the matching template / tool description.
 //
 // Catalog entries live in catalog_ru.go and catalog_en.go. RU is the default
 // and the fallback — keys missing from EN resolve to RU; keys missing from
@@ -53,15 +50,13 @@ type ctxKey int
 const localeKey ctxKey = iota
 
 // WithLocale returns a derived context carrying the given language tag.
-// Used by the LocaleResolver HTTP middleware and by the chat plumbing that
-// propagates the per-conversation locale to the orchestrator.
 func WithLocale(ctx context.Context, tag language.Tag) context.Context {
 	return context.WithValue(ctx, localeKey, tag)
 }
 
-// LocaleFromContext returns the tag previously stored by WithLocale, or
-// DefaultTag if the context carries none. Never returns the zero Tag so
-// callers can use the result unconditionally.
+// LocaleFromContext returns the tag stored by WithLocale, or DefaultTag if
+// the context carries none. Never returns the zero Tag so callers can use
+// the result unconditionally.
 func LocaleFromContext(ctx context.Context) language.Tag {
 	if ctx == nil {
 		return DefaultTag
