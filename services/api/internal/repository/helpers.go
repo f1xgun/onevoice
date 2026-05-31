@@ -10,8 +10,19 @@
 package repository
 
 import (
+	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
 )
+
+// ActiveIntegrationStatusEq returns the squirrel predicate for filtering
+// integrations rows on status="active". Centralized so the literal lives in
+// pkg/domain.IntegrationStatusActive and every integrations SELECT/COUNT
+// rebuilds the same predicate.
+func ActiveIntegrationStatusEq() squirrel.Eq {
+	return squirrel.Eq{"status": domain.IntegrationStatusActive}
+}
 
 // nullableUUID returns nil when u is uuid.Nil so pgx encodes the column as SQL
 // NULL. Otherwise returns the UUID by value. Used by billing.go LogUsage for

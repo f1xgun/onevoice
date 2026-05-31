@@ -36,3 +36,9 @@ const DefaultAPIBaseURL = "https://api.vk.com"
 // current profile type") on groups.get and wall.getComments, so we pin
 // the classic flow here.
 const DefaultOAuthBaseURL = "https://oauth.vk.com"
+
+// URLPrefixes is the set of URL fragments stripped off user-pasted group
+// inputs (e.g. "https://vk.com/mygroup" → "mygroup"). These are NOT
+// endpoints we request — they are pattern strings for prefix matching
+// shared by the OAuth and Connect handlers.
+var URLPrefixes = []string{"https://vk.com/", "http://vk.com/", "https://m.vk.com/", "vk.com/", "@"}

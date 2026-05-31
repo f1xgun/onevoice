@@ -96,7 +96,7 @@ func (r *messageRepository) Update(ctx context.Context, msg *domain.Message) err
 func (r *messageRepository) FindByConversationActive(ctx context.Context, conversationID string) (*domain.Message, error) {
 	filter := bson.M{
 		"conversation_id": conversationID,
-		"role":            "assistant",
+		"role":            domain.MessageRoleAssistant,
 		"status": bson.M{"$in": []string{
 			domain.MessageStatusPendingApproval,
 			domain.MessageStatusInProgress,

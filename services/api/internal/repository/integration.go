@@ -266,7 +266,8 @@ func (r *integrationRepository) ListAllActiveByPlatforms(ctx context.Context, pl
 	sql, args, err := r.sb.
 		Select("id", "business_id", "platform", "status", "encrypted_access_token", "encrypted_refresh_token", "encrypted_user_token", "external_id", "metadata", "token_expires_at", "user_token_expires_at", "created_at", "updated_at").
 		From("integrations").
-		Where(squirrel.Eq{"status": "active", "platform": platforms}).
+		Where(ActiveIntegrationStatusEq()).
+		Where(squirrel.Eq{"platform": platforms}).
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)

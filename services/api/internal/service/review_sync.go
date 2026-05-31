@@ -146,7 +146,7 @@ func (s *ReviewSyncer) SyncForBusiness(ctx context.Context, businessID uuid.UUID
 	for _, integ := range integrations {
 		// Only active integrations on platforms the syncer knows how to
 		// fetch reviews for. Mirrors ListAllActiveByPlatforms semantics.
-		if integ.Status != "active" {
+		if integ.Status != domain.IntegrationStatusActive {
 			continue
 		}
 		if _, ok := reviewToolByPlatform[integ.Platform]; ok {

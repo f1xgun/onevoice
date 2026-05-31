@@ -13,17 +13,12 @@ import (
 	"github.com/f1xgun/onevoice/pkg/vkapi"
 )
 
-// vkURLPrefixes is the set of URL fragments stripped off user-pasted group
-// inputs (e.g. "https://vk.com/mygroup" → "mygroup"). These are NOT
-// endpoints we request — they are pattern strings for prefix matching.
-var vkURLPrefixes = []string{"https://vk.com/", "http://vk.com/", "https://m.vk.com/", "vk.com/", "@"}
-
 // resolveVKGroupID turns user input (numeric id, screen_name, or full VK URL)
 // into a numeric VK group id via groups.getById with the Mini-App service key.
 func (h *OAuthHandler) resolveVKGroupID(ctx context.Context, input string) (string, error) {
 	// Strip URL prefix: https://vk.com/mygroup → mygroup
 	input = strings.TrimSpace(input)
-	for _, prefix := range vkURLPrefixes {
+	for _, prefix := range vkapi.URLPrefixes {
 		input = strings.TrimPrefix(input, prefix)
 	}
 	input = strings.TrimPrefix(input, "club")
