@@ -1,30 +1,10 @@
-// Package service — account_deletion.go
+// Package service — account_deletion.go.
 //
-// AccountDeletionService implements a 30-day soft-
-// delete grace period that closes the 152-ФЗ Art. 21 "right to erasure"
-// requirement AND the user-recovery window in a single timer.
-//
-// Five orchestration methods:
-//
-// - RequestDeletion (T-DEL-02/03/07): verify password (constant-
-// time), enumerate sole-owner businesses, then inside ONE PG TX:
-// soft-delete user + revoke pending invitations + enqueue confirmation
-// email (immediate) + enqueue T-7 warning (deferred +23 days).
-// Audit row written async after commit.
-// - CancelDeletion: atomic UPDATE..RETURNING that clears
-// deleted_at iff the user is inside the 30-day window. Best-effort
-// cancellation of the pending T-7 outbox row.
-// - HardDeleteSweeper (T-DEL-01/04): hourly cron entry. Claims a
-// batch via FOR UPDATE SKIP LOCKED, hard-deletes each user inside its
-// own TX (audit row INSERT BEFORE the DELETE — survives via
-// SET NULL + user_email_at_event), then best-effort Mongo
-// cleanup post-TX.
-// - WarningSweeper (T-DEL-08): 6h cron entry. Enumerates users
-// whose deletion_requested_at falls in the T-7 window
-// (22d23h..23d) and enqueues a single warning per user via
-// ExistsBySubjectAndRecipient dedupe.
-// - EnumerateSoleOwnerBusinesses: read-only enumeration so the handler
-// can return the friendly 409 with the businesses list.
+// AccountDeletionService implements the 30-day soft-delete grace period that
+// closes 152-ФЗ Art. 21 ("right to erasure") and the user-recovery window in
+// a single timer. See docs/services/account-deletion.md for business rules,
+// lifecycle, threat-model bindings (T-DEL-01..08), and transaction
+// boundaries.
 package service
 
 import (
@@ -47,31 +27,27 @@ import (
 
 const (
 	// deletionGraceDays is the legal-ceiling-plus-user-recovery window
-	// Bundled into one constant because 152-ФЗ Art. 21 fixes
-	// the 30-day operator deadline; we use that same duration as the
-	// user-recoverable window so the timer aligns with the legal floor.
+	// (152-ФЗ Art. 21 30-day operator deadline doubles as the
+	// user-recoverable window).
 	deletionGraceDays = 30
 	// deletionT7OffsetDays is the offset from deletion_requested_at when
-	// the T-7 warning email is enqueued via EnqueueDeferred.
-	// 23 = 30 (grace) - 7 (T-7).
+	// the T-7 warning email is enqueued via EnqueueDeferred (30 - 7).
 	deletionT7OffsetDays = 23
-	// systemOwnerRoleID — RBAC seed (migration 000007). The
-	// owner role's UUID is hardcoded because the FK target is fixed at
-	// migration time and never changes.
+	// systemOwnerRoleID — RBAC owner-role UUID seeded by migration 000007;
+	// hardcoded because the FK target is fixed at migration time.
 	systemOwnerRoleID = "00000000-0000-0000-0000-000000000001"
 )
 
-// SoleOwnerBusiness is one entry in the 409 response body when DELETE
-// /users/me is rejected because the user is the sole OWNER. The handler
-// marshals this slice directly.
+// SoleOwnerBusiness is one entry in the 409 response body when
+// DELETE /users/me is rejected because the user is the sole OWNER.
 type SoleOwnerBusiness struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
 }
 
-// ErrSoleOwnerBusinesses is the typed error returned by RequestDeletion
-// when the user is the sole OWNER of at least one business. Carries the
-// list so the handler can write the 409 body without a second query.
+// ErrSoleOwnerBusinesses is the typed error returned by RequestDeletion when
+// the user is the sole OWNER of at least one business; carries the list so
+// the handler can write the 409 body without a second query.
 type ErrSoleOwnerBusinesses struct {
 	Businesses []SoleOwnerBusiness
 }
@@ -82,10 +58,9 @@ func (e *ErrSoleOwnerBusinesses) Error() string {
 }
 
 // AccountDeletionUserRepo is the slice of UserRepository surface
-// AccountDeletionService needs. Declared as an interface so the
-// integration tests can substitute the real adapter; production wires
-// *repository.UserResetExtAdapter (the same value that satisfies
-// service.UserRepoForReset and service.VerifyUserRepo).
+// AccountDeletionService needs. Declared as an interface so integration
+// tests can substitute the real adapter; production wires
+// *repository.UserResetExtAdapter.
 type AccountDeletionUserRepo interface {
 	GetByIDIncludingDeleted(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 	RequestDeletionInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
@@ -95,7 +70,8 @@ type AccountDeletionUserRepo interface {
 	HardDeleteInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
 }
 
-// AccountDeletionService — see file docstring.
+// AccountDeletionService orchestrates request/cancel/sweep flows.
+// See docs/services/account-deletion.md.
 type AccountDeletionService struct {
 	pool          *pgxpool.Pool
 	users         AccountDeletionUserRepo
@@ -106,10 +82,8 @@ type AccountDeletionService struct {
 	t7OffsetDays  int
 }
 
-// NewAccountDeletionService constructs the service. All
-// deps are required. graceDays + t7OffsetDays are passed as parameters
-// (rather than reading the constant) so integration tests can compress
-// the timeline to seconds-scale.
+// NewAccountDeletionService constructs the service; all deps are required.
+// graceDays / t7OffsetDays come from the package constants.
 func NewAccountDeletionService(
 	pool *pgxpool.Pool,
 	users AccountDeletionUserRepo,
@@ -128,9 +102,8 @@ func NewAccountDeletionService(
 	}
 }
 
-// WithGraceDays returns a copy of the service with custom grace + T-7
-// offset durations — for integration tests that need to compress the
-// 30-day timeline.
+// WithGraceDays returns a copy of the service with custom grace + T-7 offset
+// durations — for integration tests that compress the 30-day timeline.
 func (s *AccountDeletionService) WithGraceDays(graceDays, t7OffsetDays int) *AccountDeletionService {
 	cp := *s
 	cp.graceDays = graceDays
@@ -138,62 +111,37 @@ func (s *AccountDeletionService) WithGraceDays(graceDays, t7OffsetDays int) *Acc
 	return &cp
 }
 
-// RequestDeletion verifies the password, enumerates sole-owner
-// businesses, and on success soft-deletes the user inside a single PG
-// TX alongside pending-invitation revocation + outbox enqueue (immediate
-// confirmation + deferred T-7 warning).
-//
-// The `reason` parameter selects between the two
-// supported entry paths:
-// - reason == "" — DELETE /users/me (default). Verifies
-// the bcrypt password (T-DEL-07).
-// - reason == "consent_withdrawn" — POST /users/me/consents/pdn/
-// withdraw. SKIPS the password check (152-ФЗ Art. 21
-// forbids friction barriers on the withdrawal path). The
-// caller (ConsentService.WithdrawPDN) is the only legitimate user
-// of this branch — see in the threat model.
-//
-// Returns:
-// - nil on success
-// - domain.ErrInvalidCredentials when password doesn't match (T-DEL-07; reason="" only)
-// - domain.ErrUserNotFound when the user doesn't exist
-// - domain.ErrDeletionAlreadyPending when deletion is already pending
-// - *ErrSoleOwnerBusinesses when the user is the sole OWNER of any business
+// RequestDeletion verifies the password (unless reason="consent_withdrawn"),
+// enumerates sole-owner businesses, and on success soft-deletes the user in
+// one PG TX alongside invitation revoke + confirmation/T-7 outbox enqueue.
+// See docs/services/account-deletion.md for the reason-branch semantics,
+// returned errors, and audit hooks.
 func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uuid.UUID, password, clientIP, userAgent, reason string) error {
 	user, err := s.users.GetByIDIncludingDeleted(ctx, userID)
 	if err != nil {
 		return err
 	}
-	// Idempotency guard —. If deletion already pending and not
-	// canceled, surface ErrDeletionAlreadyPending so the handler returns
-	// 423 instead of double-scheduling.
+	// Idempotency guard: already pending and not canceled → 423.
 	if user.DeletionRequestedAt != nil && user.DeletionCanceledAt == nil {
 		return domain.ErrDeletionAlreadyPending
 	}
 
-	// T-DEL-07 / : constant-time bcrypt compare via the same
-	// primitive ChangePassword uses. SKIPS this check when
-	// reason=="consent_withdrawn" — the consent withdrawal flow already
-	// authed via session + cannot present a friction barrier per
-	// 152-ФЗ Art. 21.
+	// Constant-time bcrypt compare. Skipped on consent_withdrawn — 152-ФЗ
+	// Art. 21 forbids friction barriers on the withdrawal path.
 	if reason != "consent_withdrawn" {
 		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 			return domain.ErrInvalidCredentials
 		}
 	}
 
-	// T-DEL-02: enumerate sole-owner businesses BEFORE issuing any
-	// mutation. If non-empty, return the friendly 409 path WITHOUT
-	// touching the users row — the migration 000007 DB trigger remains
-	// as defense-in-depth, but the user never sees the raw trigger
-	// error (23P01).
+	// Sole-owner enumeration runs BEFORE any mutation: friendly 409 path
+	// returns without touching the users row. Migration 000007 trigger
+	// stays as defense-in-depth.
 	soleOwners, err := s.EnumerateSoleOwnerBusinesses(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("enumerate sole-owner businesses: %w", err)
 	}
 	if len(soleOwners) > 0 {
-		// Audit the blocked attempt — telemetry-grade visibility for
-		// the friendly 409 path (T-DEL-02 mitigation).
 		businessIDs := make([]uuid.UUID, len(soleOwners))
 		for i, b := range soleOwners {
 			businessIDs[i] = b.ID
@@ -202,21 +150,18 @@ func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uui
 		return &ErrSoleOwnerBusinesses{Businesses: soleOwners}
 	}
 
-	// All checks passed — open TX and commit the lifecycle change.
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin deletion tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// a) Soft-delete the user row.
 	if err := s.users.RequestDeletionInTx(ctx, tx, userID); err != nil {
 		return err
 	}
 
-	// b) Revoke pending invitations sent by this user (T-DEL-03).
-	// Schema uses `created_by` (not `invited_by`) per migration 000007.
-	// Pending = revoked_at IS NULL AND accepted_at IS NULL AND expires_at > NOW.
+	// Revoke pending invitations sent by this user. Schema uses `created_by`
+	// (not `invited_by`) per migration 000007.
 	if _, err := tx.Exec(ctx, `UPDATE invitations
 	                              SET revoked_at = NOW()
 	                            WHERE created_by = $1
@@ -227,7 +172,6 @@ func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uui
 
 	scheduledDeletionAt := time.Now().Add(time.Duration(s.graceDays) * 24 * time.Hour)
 
-	// c) Enqueue confirmation email (immediate — default next_attempt_at=NOW).
 	confirmIn := repository.OutboxEnqueueInput{
 		ToEmail:  user.Email,
 		Subject:  templates.DeletionConfirmationSubject,
@@ -238,10 +182,8 @@ func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uui
 		return fmt.Errorf("enqueue confirmation email: %w", err)
 	}
 
-	// d) Enqueue T-7 warning email (deferred to +23 days). The warning
-	// sweeper is a safety net that runs separately and dedupes via
-	// ExistsBySubjectAndRecipient — but enqueueing here at request
-	// time gives us atomicity (same TX as the deletion request).
+	// T-7 deferred enqueue inside the same TX gives atomicity; WarningSweeper
+	// is a separate safety-net that dedupes via ExistsBySubjectAndRecipient.
 	warnIn := repository.OutboxEnqueueInput{
 		ToEmail:  user.Email,
 		Subject:  templates.DeletionT7WarningSubject,
@@ -257,36 +199,27 @@ func (s *AccountDeletionService) RequestDeletion(ctx context.Context, userID uui
 		return fmt.Errorf("commit deletion tx: %w", err)
 	}
 
-	// Audit row fires fire-and-forget post-commit (uses the existing
-	// async Logger pathway). businesses_orphaned is always [] for v1.4
-	// because we returned 409 above on any sole-owner case.
+	// Audit row fires fire-and-forget post-commit. businesses_orphaned is
+	// always [] in v1.4 (the 409 path returns earlier on any sole-owner case).
 	audit.LogDeletionRequested(ctx, s.auditLog, userID, clientIP, userAgent, nil)
 	return nil
 }
 
-// CancelDeletion runs the atomic UPDATE...RETURNING via the repository,
-// best-effort cancels the pending T-7 outbox row, and fires the
-// account.deletion_canceled audit event on success.
-//
-// Returns nil on success; domain.ErrAlreadyPurged when past 30d or row
-// gone; domain.ErrNoDeletionPending when the user had no pending
-// deletion.
+// CancelDeletion atomically clears deleted_at when inside the 30-day window,
+// best-effort cancels the pending T-7 outbox row, and audits the cancel.
+// See docs/services/account-deletion.md for returned errors.
 func (s *AccountDeletionService) CancelDeletion(ctx context.Context, userID uuid.UUID, clientIP, userAgent string) error {
 	canceled, err := s.users.CancelDeletion(ctx, userID, s.graceDays)
 	if err != nil {
 		return err
 	}
 	if !canceled {
-		// Defensive — CancelDeletion should have surfaced one of the
-		// sentinels already, but cover the case where the repo
-		// returned (false, nil).
+		// Defensive: repo should have surfaced a sentinel; cover (false, nil).
 		return domain.ErrAlreadyPurged
 	}
 
-	// Best-effort cancel of the pending T-7 outbox row so the user
-	// doesn't receive a warning email after restoring. Failure is
-	// logged but not fatal (the worker will see status='canceled' on
-	// next drain and skip the row).
+	// Best-effort cancel of the pending T-7 outbox row. Failure is non-fatal
+	// — the worker sees status='canceled' on next drain and skips the row.
 	user, getErr := s.users.GetByIDIncludingDeleted(ctx, userID)
 	if getErr == nil && user != nil {
 		if cancelErr := s.outbox.CancelPendingBySubjectAndRecipient(ctx, user.Email, templates.DeletionT7WarningSubject); cancelErr != nil {
@@ -298,10 +231,8 @@ func (s *AccountDeletionService) CancelDeletion(ctx context.Context, userID uuid
 	return nil
 }
 
-// EnumerateSoleOwnerBusinesses returns the list of businesses where the
-// user holds the system owner role AND no other owner exists. Hardcoded
-// owner role UUID (systemOwnerRoleID) — RBAC seed (migration
-// 000007). Pool-based: read-only, no tx needed.
+// EnumerateSoleOwnerBusinesses returns businesses where the user is the sole
+// holder of the system owner role. Pool-based, read-only — no tx needed.
 func (s *AccountDeletionService) EnumerateSoleOwnerBusinesses(ctx context.Context, userID uuid.UUID) ([]SoleOwnerBusiness, error) {
 	const q = `SELECT b.id, b.name
 	             FROM businesses b
@@ -333,11 +264,9 @@ func (s *AccountDeletionService) EnumerateSoleOwnerBusinesses(ctx context.Contex
 	return out, nil
 }
 
-// GetScheduledDeletionAt returns the moment hard-delete will fire for
-// the given user (= deletion_requested_at + graceDays). Used by the
-// handler when it needs to render the 423 body's `deletionDate` field
-// for an already-pending deletion. Returns zero time + nil if no
-// pending deletion exists.
+// GetScheduledDeletionAt returns deletion_requested_at + graceDays, or zero
+// time + nil when no pending deletion exists. Used by the 423 body's
+// deletionDate field for an already-pending deletion.
 func (s *AccountDeletionService) GetScheduledDeletionAt(ctx context.Context, userID uuid.UUID) (time.Time, error) {
 	user, err := s.users.GetByIDIncludingDeleted(ctx, userID)
 	if err != nil {
@@ -349,19 +278,9 @@ func (s *AccountDeletionService) GetScheduledDeletionAt(ctx context.Context, use
 	return user.DeletionRequestedAt.Add(time.Duration(s.graceDays) * 24 * time.Hour), nil
 }
 
-// HardDeleteSweeper runs the per-tick batch hard-delete cycle. Returns
-// the count of users actually deleted (for logging).
-//
-// Algorithm:
-// 1. Open outer TX, claim up to `batchSize` user IDs via FOR UPDATE
-// SKIP LOCKED so concurrent cancel calls can race-win the row.
-// 2. For each ID: re-read inside the tx (defense-in-depth against
-// T-DEL-04 — cancel may have flipped deletion_canceled_at between
-// claim and processing), then INSERT audit row + DELETE user (in
-// that order; FK SET NULL needs the row before DELETE fires).
-// 3. Commit. Then post-TX, best-effort Mongo cleanup for each
-// deleted user (T-DEL-05: PG is source of truth; Mongo failure
-// logged but not rolled back).
+// HardDeleteSweeper runs the per-tick batch hard-delete cycle; returns the
+// count of users actually deleted. See docs/services/account-deletion.md for
+// the audit-before-delete and post-TX Mongo cleanup contract.
 func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, error) {
 	const batchSize = 100
 	before := time.Now().Add(-time.Duration(s.graceDays) * 24 * time.Hour)
@@ -372,6 +291,7 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// FOR UPDATE SKIP LOCKED lets concurrent CancelDeletion race-win the row.
 	userIDs, err := s.users.EnumeratePendingDeletionsInTx(ctx, tx, before, batchSize)
 	if err != nil {
 		return 0, fmt.Errorf("enumerate pending deletions: %w", err)
@@ -383,9 +303,8 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 	}
 	var purged []purgedPair
 	for _, uid := range userIDs {
-		// Re-read inside the tx (defense-in-depth T-DEL-04). If a
-		// concurrent cancel flipped deletion_canceled_at after we
-		// claimed the lock, skip.
+		// Defense-in-depth re-read: if a concurrent cancel flipped
+		// deletion_canceled_at after we claimed the lock, skip.
 		user, err := s.users.GetByIDIncludingDeleted(ctx, uid)
 		if err != nil {
 			slog.WarnContext(ctx, "hard delete sweeper: get user failed", "userID", uid, "err", err)
@@ -396,8 +315,8 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 		}
 		originalEmail := user.Email
 
-		// Audit INSERT FIRST so the FK SET NULL has a row to point at
-		// after the DELETE fires.
+		// Audit INSERT MUST happen before the user DELETE — FK is SET NULL
+		// with user_email_at_event; reversing the order nulls the audit row.
 		if err := audit.LogUserSelfDeletedTx(ctx, tx, uid, originalEmail); err != nil {
 			slog.ErrorContext(ctx, "hard delete sweeper: audit insert failed", "userID", uid, "err", err)
 			continue
@@ -413,9 +332,8 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 		return 0, fmt.Errorf("commit sweeper tx: %w", err)
 	}
 
-	// Post-TX: best-effort Mongo cleanup. PG is source of truth; Mongo
-	// failure is logged but does NOT cause the PG delete to roll back
-	// (PG is already committed at this point — T-DEL-05 disposition).
+	// Post-TX best-effort Mongo cleanup. PG is source of truth (T-DEL-05);
+	// Mongo failure is logged but does NOT roll back the committed PG state.
 	for _, p := range purged {
 		if _, err := s.conversations.MongoConversationsCleanup(ctx, p.userID.String(), p.email); err != nil {
 			slog.WarnContext(ctx, "mongo conversations cleanup failed after hard delete (PG row already gone)",
@@ -426,20 +344,11 @@ func (s *AccountDeletionService) HardDeleteSweeper(ctx context.Context) (int, er
 	return len(purged), nil
 }
 
-// WarningSweeper enqueues the T-7 warning email for users whose
-// deletion_requested_at falls inside the window
-// (requestedAt > now - 23d AND requestedAt <= now - 22d23h).
-// Returns the count of emails newly enqueued.
-//
-// Dedupes via ExistsBySubjectAndRecipient — running the sweeper twice
-// yields exactly ONE outbox row per user (T-DEL-08).
-//
-// Note: the request-deletion path ALREADY enqueues a deferred T-7
-// warning via EnqueueDeferred, so this sweeper is a safety net for
-// cases where the deferred row was lost (e.g. status='canceled' wave
-// after a cancel-then-re-request flow).
+// WarningSweeper enqueues the T-7 warning for users whose
+// deletion_requested_at falls inside the 1-hour-wide T-7 window;
+// dedupes via ExistsBySubjectAndRecipient. See
+// docs/services/account-deletion.md.
 func (s *AccountDeletionService) WarningSweeper(ctx context.Context) (int, error) {
-	// Window: users requested between (T-23d, T-22d23h] ago — 1h wide.
 	now := time.Now()
 	fromTime := now.Add(-time.Duration(s.t7OffsetDays)*24*time.Hour - time.Hour)
 	toTime := now.Add(-time.Duration(s.t7OffsetDays) * 24 * time.Hour)
@@ -469,9 +378,8 @@ func (s *AccountDeletionService) WarningSweeper(ctx context.Context) (int, error
 			BodyText: templates.DeletionT7WarningText(u.Email, deletionAt),
 			BodyHTML: templates.DeletionT7WarningHTML(u.Email, deletionAt),
 		}
-		// nil tx is intentional — sweeper acts outside any user-
-		// initiated transaction. The Enqueue extension in 21-04 adds
-		// nil-tx fallback via pool.Exec.
+		// nil tx is intentional — sweeper runs outside any user-initiated
+		// transaction; Enqueue falls back to pool.Exec.
 		if _, err := s.outbox.Enqueue(ctx, nil, in); err != nil {
 			slog.WarnContext(ctx, "warning sweeper: enqueue failed", "email", u.Email, "err", err)
 			continue
@@ -482,7 +390,6 @@ func (s *AccountDeletionService) WarningSweeper(ctx context.Context) (int, error
 	return enqueued, nil
 }
 
-// Defensive guard so the linter doesn't drop the import — used only by
-// ErrSoleOwnerBusinesses, which is referenced via errors.As at the
-// handler boundary.
+// Defensive guard so the linter doesn't drop the errors import — used only by
+// ErrSoleOwnerBusinesses, which is referenced via errors.As at the handler boundary.
 var _ = errors.As
