@@ -13,9 +13,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-// MembershipSummary is the read-model returned by ListMembershipsByUser.
-// Each item corresponds to one business_members row hydrated with the
-// business name and role name. Powers BIZ-02 GET /api/v1/businesses.
+// MembershipSummary is the read-model returned by ListMembershipsByUser. See docs/services/business.md.
 type MembershipSummary struct {
 	BusinessID   uuid.UUID
 	BusinessName string
@@ -25,48 +23,23 @@ type MembershipSummary struct {
 	JoinedAt     time.Time
 }
 
-// BusinessService defines the interface for business profile management
+// BusinessService defines the interface for business profile management.
+// See docs/services/business.md.
 type BusinessService interface {
-	// Create creates a new business and the dual-write owner membership
-	// (DATA-06). ownerUserID is the user that will be seeded as the first
-	// business_members row with role_id=SystemRoleOwnerID. (CLEAN-01)
-	// removed Business.UserID; the handler now passes the authenticated user
-	// id explicitly as a third arg.
+	// Create dual-writes businesses + business_members(role=Owner) in one tx.
 	Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
-	// Update applies a business profile edit. added actorUserID
-	// so the service can emit business.updated AFTER the repo write succeeds
-	// without a handler-side audit call. actorUserID is the JWT-validated user
-	// (bc.UserID) performing the edit.
+	// Update applies a business profile edit and emits business.updated keyed on actorUserID.
 	Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error)
-	// ListMembershipsByUser returns the businesses a user has membership in,
-	// hydrated with business name + role name. Powers BIZ-02 GET /api/v1/businesses.
+	// ListMembershipsByUser returns memberships hydrated with business and role names.
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipSummary, error)
-	// GetToolApprovals returns the current businesses.settings.tool_approvals
-	// map. Returns a non-nil empty map when no approvals are stored —
-	// matches Business.ToolApprovals contract.
-	//
-	// Caller is expected to have passed `authz.Can(ctx, PermBusinessRead)` at
-	// the handler layer; the service is a thin data wrapper since
-	// (CLEAN-01) removed the legacy b.UserID != actor ownership check.
+	// GetToolApprovals returns the persisted tool_approvals map (non-nil empty when unset).
 	GetToolApprovals(ctx context.Context, businessID uuid.UUID) (map[string]domain.ToolFloor, error)
-	// UpdateToolApprovals replaces the businesses.settings.tool_approvals
-	// map with the given approvals. Validation:
-	// - Keys must exist in the live orchestrator registry (caller injects
-	// via ToolsRegistryCache — see handler.UpdateBusinessToolApprovals).
-	// - Values must be in {Auto, Manual}. Forbidden is NOT a valid user-set
-	// value (floor is set at registration only).
-	// Permission enforcement is at the handler layer via
-	// `authz.Can(ctx, PermBusinessUpdate)` after (CLEAN-01) removed
-	// the legacy b.UserID != actor ownership check.
+	// UpdateToolApprovals replaces the tool_approvals map. Key/value validation is the handler's concern.
 	UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error
 }
 
-// PgxBeginner is the minimal subset of *pgxpool.Pool that businessService
-// needs to open a transaction for the v2.0 RBAC dual-write
-// (DATA-06). Declared as an interface so unit tests can pass a pgxmock
-// pool — production wiring in cmd/main.go still passes *pgxpool.Pool,
-// which satisfies this interface implicitly.
+// PgxBeginner is the minimal tx-opening surface businessService needs (production: *pgxpool.Pool).
 type PgxBeginner interface {
 	BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error)
 }
@@ -82,20 +55,7 @@ type businessService struct {
 // Compile-time check that businessService implements BusinessService
 var _ BusinessService = (*businessService)(nil)
 
-// NewBusinessService creates a new business service instance.
-//
-// v2.0 RBAC (DATA-06): the constructor takes a
-// BusinessMembershipRepository and a PgxBeginner so Create can
-// dual-write businesses + business_members atomically. 's
-// POST /businesses endpoint (BIZ-03) will reuse this same Create.
-//
-// roleRepo is added in Plan 04 so ListMembershipsByUser can
-// hydrate each membership with the role name.
-//
-// The `pool` parameter is `PgxBeginner` (not `*pgxpool.Pool`) so unit
-// tests can substitute a pgxmock pool. main.go still passes
-// *pgxpool.Pool, which satisfies the interface implicitly — no main.go
-// type changes required beyond passing the new arguments.
+// NewBusinessService constructs a businessService. See docs/services/business.md.
 func NewBusinessService(
 	repo domain.BusinessRepository,
 	membershipRepo domain.BusinessMembershipRepository,
@@ -115,9 +75,7 @@ func NewBusinessService(
 	if pool == nil {
 		panic("pool cannot be nil")
 	}
-	// auditLogger is nil-safe via audit.Nop so existing
-	// tests that pre-date the audit threading continue to construct services
-	// without churn.
+	// auditLogger is nil-safe via audit.Nop so legacy tests can omit it.
 	if auditLogger == nil {
 		auditLogger = audit.Nop()
 	}
@@ -130,20 +88,7 @@ func NewBusinessService(
 	}
 }
 
-// Create creates a new business for a user.
-//
-// v2.0 RBAC (DATA-06): dual-writes businesses +
-// business_members(role_id=SystemRoleOwnerID) inside a single pgx.Tx so
-// either both rows commit or neither does. An injected error between
-// the two inserts rolls back the businesses row (no orphan).
-//
-// ErrMembershipExists from the second insert is treated as the
-// idempotent backfill-already-landed path: we still commit so the
-// businesses row lands.
-//
-// (CLEAN-01): ownerUserID is now a separate parameter (was
-// business.UserID before; the field was dropped from domain.Business).
-// The handler reads it from middleware.GetUserID and passes it explicitly.
+// Create dual-writes businesses + owner business_members in one tx. See docs/services/business.md.
 func (s *businessService) Create(ctx context.Context, business *domain.Business, ownerUserID uuid.UUID) (*domain.Business, error) {
 	// Check context
 	if err := ctx.Err(); err != nil {
@@ -164,21 +109,13 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business,
 		return nil, fmt.Errorf("owner user id is required")
 	}
 
-	// v2.0 RBAC (DATA-06): dual-write businesses + business_members
-	// in a single transaction. Either both rows commit or neither does.
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() {
-		// HI-04: roll back on context.Background rather than the request ctx.
-		// If the client disconnected after BeginTx but before Commit, ctx is
-		// canceled and tx.Rollback(ctx) returns context.Canceled without
-		// sending the actual ROLLBACK to the server — the connection is then
-		// unusable until the pool resets it on next checkout, which under
-		// load can starve the pool. Mirrors members.go:UpdateMemberRole's
-		// rollback discipline.
-		// rollback is a no-op after a successful commit, so this is safe.
+		// Rollback on context.Background, not ctx: a canceled ctx skips the actual
+		// ROLLBACK and leaves the conn unusable, starving the pool under load.
 		_ = tx.Rollback(context.Background())
 	}()
 
@@ -206,27 +143,21 @@ func (s *businessService) Create(ctx context.Context, business *domain.Business,
 		if !errors.Is(memErr, domain.ErrMembershipExists) {
 			return nil, fmt.Errorf("insert owner membership: %w", memErr)
 		}
-		// Idempotent path: backfill already created the row. Acceptable —
-		// continue to commit so the businesses row lands.
+		// Idempotent backfill-already-landed path: commit so the businesses row lands.
 	}
 
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		return nil, fmt.Errorf("commit business+membership: %w", commitErr)
 	}
 
-	// emit business.created AFTER tx.Commit. The
-	// owner_user_id is recorded so the trail captures who provisioned the org.
+	// Emit business.created AFTER tx.Commit so audit failure cannot undo the durable write.
 	audit.LogBusinessCreated(ctx, s.audit, business.ID, ownerUserID, business.Name)
 
 	return business, nil
 }
 
-// ListMembershipsByUser returns the businesses a user has membership in,
-// hydrated with business name + role name. Powers BIZ-02 GET /api/v1/businesses.
-//
-// N+1 note: acceptable for v2.0 (typical user has <10 memberships). Plan
-// 02-07 may revisit if integration tests show latency issues; v2.1 candidate
-// for a JOIN repo method (deferred per CONTEXT).
+// ListMembershipsByUser returns memberships hydrated with business + role names.
+// N+1 is acceptable for v2.0 (<10 memberships typical). See docs/services/business.md.
 func (s *businessService) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]MembershipSummary, error) {
 	members, err := s.membershipRepo.ListByUser(ctx, userID)
 	if err != nil {
@@ -280,10 +211,7 @@ func (s *businessService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Bu
 	return business, nil
 }
 
-// GetToolApprovals returns the businesses.settings.tool_approvals map for
-// the business identified by businessID. (CLEAN-01) removed the
-// legacy b.UserID != actor ownership check; the caller (handler) is expected
-// to gate on authz.Can(ctx, PermBusinessRead).
+// GetToolApprovals returns the persisted tool_approvals map. See docs/services/business.md.
 func (s *businessService) GetToolApprovals(ctx context.Context, businessID uuid.UUID) (map[string]domain.ToolFloor, error) {
 	b, err := s.repo.GetByID(ctx, businessID)
 	if err != nil {
@@ -292,11 +220,8 @@ func (s *businessService) GetToolApprovals(ctx context.Context, businessID uuid.
 	return b.ToolApprovals(), nil
 }
 
-// UpdateToolApprovals persists a new tool_approvals map. (CLEAN-01)
-// removed the legacy b.UserID != actor ownership check; the caller (handler)
-// is expected to gate on authz.Can(ctx, PermBusinessUpdate). Value
-// validation (Auto/Manual only) is the handler's concern — this layer just
-// maps the typed map into the repo call.
+// UpdateToolApprovals replaces the tool_approvals map after verifying the business exists.
+// See docs/services/business.md.
 func (s *businessService) UpdateToolApprovals(ctx context.Context, businessID uuid.UUID, approvals map[string]domain.ToolFloor) error {
 	if _, err := s.repo.GetByID(ctx, businessID); err != nil {
 		return err
@@ -304,13 +229,8 @@ func (s *businessService) UpdateToolApprovals(ctx context.Context, businessID uu
 	return s.repo.UpdateToolApprovals(ctx, businessID, approvals)
 }
 
-// Update updates a business profile.
-//
-// actorUserID identifies the user performing the
-// edit so the service can emit a business.updated audit row AFTER the
-// successful repo write. actorUserID may be uuid.Nil for legacy/system
-// callers — the audit row still records business_id which is the load-bearing
-// forensic data.
+// Update updates a business profile and emits business.updated keyed on actorUserID.
+// See docs/services/business.md.
 func (s *businessService) Update(ctx context.Context, business *domain.Business, actorUserID uuid.UUID) (*domain.Business, error) {
 	// Check context
 	if err := ctx.Err(); err != nil {
@@ -340,8 +260,7 @@ func (s *businessService) Update(ctx context.Context, business *domain.Business,
 		return nil, fmt.Errorf("update business: %w", err)
 	}
 
-	// emit business.updated AFTER the successful
-	// repo write. v1 ships without per-field diff (Assumption A3).
+	// Emit AFTER the successful repo write; v1 ships without per-field diff.
 	audit.LogBusinessUpdated(ctx, s.audit, business.ID, actorUserID)
 
 	return business, nil
