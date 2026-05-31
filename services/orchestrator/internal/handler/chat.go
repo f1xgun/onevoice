@@ -85,7 +85,7 @@ type chatRequest struct {
 
 	// Locale is the per-chat language tag (e.g. "ru", "en") forwarded by the
 	// API's chat_proxy from i18n.LocaleFromContext(r.Context()). Drives the
-	// orchestrator prompt builder's locale-aware templates (Phase D1). Empty
+	// orchestrator prompt builder's locale-aware templates. Empty
 	// or invalid values fall back to the orchestrator's own Accept-Language
 	// resolution from middleware.Locale → i18n.LocaleFromContext, then
 	// finally to i18n.DefaultTag. The body field takes precedence over the
@@ -145,8 +145,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	//      or invalid.
 	// The body field takes precedence so that intermediate proxies that
 	// strip / rewrite Accept-Language can't silently flip the LLM's reply
-	// language out from under the user. See pkg/i18n + Phase D1 of
-	// `.planning/i18n-readiness/PLAN.md`.
+	// language out from under the user. See pkg/i18n.
 	locale := resolveChatLocale(ctx, req.Locale)
 	ctx = i18n.WithLocale(ctx, locale)
 
@@ -343,7 +342,7 @@ var toneIDToRu = map[string]string{
 	"businesslike": "деловой",
 }
 
-// toneIDToEn is the EN parallel of toneIDToRu (Phase D2). Same key set so a
+// toneIDToEn is the EN parallel of toneIDToRu. Same key set so a
 // missing English value is a compile-time inconsistency, not a silent fallback
 // to the literal id. Adjectives chosen to match the frontend lib/tones.ts
 // English labels word-for-word.
