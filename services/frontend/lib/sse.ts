@@ -6,7 +6,7 @@
 // These functions are pure: no React state, no module-scoped mutation.
 // Tests live alongside in `lib/__tests__/sse.test.ts`.
 
-import type { Message, ToolCall } from '@/types/chat';
+import type { ErrorCode, Message, ToolCall } from '@/types/chat';
 
 const SSE_DATA_PREFIX = 'data: ';
 
@@ -56,6 +56,7 @@ export function applySSEEvent(msg: Message, event: Record<string, unknown>): Mes
             ...tc,
             result: event.result as Record<string, unknown>,
             error: event.error as string | undefined,
+            code: (event.code as ErrorCode | undefined) || undefined,
             status: (event.error ? 'error' : 'done') as ToolCall['status'],
           }
         : tc
