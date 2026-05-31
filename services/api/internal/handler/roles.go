@@ -19,35 +19,20 @@ import (
 )
 
 // roleCacheInvalidator is the narrow cache interface RolesHandler needs.
-// InvalidateRole evicts the role-perms LRU entry; InvalidateMember is used by
-// Delete after reassigning members to a new role (the membership cache still
-// holds the OLD role_id until evicted — Open Question A2 fanout).
-//
-// *authz.Cache satisfies both methods, so wire/handlers.go can pass the same
-// *authz.Cache value into both NewMembersHandler and NewRolesHandler.
+// InvalidateMember handles the fanout after role-delete-with-reassign:
+// the membership cache still holds the OLD role_id until evicted.
 type roleCacheInvalidator interface {
 	InvalidateRole(businessID, roleID uuid.UUID)
 	InvalidateMember(businessID, userID uuid.UUID)
 }
 
-// RolesHandler implements ROLE-03..07 + UI-RBAC-08:
+// RolesHandler serves the business role CRUD + MyPermissions endpoints.
 //
-//	GET    /businesses/{id}/roles                → List           (ROLE-03 + member_count)
-//	POST   /businesses/{id}/roles                → Create         (ROLE-04)
-//	PATCH  /businesses/{id}/roles/{roleId}       → Update         (ROLE-05)
-//	DELETE /businesses/{id}/roles/{roleId}       → Delete         (ROLE-06)
-//	GET    /businesses/{id}/me/permissions       → MyPermissions  (UI-RBAC-08)
-//
-// Response wire-shape discriminator (MED-05 review):
-// - List returns roleResponseItem rows with member_count populated
-// (including 0 for unused roles).
-// - Create / Update return roleResponseItem WITHOUT member_count — a
-// fresh role has 0 members and an updated role's count is unchanged,
-// so the field is omitted entirely via `omitempty` on the *int pointer.
-// - Description is plain `string` (no `omitempty`) — always present in
-// every response, including the empty string. The frontend zod schema
-// (`description: z.string.optional.default(”)`) accepts both
-// "missing" and "" — backend always sends "" for consistency.
+// Response wire-shape discriminator:
+//   - List returns roleResponseItem with member_count populated (incl. 0).
+//   - Create / Update omit member_count via `omitempty` (fresh role = 0;
+//     update doesn't change count).
+//   - Description is plain string (no omitempty) — always present, even "".
 type RolesHandler struct {
 	roleRepo       domain.RoleRepository
 	membershipRepo domain.BusinessMembershipRepository
@@ -57,9 +42,7 @@ type RolesHandler struct {
 }
 
 // NewRolesHandler constructs a RolesHandler. All dependencies are required.
-//
-// adds `auditLogger` so role CRUD endpoints emit
-// rbac.role_created / role_updated / role_deleted audit events AFTER
+// auditLogger emits rbac.role_created / role_updated / role_deleted AFTER
 // tx.Commit succeeds.
 func NewRolesHandler(
 	rr domain.RoleRepository,
@@ -106,15 +89,12 @@ type roleResponseItem struct {
 }
 
 // maxPermissionsPerRole caps the permissions[] array on POST/PATCH at 100 to
-// bound serialization cost and protect against accidental/malicious bloat.
-// The full registry today has well under 100 permissions (09).
+// bound serialization cost and protect against bloat. Registry has <100 perms.
 const maxPermissionsPerRole = 100
 
-// List handles GET /api/v1/businesses/{id}/roles.
-// Permission: PermRolesRead. SPEC ROLE-03 + UI-RBAC-08 (member_count column).
-// Returns system roles (business_id IS NULL) + custom roles for this business,
-// ordered by is_system DESC, name ASC. Each row carries member_count via the
-// ListByBusinessWithCounts LEFT JOIN.
+// List handles GET /api/v1/businesses/{id}/roles (PermRolesRead). Returns
+// system + custom roles ordered by is_system DESC, name ASC, each with
+// member_count from the ListByBusinessWithCounts LEFT JOIN.
 func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -206,9 +186,8 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// MED-04 (review): persist the deduplicated slice (mirrors
-	// `proposed`), not the raw request — duplicate keys must not leak into
-	// the JSONB column. typedPermsToStrings preserves toTypedPerms' order.
+	// Persist the deduplicated slice (mirrors `proposed`), not raw request
+	// — duplicate keys must not leak into the JSONB column.
 	dedupedPerms := typedPermsToStrings(proposed)
 
 	businessID := bc.BusinessID
@@ -576,12 +555,9 @@ func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
-	// MED-03 (review): defensive copy. bc.Permissions backs the
-	// middleware LRU cache slice. A future refactor that switches this loop
-	// to `perms := bc.Permissions` (or otherwise aliases the slice) would
-	// share the cached pointer with the JSON encoder — if the middleware
-	// mutates the cached slice concurrently the encoder would race. Keep the
-	// per-element copy explicit; cost is O(N) for N≤registry-size (<100).
+	// Defensive copy — bc.Permissions backs the middleware LRU cache slice.
+	// Aliasing it would share the cached pointer with the JSON encoder and
+	// race with cache mutations. Cost O(N) for N<100.
 	perms := make([]string, len(bc.Permissions))
 	for i, p := range bc.Permissions {
 		perms[i] = string(p)
@@ -591,13 +567,6 @@ func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
 
 // parseRoleIDParam extracts and validates the {roleId} URL param. Returns
 // (uuid.Nil, false) when unparseable, having already written 400.
-// Mirror of parseMemberUserIDParam in members.go:358.
-//
-// MED-06 (review): chi.URLParam never returns an empty string for a
-// param that the route pattern declares (router.go registers both PATCH and
-// DELETE with `{roleId}`). The previous empty-string branch was unreachable
-// and has been removed — uuid.Parse handles the empty-string case below by
-// returning a parse error, which still maps to 400 invalid_role_id.
 func parseRoleIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	raw := chi.URLParam(r, "roleId")
 	id, err := uuid.Parse(raw)
@@ -609,9 +578,8 @@ func parseRoleIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) 
 }
 
 // typedPermsToStrings converts []authz.Permission back to []string for
-// persistence. Used by Create/Update to store the deduplicated permission
-// slice (MED-04 review) — toTypedPerms guarantees order-preserved
-// uniqueness, so the resulting JSONB column never contains duplicates.
+// persistence. toTypedPerms guarantees order-preserved uniqueness so the
+// JSONB column never contains duplicates.
 func typedPermsToStrings(perms []authz.Permission) []string {
 	out := make([]string, len(perms))
 	for i, p := range perms {
@@ -620,17 +588,10 @@ func typedPermsToStrings(perms []authz.Permission) []string {
 	return out
 }
 
-// toTypedPerms validates that every entry is a known permission from the
-// authz registry and returns the typed []authz.Permission slice. Returns
-// (nil, error) when any entry is unknown — the caller maps this to 400
-// invalid_permission.
-//
-// MED-04 (review): deduplicates entries before returning. A naive
-// client posting permissions: ["business.read", "business.read"] would
-// otherwise persist a JSONB row with duplicates — CheckEscalationSubset
-// still passes (subset holds) but downstream jsonb_array_elements queries
-// would double-count. Dedup is order-preserving (first occurrence wins) so
-// the resulting array is stable across re-saves.
+// toTypedPerms validates every entry against the authz registry and
+// returns the typed slice. Deduplicates (first-occurrence wins) — otherwise
+// downstream jsonb_array_elements would double-count. Returns (nil, err)
+// when an entry is unknown (caller maps to 400 invalid_permission).
 func toTypedPerms(strs []string) ([]authz.Permission, error) {
 	valid := make(map[string]struct{})
 	for _, group := range authz.AllPermissions() {

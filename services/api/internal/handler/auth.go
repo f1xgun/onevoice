@@ -22,11 +22,10 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
-// UserService defines the interface for user-related operations
+// UserService defines user-related operations.
 type UserService interface {
 	Register(ctx context.Context, email, password string) (*domain.User, error)
-	// RegisterWithContext is the atomic-Register entry point —
-	// records three consents inside the same tx as the user row.
+	// RegisterWithContext records three consents in the same tx as the user row.
 	RegisterWithContext(ctx context.Context, email, password string, regCtx service.RegistrationContext) (*domain.User, error)
 	Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error)
 	RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error)
@@ -36,74 +35,44 @@ type UserService interface {
 	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
 }
 
-// ConsentDiffer is the slice of *service.ConsentService the auth
-// handler needs for the /auth/me requiresReconsent field. Declared
-// here (not service-side) so the handler tests can pass a double.
-// May be nil — when nil, Me skips the requiresReconsent populator.
+// ConsentDiffer powers the /auth/me requiresReconsent field. nil-safe.
 type ConsentDiffer interface {
 	DiffAgainstCurrent(ctx context.Context, userID uuid.UUID) (*service.RequiresReconsentInfo, error)
 }
 
-// Package-level validator instance (reused across handlers)
 var validate = validator.New()
 
-// AuthHandler handles authentication endpoints
+// AuthHandler handles authentication endpoints.
 type AuthHandler struct {
 	userService   UserService
 	validate      *validator.Validate
 	secureCookies bool
-	// v2.0 audit: AuditLogger is fire-and-forget; nil-safe via
-	// audit.Logger interface — wire/handlers.go injects the shared
-	// svcs.AuditLogger.
-	audit audit.Logger
-	// jwtSecret is used for parsing refresh-token claims during Logout so
-	// the audit entry can record userID BEFORE the Redis invalidation removes
-	// the token-id binding.
-	jwtSecret []byte
-	// password-reset service. Injected via setter
-	// SetPasswordResetService AFTER NewAuthHandler so the existing
-	// constructor signature stays untouched. Typed as the
-	// PasswordResetServiceAPI interface so handler tests can pass a
-	// double; production wiring passes a *service.PasswordResetService.
-	passwordResetService PasswordResetServiceAPI
-
-	// email-verification service. Same setter
-	// pattern as passwordResetService.
+	audit         audit.Logger
+	// jwtSecret parses refresh-token claims during Logout so the audit entry
+	// records userID BEFORE Redis invalidation removes the token-id binding.
+	jwtSecret                []byte
+	passwordResetService     PasswordResetServiceAPI
 	emailVerificationService EmailVerificationServiceAPI
-
-	// meUserExtraGetter is an injectable
-	// function that fetches the user including soft-deleted state for
-	// the /auth/me handler. Non-nil in production wiring (set to
-	// UserResetExtAdapter.GetByIDIncludingDeleted), nil in legacy/test
-	// code paths where /auth/me falls back to userService.GetByID.
+	// meUserExtraGetter fetches the user including soft-deleted state so /auth/me
+	// continues to render the deletion-grace banner. nil → fall back to GetByID.
 	meUserExtraGetter func(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+	consents          ConsentDiffer
 
-	// When non-nil, Me populates the
-	// requiresReconsent field on /auth/me by calling DiffAgainstCurrent.
-	// nil-safe — when not wired the field is omitted from the response.
-	consents ConsentDiffer
-
-	// Brute-force / credential-stuffing defense for /auth/login. Both may
-	// be nil — Login degrades to legacy behavior (no lockout, no captcha)
-	// so the handler boots in environments without a Redis (test fixtures)
-	// or without SmartCaptcha env config.
+	// Brute-force / credential-stuffing defense. Both may be nil — Login
+	// degrades to no-lockout / no-captcha in environments without Redis
+	// or SmartCaptcha env config.
 	lock            *lockout.Lockout
 	captcha         service.SmartCaptchaVerifier
 	captchaFailOpen bool
 }
 
-// PasswordResetServiceAPI is the slice of *service.PasswordResetService
-// the AuthHandler consumes. Declared as an interface here for
-// testability — production wiring passes the concrete type, tests
-// pass a doubled implementation.
+// PasswordResetServiceAPI is the AuthHandler's view of PasswordResetService.
 type PasswordResetServiceAPI interface {
 	RequestReset(ctx context.Context, emailAddr, clientIP, userAgent string) error
 	ConfirmReset(ctx context.Context, plaintextToken, newPassword, clientIP, userAgent string) error
 }
 
-// EmailVerificationServiceAPI is the slice of *service.EmailVerificationService
-// the AuthHandler consumes. Declared as an interface for the same
-// testability reason as PasswordResetServiceAPI.
+// EmailVerificationServiceAPI is the AuthHandler's view of EmailVerificationService.
 type EmailVerificationServiceAPI interface {
 	RequestResend(ctx context.Context, userID uuid.UUID) error
 	ConfirmVerify(ctx context.Context, plaintextToken string) (uuid.UUID, error)
@@ -111,41 +80,27 @@ type EmailVerificationServiceAPI interface {
 	ChangeEmailBeforeVerify(ctx context.Context, userID uuid.UUID, newEmail string) (oldEmail string, err error)
 }
 
-// SetPasswordResetService injects the password-reset dependency. Called
-// from wire/handlers.go AFTER PasswordResetService is built. Preferred
-// over extending NewAuthHandler's signature because that would force
-// every existing test to pass nil.
+// SetPasswordResetService injects the password-reset dependency post-construction.
 func (h *AuthHandler) SetPasswordResetService(s PasswordResetServiceAPI) {
 	h.passwordResetService = s
 }
 
-// SetEmailVerificationService injects the email-verification dependency
-// Same setter pattern as SetPasswordResetService.
+// SetEmailVerificationService injects the email-verification dependency post-construction.
 func (h *AuthHandler) SetEmailVerificationService(s EmailVerificationServiceAPI) {
 	h.emailVerificationService = s
 }
 
-// SetMeUserExtraGetter injects the deletion-aware GetByIDIncludingDeleted
-// pathway for /auth/me. Wired with
-// repos.UserResetExt.GetByIDIncludingDeleted so soft-deleted users see
-// their accountDeletion state.
+// SetMeUserExtraGetter injects the deletion-aware getter used by /auth/me.
 func (h *AuthHandler) SetMeUserExtraGetter(fn func(ctx context.Context, userID uuid.UUID) (*domain.User, error)) {
 	h.meUserExtraGetter = fn
 }
 
-// SetConsentDiffer injects the ConsentService into the auth
-// handler so Me can populate requiresReconsent. Idempotent setter to
-// keep NewAuthHandler's signature stable.
+// SetConsentDiffer injects the ConsentService for /auth/me requiresReconsent.
 func (h *AuthHandler) SetConsentDiffer(d ConsentDiffer) {
 	h.consents = d
 }
 
 // NewAuthHandler creates a new auth handler instance.
-//
-// adds `auditLogger` and `jwtSecret` parameters so
-// the handler can emit auth.* audit events (login_success / login_failed /
-// logout / password_changed / user_registered) and extract userID from the
-// refresh-token claims before Logout invalidates the token in Redis.
 func NewAuthHandler(userService UserService, secureCookies bool, auditLogger audit.Logger, jwtSecret []byte) (*AuthHandler, error) {
 	if userService == nil {
 		return nil, fmt.Errorf("NewAuthHandler: userService cannot be nil")
@@ -165,14 +120,11 @@ func NewAuthHandler(userService UserService, secureCookies bool, auditLogger aud
 	}, nil
 }
 
-// WithLockout installs the lockout + SmartCaptcha verifier on an existing
-// AuthHandler. Optional: when not called the handler keeps the legacy
-// (no lockout, no captcha) login behavior — used by unit tests and dev
-// environments without Redis / SmartCaptcha secrets.
+// WithLockout installs the lockout + SmartCaptcha verifier. Optional — when
+// not called the handler runs without lockout / captcha.
 //
-// failOpen controls the response on ErrCaptchaTransient (Yandex unreachable):
-// true → log + proceed (safer for legitimate users during outage);
-// false → reject as 403. Defaults to true.
+// failOpen=true logs and proceeds on ErrCaptchaTransient (Yandex outage) so
+// legit users aren't locked out during outages; false rejects as 403.
 func (h *AuthHandler) WithLockout(lock *lockout.Lockout, captcha service.SmartCaptchaVerifier, failOpen bool) *AuthHandler {
 	h.lock = lock
 	h.captcha = captcha
@@ -212,7 +164,7 @@ func (h *AuthHandler) clearRefreshTokenCookie(w http.ResponseWriter) {
 }
 
 func (h *AuthHandler) readRefreshTokenCookie(r *http.Request) (string, error) {
-	// Try secure name first, then plain name (handles upgrade path)
+	// Try secure name first, then plain (handles upgrade path).
 	for _, name := range []string{"__Host-refresh_token", "refresh_token"} {
 		c, err := r.Cookie(name)
 		if err == nil && c.Value != "" {
@@ -222,88 +174,71 @@ func (h *AuthHandler) readRefreshTokenCookie(r *http.Request) (string, error) {
 	return "", http.ErrNoCookie
 }
 
-// RegisterConsents is the per-slug version map submitted with
-// /auth/register. All three must equal the
-// build's currentVersion (legalconfig.*Version) or the handler returns
-// 400 consent_required with the missing slugs listed.
+// RegisterConsents is the per-slug version map submitted with /auth/register.
+// All three must equal the build's currentVersion or the handler returns
+// 400 consent_required with the missing slugs.
 type RegisterConsents struct {
 	TOS     string `json:"tos"`
 	Privacy string `json:"privacy"`
 	PDN     string `json:"pdn"`
 }
 
-// RegisterRequest represents the registration request payload.
-//
-// clients MUST submit `consents`. The
-// legacy clients (no consents field) still work — the handler treats a
-// missing/empty consents block as "all stale" and returns 400
-// consent_required, which is the safe behavior: forcing a UI
-// migration before allowing register.
+// RegisterRequest is the registration body. Missing/empty consents block is
+// treated as "all stale" → 400 consent_required (forces UI migration).
 type RegisterRequest struct {
 	Email    string           `json:"email" validate:"required,email"`
 	Password string           `json:"password" validate:"required,min=8"`
 	Consents RegisterConsents `json:"consents"`
 }
 
-// LoginRequest represents the login request payload
+// LoginRequest is the login body.
 type LoginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
 }
 
-// LoginResponse represents the login response payload
+// LoginResponse is the login success payload.
 type LoginResponse struct {
 	User        *domain.User `json:"user"`
 	AccessToken string       `json:"accessToken"`
 }
 
-// RefreshTokenResponse represents the refresh token response payload
+// RefreshTokenResponse is the refresh-token success payload.
 type RefreshTokenResponse struct {
 	User        *domain.User `json:"user"`
 	AccessToken string       `json:"accessToken"`
 }
 
-// ChangePasswordRequest represents the password change request payload
+// ChangePasswordRequest is the password change body.
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword" validate:"required"`
 	NewPassword     string `json:"newPassword" validate:"required,min=8"`
 }
 
 // UpdatePreferredLocaleRequest is the body for PATCH /api/v1/auth/locale.
-// The validator's `oneof` tag enforces the 'ru'|'en' allow-list at the HTTP
-// boundary; the DB CHECK constraint added in migration 000010 (prod) / 000008 (test) — i18n Phase A3 — is the
-// defense-in-depth floor. Widening the allow-list is a one-line tag + one
-// migration when we add more languages — i18n Phase A3.
+// `oneof=ru en` enforces the allow-list at the HTTP boundary; a DB CHECK
+// constraint is the defense-in-depth floor.
 type UpdatePreferredLocaleRequest struct {
 	Locale string `json:"locale" validate:"required,oneof=ru en"`
 }
 
-// Register handles user registration and auto-login.
-//
-// validates the submitted `consents` block
-// against legalconfig.CurrentVersion(slug) for tos/privacy/pdn. Any
-// missing or stale version returns 400 with body
-// {"code":"consent_required","missing":[...]}. On success, passes the
-// three policies + clientIP + UserAgent through RegistrationContext to
-// RegisterWithContext which writes the three rows in the same tx as the
-// user row + verify token + outbox enqueue.
+// Register handles user registration and auto-login. Validates the consents
+// block against legalconfig.CurrentVersion(slug); missing/stale → 400
+// consent_required. On success, writes consents + user + verify token +
+// outbox enqueue in the same tx.
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
-	// Parse request body
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	// Validate request
 	if err := h.validate.Struct(req); err != nil {
 		writeValidationError(w, r, err)
 		return
 	}
 
-	// every consent slug MUST equal the build's
-	// currentVersion. Missing / stale → 400 consent_required.
 	var missing []string
 	if req.Consents.TOS != legalconfig.TOSVersion {
 		missing = append(missing, string(legalconfig.PolicyTOS))
@@ -322,8 +257,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// pass policies + IP + UA into the tx-flow so the
-	// three consent rows commit alongside the user row.
 	regCtx := service.RegistrationContext{
 		IP:        middleware.ClientIP(r),
 		UserAgent: r.UserAgent(),
@@ -340,27 +273,19 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to register user", "error", err)
-		// Machine-readable error code so the frontend can render a Russian
-		// string via the i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeRegisterInternal)
 		return
 	}
 
-	// Auto-login to return tokens
 	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		slog.Error("auto-login after register failed", "error", err)
-		// auto_login_failed distinct from register_internal — the user
-		// account WAS created; only the token issue failed.
+		// Distinct from register_internal — the account WAS created; only token issue failed.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeAutoLoginFailed)
 		return
 	}
 
 	h.setRefreshTokenCookie(w, refreshToken)
-
-	// registration emits auth.user_registered AFTER the
-	// auto-login cookies are set so we record the IP/UA that actually
-	// completed the flow. Fire-and-forget — Logger spawns its own goroutine.
 	audit.LogUserRegistered(r.Context(), h.audit, user.ID, user.Email, middleware.ClientIP(r), r.UserAgent())
 
 	writeJSON(w, http.StatusCreated, LoginResponse{
@@ -371,36 +296,27 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 // Login handles user login.
 //
-// Layered defense:
-// 1. Lockout middleware (mounted in router.go) has already annotated the
-// context with CaptchaRequired / LoginEmail / LoginClientIP and
-// short-circuited any TierLocked request before we get here.
-// 2. If CaptchaRequired is set (tier 4–9), this handler MUST verify the
-// X-Captcha-Token header before delegating to userService.Login. Missing
-// token → 400 captcha_required. Invalid token → 403 captcha_invalid.
-// Transient Yandex outage → fail-open (warn + proceed).
-// 3. On ErrInvalidCredentials, lockout.RecordFailure increments the counter.
-// 4. On success, lockout.Clear wipes the counter so subsequent legit logins
-// don't accumulate stale state.
+// Layered defense: (1) lockout middleware short-circuits TierLocked requests
+// and annotates ctx with CaptchaRequired/LoginEmail/LoginClientIP; (2) if
+// CaptchaRequired, verify X-Captcha-Token (missing→400, invalid→403,
+// transient outage→fail-open if configured); (3) ErrInvalidCredentials
+// increments the lockout counter; (4) success clears it.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 
-	// Parse request body. The lockout middleware has already restored the
-	// body via io.NopCloser(bytes.NewReader(...)) so this Decode is safe.
+	// Lockout middleware has already restored r.Body via io.NopCloser(bytes.NewReader(...)).
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	// Validate request
 	if err := h.validate.Struct(req); err != nil {
 		writeValidationError(w, r, err)
 		return
 	}
 
-	// Captcha gate. Skipped when the middleware did not annotate the ctx
-	// (test fixtures without lockout wiring) or when the captcha verifier
-	// is nil (dev / no SMARTCAPTCHA_SECRET_KEY).
+	// Captcha gate skipped when middleware didn't annotate ctx (test fixtures)
+	// or verifier is nil (no SMARTCAPTCHA_SECRET_KEY).
 	if middleware.CaptchaRequired(r.Context()) && h.captcha != nil {
 		token := r.Header.Get("X-Captcha-Token")
 		if token == "" {
@@ -409,18 +325,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		clientIPForCaptcha := middleware.LoginClientIP(r.Context())
 		if clientIPForCaptcha == "" {
-			// Fallback when LockoutMiddleware did not annotate the ctx
-			// (fail-open on Redis error / body-read error / JSON-decode
-			// error / IPv6 peer / middleware not mounted in tests).
-			// middleware.ClientIP honors TRUSTED_PROXY_CIDRS so XFF is only
-			// trusted when the TCP peer is an allow-listed proxy.
+			// middleware.ClientIP honors TRUSTED_PROXY_CIDRS so XFF cannot be
+			// spoofed by an attacker whose TCP peer is outside the trusted set.
 			clientIPForCaptcha = middleware.ClientIP(r)
 		}
 		if verr := h.captcha.Verify(r.Context(), token, clientIPForCaptcha); verr != nil {
 			if errors.Is(verr, service.ErrCaptchaTransient) {
-				// SmartCaptcha outage. Fail-open is the safer default —
-				// bot-through during outage is acceptable, locking every
-				// real user out is not.
+				// Fail-open during outage: bot-through is acceptable, locking
+				// every real user out is not.
 				if h.captchaFailOpen {
 					slog.Warn("smartcaptcha: transient error, failing open",
 						slog.String("error", verr.Error()),
@@ -437,23 +349,18 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Call service
 	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidCredentials) {
-			// Log failed login attempt for security monitoring
 			slog.Warn("login failed",
 				slog.String("email", req.Email),
 				slog.String("remote_addr", r.RemoteAddr),
 				slog.String("user_agent", r.UserAgent()),
 			)
-			// user_id intentionally nil — we do NOT look
-			// up the attempted email against the users table. The attempted
-			// email is captured in Details for brute-force analysis.
+			// user_id intentionally nil — attempted email goes only into Details
+			// for brute-force analysis, not into a users-table lookup.
 			audit.LogLoginFailed(r.Context(), h.audit, req.Email, middleware.ClientIP(r), r.UserAgent(), "invalid_credentials")
-			// Increment the lockout counter. Best-effort; a Redis error
-			// here is logged but does not change the response (a 500 on a
-			// wrong-password is a worse UX than missed counter increment).
+			// Best-effort — Redis error must not flip 401 into 500.
 			h.recordLoginFailure(r, req.Email)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
@@ -464,13 +371,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.setRefreshTokenCookie(w, refreshToken)
-
-	// login_success fired AFTER the refresh-token cookie is
-	// set so the request fully succeeded. Async fire-and-forget.
 	audit.LogLoginSuccess(r.Context(), h.audit, user.ID, middleware.ClientIP(r), r.UserAgent())
-
-	// Clear the lockout counter on success so legitimate users don't
-	// accumulate stale failure state from earlier fat-fingers.
 	h.clearLockoutForLogin(r, req.Email)
 
 	writeJSON(w, http.StatusOK, LoginResponse{
@@ -480,39 +381,32 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 // recordLoginFailure increments the (email_hash, /16 IP) lockout counter.
-// No-op when the handler was constructed without WithLockout (test fixtures).
-// Errors are logged but never propagated — a Redis outage must not turn a
-// 401 invalid-credentials into a 500.
+// No-op without WithLockout. Errors logged, never propagated — Redis outage
+// must not turn 401 into 500.
 func (h *AuthHandler) recordLoginFailure(r *http.Request, email string) {
 	if h.lock == nil {
 		return
 	}
 	ip := middleware.LoginClientIP(r.Context())
 	if ip == "" {
-		// See Login captcha-fallback comment.
-		// middleware.ClientIP honors TRUSTED_PROXY_CIDRS so XFF cannot be
-		// spoofed by an attacker whose TCP peer is outside the trusted set.
 		ip = middleware.ClientIP(r)
 	}
 	net16 := middleware.Net16(ip)
 	if net16 == "" {
-		return // IPv6 / unparseable
+		return
 	}
 	if _, err := h.lock.RecordFailure(r.Context(), email, net16); err != nil {
 		slog.Warn("lockout: RecordFailure failed", "error", err, "email", email)
 	}
 }
 
-// clearLockoutForLogin removes the lockout counter for a successful login.
-// Mirrors recordLoginFailure's defensive shape — no-op without WithLockout,
-// errors logged but never propagated.
+// clearLockoutForLogin wipes the lockout counter on successful login.
 func (h *AuthHandler) clearLockoutForLogin(r *http.Request, email string) {
 	if h.lock == nil {
 		return
 	}
 	ip := middleware.LoginClientIP(r.Context())
 	if ip == "" {
-		// See Login captcha-fallback comment.
 		ip = middleware.ClientIP(r)
 	}
 	net16 := middleware.Net16(ip)
@@ -524,7 +418,7 @@ func (h *AuthHandler) clearLockoutForLogin(r *http.Request, email string) {
 	}
 }
 
-// RefreshToken handles token refresh
+// RefreshToken rotates the refresh token.
 func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := h.readRefreshTokenCookie(r)
 	if err != nil {
@@ -540,7 +434,6 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to refresh token", "error", err)
-		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeRefreshInternal)
 		return
 	}
@@ -552,25 +445,20 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Logout handles user logout by invalidating refresh token.
+// Logout invalidates the refresh token.
 //
-// the user_id is extracted from the
-// refresh-token claims BEFORE the service invalidates the token in Redis.
-// If we waited until after invalidation we'd have nothing to attribute the
-// audit row to.
+// user_id is extracted from refresh-token claims BEFORE the service
+// invalidates the token in Redis — otherwise we lose the audit attribution.
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := h.readRefreshTokenCookie(r)
 	if err != nil {
-		// No cookie = already logged out, return success
 		writeJSON(w, http.StatusNoContent, nil)
 		return
 	}
 
-	// parse the refresh-token claims locally (independent of the
-	// service's own validation) so we capture user_id even when the service
-	// later reports an invalid token. The parse uses the same secret + claim
-	// validators as user.Service.Logout — mismatched / unsigned tokens fall
-	// through to userID == uuid.Nil and we skip the audit emission below.
+	// Local claims-parse independent of the service so we capture user_id
+	// even when the service later reports an invalid token. Mismatched /
+	// unsigned tokens fall through to uuid.Nil and we skip the audit emission.
 	var auditUserID uuid.UUID
 	if tok, perr := jwt.ParseWithClaims(refreshToken, &auth.RefreshTokenClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -591,15 +479,12 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to logout", "error", err)
-		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeLogoutInternal)
 		return
 	}
 
 	h.clearRefreshTokenCookie(w)
 
-	// fired AFTER the service invalidates the token in Redis,
-	// but with userID captured BEFORE invalidation (see comment above).
 	if auditUserID != uuid.Nil {
 		audit.LogLogout(r.Context(), h.audit, auditUserID)
 	}
@@ -607,70 +492,42 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
-// MeResponse is the wrapper around the user
-// payload. The legacy /auth/me returned *domain.User directly; we now
-// wrap so the frontend can render the verification banner without an
-// extra round-trip.
-//
-// User.EmailVerified is json-hidden on the domain.User struct so it only
-// surfaces here (other list endpoints keep their existing shape).
-// EmailVerificationDeadline is created_at + 7 days, nil/omitted when the
-// user is already verified.
-//
-// AccountDeletion is non-nil only when the
-// user is inside the 30-day grace window — UI Surface 10 renders the
-// red banner + restore CTA off this struct.
+// MeResponse wraps *domain.User with verification banner + deletion + consent
+// fields so /auth/me can render in a single round-trip.
 type MeResponse struct {
 	*domain.User
-	EmailVerified             bool                 `json:"emailVerified"`
-	EmailVerificationDeadline *time.Time           `json:"emailVerificationDeadline,omitempty"`
-	AccountDeletion           *AccountDeletionInfo `json:"accountDeletion,omitempty"`
-	// non-nil when at least one of the
-	// user's tos/privacy/pdn rows is stale or missing. Frontend renders
-	// <ReConsentModal> when this field is present.
-	RequiresReconsent *service.RequiresReconsentInfo `json:"requiresReconsent,omitempty"`
+	EmailVerified             bool                           `json:"emailVerified"`
+	EmailVerificationDeadline *time.Time                     `json:"emailVerificationDeadline,omitempty"`
+	AccountDeletion           *AccountDeletionInfo           `json:"accountDeletion,omitempty"`
+	RequiresReconsent         *service.RequiresReconsentInfo `json:"requiresReconsent,omitempty"`
 }
 
-// AccountDeletionInfo is the sub-struct on MeResponse.
-// All three timestamps are emitted in UTC RFC3339 (matches the rest of
-// the JSON shape).
+// AccountDeletionInfo carries the 30-day grace window timestamps for /auth/me.
 type AccountDeletionInfo struct {
 	RequestedAt         time.Time `json:"requestedAt"`
 	ScheduledDeletionAt time.Time `json:"scheduledDeletionAt"`
 	CanRestoreUntil     time.Time `json:"canRestoreUntil"`
 }
 
-// emailVerifyGraceDuration mirrors the soft-restrict middleware constant
-// Duplicated here as a const to avoid a circular import
-// (handler → middleware → service); both must agree on the 7-day value.
+// emailVerifyGraceDuration mirrors the soft-restrict middleware constant.
+// Duplicated to avoid circular import (handler → middleware → service); both
+// must agree on the 7-day value.
 const emailVerifyGraceDuration = 7 * 24 * time.Hour
 
-// deletionGraceDurationForMe mirrors AccountDeletionService.graceDays
-// constant. Duplicated as a const because the handler doesn't take the
-// service in /auth/me — wiring it just to read 30 days is overkill.
-// If the grace period ever changes, both constants must be updated
-// together.
+// deletionGraceDurationForMe mirrors AccountDeletionService.graceDays. If the
+// grace period ever changes, both constants must be updated together.
 const deletionGraceDurationForMe = 30 * 24 * time.Hour
 
-// Me returns the authenticated user's profile.
-//
-// /auth/me uses GetByIDIncludingDeleted (via a setter-injected
-// dependency when wired; falls back to GetByID-only when not wired)
-// because users inside the 30-day grace window must still see their
-// /auth/me state to exercise restore (Surface 10).
+// Me returns the authenticated user's profile. Uses the deletion-aware
+// getter when wired so users inside the 30-day grace window can still
+// exercise restore.
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from context (set by auth middleware)
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	// Get user from service. We use the deletion-aware getter via the
-	// MeUserExtraGetter hook (wired in wire/handlers.go) so soft-deleted
-	// users still see /auth/me + the accountDeletion field renders the
-	// banner. Falls back to the default GetByID for backward compat in
-	// tests / pre-Phase-21 deploys.
 	var user *domain.User
 	if h.meUserExtraGetter != nil {
 		user, err = h.meUserExtraGetter(r.Context(), userID)
@@ -683,14 +540,10 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to get user", "error", err)
-		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeGetUserInternal)
 		return
 	}
 
-	// Verified users get a nil deadline (omitted via
-	// `omitempty`); unverified users get created_at + 7 days so the
-	// banner can compute the countdown without a second round-trip.
 	resp := MeResponse{
 		User:          user,
 		EmailVerified: user.EmailVerified,
@@ -700,7 +553,6 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		resp.EmailVerificationDeadline = &d
 	}
 
-	// surface accountDeletion when pending.
 	if user.DeletionRequestedAt != nil && user.DeletionCanceledAt == nil {
 		graceEnd := user.DeletionRequestedAt.Add(deletionGraceDurationForMe)
 		resp.AccountDeletion = &AccountDeletionInfo{
@@ -710,22 +562,16 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// populate requiresReconsent when
-	// the ConsentService is wired AND at least one tos/privacy/pdn row
-	// is stale. A nil diff leaves the field omitted (`omitempty`).
 	if h.consents != nil {
 		diff, derr := h.consents.DiffAgainstCurrent(r.Context(), userID)
 		if derr != nil {
-			// Best-effort: log + omit the field. /auth/me must not 500
-			// because of a consent-diff failure.
+			// Best-effort: /auth/me must not 500 because of a consent-diff failure.
 			slog.Warn("auth/me: diff against current consents failed", "userID", userID, "err", derr)
 		} else if diff != nil {
 			resp.RequiresReconsent = diff
-			// record that
-			// the ReConsentModal will be shown to this user. Without this row,
-			// a user can later claim "I never saw the modal" and audit_logs
-			// will not contradict them. Fire-and-forget — the audit Logger
-			// spawns its own goroutine, so failure here cannot 500 /auth/me.
+			// Audit row records that ReConsentModal will be shown to this user —
+			// otherwise a user can later claim "I never saw the modal" and
+			// audit_logs will not contradict them. Fire-and-forget.
 			slugs := make([]string, 0, len(diff.Policies))
 			for _, p := range diff.Policies {
 				slugs = append(slugs, p.Slug)
@@ -737,7 +583,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// ChangePassword handles PUT /api/v1/auth/password
+// ChangePassword handles PUT /api/v1/auth/password.
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -766,28 +612,18 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("failed to change password", "error", err)
-		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeChangePasswordInternal)
 		return
 	}
 
-	// fired AFTER successful password change. NO old / new
-	// password content in details (only IP + UA for forensics).
+	// NO old/new password content in details — only IP + UA for forensics.
 	audit.LogPasswordChanged(r.Context(), h.audit, userID, middleware.ClientIP(r), r.UserAgent())
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// UpdatePreferredLocale handles PATCH /api/v1/auth/locale.
-//
-// Accepts `{"locale": "ru" | "en"}`, persists it on the authenticated user's
-// row, and returns 204 No Content on success. Invalid locale values return
-// 400 via the validator (`oneof=ru en` tag). This endpoint deliberately does
-// NOT read the Accept-Language header — it accepts an explicit user choice
-// from the body; the i18n.Locale middleware A1 wired into the chain still
-// stores the resolved header tag in r.Context for OTHER endpoints that
-// localize their responses, but locale persistence is a user action, not a
-// header reflection. i18n Phase A3.
+// UpdatePreferredLocale handles PATCH /api/v1/auth/locale. Deliberately does
+// NOT read Accept-Language — locale persistence is an explicit user action.
 func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -812,7 +648,6 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		slog.Error("failed to update preferred locale", "error", err)
-		// Machine-readable error code for the frontend i18n catalog.
 		writeJSONCodeError(w, http.StatusInternalServerError, ErrCodeUpdateLocaleInternal)
 		return
 	}
@@ -820,26 +655,22 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
-// --- password reset ---------------------------------
-
-// RequestPasswordResetRequest is the body shape for POST /auth/password-reset/request.
+// RequestPasswordResetRequest is the body for POST /auth/password-reset/request.
 type RequestPasswordResetRequest struct {
 	Email string `json:"email" validate:"required,email"`
 }
 
-// ConfirmPasswordResetRequest is the body shape for POST /auth/password-reset/confirm.
+// ConfirmPasswordResetRequest is the body for POST /auth/password-reset/confirm.
 type ConfirmPasswordResetRequest struct {
 	Token       string `json:"token" validate:"required,min=1"`
 	NewPassword string `json:"newPassword" validate:"required,min=8"`
 }
 
 // RequestPasswordReset handles POST /api/v1/auth/password-reset/request.
-//
-// Returns 204 ALWAYS (PITFALLS §1.1) regardless of
-// whether the email is registered. The service does its own per-email
-// rate-limit, dummy-audit-on-unknown-email, and outbox enqueue so
-// timing is symmetric between branches — adding a chi.RateLimit wrapper
-// here would short-circuit and skew the timing-parity contract.
+// Returns 204 ALWAYS regardless of whether the email is registered — the
+// service handles per-email rate-limit + dummy-audit-on-unknown-email +
+// outbox enqueue with symmetric timing across branches. Adding a chi.RateLimit
+// wrapper here would short-circuit and skew the timing-parity contract.
 func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	var req RequestPasswordResetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -850,20 +681,14 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 		writeValidationError(w, r, err)
 		return
 	}
-	// Service ALWAYS returns nil. We do not branch on its result.
+	// Service ALWAYS returns nil; we do not branch on its result.
 	_ = h.passwordResetService.RequestReset(r.Context(), req.Email, middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // ConfirmPasswordReset handles POST /api/v1/auth/password-reset/confirm.
-//
-// On success: 204 No Content. The service has already consumed the
-// token, rotated the password hash, and wiped all refresh tokens for
-// the user — the client should redirect to /login and prompt for the
-// new password.
-//
-// On failure: writePasswordResetError maps the three sentinels
-// to public {code, message} — see handler/error_mapping.go.
+// On success the service has consumed the token, rotated the password hash,
+// and wiped all refresh tokens for the user.
 func (h *AuthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 	var req ConfirmPasswordResetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -881,23 +706,18 @@ func (h *AuthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- email verification -------------------------
-
-// VerifyConfirmRequest is the body shape for POST /auth/verify-email/confirm.
+// VerifyConfirmRequest is the body for POST /auth/verify-email/confirm.
 type VerifyConfirmRequest struct {
 	Token string `json:"token" validate:"required,min=20"`
 }
 
 // VerifyConfirm handles POST /api/v1/auth/verify-email/confirm.
 //
-// On success: 204 No Content. CRITICAL: NO Set-Cookie header is emitted —
-// no session is granted (T-VE-02 mitigation — an attacker who registered
-// with a victim's email must not become the victim's session).
+// CRITICAL: NO Set-Cookie is emitted — no session is granted, so an attacker
+// who registered with a victim's email cannot become the victim's session.
 //
-// On failure: 400 with body {code: verify_token_invalid | verify_token_expired}.
-// The handler runs a single follow-up LookupExpired query ONLY on
-// invalid-failure to surface the "expired" UX hint per Surface 3 — both
-// codes are equally safe (the token is already burned either way).
+// On invalid-failure we run a single follow-up LookupExpired to surface the
+// "expired" UX hint — both codes are equally safe (token is burned either way).
 func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
 	var req VerifyConfirmRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -916,9 +736,7 @@ func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
 	userID, err := h.emailVerificationService.ConfirmVerify(r.Context(), req.Token)
 	if err != nil {
 		if errors.Is(err, domain.ErrVerifyTokenInvalid) {
-			// UX-only follow-up: is the row present but expired? Both branches
-			// safely refuse the consume; we only differ on the public code so
-			// the verify page (Surface 3) can show the right copy.
+			// UX-only follow-up to differentiate invalid vs expired.
 			code := "verify_token_invalid"
 			if expired, _ := h.emailVerificationService.IsTokenExpired(r.Context(), req.Token); expired {
 				code = "verify_token_expired"
@@ -930,17 +748,12 @@ func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	// EXPLICITLY NO h.setRefreshTokenCookie — T-VE-02 mitigation. The page
-	// redirects the user to the dashboard which uses their existing session
-	// (or sends them to /login if they were not logged in).
+	// EXPLICITLY NO setRefreshTokenCookie — see VerifyConfirm doc.
 	audit.LogEmailVerified(r.Context(), h.audit, userID, middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// VerifyResend handles POST /api/v1/auth/verify-email/resend.
-// Auth-required (middleware enforces). Maps service sentinels to public
-// codes: ErrAlreadyVerified → 403 email_already_verified;
-// ErrResendThrottled → 429 verify_resend_throttled.
+// VerifyResend handles POST /api/v1/auth/verify-email/resend. Auth-required.
 func (h *AuthHandler) VerifyResend(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -968,15 +781,13 @@ func (h *AuthHandler) VerifyResend(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// EmailBeforeVerifyRequest is the body shape for PATCH /auth/email-before-verify.
+// EmailBeforeVerifyRequest is the body for PATCH /auth/email-before-verify.
 type EmailBeforeVerifyRequest struct {
 	NewEmail string `json:"newEmail" validate:"required,email"`
 }
 
-// EmailBeforeVerify handles PATCH /api/v1/auth/email-before-verify.
-// Auth-required (middleware enforces). Only allowed when email_verified=false
-// — otherwise returns 403 email_already_verified. Maps ErrEmailTaken to
-// 409. On success: 204 + audit row with old+new email.
+// EmailBeforeVerify handles PATCH /api/v1/auth/email-before-verify. Only
+// allowed when email_verified=false; otherwise 403 email_already_verified.
 func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
@@ -1016,9 +827,7 @@ func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// writeJSONCodeError writes a {"code":"<code>"} response body. Used by
-// the handlers so the frontend's error_mapping.ts can route
-// on the code.
+// writeJSONCodeError writes a {"code":"<code>"} body for frontend i18n routing.
 func writeJSONCodeError(w http.ResponseWriter, status int, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -1026,8 +835,3 @@ func writeJSONCodeError(w http.ResponseWriter, status int, code string) {
 		Code string `json:"code"`
 	}{Code: code})
 }
-
-// The legacy local client-IP helper that lived here was deleted because it
-// read the forwarding header unconditionally and bypassed the
-// TRUSTED_PROXY_CIDRS trust gate. All call sites now go through
-// middleware.ClientIP, which honors the trust gate.

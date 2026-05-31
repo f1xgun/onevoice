@@ -23,13 +23,11 @@ type CachedRole struct {
 }
 
 // MembershipLoader is the DI seam between pkg/authz cache and the
-// services/api repository layer. Implementations live outside pkg/authz
-// (CONTEXT D-05): the production impl lives in
+// services/api repository layer. Production impl lives in
 // services/api/internal/repository/membership_loader.go.
 //
-// Both methods return a sentinel domain.ErrMembershipNotFound (or
-// equivalent role-not-found) on no rows. Pool-only — no transaction
-// awareness (CONTEXT D-08).
+// Both methods return domain.ErrMembershipNotFound (or equivalent
+// role-not-found) on no rows. Pool-only — no transaction awareness.
 type MembershipLoader interface {
 	LoadMembership(ctx context.Context, businessID, userID uuid.UUID) (*CachedMember, error)
 	LoadRole(ctx context.Context, roleID uuid.UUID) (*CachedRole, error)
