@@ -25,17 +25,6 @@ import (
 // package so the router and existing tests keep using handler.ResumeBatchHeader.
 const ResumeBatchHeader = "X-Onevoice-Resume-Batch-Id"
 
-// Package-level constants kept on the handler so sibling handlers
-// (titler.go, hitl.go) reference one source of truth. sseBufferBytes is the
-// scanner buffer cap used by the resume-stream path in hitl.go; matches
-// chatturn's stream scanner so large tool results flow through both paths
-// without truncation.
-const (
-	roleAssistant  = "assistant"
-	roleUser       = "user"
-	sseBufferBytes = 1 << 20 // 1 MiB
-)
-
 // ChatProxyHandler is the thin HTTP-facade over services/api/internal/service/chatturn.Turn.
 //
 // Responsibilities:
@@ -293,13 +282,13 @@ func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID strin
 	history := make([]map[string]string, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
-		case roleUser:
-			history = append(history, map[string]string{"role": roleUser, "content": m.Content})
-		case roleAssistant:
+		case domain.MessageRoleUser:
+			history = append(history, map[string]string{"role": domain.MessageRoleUser, "content": m.Content})
+		case domain.MessageRoleAssistant:
 			if m.Content == "" && len(m.ToolCalls) == 0 {
 				continue
 			}
-			history = append(history, map[string]string{"role": roleAssistant, "content": m.Content})
+			history = append(history, map[string]string{"role": domain.MessageRoleAssistant, "content": m.Content})
 		}
 	}
 	return history

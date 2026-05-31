@@ -211,7 +211,7 @@ func (t *Turn) persistAfterStream(
 		assistantMsg := &domain.Message{
 			ID:             streamStartID,
 			ConversationID: req.ConversationID,
-			Role:           roleAssistant,
+			Role:           domain.MessageRoleAssistant,
 			Content:        state.assistantText.String(),
 			ToolCalls:      pendingToolCalls,
 			Status:         domain.MessageStatusPendingApproval,
@@ -240,7 +240,7 @@ func (t *Turn) persistAfterStream(
 	assistantMsg := &domain.Message{
 		ID:             streamStartID,
 		ConversationID: req.ConversationID,
-		Role:           roleAssistant,
+		Role:           domain.MessageRoleAssistant,
 		Content:        content,
 		ToolCalls:      state.toolCalls,
 		ToolResults:    state.toolResults,
