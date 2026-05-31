@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
 import { getIntegrationDisplay } from '@/lib/integrations';
+import { platformInitials } from '@/lib/platforms';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -85,16 +86,6 @@ const statusTones: Record<string, 'success' | 'neutral' | 'danger' | 'warning'> 
   pending_cookies: 'warning',
   token_expired: 'danger',
 };
-
-// Two-letter mono initials for the platform mark — paper-sunken square per
-// mock-integrations-v2.jsx IntegrationCard (no colored brand block).
-function platformInitials(platform: string, label: string): string {
-  if (platform === 'yandex_business') return 'ЯБ';
-  if (platform === 'vk') return 'VK';
-  if (platform === 'google_business') return 'GB';
-  if (platform === 'telegram') return 'TG';
-  return label.slice(0, 2).toUpperCase();
-}
 
 export function PlatformCard({
   platform,
