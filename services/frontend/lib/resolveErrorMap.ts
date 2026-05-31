@@ -74,7 +74,7 @@ export function useResolveErrorMap(): ResolveErrorMap {
   return useMemo(() => createResolveErrorMap(t), [t]);
 }
 
-// ----- members --------------------------------------------------------------
+// ----- shared status/code extraction ---------------------------------------
 
 interface ApiErrorBody {
   error?: string;
@@ -93,27 +93,85 @@ function extractStatusAndCode(err: unknown): {
   return { status, code, reason };
 }
 
+// ----- central error-code registry -----------------------------------------
+
+// A registry entry pairs an HTTP status + optional error code with the
+// translation key to render. `code === undefined` matches the status alone
+// (used for blanket 410 / 500 fallbacks where the body code is ignored).
+// `fallback: true` marks the catch-all the lookup falls through to when
+// no specific (status, code) match wins.
+type ErrorMapEntry = {
+  status?: number;
+  code?: string;
+  messageKey: string;
+  fallback?: true;
+};
+
+// Per-context entry lists. Order matters only for `fallback` selection;
+// specific (status, code) matches are tried first regardless of position.
+// Codes shared across contexts (`last_owner`, `self_lockout`) live here so
+// each consumer's translation key stays local without duplicating the
+// status/code knowledge.
+const ERROR_CODES_BY_CONTEXT = {
+  members: [
+    { status: 422, code: 'last_owner', messageKey: 'lastOwner' },
+    { status: 422, code: 'self_lockout', messageKey: 'selfLockout' },
+    { status: 422, code: 'system_role_immutable', messageKey: 'systemRoleImmutable' },
+    { messageKey: 'generic', fallback: true },
+  ],
+  invites: [
+    { status: 410, messageKey: 'gone.body' },
+    { status: 409, code: 'already_member', messageKey: 'alreadyMember.body' },
+    // 429 too_many_pending lives under team.invite.errors, not invite.accept;
+    // the lookup uses an alt-namespace marker so the mapper picks the right
+    // translator.
+    { status: 429, code: 'too_many_pending', messageKey: 'altNs:tooManyPending' },
+    { messageKey: 'generic', fallback: true },
+  ],
+  roles: [
+    {
+      status: 403,
+      code: 'cannot_grant_unowned_permissions',
+      messageKey: 'cannotGrantUnowned',
+    },
+    { status: 422, code: 'self_lockout', messageKey: 'selfLockout' },
+    { status: 422, code: 'system_role_immutable', messageKey: 'systemRoleImmutable' },
+    { status: 422, code: 'role_in_use', messageKey: 'roleInUse' },
+    { status: 422, code: 'last_owner', messageKey: 'lastOwnerOnDelete' },
+    { messageKey: 'saveGeneric', fallback: true },
+  ],
+} satisfies Record<string, ReadonlyArray<ErrorMapEntry>>;
+
+type ErrorContext = keyof typeof ERROR_CODES_BY_CONTEXT;
+
+// resolveErrorKey picks the first specific (status, code) entry that
+// matches, then a status-only entry, then the fallback. Returns
+// { messageKey } so the calling mapper can route to its translator.
+function resolveErrorKey(context: ErrorContext, err: unknown): string {
+  const { status, code } = extractStatusAndCode(err);
+  const entries = ERROR_CODES_BY_CONTEXT[context];
+  let fallbackKey = '';
+  for (const entry of entries) {
+    if (entry.fallback) {
+      fallbackKey = entry.messageKey;
+      continue;
+    }
+    if (entry.status !== status) continue;
+    if (entry.code !== undefined && entry.code !== code) continue;
+    return entry.messageKey;
+  }
+  return fallbackKey;
+}
+
+// ----- members --------------------------------------------------------------
+
 /**
  * Maps backend errors from `/businesses/{id}/members/...` mutations to a
- * localized toast string. Recognised codes:
- *   - 422 last_owner             → team.errors.lastOwner
- *   - 422 self_lockout           → team.errors.selfLockout
- *   - 422 system_role_immutable  → team.errors.systemRoleImmutable
- *   - anything else              → team.errors.generic
- *
+ * localized toast string. Mappings live in ERROR_CODES_BY_CONTEXT.members.
  * Callers should pass the returned string to `toast.error(...)`.
  */
 export function createMapMemberError(tTeamErrors: TranslateFn): (err: unknown) => string {
-  return (err) => {
-    const { status, code } = extractStatusAndCode(err);
-    if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'last_owner')
-      return tTeamErrors('lastOwner');
-    if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'self_lockout')
-      return tTeamErrors('selfLockout');
-    if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'system_role_immutable')
-      return tTeamErrors('systemRoleImmutable');
-    return tTeamErrors('generic');
-  };
+  return (err) => tTeamErrors(resolveErrorKey('members', err));
 }
 
 export function useMapMemberError(): (err: unknown) => string {
@@ -125,28 +183,20 @@ export function useMapMemberError(): (err: unknown) => string {
 
 /**
  * Maps backend errors from invitation flows (create, revoke, preview,
- * accept) to a localized string. The caller (accept page, invite modal)
- * decides whether to render the result as a full-card refusal (for 410
- * / 409) or as a toast (for other failures).
- *
- * Mappings:
- *   - 410 (any reason)        → invite.accept.errors.gone.body
- *   - 409 already_member      → invite.accept.errors.alreadyMember.body
- *   - 429 too_many_pending    → team.invite.errors.tooManyPending
- *   - anything else           → invite.accept.errors.generic
+ * accept) to a localized string. Mappings live in
+ * ERROR_CODES_BY_CONTEXT.invites. The `altNs:` prefix on a messageKey
+ * routes through the secondary translator (team.invite.errors) instead of
+ * the default (invite.accept.errors) — that lets the single registry
+ * cover both namespaces without splitting the context.
  */
 export function createMapInviteError(
   tInviteAcceptErrors: TranslateFn,
   tInviteFormErrors: TranslateFn
 ): (err: unknown) => string {
   return (err) => {
-    const { status, code } = extractStatusAndCode(err);
-    if (status === HTTP_STATUS.GONE) return tInviteAcceptErrors('gone.body');
-    if (status === HTTP_STATUS.CONFLICT && code === 'already_member')
-      return tInviteAcceptErrors('alreadyMember.body');
-    if (status === HTTP_STATUS.TOO_MANY_REQUESTS && code === 'too_many_pending')
-      return tInviteFormErrors('tooManyPending');
-    return tInviteAcceptErrors('generic');
+    const key = resolveErrorKey('invites', err);
+    if (key.startsWith('altNs:')) return tInviteFormErrors(key.slice('altNs:'.length));
+    return tInviteAcceptErrors(key);
   };
 }
 
@@ -160,33 +210,12 @@ export function useMapInviteError(): (err: unknown) => string {
 
 /**
  * Maps backend errors from `/businesses/{id}/roles/...` mutations to a
- * localized toast string. Recognised codes:
- *   - 403 cannot_grant_unowned_permissions → roles.errors.cannotGrantUnowned
- *   - 422 self_lockout                     → roles.errors.selfLockout
- *   - 422 system_role_immutable            → roles.errors.systemRoleImmutable
- *   - 422 role_in_use                      → roles.errors.roleInUse
- *   - 422 last_owner                       → roles.errors.lastOwnerOnDelete
- *   - anything else                        → roles.errors.saveGeneric
- *
- * Callers surface the result via `toast.error(...)`. DeleteRoleDialog
- * intercepts `role_in_use` separately (race-recovery in-place swap,
- * ) BEFORE calling the closure — see.
+ * localized toast string. Mappings live in ERROR_CODES_BY_CONTEXT.roles.
+ * DeleteRoleDialog intercepts `role_in_use` separately (race-recovery
+ * in-place swap) BEFORE calling the closure.
  */
 export function createMapRoleError(tRolesErrors: TranslateFn): (err: unknown) => string {
-  return (err) => {
-    const { status, code } = extractStatusAndCode(err);
-    if (status === HTTP_STATUS.FORBIDDEN && code === 'cannot_grant_unowned_permissions')
-      return tRolesErrors('cannotGrantUnowned');
-    if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'self_lockout')
-      return tRolesErrors('selfLockout');
-    if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'system_role_immutable')
-      return tRolesErrors('systemRoleImmutable');
-    if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'role_in_use')
-      return tRolesErrors('roleInUse');
-    if (status === HTTP_STATUS.UNPROCESSABLE_ENTITY && code === 'last_owner')
-      return tRolesErrors('lastOwnerOnDelete');
-    return tRolesErrors('saveGeneric');
-  };
+  return (err) => tRolesErrors(resolveErrorKey('roles', err));
 }
 
 export function useMapRoleError(): (err: unknown) => string {

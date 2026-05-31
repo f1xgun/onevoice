@@ -89,6 +89,18 @@ const (
 	healthRecoverySuccessMin = 3   // consecutive successes that reset a degraded/down state
 )
 
+// metricsMaxEntries caps the per-(provider,model) metrics map. With many
+// model variants and routing strategies the unique key space is unbounded
+// over time; a hard cap with single-pass LRU eviction is sufficient at this
+// size (1000 keys = a sub-millisecond linear scan on cold-path eviction,
+// no background goroutine to lifecycle). Var (not const) so eviction tests
+// can lower it without inserting 1000 fixtures.
+var metricsMaxEntries = 1000
+
+// nowFunc is the clock source used for metrics last-touched bookkeeping.
+// Overridden by tests to drive deterministic LRU eviction.
+var nowFunc = time.Now
+
 // defaultSelector is the production Selector. It consults Registry for
 // entries (config) and owns the rolling-window latency + health-transition
 // state in its own metrics map — both used to live on Registry, which
@@ -104,12 +116,13 @@ type defaultSelector struct {
 // — callers that need policy state read it off the ModelProviderEntry that
 // Pick / Record mirror it onto, not directly through the Selector.
 type providerMetrics struct {
-	totalRequests int64
-	successCount  int64
-	failureCount  int64
-	avgLatencyMs  int
-	lastLatencies []int64
-	healthStatus  string
+	totalRequests   int64
+	successCount    int64
+	failureCount    int64
+	avgLatencyMs    int
+	lastLatencies   []int64
+	healthStatus    string
+	lastTouchedUnix int64
 }
 
 // NewSelector constructs the default Selector. Exposed so callers wanting
@@ -212,12 +225,16 @@ func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 	key := entry.Provider + ":" + entry.Model
 	m, ok := s.metrics[key]
 	if !ok {
+		if len(s.metrics) >= metricsMaxEntries {
+			s.evictOldestMetricLocked()
+		}
 		m = &providerMetrics{
 			healthStatus:  HealthStatusHealthy,
 			lastLatencies: make([]int64, 0, latencyWindow),
 		}
 		s.metrics[key] = m
 	}
+	m.lastTouchedUnix = nowFunc().UnixNano()
 
 	m.totalRequests++
 
@@ -347,4 +364,24 @@ func betterLatency(candidate, current *ModelProviderEntry) bool {
 		return true
 	}
 	return candidate.AvgLatencyMs < current.AvgLatencyMs
+}
+
+// evictOldestMetricLocked drops the single least-recently-touched metrics
+// entry. Caller must hold s.mu. Linear scan is fine because the map is
+// bounded at metricsMaxEntries (1000) and eviction only runs on the cold
+// path of inserting into a full map.
+func (s *defaultSelector) evictOldestMetricLocked() {
+	var oldestKey string
+	var oldestTouched int64
+	first := true
+	for k, m := range s.metrics {
+		if first || m.lastTouchedUnix < oldestTouched {
+			oldestKey = k
+			oldestTouched = m.lastTouchedUnix
+			first = false
+		}
+	}
+	if !first {
+		delete(s.metrics, oldestKey)
+	}
 }
