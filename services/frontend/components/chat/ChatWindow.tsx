@@ -11,6 +11,7 @@ import { ProjectChip } from './ProjectChip';
 import { ProjectPickerChip } from './ProjectPickerChip';
 import { ToolApprovalCard } from './ToolApprovalCard';
 import { ExpiredApprovalBanner } from './ExpiredApprovalBanner';
+import { IntegrationTokenInvalidBanner } from './IntegrationTokenInvalidBanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SkeletonChat } from '@/components/states';
@@ -80,6 +81,24 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
       : defaultQuickActions;
 
   const showEmptyState = messages.length === 0 && !isLoading;
+
+  // Detect an integration_token_invalid signal on the NEWEST assistant
+  // turn's tool calls. Older turns with stale failures do NOT trigger the
+  // banner — only the most recent assistant turn drives the surface so a
+  // successful reconnect immediately clears the CTA.
+  const tokenInvalidCall = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== 'assistant') continue;
+      if (!m.toolCalls) {
+        // Newest assistant turn but no tool calls — banner absent.
+        return null;
+      }
+      const hit = m.toolCalls.find((tc) => tc.code === 'integration_token_invalid');
+      return hit ?? null;
+    }
+    return null;
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -174,6 +193,12 @@ export function ChatWindow({ conversationId, onConversationDeleted }: ChatWindow
 
       {/* Expired approval banner — sits above the card; owned by. */}
       {pendingApproval?.status === 'expired' && <ExpiredApprovalBanner />}
+
+      {/* Integration-token-invalid banner — surfaces above the composer when
+          the newest assistant turn's tool call failed with the typed code. */}
+      {tokenInvalidCall && (
+        <IntegrationTokenInvalidBanner platform={tokenInvalidCall.name.split('__')[0] ?? ''} />
+      )}
 
       {/* Inline approval card — renders only when a pending batch exists. */}
       {pendingApproval?.status === 'pending' && (
