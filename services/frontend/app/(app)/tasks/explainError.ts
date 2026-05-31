@@ -13,7 +13,7 @@
 // calm fallback summary.
 
 import { API_PATHS } from '@/lib/constants/apiPaths';
-import { reconnectLabelKey } from '@/lib/platforms';
+import { reconnectLabelKey, tokenErrorKey } from '@/lib/platforms';
 import type { AgentTask } from '@/types/task';
 
 export interface HumanError {
@@ -27,8 +27,7 @@ export function explainError(task: AgentTask): HumanError {
 
   switch (task.errorCode) {
     case 'integration_token_invalid': {
-      const summaryKey =
-        platform === 'vk' ? 'tokenVk' : platform === 'telegram' ? 'tokenTelegram' : 'tokenGeneric';
+      const summaryKey = tokenErrorKey(platform);
       const labelKey = reconnectLabelKey(platform);
       const href = platform
         ? `${API_PATHS.INTEGRATIONS.ROOT}?reconnect=${platform}`
