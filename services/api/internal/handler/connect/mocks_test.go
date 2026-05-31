@@ -56,8 +56,8 @@ type MockBusinessService struct {
 	mock.Mock
 }
 
-// connectBizCtx seeds an authz.BusinessContext for connect handlers (Phase 2
-// v2.0 RBAC). Mirrors oauthBizCtx in handler/oauth/mocks_test.go.
+// connectBizCtx seeds an authz.BusinessContext for connect handlers.
+// Mirrors oauthBizCtx in handler/oauth/mocks_test.go.
 func connectBizCtx(businessID, userID uuid.UUID, perms ...authz.Permission) context.Context {
 	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
 		BusinessID:  businessID,

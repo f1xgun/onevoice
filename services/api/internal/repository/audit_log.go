@@ -182,9 +182,7 @@ func (r *auditLogRepository) ListByBusiness(ctx context.Context, businessID uuid
 
 // AuditLogRow carries an audit_logs row enriched with the actor's email and
 // display name from a single LEFT JOIN users in ListByBusinessWithActors.
-// The frontend wants both columns so the page renders without a second
-// round-trip; the JOIN lives in the repo (per RESEARCH §"DTO
-// Enrichment Strategy") so the handler does NOT implement a per-row
+// The JOIN lives in the repo so the handler does NOT implement a per-row
 // fan-out into UserRepository.GetByID (avoids N+1).
 //
 // ActorEmail is "" when audit_logs.user_id IS NULL (failed-login rows per

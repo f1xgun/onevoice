@@ -17,9 +17,7 @@ type CachedMember struct {
 	JoinedAt time.Time
 }
 
-// CachedRole is the role-cache value: the permissions slice the role
-// grants. Phase 5 may add more fields (Description, Name) without
-// breaking this contract.
+// CachedRole is the role-cache value: the permissions slice the role grants.
 type CachedRole struct {
 	Permissions []Permission
 }

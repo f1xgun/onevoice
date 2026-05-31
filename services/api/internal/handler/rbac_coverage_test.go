@@ -126,8 +126,7 @@ func TestRBACCoverage_AllBusinessRoutes(t *testing.T) {
 	// + routes × 4 (POST /roles, PATCH /roles/{roleId},
 	// DELETE /roles/{roleId}, GET /me/permissions) = 37.
 	require.GreaterOrEqual(t, walked, 37,
-		"AUTHZ-10: expected >=37 business-scoped routes "+
-			"(Phase 2 baseline 30 + Phase 3 invitations × 3 + Phase 5 roles × 4), chi.Walk found %d", walked)
+		"AUTHZ-10: expected >=37 business-scoped routes (baseline 30 + invitations × 3 + roles × 4), chi.Walk found %d", walked)
 
 	// LOW #9 — AUTHZ-11 integration assertion: the allow counter must have
 	// incremented at least once during the viewer GET checks above.
@@ -157,7 +156,7 @@ func TestRBACCoverage_SuspendedMember(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, rec.Code,
 		"suspended member GET should return 403, got %d body=%q", rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "forbidden_suspended",
-		"suspended member 403 body must contain 'forbidden_suspended' (Plan 02-01 middleware contract)")
+		"suspended member 403 body must contain 'forbidden_suspended' (middleware contract)")
 }
 
 // TestRBACCoverage_SuspendedMember_MyPermissions — review.

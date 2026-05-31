@@ -54,7 +54,7 @@ func TestPermissionsHandler_List_HappyPath(t *testing.T) {
 	// `business.read` per pkg/authz.AllPermissions declaration order.
 	require.NotEmpty(t, body.Groups[0].Permissions)
 	assert.Equal(t, "business.read", body.Groups[0].Permissions[0].Name)
-	assert.NotEmpty(t, body.Groups[0].Permissions[0].Description, "Phase 5-01 populates descriptions for tooltip UX")
+	assert.NotEmpty(t, body.Groups[0].Permissions[0].Description, "descriptions populated for tooltip UX")
 
 	// audit group has exactly one permission, audit.read.
 	require.Len(t, body.Groups[6].Permissions, 1, "audit group has exactly one permission")

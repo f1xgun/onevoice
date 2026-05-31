@@ -157,20 +157,12 @@ type createRoleRequest struct {
 }
 
 // Create handles POST /api/v1/businesses/{id}/roles. Permission: PermRolesCreate.
-// SPEC ROLE-04.
 //
-// Order of operations (RESEARCH §POST /roles):
-// 1. BusinessContext from ctx
-// 2. authz.Can(PermRolesCreate)
-// 3. decode body
-// 4. validation (name, permissions cap, permission names)
-// 5. CheckEscalationSubset (no self-lockout — actor doesn't hold the new role)
-// 6. open RepeatableRead tx
-// 7. roleRepo.CreateInTx
-// 8. tx.Commit
-// 9. 201 response (no InvalidateRole — no existing memberships reference this role)
+// Order: authz.Can → decode → validation → CheckEscalationSubset (no self-lockout
+// since actor doesn't hold the new role) → RepeatableRead tx → CreateInTx → commit.
+// No InvalidateRole on create — no existing memberships reference this role.
 //
-// NIT-04 (review): the query param `?clone_from=` is IGNORED
+// The query param `?clone_from=` is IGNORED
 // server-side. The frontend handles all clone semantics:
 // when the user picks a source role to clone, the editor pre-fills the
 // permissions array on the client and then POSTs the result here exactly
@@ -283,24 +275,10 @@ type updateRoleRequest struct {
 	Permissions []string `json:"permissions"`
 }
 
-// Update handles PATCH /api/v1/businesses/{id}/roles/{roleId}. Permission:
-// PermRolesUpdate. SPEC ROLE-05.
+// Update handles PATCH /api/v1/businesses/{id}/roles/{roleId}. Permission: PermRolesUpdate.
 //
-// Order of operations (RESEARCH §PATCH /roles/{roleId}):
-// 1. BusinessContext from ctx
-// 2. authz.Can(PermRolesUpdate)
-// 3. parse {roleId} URL param
-// 4. decode body
-// 5. validation (name, permissions cap, permission names)
-// 6. fetch existing role; tenant isolation check (404 cross-tenant)
-// 7. CheckSystemRoleImmutable
-// 8. CheckEscalationSubset
-// 9. CheckSelfLockout
-// 10. open RepeatableRead tx
-// 11. roleRepo.UpdateInTx
-// 12. tx.Commit
-// 13. invalidator.InvalidateRole (AFTER commit, never before — Pitfall 2)
-// 14. 200 response
+// Critical ordering: InvalidateRole runs AFTER tx.Commit only — invalidating before
+// commit would expose stale-then-rolled-back permissions on cache miss.
 func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -364,8 +342,7 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	existing.Name = name
 	existing.Description = req.Description
-	// MED-04 (review): persist the deduplicated slice — see Create
-	// handler for context.
+	// Persist the deduplicated slice so subsequent reads can't observe duplicates.
 	existing.Permissions = typedPermsToStrings(proposed)
 	existing.UpdatedBy = &bc.UserID
 
@@ -391,13 +368,10 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// RESEARCH Pitfall 2 — InvalidateRole AFTER commit only. The role-perms
-	// cache entry would otherwise serve stale permissions for up to TTL (~30s).
+	// InvalidateRole MUST run after commit; otherwise the role-perms cache could
+	// serve stale permissions for up to the TTL (~30s) if commit rolls back.
 	h.invalidator.InvalidateRole(bc.BusinessID, roleID)
 
-	// emit rbac.role_updated AFTER tx.Commit +
-	// cache invalidation. existing.Permissions is the post-update deduplicated
-	// slice (mutated above before the tx).
 	audit.LogRoleUpdated(r.Context(), h.audit, bc.BusinessID, bc.UserID, roleID, existing.Name, existing.Permissions)
 
 	slog.InfoContext(r.Context(), "role updated",
@@ -419,21 +393,8 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Delete handles DELETE /api/v1/businesses/{id}/roles/{roleId}?reassign_to=<uuid>.
 // Permission: PermRolesDelete. SPEC ROLE-06.
 //
-// Order of operations (RESEARCH §DELETE /roles/{roleId}):
-// 1. BusinessContext from ctx
-// 2. authz.Can(PermRolesDelete)
-// 3. parse {roleId} URL param
-// 4. parse ?reassign_to= query param (optional; 400 invalid_reassign_to on parse fail / self-reassign)
-// 5. fetch existing role; tenant isolation check
-// 6. CheckSystemRoleImmutable
-// 7. CountMembersByRole; 422 role_in_use if count>0 AND reassign_to is absent
-// 8. If reassign target supplied + count>0: validate target is in-tenant + actor can grant target's perms
-// 9. Capture affectedUserIDs BEFORE the tx for InvalidateMember fanout (A2)
-// 10. open RepeatableRead tx
-// 11. count>0: DeleteWithReassignInTx; else: DeleteInTx
-// 12. tx.Commit
-// 13. InvalidateRole (AFTER commit) + InvalidateMember per affected user (A2 fanout)
-// 14. 204 No Content
+// affectedUserIDs MUST be captured BEFORE the tx (the DELETE deletes the rows);
+// InvalidateRole + per-member InvalidateMember MUST run AFTER commit only.
 func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
