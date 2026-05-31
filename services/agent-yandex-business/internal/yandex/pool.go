@@ -2,15 +2,34 @@ package yandex
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
+
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
 const defaultMaxIdle = 15 * time.Minute
+
+// acquireWaitTimeout bounds how long a fresh-businessID acquire blocks waiting
+// for a non-busy slot when the pool is at cap and every context is in-flight.
+// On timeout the caller surfaces ErrPoolExhausted which classifies upstream as
+// a transient tool_error (retried by withRetry).
+const acquireWaitTimeout = 30 * time.Second
+
+// busyPollInterval is how often waitForNonBusy re-scans the pool for a freed
+// context. 100ms keeps the worst-case wakeup latency low without burning CPU.
+const busyPollInterval = 100 * time.Millisecond
+
+// ErrPoolExhausted is returned by WithPage when the pool is at cap, every
+// context is busy, the requested businessID has no entry of its own, and no
+// slot frees up within acquireWaitTimeout.
+var ErrPoolExhausted = errors.New("browserpool: all contexts busy")
 
 // pooledContext holds a per-business BrowserContext with idle tracking.
 type pooledContext struct {
@@ -18,6 +37,10 @@ type pooledContext struct {
 	lastUsed atomic.Int64 // unix millis
 	cookies  string
 	mu       sync.Mutex // serializes page access for this business
+	// busy is informational for the LRU eviction loop: set true while a
+	// caller holds the per-business mu inside WithPage, cleared on release.
+	// Eviction skips contexts whose busy flag is set.
+	busy atomic.Bool
 }
 
 func (pc *pooledContext) touch() {
@@ -33,22 +56,29 @@ type BrowserPool struct {
 	maxIdle   time.Duration
 	closed    atomic.Bool
 	stopEvict chan struct{}
+	// maxContexts bounds the number of live contexts the pool will keep. 0
+	// means unbounded (the default for backwards compat / dev). At cap, a
+	// fresh businessID acquire evicts the LRU non-busy context first.
+	maxContexts int
 
 	// withPageFn, when non-nil, replaces the real WithPage execution path.
 	// Test-only seam: lets tests drive BusinessBrowser methods against a
 	// mocked playwright.Page without launching real Chromium. Production
 	// callers MUST NOT set this — the field is intentionally unexported.
 	withPageFn func(ctx context.Context, businessID, cookiesJSON string, fn func(page playwright.Page) error) error
+
+	// newContextFn is a test-only seam for the per-context Playwright launch.
+	// Tests inject a stub that returns a mockBrowserContext with a recording
+	// Close so async-close behavior is observable without real Chromium.
+	newContextFn func() (playwright.BrowserContext, error)
 }
 
 // NewBrowserPool creates a pool. Chromium is not launched until the first WithPage call.
+//
+// The pool is unbounded by default; production wiring uses NewBrowserPoolWithCap
+// to enforce BROWSER_POOL_MAX_CONTEXTS.
 func NewBrowserPool() *BrowserPool {
-	p := &BrowserPool{
-		maxIdle:   defaultMaxIdle,
-		stopEvict: make(chan struct{}),
-	}
-	go p.evictLoop()
-	return p
+	return NewBrowserPoolWithCap(0)
 }
 
 // NewBrowserPoolWithIdle creates a pool with a custom idle duration (for testing).
@@ -56,6 +86,18 @@ func NewBrowserPoolWithIdle(maxIdle time.Duration) *BrowserPool {
 	p := &BrowserPool{
 		maxIdle:   maxIdle,
 		stopEvict: make(chan struct{}),
+	}
+	go p.evictLoop()
+	return p
+}
+
+// NewBrowserPoolWithCap creates a pool with a custom max-contexts cap. 0
+// disables the cap (legacy unbounded behavior).
+func NewBrowserPoolWithCap(maxContexts int) *BrowserPool {
+	p := &BrowserPool{
+		maxIdle:     defaultMaxIdle,
+		stopEvict:   make(chan struct{}),
+		maxContexts: maxContexts,
 	}
 	go p.evictLoop()
 	return p
@@ -87,16 +129,45 @@ func (p *BrowserPool) ensureBrowser() error {
 	return nil
 }
 
-func (p *BrowserPool) getOrCreateContext(businessID, cookiesJSON string) (*pooledContext, error) {
+// newContext constructs a fresh Playwright BrowserContext. The hook is swapped
+// in tests via newContextFn to avoid launching real Chromium.
+func (p *BrowserPool) newContext() (playwright.BrowserContext, error) {
+	if p.newContextFn != nil {
+		return p.newContextFn()
+	}
+	return p.browser.NewContext(playwright.BrowserNewContextOptions{
+		UserAgent: playwright.String(defaultUserAgent),
+	})
+}
+
+func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookiesJSON string) (*pooledContext, error) {
 	if val, ok := p.contexts.Load(businessID); ok {
 		pc := val.(*pooledContext)
 		pc.touch()
 		return pc, nil
 	}
 
-	bCtx, err := p.browser.NewContext(playwright.BrowserNewContextOptions{
-		UserAgent: playwright.String(defaultUserAgent),
-	})
+	if p.maxContexts > 0 {
+		var count int
+		p.contexts.Range(func(_, _ any) bool { count++; return true })
+		if count >= p.maxContexts {
+			// Evict-or-wait loop. After waitForNonBusy returns, the freed
+			// context may already have been re-acquired by another caller,
+			// so we re-check the cap from scratch before falling through.
+			for !p.evictLRUUnlessBusy() {
+				if !p.waitForNonBusy(ctx, acquireWaitTimeout) {
+					return nil, ErrPoolExhausted
+				}
+				var recount int
+				p.contexts.Range(func(_, _ any) bool { recount++; return true })
+				if recount < p.maxContexts {
+					break
+				}
+			}
+		}
+	}
+
+	bCtx, err := p.newContext()
 	if err != nil {
 		return nil, fmt.Errorf("playwright: new context: %w", err)
 	}
@@ -126,7 +197,74 @@ func (p *BrowserPool) getOrCreateContext(businessID, cookiesJSON string) (*poole
 		existing.touch()
 		return existing, nil
 	}
+	metrics.BrowserPoolContexts.Inc()
 	return pc, nil
+}
+
+// evictLRUUnlessBusy walks the pool's contexts, picks the oldest non-busy
+// entry by lastUsed, and removes it from the pool. The BrowserContext is
+// closed asynchronously so the caller (already holding the acquire path)
+// is not blocked on Chromium teardown. Returns true if a context was evicted.
+func (p *BrowserPool) evictLRUUnlessBusy() bool {
+	type entry struct {
+		key      string
+		lastUsed int64
+		pc       *pooledContext
+	}
+	var candidates []entry
+	p.contexts.Range(func(k, v any) bool {
+		pc := v.(*pooledContext)
+		if pc.busy.Load() {
+			return true
+		}
+		candidates = append(candidates, entry{k.(string), pc.lastUsed.Load(), pc})
+		return true
+	})
+	if len(candidates) == 0 {
+		return false
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].lastUsed < candidates[j].lastUsed })
+	victim := candidates[0]
+	// Re-check busy under the per-context lock to avoid evicting a context
+	// that just became busy between the Range scan and the Delete.
+	if victim.pc.busy.Load() {
+		return false
+	}
+	p.contexts.Delete(victim.key)
+	metrics.BrowserPoolEvictions.WithLabelValues("lru").Inc()
+	metrics.BrowserPoolContexts.Dec()
+	go func() { _ = victim.pc.ctx.Close() }()
+	return true
+}
+
+// waitForNonBusy polls every busyPollInterval until at least one context in
+// the pool reports busy=false, the supplied ctx is canceled, or the timeout
+// elapses. Returns true if a slot freed up.
+func (p *BrowserPool) waitForNonBusy(ctx context.Context, timeout time.Duration) bool {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(busyPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-deadline.C:
+			return false
+		case <-ticker.C:
+			var anyFree bool
+			p.contexts.Range(func(_, v any) bool {
+				if !v.(*pooledContext).busy.Load() {
+					anyFree = true
+					return false
+				}
+				return true
+			})
+			if anyFree {
+				return true
+			}
+		}
+	}
 }
 
 // WithPage acquires a page in the business's browser context, executes fn, then closes the page.
@@ -143,14 +281,18 @@ func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON stri
 	if err := p.ensureBrowser(); err != nil {
 		return err
 	}
-	pc, err := p.getOrCreateContext(businessID, cookiesJSON)
+	pc, err := p.getOrCreateContext(ctx, businessID, cookiesJSON)
 	if err != nil {
 		return err
 	}
 
 	// Serialize access per business to prevent navigation conflicts.
 	pc.mu.Lock()
-	defer pc.mu.Unlock()
+	pc.busy.Store(true)
+	defer func() {
+		pc.busy.Store(false)
+		pc.mu.Unlock()
+	}()
 	pc.touch()
 
 	page, err := pc.ctx.NewPage()
@@ -171,6 +313,7 @@ func (p *BrowserPool) WithPage(ctx context.Context, businessID, cookiesJSON stri
 func (p *BrowserPool) EvictContext(businessID string) {
 	if val, ok := p.contexts.LoadAndDelete(businessID); ok {
 		pc := val.(*pooledContext)
+		metrics.BrowserPoolContexts.Dec()
 		_ = pc.ctx.Close()
 	}
 }
@@ -185,7 +328,13 @@ func (p *BrowserPool) evictLoop() {
 			p.contexts.Range(func(key, value any) bool {
 				pc := value.(*pooledContext)
 				if now-pc.lastUsed.Load() > p.maxIdle.Milliseconds() {
+					if pc.busy.Load() {
+						// Don't evict a context that's mid-tool-call.
+						return true
+					}
 					p.contexts.Delete(key)
+					metrics.BrowserPoolEvictions.WithLabelValues("idle").Inc()
+					metrics.BrowserPoolContexts.Dec()
 					_ = pc.ctx.Close()
 				}
 				return true
@@ -208,6 +357,10 @@ func (p *BrowserPool) Close() {
 		p.contexts.Delete(key)
 		return true
 	})
+	// Authoritative reset: avoid per-context Dec calls that can drive the
+	// gauge negative if a test (or another teardown path) has already reset
+	// it. The pool is closed; the gauge value is unambiguously 0.
+	metrics.BrowserPoolContexts.Set(0)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.browser != nil {
