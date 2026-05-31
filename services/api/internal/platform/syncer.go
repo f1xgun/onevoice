@@ -135,7 +135,7 @@ func (s *Syncer) SyncBusiness(business *domain.Business) {
 	}
 
 	for _, integ := range integrations {
-		if integ.Status != "active" {
+		if integ.Status != domain.IntegrationStatusActive {
 			continue
 		}
 		platImpl, ok := s.perPlatform[integ.Platform]

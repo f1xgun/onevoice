@@ -9,11 +9,6 @@ import (
 	"github.com/f1xgun/onevoice/pkg/i18n"
 )
 
-const (
-	roleAssistant = "assistant"
-	roleUser      = "user"
-)
-
 // persistContext returns the standard 5-second detached context used for
 // post-stream persistence ops. The original request ctx is canceled when the
 // SSE response closes, so we MUST run persist ops on a fresh ctx — otherwise
@@ -140,7 +135,7 @@ func (t *Turn) fireAutoTitleIfPendingResume(parentCtx context.Context, conversat
 	}
 	var userText string
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == roleUser {
+		if msgs[i].Role == domain.MessageRoleUser {
 			userText = msgs[i].Content
 			break
 		}
