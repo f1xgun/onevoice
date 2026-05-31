@@ -25,57 +25,36 @@ export function useTools() {
   });
 }
 
-// UI platform buckets for grouping. Keep these stable — the consumer UIs
-// (settings/tools, ProjectApprovalOverrides, ToolCheckboxGrid,
-// WhitelistWarningBanner) all depend on these exact keys.
-export type PlatformKey = 'telegram' | 'vk' | 'yandex_business' | 'google_business' | 'other';
+// UI platform buckets for grouping. Single source of truth for the
+// tool-bearing platform set — `PlatformKey`, the Set used by toPlatformKey,
+// and the seed object built by groupByPlatform all derive from this tuple
+// so adding a new tool-bearing platform is one line, not four.
+// Consumer UIs (settings/tools, ProjectApprovalOverrides, ToolCheckboxGrid,
+// WhitelistWarningBanner) depend on these exact keys.
+const TOOL_BEARING_PLATFORMS = ['telegram', 'vk', 'yandex_business', 'google_business'] as const;
+type ToolBearingPlatform = (typeof TOOL_BEARING_PLATFORMS)[number];
+export type PlatformKey = ToolBearingPlatform | 'other';
 
-// Display order for tool-bearing platforms — derived from the canonical
-// PLATFORM_DISPLAY_ORDER in lib/platforms.ts so adding a new platform with
-// tools only requires extending the registry, not every consumer. Excludes
-// 2gis/avito (no tools) and "other" (rendered separately when non-empty).
-const toolBearingKeys: ReadonlySet<PlatformKey> = new Set<PlatformKey>([
-  'telegram',
-  'vk',
-  'yandex_business',
-  'google_business',
-]);
+const toolBearingKeys: ReadonlySet<string> = new Set(TOOL_BEARING_PLATFORMS);
 
 // flatMap rather than filter so the narrowing from PlatformId → PlatformKey
 // is explicit. PlatformId is the registry-wide type (includes 2gis/avito);
 // PlatformKey is the tool-bearing subset. TS cannot infer the narrowing from
 // a Set membership check alone.
 export const TOOL_PLATFORM_ORDER: PlatformKey[] = PLATFORM_DISPLAY_ORDER.flatMap((id) =>
-  toolBearingKeys.has(id as PlatformKey) ? [id as PlatformKey] : []
+  toolBearingKeys.has(id) ? [id as PlatformKey] : []
 );
 
 // toPlatformKey maps raw backend platform strings (as returned by
-// GET /api/v1/tools) to stable UI keys. Legacy `yandex_business` /
-// `google_business` strings (with underscores) pass through unchanged so
-// the buckets match the previous bucket layout.
+// GET /api/v1/tools) to stable UI keys. Unknown strings bucket as 'other'.
 export function toPlatformKey(platform: string): PlatformKey {
-  switch (platform) {
-    case 'telegram':
-      return 'telegram';
-    case 'vk':
-      return 'vk';
-    case 'yandex_business':
-      return 'yandex_business';
-    case 'google_business':
-      return 'google_business';
-    default:
-      return 'other';
-  }
+  return toolBearingKeys.has(platform) ? (platform as PlatformKey) : 'other';
 }
 
 export function groupByPlatform(tools: Tool[]): Record<PlatformKey, Tool[]> {
-  const result: Record<PlatformKey, Tool[]> = {
-    telegram: [],
-    vk: [],
-    yandex_business: [],
-    google_business: [],
-    other: [],
-  };
+  const result = Object.fromEntries(
+    [...TOOL_BEARING_PLATFORMS, 'other' as const].map((k) => [k, [] as Tool[]])
+  ) as Record<PlatformKey, Tool[]>;
   for (const t of tools) {
     result[toPlatformKey(t.platform)].push(t);
   }
