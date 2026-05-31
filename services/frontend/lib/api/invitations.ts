@@ -13,7 +13,7 @@ import {
   type PendingInvitation,
 } from '@/lib/schemas';
 
-// Backend contracts (Phase 2/3):
+// Backend contracts:
 //   POST   /api/v1/businesses/{id}/invitations          → 200 InvitationCreateResponse
 //          body: { role_id: string; expires_in?: number }
 //          429 { error: "too_many_pending" }

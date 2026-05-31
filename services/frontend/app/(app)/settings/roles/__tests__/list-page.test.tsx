@@ -4,9 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 // Mock the data layer BEFORE importing the page so module-init queries
-// hit the stub. Plan 05-04's useRoles wraps listRoles via React Query —
-// we mock the API surface, not the hook itself, so loading/error
-// branches are exercised end-to-end.
+// hit the stub. We mock the API surface, not the useRoles hook itself, so
+// loading/error branches are exercised end-to-end.
 vi.mock('@/lib/api/roles', () => ({
   listRoles: vi.fn(),
   createRole: vi.fn(),

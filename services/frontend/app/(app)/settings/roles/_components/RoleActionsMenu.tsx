@@ -17,23 +17,14 @@ import type { Role } from '@/lib/schemas';
 
 import { DeleteRoleDialog } from './DeleteRoleDialog';
 
-// Row-action overflow menu used by both SystemRolesSection and CustomRolesSection.
-// Visibility of each item is permission-gated:
-//   - «Дублировать» requires usePermission('roles.create') — both system + custom.
-//   - «Удалить» requires usePermission('roles.delete') AND !role.is_system —
-//     system roles are immutable (backend rejects with system_role_immutable).
-//
-// NOTE on UI-RBAC-11: the strings `'roles.create'` / `'roles.delete'` passed to
-// usePermission are PERMISSION KEYS (dynamic registry from Plan 05-04), not
-// hardcoded role→perms maps. UI-RBAC-11 prohibits role→perms maps, not registry
-// permission keys at gate sites.
+// «Удалить» requires !role.is_system — system roles are immutable
+// (backend rejects with system_role_immutable).
 
 export interface RoleActionsMenuProps {
   role: Role;
   businessId: string | null;
-  // Full role list — needed for the DeleteRoleDialog's reassign picker
-  // (D-08 picker variant, D-09 ordering). System rows pass [] because they
-  // never offer Delete and never need the picker.
+  // Full role list — needed for the DeleteRoleDialog's reassign picker.
+  // System rows pass [] because they never offer Delete.
   allRoles?: Role[];
 }
 

@@ -3,13 +3,6 @@ import { renderHook } from '@testing-library/react';
 
 import { useUnsavedChangesPrompt } from '@/lib/hooks/useUnsavedChangesPrompt';
 
-// `useUnsavedChangesPrompt` is the dirty-form guard used by RoleEditorForm
-// (Plan 05-07). It wires `window.beforeunload` to a handler that calls
-// `preventDefault()` + sets `returnValue` so browsers show the native
-// «Покинуть сайт?» prompt before the page unloads. Modern Chrome/Firefox
-// ignore the custom message text and show a generic dialog — that's by
-// design and noted in the hook's JSDoc.
-
 afterEach(() => {
   vi.restoreAllMocks();
 });
