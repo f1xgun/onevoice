@@ -176,3 +176,23 @@ export function getPlatform(toolName: string): string {
 export function isKnownPlatform(id: string): id is PlatformId {
   return id in PLATFORM_STATIC_META;
 }
+
+// Reconnect CTA i18n key per platform. Single source of truth shared by
+// the chat IntegrationTokenInvalidBanner and the tasks-page explainError
+// so the two surfaces can't drift on label copy. Adding a new PlatformId
+// forces a key here at compile time (Record<PlatformId, …>); platforms
+// without a dedicated label fall back to the generic 'reconnect' key.
+export const PLATFORM_RECONNECT_LABEL_KEYS: Record<PlatformId, string> = {
+  telegram: 'reconnectTelegram',
+  vk: 'reconnectVk',
+  yandex_business: 'reconnectYandex',
+  google_business: 'reconnectGoogle',
+  '2gis': 'reconnect',
+  avito: 'reconnect',
+  whatsapp: 'reconnect',
+};
+
+export function reconnectLabelKey(platform: string | null | undefined): string {
+  if (!platform || !isKnownPlatform(platform)) return 'reconnect';
+  return PLATFORM_RECONNECT_LABEL_KEYS[platform];
+}
