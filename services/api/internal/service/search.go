@@ -5,7 +5,7 @@
 //  1. ConversationRepository.SearchTitles — $text on conversations.title
 //     scoped by (user_id, business_id, project_id?). Title hits.
 //  2. ConversationRepository.ScopedConversationIDs — the broader allowlist
-//     used by phase 2's $in filter (every conversation visible to the
+//     for the next stage's $in filter (every conversation visible to the
 //     scope, not just title-matching ones).
 //  3. MessageRepository.SearchByConversationIDs — $text on messages.content
 //     scoped by conversation_id ∈ allowlist.
@@ -16,8 +16,9 @@
 // Three threats mitigated here:
 //
 //   - Cross-tenant: empty businessID/userID → ErrInvalidScope (defense-in-
-//     depth alongside the repository-layer guards). Phase-2's allowlist
-//     comes from ScopedConversationIDs, which itself enforces scope.
+//     depth alongside the repository-layer guards). The allowlist used by
+//     the content-search stage comes from ScopedConversationIDs, which
+//     itself enforces scope.
 //
 //   - Index-503: indexReady atomic.Bool flag. Search returns
 //     ErrSearchIndexNotReady until cmd/main.go calls
@@ -49,8 +50,7 @@ const (
 )
 
 // SearchResult is the per-conversation row returned by Searcher.Search.
-// JSON tags drive the GET /api/v1/search response shape consumed by the
-// frontend (SidebarSearch component).
+// JSON tags drive the GET /api/v1/search response shape.
 type SearchResult struct {
 	ConversationID string     `json:"conversationId"`
 	Title          string     `json:"title,omitempty"`
@@ -103,8 +103,8 @@ func NewSearcher(convRepo domain.ConversationRepository, msgRepo domain.MessageR
 // (one atomic load per request); benefit is a stable rollback path.
 func (s *Searcher) MarkIndexesReady() { s.indexReady.Store(true) }
 
-// IsReady reports whether MarkIndexesReady has been called. Used by
-// the handler readiness probe and by tests. Pure read; thread-safe.
+// IsReady reports whether MarkIndexesReady has been called. Pure read;
+// thread-safe.
 func (s *Searcher) IsReady() bool { return s.indexReady.Load() }
 
 // Search runs the two-phase query for the (businessID, userID) scope

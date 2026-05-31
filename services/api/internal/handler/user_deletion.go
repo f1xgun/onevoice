@@ -45,10 +45,8 @@ type UserDeletionHandler struct {
 	allowedOrigins []string
 }
 
-// NewUserDeletionHandler constructs the handler. The
-// allowedOrigins slice is the CORS_ALLOWED_ORIGINS values — used by
-// Restore for the Origin-header CSRF check (T-DEL-10). The handler
-// requires all dependencies to be non-nil; wire/handlers.go enforces.
+// NewUserDeletionHandler constructs the handler. allowedOrigins holds the
+// CORS_ALLOWED_ORIGINS values for Restore's Origin-header CSRF check.
 func NewUserDeletionHandler(svc AccountDeletionServiceAPI, allowedOrigins []string) *UserDeletionHandler {
 	return &UserDeletionHandler{
 		service:        svc,
@@ -78,8 +76,7 @@ type soleOwnerBusinessRespEntry struct {
 }
 
 // pendingDeletionErrorBody is the 423 response for the idempotency
-// guard on DELETE /users/me when deletion is already pending. The
-// same shape is used by the BlockWritesDuringGrace middleware.
+// guard on DELETE /users/me when deletion is already pending.
 type pendingDeletionErrorBody struct {
 	Code         string `json:"code"`
 	DeletionDate string `json:"deletionDate"`

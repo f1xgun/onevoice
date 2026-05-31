@@ -115,8 +115,6 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 }
 
 // buildOrchestratorRequest assembles the JSON body forwarded to /chat/{id}.
-// The shape is byte-identical to the legacy chat_proxy.go inline builder
-// (including the explicit `locale` field added in Phase D1).
 func (t *Turn) buildOrchestratorRequest(req TurnRequest, enriched *enrichmentResult) map[string]interface{} {
 	business := enriched.business
 	return map[string]interface{}{
@@ -146,8 +144,8 @@ func (t *Turn) buildOrchestratorRequest(req TurnRequest, enriched *enrichmentRes
 	}
 }
 
-// derefString returns the value of p, or "" when nil. Used by the orchestrator
-// body builder for *string fields on Business (currently only Website).
+// derefString returns the value of p, or "" when nil. The orchestrator
+// body builder uses it for *string fields on Business (currently only Website).
 func derefString(p *string) string {
 	if p == nil {
 		return ""

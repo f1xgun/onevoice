@@ -16,9 +16,9 @@ import (
 )
 
 // membershipLoader implements authz.MembershipLoader using the project's
-// pgxPool seam. Pool-only — no transaction awareness (CONTEXT D-08).
-// Lives in services/api/internal/repository so pkg/authz stays free of
-// services/api imports (CONTEXT D-05).
+// pgxPool seam. Pool-only — no transaction awareness. Lives in
+// services/api/internal/repository so pkg/authz stays free of services/api
+// imports.
 type membershipLoader struct {
 	pool pgxPool
 	sb   squirrel.StatementBuilderType

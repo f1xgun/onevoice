@@ -152,11 +152,10 @@ func (r *EmailOutboxRepository) EnqueueDeferred(ctx context.Context, tx pgx.Tx, 
 	return id, nil
 }
 
-// ExistsBySubjectAndRecipient — extension (21-CROSS-PLAN-CONTRACTS §2b).
-// Returns true if at least one email_outbox row exists for (to_email,
-// subject) in ANY status (pending|sent|failed|canceled). Used by the
-// deletion-warning sweeper to dedupe: a single user must receive at most
-// ONE T-7 reminder no matter how many times the sweeper runs.
+// ExistsBySubjectAndRecipient returns true if at least one email_outbox row
+// exists for (to_email, subject) in ANY status (pending|sent|failed|canceled).
+// The deletion-warning sweeper relies on it to dedupe: a single user must
+// receive at most ONE T-7 reminder no matter how many times the sweeper runs.
 func (r *EmailOutboxRepository) ExistsBySubjectAndRecipient(ctx context.Context, toEmail, subject string) (bool, error) {
 	const q = `SELECT EXISTS (
 		SELECT 1 FROM email_outbox WHERE to_email = $1 AND subject = $2

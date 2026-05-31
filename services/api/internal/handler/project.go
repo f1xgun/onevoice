@@ -44,14 +44,13 @@ func (h *ProjectHandler) SetToolsCache(c ToolsCache) {
 	h.toolsCache = c
 }
 
-// projectRequest is the JSON shape consumed by both Create and Update —
-// the same form handles both operations.
+// projectRequest is the JSON shape for both Create and Update.
 //
 // ApprovalOverrides is a map of tool names to floor
 // strings. Valid values are "auto" | "manual" | "inherit". "inherit" is
 // stripped from the map before persistence — key-absence is the canonical
-// encoding of inherit (Overview invariant #8). The handler does this
-// translation in buildApprovalOverrides() below.
+// encoding of inherit. The handler does this translation in
+// buildApprovalOverrides() below.
 type projectRequest struct {
 	Name              string            `json:"name"`
 	Description       string            `json:"description"`

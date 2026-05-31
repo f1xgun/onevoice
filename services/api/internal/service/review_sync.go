@@ -134,8 +134,8 @@ func (s *ReviewSyncer) SyncAll(ctx context.Context) error {
 }
 
 // SyncForBusiness fetches reviews for every supported platform that this
-// business has at least one active integration for, in parallel. Used by
-// the manual-refresh endpoint so the operator can pull fresh data without
+// business has at least one active integration for, in parallel. The manual-
+// refresh endpoint calls it so the operator can pull fresh data without
 // waiting for the next ticker tick.
 func (s *ReviewSyncer) SyncForBusiness(ctx context.Context, businessID uuid.UUID) error {
 	integrations, err := s.integRepo.ListByBusinessID(ctx, businessID)
