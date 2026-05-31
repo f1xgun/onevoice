@@ -358,10 +358,8 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]int
 // implement ApprovalExecutor fall back to plain Execute — safe for internal
 // tools that have no agent-side dedupe requirement.
 //
-// Called by the Resume path after parsing a resolved batch:
-// approvalID is always "<batch_id>-<call_id>", so each approved call
-// within a batch has a unique dedupe key for the agent's Redis SetNX
-// (pkg/hitldedupe).
+// approvalID is always "<batch_id>-<call_id>", so each approved call within
+// a batch has a unique dedupe key for the agent's Redis SetNX.
 func (r *Registry) ExecuteWithApproval(ctx context.Context, name string, args map[string]interface{}, approvalID string) (interface{}, error) {
 	e, ok := r.tools[name]
 	if !ok {

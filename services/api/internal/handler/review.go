@@ -24,9 +24,9 @@ const (
 )
 
 // ReviewService defines the interface for review operations used by handler.
-// Phase 2 v2.0 RBAC: List/GetByID/Reply receive businessID (extracted from
-// /businesses/{id} URL by RequireBusinessAccess middleware); Refresh remains
-// userID-scoped because /reviews/refresh is auth-only (not business-scoped).
+// List/GetByID/Reply receive businessID (extracted from /businesses/{id} URL by
+// RequireBusinessAccess middleware); Refresh remains userID-scoped because
+// /reviews/refresh is auth-only (not business-scoped).
 type ReviewService interface {
 	List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)

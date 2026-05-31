@@ -24,12 +24,6 @@ type roleRepository struct {
 var _ domain.RoleRepository = (*roleRepository)(nil)
 
 // NewRoleRepository constructs a Postgres-backed RoleRepository.
-// Phase 2 implemented GetByID and ListByBusiness; Phase 5 (this file) fills
-// the remaining Create/Update/Delete/Reassign methods, adds the tx-aware
-// siblings (CreateInTx, UpdateInTx, DeleteInTx, DeleteWithReassignInTx),
-// the helper CountMembersByRole + GetByMemberInBusiness, and the new
-// ListByBusinessWithCounts variant for the GET /businesses/{id}/roles
-// response shape (CONTEXT D-08).
 func NewRoleRepository(pool pgxPool) domain.RoleRepository {
 	return &roleRepository{pool: pool, sb: newStatementBuilder()}
 }
@@ -152,18 +146,11 @@ func (r *roleRepository) ListSystem(ctx context.Context) ([]domain.Role, error) 
 	return out, nil
 }
 
-// ListByBusinessWithCounts is the Phase 5 variant. LEFT JOIN business_members
-// filtered on m.business_id = $1 so system rows count members in the queried
-// business only (CONTEXT D-08). GROUP BY id is sufficient because every other
-// selected column is functionally dependent on roles.id (Postgres ≥9.1
-// recognizes this).
-//
-// LOW-02 (Phase 5 review): the LEFT JOIN restricts m.status = 'active' so
-// the displayed "N participants" badge counts only active members.
-// Suspended members are excluded by intent — they cannot exercise role
-// permissions (RequireBusinessAccess middleware 403s them), so counting
-// them as participants would mislead the operator. Pattern-consistent with
-// CountOwnersByBusiness (business_member.go).
+// ListByBusinessWithCounts LEFT JOINs business_members filtered on
+// m.business_id = $1 so system rows count members in the queried business only.
+// The JOIN restricts m.status = 'active' so the displayed "N participants"
+// badge counts only active members — suspended members cannot exercise role
+// permissions (RequireBusinessAccess 403s them).
 func (r *roleRepository) ListByBusinessWithCounts(ctx context.Context, businessID uuid.UUID) ([]domain.RoleWithMemberCount, error) {
 	sqlStr, args, err := r.sb.
 		Select(
@@ -290,14 +277,9 @@ func (r *roleRepository) CreateInTx(ctx context.Context, tx pgx.Tx, role *domain
 	return nil
 }
 
-// Update is the non-tx variant. Phase 5 handlers use UpdateInTx exclusively
-// so the invariant check (CheckEscalationSubset) shares the same tx; this
-// non-tx variant exists solely to satisfy the interface contract declared
-// in Phase 1. Body mirrors UpdateInTx but uses r.pool.Exec.
-//
-// Mirrors the pattern in business_member.go where UpdateRole / Delete use
-// r.pool.Exec directly (no internal tx) — the pgxPool interface here
-// intentionally has no BeginTx surface.
+// Update is the non-tx variant. Handlers use UpdateInTx exclusively so
+// CheckEscalationSubset shares the same tx; this exists to satisfy the
+// interface contract.
 func (r *roleRepository) Update(ctx context.Context, role *domain.Role) error {
 	if role == nil {
 		return fmt.Errorf("Update: role is required")
@@ -419,7 +401,7 @@ func (r *roleRepository) DeleteInTx(ctx context.Context, tx pgx.Tx, id uuid.UUID
 	return nil
 }
 
-// DeleteWithReassignInTx is the Phase 5 atomic delete-with-reassignment.
+// DeleteWithReassignInTx atomically reassigns members and deletes the role.
 // Order is FIXED: reassign members FIRST, then delete the role. Reversing
 // the order would 23503/restrict_violation because business_members.role_id
 // REFERENCES roles(id) ON DELETE RESTRICT (migrations/postgres/000007_rbac_data_model.up.sql:34).
@@ -434,12 +416,8 @@ func (r *roleRepository) DeleteWithReassignInTx(
 	if tx == nil {
 		return fmt.Errorf("DeleteWithReassignInTx: tx is required")
 	}
-	// LOW-01 (Phase 5 review): self-reassign guard is also enforced in the
-	// handler (returns 400 invalid_reassign_to with user-facing copy). This
-	// repo-level fmt.Errorf is defense-in-depth — reaching it means a server
-	// bug bypassed the handler check, so the 500 internal_server_error
-	// surface produced by writeAuthzInvariantError is the correct triage
-	// signal (it'll show up in slog with op="delete_role.reassign_exec").
+	// Self-reassign guard is also enforced in the handler. Reaching this is a
+	// server-bug bypass; the 500 surface is the correct triage signal.
 	if oldRoleID == reassignToID {
 		return fmt.Errorf("DeleteWithReassignInTx: reassignTo cannot equal oldRoleID")
 	}
@@ -455,14 +433,9 @@ func (r *roleRepository) DeleteWithReassignInTx(
 	if err != nil {
 		return fmt.Errorf("build reassign members: %w", err)
 	}
-	// MED-01 (Phase 5 review): RowsAffected on the UPDATE is informational
-	// only. The handler ran CountMembersByRole > 0 before opening the tx;
-	// between that count and this UPDATE another admin may have reassigned
-	// the same members concurrently, so a zero-row UPDATE is benign (final
-	// state is still consistent). We do NOT fail the tx on zero — the DELETE
-	// step below is the authoritative "did the role disappear" signal. A
-	// zero-row UPDATE here only means the InvalidateMember fanout will evict
-	// caches for users that no longer hold this role, which is harmless.
+	// RowsAffected on the UPDATE is informational only — concurrent reassigns
+	// between the handler's count and this UPDATE leave the final state
+	// consistent. The DELETE below is the authoritative signal.
 	if _, err := tx.Exec(ctx, reassignSQL, reassignArgs...); err != nil {
 		return fmt.Errorf("reassign members: %w", err)
 	}
@@ -484,19 +457,11 @@ func (r *roleRepository) DeleteWithReassignInTx(
 	return nil
 }
 
-// Reassign is the legacy non-tx variant retained to satisfy the Phase 1
-// interface declaration. It performs ONLY the membership reassignment (no
-// role delete). Callers in Phase 5 should prefer DeleteWithReassignInTx for
-// the compound operation. Used standalone only by tests / future migration
-// helpers.
-//
-// MED-02 (Phase 5 review): unlike DeleteWithReassignInTx (where zero-row
-// UPDATE is informational), this method's only signal IS RowsAffected. A
-// future caller passing a wrong business_id or an already-reassigned role
-// would otherwise get silent success. Surface domain.ErrMembershipNotFound
-// when no rows match so callers can distinguish "nothing to do" from
-// "operation effective". This is pattern-consistent with Update/DeleteInTx
-// (both return ErrRoleNotFound on zero rows).
+// Reassign is the legacy non-tx variant. Performs ONLY the membership
+// reassignment (no role delete) — callers should prefer
+// DeleteWithReassignInTx for the compound operation. Returns
+// ErrMembershipNotFound on zero rows so callers can distinguish "nothing to
+// do" from "operation effective".
 func (r *roleRepository) Reassign(ctx context.Context, businessID, oldRoleID, newRoleID uuid.UUID) error {
 	if oldRoleID == newRoleID {
 		return fmt.Errorf("Reassign: oldRoleID equals newRoleID")
@@ -521,14 +486,10 @@ func (r *roleRepository) Reassign(ctx context.Context, businessID, oldRoleID, ne
 }
 
 // CountMembersByRole counts active business_members rows holding roleID in
-// the given business. Used by RolesHandler.Delete (Phase 5) to branch on the
-// `?reassign_to=` requirement (ROLE-06).
-//
-// LOW-02 (Phase 5 review): filters status = 'active' so the count matches
-// the "N participants" badge from ListByBusinessWithCounts. A suspended
-// member's role_id still references the role row but the user cannot
-// exercise its permissions; counting them would cause the Delete handler
-// to demand a reassign target for a role that's effectively unused.
+// the given business. Filters status = 'active' so the count matches the
+// "N participants" badge — suspended members can't exercise role permissions
+// and counting them would cause Delete to demand a reassign for an effectively
+// unused role.
 func (r *roleRepository) CountMembersByRole(ctx context.Context, businessID, roleID uuid.UUID) (int, error) {
 	sqlStr, args, err := r.sb.
 		Select("COUNT(*)").
@@ -547,8 +508,8 @@ func (r *roleRepository) CountMembersByRole(ctx context.Context, businessID, rol
 
 // GetByMemberInBusiness returns the role held by userID in businessID via
 // JOIN business_members × roles. Returns ErrMembershipNotFound on no rows.
-// Used by GET /businesses/{id}/me/permissions (if the handler picks the
-// fresh-DB-lookup variant; Phase 5 default is bc.Permissions per RESEARCH).
+// Used by GET /businesses/{id}/me/permissions when callers want a fresh DB
+// lookup variant (default is bc.Permissions from the cache).
 func (r *roleRepository) GetByMemberInBusiness(ctx context.Context, businessID, userID uuid.UUID) (*domain.Role, error) {
 	sqlStr, args, err := r.sb.
 		Select(

@@ -42,10 +42,9 @@ type ConnectIntegrationService interface {
 	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error)
 }
 
-// BusinessService is the paste-flow subset of BusinessService. Phase 6
-// (CLEAN-01) emptied this interface — paste-flow handlers do not invoke
-// any method on BusinessService at runtime; the dependency is retained to
-// preserve constructor wiring symmetry with the rest of the API.
+// BusinessService is intentionally empty — paste-flow handlers do not invoke
+// any method on BusinessService at runtime; the dependency is retained only
+// to preserve constructor wiring symmetry with OAuth handlers.
 type BusinessService interface{}
 
 // ConnectConfig holds the credentials and overrides paste-flow handlers

@@ -15,10 +15,8 @@ func IncRBACCheck(result string) {
 	rbacCheckTotal.WithLabelValues(result).Inc()
 }
 
-// GetRBACCheckCounter returns the underlying CounterVec so integration tests
-// (Plan 02-07 LOW #9) can call prometheus/testutil.ToFloat64 on it directly
-// to assert rbac_check_total{result} increased by a given amount. Not for
-// production use.
+// GetRBACCheckCounter exposes the underlying CounterVec for prometheus/testutil
+// assertions. Not for production use.
 func GetRBACCheckCounter() *prometheus.CounterVec {
 	return rbacCheckTotal
 }

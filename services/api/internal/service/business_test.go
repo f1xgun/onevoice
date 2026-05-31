@@ -33,9 +33,9 @@ func (m *mockBusinessRepository) Create(ctx context.Context, business *domain.Bu
 	return nil
 }
 
-// CreateInTx — Phase 1 v2.0 RBAC stub. Default: delegate to createFunc (so
-// existing tests that only set createFunc continue to work). Tests that
-// exercise the dual-write path set createInTxFunc directly.
+// CreateInTx defaults to delegating to createFunc so tests that only set
+// createFunc continue to work. Tests exercising the dual-write path set
+// createInTxFunc directly.
 func (m *mockBusinessRepository) CreateInTx(ctx context.Context, tx pgx.Tx, business *domain.Business) error {
 	if m.createInTxFunc != nil {
 		return m.createInTxFunc(ctx, tx, business)
@@ -67,9 +67,9 @@ func (m *mockBusinessRepository) UpdateToolApprovals(ctx context.Context, busine
 	return nil
 }
 
-// mockBusinessMembershipRepository — Phase 1 v2.0 RBAC test stub for the
-// dual-write path in service.business.Create(). Only Insert is exercised
-// by Create; the other methods return nil/zero so the mock satisfies the
+// mockBusinessMembershipRepository is the test stub for the dual-write path
+// in service.business.Create(). Only Insert is exercised by Create; the
+// other methods return nil/zero so the mock satisfies the
 // domain.BusinessMembershipRepository surface.
 type mockBusinessMembershipRepository struct {
 	insertFunc func(ctx context.Context, tx pgx.Tx, m *domain.BusinessMember) error
@@ -332,7 +332,7 @@ func TestBusinessService_Create(t *testing.T) {
 	})
 }
 
-// TestBusinessService_Create_Success — Phase 1 v2.0 RBAC dual-write happy
+// TestBusinessService_Create_Success — dual-write happy
 // path. Both inserts succeed; tx.Commit fires; membershipRepo.Insert is
 // invoked with role_id=SystemRoleOwnerID and a non-zero JoinedAt is left
 // for the repo to populate (zero in the call, so JoinedAt.IsZero()).
@@ -380,7 +380,7 @@ func TestBusinessService_Create_Success_DualWrite(t *testing.T) {
 	require.NoError(t, pool.ExpectationsWereMet())
 }
 
-// TestBusinessService_Create_BusinessInsertFails — Phase 1 v2.0 RBAC: first
+// TestBusinessService_Create_BusinessInsertFails — first
 // insert returns a generic error; rollback fires; no membership insert is
 // attempted. The deferred tx.Rollback drives ExpectRollback — Commit is
 // NOT expected.
@@ -414,7 +414,7 @@ func TestBusinessService_Create_BusinessInsertFails(t *testing.T) {
 	require.NoError(t, pool.ExpectationsWereMet())
 }
 
-// TestBusinessService_Create_MembershipInsertFails — Phase 1 v2.0 RBAC:
+// TestBusinessService_Create_MembershipInsertFails—
 // first insert succeeds, second insert returns a non-ErrMembershipExists
 // error; rollback fires (no commit). The injected error wraps to "insert
 // owner membership: ...".
@@ -446,7 +446,7 @@ func TestBusinessService_Create_MembershipInsertFails(t *testing.T) {
 	require.NoError(t, pool.ExpectationsWereMet())
 }
 
-// TestBusinessService_Create_MembershipDuplicate — Phase 1 v2.0 RBAC: second
+// TestBusinessService_Create_MembershipDuplicate— second
 // insert returns ErrMembershipExists; this is the idempotent backfill path
 // — Create commits anyway so the businesses row lands.
 func TestBusinessService_Create_MembershipDuplicate(t *testing.T) {
@@ -476,7 +476,7 @@ func TestBusinessService_Create_MembershipDuplicate(t *testing.T) {
 	require.NoError(t, pool.ExpectationsWereMet())
 }
 
-// TestBusinessService_Create_NilDeps — Phase 1 v2.0 RBAC: NewBusinessService
+// TestBusinessService_Create_NilDeps— NewBusinessService
 // must panic on any nil dependency. Mirrors the project's NewXxx constructor
 // pattern (panic on misuse, not return error).
 func TestBusinessService_Create_NilDeps(t *testing.T) {

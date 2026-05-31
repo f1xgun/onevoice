@@ -161,7 +161,7 @@ func TestRoleRepository_ListByBusiness_IncludesNullBusinessID(t *testing.T) {
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 5: ListSystem -----------------------------------------------------
+// --- ListSystem -----------------------------------------------------
 
 func TestRoleRepository_ListSystem_Success(t *testing.T) {
 	ctx := context.Background()
@@ -191,7 +191,7 @@ func TestRoleRepository_ListSystem_Success(t *testing.T) {
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 5: ListByBusinessWithCounts --------------------------------------
+// --- ListByBusinessWithCounts --------------------------------------
 
 func TestRoleRepository_ListByBusinessWithCounts_Success(t *testing.T) {
 	ctx := context.Background()
@@ -246,7 +246,7 @@ func TestRoleRepository_ListByBusinessWithCounts_Empty(t *testing.T) {
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 5: Create / CreateInTx -------------------------------------------
+// --- Create / CreateInTx -------------------------------------------
 
 func TestRoleRepository_Create_Success(t *testing.T) {
 	ctx := context.Background()
@@ -401,7 +401,7 @@ func TestRoleRepository_CreateInTx_NilRole(t *testing.T) {
 	assert.Contains(t, err.Error(), "role is required")
 }
 
-// --- Phase 5: UpdateInTx ----------------------------------------------------
+// --- UpdateInTx ----------------------------------------------------
 
 func TestRoleRepository_UpdateInTx_Success(t *testing.T) {
 	ctx := context.Background()
@@ -514,7 +514,7 @@ func TestRoleRepository_UpdateInTx_RefusesSystemRoleIsCoveredByNotFound(t *testi
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 5: DeleteInTx ----------------------------------------------------
+// --- DeleteInTx ----------------------------------------------------
 
 func TestRoleRepository_DeleteInTx_Success(t *testing.T) {
 	ctx := context.Background()
@@ -559,7 +559,7 @@ func TestRoleRepository_DeleteInTx_NilTx(t *testing.T) {
 	assert.Contains(t, err.Error(), "tx is required")
 }
 
-// --- Phase 5: DeleteWithReassignInTx ----------------------------------------
+// --- DeleteWithReassignInTx ----------------------------------------
 
 func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 	t.Run("reassigns_then_deletes_in_order", func(t *testing.T) {
@@ -658,7 +658,7 @@ func TestRoleRepository_DeleteWithReassignInTx(t *testing.T) {
 	})
 }
 
-// --- Phase 5: Reassign (legacy non-tx) --------------------------------------
+// --- Reassign (legacy non-tx) --------------------------------------
 
 func TestRoleRepository_Reassign_Success(t *testing.T) {
 	ctx := context.Background()
@@ -683,9 +683,9 @@ func TestRoleRepository_Reassign_SameIDRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "oldRoleID equals newRoleID")
 }
 
-// MED-02 (Phase 5 review): Reassign must surface ErrMembershipNotFound when
-// the UPDATE affects zero rows so callers can distinguish "operation
-// effective" from "wrong business / role already reassigned".
+// Reassign must surface ErrMembershipNotFound when the UPDATE affects zero
+// rows so callers can distinguish "operation effective" from "wrong business
+// / role already reassigned".
 func TestRoleRepository_Reassign_ZeroRowsReturnsMembershipNotFound(t *testing.T) {
 	ctx := context.Background()
 	r, mockPool := newTestRoleRepo(t)
@@ -699,7 +699,7 @@ func TestRoleRepository_Reassign_ZeroRowsReturnsMembershipNotFound(t *testing.T)
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 5: Update / Delete (non-tx siblings) -----------------------------
+// --- Update / Delete (non-tx siblings) -----------------------------
 
 func TestRoleRepository_Update_Success(t *testing.T) {
 	ctx := context.Background()
@@ -755,12 +755,11 @@ func TestRoleRepository_Delete_NotFound(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrRoleNotFound)
 }
 
-// --- Phase 5: CountMembersByRole -------------------------------------------
+// --- CountMembersByRole -------------------------------------------
 
 func TestRoleRepository_CountMembersByRole(t *testing.T) {
-	// LOW-02 (Phase 5 review): the WHERE clause now carries 3 args —
-	// business_id, role_id, status='active'. Tests assert the additional
-	// status filter is bound (pgxmock.AnyArg() matches the literal).
+	// WHERE clause carries 3 args: business_id, role_id, status='active'.
+	// Tests assert the status filter is bound.
 	t.Run("returns_count", func(t *testing.T) {
 		ctx := context.Background()
 		r, mockPool := newTestRoleRepo(t)
@@ -803,7 +802,7 @@ func TestRoleRepository_CountMembersByRole(t *testing.T) {
 	})
 }
 
-// --- Phase 5: GetByMemberInBusiness ----------------------------------------
+// --- GetByMemberInBusiness ----------------------------------------
 
 func TestRoleRepository_GetByMemberInBusiness(t *testing.T) {
 	t.Run("found", func(t *testing.T) {
