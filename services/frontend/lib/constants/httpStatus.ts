@@ -1,7 +1,5 @@
 // Single source of truth for HTTP status codes used by the frontend.
-// Referenced by axios response interceptors, error-mapping helpers, and
-// page-level error handlers that need to differentiate between auth
-// failures, conflicts, and forbidden requests. Keep alphabetised.
+// Keep alphabetised.
 
 export const HTTP_STATUS = {
   BAD_REQUEST: 400,

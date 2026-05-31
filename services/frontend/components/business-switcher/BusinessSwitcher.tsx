@@ -52,7 +52,7 @@ export function BusinessSwitcher() {
   }
 
   // Clear the polite live region after a beat so identical re-selection
-  // still triggers a fresh announcement (ME-03 in 04-REVIEW.md).
+  // still triggers a fresh announcement.
   useEffect(() => {
     if (!announceName) return;
     const t = setTimeout(() => setAnnounceName(null), ANNOUNCE_RESET_MS);

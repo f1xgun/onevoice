@@ -23,7 +23,6 @@ import { SupportedPlatforms } from '@/components/landing/SupportedPlatforms';
 // font-family avoids loading a webfont just for one phrase.
 const SERIF = '"Iowan Old Style", "Georgia", "Times New Roman", serif';
 
-// 5-star scale used by the inline review-preview block in the hero.
 const MAX_REVIEW_STARS = 5;
 
 // Static href anchors for nav. Labels are resolved via useTranslations
