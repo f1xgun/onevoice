@@ -94,33 +94,38 @@ func ClassifyYandexError(err error) error {
 	return classifyYandexError(err)
 }
 
-// classifyYandexError wraps permanent Yandex RPA errors as NonRetryableError.
+// classifyYandexError stamps permanent Yandex RPA errors with a typed Code
+// and composes with NonRetryableError. Session-expired and Passport redirect
+// errors map to integration_token_invalid; CAPTCHA maps to rate_limit_exceeded;
+// review-not-found and reply-form-unavailable map to transient (permanent at
+// the RPA layer but not actionable by a reconnect).
 func classifyYandexError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// Sentinel check — canary already wrapped in NonRetryableError, propagate as-is
+	// Preserve an already-typed code from upstream wrapping sites.
+	if a2a.CodeOf(err) != "" {
+		return err
+	}
+	// Sentinel check — canary already wrapped in NonRetryableError, propagate as-is.
 	if errors.Is(err, yandex.ErrSessionExpired) {
-		return a2a.NewNonRetryableError(err)
+		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
 	}
 	msg := err.Error()
-	// Session expired — login redirect detected
 	if strings.Contains(msg, "session expired") || strings.Contains(msg, "login redirect") || strings.Contains(msg, "passport.yandex") {
-		return a2a.NewNonRetryableError(err)
+		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
 	}
-	// CAPTCHA — rate-limited, non-retryable
 	if strings.Contains(msg, "captcha") || strings.Contains(msg, "CAPTCHA") {
-		return a2a.NewNonRetryableError(fmt.Errorf("yandex captcha detected: %w", err))
+		return a2a.NewCodedError("rate_limit_exceeded", a2a.NewNonRetryableError(fmt.Errorf("yandex captcha detected: %w", err)))
 	}
-	// Review not found — no point retrying
 	if strings.Contains(msg, "review not found") {
-		return a2a.NewNonRetryableError(err)
+		return a2a.NewCodedError("transient", a2a.NewNonRetryableError(err))
 	}
-	// Reply form unavailable (already replied or reviews disabled)
 	if strings.Contains(msg, "reply form unavailable") || strings.Contains(msg, "reply button not found") {
-		return a2a.NewNonRetryableError(err)
+		return a2a.NewCodedError("transient", a2a.NewNonRetryableError(err))
 	}
-	return err // transient (timeout, network, etc.)
+	// Transient (timeout, network, etc.) — keep retryable.
+	return a2a.NewCodedError("transient", err)
 }
 
 func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBrowser, error) {

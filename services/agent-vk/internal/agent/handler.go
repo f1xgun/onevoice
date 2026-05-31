@@ -93,17 +93,33 @@ func ClassifyVKError(err error) error {
 // VK error codes: 5=invalid token, 15=access denied, 100=invalid param, 113=invalid user,
 // 6=too many requests, 9=flood control (rate-limited, also non-retryable).
 func classifyVKError(err error) error {
+	if err == nil {
+		return nil
+	}
+	// Preserve an already-typed code from upstream wrapping sites.
+	if a2a.CodeOf(err) != "" {
+		return err
+	}
 	var vkErr *vkapi.Error
 	if !errors.As(err, &vkErr) {
-		return err // network or non-VK error — transient, retryable
+		// network or non-VK error — transient, retryable; carry the code.
+		return a2a.NewCodedError("transient", err)
 	}
 	switch int(vkErr.Code) {
-	case vkErrInvalidToken, vkErrAccessDenied, vkErrInvalidParam, vkErrInvalidUser: // permanent
-		return a2a.NewNonRetryableError(err)
-	case vkErrTooManyReqs, vkErrFloodControl: // rate-limited — don't retry, surface to user
-		return a2a.NewNonRetryableError(fmt.Errorf("vk rate limit (code %d): %w", int(vkErr.Code), err))
+	case vkErrInvalidToken, vkErrAccessDenied, vkErrInvalidUser:
+		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
+	case vkErrTooManyReqs, vkErrFloodControl:
+		return a2a.NewCodedError("rate_limit_exceeded", a2a.NewNonRetryableError(fmt.Errorf("vk rate limit (code %d): %w", int(vkErr.Code), err)))
+	case vkErrInvalidParam:
+		lower := strings.ToLower(vkErr.Message)
+		if strings.Contains(lower, "community") || strings.Contains(lower, "group") {
+			return a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(err))
+		}
+		// Generic code 100 — treat as transient (retryable) to preserve
+		// the legacy "retry on unknown VK 100" semantics.
+		return a2a.NewCodedError("transient", err)
 	default:
-		return err // transient
+		return a2a.NewCodedError("transient", err)
 	}
 }
 
