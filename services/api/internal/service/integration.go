@@ -269,7 +269,7 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 	integration := &domain.Integration{
 		BusinessID:            params.BusinessID,
 		Platform:              params.Platform,
-		Status:                "active",
+		Status:                domain.IntegrationStatusActive,
 		ExternalID:            params.ExternalID,
 		EncryptedAccessToken:  encAccess,
 		EncryptedRefreshToken: encRefresh,
@@ -313,7 +313,7 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 			return nil, listErr
 		}
 		for i := range integrations {
-			if integrations[i].Status == "active" {
+			if integrations[i].Status == domain.IntegrationStatusActive {
 				integration = &integrations[i]
 				break
 			}

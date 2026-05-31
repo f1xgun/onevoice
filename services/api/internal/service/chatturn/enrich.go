@@ -60,7 +60,7 @@ func (t *Turn) enrich(ctx context.Context, req TurnRequest) (*enrichmentResult, 
 	active := make([]string, 0)
 	seen := make(map[string]bool)
 	for _, integ := range integrations {
-		if integ.Status == "active" && !seen[integ.Platform] {
+		if integ.Status == domain.IntegrationStatusActive && !seen[integ.Platform] {
 			active = append(active, integ.Platform)
 			seen[integ.Platform] = true
 		}
@@ -71,7 +71,7 @@ func (t *Turn) enrich(ctx context.Context, req TurnRequest) (*enrichmentResult, 
 	userMsg := &domain.Message{
 		ID:             uuid.NewString(),
 		ConversationID: req.ConversationID,
-		Role:           "user",
+		Role:           domain.MessageRoleUser,
 		Content:        req.Message,
 	}
 
@@ -162,13 +162,13 @@ func (t *Turn) loadHistory(ctx context.Context, conversationID string) []map[str
 	history := make([]map[string]string, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
-		case "user":
-			history = append(history, map[string]string{"role": "user", "content": m.Content})
-		case "assistant":
+		case domain.MessageRoleUser:
+			history = append(history, map[string]string{"role": domain.MessageRoleUser, "content": m.Content})
+		case domain.MessageRoleAssistant:
 			if m.Content == "" && len(m.ToolCalls) == 0 {
 				continue
 			}
-			history = append(history, map[string]string{"role": "assistant", "content": m.Content})
+			history = append(history, map[string]string{"role": domain.MessageRoleAssistant, "content": m.Content})
 		}
 	}
 	return history

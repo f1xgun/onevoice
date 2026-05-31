@@ -29,11 +29,6 @@ var (
 	ErrVKWallPermissionMissing = errors.New("connect: vk wall permission missing")
 )
 
-// vkURLPrefixes is the set of URL fragments stripped off user-pasted group
-// inputs (e.g. "https://vk.com/mygroup" → "mygroup"). These are NOT
-// endpoints we request — they are pattern strings for prefix matching.
-var vkURLPrefixes = []string{"https://vk.com/", "http://vk.com/", "https://m.vk.com/", "vk.com/", "@"}
-
 // vkGroup is the subset of VK's groups.getById response we care about.
 type vkGroup struct {
 	ID         int64  `json:"id"`
@@ -154,7 +149,7 @@ func (h *ConnectHandler) checkVKWallScope(ctx context.Context, accessToken strin
 func (h *ConnectHandler) resolveVKGroupID(ctx context.Context, input string) (string, error) {
 	// Strip URL prefix: https://vk.com/mygroup → mygroup
 	input = strings.TrimSpace(input)
-	for _, prefix := range vkURLPrefixes {
+	for _, prefix := range vkapi.URLPrefixes {
 		input = strings.TrimPrefix(input, prefix)
 	}
 	input = strings.TrimPrefix(input, "club")
