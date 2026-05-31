@@ -40,8 +40,7 @@ export default function RegisterPage() {
   // перезагрузите страницу и подтвердите новые версии согласий.").
   const tRegErrors = useTranslations('register.errors');
   // Rebuild the schema whenever the validation translator identity changes
-  // so a runtime locale switch swaps the Russian validation copy with the
-  // English one (Phase B1).
+  // so a runtime locale switch swaps validation copy with the new locale's.
   const registerSchema = useMemo(() => createRegisterSchema(tValidation), [tValidation]);
 
   const {

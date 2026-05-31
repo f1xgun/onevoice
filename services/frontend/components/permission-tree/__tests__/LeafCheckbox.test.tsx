@@ -74,10 +74,8 @@ describe('LeafCheckbox', () => {
     expect(screen.getByLabelText('У вас нет этого права')).toBeInTheDocument();
   });
 
-  it('renders the permission key as the leaf label (UI-RBAC-11: catalog-driven)', () => {
+  it('renders the permission key as the leaf label (catalog-driven, never hardcoded)', () => {
     renderLeaf({ leafName: 'novel.action' });
-    // The component never hardcodes any permission string — whatever the
-    // caller passes is what shows up.
     expect(screen.getByText('novel.action')).toBeInTheDocument();
   });
 });

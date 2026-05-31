@@ -20,10 +20,9 @@ import { MonoLabel } from '@/components/ui/mono-label';
 
 const NEW_PASSWORD_MIN_LEN = 8;
 
-// Schema is built inside the component (Phase B1) so the validation
-// messages follow the active locale. useMemo on the translator keeps the
-// schema identity stable across re-renders of the same locale, which
-// react-hook-form relies on for `resolver` stability.
+// Schema is built inside the component so validation messages follow the
+// active locale. useMemo keeps schema identity stable across re-renders
+// for react-hook-form's `resolver` stability.
 type PasswordInput = {
   currentPassword: string;
   newPassword: string;

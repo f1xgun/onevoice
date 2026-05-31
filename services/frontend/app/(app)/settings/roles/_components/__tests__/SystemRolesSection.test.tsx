@@ -64,7 +64,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('SystemRolesSection (D-02 / D-03)', () => {
+describe('SystemRolesSection', () => {
   it('renders all 4 rows in fixed Owner→Admin→Editor→Viewer order regardless of input order', () => {
     renderSection();
     const items = screen.getAllByRole('listitem');

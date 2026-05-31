@@ -68,8 +68,8 @@ export default function IntegrationsPage() {
   const qc = useQueryClient();
   const tIntegrations = useTranslations('integrations');
   const tPlatforms = useTranslations('platforms');
-  // i18n Phase C2: backend no longer ships per-platform descriptions; the
-  // copy lives under platforms.description.<id> in messages/*.json.
+  // Backend no longer ships per-platform descriptions; copy lives under
+  // platforms.description.<id> in messages/*.json.
   const tPlatformDesc = useTranslations('platforms.description');
   const searchParams = useSearchParams();
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);

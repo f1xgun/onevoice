@@ -15,12 +15,10 @@ import type { PermissionGroup } from '@/lib/schemas';
 
 import { PermissionTree } from '../PermissionTree';
 
-// Task 3 — integration tests for (all expanded by default),
-// (Info icon tooltip) and UI-RBAC-11 (catalog-driven rendering).
-//
-// The mock catalog uses arbitrary resource + permission names — the tree must
-// render whatever the catalog returns, never hardcoded names. This is exactly
-// the contract UI-RBAC-11 demands.
+// Integration tests for expand-by-default, Info-icon tooltips, and catalog-
+// driven rendering. The mock catalog uses arbitrary resource/permission
+// names — the tree must render whatever the catalog returns, never
+// hardcoded names.
 
 const mockedGetCatalog = vi.mocked(getPermissionsCatalog);
 
@@ -97,9 +95,9 @@ describe('PermissionTree', () => {
     });
   });
 
-  it('UI-RBAC-11: the tree is purely catalog-driven — arbitrary perm names render', async () => {
+  it('is purely catalog-driven — arbitrary perm names render', async () => {
     // A permission never declared in Go source still renders if the catalog
-    // returns it. This proves there are no hardcoded keys in the components.
+    // returns it — proves there are no hardcoded keys in the components.
     mockedGetCatalog.mockResolvedValue([
       {
         resource: 'imaginary',

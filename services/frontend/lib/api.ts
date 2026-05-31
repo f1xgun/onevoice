@@ -52,10 +52,9 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  // Always inject Accept-Language so the Go backend's locale middleware
-  // (Phase A1 / pkg/i18n) can pick the right catalog. Cookie wins over
-  // browser preference because the user's explicit toggle in
-  // <LanguageSwitcher> is the source of truth.
+  // Inject Accept-Language so the backend's locale middleware picks the
+  // right catalog. Cookie wins over browser preference — the user's
+  // explicit toggle in <LanguageSwitcher> is the source of truth.
   config.headers['Accept-Language'] = readClientLocale();
   return config;
 });
@@ -174,11 +173,9 @@ api.interceptors.response.use(
     ) {
       useBusinessStore.getState().clear();
       queryClient.invalidateQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
-      // Locale-aware toast (Phase B1). The interceptor runs outside the
-      // React tree, so we resolve the current locale from the cookie
-      // (same source the request interceptor above uses) and dynamically
-      // import the matching bundle. Dynamic import + a tiny inline
-      // createTranslator avoids pinning ru.json at module load.
+      // Interceptor runs outside the React tree — resolve the locale from
+      // the cookie and dynamically import the matching bundle so we never
+      // pin a single JSON bundle at module load.
       void showStaleBusinessToast();
     }
 

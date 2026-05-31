@@ -25,9 +25,8 @@ import type {
   PendingInvitation,
 } from '@/lib/schemas';
 
-// React Query hooks for the invitation surfaces (TeamPage invitations tab,
-// AcceptInvitePage, OnboardingPage). All mutations follow the
-// mutate-then-invalidate pattern per CONTEXT D-07 — no optimistic updates.
+// React Query hooks for the invitation surfaces. All mutations follow
+// mutate-then-invalidate — no optimistic updates.
 
 export function useInvitations(businessId: string | null): UseQueryResult<PendingInvitation[]> {
   return useQuery<PendingInvitation[]>({

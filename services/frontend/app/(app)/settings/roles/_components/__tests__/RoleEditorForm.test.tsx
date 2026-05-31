@@ -117,7 +117,7 @@ describe('RoleEditorForm — empty create mode', () => {
   });
 });
 
-describe('RoleEditorForm — clone intersection (D-04)', () => {
+describe('RoleEditorForm clone intersection', () => {
   it('pre-fills name with «Копия — {sourceName}»', async () => {
     renderForm({ mode: 'create', cloneFromId: MARKETING_ROLE.id });
     await waitFor(() => {

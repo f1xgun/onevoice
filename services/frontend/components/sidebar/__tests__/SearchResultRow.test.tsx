@@ -34,12 +34,12 @@ describe('SearchResultRow', () => {
     expect(screen.queryByText(/совпадений/)).not.toBeInTheDocument();
   });
 
-  it('renders +N совпадений badge when matchCount > 1 (D-07)', () => {
+  it('renders +N совпадений badge when matchCount > 1', () => {
     render(<SearchResultRow result={{ ...baseResult, matchCount: 5 }} query="hello" />);
     expect(screen.getByText(/\+4 совпадений/)).toBeInTheDocument();
   });
 
-  it('renders a ProjectChip with size="xs" when projectId is non-null (D-05/D-07)', () => {
+  it('renders a ProjectChip with size="xs" when projectId is non-null', () => {
     const { container } = render(
       <SearchResultRow result={{ ...baseResult, projectId: 'p-1' }} query="hello" />
     );

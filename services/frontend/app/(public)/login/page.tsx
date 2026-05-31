@@ -21,20 +21,14 @@ import { AuthShell } from '@/components/auth/AuthShell';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { SmartCaptcha, type SmartCaptchaHandle } from '@/components/auth/SmartCaptcha';
 
-// HTTP 423 Locked. Same status the LockoutMiddleware short-circuits with on
-// TierLocked. Named so the response-shape narrowing reads better than a bare
-// magic number.
+// HTTP 423 Locked — same status the LockoutMiddleware short-circuits with.
 const HTTP_STATUS_LOCKED = 423;
-// Default retry window when the backend's response body omits the field
-// (defensive fallback — production always populates it).
+// Defensive fallback when the backend omits retry_after_seconds.
 const DEFAULT_LOCK_SECONDS = 900;
-// Seconds-per-minute for the "{minutes}" placeholder in lockoutBody.
 const SECONDS_PER_MINUTE = 60;
 
-// Login response shapes emitted by /auth/login when the lockout middleware
-// or captcha gate trips. account_locked carries retry_after_seconds;
-// captcha_required and captcha_invalid carry only the code (we pull the
-// localized string from the i18n catalog).
+// Login error body shapes. account_locked carries retry_after_seconds;
+// captcha_required / captcha_invalid carry only the code.
 type LoginErrorBody = {
   code?: string;
   error?: string;
@@ -47,18 +41,14 @@ export default function LoginPage() {
   const tLogin = useTranslations('auth.login');
   const tErrors = useTranslations('common.errors');
   const tValidation = useTranslations('validation');
-  // Rebuild the schema whenever the validation translator identity changes
-  // so a runtime locale switch swaps the Russian validation copy with the
-  // English one.
+  // Rebuild the schema on translator-identity change so locale-switch swaps
+  // validation copy.
   const loginSchema = useMemo(() => createLoginSchema(tValidation), [tValidation]);
 
-  // Captcha is mounted lazily — the first 400 captcha_required response from
-  // the backend flips this flag and the next submit asks the SmartCaptcha
-  // widget for a token.
+  // Captcha widget mounts lazily — first 400 captcha_required flips the flag
+  // and the next submit fetches a token.
   const [captchaRequired, setCaptchaRequired] = useState(false);
   const captchaRef = useRef<SmartCaptchaHandle | null>(null);
-  // 423 account_locked → render a Russian message with a password-reset CTA.
-  // Cleared on the next successful submit.
   const [lockedRetrySeconds, setLockedRetrySeconds] = useState<number | null>(null);
 
   const captchaSiteKey = process.env.NEXT_PUBLIC_SMARTCAPTCHA_SITE_KEY ?? '';
@@ -73,8 +63,8 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginInput) => {
     try {
-      // If backend asked for a captcha on a prior submit, ask the invisible
-      // widget for a token now and attach it as a header.
+      // If backend previously demanded a captcha, fetch a token now and
+      // attach it as a header.
       const headers: Record<string, string> = {};
       if (captchaRequired && captchaRef.current && captchaSiteKey) {
         const token = await captchaRef.current.execute();
@@ -82,21 +72,14 @@ export default function LoginPage() {
       }
       const res = await api.post(API_PATHS.AUTH.LOGIN, data, { headers });
       setAuth(res.data.user, res.data.accessToken);
-      // Drop ALL session-scoped React Query caches before the next render
-      // so a fresh actor never observes a prior actor's permissions array.
-      // removeQueries is required (not just invalidateQueries): invalidate
-      // marks data stale but keeps the cached value, so a
-      // PermissionsCacheGuard miss window can briefly surface the previous
-      // user's perms. BUSINESS_LIST_QUERY_KEY is ['businesses'] — partial-
-      // prefix sweep also drops nested
-      // ['businesses', bizId, 'permissions' | 'roles' | 'members' | …].
-      // PERMISSIONS_CATALOG is a separate top-level key — remove it
-      // explicitly so a different-deploy catalog can re-fetch.
+      // removeQueries (not invalidateQueries): invalidate keeps stale data
+      // around, leaving a window where the new actor briefly observes the
+      // previous user's perms. BUSINESS_LIST_QUERY_KEY is a prefix —
+      // partial sweep also drops nested per-business keys. PERMISSIONS_CATALOG
+      // is a separate top-level key, removed explicitly so a different-deploy
+      // catalog can re-fetch.
       queryClient.removeQueries({ queryKey: BUSINESS_LIST_QUERY_KEY });
       queryClient.removeQueries({ queryKey: QUERY_KEYS.PERMISSIONS_CATALOG });
-      // Reset lockout/captcha state on success — a fresh login wipes the
-      // backend counter via lockout.Clear, and any subsequent attempt
-      // should start at TierNormal.
       setLockedRetrySeconds(null);
       setCaptchaRequired(false);
       router.push('/chat');

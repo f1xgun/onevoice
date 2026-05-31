@@ -31,10 +31,9 @@ export const MAX_SYSTEM_PROMPT_CHARS = 4000;
 const PROJECT_NAME_MAX_LEN = 200;
 const PROJECT_DESCRIPTION_MAX_LEN = 2000;
 
-// Schema factory — request-scoped (Phase B1). Called inside the hook
-// body via useMemo so a locale switch swaps the validation copy. The
-// `params` slot matches next-intl's `RichTranslationValues` shape so
-// the structural compatibility round-trips both directions.
+// Request-scoped schema factory. Called inside the hook via useMemo so a
+// locale switch swaps validation copy. `params` matches next-intl's
+// `RichTranslationValues` shape for structural compatibility.
 function createProjectFormSchema(
   tValidation: (key: string, params?: Record<string, string | number | Date>) => string
 ) {
