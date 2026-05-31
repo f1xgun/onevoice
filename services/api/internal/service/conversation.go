@@ -12,17 +12,8 @@ import (
 	"github.com/f1xgun/onevoice/pkg/i18n"
 )
 
-// ConversationService owns conversation operations that compose more than
-// one repository write or read into a single domain transition. Pure CRUD
-// reads/writes stay on the handler-to-repo path until they grow shared
-// logic.
-//
-// As of this seam:
-//   - MoveToProject — replaces an inline four-op sequence in
-//     ConversationHandler.MoveConversation.
-//   - OpenChat — replaces an inline four-op sequence + soft-error +
-//     projection in ConversationHandler.ListMessages, returning a
-//     fully-projected *ChatView ready for JSON encoding.
+// ConversationService composes multi-step conversation transitions (MoveToProject, OpenChat).
+// See docs/services/conversation.md.
 type ConversationService struct {
 	convRepo    domain.ConversationRepository
 	messageRepo domain.MessageRepository
@@ -30,9 +21,8 @@ type ConversationService struct {
 	pendingRepo domain.PendingToolCallRepository
 }
 
-// NewConversationService constructs a ConversationService. Every dep is
-// required — a nil arg is a programmer error caught at boot, not a
-// fallback the service silently accommodates.
+// NewConversationService constructs a ConversationService; every dep is required (nil = wiring bug).
+// See docs/services/conversation.md.
 func NewConversationService(
 	convRepo domain.ConversationRepository,
 	messageRepo domain.MessageRepository,
@@ -59,36 +49,19 @@ func NewConversationService(
 	}, nil
 }
 
-// ErrInvalidProjectID is returned by MoveToProject when projectID is a
-// non-empty string that does not parse as a UUID. Distinct from
-// ErrProjectNotFound so the handler can map malformed input to 400 and
-// missing-project to 404 without duplicating the parse check.
+// ErrInvalidProjectID is returned by MoveToProject when projectID is non-empty but not a UUID.
+// See docs/services/conversation.md.
 var ErrInvalidProjectID = fmt.Errorf("invalid project id")
 
-// ChatView is the API contract returned by OpenChat — a fully-projected
-// view of a conversation's messages + active approval batches, ready for
-// JSON encoding by the handler. The JSON tags travel with the value object
-// because the projection (camelCase `pendingApprovals`, stable empty `[]`)
-// IS the contract — keeping it adjacent to OpenChat concentrates the
-// "shape of GET /messages" decisions in one place.
-//
-// PendingApprovals is ALWAYS serialized as a non-nil slice (even when
-// empty) so frontend code can iterate unconditionally; OpenChat enforces
-// this regardless of whether the pending lookup soft-errored.
+// ChatView is the JSON contract returned by OpenChat (messages + pending approvals).
+// See docs/services/conversation.md.
 type ChatView struct {
 	Messages         []domain.Message         `json:"messages"`
 	PendingApprovals []PendingApprovalSummary `json:"pendingApprovals"`
 }
 
-// PendingApprovalSummary is the per-batch projection emitted by OpenChat.
-// Each field name matches the JSON contract the frontend consumes to
-// render the approval card on page reload.
-//
-// EditableFields is intentionally left empty in this response: the
-// frontend already has the live tool registry via the `['tools']` React
-// Query (GET /api/v1/tools), which is the single source of truth for
-// per-tool editable-field whitelists. The field is still emitted as []
-// (not omitted) so the JSON schema stays stable for downstream consumers.
+// PendingApprovalSummary is the per-batch wire projection emitted by OpenChat.
+// See docs/services/conversation.md.
 type PendingApprovalSummary struct {
 	BatchID   string                `json:"batchId"`
 	MessageID string                `json:"messageId"`
@@ -98,12 +71,8 @@ type PendingApprovalSummary struct {
 	ExpiresAt time.Time             `json:"expiresAt"`
 }
 
-// ApprovalCallSummary is the api → frontend (camelCase) projection of an
-// approval batch element. Distinct from pkg/sse.ApprovalCall, which is the
-// orchestrator → api wire (snake_case) shape: the two consumers have
-// different naming conventions and slightly different field sets (no
-// Floor here because the FE has its own tools cache for that), so two
-// types serve two contracts.
+// ApprovalCallSummary is the api → frontend (camelCase) projection of an approval batch element.
+// See docs/services/conversation.md.
 type ApprovalCallSummary struct {
 	CallID         string                 `json:"callId"`
 	ToolName       string                 `json:"toolName"`
@@ -112,39 +81,10 @@ type ApprovalCallSummary struct {
 }
 
 // defaultMessageListLimit caps the number of messages OpenChat returns.
-// The frontend chat history view renders the latest N; older entries
-// require explicit pagination (not yet exposed via OpenChat).
 const defaultMessageListLimit = 200
 
-// MoveToProject moves a conversation to a different project (or to no
-// project when projectID is nil/empty) and returns the post-move
-// conversation. Owns the full transition end-to-end:
-//
-//  1. Fetch the conversation. Missing → ErrConversationNotFound.
-//  2. Enforce ownership — the requester must be the conversation's
-//     user. Cross-user attempts surface as ErrForbidden so the handler
-//     returns a uniform 403 without leaking existence.
-//  3. Resolve the destination display name — for an explicit projectID,
-//     load the project and verify it belongs to businessID; cross-tenant
-//     access surfaces as ErrProjectNotFound, mirroring
-//     ProjectService.GetByID. For nil/empty projectID, use the localized
-//     "no project" label.
-//  4. Persist the project_id assignment via the repo's atomic single-
-//     field update.
-//  5. Append a localized system note to the conversation history.
-//     Best-effort — the move already landed; a failed note is logged
-//     but does not fail the request.
-//  6. Re-fetch and return the post-move conversation.
-//
-// Locale for the destination label and system note comes from ctx via
-// i18n.Tr — middleware injects it upstream.
-//
-// Errors:
-//   - ErrInvalidProjectID         — projectID is non-empty but not a UUID
-//   - domain.ErrConversationNotFound — conversation does not exist
-//   - domain.ErrForbidden            — conversation exists, caller is not the owner
-//   - domain.ErrProjectNotFound      — projectID points to a missing or cross-tenant project
-//   - other                          — persistence errors propagated verbatim
+// MoveToProject moves a conversation to a project (or no project) and returns the post-move row.
+// See docs/services/conversation.md.
 func (s *ConversationService) MoveToProject(
 	ctx context.Context,
 	conversationID string,
@@ -171,8 +111,7 @@ func (s *ConversationService) MoveToProject(
 			return nil, projErr
 		}
 		if proj.BusinessID != businessID {
-			// Cross-tenant project access — surface as not-found
-			// rather than forbidden to avoid existence enumeration.
+			// Cross-tenant → not-found (avoid existence enumeration).
 			return nil, domain.ErrProjectNotFound
 		}
 		destName = proj.Name
@@ -189,11 +128,7 @@ func (s *ConversationService) MoveToProject(
 		CreatedAt:      time.Now(),
 	}
 	if err := s.messageRepo.Create(ctx, note); err != nil {
-		// Best-effort: the move itself already landed. Failing the
-		// request would leave the conversation in its new project
-		// without the audit note and offer no undo path. Keep the
-		// move atomic from the caller's POV; a missing note is
-		// observable but recoverable.
+		// Best-effort: move already landed; missing note is recoverable.
 		slog.WarnContext(ctx, "MoveToProject: failed to append system note",
 			"error", err, "conversation_id", conversationID)
 	}
@@ -205,29 +140,8 @@ func (s *ConversationService) MoveToProject(
 	return updated, nil
 }
 
-// OpenChat returns the assembled view rendered by GET /messages —
-// ownership-checked messages list + projected pending-approval batches —
-// in a single call. Composes four repo reads with one soft-error policy
-// (pending lookup failures degrade gracefully to an empty array) and
-// emits the wire-shape projection so the handler is a pure encoding step.
-//
-//  1. Fetch the conversation. Missing → ErrConversationNotFound.
-//  2. Enforce ownership — the requester must be the conversation's
-//     user. Cross-user attempts surface as ErrForbidden.
-//  3. Load the latest messages (capped at defaultMessageListLimit).
-//  4. Load active approval batches. Failure is non-fatal: logged and
-//     surfaced as an empty PendingApprovals slice. Rationale: the
-//     messages list is still useful for chat history; failing the
-//     entire request because of an approval-card hydration miss would
-//     be more surprising than a missing card.
-//  5. Project each batch into the camelCase wire shape and assemble the
-//     final ChatView.
-//
-// Errors:
-//   - domain.ErrConversationNotFound — conversation does not exist
-//   - domain.ErrForbidden            — conversation exists, caller is not the owner
-//   - other                          — persistence errors propagated verbatim
-//     (only the messages lookup blocks the request; pending lookups soft-error)
+// OpenChat returns the GET /messages view (messages + pending approvals) in one call.
+// See docs/services/conversation.md.
 func (s *ConversationService) OpenChat(
 	ctx context.Context,
 	conversationID string,
@@ -269,9 +183,7 @@ func (s *ConversationService) OpenChat(
 					CallID:   c.CallID,
 					ToolName: c.ToolName,
 					Args:     c.Arguments,
-					// EditableFields intentionally empty — the
-					// frontend has the live whitelist via
-					// GET /api/v1/tools.
+					// EditableFields stays []; FE owns the live whitelist via GET /api/v1/tools.
 					EditableFields: []string{},
 				})
 			}

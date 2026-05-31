@@ -16,18 +16,14 @@ import (
 )
 
 // TokenRefresher abstracts the HTTP call to refresh an expired OAuth token.
+// See docs/services/integration.md.
 type TokenRefresher interface {
-	// RefreshToken exchanges a refresh token for a new access token.
-	// Returns new access token, optional new refresh token (empty string if not rotated), expires_in seconds, error.
+	// RefreshToken exchanges a refresh token for a new access token (newRefreshToken empty if not rotated).
 	RefreshToken(ctx context.Context, refreshToken string) (accessToken string, newRefreshToken string, expiresIn int64, err error)
 }
 
 // ConnectParams holds parameters for connecting a new platform integration.
-//
-// ActorID is the user_id of whoever is performing
-// the connect, threaded through so the service can emit a single
-// integration.connected audit row with the correct attribution instead of
-// scattering audit calls across the 6 handler-layer Connect call sites.
+// See docs/services/integration.md.
 type ConnectParams struct {
 	BusinessID       uuid.UUID
 	ActorID          uuid.UUID
@@ -41,7 +37,7 @@ type ConnectParams struct {
 	ExpiresAt        *time.Time
 }
 
-// TokenResponse holds decrypted token data for a platform integration
+// TokenResponse holds decrypted token data for a platform integration.
 type TokenResponse struct {
 	IntegrationID    uuid.UUID              `json:"integration_id"`
 	Platform         string                 `json:"platform"`
@@ -53,7 +49,8 @@ type TokenResponse struct {
 	UserTokenExpires *time.Time             `json:"user_token_expires_at,omitempty"`
 }
 
-// IntegrationService defines the interface for platform integration management
+// IntegrationService defines the interface for platform integration management.
+// See docs/services/integration.md.
 type IntegrationService interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
 	GetByBusinessAndPlatform(ctx context.Context, businessID uuid.UUID, platform string) (*domain.Integration, error)
@@ -77,12 +74,8 @@ type integrationService struct {
 // Compile-time check that integrationService implements IntegrationService
 var _ IntegrationService = (*integrationService)(nil)
 
-// NewIntegrationService creates a new integration service instance.
-// refresher can be nil for platforms that don't use token refresh.
-//
-// auditLogger receives integration.connected and
-// integration.token_rotated events. nil-safe via audit.Nop at the caller
-// but production wiring always passes svcs.AuditLogger.
+// NewIntegrationService constructs the service; refresher/auditLogger may be nil (auto-defaulted to Nop).
+// See docs/services/integration.md.
 func NewIntegrationService(repo domain.IntegrationRepository, enc *crypto.Encryptor, refresher TokenRefresher, auditLogger audit.Logger) IntegrationService {
 	if auditLogger == nil {
 		auditLogger = audit.Nop()
@@ -149,9 +142,8 @@ func (s *integrationService) GetByBusinessAndPlatform(ctx context.Context, busin
 	return integration, nil
 }
 
-// UpdateMetadata replaces the metadata jsonb of an integration. Token
-// fields are preserved untouched — callers that need to rotate tokens
-// should go through Connect which handles encryption.
+// UpdateMetadata replaces only the metadata jsonb; token fields are preserved.
+// See docs/services/integration.md.
 func (s *integrationService) UpdateMetadata(ctx context.Context, integrationID uuid.UUID, metadata map[string]interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -179,9 +171,8 @@ func (s *integrationService) UpdateMetadata(ctx context.Context, integrationID u
 	return nil
 }
 
-// UpdateExternalID heals an integration's external_id field. Used when the
-// canonical id (e.g. Yandex Sprav permalink) wasn't known at connect time
-// and gets resolved later out-of-band.
+// UpdateExternalID heals the external_id post-connect (e.g. Yandex Sprav permalink resolved later).
+// See docs/services/integration.md.
 func (s *integrationService) UpdateExternalID(ctx context.Context, integrationID uuid.UUID, externalID string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -283,18 +274,14 @@ func (s *integrationService) Connect(ctx context.Context, params ConnectParams) 
 		return nil, err
 	}
 
-	// emit integration.connected AFTER
-	// the repo write succeeds. Details carry platform + external_id only —
-	// NEVER token material. Fire-and-forget — Logger spawns its own goroutine.
-	// ActorID may be uuid.Nil for legacy/system flows; the audit row still
-	// records business_id + platform for forensics.
+	// Emit integration.connected only after the repo write succeeds; payload carries no token material.
 	audit.LogIntegrationConnected(ctx, s.audit, params.BusinessID, params.ActorID, integration.ID, params.Platform, params.ExternalID)
 
 	return integration, nil
 }
 
-// GetDecryptedToken retrieves and decrypts the access token for a specific integration.
-// When externalID is empty, the first active integration for the platform is used.
+// GetDecryptedToken returns decrypted tokens, refreshing on expiry; empty externalID falls back to first-active.
+// See docs/services/integration.md.
 func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*TokenResponse, error) {
 	var integration *domain.Integration
 	var err error
@@ -378,10 +365,7 @@ func (s *integrationService) GetDecryptedToken(ctx context.Context, businessID u
 				return nil, fmt.Errorf("persist refreshed tokens: %w", err)
 			}
 
-			// emit integration.token_rotated AFTER
-			// repo.Update succeeds. user_id is intentionally nil — this is a
-			// background system event with no human actor (the builder records
-			// user_id=NULL).
+			// Emit integration.token_rotated only after repo.Update succeeds (user_id=NULL — system event).
 			audit.LogIntegrationTokenRotated(ctx, s.audit, integration.BusinessID, integration.ID, integration.Platform)
 
 			slog.InfoContext(ctx, "token refreshed successfully",
