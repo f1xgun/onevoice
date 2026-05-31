@@ -11,10 +11,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// mustMarshal is the internal helper used by every builder. Failure means
-// a Details struct is misconfigured at compile time (struct field cannot
-// be marshaled), which is a developer bug not a runtime fault — we log
-// and emit an empty object rather than panic in the request path.
+// mustMarshal is the internal helper for every builder. Failure means a
+// Details struct is misconfigured at compile time (unmarshalable field) —
+// a developer bug not a runtime fault — so we log and emit an empty object
+// rather than panic in the request path.
 func mustMarshal(d interface{}) json.RawMessage {
 	b, err := json.Marshal(d)
 	if err != nil {

@@ -3,9 +3,6 @@ package i18n
 // ru is the canonical (default + fallback) catalog. Every translatable key
 // MUST exist here. Keys missing from en/ fall back to this map at runtime.
 //
-// Phase C1 migrated the first batch of handler error strings out of inline
-// Russian literals; later phases (C2/C3/D) will add more keys.
-//
 //nolint:gosec // G101: catalog values describe sessionid/token cookies as user-visible copy, not credentials.
 var ru = map[string]string{
 	"test.hello": "Привет, %s",

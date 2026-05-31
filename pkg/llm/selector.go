@@ -13,20 +13,6 @@ import (
 // transitions). Router consults Selector once per Chat / ChatStream call
 // and feeds the outcome back via Record so the next pick can adapt.
 //
-// Two reasons the seam exists:
-//
-//  1. Concentration of policy. Before the seam, picking lived on Router
-//     (filter + strategy tie-break + fallback) and the health-rollup that
-//     fed it lived on Registry (RecordSuccess / RecordFailure / rolling
-//     window). Splitting "which provider?" across two modules made the
-//     contract — what fields drive selection — diffuse. Selector owns it.
-//
-//  2. Test surface. Router tests previously had to build a real Registry
-//     plus ModelProviderEntry fixtures even to exercise rate-limit,
-//     billing, or error-handling paths that don't care about selection.
-//     A fake Selector now answers Pick directly so callers exercise the
-//     Router behavior without the registry dance.
-//
 // Concurrent use: implementations must be safe for concurrent Pick / Record
 // from any number of goroutines — the Router fans out across requests.
 type Selector interface {
@@ -41,10 +27,10 @@ type Selector interface {
 	// Empty slice when no enabled+registered provider serves the model.
 	Candidates(model string, strategy Strategy) []Candidate
 	// Record folds an Outcome back into the Selector's policy state. The
-	// entry must be one previously returned by Pick — the default impl
-	// uses entry.Provider + entry.Model as its metrics key and also
-	// mirrors the new health / latency state onto the entry pointer so
-	// the next Pick (and any registry consumer) sees it immediately.
+	// entry must be one returned by Pick — the default impl uses
+	// entry.Provider + entry.Model as its metrics key and mirrors the new
+	// health / latency state onto the entry pointer so the next Pick (and
+	// any registry consumer) sees it immediately.
 	Record(entry *ModelProviderEntry, outcome Outcome)
 }
 
@@ -62,16 +48,15 @@ type Candidate struct {
 //   - Latency: end-of-response duration reported by the provider (set by
 //     non-stream Chat after the body arrives; zero for streaming starts
 //     because the channel-open instant is not user-perceived). Drives the
-//     rolling-window AvgLatencyMs used by Pick(StrategySpeed).
+//     rolling-window AvgLatencyMs for Pick(StrategySpeed).
 //   - Wall: wall-clock duration spent inside the provider call as seen by
 //     the caller (Invoke fills this from start/time.Since). Drives the
 //     prometheus per-call latency histogram via metrics.RecordLLMRequest.
 //
 // Model is the model name the caller requested. Invoke fills it; direct
-// Record callers (e.g. integration tests that exercise Selector policy
-// without going through Invoke) may leave it empty — in that case the
-// defaultSelector skips the prometheus emission so non-Router consumers
-// of the seam don't accidentally pollute the histogram.
+// Record callers may leave it empty — in that case the defaultSelector
+// skips the prometheus emission to avoid polluting the histogram with
+// empty labels.
 type Outcome struct {
 	Success bool
 	Latency time.Duration
@@ -103,8 +88,7 @@ var nowFunc = time.Now
 
 // defaultSelector is the production Selector. It consults Registry for
 // entries (config) and owns the rolling-window latency + health-transition
-// state in its own metrics map — both used to live on Registry, which
-// conflated config with runtime policy.
+// state in its own metrics map.
 type defaultSelector struct {
 	mu        sync.Mutex
 	registry  *Registry

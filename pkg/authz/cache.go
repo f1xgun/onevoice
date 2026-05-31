@@ -15,8 +15,7 @@ const (
 	roleCacheSize       = 256
 	cacheTTL            = 30 * time.Second
 	// authzCacheBucketCount is the number of internal LRU buckets used by
-	// NewCacheForTest. golang-lru shards the cache for concurrent access; 16
-	// is a sensible default for our expected concurrency.
+	// NewCacheForTest (golang-lru shards the cache for concurrent access).
 	authzCacheBucketCount = 16
 )
 
@@ -30,13 +29,9 @@ type cacheKey struct {
 // Role LRU: roleID -> CachedRole (Permissions). 256 entries, 30s TTL.
 // InvalidateMember and InvalidateRole are O(1) deletes (no fanout).
 //
-// NOTE on AUTHZ-10 determinism: expirable.LRU uses Go's time.Now internally
-// and exposes no clock seam. We deliberately drop the SPEC's Clock interface
-// (it would require forking the library). For deterministic tests, use
-// NewCacheForTest with small TTLs (e.g. 1s) and a >TTL sleep — see
-// TestRBACCoverage_TTLCeiling. The 1.1s sleep is non-flaky and meets the
-// SPEC <1s determinism bar's spirit (the original concern was multi-second
-// sleeps).
+// expirable.LRU uses Go's time.Now internally and exposes no clock seam.
+// For deterministic tests, use NewCacheForTest with small TTLs (e.g. 1s)
+// and a >TTL sleep — see TestRBACCoverage_TTLCeiling.
 type Cache struct {
 	loader  MembershipLoader
 	members *expirable.LRU[cacheKey, CachedMember]

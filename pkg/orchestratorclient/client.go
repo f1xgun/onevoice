@@ -1,9 +1,6 @@
-// Package orchestratorclient is a thin HTTP client used by services/api to
-// reach services/orchestrator's cluster-internal endpoints (chat streaming,
-// HITL resume, tool registry, draft-reply).
-//
-// Symmetric with pkg/tokenclient — both wrap a base URL + http.Client and
-// expose typed methods so consumers do not build URLs / requests inline.
+// Package orchestratorclient is a thin HTTP client for the orchestrator's
+// cluster-internal endpoints (chat streaming, HITL resume, tool registry,
+// draft-reply).
 package orchestratorclient
 
 import (
@@ -42,8 +39,7 @@ func New(baseURL string, httpClient *http.Client) *Client {
 	}
 }
 
-// BaseURL returns the trimmed base URL the client is configured with. Used by
-// callers that need to log the orchestrator endpoint or build adjacent URLs.
+// BaseURL returns the trimmed base URL the client is configured with.
 func (c *Client) BaseURL() string { return c.baseURL }
 
 // HTTPClient exposes the underlying http.Client for callers that need to
@@ -154,10 +150,9 @@ type StreamSSERequest struct {
 }
 
 // StreamSSE proxies the orchestrator's SSE response into req.Writer. It
-// owns the four cross-cutting concerns previously duplicated by every caller:
-// URL selection, upstream context handling (correlation + optional detach),
-// SSE response-header setup, and the buffered drain loop with optional
-// per-event domain dispatch.
+// owns four cross-cutting concerns: URL selection, upstream context
+// handling (correlation + optional detach), SSE response-header setup,
+// and the buffered drain loop with optional per-event domain dispatch.
 //
 // Returns:
 //   - nil after a clean drain (including the "client went away" case under
@@ -165,10 +160,6 @@ type StreamSSERequest struct {
 //   - non-nil on connect failure, on a Writer that does not implement
 //     http.Flusher (no bytes are written in this case so callers can still
 //     map to a non-SSE HTTP error), or on a scanner read error.
-//
-// Replaces the manual orchCtx/scanner/headers blocks previously open-coded in
-// services/api/internal/service/chatturn/{stream,hitl}.go and
-// services/api/internal/handler/hitl.go.
 func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 	flusher, ok := req.Writer.(http.Flusher)
 	if !ok {
@@ -271,10 +262,10 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 	return nil
 }
 
-// buildStreamRequest assembles the http.Request used by StreamSSE. The error
+// buildStreamRequest assembles the http.Request for StreamSSE. The error
 // is wrapped with "orchestratorclient: build <verb> request" / "stream <verb>:"
-// so the caller substring matchers ("stream chat:", "stream resume:") can
-// distinguish pre-connect failures from mid-drain ones.
+// so caller substring matchers can distinguish pre-connect failures from
+// mid-drain ones.
 func (c *Client) buildStreamRequest(ctx context.Context, conversationID, batchID string, body []byte, headers map[string]string, corrID string) (*http.Request, error) {
 	verb := "chat"
 	u := c.baseURL + "/chat/" + url.PathEscape(conversationID)

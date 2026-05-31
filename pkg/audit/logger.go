@@ -44,8 +44,7 @@ type UserResolver interface {
 }
 
 // NopUserResolver always returns ("", nil). Used by NewLogger when no
-// resolver is configured (backward compatibility for tests + pre-Phase-21
-// call sites). Production wiring uses NewLoggerWithResolver.
+// resolver is configured.
 type NopUserResolver struct{}
 
 // EmailByID always returns ("", nil) — the no-op resolver.
@@ -56,10 +55,8 @@ func (NopUserResolver) EmailByID(context.Context, uuid.UUID) (string, error) {
 // NewLogger returns a Logger that persists to repo asynchronously, with
 // bounded retry and a fail-open metric increment.
 //
-// Backward-compatible — uses NopUserResolver so existing call sites keep
-// working without touching user_email_at_event. Production wiring SHOULD
-// use NewLoggerWithResolver to populate the
-// user_email_at_event column for post-delete audit retention.
+// Uses NopUserResolver; production wiring SHOULD use NewLoggerWithResolver
+// to populate user_email_at_event for post-delete audit retention.
 func NewLogger(repo domain.AuditLogRepository) Logger {
 	return &loggerImpl{repo: repo, resolver: NopUserResolver{}}
 }

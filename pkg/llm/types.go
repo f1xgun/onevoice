@@ -46,8 +46,7 @@ type FunctionDefinition struct {
 }
 
 // SystemBlock is one segment of a multi-block system prompt. SystemBlocks are
-// the canonical channel for system content — they replace the legacy "scrub
-// role:'system' out of Messages" path that providers previously relied on.
+// the canonical channel for system content.
 //
 // CacheBoundary is a hint to providers that this block is the LAST member of a
 // cache-eligible prefix. Anthropic stamps `cache_control: ephemeral` on the
@@ -65,8 +64,7 @@ type SystemBlock struct {
 // SystemBlocks is the preferred channel for system-prompt content. When
 // non-empty, providers consume it directly and assume Messages is system-free.
 // When empty, providers fall back to scrubbing `role:"system"` entries out of
-// Messages (legacy behavior — preserved so non-migrated callers like
-// services/api/internal/service/titler.go continue to work).
+// Messages.
 type ChatRequest struct {
 	UserID         uuid.UUID        `json:"user_id"`                   // Use uuid.Nil for system-level calls
 	BusinessID     uuid.UUID        `json:"business_id,omitempty"`     // Router skips billing when uuid.Nil

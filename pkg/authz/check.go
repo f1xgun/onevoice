@@ -25,8 +25,7 @@ type BusinessContext struct {
 // WithBusinessContext.
 type businessContextKey struct{}
 
-// WithBusinessContext returns a ctx carrying bc. Used by the
-// RequireBusinessAccess middleware (pkg/authz/middleware.go).
+// WithBusinessContext returns a ctx carrying bc.
 func WithBusinessContext(ctx context.Context, bc BusinessContext) context.Context {
 	return context.WithValue(ctx, businessContextKey{}, bc)
 }
@@ -42,7 +41,7 @@ func BusinessContextFromCtx(ctx context.Context) (BusinessContext, bool) {
 // Can reports whether the request's BusinessContext grants perm.
 // Returns false when (a) ctx has no BusinessContext, (b) the role's
 // permissions slice does not contain perm. Always emits exactly one
-// slog line + one rbac_check_total increment per call (AUTHZ-11).
+// slog line + one rbac_check_total increment per call.
 func Can(ctx context.Context, perm Permission) bool {
 	bc, ok := BusinessContextFromCtx(ctx)
 	if !ok {

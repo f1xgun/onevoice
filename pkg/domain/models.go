@@ -12,11 +12,9 @@ type User struct {
 	Email        string    `json:"email" db:"email"`
 	PasswordHash string    `json:"-" db:"password_hash"`
 	// PreferredLocale is the user's chosen UI language ('ru' | 'en').
-	// Persisted in users.preferred_locale (migration 000010 prod / 000008 test — i18n Phase A3; renumbered in ).
-	// DB default 'ru'; CHECK constraint enforces the two-value enum. The frontend
-	// reads this on /auth/me to seed the locale cookie and writes it via
-	// PATCH /auth/locale. Snake-case json tag mirrors the DB column name so the
-	// existing /me response shape exposes it without a custom serializer.
+	// Persisted in users.preferred_locale. DB default 'ru'; CHECK constraint
+	// enforces the two-value enum. The frontend reads this on /auth/me to
+	// seed the locale cookie and writes it via PATCH /auth/locale.
 	PreferredLocale string `json:"preferred_locale" db:"preferred_locale"`
 	// EmailVerified — / /. JSON-hidden by default;
 	// the /auth/me handler surfaces it via a wrapper struct (MeResponse) so
@@ -142,9 +140,9 @@ type RefreshToken struct {
 // behavior is "fall back to the registry floor", which downstream
 // hitl.Resolve achieves automatically when a key is absent.
 //
-// This accessor is used by the orchestrator at pause time and by the API at
-// resolve time (TOCTOU re-check). Keeping the parsing in exactly one
-// place prevents divergent interpretation of malformed data.
+// Keeping the parsing in one place prevents divergent interpretation of
+// malformed data between the orchestrator (pause time) and the API (resolve
+// time TOCTOU re-check).
 func (b Business) ToolApprovals() map[string]ToolFloor {
 	out := make(map[string]ToolFloor)
 	raw, ok := b.Settings["tool_approvals"].(map[string]interface{})
