@@ -13,6 +13,7 @@
 // calm fallback summary.
 
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { reconnectLabelKey } from '@/lib/platforms';
 import type { AgentTask } from '@/types/task';
 
 export interface HumanError {
@@ -28,18 +29,7 @@ export function explainError(task: AgentTask): HumanError {
     case 'integration_token_invalid': {
       const summaryKey =
         platform === 'vk' ? 'tokenVk' : platform === 'telegram' ? 'tokenTelegram' : 'tokenGeneric';
-      // Per-platform reconnect labels must mirror the chat
-      // IntegrationTokenInvalidBanner so the two surfaces stay in sync.
-      const labelKey =
-        platform === 'telegram'
-          ? 'reconnectTelegram'
-          : platform === 'vk'
-            ? 'reconnectVk'
-            : platform === 'yandex_business'
-              ? 'reconnectYandex'
-              : platform === 'google_business'
-                ? 'reconnectGoogle'
-                : 'reconnect';
+      const labelKey = reconnectLabelKey(platform);
       const href = platform
         ? `${API_PATHS.INTEGRATIONS.ROOT}?reconnect=${platform}`
         : API_PATHS.INTEGRATIONS.ROOT;

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
 import { API_PATHS } from '@/lib/constants/apiPaths';
+import { reconnectLabelKey } from '@/lib/platforms';
 import { cn } from '@/lib/utils';
 
 export interface IntegrationTokenInvalidBannerProps {
@@ -22,19 +23,7 @@ export function IntegrationTokenInvalidBanner({ platform }: IntegrationTokenInva
   const summaryKey =
     platform === 'telegram' ? 'tokenTelegram' : platform === 'vk' ? 'tokenVk' : 'tokenGeneric';
 
-  // Per-platform reconnect labels must mirror the tasks page explainError so
-  // the two surfaces stay in sync.
-  const ctaKey =
-    platform === 'telegram'
-      ? 'reconnectTelegram'
-      : platform === 'vk'
-        ? 'reconnectVk'
-        : platform === 'yandex_business'
-          ? 'reconnectYandex'
-          : platform === 'google_business'
-            ? 'reconnectGoogle'
-            : 'reconnect';
-
+  const ctaKey = reconnectLabelKey(platform);
   const href = `${API_PATHS.INTEGRATIONS.ROOT}?reconnect=${platform}`;
 
   return (
