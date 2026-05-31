@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
+	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/tools"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
 )
@@ -129,9 +131,9 @@ func classifyYandexError(err error) error {
 }
 
 func (h *Handler) getBrowser(ctx context.Context, req a2a.ToolRequest) (YandexBrowser, error) {
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentYandexBusiness, "")
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentYandexBusiness, "")
 	if err != nil {
-		return nil, agentbase.WrapTokenFetchError(fmt.Errorf("fetch token: %w", err))
+		return nil, err
 	}
 	return h.pool.ForBusiness(req.BusinessID, info.AccessToken, info.ExternalID), nil
 }
@@ -269,10 +271,13 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 		return nil, err
 	}
 
-	limitF, _ := req.Args["limit"].(float64)
-	limit := int(limitF)
+	limit, err := a2a.GetIntParam(req.Args, "limit", domain.YandexBusinessReviewLimitDefault)
+	if err != nil {
+		slog.Warn("yandex agent: invalid limit param, using default", "error", err)
+		limit = domain.YandexBusinessReviewLimitDefault
+	}
 	if limit == 0 {
-		limit = 20
+		limit = domain.YandexBusinessReviewLimitDefault
 	}
 
 	reviews, err := browser.GetReviews(ctx, limit)

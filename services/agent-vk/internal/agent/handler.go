@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -137,9 +138,9 @@ func ensureNegativeGroupID(groupID string) string {
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentVK, groupID)
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, groupID)
 	if err != nil {
-		return nil, "", agentbase.WrapTokenFetchError(fmt.Errorf("fetch token: %w", err))
+		return nil, "", err
 	}
 	if groupID == "" {
 		groupID = info.ExternalID
@@ -153,9 +154,9 @@ func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (VKClient,
 // Community wall must be open/limited for service key reads to work.
 func (h *Handler) getReadClient(ctx context.Context, req a2a.ToolRequest) (VKClient, string, error) {
 	groupID, _ := req.Args["group_id"].(string)
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentVK, groupID)
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentVK, groupID)
 	if err != nil {
-		return nil, "", agentbase.WrapTokenFetchError(fmt.Errorf("fetch token: %w", err))
+		return nil, "", err
 	}
 	if groupID == "" {
 		groupID = info.ExternalID
@@ -290,8 +291,11 @@ func (h *Handler) getComments(ctx context.Context, req a2a.ToolRequest) (*a2a.To
 
 	postIDf, _ := req.Args["post_id"].(float64)
 	postID := int(postIDf)
-	countF, _ := req.Args["count"].(float64)
-	count := int(countF)
+	count, err := a2a.GetIntParam(req.Args, "count", defaultCommentCount)
+	if err != nil {
+		slog.Warn("vk agent: invalid count param, using default", "error", err)
+		count = defaultCommentCount
+	}
 	if count == 0 {
 		count = defaultCommentCount
 	}
@@ -422,8 +426,11 @@ func (h *Handler) getWallPosts(ctx context.Context, req a2a.ToolRequest) (*a2a.T
 		return nil, a2a.NewNonRetryableError(fmt.Errorf("vk: group_id is required"))
 	}
 
-	countF, _ := req.Args["count"].(float64)
-	count := int(countF)
+	count, err := a2a.GetIntParam(req.Args, "count", defaultWallPostCount)
+	if err != nil {
+		slog.Warn("vk agent: invalid count param, using default", "error", err)
+		count = defaultWallPostCount
+	}
 	if count <= 0 {
 		count = defaultWallPostCount
 	}
