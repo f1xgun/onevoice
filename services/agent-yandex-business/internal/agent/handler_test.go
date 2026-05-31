@@ -329,6 +329,40 @@ func TestClassifyYandexError_TransientNetworkError(t *testing.T) {
 	assert.False(t, errors.Is(err, &a2a.NonRetryableError{}), "network error should NOT be NonRetryableError")
 }
 
+// --- Typed code tests (locked-enum contract) ---
+
+func TestClassifyYandexError_SessionExpired_StampsTokenInvalid(t *testing.T) {
+	out := agent.ClassifyYandexError(fmt.Errorf("session expired"))
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+	assert.True(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyYandexError_LoginRedirect_StampsTokenInvalid(t *testing.T) {
+	out := agent.ClassifyYandexError(fmt.Errorf("login redirect detected"))
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+}
+
+func TestClassifyYandexError_PassportRedirect_StampsTokenInvalid(t *testing.T) {
+	out := agent.ClassifyYandexError(fmt.Errorf("redirected to passport.yandex.ru"))
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+}
+
+func TestClassifyYandexError_Captcha_StampsRateLimit(t *testing.T) {
+	out := agent.ClassifyYandexError(fmt.Errorf("captcha required"))
+	assert.Equal(t, "rate_limit_exceeded", a2a.CodeOf(out))
+	assert.True(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyYandexError_Generic_StampsTransient(t *testing.T) {
+	out := agent.ClassifyYandexError(fmt.Errorf("timeout 30000ms exceeded"))
+	assert.Equal(t, "transient", a2a.CodeOf(out))
+	assert.False(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyYandexError_Nil_ReturnsNil(t *testing.T) {
+	assert.NoError(t, agent.ClassifyYandexError(nil))
+}
+
 // countingBrowser wraps stubBrowser behavior with an atomic call counter.
 type countingBrowser struct {
 	stubBrowser
