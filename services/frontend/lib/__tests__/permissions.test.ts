@@ -1,24 +1,10 @@
 import { describe, it, expect } from 'vitest';
 
-// ---------------------------------------------------------------------------
 // Permissions drift snapshot (frontend ↔ backend).
 //
-// Phase 5 replaces the Phase 4 hardcoded role→permissions map with a
-// dynamic registry served by `GET /api/v1/permissions`. The legacy module
-// `lib/permissions.ts` is DELETED in the same plan (atomic swap; no
-// deprecation period — RESEARCH Pitfall 9).
-//
-// The new drift surface is the snapshot below. It captures the registry as
-// of Phase 5 (21 permissions in 6 resource groups). Any future change to
-// `pkg/authz.AllPermissions()` — adding, removing, or renaming a permission —
-// MUST update this snapshot in the same PR. CI then catches drift between
-// the Go registry and the frontend's expectations.
-//
-// The matching backend test
-// (TestAllPermissions_DescriptionsNotEmpty in pkg/authz/permissions_test.go)
-// guarantees every registered permission carries a non-empty Russian
-// description.
-// ---------------------------------------------------------------------------
+// Any future change to `pkg/authz.AllPermissions()` — adding, removing, or
+// renaming a permission — MUST update this snapshot in the same PR. CI then
+// catches drift between the Go registry and the frontend's expectations.
 
 const EXPECTED_PERMISSION_NAMES = [
   'business.read',
@@ -54,7 +40,7 @@ const EXPECTED_RESOURCES = [
 ] as const;
 
 describe('permissions registry snapshot (frontend ↔ backend drift surface)', () => {
-  it('has 21 permissions in 6 resource groups (Phase 5 baseline)', () => {
+  it('has 21 permissions in 6 resource groups', () => {
     expect(EXPECTED_PERMISSION_NAMES).toHaveLength(21);
     expect(EXPECTED_RESOURCES).toHaveLength(6);
   });

@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 // PermissionTree depends on this contract: a partially-selected group
 // renders <Checkbox checked="indeterminate" />, which MUST surface as
 // `aria-checked="mixed"` (Radix sets this automatically).
-describe('Checkbox (Phase 5 indeterminate glyph)', () => {
+describe('Checkbox (indeterminate glyph)', () => {
   it('exposes data-state="checked" when checked={true}', () => {
     const { container } = render(<Checkbox checked />);
     expect(container.querySelector('[data-state="checked"]')).not.toBeNull();

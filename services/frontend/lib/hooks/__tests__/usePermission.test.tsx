@@ -36,7 +36,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('usePermission (Phase 5 swap — reads /me/permissions)', () => {
+describe('usePermission (reads /me/permissions)', () => {
   it('returns isLoading=true then allowed=true when API returns the perm', async () => {
     mockedGetMyPermissions.mockResolvedValue(['business.read', 'members.invite']);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

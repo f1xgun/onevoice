@@ -6,7 +6,7 @@ import { usePermission } from '@/lib/hooks/usePermission';
 export interface RequirePermissionProps {
   /**
    * Flat permission string, e.g. `"members.invite"`. Must match a name returned
-   * by `GET /api/v1/permissions` (the dynamic registry — Plan 05-04).
+   * by `GET /api/v1/permissions` (the dynamic registry).
    */
   perm: string;
   /** Rendered when the active role lacks `perm`. Default: `null` (hide entirely). */

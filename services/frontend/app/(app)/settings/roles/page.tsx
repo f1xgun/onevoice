@@ -11,16 +11,8 @@ import { useRoles } from '@/lib/hooks/useRoles';
 import { SystemRolesSection } from './_components/SystemRolesSection';
 import { CustomRolesSection } from './_components/CustomRolesSection';
 
-// /settings/roles — list entry for the Phase 5 custom-roles UI.
-//
-// The page is a Client Component because:
-//   1. useRoles consumes React Query (client-side cache).
-//   2. The two child sections wire DropdownMenu interactions + the
-//      DeleteRoleDialog state machine.
-//
 // Wrapped in <RequirePermission perm="roles.read"> so an actor without
-// the registry permission gets an empty render (the settings layout
-// still surfaces — they can navigate elsewhere). This is a UX gate;
+// the registry permission gets an empty render — this is a UX gate;
 // the backend re-checks every GET on listRoles.
 
 const SKELETON_SYSTEM_ROWS = 4;

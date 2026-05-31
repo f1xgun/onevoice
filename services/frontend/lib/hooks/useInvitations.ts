@@ -50,7 +50,7 @@ export function useInvitationPreview(
     enabled,
     // 410/409 are stable terminal states; retrying would just surface
     // noise to the operator and amplify load on the rate-limited preview
-    // endpoint (threat T-04-02-03).
+    // endpoint.
     retry: false,
   });
 }
