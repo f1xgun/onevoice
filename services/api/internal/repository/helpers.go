@@ -25,8 +25,7 @@ func ActiveIntegrationStatusEq() squirrel.Eq {
 }
 
 // nullableUUID returns nil when u is uuid.Nil so pgx encodes the column as SQL
-// NULL. Otherwise returns the UUID by value. Used by billing.go LogUsage for
-// usage_logs.user_id (system-level callers pass uuid.Nil).
+// NULL. Otherwise returns the UUID by value.
 func nullableUUID(u uuid.UUID) any {
 	if u == uuid.Nil {
 		return nil

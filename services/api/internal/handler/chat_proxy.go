@@ -267,12 +267,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// loadHistory is a compat shim used by TestChatProxy_LoadHistory_SkipsEmptyAssistant,
-// which constructs &ChatProxyHandler{messageRepo: msgRepo} directly without
-// wiring Turn. Reads h.messageRepo so the test stays valid.
-//
-// Production callers should not use this — Turn.Run loads history through
-// chatturn's own loadHistory (which uses the same projection rules).
+// loadHistory loads conversation history through the message repository.
 func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID string) []map[string]string {
 	msgs, err := h.messageRepo.ListByConversationID(ctx, conversationID, 100, 0)
 	if err != nil {

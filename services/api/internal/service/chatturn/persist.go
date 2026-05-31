@@ -61,7 +61,7 @@ func (t *Turn) persistAssistantComplete(ctx context.Context, msg *domain.Message
 //   - Spawn ctx is detached 30s (landmine 5 / pitfall 2). The 5s
 //     persistCtx used elsewhere is too tight for the cheap-LLM call (3-8s).
 //   - Locale is copied off the persist ctx so the titler runs in the same
-//     language as the chat (Phase D2).
+//     language as the chat.
 //   - cancel is wired through a watcher goroutine so vet doesn't flag a
 //     discarded cancel and the timer goroutine cannot leak.
 //

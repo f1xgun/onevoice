@@ -16,7 +16,7 @@ type TokenService interface {
 	GetDecryptedToken(ctx context.Context, businessID uuid.UUID, platform, externalID string) (*service.TokenResponse, error)
 }
 
-// InternalTokenHandler handles internal token endpoints consumed by agents
+// InternalTokenHandler handles internal token endpoints.
 type InternalTokenHandler struct {
 	tokenService TokenService
 }

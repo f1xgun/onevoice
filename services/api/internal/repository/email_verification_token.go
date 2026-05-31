@@ -93,8 +93,7 @@ func (r *EmailVerificationTokenRepository) Insert(
 // winner's COMMIT, where `consumed_at IS NULL` no longer matches.
 //
 // Returns (userID, email, nil) on success — email is the address the token
-// was issued for (used by the handler to write the audit row's
-// user_email_at_event before the flag flip).
+// was issued for.
 func (r *EmailVerificationTokenRepository) ConsumeAtomic(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -119,9 +118,8 @@ func (r *EmailVerificationTokenRepository) ConsumeAtomic(
 }
 
 // LookupExpired returns (true, nil) if a row exists for tokenHash with
-// expires_at <= NOW AND consumed_at IS NULL — used by the handler to
-// distinguish "expired" from "unknown / consumed" purely for UX (Surface 3
-// verify_token_expired vs verify_token_invalid copy). This is a READ
+// expires_at <= NOW AND consumed_at IS NULL. Callers use it to distinguish
+// "expired" from "unknown / consumed" purely for UX. This is a READ
 // query, NOT another consume — the actual consume already failed with
 // ErrVerifyTokenInvalid before we get here.
 //
@@ -146,11 +144,10 @@ func (r *EmailVerificationTokenRepository) LookupExpired(
 	return exists, nil
 }
 
-// InvalidateAllForUser marks every unconsumed token for a user as
-// consumed. Used by ChangeEmailBeforeVerify so an in-flight
-// verification link cannot still verify the new (changed) address. Also
-// used by RequestResend to revoke older outstanding links before issuing
-// a fresh one.
+// InvalidateAllForUser marks every unconsumed token for a user as consumed.
+// Callers include ChangeEmailBeforeVerify (so an in-flight verification link
+// cannot still verify the new address) and RequestResend (to revoke older
+// outstanding links before issuing a fresh one).
 func (r *EmailVerificationTokenRepository) InvalidateAllForUser(
 	ctx context.Context,
 	tx pgx.Tx,

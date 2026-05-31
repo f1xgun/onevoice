@@ -44,8 +44,8 @@ func init() {
 // once in BuildServices (svcs.OrchClient) — there is no separate
 // (orchestratorURL, httpClient) plumbing.
 
-// Handlers constructs every HTTP handler used by the API service and
-// returns them aggregated in *router.Handlers ready for router.Setup.
+// Handlers constructs every HTTP handler for the API service and returns
+// them aggregated in *router.Handlers ready for router.Setup.
 //
 // Each handler constructor signature is locked by the existing handler
 // package — this function is wiring only, no business logic.

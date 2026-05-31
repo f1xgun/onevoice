@@ -215,7 +215,7 @@ func (r *businessMembershipRepository) DeleteInTx(ctx context.Context, tx pgx.Tx
 }
 
 // ListByBusiness returns all active+suspended members of a business ordered
-// by joined_at ASC. Used by GET /businesses/{id}/members.
+// by joined_at ASC.
 func (r *businessMembershipRepository) ListByBusiness(ctx context.Context, businessID uuid.UUID) ([]domain.BusinessMember, error) {
 	sql, args, err := r.sb.
 		Select(
@@ -254,7 +254,7 @@ func (r *businessMembershipRepository) ListByBusiness(ctx context.Context, busin
 }
 
 // ListByUser returns memberships the user holds across businesses ordered by
-// joined_at ASC. Used by GET /businesses (user-scoped list).
+// joined_at ASC.
 func (r *businessMembershipRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]domain.BusinessMember, error) {
 	sql, args, err := r.sb.
 		Select(
@@ -295,9 +295,9 @@ func (r *businessMembershipRepository) ListByUser(ctx context.Context, userID uu
 // ListUserIDsByRole returns the user_id values for every business_members row
 // holding roleID in the given business. RolesHandler.Delete captures
 // this set BEFORE tx.Commit so it can fanout authz.InvalidateMember per
-// affected user AFTER commit succeeds (Open Question A2: InvalidateRole alone
-// evicts only the role-perms entry, NOT the per-member membership entry that
-// caches the OLD role_id).
+// affected user AFTER commit succeeds (InvalidateRole alone evicts only the
+// role-perms entry, NOT the per-member membership entry that caches the OLD
+// role_id).
 func (r *businessMembershipRepository) ListUserIDsByRole(ctx context.Context, businessID, roleID uuid.UUID) ([]uuid.UUID, error) {
 	sqlStr, args, err := r.sb.
 		Select("user_id").
@@ -327,7 +327,7 @@ func (r *businessMembershipRepository) ListUserIDsByRole(ctx context.Context, bu
 }
 
 // CountOwnersByBusiness returns the count of active members holding the
-// SystemRoleOwnerID role. Used by EnsureOwnerExistsAfter invariant (AUTHZ-06).
+// SystemRoleOwnerID role.
 func (r *businessMembershipRepository) CountOwnersByBusiness(ctx context.Context, businessID uuid.UUID) (int, error) {
 	ownerRoleID, err := uuid.Parse(domain.SystemRoleOwnerID)
 	if err != nil {
