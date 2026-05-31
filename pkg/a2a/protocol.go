@@ -33,9 +33,12 @@ type ToolRequest struct {
 }
 
 // ToolResponse is sent back from the agent to the orchestrator.
+// Code is the typed error classifier emitted alongside a free-text Error
+// when Success is false. See pkg/a2a.CodedError for the locked enum.
 type ToolResponse struct {
 	TaskID  string                 `json:"task_id"`
 	Success bool                   `json:"success"`
 	Result  map[string]interface{} `json:"result,omitempty"`
 	Error   string                 `json:"error,omitempty"`
+	Code    string                 `json:"code,omitempty"`
 }
