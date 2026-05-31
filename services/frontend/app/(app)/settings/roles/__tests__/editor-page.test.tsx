@@ -129,7 +129,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('NewRolePage (UI-RBAC-08 create flow)', () => {
+describe('NewRolePage create flow', () => {
   it('renders empty form when no clone_from query param', async () => {
     renderPage(<NewRolePage />);
     await waitFor(() => {
@@ -188,7 +188,7 @@ describe('NewRolePage (UI-RBAC-08 create flow)', () => {
   });
 });
 
-describe('EditRolePage (UI-RBAC-08 edit flow)', () => {
+describe('EditRolePage edit flow', () => {
   it('pre-fills form from roles cache (name + description)', async () => {
     renderPage(<EditRolePage params={Promise.resolve({ id: MARKETING_ROLE.id })} />);
     await waitFor(() => {

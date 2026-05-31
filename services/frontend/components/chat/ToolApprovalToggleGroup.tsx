@@ -74,8 +74,7 @@ function ToggleBtn({ action, active, disabled, toolName, icon: Icon, onClick }: 
 
 /**
  * Mutually-exclusive three-button segmented control for the approval card.
- * Each call gets one of these. Not a `radiogroup` — users can re-pick among
- * independent toggle buttons (D-07), so the WAI-ARIA pattern here is
+ * Not a `radiogroup` — users can re-pick freely, so the WAI-ARIA pattern is
  * "buttons with aria-pressed", not RadioGroup. Parent owns the `decision`.
  */
 export function ToolApprovalToggleGroup({

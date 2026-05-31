@@ -77,7 +77,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('DeleteRoleDialog — D-08 smart variant branching', () => {
+describe('DeleteRoleDialog smart variant branching', () => {
   it('simple variant when member_count=0 → DELETE without reassign_to', async () => {
     mockedDeleteRole.mockResolvedValue(undefined);
     renderDialog({ role: EMPTY_CUSTOM_ROLE });
@@ -155,7 +155,7 @@ describe('DeleteRoleDialog — race recovery', () => {
   });
 });
 
-describe('buildReassignOptions (D-09 ordering)', () => {
+describe('buildReassignOptions ordering', () => {
   it('orders system roles Owner→Admin→Editor→Viewer, then custom A→Z', () => {
     const opts = buildReassignOptions({
       allRoles: [...SYSTEM_ROLES, MARKETING_ROLE, EMPTY_CUSTOM_ROLE],

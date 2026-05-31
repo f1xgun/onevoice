@@ -15,9 +15,9 @@ export interface PermissionTreeProps {
   /** Fires with the next array of permission keys after every user toggle. */
   onChange: (next: string[]) => void;
   /**
-   * Set of permissions the actor (current user) holds. Used to disable leaves
-   * the actor cannot grant (UI-RBAC-04 escalation-subset enforcement
-   * is a backend concern; this is the UX affordance per docs/security.md).
+   * Set of permissions the actor (current user) holds. Used to disable
+   * leaves the actor cannot grant. Escalation-subset enforcement is a
+   * backend concern; this is the UX affordance.
    */
   actorPermissions: Set<string>;
   /** Form-level disable (e.g. during submit). Disables every checkbox. */
@@ -26,22 +26,14 @@ export interface PermissionTreeProps {
 
 /**
  * Tree of all permissions grouped by resource. Controlled component owned by
- * `RoleEditorForm`.
+ * `RoleEditorForm`. Catalog is fetched lazily on first mount (staleTime:
+ * Infinity, gcTime: Infinity) — 99% of users never see this tree.
  *
- * Catalog is fetched lazily on first mount via React Query (staleTime: Infinity,
- * gcTime: Infinity ). 99% of users never see this tree, so no
- * app-boot waste.
+ * Group tri-state checkbox is derived only over actor-enabled leaves, so a
+ * partial actor never appears stuck on indeterminate.
  *
- * Locked behaviors:
- *  - : All groups expanded by default (no chevron-click needed).
- *  - : Group tri-state checkbox skips actor-disabled leaves on toggle —
- *     the tri-state is derived only over actor-enabled leaves so a partial
- *     actor never appears stuck on indeterminate.
- *  - : Each leaf renders Info icon + Tooltip with the permission's
- *     description (or «У вас нет этого права» if actor lacks it).
- *
- * UI-RBAC-11: every leaf key comes from `catalog[i].permissions[j].name` —
- * NO hardcoded permission strings in this file or its subtree.
+ * Every leaf key comes from `catalog[i].permissions[j].name` — NO hardcoded
+ * permission strings in this file or its subtree.
  */
 export function PermissionTree({
   value,

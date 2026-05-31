@@ -8,15 +8,8 @@ import { useBusinessStore } from '@/lib/stores/business';
 
 /**
  * Mount once inside `(app)/layout.tsx`. Invalidates the per-business
- * permissions cache when `activeBusinessId` changes (CONTEXT D-07 +
- * RESEARCH Pitfall 4 — reaction-not-side-effect pattern: the Zustand
- * reducer stays pure; the invalidate lives in a React layout effect).
- *
- * The `useQuery` key in `usePermission` already changes when
- * `activeBusinessId` changes (the cache entry is per-business), so this
- * guard is primarily a belt-and-suspenders defense against same-id-reselect
- * AND a visible signal that UI-RBAC-12 ("refresh on every business switch")
- * is implemented.
+ * permissions cache when `activeBusinessId` changes — belt-and-suspenders
+ * defense against same-id-reselect on top of the per-business `useQuery` key.
  *
  * Renders no DOM; sole purpose is the effect.
  */

@@ -19,10 +19,9 @@ import {
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import type { Role } from '@/lib/schemas';
 
-// React Query hooks for the roles surface. Mutations follow the
-// mutate-then-invalidate pattern per CONTEXT D-07 — no optimistic updates,
-// no setQueryData. Component layer (Plans 05-05/06/07) handles error→toast
-// mapping via lib/resolveErrorMap.mapRoleError.
+// React Query hooks for the roles surface. Mutations use
+// mutate-then-invalidate — no optimistic updates, no setQueryData. The
+// component layer maps errors to toasts via lib/resolveErrorMap.mapRoleError.
 //
 // All hooks accept `businessId: string | null` so callers can pass
 // `useBusinessStore.activeBusinessId` verbatim; queries gate on

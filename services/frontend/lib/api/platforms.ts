@@ -6,11 +6,10 @@ import { api } from '@/lib/api';
 export const platformStatusSchema = z.enum(['active', 'coming_soon', 'oauth_not_configured']);
 export type PlatformStatus = z.infer<typeof platformStatusSchema>;
 
-// i18n Phase C2: backend no longer serializes `name` / `description`.
-// Both are resolved on the frontend via messages/*.json
-// (platforms.fullLabel.<id>, platforms.description.<id>). Kept optional
-// here for legacy clients that still consume old API builds; new wire
-// responses omit the keys entirely.
+// Backend no longer serializes `name` / `description` — both are resolved
+// on the frontend via messages/*.json (platforms.fullLabel.<id>,
+// platforms.description.<id>). Kept optional for legacy clients on older
+// API builds; new wire responses omit the keys.
 export const platformSchema = z.object({
   id: z.string(),
   name: z.string().optional().default(''),

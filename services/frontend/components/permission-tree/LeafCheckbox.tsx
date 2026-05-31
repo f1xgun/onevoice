@@ -25,29 +25,16 @@ export interface LeafCheckboxProps {
 /**
  * One permission leaf — checkbox + monospace permission name + Info icon tooltip.
  *
- * disabled leaves (actor lacks the permission) render with `opacity-60`
- * and show «У вас нет этого права» on tooltip hover/focus. Radix Checkbox in
- * disabled state removes itself from tab order — accepted keyboard-tooltip-
- * discoverability tradeoff for v2.0.
+ * Disabled leaves (actor lacks the permission) render with `opacity-60`
+ * and show «У вас нет этого права» on tooltip hover/focus. Radix Checkbox
+ * in disabled state removes itself from tab order; the Info icon has
+ * `tabIndex=0` so keyboard users can still focus the description.
  *
- * enabled leaves show the permission's Russian description from the
- * catalog ( filled these in pkg/authz/permissions.go). The Info icon
- * is the tooltip's trigger — it has `tabIndex=0` so keyboard users can focus
- * it even when the checkbox itself is disabled.
+ * Holds NO hardcoded permission keys — every leaf name comes from the catalog.
  *
- * UI-RBAC-11: this component holds NO hardcoded permission keys; every leaf
- * name comes from props (sourced from the catalog).
- *
- * LOW-03 ( review) — known a11y limitation, tracked for v2.1:
- * the trigger's `aria-label={tooltipText}` and the TooltipContent both
- * render the same text. A screen reader focusing the Info icon will
- * announce the description twice (once from the label, once from the
- * tooltip popup). Out of scope for — a proper fix needs to either
- * lift the description into `aria-describedby` on the checkbox itself, or
- * drop the trigger's `aria-label` in favor of a generic "info" label and
- * rely solely on TooltipContent for the description. Both options touch
- * the LeafCheckbox tests and the PermissionTree contract — deferred to
- * the v2.1 a11y pass alongside the disabled-row tabIndex policy.
+ * Known a11y limitation: trigger's `aria-label` and TooltipContent render
+ * the same text, so screen readers announce the description twice. A proper
+ * fix would lift the description into `aria-describedby` on the checkbox.
  */
 export function LeafCheckbox({
   leafName,
