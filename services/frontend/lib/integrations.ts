@@ -1,3 +1,5 @@
+import { PLATFORM_DISPLAY_FIELD, type PlatformId } from './platforms';
+
 export interface IntegrationLike {
   platform: string;
   externalId: string;
@@ -35,21 +37,8 @@ export function getIntegrationDisplay(
   const md = (integration.metadata ?? {}) as Record<string, unknown>;
   const id = integration.externalId;
 
-  const friendly = (() => {
-    switch (integration.platform) {
-      case 'telegram':
-        return typeof md.channel_title === 'string' ? md.channel_title : '';
-      case 'vk':
-        return typeof md.community_name === 'string' ? md.community_name : '';
-      case 'yandex_business':
-        // business_name is the Sprav profile name (e.g. "Кафе Ромашка"),
-        // resolved lazily via the agent's get_info RPA tool — see
-        // POST /integrations/yandex_business/{id}/refresh-name.
-        return typeof md.business_name === 'string' ? md.business_name : '';
-      default:
-        return '';
-    }
-  })();
+  const field = PLATFORM_DISPLAY_FIELD[integration.platform as PlatformId];
+  const friendly = field && typeof md[field] === 'string' ? (md[field] as string) : '';
 
   // Yandex's externalId="default" is a placeholder, not a real identifier —
   // never render it. Show the platform label as the name when no friendly
