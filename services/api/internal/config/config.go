@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -33,6 +34,15 @@ const (
 
 	// String literal used for env-var "true" comparisons.
 	envBoolTrue = "true"
+
+	// PostgreSQL pool sizing defaults. Sized for free-beta single-pod /
+	// ~10-20 concurrent chats; operators raise via PG_* env at scale.
+	defaultPGMaxConns              = 25
+	defaultPGMinConns              = 2
+	defaultPGMaxConnLifetime       = 30 * time.Minute
+	defaultPGMaxConnIdleTime       = 15 * time.Minute
+	defaultPGHealthCheckPeriod     = 1 * time.Minute
+	defaultPGMaxConnLifetimeJitter = 3 * time.Minute
 )
 
 // Default endpoint URLs for env-driven config. These are dev-mode
@@ -229,6 +239,17 @@ type Config struct {
 	FreeTierDailySpendUSD        float64
 	RedisDownPolicy              string
 	LocalFallbackRequestsPerHour int
+
+	// PostgreSQL pool sizing. Defaults sized for free-beta single-pod;
+	// operators raise via PG_* env vars at scale. config.Load enforces
+	// 0 < PGMaxConns <= math.MaxInt32 and 0 <= PGMinConns <= PGMaxConns
+	// so wire/databases.go int→int32 conversions are gosec G115 safe.
+	PGMaxConns              int
+	PGMinConns              int
+	PGMaxConnLifetime       time.Duration
+	PGMaxConnIdleTime       time.Duration
+	PGHealthCheckPeriod     time.Duration
+	PGMaxConnLifetimeJitter time.Duration
 }
 
 func Load() (*Config, error) {
@@ -392,6 +413,61 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be > 0 when LLM_RATELIMIT_ON_REDIS_DOWN=local_fallback")
 	}
 
+	// PostgreSQL pool sizing. Defaults sized for free-beta single-pod;
+	// operators tune via PG_* env. Parse + validate fail loud — silent
+	// default coercion on a typo would silently hide pool starvation in
+	// production.
+	pgMaxConns, err := parseIntEnv("PG_MAX_CONNS", defaultPGMaxConns)
+	if err != nil {
+		return nil, err
+	}
+	cfg.PGMaxConns = pgMaxConns
+
+	pgMinConns, err := parseIntEnv("PG_MIN_CONNS", defaultPGMinConns)
+	if err != nil {
+		return nil, err
+	}
+	cfg.PGMinConns = pgMinConns
+
+	pgMaxConnLifetime, err := parseDurationEnv("PG_MAX_CONN_LIFETIME", defaultPGMaxConnLifetime)
+	if err != nil {
+		return nil, err
+	}
+	cfg.PGMaxConnLifetime = pgMaxConnLifetime
+
+	pgMaxConnIdleTime, err := parseDurationEnv("PG_MAX_CONN_IDLE_TIME", defaultPGMaxConnIdleTime)
+	if err != nil {
+		return nil, err
+	}
+	cfg.PGMaxConnIdleTime = pgMaxConnIdleTime
+
+	pgHealthCheckPeriod, err := parseDurationEnv("PG_HEALTH_CHECK_PERIOD", defaultPGHealthCheckPeriod)
+	if err != nil {
+		return nil, err
+	}
+	cfg.PGHealthCheckPeriod = pgHealthCheckPeriod
+
+	pgMaxConnLifetimeJitter, err := parseDurationEnv("PG_MAX_CONN_LIFETIME_JITTER", defaultPGMaxConnLifetimeJitter)
+	if err != nil {
+		return nil, err
+	}
+	cfg.PGMaxConnLifetimeJitter = pgMaxConnLifetimeJitter
+
+	if cfg.PGMaxConns <= 0 {
+		return nil, fmt.Errorf("PG_MAX_CONNS must be > 0, got %d", cfg.PGMaxConns)
+	}
+	// Upper bound matches pgxpool.Config.MaxConns (int32). Bounding here
+	// lets wire/databases.go convert without a gosec G115 false positive.
+	if cfg.PGMaxConns > math.MaxInt32 {
+		return nil, fmt.Errorf("PG_MAX_CONNS must be <= %d, got %d", math.MaxInt32, cfg.PGMaxConns)
+	}
+	if cfg.PGMinConns < 0 {
+		return nil, fmt.Errorf("PG_MIN_CONNS must be >= 0, got %d", cfg.PGMinConns)
+	}
+	if cfg.PGMinConns > cfg.PGMaxConns {
+		return nil, fmt.Errorf("PG_MIN_CONNS=%d must be <= PG_MAX_CONNS=%d", cfg.PGMinConns, cfg.PGMaxConns)
+	}
+
 	// Validate required fields
 	if cfg.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required")
@@ -484,4 +560,34 @@ func parseIndexedEndpoints() []SelfHostedEndpoint {
 		})
 	}
 	return result
+}
+
+// parseIntEnv reads an integer env var with fail-loud parsing. Empty
+// returns the default; non-empty must parse to an int or Load() aborts
+// boot with a forensic error message. Mirrors parseDurationEnv.
+func parseIntEnv(key string, defaultValue int) (int, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue, nil
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer, got %q: %w", key, value, err)
+	}
+	return n, nil
+}
+
+// parseDurationEnv reads a Go-duration env var with fail-loud parsing.
+// Empty returns the default; non-empty must parse via time.ParseDuration
+// or Load() aborts boot with a forensic error message. Mirrors parseIntEnv.
+func parseDurationEnv(key string, defaultValue time.Duration) (time.Duration, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue, nil
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a Go duration, got %q: %w", key, value, err)
+	}
+	return d, nil
 }
