@@ -71,20 +71,27 @@ func ClassifyGBPError(err error) error {
 	return classifyGBPError(err)
 }
 
-// classifyGBPError wraps permanent Google API errors as NonRetryableError.
+// classifyGBPError stamps permanent Google API errors with a typed Code and
+// composes with NonRetryableError. 401/403/PERMISSION_DENIED/UNAUTHENTICATED
+// map to integration_token_invalid; 404/NOT_FOUND map to channel_not_found;
+// everything else is treated as transient (retryable).
 func classifyGBPError(err error) error {
 	if err == nil {
 		return nil
 	}
+	// Preserve an already-typed code from upstream wrapping sites.
+	if a2a.CodeOf(err) != "" {
+		return err
+	}
 	msg := err.Error()
 	if strings.Contains(msg, "401") || strings.Contains(msg, "403") ||
 		strings.Contains(msg, "PERMISSION_DENIED") || strings.Contains(msg, "UNAUTHENTICATED") {
-		return a2a.NewNonRetryableError(err)
+		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
 	}
 	if strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") {
-		return a2a.NewNonRetryableError(err)
+		return a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(err))
 	}
-	return err
+	return a2a.NewCodedError("transient", err)
 }
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (GBPClient, string, error) {
