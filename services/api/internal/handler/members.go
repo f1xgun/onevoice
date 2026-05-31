@@ -158,15 +158,15 @@ type updateMemberRoleRequest struct {
 	RoleID uuid.UUID `json:"role_id"`
 }
 
-// UpdateMemberRole handles PATCH /api/v1/businesses/{id}/members/{userId}.
-// Permission: PermMembersUpdateRole. SPEC MEMBER-02 + MEMBER-05 + MEMBER-06.
+// UpdateMemberRole handles PATCH /api/v1/businesses/{id}/members/{userId}
+// (PermMembersUpdateRole).
 //
-// Order of operations (SPEC AUTHZ-04 / MEMBER-05):
-// 1. Open RepeatableRead tx
-// 2. EnsureOwnerExistsAfter (SELECT FOR UPDATE — serializes concurrent demotes)
-// 3. repo.UpdateRole (sets role_changed_at + role_changed_by — MEMBER-06)
-// 4. tx.Commit
-// 5. cache.InvalidateMember (AFTER commit, never before)
+// Order:
+//  1. Open RepeatableRead tx
+//  2. EnsureOwnerExistsAfter (SELECT FOR UPDATE serializes concurrent demotes)
+//  3. repo.UpdateRole (sets role_changed_at + role_changed_by)
+//  4. tx.Commit
+//  5. cache.InvalidateMember — AFTER commit, never before
 func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -260,19 +260,12 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 	}
 	committed = true
 
-	// SPEC AUTHZ-04 + MEMBER-05: invalidate AFTER commit, never before.
+	// Invalidate AFTER commit, never before.
 	h.invalidator.InvalidateMember(bc.BusinessID, targetUserID)
 
-	// emit rbac.role_granted AFTER successful
-	// commit + cache invalidation. Fire-and-forget — Logger spawns its own
-	// goroutine; never blocks the response.
-	//
-	// v1.0: oldRoleID is intentionally nil. Capturing it would require either
-	// (a) a pre-commit SELECT (race window: another admin could change the
-	// row between SELECT and the actual UpdateRoleInTx) or (b) an
-	// `UpdateRoleInTx` repo signature that returns the previous role_id.
-	// Both are deferred — the audit row still captures actor, target, and
-	// the new role which is the load-bearing forensic data.
+	// oldRoleID is nil: capturing it would require either a pre-commit SELECT
+	// (race window) or an UpdateRoleInTx returning the previous role_id —
+	// both deferred. Actor + target + new role is the load-bearing forensic data.
 	audit.LogRoleGranted(r.Context(), h.audit, bc.BusinessID, bc.UserID, targetUserID, req.RoleID, nil)
 
 	slog.InfoContext(r.Context(), "member role updated",
@@ -298,19 +291,17 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// RemoveMember handles DELETE /api/v1/businesses/{id}/members/{userId}.
-// Permission: PermMembersRemove EXCEPT when targetUserID == bc.UserID (self-removal exempt — / MEMBER-04).
-// Still subject to last-owner check even for self-removal (MEMBER-04 acceptance).
-// SPEC MEMBER-03 + MEMBER-04 + MEMBER-05.
+// RemoveMember handles DELETE /api/v1/businesses/{id}/members/{userId}
+// (PermMembersRemove, self-removal exempt but still subject to last-owner check).
 //
-// Order of operations (SPEC AUTHZ-04 / MEMBER-05):
-// 1. Open RepeatableRead tx
-// 2. EnsureOwnerExistsAfter (SELECT FOR UPDATE — serializes concurrent removes)
-// 3. repo.DeleteInTx (DELETE inside the same tx — G-07 fix)
-// 4. tx.Commit
-// 5. cache.InvalidateMember (AFTER commit, never before — SPEC AUTHZ-04)
+// Order:
+//  1. Open RepeatableRead tx
+//  2. EnsureOwnerExistsAfter (SELECT FOR UPDATE serializes concurrent removes)
+//  3. repo.DeleteInTx (DELETE inside the same tx)
+//  4. tx.Commit
+//  5. cache.InvalidateMember — AFTER commit, never before
 //
-// Returns exactly 204 No Content on success (MEDIUM #8 committed contract).
+// Returns 204 No Content on success.
 func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -322,9 +313,8 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Self-removal exemption: a member can always remove themselves regardless
-	// of PermMembersRemove (MEMBER-04). The comparison is
-	// bc.UserID (JWT-validated) vs targetUserID (URL param) — mitigation.
+	// Self-removal exemption: members can always remove themselves regardless
+	// of PermMembersRemove. bc.UserID is JWT-validated; targetUserID is URL.
 	if targetUserID != bc.UserID {
 		if !authz.Can(r.Context(), authz.PermMembersRemove) {
 			writeJSONError(w, http.StatusForbidden, "forbidden")
@@ -353,9 +343,8 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// DeleteInTx writes the DELETE inside the same RepeatableRead transaction as
-	// EnsureOwnerExistsAfter's SELECT FOR UPDATE, preventing the pool/tx deadlock
-	// (G-07 fix — mirrors / UpdateRoleInTx in UpdateMemberRole).
+	// DeleteInTx runs inside the same RepeatableRead tx as EnsureOwnerExistsAfter's
+	// SELECT FOR UPDATE — prevents the pool/tx deadlock.
 	if err := h.membershipRepo.DeleteInTx(r.Context(), tx, bc.BusinessID, targetUserID); err != nil {
 		writeAuthzInvariantError(r.Context(), w, "remove_member.delete", err)
 		return
@@ -367,11 +356,10 @@ func (h *MembersHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// SPEC AUTHZ-04 + MEMBER-05: invalidate AFTER commit, never before.
+	// Invalidate AFTER commit, never before.
 	h.invalidator.InvalidateMember(bc.BusinessID, targetUserID)
 
-	// emit rbac.member_removed AFTER successful
-	// commit. selfRemoval=true distinguishes "left the org" from "kicked".
+	// selfRemoval=true distinguishes "left the org" from "kicked".
 	audit.LogMemberRemoved(r.Context(), h.audit, bc.BusinessID, bc.UserID, targetUserID, targetUserID == bc.UserID)
 
 	slog.InfoContext(r.Context(), "member removed",
