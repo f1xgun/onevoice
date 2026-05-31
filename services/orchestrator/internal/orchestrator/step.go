@@ -38,75 +38,59 @@ const (
 	OutcomeMaxIterations
 )
 
-// RunState holds the mutable loop state across iterations. Serialized to
-// PendingToolCallBatch.ModelMessages at pause time and reconstructed at
-// resume time by Resume.
+// RunState is the mutable loop state. Serialized to
+// PendingToolCallBatch.ModelMessages at pause time, reconstructed by Resume.
 type RunState struct {
-	// Messages is the conversation history forwarded to the LLM. It MUST NOT
+	// Messages is the conversation history forwarded to the LLM. MUST NOT
 	// carry a leading role:"system" entry — system content lives on
-	// SystemPlatform / SystemBusiness and is wired into
-	// llm.ChatRequest.SystemBlocks by stepRun. Legacy Resume snapshots may
-	// still contain a leading system message; Resume detects that shape and
-	// falls back to the legacy scrub path (see resume.go).
+	// SystemPlatform / SystemBusiness and is wired into SystemBlocks by
+	// stepRun. Legacy Resume snapshots with a leading system message fall
+	// back to the scrub path in resume.go.
 	Messages []llm.Message
 
 	// SystemPlatform is Block 1 of the two-block system prompt — the
-	// platform-wide prefix that Anthropic caches via cache_control:ephemeral.
-	// Byte-stable per locale (asserted by TestSystemPromptHash_Stability).
+	// platform-wide prefix Anthropic caches via cache_control:ephemeral.
+	// Byte-stable per locale.
 	SystemPlatform string
 
-	// SystemBusiness is Block 2 of the two-block system prompt — the per-
-	// business prefix (name, integrations, current time, optional project
-	// block). NEVER carries cache_control: every business has distinct bytes
-	// here and stamping it would defeat cross-business cache reuse.
+	// SystemBusiness is Block 2 — the per-business prefix. NEVER carries
+	// cache_control; every business has distinct bytes and stamping would
+	// defeat cross-business cache reuse.
 	SystemBusiness string
 
-	// AvailableTools is the whitelist-filtered tool set for this turn.
 	AvailableTools []llm.ToolDefinition
 
-	// BusinessApprovals is the businesses.settings.tool_approvals snapshot.
-	// Nil maps are tolerated by hitl.Resolve.
-	BusinessApprovals map[string]domain.ToolFloor
-
-	// ProjectApprovalOverrides is the projects.approval_overrides snapshot.
-	// Nil maps are tolerated by hitl.Resolve.
+	// BusinessApprovals / ProjectApprovalOverrides are snapshots of
+	// settings.tool_approvals / projects.approval_overrides. Nil maps OK.
+	BusinessApprovals        map[string]domain.ToolFloor
 	ProjectApprovalOverrides map[string]domain.ToolFloor
 
-	// ConversationID / BusinessID / UserID / MessageID are the identity
-	// fields persisted on PendingToolCallBatch so that the resolve
-	// handler can enforce business-scoped access control.
+	// Identity fields persisted on PendingToolCallBatch for business-scoped
+	// access control at resolve time.
 	ConversationID string
 	BusinessID     string
 
-	// ProjectID is nullable — empty when a conversation has no project
-	// ("Без проекта"). Threaded into batch.ProjectID so the
-	// TOCTOU re-check can load the project's approval_overrides at
-	// resolve time.
+	// ProjectID is empty when conversation has no project. Threaded into
+	// batch.ProjectID so TOCTOU re-check can load project overrides.
 	ProjectID string
 	UserID    string
 	MessageID string
 
-	// Model / Tier mirror the incoming ChatRequest fields so that
-	// subsequent iterations (including post-resume) route to the same
-	// provider with the same tier.
+	// Model / Tier route subsequent iterations (including post-resume) to
+	// the same provider+tier as the initial request.
 	Model string
 	Tier  string
 
-	// UserID / UUID (from RunRequest.UserID) is retained here as a
-	// sibling of UserID (string) — LLMClient.Chat takes the uuid.UUID
-	// form in ChatRequest. We keep both; legacy callers pass a uuid.
+	// UserUUID is the uuid.UUID form taken by LLMClient.Chat — kept
+	// alongside string UserID for legacy callers.
 	UserUUID uuid.UUID
 
-	// Iter is the 0-based iteration counter. Pause persists this value
-	// so resume can continue at Iter+1.
+	// Iter is the 0-based iteration counter; resume continues at Iter+1.
 	Iter int
 
-	// AccumulatedInputTokens is the running sum of Usage.InputTokens across
-	// all LLM calls in this conversation. Persisted in the pause snapshot so
-	// a resumed turn does not reset the budget to zero.
-	AccumulatedInputTokens int
-
-	// AccumulatedOutputTokens is the parallel running sum on the output axis.
+	// Accumulated*Tokens are running per-conversation sums persisted in the
+	// pause snapshot so resume doesn't reset the budget to zero.
+	AccumulatedInputTokens  int
 	AccumulatedOutputTokens int
 }
 
@@ -173,28 +157,19 @@ func translateChatError(ctx context.Context, err error) Event {
 	}
 }
 
-// stepRun is the single shared loop body used by both Run (fresh turns) and
-// Resume (post-approval continuation). It MUST NOT block waiting for
-// approval — when a manual-floor tool is classified, it persists the
-// batch, emits the tool_approval_required event, and returns
-// OutcomePaused so the caller's goroutine exits cleanly.
+// stepRun is the shared loop body for Run (fresh turns) and Resume
+// (post-approval continuation). MUST NOT block waiting for approval — on
+// manual-floor classification it persists the batch, emits
+// tool_approval_required, and returns OutcomePaused.
 //
-// The StepOutcome return is currently unused by Run (it just calls close(ch)) but
-// IS consumed by Resume's dispatchApprovedCalls path — suppressing unparam
-// because the return value is load-bearing downstream.
-//
-//nolint:unparam // StepOutcome consumed by Resume — see resume.go.
+//nolint:unparam // StepOutcome consumed by Resume's dispatchApprovedCalls path.
 func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- Event) (StepOutcome, string, error) {
 	for state.Iter < o.options.MaxIterations {
-		// 1. Call the LLM. SystemBlocks is the canonical channel for system
-		// content. Block 1 (platform) carries CacheBoundary=true so Anthropic
-		// stamps cache_control on it; Block 2 (per-business) does not — keeps
-		// the cache prefix byte-stable across businesses.
-		//
-		// BusinessID + ConversationID populate the billing-attribution fields.
-		// parseBizID degrades a malformed/empty value to uuid.Nil so the
-		// router's nil-guard skips billing instead of writing a corrupt row
-		// (fail-closed posture).
+		// Block 1 (platform) carries CacheBoundary=true so Anthropic stamps
+		// cache_control on it; Block 2 (per-business) does not, keeping the
+		// cache prefix byte-stable across businesses.
+		// parseBizID degrades malformed BusinessID to uuid.Nil so the router's
+		// nil-guard skips billing instead of writing a corrupt row.
 		llmReq := llm.ChatRequest{
 			UserID:         state.UserUUID,
 			BusinessID:     parseBizID(state.BusinessID),
@@ -214,9 +189,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		resp, err := o.llm.Chat(ctx, llmReq)
 		if err != nil {
 			// Translate rate-limiter sentinels to coded SSE error events so
-			// downstream consumers can branch on Code without parsing free
-			// text. Unknown errors keep their legacy err.Error() shape so
-			// existing observability is preserved.
+			// consumers can branch on Code without parsing free text.
 			ev := translateChatError(ctx, err)
 			select {
 			case out <- ev:
@@ -225,11 +198,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			return OutcomeError, "", err
 		}
 
-		// Accumulate per-conversation token counts BEFORE the no-tool-calls
-		// terminal branch so the cap gate fires uniformly on both terminal
-		// and tool-call iterations. A single mid-iter overshoot (Usage
-		// returns more than the cap on one response) is covered by the same
-		// check because the comparison is against the running sum.
+		// Accumulate BEFORE the no-tool-calls branch so the cap fires
+		// uniformly on both terminal and tool-call iterations. Mid-iter
+		// overshoot is caught because the comparison is against the sum.
 		state.AccumulatedInputTokens += resp.Usage.InputTokens
 		state.AccumulatedOutputTokens += resp.Usage.OutputTokens
 		if o.options.ConversationInputCap > 0 && state.AccumulatedInputTokens >= o.options.ConversationInputCap {
@@ -280,10 +251,8 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			ToolCalls: resp.ToolCalls,
 		})
 
-		// 4. Classify every LLM-proposed tool call through hitl.Bucket,
-		//    bucketing into auto / manual / forbidden. hitl.Bucket folds the
-		//    registry-floor lookup + Resolve into one pure call so this loop
-		//    body and the resolve-path TOCTOU re-check cannot diverge.
+		// hitl.Bucket folds registry-floor + Resolve into one pure call so
+		// this loop and the resolve-path TOCTOU re-check cannot diverge.
 		autoCalls, manualCalls, forbiddenCalls := hitl.Bucket(
 			o.tools.Floor,
 			state.BusinessApprovals,
@@ -291,9 +260,8 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			resp.ToolCalls,
 		)
 
-		// 5. Forbidden calls → synthesize rejection message, emit
-		//    tool_rejected event, DO NOT dispatch. The LLM sees the
-		//    outcome on the next iteration.
+		// Forbidden calls: synthesize rejection message + emit tool_rejected,
+		// DO NOT dispatch. The LLM sees the outcome on the next iteration.
 		for _, tc := range forbiddenCalls {
 			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
 			state.Messages = append(state.Messages, llm.Message{
@@ -313,22 +281,18 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			}
 		}
 
-		// 6. Auto calls — dispatch in parallel via dispatchToolCalls (ported from
-		// main's c662290) so independent platform broadcasts complete
-		// concurrently. dispatchToolCalls appends tool-role messages in the
-		// original tool_calls order regardless of completion order, preserving
-		// the LLM's assistant.tool_calls[i].id ↔ tool[i] correspondence.
+		// Auto calls dispatched in parallel. dispatchToolCalls appends tool-role
+		// messages in the original tool_calls order regardless of completion
+		// order, preserving the assistant.tool_calls[i].id ↔ tool[i] mapping.
 		if len(autoCalls) > 0 {
 			if !o.dispatchToolCalls(ctx, out, autoCalls, &state.Messages) {
 				return OutcomeError, "", ctx.Err()
 			}
 		}
 
-		// 7. Manual calls — persist, emit pause event, return.
-		//    Order invariant: Persist succeeds BEFORE emitting the pause
-		//    event. Persist's internal preparing → pending two-step is the
-		//    crash-recovery seam for the orphan-reconcile sweep; callers see
-		//    a single transition from "no batch" to "pending".
+		// Manual calls: Persist MUST succeed before emitting the pause event.
+		// Persist's internal preparing → pending two-step is the crash-recovery
+		// seam for the orphan-reconcile sweep.
 		if len(manualCalls) > 0 {
 			if o.pendingRepo == nil {
 				err := fmt.Errorf("HITL not configured: manual-floor tool classified but pendingRepo is nil")
@@ -376,14 +340,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 	return OutcomeMaxIterations, "", nil
 }
 
-// parseBizID converts the string-form BusinessID carried on RunState (sourced
-// from the chat_proxy → stream.go → orchestrator handler request body chain)
-// into a uuid.UUID for ChatRequest.BusinessID. Empty and malformed values
-// degrade to uuid.Nil so the router's nil-guard skips the billing POST
-// rather than emit a corrupt row (fail-closed). A warn log fires on
-// malformed input so operators can trace upstream corruption.
-//
-// uuid.MustParse would panic — unacceptable on a hot-path llm.Chat call.
+// parseBizID degrades empty/malformed BusinessID to uuid.Nil so the router's
+// nil-guard skips billing instead of writing a corrupt row (fail-closed).
+// uuid.MustParse would panic — unacceptable on the hot-path llm.Chat call.
 func parseBizID(s string) uuid.UUID {
 	if s == "" {
 		return uuid.Nil
@@ -397,34 +356,24 @@ func parseBizID(s string) uuid.UUID {
 	return parsed
 }
 
-// modelMessagesSnapshotV2 is the versioned envelope that wraps the raw
-// []llm.Message blob. Versioning lets Resume distinguish v2 batches (where
-// Messages is system-free and SystemPlatform/SystemBusiness travel alongside)
-// from legacy batches (where Messages still has a leading role:"system" entry
-// and the envelope fields are absent).
-//
-// Marshaling: new batches always emit V=2. Legacy batches unmarshal as raw
-// []llm.Message — Resume detects the JSON shape and falls through to the
-// legacy scrub path.
+// modelMessagesSnapshotV2 versions the pause-snapshot envelope. V=2 carries
+// SystemPlatform/SystemBusiness alongside system-free Messages; legacy
+// batches unmarshal as raw []llm.Message and Resume falls through to the
+// scrub path.
 type modelMessagesSnapshotV2 struct {
-	V              int           `json:"v"` // 2 — versioned envelope
+	V              int           `json:"v"`
 	Messages       []llm.Message `json:"messages"`
 	SystemPlatform string        `json:"system_platform,omitempty"`
 	SystemBusiness string        `json:"system_business,omitempty"`
-	// Accumulated token counts persisted so a paused turn that resumes after
-	// a human approval continues with the same per-conversation budget. Both
-	// fields use omitempty so pre-cap snapshots stay byte-identical and
-	// legacy V1/V2 batches without these fields hydrate at 0 — correct
-	// behavior because pre-cap turns were not subject to the cap.
+	// omitempty so pre-cap snapshots stay byte-identical; legacy batches
+	// hydrate at 0 (correct — pre-cap turns weren't subject to the cap).
 	AccumulatedInputTokens  int `json:"accumulated_input_tokens,omitempty"`
 	AccumulatedOutputTokens int `json:"accumulated_output_tokens,omitempty"`
 }
 
-// buildPendingBatch assembles the PendingToolCallBatch that will be persisted
-// at pause time. ProjectID is threaded through from RunState so the
-// TOCTOU re-check can load the project's approval_overrides at resolve time.
-// ModelMessages carries a versioned snapshot of the conversation history +
-// SystemBlocks so Resume can rebuild RunState after a process restart.
+// buildPendingBatch assembles the pause-time PendingToolCallBatch.
+// ModelMessages carries a versioned snapshot so Resume can rebuild RunState
+// after a process restart.
 func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCall) *domain.PendingToolCallBatch {
 	snapshot := modelMessagesSnapshotV2{
 		V:                       2,
@@ -436,10 +385,8 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 	}
 	msgSnapshot, err := json.Marshal(snapshot)
 	if err != nil {
-		// Snapshot marshal failure is silently tolerated here — Resume will
-		// fail cleanly with EventError "corrupt snapshot" if this ever
-		// happens. llm.Message + strings are plain JSON so this is only
-		// theoretical.
+		// Tolerated — Resume fails cleanly with EventError "corrupt snapshot"
+		// if this ever happens. Only theoretical for llm.Message + strings.
 		slog.Warn("stepRun: failed to marshal messages snapshot", "error", err, "batch_id", batchID)
 		msgSnapshot = []byte(`{"v":2,"messages":[]}`)
 	}
@@ -455,16 +402,9 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 			CallID:    tc.ID,
 			ToolName:  tc.Function.Name,
 			Arguments: args,
-			// Persist the pause-time floor on every
-			// PendingCall so the resolve-time TOCTOU re-check consults the
-			// same registry the orchestrator used at pause. Only manual-
-			// floor calls reach the manualCalls bucket (bucketing in
-			// stepRun guarantees this), so the constant is correct without
-			// an extra registry lookup. The orchestrator-side recheck in
-			// resume.go remains the load-bearing TOCTOU primitive.
+			// Only manual-floor calls reach this branch (stepRun bucketing
+			// guarantees), so the constant is correct without a registry lookup.
 			FloorAtPause: domain.ToolFloorManual,
-			// Verdict/EditedArgs/Dispatched left zero — populated by
-			// the resolve handler.
 		})
 	}
 	return &domain.PendingToolCallBatch{
@@ -477,16 +417,13 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 		Calls:          calls,
 		ModelMessages:  msgSnapshot,
 		IterationIdx:   state.Iter,
-		// Status / CreatedAt / UpdatedAt / ExpiresAt set by the repo —
-		// pendingRepo.Persist writes status=pending with
-		// expires_at=now+24h after promotion completes.
+		// Status / CreatedAt / UpdatedAt / ExpiresAt set by pendingRepo.Persist.
 	}
 }
 
-// summarizeManualCalls projects the LLM's raw tool_call list into the shape
-// emitted on the tool_approval_required SSE event. EditableFields comes from
-// the tool registry; Floor is always ToolFloorManual because
-// these are the calls that triggered the pause.
+// summarizeManualCalls projects raw tool_calls into the
+// tool_approval_required SSE event shape. Floor is always ToolFloorManual
+// because only paused calls reach here.
 func summarizeManualCalls(reg *toolregistry.Registry, calls []llm.ToolCall) []sse.ApprovalCall {
 	out := make([]sse.ApprovalCall, 0, len(calls))
 	for _, tc := range calls {
