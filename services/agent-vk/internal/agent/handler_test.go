@@ -409,6 +409,67 @@ func TestClassifyVKError_TokenFetchFailure(t *testing.T) {
 	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "token fetch failure should be NonRetryableError")
 }
 
+// --- Typed code tests (locked-enum contract) ---
+
+func TestClassifyVKError_InvalidToken5_StampsTokenInvalid(t *testing.T) {
+	out := agent.ClassifyVKError(&vkapi.Error{Code: 5, Message: "invalid token"})
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+	assert.True(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyVKError_AccessDenied15_StampsTokenInvalid(t *testing.T) {
+	out := agent.ClassifyVKError(&vkapi.Error{Code: 15, Message: "access denied"})
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+}
+
+func TestClassifyVKError_InvalidUser113_StampsTokenInvalid(t *testing.T) {
+	out := agent.ClassifyVKError(&vkapi.Error{Code: 113, Message: "invalid user id"})
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+}
+
+func TestClassifyVKError_TooManyReqs6_StampsRateLimit(t *testing.T) {
+	out := agent.ClassifyVKError(&vkapi.Error{Code: 6, Message: "too many requests"})
+	assert.Equal(t, "rate_limit_exceeded", a2a.CodeOf(out))
+	assert.True(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyVKError_FloodControl9_StampsRateLimit(t *testing.T) {
+	out := agent.ClassifyVKError(&vkapi.Error{Code: 9, Message: "flood control"})
+	assert.Equal(t, "rate_limit_exceeded", a2a.CodeOf(out))
+}
+
+func TestClassifyVKError_InvalidParam100_Community_StampsChannelNotFound(t *testing.T) {
+	out := agent.ClassifyVKError(&vkapi.Error{Code: 100, Message: "community not found"})
+	assert.Equal(t, "channel_not_found", a2a.CodeOf(out))
+	assert.True(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyVKError_InvalidParam100_Group_StampsChannelNotFound(t *testing.T) {
+	out := agent.ClassifyVKError(&vkapi.Error{Code: 100, Message: "group is private"})
+	assert.Equal(t, "channel_not_found", a2a.CodeOf(out))
+}
+
+func TestClassifyVKError_InvalidParam100_Generic_StampsTransient(t *testing.T) {
+	out := agent.ClassifyVKError(&vkapi.Error{Code: 100, Message: "bad parameter foo"})
+	assert.Equal(t, "transient", a2a.CodeOf(out))
+	assert.False(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyVKError_Generic_StampsTransient(t *testing.T) {
+	out := agent.ClassifyVKError(&vkapi.Error{Code: 1, Message: "unknown"})
+	assert.Equal(t, "transient", a2a.CodeOf(out))
+}
+
+func TestClassifyVKError_NonVKError_StampsTransient(t *testing.T) {
+	out := agent.ClassifyVKError(fmt.Errorf("dial tcp: connection refused"))
+	assert.Equal(t, "transient", a2a.CodeOf(out))
+	assert.False(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyVKError_Nil_ReturnsNil(t *testing.T) {
+	assert.NoError(t, agent.ClassifyVKError(nil))
+}
+
 // --- Schedule post tests ---
 
 func TestHandler_SchedulePost(t *testing.T) {
@@ -815,7 +876,7 @@ func TestHandler_GetCommunityInfo_VKError(t *testing.T) {
 	tokens := &mockTokenFetcher{token: "tok"}
 	vkClient := &mockVKClient{
 		getCommunityInfoFn: func(groupID string) (map[string]interface{}, error) {
-			return nil, &vkapi.Error{Code: 100, Message: "invalid param"}
+			return nil, &vkapi.Error{Code: 100, Message: "community not accessible"}
 		},
 	}
 	h := agent.NewHandler(tokens, newFactory(vkClient), "", nil)
@@ -828,7 +889,8 @@ func TestHandler_GetCommunityInfo_VKError(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "VK error code 100 should be NonRetryableError")
+	assert.True(t, errors.Is(err, &a2a.NonRetryableError{}), "VK error code 100 referencing community should be NonRetryableError")
+	assert.Equal(t, "channel_not_found", a2a.CodeOf(err))
 }
 
 // --- Wall posts tests ---

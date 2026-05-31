@@ -90,6 +90,7 @@ func (a *Agent) handle(ctx context.Context, reply string, data []byte) {
 			TaskID:  req.TaskID,
 			Success: false,
 			Error:   err.Error(),
+			Code:    CodeOf(err),
 		}
 	} else {
 		log.Info("a2a: tool request completed", "success", resp.Success, "duration_ms", duration.Milliseconds())

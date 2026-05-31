@@ -109,8 +109,13 @@ func (e *NATSExecutor) dispatch(ctx context.Context, req a2a.ToolRequest) (inter
 			"business_id", req.BusinessID,
 			"duration_ms", elapsed.Milliseconds(),
 			"agent_error", resp.Error,
+			"agent_code", resp.Code,
 		)
-		return nil, fmt.Errorf("natsexec: agent %s error: %s", e.agentID, resp.Error)
+		wrapped := fmt.Errorf("natsexec: agent %s error: %s", e.agentID, resp.Error)
+		if resp.Code != "" {
+			return nil, a2a.NewCodedError(resp.Code, wrapped)
+		}
+		return nil, wrapped
 	}
 
 	slog.InfoContext(ctx, "natsexec: tool request completed",

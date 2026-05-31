@@ -6,12 +6,27 @@
 // 'expired' (batch TTL elapsed before resolution). Both terminal.
 export type ToolCallStatus = 'pending' | 'done' | 'error' | 'aborted' | 'rejected' | 'expired';
 
+/**
+ * Locked enum of typed error classifiers stamped by the platform agent
+ * classifier (pkg/a2a.CodedError → ToolResponse.Code → SSE tool_result.code).
+ * The set is closed — FE renders by direct switch; unknown values fall through
+ * to the calm fallback summary.
+ */
+export type ErrorCode =
+  | 'integration_token_invalid'
+  | 'rate_limit_exceeded'
+  | 'transient'
+  | 'channel_not_found'
+  | 'media_too_large';
+
 export interface ToolCall {
   id: string;
   name: string;
   args: Record<string, unknown>;
   result?: Record<string, unknown>;
   error?: string;
+  /** Typed classifier carried alongside `error` on tool_result frames. */
+  code?: ErrorCode;
   status: ToolCallStatus;
   // HITL additions (non-breaking):
   rejectReason?: string; // populated when status === 'rejected'

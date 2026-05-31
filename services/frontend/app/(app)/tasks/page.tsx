@@ -21,7 +21,6 @@ import { useLocale, useTranslations } from 'next-intl';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import { bizApi } from '@/lib/api/business-api';
-import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { getDateFnsLocale } from '@/lib/dateFnsLocale';
@@ -35,6 +34,7 @@ import {
 import { CHANNEL_NAMES } from '@/lib/platforms';
 import { useTasksStream } from '@/hooks/useTasksStream';
 
+import { explainError } from './explainError';
 import type { AgentTask, TaskStreamEvent } from '@/types/task';
 import { Button } from '@/components/ui/button';
 import { ChannelMark } from '@/components/ui/channel-mark';
@@ -49,57 +49,6 @@ import { cn } from '@/lib/utils';
 // (e.g. browser put us to sleep). 30 s is fast enough that a missed task
 // surfaces within one poll cycle without flooding the backend.
 const POLL_INTERVAL_MS = 30_000;
-
-// ─── Plain-Russian error explainer ──────────────────────────────────
-//
-// Brand Voice Guide §3: explain what + why + what-to-do-next, calmly,
-// no exclamation marks. We never surface the raw error string.
-
-// HumanError uses key references (summaryKey / ctaLabelKey) instead of
-// pre-rendered strings so the function stays pure and the actual
-// translation happens inside TaskRow via useTranslations.
-interface HumanError {
-  summaryKey: string;
-  cta?: { labelKey: string; href: string };
-  willAutoRetry?: boolean;
-}
-
-function explainError(task: AgentTask): HumanError {
-  const raw = (task.error ?? '').toLowerCase();
-  const platform = task.platform;
-
-  if (/token|unauthor|401|403|expired|истёк|истек/.test(raw)) {
-    return {
-      summaryKey:
-        platform === 'vk' ? 'tokenVk' : platform === 'telegram' ? 'tokenTelegram' : 'tokenGeneric',
-      cta: {
-        labelKey: platform === 'vk' ? 'reconnectVk' : 'reconnect',
-        href: API_PATHS.INTEGRATIONS.ROOT,
-      },
-    };
-  }
-
-  if (/rate.?limit|too many|429/.test(raw)) {
-    return { summaryKey: 'rateLimit', willAutoRetry: true };
-  }
-
-  if (/timeout|deadline|временно|unavailable|503|502|504/.test(raw)) {
-    return { summaryKey: 'transient', willAutoRetry: true };
-  }
-
-  if (/not.?found|404|канал.*не/.test(raw)) {
-    return {
-      summaryKey: 'notFound',
-      cta: { labelKey: 'openIntegrations', href: API_PATHS.INTEGRATIONS.ROOT },
-    };
-  }
-
-  if (/photo|image|media|too.?large|размер/.test(raw)) {
-    return { summaryKey: 'media' };
-  }
-
-  return { summaryKey: 'fallback', willAutoRetry: true };
-}
 
 // ─── Top-level page ─────────────────────────────────────────────────
 
