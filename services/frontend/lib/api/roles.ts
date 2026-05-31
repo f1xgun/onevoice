@@ -4,7 +4,7 @@ import { bizApi } from '@/lib/api/business-api';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { roleSchema, type Role } from '@/lib/schemas';
 
-// Backend contracts (Phase 5, Plan 05-03):
+// Backend contracts:
 //   GET    /api/v1/businesses/{id}/roles               → 200 Role[] (with member_count)
 //   POST   /api/v1/businesses/{id}/roles               → 201 Role (no member_count)
 //          body: { name, description, permissions }
@@ -22,7 +22,7 @@ import { roleSchema, type Role } from '@/lib/schemas';
 //
 // Every response is parsed through the canonical zod schema so malformed
 // payloads fail loudly at the API seam rather than surfacing as undefined
-// deep in the UI tree (Phase 4 threat T-04-02-01 carryover).
+// deep in the UI tree.
 
 const rolesArraySchema = z.array(roleSchema);
 

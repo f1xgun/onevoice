@@ -12,21 +12,13 @@ import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { BUSINESS_LIST_QUERY_KEY } from '@/lib/hooks/useBusinessList';
 import type { Member } from '@/lib/schemas';
 
-// Phase 5: useRoles + the role mutation hooks moved to lib/hooks/useRoles.ts
-// so all role surfaces (list, create, update, delete) sit next to each other.
-// Re-export here for one release so Phase 4 import sites (page.tsx) compile
-// unchanged.
+// Re-exported so existing import sites keep compiling — the implementation
+// lives next to the role mutations in useRoles.ts.
 export { useRoles } from '@/lib/hooks/useRoles';
 
-// React Query hooks for the team-members surface. Mutations follow the
-// mutate-then-invalidate pattern per CONTEXT D-07 — no optimistic updates,
-// no setQueryData. Component layer (Plan 05) handles error→toast mapping
-// via lib/resolveErrorMap.mapMemberError.
-//
-// All hooks accept `businessId: string | null` so callers can pass
-// `useBusinessStore.activeBusinessId` verbatim; queries gate on
-// `enabled: !!businessId` and mutations rely on the bizApi() helper to
-// throw if a mutation is fired before activeBusinessId is set.
+// Mutations follow mutate-then-invalidate; no optimistic updates, no
+// setQueryData. All hooks accept `businessId: string | null` so callers
+// can pass `useBusinessStore.activeBusinessId` verbatim.
 
 export function useMembers(businessId: string | null): UseQueryResult<Member[]> {
   return useQuery<Member[]>({

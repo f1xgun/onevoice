@@ -27,9 +27,8 @@ export interface LeafCheckboxProps {
  *
  * disabled leaves (actor lacks the permission) render with `opacity-60`
  * and show «У вас нет этого права» on tooltip hover/focus. Radix Checkbox in
- * disabled state removes itself from tab order — the keyboard-tooltip-
- * discoverability tradeoff is documented in RESEARCH §Pitfall 10 and accepted
- * for v2.0.
+ * disabled state removes itself from tab order — accepted keyboard-tooltip-
+ * discoverability tradeoff for v2.0.
  *
  * enabled leaves show the permission's Russian description from the
  * catalog ( filled these in pkg/authz/permissions.go). The Info icon

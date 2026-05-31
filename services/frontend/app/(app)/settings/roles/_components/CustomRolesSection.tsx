@@ -78,14 +78,12 @@ export function CustomRolesSection({ roles, businessId, allRoles }: CustomRolesS
                 <span className="w-9" aria-hidden />
               </Link>
               {/*
-                LOW-04 (Phase 5 review): IMPORTANT — keep this sibling-OUTSIDE
-                the <Link>. A <button> nested in an <a> is invalid HTML AND
-                browsers fire the anchor's click handler before the button's,
-                so the row navigates BEFORE the menu opens (stopPropagation
-                inside RoleActionsMenu does not save you because the event
-                originates in the descendant menu, not the anchor). The
-                absolute-positioned sibling pattern below keeps the trigger
-                in the row visually while side-stepping the nesting problem.
+                Keep this sibling OUTSIDE the <Link>. A <button> nested in an
+                <a> is invalid HTML AND browsers fire the anchor's click handler
+                before the button's, so the row navigates BEFORE the menu opens
+                (stopPropagation inside RoleActionsMenu does not save you
+                because the event originates in the descendant menu, not the
+                anchor).
               */}
               <span className="absolute inset-y-0 right-3 flex items-center">
                 <RoleActionsMenu role={role} businessId={businessId} allRoles={allRoles} />

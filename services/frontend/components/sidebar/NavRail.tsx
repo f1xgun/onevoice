@@ -83,8 +83,8 @@ export function NavRail({ onNavigate }: NavRailProps = {}) {
   });
 
   function handleLogout() {
-    // Phase 5: drop session-scoped React-Query caches BEFORE the auth store
-    // clears so any in-flight subscription gets the empty state.
+    // Drop session-scoped React-Query caches BEFORE the auth store clears
+    // so any in-flight subscription gets the empty state.
     //   - ['businesses', ...] sweeps members, invitations, roles, permissions
     //     by partial-match (all are nested under that prefix).
     //   - ['permissions-catalog'] is top-level and persists across login by

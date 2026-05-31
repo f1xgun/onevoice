@@ -24,9 +24,9 @@ vi.mock('@/lib/hooks/useInvitations', () => ({
 }));
 vi.mock('@/lib/auth', () => ({ useAuthStore: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
-// Phase 5: usePermission now fetches /me/permissions via React Query.
-// The admin actor in this test holds members.invite + members.remove so the
-// «Пригласить» button and the row-level action menu render.
+// usePermission fetches /me/permissions via React Query. The admin actor
+// here holds members.invite + members.remove so the «Пригласить» button
+// and the row-level action menu render.
 vi.mock('@/lib/api/permissions', () => ({
   getMyPermissions: vi
     .fn()
@@ -143,7 +143,7 @@ describe('TeamPage', () => {
 
   it('shows the «Пригласить» button when user has members.invite (admin role)', async () => {
     render(wrap(<TeamPage />));
-    // Phase 5: usePermission is async — wait for /me/permissions to settle.
+    // usePermission is async — wait for /me/permissions to settle.
     expect(await screen.findByRole('button', { name: /Пригласить/ })).toBeInTheDocument();
   });
 
@@ -156,7 +156,7 @@ describe('TeamPage', () => {
   it('shows «Покинуть организацию» for the current user row (self-row)', async () => {
     const user = userEvent.setup();
     render(wrap(<TeamPage />));
-    // Phase 5: usePermission is async — wait for /me/permissions to settle
+    // usePermission is async — wait for /me/permissions to settle
     // before reaching for permission-gated DOM (the dropdown trigger).
     await screen.findByRole('button', { name: /Пригласить/ });
     const triggers = screen.getAllByLabelText(/Действия для участника/);
@@ -172,9 +172,9 @@ describe('TeamPage', () => {
     } as any);
     const user = userEvent.setup();
     render(wrap(<TeamPage />));
-    // Phase 5: wait for permissions to settle so the row's DropdownMenu
-    // renders (otherwise the disabled tooltip variant is rendered and the
-    // click is a no-op).
+    // Wait for permissions to settle so the row's DropdownMenu renders
+    // (otherwise the disabled tooltip variant is rendered and the click
+    // is a no-op).
     await screen.findByRole('button', { name: /Пригласить/ });
     const triggers = screen.getAllByLabelText(/Действия для участника/);
     await user.click(triggers[1]);

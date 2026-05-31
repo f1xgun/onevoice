@@ -71,7 +71,6 @@ export const BIZ_API_PATHS = {
     MOVE: (id: string) => `/conversations/${id}/move`,
     REGENERATE_TITLE: (id: string) => `/conversations/${id}/regenerate-title`,
   },
-  // Phase 4 RBAC: team membership endpoints.
   MEMBERS: {
     ROOT: '/members',
     BY_ID: (userId: string) => `/members/${userId}` as const,
@@ -84,7 +83,7 @@ export const BIZ_API_PATHS = {
     ROOT: '/roles',
     BY_ID: (roleId: string) => `/roles/${roleId}` as const,
   },
-  // Phase 5 RBAC: per-business "me" endpoints (actor's effective state).
+  // Per-business "me" endpoints (actor's effective state).
   // BIZ_API_PATHS.ME.PERMISSIONS resolves to
   // GET /api/v1/businesses/{bizId}/me/permissions → { permissions: string[] }.
   ME: {

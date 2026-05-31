@@ -4,7 +4,7 @@ import { API_PATHS } from '@/lib/constants/apiPaths';
 import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
 import { myPermissionsSchema, permissionsCatalogSchema, type PermissionGroup } from '@/lib/schemas';
 
-// Backend contracts (Phase 5, Plan 05-03):
+// Backend contracts:
 //   GET /api/v1/permissions
 //     → 200 { groups: [{ resource, permissions: [{name, description}] }] }
 //   GET /api/v1/businesses/{id}/me/permissions
@@ -29,7 +29,7 @@ export async function getPermissionsCatalog(): Promise<PermissionGroup[]> {
 /**
  * Fetches the actor's effective permissions in `businessId`. Returns a flat
  * `string[]`. The owner role enumerates every permission (no `*` sentinel on
- * the wire per Phase 5 D-05).
+ * the wire).
  */
 export async function getMyPermissions(businessId: string): Promise<string[]> {
   const { data } = await bizApi(businessId).get<unknown>(BIZ_API_PATHS.ME.PERMISSIONS);

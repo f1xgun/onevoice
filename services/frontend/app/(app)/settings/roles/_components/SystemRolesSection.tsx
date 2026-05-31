@@ -27,9 +27,9 @@ export function SystemRolesSection({ roles, businessId }: SystemRolesSectionProp
     );
   });
 
-  // Owner is the only role guaranteed to hold every permission (Plan 05-03);
-  // showing "12 прав" for owner would just visually clutter what is conceptually
-  // "everything". The localized "все права" badge replaces the count.
+  // Owner is the only role guaranteed to hold every permission; showing
+  // "12 прав" for owner would clutter what is conceptually "everything".
+  // The localized "все права" badge replaces the count.
   const isOwner = (r: Role) => r.name === 'owner';
 
   return (
