@@ -71,7 +71,6 @@ func NewHITLHandler(
 }
 
 // resolveRequest is the JSON body shape for POST /resolve.
-// See 16-RESEARCH §Atomic Resolve Contract for the canonical shape.
 type resolveRequest struct {
 	Decisions []service.DecisionInput `json:"decisions"`
 }

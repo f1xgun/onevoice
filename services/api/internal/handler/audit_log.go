@@ -4,11 +4,9 @@
 //
 //	GET /api/v1/businesses/{id}/audit-logs
 //
-// Backed by repository.AuditLogRepository's new
-// ListByBusinessWithActors method (too) which does the LEFT JOIN
-// users in one query — the handler MUST NOT fan out per-row user lookups
-// into UserRepository, that would be the N+1 anti-pattern the join was
-// added to prevent (per 19-RESEARCH §"DTO Enrichment Strategy" + CHECK F-7).
+// Backed by repository.AuditLogRepository.ListByBusinessWithActors, which does
+// the LEFT JOIN users in one query — the handler MUST NOT fan out per-row user
+// lookups into UserRepository (N+1 anti-pattern the join exists to prevent).
 //
 // Cursor pagination uses pkg/audit.EncodeCursor / DecodeCursor so the
 // opaque token round-trips between the handler and the next request

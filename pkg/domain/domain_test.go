@@ -53,11 +53,6 @@ func TestSentinelErrors_MatchWithIs(t *testing.T) {
 	}
 }
 
-// --- User JSON ---
-// Phase 6 (CLEAN-02, CLEAN-03): UserRole enum and the User.Role field were
-// removed. Per-business role lives in business_members.role_id; the legacy
-// TestUserRole_* tests were dropped together with the enum.
-
 func TestUser_JSON_OmitsPasswordHash(t *testing.T) {
 	u := User{
 		ID:           uuid.New(),

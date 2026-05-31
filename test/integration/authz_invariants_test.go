@@ -18,10 +18,9 @@ import (
 // paths described in CP-3 / AUTHZ-06. For each, the sole-owner case must
 // return ErrLastOwner; the multi-owner case must succeed.
 //
-// Fixture inserts use raw SQL with per-subtest t.Cleanup (CONTEXT D-02 —
-// no factory helpers in Phase 1). Every subtest opens its own pgx.Tx and
-// rolls back, so the FOR UPDATE locks taken by EnsureOwnerExistsAfter do
-// not leak across cases.
+// Fixture inserts use raw SQL with per-subtest t.Cleanup. Every subtest opens
+// its own pgx.Tx and rolls back, so the FOR UPDATE locks taken by
+// EnsureOwnerExistsAfter do not leak across cases.
 func TestEnsureOwnerExistsAfter_LastOwnerMatrix(t *testing.T) {
 	if pgPool == nil {
 		t.Skip("TEST_POSTGRES_URL not set; skipping integration test")

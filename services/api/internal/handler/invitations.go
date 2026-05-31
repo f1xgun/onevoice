@@ -9,9 +9,8 @@
 //	POST /api/v1/invitations/{token}/accept → Accept (auth-required)
 //
 // Mirrors members.go for poolBeginner + memberCacheInvalidator + tx-then-commit-
-// then-invalidate ordering. The accept handler implements 's
-// 7-step ordering with conditional-UPDATE race safety per 03-RESEARCH §"Accept-
-// Flow Concurrency".
+// then-invalidate ordering. Accept uses a conditional UPDATE for race-safe
+// single-use guarantee.
 package handler
 
 import (
@@ -473,7 +472,6 @@ func (h *InvitationsHandler) Preview(w http.ResponseWriter, r *http.Request) {
 }
 
 // Accept handles POST /api/v1/invitations/{token}/accept — auth-required.
-// 7-step ordering; RESEARCH §"Accept-Flow Concurrency".
 //
 // Order:
 // 1. BeginTx(RepeatableRead)

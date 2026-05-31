@@ -278,10 +278,9 @@ func EnsureConversationIndexes(ctx context.Context, db *mongo.Database) error {
 // "Mongo `conversations` deletion handling: set `user_id=null`, store
 // `user_email_at_delete`, add `deleted_owner=true` flag").
 //
-// Called by AccountDeletionService.HardDeleteSweeper AFTER the PG TX
-// commits — Mongo does not participate in the PG TX so this is best-
-// effort. Caller logs a warning on failure but does NOT roll back the PG
-// delete (the PG row is already gone — T-DEL-05 disposition).
+// Runs AFTER the PG TX commits — Mongo does not participate in the PG TX so
+// this is best-effort. Caller logs a warning on failure but does NOT roll
+// back the PG delete (the PG row is already gone).
 func (r *conversationRepository) MongoConversationsCleanup(ctx context.Context, userID, originalEmail string) (int64, error) {
 	filter := bson.M{"user_id": userID}
 	update := bson.M{"$set": bson.M{

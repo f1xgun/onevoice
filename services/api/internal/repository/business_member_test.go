@@ -145,7 +145,7 @@ func TestBusinessMembershipRepository_GetByBusinessUser_NotFound(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrMembershipNotFound)
 }
 
-// --- Phase 2: UpdateRole tests ---
+// --- UpdateRole tests ---
 
 func TestBusinessMembershipRepository_UpdateRole_Success(t *testing.T) {
 	ctx := context.Background()
@@ -192,7 +192,7 @@ func TestBusinessMembershipRepository_UpdateRole_GenericError(t *testing.T) {
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 2: Delete tests ---
+// --- Delete tests ---
 
 func TestBusinessMembershipRepository_Delete_Success(t *testing.T) {
 	ctx := context.Background()
@@ -223,7 +223,7 @@ func TestBusinessMembershipRepository_Delete_NotFound(t *testing.T) {
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 2: ListByBusiness tests ---
+// --- ListByBusiness tests ---
 
 func TestBusinessMembershipRepository_ListByBusiness_Success(t *testing.T) {
 	ctx := context.Background()
@@ -279,7 +279,7 @@ func TestBusinessMembershipRepository_ListByBusiness_Empty(t *testing.T) {
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 2: ListByUser tests ---
+// --- ListByUser tests ---
 
 func TestBusinessMembershipRepository_ListByUser_Success(t *testing.T) {
 	ctx := context.Background()
@@ -310,7 +310,7 @@ func TestBusinessMembershipRepository_ListByUser_Success(t *testing.T) {
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 2: CountOwnersByBusiness tests ---
+// --- CountOwnersByBusiness tests ---
 
 func TestBusinessMembershipRepository_CountOwnersByBusiness_Success(t *testing.T) {
 	ctx := context.Background()
@@ -352,7 +352,7 @@ func TestBusinessMembershipRepository_CountOwnersByBusiness_UsesSystemRoleOwnerI
 	require.NoError(t, mockPool.ExpectationsWereMet())
 }
 
-// --- Phase 2: UpdateRoleInTx tests ---
+// --- UpdateRoleInTx tests ---
 
 func TestBusinessMembershipRepository_UpdateRoleInTx_Success(t *testing.T) {
 	ctx := context.Background()
@@ -402,7 +402,7 @@ func TestBusinessMembershipRepository_UpdateRoleInTx_NilTx(t *testing.T) {
 	assert.Contains(t, err.Error(), "tx is required")
 }
 
-// --- Phase 2 (Gap 02.3): DeleteInTx tests ---
+// --- DeleteInTx tests ---
 
 func TestBusinessMembershipRepository_DeleteInTx_Success(t *testing.T) {
 	ctx := context.Background()

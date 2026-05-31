@@ -75,9 +75,8 @@ type MockBusinessService struct {
 	mock.Mock
 }
 
-// oauthBizCtx seeds an authz.BusinessContext with the given perms. Used by
-// handlers under PermIntegrationsConnect (Phase 2 v2.0 RBAC). Migrated from
-// the deleted handler/oauth_test.go after the modular decomposition (PR #76).
+// oauthBizCtx seeds an authz.BusinessContext with the given perms for handlers
+// under PermIntegrationsConnect.
 func oauthBizCtx(businessID, userID uuid.UUID, perms ...authz.Permission) context.Context {
 	return authz.WithBusinessContext(context.Background(), authz.BusinessContext{
 		BusinessID:  businessID,

@@ -7,30 +7,14 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// EnsureSearchIndexes — v20.1: best-effort cleanup of legacy text
-// indexes.
+// EnsureSearchIndexes drops the legacy `_text_v19` / `_text_v20` text indexes
+// left behind by previous deploys. Search uses word-prefix regex (see
+// message.go::SearchByConversationIDs and conversation.go::SearchTitles)
+// instead of $text. Drops are best-effort — IndexNotFound (code 27) is the
+// steady-state no-op.
 //
-// History:
-//
-//   - v19 created `_text_v19` indexes with default_language "russian"
-//     (Snowball). These had asymmetric stems (e.g. "отзыв" vs "отзывы")
-//     that broke recall.
-//   - v20 renamed to `_text_v20` with default_language "none" — fixed
-//     the asymmetry but lost morphological recall.
-//   - v20.1 abandons $text entirely. Search uses word-prefix regex
-//     (see message.go::SearchByConversationIDs and
-//     conversation.go::SearchTitles), which works against the existing
-//     scope indexes (`conversation_id_1_created_at_1` on messages,
-//     ESR pin-aware compound on conversations).
-//
-// This function now exists ONLY to drop the legacy text indexes left
-// behind by previous deploys. Drops are best-effort — IndexNotFound
-// (code 27) is the steady-state no-op.
-//
-// We keep the function (rather than removing it) so cmd/main.go's
-// startup wiring stays unchanged; the readiness flag still flips after
-// this returns and gates 503/Retry-After until the search service is
-// wired.
+// The function is kept (rather than removed) so the startup wiring stays
+// unchanged and the readiness flag still flips after this returns.
 func EnsureSearchIndexes(ctx context.Context, db *mongo.Database) error {
 	convs := db.Collection("conversations")
 	msgs := db.Collection("messages")

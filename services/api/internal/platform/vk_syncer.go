@@ -14,10 +14,9 @@ import (
 )
 
 // VKSyncer pushes business updates to a VK community via the public API.
-// VK's groups.edit accepts description + phone + website in a single call —
-// per RESEARCH §8 R5 we expose this as a single InfoSyncer capability rather
-// than splitting it into per-field calls (which would 3× the API quota for
-// no benefit).
+// VK's groups.edit accepts description + phone + website in a single call,
+// so this is exposed as a single InfoSyncer capability — splitting it
+// per-field would 3× the API quota for no benefit.
 type VKSyncer struct {
 	integrations integrationProvider
 	httpClient   *http.Client

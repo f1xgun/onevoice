@@ -1,9 +1,5 @@
-// Package domain — invitation.go
-//
-// Invitation is one row of the invitations table created in migration
-// 000007/000005. TokenHash is sha256(rawToken) — the raw token is returned
-// to the inviter ONCE at creation time (Phase 3) and never stored. Lookup
-// uses crypto/subtle.ConstantTimeCompare (also Phase 3).
+// TokenHash is sha256(rawToken) — the raw token is returned to the inviter
+// ONCE at creation time and never stored. Lookup uses crypto/subtle.ConstantTimeCompare.
 package domain
 
 import (

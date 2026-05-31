@@ -25,10 +25,9 @@ const reviewDispatchTimeout = 90 * time.Second
 
 // ReviewService defines the interface for review operations.
 //
-// Phase 2 v2.0 RBAC: List/GetByID/Reply take businessID extracted from the
-// /businesses/{id}/... URL path (gated by RequireBusinessAccess middleware).
-// Refresh remains userID-scoped because the manual /reviews/refresh endpoint
-// is not business-scoped — it kicks the cross-business sync.
+// List/GetByID/Reply take businessID extracted from /businesses/{id}/... URL
+// path (gated by RequireBusinessAccess middleware). Refresh remains
+// userID-scoped because /reviews/refresh kicks the cross-business sync.
 type ReviewService interface {
 	List(ctx context.Context, businessID uuid.UUID, filter domain.ReviewFilter) ([]domain.Review, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Review, error)
@@ -109,8 +108,7 @@ func (s *reviewService) GetByID(ctx context.Context, businessID uuid.UUID, id st
 // Refresh resolves the request's business (from authz.BusinessContext) and
 // triggers a synchronous sync across every active integration platform that
 // supports reviews. The userID parameter is retained for logging / future
-// audit-log entries; the business id is sourced from the request context
-// after Phase 6 (CLEAN-01) deleted businessService.GetByUserID.
+// audit-log entries.
 func (s *reviewService) Refresh(ctx context.Context, userID uuid.UUID) error {
 	_ = userID
 	if s.refresher == nil {
