@@ -3,14 +3,10 @@
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
+import { SYSTEM_ROLE_ORDER } from '@/lib/constants/roles';
 import type { Role } from '@/lib/schemas';
 
 import { RoleActionsMenu } from './RoleActionsMenu';
-
-// Fixed order for system roles (D-03). The system catalog is locked at the
-// backend (Plan 05-03) — we render them in seniority order so the table
-// reads "most powerful → least powerful" top-down, matching the UI-SPEC.
-const SYSTEM_ORDER = ['owner', 'admin', 'editor', 'viewer'] as const;
 
 export interface SystemRolesSectionProps {
   roles: Role[];
@@ -20,13 +16,15 @@ export interface SystemRolesSectionProps {
 export function SystemRolesSection({ roles, businessId }: SystemRolesSectionProps) {
   const t = useTranslations('roles.list');
 
-  // Sort by seniority. Roles outside SYSTEM_ORDER (defensive) get pushed
+  // Sort by seniority. Roles outside SYSTEM_ROLE_ORDER (defensive) get pushed
   // to the end so the UI never blows up if a new system role ships before
   // the constant is updated.
   const sorted = [...roles].sort((a, b) => {
-    const ai = SYSTEM_ORDER.indexOf(a.name as (typeof SYSTEM_ORDER)[number]);
-    const bi = SYSTEM_ORDER.indexOf(b.name as (typeof SYSTEM_ORDER)[number]);
-    return (ai === -1 ? SYSTEM_ORDER.length : ai) - (bi === -1 ? SYSTEM_ORDER.length : bi);
+    const ai = SYSTEM_ROLE_ORDER.indexOf(a.name as (typeof SYSTEM_ROLE_ORDER)[number]);
+    const bi = SYSTEM_ROLE_ORDER.indexOf(b.name as (typeof SYSTEM_ROLE_ORDER)[number]);
+    return (
+      (ai === -1 ? SYSTEM_ROLE_ORDER.length : ai) - (bi === -1 ? SYSTEM_ROLE_ORDER.length : bi)
+    );
   });
 
   // Owner is the only role guaranteed to hold every permission (Plan 05-03);

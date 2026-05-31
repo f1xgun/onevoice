@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { bizApi } from '@/lib/api/business-api';
 import { API_PATHS } from '@/lib/constants/apiPaths';
-import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { BIZ_API_PATHS, INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { trackClick } from '@/lib/telemetry';
@@ -205,9 +205,9 @@ export default function IntegrationsPage() {
     if (platformId === 'google_business') {
       try {
         if (!activeBusinessId) return;
-        const { data } = await bizApi(activeBusinessId).get<{ url: string }>(
-          BIZ_API_PATHS.INTEGRATIONS.GOOGLE_AUTH_URL
-        );
+        const authUrlPath = INTEGRATION_ENDPOINTS.google_business?.authUrl;
+        if (!authUrlPath) return;
+        const { data } = await bizApi(activeBusinessId).get<{ url: string }>(authUrlPath);
         window.location.href = data.url;
       } catch {
         toast.error(tIntegrations('page.googleAuthFailed'));

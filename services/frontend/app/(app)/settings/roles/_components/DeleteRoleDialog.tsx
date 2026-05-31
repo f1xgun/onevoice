@@ -30,6 +30,7 @@ import { useDeleteRole } from '@/lib/hooks/useRoles';
 import { getMyPermissions } from '@/lib/api/permissions';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
+import { SYSTEM_ROLE_ORDER } from '@/lib/constants/roles';
 import { useMapRoleError } from '@/lib/resolveErrorMap';
 import { cn } from '@/lib/utils';
 import type { Role } from '@/lib/schemas';
@@ -50,8 +51,6 @@ import type { Role } from '@/lib/schemas';
 // SILENTLY invalidates+refetches the roles cache and flips itself to
 // 'picker' WITHOUT closing. Radix preserves focus; users see the body
 // swap in-place rather than a close-then-reopen flash.
-
-const SYSTEM_ORDER = ['owner', 'admin', 'editor', 'viewer'] as const;
 
 interface BuildReassignOptionsArg {
   allRoles: Role[];
@@ -83,9 +82,11 @@ export function buildReassignOptions({
   const system = filtered
     .filter((r) => r.is_system)
     .sort((a, b) => {
-      const ai = SYSTEM_ORDER.indexOf(a.name as (typeof SYSTEM_ORDER)[number]);
-      const bi = SYSTEM_ORDER.indexOf(b.name as (typeof SYSTEM_ORDER)[number]);
-      return (ai === -1 ? SYSTEM_ORDER.length : ai) - (bi === -1 ? SYSTEM_ORDER.length : bi);
+      const ai = SYSTEM_ROLE_ORDER.indexOf(a.name as (typeof SYSTEM_ROLE_ORDER)[number]);
+      const bi = SYSTEM_ROLE_ORDER.indexOf(b.name as (typeof SYSTEM_ROLE_ORDER)[number]);
+      return (
+        (ai === -1 ? SYSTEM_ROLE_ORDER.length : ai) - (bi === -1 ? SYSTEM_ROLE_ORDER.length : bi)
+      );
     });
   const custom = filtered
     .filter((r) => !r.is_system)

@@ -6,7 +6,13 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
 import { getIntegrationDisplay } from '@/lib/integrations';
-import { platformInitials } from '@/lib/platforms';
+import {
+  PLATFORM_DISPLAY_FIELD,
+  PLATFORM_REFRESH_ENDPOINTS,
+  isKnownPlatform,
+  platformInitials,
+  type PlatformId,
+} from '@/lib/platforms';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +29,12 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { bizApi } from '@/lib/api/business-api';
-import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
+import {
+  STATUS_LABEL_KEYS,
+  STATUS_TONES,
+  type IntegrationStatus,
+} from '@/lib/constants/integrationStatus';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { usePermission } from '@/lib/hooks/usePermission';
@@ -67,26 +78,6 @@ interface Props {
   isPreview?: boolean;
 }
 
-// Status label keys live under integrations.platformCard.status (RU+EN) —
-// the rendered string comes from `tCard('status.<id>')` inside ChannelList
-// so a locale switch retitles the badges without component-side state.
-const STATUS_LABEL_KEYS = [
-  'active',
-  'inactive',
-  'error',
-  'pending_cookies',
-  'token_expired',
-] as const;
-
-// Linen Badge tones — replaces the old default/secondary/destructive variants.
-const statusTones: Record<string, 'success' | 'neutral' | 'danger' | 'warning'> = {
-  active: 'success',
-  inactive: 'neutral',
-  error: 'danger',
-  pending_cookies: 'warning',
-  token_expired: 'danger',
-};
-
 export function PlatformCard({
   platform,
   label,
@@ -106,10 +97,12 @@ export function PlatformCard({
 
   async function refreshTelegramLinkedGroup(i: Integration) {
     if (!activeBusinessId) return;
+    const telegramRefresh = INTEGRATION_ENDPOINTS.telegram?.refresh;
+    if (!telegramRefresh) return;
     setRefreshingID(i.id);
     try {
       const { data } = await bizApi(activeBusinessId).post<{ linked_group_status: string }>(
-        BIZ_API_PATHS.INTEGRATIONS.TELEGRAM_REFRESH,
+        telegramRefresh,
         { channel_id: i.externalId }
       );
       if (data.linked_group_status === 'ok') {
@@ -259,13 +252,17 @@ function ChannelList({
       if (refreshedRef.current.has(i.id)) return;
       const md = (i.metadata as Record<string, unknown>) ?? {};
 
-      let endpoint: string | null = null;
-      if (i.platform === 'vk' && typeof md.community_name !== 'string') {
-        endpoint = BIZ_API_PATHS.INTEGRATIONS.VK_REFRESH_NAME(i.id);
-      } else if (i.platform === 'yandex_business' && typeof md.business_name !== 'string') {
-        endpoint = BIZ_API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_REFRESH_NAME(i.id);
-      }
-      if (!endpoint) return;
+      const buildEndpoint = isKnownPlatform(i.platform)
+        ? PLATFORM_REFRESH_ENDPOINTS[i.platform]
+        : undefined;
+      if (!buildEndpoint) return;
+
+      // Skip platforms whose display field is already populated, so the
+      // backfill never repeats work the previous request already did.
+      const displayField = PLATFORM_DISPLAY_FIELD[i.platform as PlatformId];
+      if (displayField && typeof md[displayField] === 'string') return;
+
+      const endpoint = buildEndpoint(i.id);
 
       refreshedRef.current.add(i.id);
       const isYandex = i.platform === 'yandex_business';
@@ -298,7 +295,8 @@ function ChannelList({
   return (
     <div className="flex flex-col gap-2">
       {integrations.map((i) => {
-        const tone = statusTones[i.status] ?? 'neutral';
+        const status = i.status as IntegrationStatus;
+        const tone = STATUS_TONES[status] ?? 'neutral';
         const statusLabel = (STATUS_LABEL_KEYS as readonly string[]).includes(i.status)
           ? tCard(`status.${i.status}`)
           : i.status;
