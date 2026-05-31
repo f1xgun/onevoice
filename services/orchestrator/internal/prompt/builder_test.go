@@ -266,7 +266,7 @@ func TestAppendProjectBlock_ExplicitMode_InstructsAgainstSubstitution(t *testing
 	assert.Contains(t, got, "объясни вежливо")
 }
 
-// --- Phase D1: locale-aware system prompt ---
+// --- Locale-aware system prompt ---
 //
 // The system prompt's section headers and the trailing language-steering
 // directive ("Общайся на русском языке" / "Respond in English") flip with
