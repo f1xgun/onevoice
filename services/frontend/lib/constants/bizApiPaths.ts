@@ -14,6 +14,45 @@
 // telemetry, the cross-business POST /reviews/refresh) see
 // API_PATHS / API_STREAM_PATHS in apiPaths.ts.
 
+import type { PlatformId } from '@/lib/platforms';
+
+// Per-platform integration endpoints, keyed by PlatformId. Replaces the
+// flat TELEGRAM_*/VK_*/GOOGLE_*/YANDEX_* fields. Each platform declares
+// only the verbs it supports; absent platforms (e.g. 2gis, avito,
+// whatsapp) read as `undefined` so call sites can branch off presence.
+//
+// The shape uses functions for paths that take an integration id and
+// strings for static paths, matching the bizApiPaths convention.
+export interface IntegrationPlatformEndpoints {
+  connect?: string;
+  refresh?: string;
+  authUrl?: string;
+  locations?: string;
+  selectLocation?: string;
+  probe?: string;
+  companies?: string;
+}
+
+export const INTEGRATION_ENDPOINTS: Partial<Record<PlatformId, IntegrationPlatformEndpoints>> = {
+  telegram: {
+    connect: '/integrations/telegram/connect',
+    refresh: '/integrations/telegram/refresh',
+  },
+  vk: {
+    connect: '/integrations/vk/connect',
+  },
+  google_business: {
+    authUrl: '/integrations/google_business/auth-url',
+    locations: '/integrations/google_business/locations',
+    selectLocation: '/integrations/google_business/select-location',
+  },
+  yandex_business: {
+    connect: '/integrations/yandex_business/connect',
+    probe: '/integrations/yandex_business/probe',
+    companies: '/integrations/yandex_business/companies',
+  },
+};
+
 export const BIZ_API_PATHS = {
   // Root business document — bizApi(id).get('') → GET /businesses/{id}.
   // The empty string is intentional: bizApi already adds the prefix and
@@ -54,18 +93,6 @@ export const BIZ_API_PATHS = {
   INTEGRATIONS: {
     ROOT: '/integrations',
     BY_ID: (id: string) => `/integrations/${id}`,
-    TELEGRAM_CONNECT: '/integrations/telegram/connect',
-    TELEGRAM_REFRESH: '/integrations/telegram/refresh',
-    VK_CONNECT: '/integrations/vk/connect',
-    VK_REFRESH_NAME: (id: string) => `/integrations/vk/${id}/refresh-name`,
-    GOOGLE_AUTH_URL: '/integrations/google_business/auth-url',
-    GOOGLE_LOCATIONS: '/integrations/google_business/locations',
-    GOOGLE_SELECT_LOCATION: '/integrations/google_business/select-location',
-    YANDEX_BUSINESS_PROBE: '/integrations/yandex_business/probe',
-    YANDEX_BUSINESS_COMPANIES: '/integrations/yandex_business/companies',
-    YANDEX_BUSINESS_CONNECT: '/integrations/yandex_business/connect',
-    YANDEX_BUSINESS_REFRESH_NAME: (id: string) =>
-      `/integrations/yandex_business/${id}/refresh-name`,
   },
   REVIEWS: {
     ROOT: '/reviews',

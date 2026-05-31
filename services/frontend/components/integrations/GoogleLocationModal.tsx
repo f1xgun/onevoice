@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { bizApi } from '@/lib/api/business-api';
-import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 
@@ -48,7 +48,7 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
     queryKey: ['businesses', activeBusinessId, 'google-locations'],
     queryFn: () =>
       bizApi(activeBusinessId!)
-        .get(BIZ_API_PATHS.INTEGRATIONS.GOOGLE_LOCATIONS)
+        .get(INTEGRATION_ENDPOINTS.google_business?.locations ?? '')
         .then((r) => r.data as GoogleLocation[]),
     enabled: open && !!activeBusinessId,
   });
@@ -57,10 +57,9 @@ export function GoogleLocationModal({ open, onClose }: GoogleLocationModalProps)
   const connectMutation = useMutation({
     mutationFn: (params: { account_id: string; location_id: string }) => {
       if (!activeBusinessId) return Promise.reject(new Error('No active business'));
-      return bizApi(activeBusinessId).post(
-        BIZ_API_PATHS.INTEGRATIONS.GOOGLE_SELECT_LOCATION,
-        params
-      );
+      const selectPath = INTEGRATION_ENDPOINTS.google_business?.selectLocation;
+      if (!selectPath) return Promise.reject(new Error('google_business not configured'));
+      return bizApi(activeBusinessId).post(selectPath, params);
     },
     onSuccess: () => {
       toast.success(tIntegrations('googleConnected'));
