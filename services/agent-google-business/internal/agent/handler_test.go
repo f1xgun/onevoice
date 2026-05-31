@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -231,6 +232,55 @@ func TestClassifyGBPError(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- Typed code tests (locked-enum contract) ---
+
+func TestClassifyGBPError_401_StampsTokenInvalid(t *testing.T) {
+	out := classifyGBPError(fmt.Errorf("google api 401: invalid_grant"))
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+	assert.True(t, assertNonRetryable(out))
+}
+
+func TestClassifyGBPError_403_StampsTokenInvalid(t *testing.T) {
+	out := classifyGBPError(fmt.Errorf("403 forbidden"))
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+}
+
+func TestClassifyGBPError_PermissionDenied_StampsTokenInvalid(t *testing.T) {
+	out := classifyGBPError(fmt.Errorf("PERMISSION_DENIED"))
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+}
+
+func TestClassifyGBPError_Unauthenticated_StampsTokenInvalid(t *testing.T) {
+	out := classifyGBPError(fmt.Errorf("UNAUTHENTICATED"))
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+}
+
+func TestClassifyGBPError_404_StampsChannelNotFound(t *testing.T) {
+	out := classifyGBPError(fmt.Errorf("404 not found"))
+	assert.Equal(t, "channel_not_found", a2a.CodeOf(out))
+	assert.True(t, assertNonRetryable(out))
+}
+
+func TestClassifyGBPError_NotFound_StampsChannelNotFound(t *testing.T) {
+	out := classifyGBPError(fmt.Errorf("NOT_FOUND"))
+	assert.Equal(t, "channel_not_found", a2a.CodeOf(out))
+}
+
+func TestClassifyGBPError_Generic_StampsTransient(t *testing.T) {
+	out := classifyGBPError(fmt.Errorf("connection refused"))
+	assert.Equal(t, "transient", a2a.CodeOf(out))
+	assert.False(t, assertNonRetryable(out))
+}
+
+func TestClassifyGBPError_Nil_ReturnsNil(t *testing.T) {
+	assert.Nil(t, classifyGBPError(nil))
+}
+
+func assertNonRetryable(err error) bool {
+	var nre *a2a.NonRetryableError
+	return errors.As(err, &nre)
 }
 
 // countingGBPClient wraps mockGBPClient with an atomic call counter.

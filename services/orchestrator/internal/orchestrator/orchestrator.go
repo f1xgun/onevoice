@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/llm"
 	"github.com/f1xgun/onevoice/pkg/metrics"
@@ -340,6 +342,10 @@ func buildToolResultEvent(tc llm.ToolCall, displayName, displayNameKey string, r
 	}
 	if execErr != nil {
 		ev.ToolError = execErr.Error()
+		var ce *a2a.CodedError
+		if errors.As(execErr, &ce) {
+			ev.Code = ce.Code
+		}
 	}
 	return ev
 }

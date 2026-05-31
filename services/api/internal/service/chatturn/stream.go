@@ -99,8 +99,9 @@ func (t *Turn) dispatchEvent(taskOpsCtx context.Context, businessID string, stat
 			ToolCallID: ev.ToolCallID,
 			Content:    content,
 			IsError:    ev.ToolError != "",
+			Code:       ev.Code,
 		})
-		t.onToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, ev.ToolError, state.idMap)
+		t.onToolResult(taskOpsCtx, businessID, ev.ToolCallID, content, ev.ToolError, ev.Code, state.idMap)
 	case "tool_approval_required":
 		// copy so the post-loop branch can read BatchID.
 		evCopy := ev

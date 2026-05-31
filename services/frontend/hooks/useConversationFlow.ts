@@ -115,6 +115,7 @@ interface ApiToolResult {
   toolCallId: string;
   content: Record<string, unknown>;
   isError: boolean;
+  code?: string;
 }
 
 interface ApiMessage {
@@ -211,6 +212,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
                         error: result?.isError
                           ? ((result.content?.error as string) ?? 'error')
                           : undefined,
+                        code: (result?.code as ToolCall['code']) || undefined,
                         status,
                       };
                     })

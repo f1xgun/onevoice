@@ -116,6 +116,11 @@ type ToolResult struct {
 	ToolCallID string                 `json:"toolCallId" bson:"tool_call_id"`
 	Content    map[string]interface{} `json:"content" bson:"content"`
 	IsError    bool                   `json:"isError" bson:"is_error"`
+	// Code carries the typed classifier emitted by the platform agent
+	// when the call errored. Empty for success and for historical
+	// rows (omitempty preserves backward-compat — old documents decode
+	// with Code == "").
+	Code string `json:"code,omitempty" bson:"code,omitempty"`
 }
 
 type AgentTask struct {
@@ -137,9 +142,16 @@ type AgentTask struct {
 	Input          interface{} `json:"input,omitempty" bson:"input,omitempty"`
 	Output         interface{} `json:"output,omitempty" bson:"output,omitempty"`
 	Error          string      `json:"error,omitempty" bson:"error,omitempty"`
-	StartedAt      *time.Time  `json:"startedAt,omitempty" bson:"started_at,omitempty"`
-	CompletedAt    *time.Time  `json:"completedAt,omitempty" bson:"completed_at,omitempty"`
-	CreatedAt      time.Time   `json:"createdAt" bson:"created_at"`
+	// ErrorCode is the typed classifier from the platform agent's
+	// classify*Error function (locked enum: integration_token_invalid,
+	// rate_limit_exceeded, transient, channel_not_found, media_too_large).
+	// Empty for success rows and for historical documents — omitempty
+	// preserves backward-compat (old rows decode with ErrorCode == "" and
+	// the FE renders the fallback summary).
+	ErrorCode   string     `json:"errorCode,omitempty" bson:"error_code,omitempty"`
+	StartedAt   *time.Time `json:"startedAt,omitempty" bson:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completedAt,omitempty" bson:"completed_at,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt" bson:"created_at"`
 }
 
 type Review struct {

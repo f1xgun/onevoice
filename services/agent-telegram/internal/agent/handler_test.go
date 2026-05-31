@@ -225,6 +225,61 @@ func TestClassifyTelegramError_NetworkError(t *testing.T) {
 	assert.False(t, errors.Is(err, &a2a.NonRetryableError{}), "network error should NOT be NonRetryableError")
 }
 
+func TestClassifyTelegramError_Unauthorized_StampsTokenInvalid(t *testing.T) {
+	out := agent.ClassifyTelegramError(fmt.Errorf("Unauthorized"))
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+	assert.True(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyTelegramError_Forbidden_StampsTokenInvalid(t *testing.T) {
+	out := agent.ClassifyTelegramError(fmt.Errorf("Forbidden: bot was kicked"))
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(out))
+}
+
+func TestClassifyTelegramError_TooManyRequests_StampsRateLimit(t *testing.T) {
+	out := agent.ClassifyTelegramError(fmt.Errorf("Too Many Requests: retry after 30"))
+	assert.Equal(t, "rate_limit_exceeded", a2a.CodeOf(out))
+	assert.True(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyTelegramError_PhotoDimensions_StampsMediaTooLarge(t *testing.T) {
+	out := agent.ClassifyTelegramError(fmt.Errorf("Bad Request: PHOTO_INVALID_DIMENSIONS"))
+	assert.Equal(t, "media_too_large", a2a.CodeOf(out))
+	assert.True(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyTelegramError_ChatNotFound_StampsChannelNotFound(t *testing.T) {
+	out := agent.ClassifyTelegramError(fmt.Errorf("Bad Request: chat not found"))
+	assert.Equal(t, "channel_not_found", a2a.CodeOf(out))
+	assert.True(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyTelegramError_Generic_StampsTransient(t *testing.T) {
+	out := agent.ClassifyTelegramError(fmt.Errorf("dial tcp: connection refused"))
+	assert.Equal(t, "transient", a2a.CodeOf(out))
+	// transient does NOT wrap NonRetryableError so withRetry can still retry.
+	assert.False(t, errors.Is(out, &a2a.NonRetryableError{}))
+}
+
+func TestClassifyTelegramError_Nil_ReturnsNil(t *testing.T) {
+	assert.NoError(t, agent.ClassifyTelegramError(nil))
+}
+
+func TestTelegramSendChannelPost_InvalidChannelID_StampsChannelNotFound(t *testing.T) {
+	fetcher := &fakeTokenFetcher{token: "tok", externalID: "not-a-number"}
+	h := agent.NewHandler(fetcher, func(_ string) (agent.Sender, error) {
+		return &fakeSender{}, nil
+	}, nil)
+
+	_, err := h.Handle(context.Background(), a2a.ToolRequest{
+		Tool:       tools.TelegramSendChannelPost,
+		BusinessID: "biz-1",
+		Args:       map[string]interface{}{"text": "hi", "channel_id": "also-not-numeric"},
+	})
+	require.Error(t, err)
+	assert.Equal(t, "channel_not_found", a2a.CodeOf(err))
+}
+
 func TestClassifyTelegramError_TokenFetchFailure(t *testing.T) {
 	fetcher := &fakeTokenFetcher{err: fmt.Errorf("integration not found")}
 	h := agent.NewHandler(fetcher, func(_ string) (agent.Sender, error) {

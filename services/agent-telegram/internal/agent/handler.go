@@ -84,25 +84,42 @@ func ClassifyTelegramError(err error) error {
 }
 
 // classifyTelegramError is the internal implementation used by per-tool
-// handlers (sendChannelPost wraps with %w).
+// handlers (sendChannelPost wraps with %w). It stamps a typed Code on every
+// non-nil error so the frontend can render a localized explanation from
+// the locked enum: integration_token_invalid, rate_limit_exceeded,
+// media_too_large, channel_not_found, transient.
 func classifyTelegramError(err error) error {
 	if err == nil {
 		return nil
 	}
+	// Preserve an already-typed code from upstream wrapping sites
+	// (e.g. inline channel-id parse failures wrapped as channel_not_found
+	// before the classifier runs at the dispatcher seam).
+	if a2a.CodeOf(err) != "" {
+		return err
+	}
 	msg := err.Error()
-	// Permanent: unauthorized, forbidden
+	lower := strings.ToLower(msg)
+	// Permanent: unauthorized, forbidden — token invalid.
 	if strings.Contains(msg, "Unauthorized") || strings.Contains(msg, "Forbidden") {
-		return a2a.NewNonRetryableError(err)
+		return a2a.NewCodedError("integration_token_invalid", a2a.NewNonRetryableError(err))
 	}
-	// Rate-limited: too many requests — non-retryable, surface to user
+	// Rate-limited: too many requests — non-retryable, surface to user.
 	if strings.Contains(msg, "Too Many Requests") || strings.Contains(msg, "retry after") {
-		return a2a.NewNonRetryableError(fmt.Errorf("telegram rate limit: %w", err))
+		return a2a.NewCodedError("rate_limit_exceeded", a2a.NewNonRetryableError(fmt.Errorf("telegram rate limit: %w", err)))
 	}
-	// Chat/channel not found — permanent
+	// Media constraint: image too large or rejected by Telegram.
+	if strings.Contains(lower, "photo_invalid_dimensions") || strings.Contains(lower, "photo dimensions") ||
+		strings.Contains(lower, "file too big") || strings.Contains(lower, "photo_save_file_invalid") {
+		return a2a.NewCodedError("media_too_large", a2a.NewNonRetryableError(err))
+	}
+	// Chat/channel not found — permanent.
 	if strings.Contains(msg, "chat not found") || strings.Contains(msg, "Bad Request: chat_id is empty") {
-		return a2a.NewNonRetryableError(err)
+		return a2a.NewCodedError("channel_not_found", a2a.NewNonRetryableError(err))
 	}
-	return err // transient (network, 5xx, etc.)
+	// Transient (network, 5xx, etc.) — withRetry will still retry because the
+	// inner error is not wrapped in NonRetryableError.
+	return a2a.NewCodedError("transient", err)
 }
 
 // getSender retrieves a Sender and the resolved externalID for a tool request.
@@ -135,7 +152,7 @@ func (h *Handler) sendChannelPost(ctx context.Context, req a2a.ToolRequest) (*a2
 	if parseErr != nil {
 		chatID, err = strconv.ParseInt(resolvedID, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("telegram: invalid channel_id %q: %w", channelIDStr, parseErr)
+			return nil, a2a.NewCodedError("channel_not_found", fmt.Errorf("telegram: invalid channel_id %q: %w", channelIDStr, parseErr))
 		}
 	}
 
@@ -167,7 +184,7 @@ func (h *Handler) sendChannelPhoto(ctx context.Context, req a2a.ToolRequest) (*a
 	if parseErr != nil {
 		chatID, err = strconv.ParseInt(resolvedID, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("telegram: invalid channel_id %q: %w", channelIDStr, parseErr)
+			return nil, a2a.NewCodedError("channel_not_found", fmt.Errorf("telegram: invalid channel_id %q: %w", channelIDStr, parseErr))
 		}
 	}
 
@@ -198,7 +215,7 @@ func (h *Handler) sendNotification(ctx context.Context, req a2a.ToolRequest) (*a
 	if parseErr != nil {
 		chatID, err = strconv.ParseInt(resolvedID, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("telegram: invalid chat_id %q: %w", chatIDStr, parseErr)
+			return nil, a2a.NewCodedError("channel_not_found", fmt.Errorf("telegram: invalid chat_id %q: %w", chatIDStr, parseErr))
 		}
 	}
 
@@ -227,7 +244,7 @@ func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.Too
 
 	reviews, err := sender.GetReviews(limit)
 	if err != nil {
-		return nil, fmt.Errorf("telegram: get reviews: %w", err)
+		return nil, fmt.Errorf("telegram: get reviews: %w", classifyTelegramError(err))
 	}
 
 	return &a2a.ToolResponse{
@@ -268,7 +285,7 @@ func (h *Handler) replyToComment(ctx context.Context, req a2a.ToolRequest) (*a2a
 	if parseErr != nil {
 		chatID, err = strconv.ParseInt(resolvedID, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("telegram: invalid chat_id %q: %w", chatIDStr, parseErr)
+			return nil, a2a.NewCodedError("channel_not_found", fmt.Errorf("telegram: invalid chat_id %q: %w", chatIDStr, parseErr))
 		}
 	}
 

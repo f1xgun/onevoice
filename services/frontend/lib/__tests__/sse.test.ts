@@ -57,6 +57,42 @@ describe('applySSEEvent', () => {
     expect(result.toolCalls![0].result).toEqual({ post_id: '123' });
   });
 
+  it('propagates typed code on tool_result error frames', () => {
+    const msg: Message = {
+      ...baseMessage,
+      toolCalls: [
+        { id: 'call_1', name: 'telegram__send_channel_post', args: {}, status: 'pending' },
+      ],
+    };
+    const result = applySSEEvent(msg, {
+      type: 'tool_result',
+      tool_call_id: 'call_1',
+      tool_name: 'telegram__send_channel_post',
+      error: 'Unauthorized: bot kicked',
+      code: 'integration_token_invalid',
+    });
+    expect(result.toolCalls![0].status).toBe('error');
+    expect(result.toolCalls![0].error).toBe('Unauthorized: bot kicked');
+    expect(result.toolCalls![0].code).toBe('integration_token_invalid');
+  });
+
+  it('leaves code undefined when tool_result frame omits it (legacy)', () => {
+    const msg: Message = {
+      ...baseMessage,
+      toolCalls: [
+        { id: 'call_1', name: 'telegram__send_channel_post', args: {}, status: 'pending' },
+      ],
+    };
+    const result = applySSEEvent(msg, {
+      type: 'tool_result',
+      tool_call_id: 'call_1',
+      tool_name: 'telegram__send_channel_post',
+      result: { message_id: 7 },
+    });
+    expect(result.toolCalls![0].status).toBe('done');
+    expect(result.toolCalls![0].code).toBeUndefined();
+  });
+
   it('marks done on done event', () => {
     const result = applySSEEvent(baseMessage, { type: 'done' });
     expect(result.status).toBe('done');

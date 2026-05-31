@@ -85,6 +85,65 @@ func TestOnToolCall_EmptyDisplayNameKey_BackwardCompat(t *testing.T) {
 	assert.Equal(t, "Отправить пост", repo.created[0].DisplayName)
 }
 
+// fakeAgentTaskRepoWithUpdate captures Update calls so the test can assert
+// that ErrorCode is persisted on the AgentTask document.
+type fakeAgentTaskRepoWithUpdate struct {
+	fakeAgentTaskRepo
+	updated []domain.AgentTask
+}
+
+func (f *fakeAgentTaskRepoWithUpdate) Update(_ context.Context, t *domain.AgentTask) error {
+	f.updated = append(f.updated, *t)
+	return nil
+}
+
+// TestOnToolResult_StampsErrorCode — when the SSE tool_result frame carries a
+// typed Code, onToolResult must forward it onto AgentTask.ErrorCode so the
+// repository writes error_code into Mongo on the same Update.
+func TestOnToolResult_StampsErrorCode(t *testing.T) {
+	repo := &fakeAgentTaskRepoWithUpdate{}
+	turn := newTurnForPostalTest(repo)
+
+	idMap := map[string]string{"call-1": "task-1"}
+	turn.onToolResult(
+		context.Background(),
+		"biz-1",
+		"call-1",
+		map[string]interface{}{"error": "Unauthorized: bot kicked"},
+		"telegram: send message: Unauthorized: bot kicked",
+		"integration_token_invalid",
+		idMap,
+	)
+
+	require.Len(t, repo.updated, 1)
+	got := repo.updated[0]
+	assert.Equal(t, "error", got.Status)
+	assert.Equal(t, "Unauthorized: bot kicked", got.Error)
+	assert.Equal(t, "integration_token_invalid", got.ErrorCode)
+}
+
+// TestOnToolResult_NoCode_LeavesErrorCodeEmpty — uncoded errors do not write
+// an ErrorCode so the repository's selective $set leaves any prior value
+// (or absence) untouched.
+func TestOnToolResult_NoCode_LeavesErrorCodeEmpty(t *testing.T) {
+	repo := &fakeAgentTaskRepoWithUpdate{}
+	turn := newTurnForPostalTest(repo)
+
+	idMap := map[string]string{"call-2": "task-2"}
+	turn.onToolResult(
+		context.Background(),
+		"biz-1",
+		"call-2",
+		map[string]interface{}{"error": "transient network error"},
+		"transient network error",
+		"",
+		idMap,
+	)
+
+	require.Len(t, repo.updated, 1)
+	assert.Empty(t, repo.updated[0].ErrorCode)
+}
+
 // TestOnToolCall_InternalToolSkipped — internal tools (no "__" separator) do
 // not surface on the Tasks page; the SSE handler must skip persistence
 // regardless of the displayNameKey value.

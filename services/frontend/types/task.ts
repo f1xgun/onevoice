@@ -1,3 +1,5 @@
+import type { ErrorCode } from './chat';
+
 export interface AgentTask {
   id: string;
   businessId: string;
@@ -20,6 +22,12 @@ export interface AgentTask {
   input?: unknown;
   output?: unknown;
   error?: string;
+  /**
+   * Typed classifier from the platform agent (locked enum). Present on rows
+   * persisted on or after Phase 26-04; historical rows omit it and fall
+   * through to the calm summary on the Tasks page.
+   */
+  errorCode?: ErrorCode;
   startedAt?: string;
   completedAt?: string;
   createdAt: string;

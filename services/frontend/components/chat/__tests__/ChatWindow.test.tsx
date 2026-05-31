@@ -154,3 +154,130 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
     expect(screen.queryByRole('region', { name: /Ожидает подтверждения/ })).not.toBeInTheDocument();
   });
 });
+
+describe('ChatWindow — IntegrationTokenInvalidBanner detector', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    useAuthStore.setState({
+      user: null,
+      accessToken: 'test-token',
+      isAuthenticated: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders banner when newest assistant message carries code=integration_token_invalid', async () => {
+    mockGetMessages({
+      messages: [
+        {
+          id: 'm1',
+          role: 'user',
+          content: 'отправь пост',
+        },
+        {
+          id: 'm2',
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'call_x', name: 'telegram__send_channel_post', arguments: {} }],
+          toolResults: [
+            {
+              toolCallId: 'call_x',
+              content: { error: 'Unauthorized' },
+              isError: true,
+              code: 'integration_token_invalid',
+            },
+          ],
+        },
+      ],
+      pendingApprovals: [],
+    });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    expect(
+      await screen.findByRole('link', { name: 'Переподключить Telegram' })
+    ).toBeInTheDocument();
+  });
+
+  it('hides banner when no toolCall carries the code', async () => {
+    mockGetMessages({
+      messages: [
+        {
+          id: 'm1',
+          role: 'user',
+          content: 'hi',
+        },
+        {
+          id: 'm2',
+          role: 'assistant',
+          content: 'готово',
+          toolCalls: [{ id: 'call_x', name: 'telegram__send_channel_post', arguments: {} }],
+          toolResults: [
+            {
+              toolCallId: 'call_x',
+              content: { message_id: 1 },
+              isError: false,
+            },
+          ],
+        },
+      ],
+      pendingApprovals: [],
+    });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    await screen.findByText('готово');
+    expect(screen.queryByRole('link', { name: /Переподключить/ })).not.toBeInTheDocument();
+  });
+
+  it('ignores stale invalid_token in older assistant messages (only newest turn drives)', async () => {
+    mockGetMessages({
+      messages: [
+        {
+          id: 'm1',
+          role: 'user',
+          content: 'first',
+        },
+        {
+          id: 'm2',
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'call_old', name: 'telegram__send_channel_post', arguments: {} }],
+          toolResults: [
+            {
+              toolCallId: 'call_old',
+              content: { error: 'Unauthorized' },
+              isError: true,
+              code: 'integration_token_invalid',
+            },
+          ],
+        },
+        {
+          id: 'm3',
+          role: 'user',
+          content: 'second',
+        },
+        {
+          id: 'm4',
+          role: 'assistant',
+          content: 'готово',
+        },
+      ],
+      pendingApprovals: [],
+    });
+    render(
+      <Wrapper>
+        <ChatWindow conversationId="conv-1" />
+      </Wrapper>
+    );
+    await screen.findByText('готово');
+    expect(screen.queryByRole('link', { name: /Переподключить/ })).not.toBeInTheDocument();
+  });
+});
