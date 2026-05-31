@@ -23,7 +23,31 @@ import { YandexBusinessConnectModal } from '@/components/integrations/YandexBusi
 import { WhitelistWarningBanner } from '@/components/integrations/WhitelistWarningBanner';
 import { usePlatforms } from '@/lib/hooks/usePlatforms';
 import { usePermission } from '@/lib/hooks/usePermission';
+import type { PlatformId } from '@/lib/platforms';
 import type { Business } from '@/types/business';
+
+type ModalPlatform = Extract<PlatformId, 'telegram' | 'vk' | 'google_business' | 'yandex_business'>;
+
+interface ModalDispatchProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+const MODAL_COMPONENTS: Record<ModalPlatform, React.ComponentType<ModalDispatchProps>> = {
+  telegram: TelegramConnectModal,
+  vk: VKCommunityModal,
+  google_business: GoogleLocationModal,
+  yandex_business: YandexBusinessConnectModal,
+};
+
+// Telegram/VK/Google flows refetch the integration list on close so the new
+// row shows up; Yandex's cookie-paste modal manages its own invalidation.
+const MODAL_INVALIDATES_ON_CLOSE: Record<ModalPlatform, boolean> = {
+  telegram: true,
+  vk: true,
+  google_business: true,
+  yandex_business: false,
+};
 
 interface Integration {
   id: string;
@@ -51,10 +75,7 @@ export default function IntegrationsPage() {
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
   const canConnect = usePermission('integrations.connect').allowed;
   const canDisconnect = usePermission('integrations.disconnect').allowed;
-  const [telegramOpen, setTelegramOpen] = useState(false);
-  const [vkCommunityOpen, setVkCommunityOpen] = useState(false);
-  const [googleLocationOpen, setGoogleLocationOpen] = useState(false);
-  const [yandexOpen, setYandexOpen] = useState(false);
+  const [activeModalPlatform, setActiveModalPlatform] = useState<ModalPlatform | null>(null);
   const [lastRegistered, setLastRegistered] = useState<LastRegistered | null>(null);
   const prevIntegrationIdsRef = useRef<Set<string> | null>(null);
 
@@ -84,7 +105,13 @@ export default function IntegrationsPage() {
 
     const googleStep = searchParams.get('google_step');
     if (googleStep === 'select_location') {
-      setGoogleLocationOpen(true);
+      setActiveModalPlatform('google_business');
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
+    }
+
+    const reconnect = searchParams.get('reconnect');
+    if (reconnect && reconnect in MODAL_COMPONENTS) {
+      setActiveModalPlatform(reconnect as ModalPlatform);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
 
@@ -108,29 +135,6 @@ export default function IntegrationsPage() {
         ? tIntegrations(`oauthErrors.${key}`)
         : tIntegrations('oauthErrors.fallback', { error });
       toast.error(message);
-      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
-    }
-
-    // Deep-link from the chat surface's IntegrationTokenInvalidBanner
-    // or from the tasks page reconnect CTA. Opens the matching modal
-    // automatically; unknown platforms are silently ignored.
-    const reconnect = searchParams.get('reconnect');
-    if (reconnect) {
-      switch (reconnect) {
-        case 'telegram':
-          setTelegramOpen(true);
-          break;
-        case 'vk':
-          setVkCommunityOpen(true);
-          break;
-        case 'yandex_business':
-          setYandexOpen(true);
-          break;
-        case 'google_business':
-          setGoogleLocationOpen(true);
-          break;
-        // Unknown values: silently ignore.
-      }
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
   }, [searchParams, qc, activeBusinessId, tIntegrations]);
@@ -194,12 +198,8 @@ export default function IntegrationsPage() {
 
   const handleConnect = async (platformId: string) => {
     trackClick('connect_integration', { platform: platformId });
-    if (platformId === 'telegram') {
-      setTelegramOpen(true);
-      return;
-    }
-    if (platformId === 'vk') {
-      setVkCommunityOpen(true);
+    if (platformId === 'telegram' || platformId === 'vk' || platformId === 'yandex_business') {
+      setActiveModalPlatform(platformId);
       return;
     }
     if (platformId === 'google_business') {
@@ -212,14 +212,18 @@ export default function IntegrationsPage() {
       } catch {
         toast.error(tIntegrations('page.googleAuthFailed'));
       }
-      return;
-    }
-    if (platformId === 'yandex_business') {
-      // Cookie-paste flow — Yandex has no public OAuth API for the actions
-      // we automate, so the agent needs real session cookies.
-      setYandexOpen(true);
     }
   };
+
+  const closeActiveModal = () => {
+    const platform = activeModalPlatform;
+    setActiveModalPlatform(null);
+    if (platform && MODAL_INVALIDATES_ON_CLOSE[platform]) {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
+    }
+  };
+
+  const ActiveModal = activeModalPlatform ? MODAL_COMPONENTS[activeModalPlatform] : null;
 
   return (
     <>
@@ -315,31 +319,7 @@ export default function IntegrationsPage() {
         </div>
       </div>
 
-      <TelegramConnectModal
-        open={telegramOpen}
-        onClose={() => {
-          setTelegramOpen(false);
-          qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
-        }}
-      />
-
-      <VKCommunityModal
-        open={vkCommunityOpen}
-        onClose={() => {
-          setVkCommunityOpen(false);
-          qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
-        }}
-      />
-
-      <GoogleLocationModal
-        open={googleLocationOpen}
-        onClose={() => {
-          setGoogleLocationOpen(false);
-          qc.invalidateQueries({ queryKey: QUERY_KEYS.BUSINESS_INTEGRATIONS(activeBusinessId) });
-        }}
-      />
-
-      <YandexBusinessConnectModal open={yandexOpen} onClose={() => setYandexOpen(false)} />
+      {ActiveModal && <ActiveModal open={true} onClose={closeActiveModal} />}
     </>
   );
 }
