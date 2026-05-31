@@ -101,9 +101,8 @@ func expandRightToBoundary(s string, pos int) int {
 
 // HighlightRanges returns byte ranges in `snippet` where any token's
 // lowercased form starts with one of `queryPrefixes`. Stable order,
-// non-overlapping. Used by the search service to build the `marks`
-// array sent to the frontend; the frontend wraps each [start, end)
-// range in <mark>.
+// non-overlapping. The search service builds the `marks` array from these
+// ranges; the frontend wraps each [start, end) range in <mark>.
 //
 // Byte offsets — NOT rune offsets — because the frontend slices by byte
 // in the response payload.
@@ -144,7 +143,7 @@ func anyPrefixMatches(token string, prefixes map[string]struct{}) bool {
 }
 
 // QueryPrefixes builds the deduplicated set of lowercased query tokens
-// used by BuildSnippet, HighlightRanges, and the repository regex
+// shared by BuildSnippet, HighlightRanges, and the repository regex
 // builders. Tokenizes `query` on letter/digit boundaries; punctuation
 // and whitespace become separators.
 func QueryPrefixes(query string) map[string]struct{} {

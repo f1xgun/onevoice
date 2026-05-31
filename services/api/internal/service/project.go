@@ -185,7 +185,7 @@ func (s *ProjectService) DeleteCascade(ctx context.Context, businessID, id, acto
 }
 
 // CountConversations returns how many Mongo conversations are currently
-// assigned to the project. Used by the frontend delete-confirmation dialog.
+// assigned to the project.
 func (s *ProjectService) CountConversations(ctx context.Context, businessID, id uuid.UUID) (int, error) {
 	p, err := s.repo.GetByID(ctx, id)
 	if err != nil {

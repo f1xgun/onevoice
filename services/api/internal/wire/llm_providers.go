@@ -45,10 +45,9 @@ func priceFor(modelID string) (inputUSDPer1MTok, outputUSDPer1MTok float64) {
 
 // allConfiguredModelIDs returns the deduplicated set of model IDs the API
 // service can route to: the main chat model (LLMModel) and the auto-titler
-// model (TitlerModel). Registering only LLMModel previously left the titler
-// Router unable to resolve TITLER_MODEL when it differed from LLM_MODEL —
-// `.env.example` ships exactly that default (haiku titler over sonnet main)
-// so the omission silently broke the documented cheap-tier path.
+// model (TitlerModel). Both must be registered so the Router can resolve
+// TITLER_MODEL when it differs from LLM_MODEL (the documented cheap-tier
+// path with haiku titler over sonnet main).
 func allConfiguredModelIDs(cfg *config.Config) []string {
 	ids := make([]string, 0, 2)
 	seen := make(map[string]bool, 2)

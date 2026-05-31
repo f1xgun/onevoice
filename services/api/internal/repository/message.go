@@ -68,12 +68,12 @@ func (r *messageRepository) CountByConversationID(ctx context.Context, conversat
 	return count, nil
 }
 
-// Update overwrites the stored message by _id. Used by the HITL
-// resume path so tool results can be appended to the SAME
-// assistant Message that carried the pause-time ToolCalls (invariant:
-// one assistant Message per LLM turn, even across a pause). MatchedCount == 0
-// means no such _id exists → ErrMessageNotFound so callers can distinguish
-// a stale Message ID from a transient Mongo error.
+// Update overwrites the stored message by _id. The HITL resume path
+// appends tool results to the SAME assistant Message that carried the
+// pause-time ToolCalls (invariant: one assistant Message per LLM turn,
+// even across a pause). MatchedCount == 0 means no such _id exists →
+// ErrMessageNotFound so callers can distinguish a stale Message ID from
+// a transient Mongo error.
 func (r *messageRepository) Update(ctx context.Context, msg *domain.Message) error {
 	if msg.ID == "" {
 		return fmt.Errorf("update message: id is required")
@@ -90,9 +90,9 @@ func (r *messageRepository) Update(ctx context.Context, msg *domain.Message) err
 
 // FindByConversationActive returns the most recent assistant Message in the
 // conversation whose Status is in {pending_approval, in_progress}, or
-// (nil, ErrMessageNotFound) if no such Message exists. Used by chat_proxy.go's
-// stream-open gate to detect in-flight turns before creating
-// a new assistant Message when a client reopens POST /chat/{id}.
+// (nil, ErrMessageNotFound) if no such Message exists. The stream-open gate
+// uses this to detect in-flight turns before creating a new assistant Message
+// when a client reopens POST /chat/{id}.
 func (r *messageRepository) FindByConversationActive(ctx context.Context, conversationID string) (*domain.Message, error) {
 	filter := bson.M{
 		"conversation_id": conversationID,
@@ -115,14 +115,11 @@ func (r *messageRepository) FindByConversationActive(ctx context.Context, conver
 	return &msg, nil
 }
 
-// SearchByConversationIDs — content search via word-prefix regex (v20.1).
+// SearchByConversationIDs — content search via word-prefix regex.
 //
-// We previously used Mongo's $text index. v20 dropped Snowball stemming
-// because of asymmetric stems (e.g. "отзыв" vs "отзывы" did not co-match);
-// v20.1 replaces $text entirely with a word-anchored regex per query
-// token. Each lowercased token must match SOME word in `content` whose
+// Each lowercased token in the query must match SOME word in `content` whose
 // lowercased prefix equals it — covering inflectional morphology
-// ("отзыв" → "отзыв|отзывы|отзыва|отзывов|…") without the asymmetry.
+// ("отзыв" → "отзыв|отзывы|отзыва|отзывов|…") symmetrically.
 //
 // Returns one row per conversation: (top_message_id, top_content,
 // top_score=match_count, match_count), sorted by match_count desc.

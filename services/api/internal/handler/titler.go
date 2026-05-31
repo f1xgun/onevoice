@@ -70,8 +70,8 @@ func NewTitlerHandler(
 //     → 409 "title_state_changed" (race window between the read in step 2 and
 //     this atomic write — manual rename arrived mid-flight).
 //  7. fetch user + assistant text; spawn titler goroutine on a fresh detached
-//     ctx with 30s timeout (Pitfall 2 / Landmine 5: r.Context() is unsafe —
-//     it's canceled at HTTP response close, the cheap-LLM call takes 3-8s).
+//     ctx with 30s timeout (r.Context() is unsafe — it's canceled at HTTP
+//     response close, the cheap-LLM call takes 3-8s).
 //  8. respond 200 (empty body) — fire-and-forget.
 func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
@@ -175,11 +175,11 @@ func (h *TitlerHandler) RegenerateTitle(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// Pitfall 2 / Landmine 5: fresh detached ctx with 30s timeout — r.Context()
-	// is canceled at HTTP response close and the cheap-LLM call takes 3-8s.
-	// The goroutine owns the cancel so the timer releases when it exits. Locale
-	// copied off the request ctx (set by middleware.Locale) so the cheap-LLM
-	// prompt matches the user's chosen language — Phase D2.
+	// Fresh detached ctx with 30s timeout — r.Context() is canceled at HTTP
+	// response close and the cheap-LLM call takes 3-8s. The goroutine owns the
+	// cancel so the timer releases when it exits. Locale copied off the request
+	// ctx (set by middleware.Locale) so the cheap-LLM prompt matches the user's
+	// chosen language.
 	spawnCtx, spawnCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	spawnCtx = i18n.WithLocale(spawnCtx, i18n.LocaleFromContext(r.Context()))
 	// The acceptance grep requires the literal `go h.titler.GenerateAndSave(spawnCtx`

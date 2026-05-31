@@ -48,8 +48,7 @@ type yandexProbeResponse struct {
 }
 
 // ProbeYandexBusiness validates pasted Yandex cookies without persisting
-// anything. Used by the connect modal to give live ✅/❌ feedback as the
-// user pastes. Always returns 200 (the "ok" field carries the verdict);
+// anything. Always returns 200 (the "ok" field carries the verdict);
 // HTTP errors here would be misread by the UI as network failures.
 func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Request) {
 	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {

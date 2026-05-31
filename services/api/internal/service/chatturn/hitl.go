@@ -32,7 +32,7 @@ const (
 	gateInlineError
 )
 
-// sseEventError is the SSE event-type string used by both the orchestrator
+// sseEventError is the SSE event-type string shared by the orchestrator
 // and the inline-error path.
 const sseEventError = "error"
 
@@ -104,7 +104,7 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 }
 
 // reemitApprovalEvent writes a tool_approval_required SSE event built from
-// the persisted PendingToolCallBatch. Used by the implicit-resume gate
+// the persisted PendingToolCallBatch. The implicit-resume gate calls this
 // when the client reopens the chat mid-approval (network flap, page reload)
 // and the batch is still in status="pending". No orchestrator roundtrip.
 func (t *Turn) reemitApprovalEvent(w http.ResponseWriter, batch *domain.PendingToolCallBatch) {
@@ -139,7 +139,7 @@ func (t *Turn) reemitApprovalEvent(w http.ResponseWriter, batch *domain.PendingT
 }
 
 // sseInlineError writes a single {"type":"error","content":reason} SSE event
-// and closes the stream. Used by the gate's orphan-in-progress case and by
+// and closes the stream. Called by the gate's orphan-in-progress case and by
 // the resume guard when the batch is missing or mis-scoped.
 func (t *Turn) sseInlineError(w http.ResponseWriter, reason string) {
 	w.Header().Set("Content-Type", "text/event-stream")

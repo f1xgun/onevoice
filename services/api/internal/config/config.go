@@ -154,10 +154,9 @@ type Config struct {
 	HTTPIdleTimeout          time.Duration
 	OrchestratorFetchTimeout time.Duration
 
-	// Per-endpoint per-minute request budgets. Defaults match the values
-	// previously hardcoded in services/api/internal/router/router.go.
-	// Operators tune these via RATE_LIMIT_* env vars when the service sees
-	// abnormal traffic shape (e.g., a customer integration polling /chat).
+	// Per-endpoint per-minute request budgets. Operators tune these via
+	// RATE_LIMIT_* env vars when the service sees abnormal traffic shape
+	// (e.g., a customer integration polling /chat).
 	RateLimitRegister int
 	RateLimitLogin    int
 	RateLimitChat     int

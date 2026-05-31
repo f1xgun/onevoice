@@ -100,9 +100,7 @@ type Services struct {
 	// Brute-force / credential-stuffing defense on /auth/login. Lockout is
 	// non-nil whenever h.Redis is non-nil (Redis is the storage layer);
 	// SmartCaptcha is non-nil always (Noop impl when SMARTCAPTCHA_SECRET_KEY
-	// is empty so the handler has a stable dependency to inject). Both
-	// consumed by AuthHandler via WithLockout in wire/handlers.go and by
-	// router.go which mounts the LockoutMiddleware on /auth/login.
+	// is empty so the handler has a stable dependency to inject).
 	Lockout      *lockout.Lockout
 	SmartCaptcha service.SmartCaptchaVerifier
 
@@ -454,9 +452,10 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 
 	// Lockout + SmartCaptcha wiring.
 	//
-	// InitTrustedProxies installs the TRUSTED_PROXY_CIDRS allowlist used by
-	// middleware.ClientIP. An invalid CIDR is fatal — we want to fail fast
-	// rather than silently degrade to "trust nothing" and lock the wrong IPs.
+	// InitTrustedProxies installs the TRUSTED_PROXY_CIDRS allowlist that
+	// middleware.ClientIP consults. An invalid CIDR is fatal — we want to
+	// fail fast rather than silently degrade to "trust nothing" and lock
+	// the wrong IPs.
 	if err := middleware.InitTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
 		return nil, fmt.Errorf("wire: init trusted proxies: %w", err)
 	}

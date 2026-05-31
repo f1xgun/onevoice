@@ -84,12 +84,10 @@ const MaxRejectReasonChars = 500
 
 // HITLService wires every HITL primitive (pending-tool-call repo, business
 // repo, project repo, tool registry cache) together behind the Resolve
-// business-logic entry point consumed by handler/hitl.go.
+// business-logic entry point.
 //
-// The inline orchestrator HTTP client moved into
-// pkg/orchestratorclient. HITLService exposes the *orchestratorclient.Client
-// via OrchClient() so handler/hitl.go's Resume can call StreamResume without
-// re-implementing the HTTP plumbing.
+// HITLService exposes the *orchestratorclient.Client via OrchClient() so
+// callers can invoke StreamResume without re-implementing the HTTP plumbing.
 type HITLService struct {
 	pendingRepo  domain.PendingToolCallRepository
 	businessRepo domain.BusinessRepository
@@ -147,9 +145,7 @@ func (s *HITLService) ProjectRepo() domain.ProjectRepository { return s.projectR
 // (GET /api/v1/tools, PUT approvals) can share the cache.
 func (s *HITLService) ToolsCache() *ToolsRegistryCache { return s.toolsCache }
 
-// OrchClient exposes the shared orchestrator HTTP client used by handler/hitl
-// (Resume) and chatproxy.HITLCoordinator. Replaces the legacy
-// OrchestratorURL() / HTTPClient() accessors that hand-rolled the HTTP request.
+// OrchClient exposes the shared orchestrator HTTP client.
 func (s *HITLService) OrchClient() *orchestratorclient.Client { return s.orch }
 
 // DecisionInput is the per-call verdict submitted in the resolve body.
@@ -443,7 +439,7 @@ func NewToolsRegistryCache(orchestratorURL string, httpClient *http.Client, ttl 
 	return c
 }
 
-// Seed pre-populates the cache with a static snapshot. Used by tests to avoid
+// Seed pre-populates the cache with a static snapshot, so callers can avoid
 // HTTP round-trips against the orchestrator. The seeded snapshot satisfies
 // every locale — tests typically don't care about the description language.
 func (c *ToolsRegistryCache) Seed(entries []ToolsRegistryEntry) {
@@ -520,8 +516,7 @@ func (c *ToolsRegistryCache) EditableFields(toolName string) []string {
 	return nil
 }
 
-// Has reports whether toolName is currently cached. Used by the PUT
-// handler to reject unknown tool names before persisting.
+// Has reports whether toolName is currently cached.
 func (c *ToolsRegistryCache) Has(toolName string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

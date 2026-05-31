@@ -44,8 +44,7 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 // fmt-style args are forwarded to i18n.Tr (so e.g. "connect.vk.invalid_token"
 // accepts a single %s arg with the VK-provided detail).
 //
-// Use this instead of writeJSONError for any user-visible string that was
-// previously a Russian literal in the handler.
+// Use this instead of writeJSONError for any user-visible localized string.
 func writeJSONErrorKey(w http.ResponseWriter, r *http.Request, status int, key string, args ...any) {
 	writeJSON(w, status, ErrorResponse{Error: i18n.Tr(r.Context(), key, args...)})
 }

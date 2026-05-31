@@ -119,9 +119,9 @@ func (r *PasswordResetTokenRepository) ConsumeAtomic(
 }
 
 // InvalidateAllForUser marks every unconsumed token for a user as consumed.
-// Used by RequestReset to revoke older outstanding links before issuing a
-// fresh one (FEATURES Flow 1 Edge case 5). Caller passes the tx; service
-// composes this with the new Insert in the same transaction.
+// RequestReset uses it to revoke older outstanding links before issuing a
+// fresh one. Caller passes the tx; service composes this with the new Insert
+// in the same transaction.
 func (r *PasswordResetTokenRepository) InvalidateAllForUser(
 	ctx context.Context,
 	tx pgx.Tx,

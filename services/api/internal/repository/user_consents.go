@@ -99,8 +99,7 @@ func (r *UserConsentsRepository) UpsertConsent(ctx context.Context, tx pgx.Tx, i
 	return nil
 }
 
-// Consent is the read-side projection used by ListByUser. The handler
-// returns these via GET /users/me/consents.
+// Consent is the read-side projection returned by ListByUser.
 type Consent struct {
 	UserID        uuid.UUID
 	Purpose       string

@@ -1,6 +1,6 @@
 // Package yandexcookies normalizes user-pasted Yandex session cookies
-// into the canonical JSON-array shape consumed by the agent's Playwright
-// pool (services/agent-yandex-business injectCookies).
+// into the canonical JSON-array shape the agent's Playwright pool expects
+// (services/agent-yandex-business injectCookies).
 //
 // Three input formats are accepted:
 //

@@ -237,10 +237,10 @@ func (s *EmailVerificationService) ChangeEmailBeforeVerify(ctx context.Context, 
 	return oldEmail, nil
 }
 
-// IssueAndEnqueueTx is the cross-call helper used by RequestResend,
-// ChangeEmailBeforeVerify, AND UserService.Register (Register also
-// composes the user_consents INSERT + outbox enqueue + token issue in one
-// tx). Exported so the user service can call it directly.
+// IssueAndEnqueueTx is the cross-call helper that issues a fresh
+// verification token and enqueues the outbox row in the supplied tx.
+// Exported so the user service can call it directly (it composes the
+// user_consents INSERT + outbox enqueue + token issue in one tx).
 func (s *EmailVerificationService) IssueAndEnqueueTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, email string) error {
 	plaintext, err := generateVerifyToken()
 	if err != nil {

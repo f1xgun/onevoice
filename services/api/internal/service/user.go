@@ -55,9 +55,9 @@ type RegistrationContext struct {
 // UserService defines the interface for user-related operations
 type UserService interface {
 	Register(ctx context.Context, email, password string) (*domain.User, error)
-	// RegisterWithContext is the atomic-Register entry point
-	// The handler uses this; the legacy Register stays for
-	// tests / pre-Phase-22 deploys. When consentService is not wired,
+	// RegisterWithContext is the atomic-Register entry point used by the
+	// handler. The legacy Register stays for tests that don't bring up the
+	// full collaborator wiring. When consentService is not wired,
 	// RegisterWithContext degrades to the legacy single-INSERT flow.
 	RegisterWithContext(ctx context.Context, email, password string, regCtx RegistrationContext) (*domain.User, error)
 	Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error)
@@ -65,11 +65,11 @@ type UserService interface {
 	Logout(ctx context.Context, refreshToken string) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
-	// UpdatePreferredLocale persists the user's UI language choice
-	// (i18n Phase A3). Validation of `locale` against the allow-list happens
-	// at the handler boundary so HTTP-layer responses can return field-level
-	// 400s; this method delegates straight to the repo so DB constraint
-	// violations still surface (defense-in-depth).
+	// UpdatePreferredLocale persists the user's UI language choice.
+	// Validation of `locale` against the allow-list happens at the handler
+	// boundary so HTTP-layer responses can return field-level 400s; this
+	// method delegates straight to the repo so DB constraint violations
+	// still surface (defense-in-depth).
 	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
 }
 
@@ -78,13 +78,12 @@ type userService struct {
 	redis     *redis.Client
 	jwtSecret []byte
 
-	// Register collaborators. Optional — when ANY of
-	// these is nil, Register falls back to the legacy non-tx path that
-	// only inserts the user row (preserves backward compat for
-	// pre-Phase-21 deployments + unit tests that don't bring up Postgres).
-	// When ALL are set, Register opens a tx, CreateInTx + user_consents
-	// INSERT + email_verification_tokens INSERT + email_outbox enqueue
-	// commit atomically.
+	// Register collaborators. Optional — when ANY of these is nil,
+	// Register falls back to the legacy non-tx path that only inserts the
+	// user row (preserves backward compat for unit tests that don't bring
+	// up Postgres). When ALL are set, Register opens a tx, CreateInTx +
+	// user_consents INSERT + email_verification_tokens INSERT + email_outbox
+	// enqueue commit atomically.
 	registerPool     RegisterTxPool       // *pgxpool.Pool by structural typing
 	registerUserRepo RegisterUserExt      // *repository.UserResetExtAdapter
 	registerConsents ConsentInserter      // *repository.UserConsentsRepository (legacy single-INSERT path)
@@ -179,7 +178,7 @@ func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSe
 // kicks in.
 //
 // When collaborators are nil, falls back to the legacy single-INSERT
-// path (backward compat for tests / pre-Phase-21 deployments).
+// path (backward compat for tests).
 func (s *userService) Register(ctx context.Context, email, password string) (*domain.User, error) {
 	// Validate email
 	if err := validateEmail(email); err != nil {
@@ -241,7 +240,7 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 		return sanitizeUser(user), nil
 	}
 
-	// Legacy path — no collaborators wired (tests / pre-Phase-21 deploys).
+	// Legacy path — no collaborators wired (tests only).
 	err = s.repo.Create(ctx, user)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserExists) {
@@ -482,7 +481,7 @@ func (s *userService) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, 
 // UpdatePreferredLocale delegates straight to the repo. We don't re-validate
 // the locale value here because the handler already enforces the allow-list
 // (validator tag oneof=ru en) — duplicating it here would only drift. The DB
-// CHECK constraint added in migration 000010 (prod) / 000008 (test) — i18n Phase A3 — is the safety net.
+// CHECK constraint is the safety net.
 func (s *userService) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
 	if err := s.repo.UpdatePreferredLocale(ctx, userID, locale); err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {

@@ -77,8 +77,8 @@ func NewYandexSmartCaptcha(secret string, httpClient *http.Client) SmartCaptchaV
 	}
 }
 
-// newYandexSmartCaptchaForTest is the internal constructor used by tests
-// to point at an httptest server. Production code MUST use NewYandexSmartCaptcha.
+// newYandexSmartCaptchaForTest is the internal constructor for tests that
+// need to point at an httptest server. Production code MUST use NewYandexSmartCaptcha.
 func newYandexSmartCaptchaForTest(secret, endpoint string) *yandexSmartCaptcha {
 	return &yandexSmartCaptcha{secret: secret, endpoint: endpoint, httpClient: &http.Client{Timeout: defaultCaptchaTimeout}}
 }

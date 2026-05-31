@@ -39,7 +39,7 @@ var defaultTrustedCIDRs = []string{
 }
 
 // InitTrustedProxies parses a comma-separated CIDR list once at startup
-// and installs it as the trust set used by ClientIP. An empty input falls
+// and installs it as the trust set for ClientIP. An empty input falls
 // back to defaultTrustedCIDRs so an operator who forgets to set the env
 // var still gets Yandex Cloud LB coverage by default.
 //

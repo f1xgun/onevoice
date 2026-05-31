@@ -21,7 +21,7 @@ const (
 	MaxPostLimit     = 100
 )
 
-// PostService defines the interface for post operations used by handler
+// PostService defines the interface for post operations.
 type PostService interface {
 	List(ctx context.Context, businessID uuid.UUID, filter domain.PostFilter) ([]domain.Post, int, error)
 	GetByID(ctx context.Context, businessID uuid.UUID, id string) (*domain.Post, error)
