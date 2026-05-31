@@ -184,6 +184,15 @@ jobs:
       - name: RBAC drift check
         run: make lint-rbac
 
+      # Catch divergence between docs/api/openapi.yaml (the spec source-of-truth)
+      # and services/api/internal/openapi/types.gen.go. A PR that edits the
+      # spec without committing the regenerated types — or vice versa — fails
+      # here.
+      - name: OpenAPI types drift check
+        run: |
+          make oapi-install
+          make oapi-check
+
   go-test:
     name: Go Tests
     needs: changes

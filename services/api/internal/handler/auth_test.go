@@ -126,7 +126,7 @@ func TestRegister(t *testing.T) {
 				var resp LoginResponse
 				err := json.Unmarshal(w.Body.Bytes(), &resp)
 				require.NoError(t, err)
-				assert.Equal(t, "user@example.com", resp.User.Email)
+				assert.Equal(t, "user@example.com", string(resp.User.Email))
 				assert.Equal(t, "access-token", resp.AccessToken)
 
 				// Verify refresh token is in cookie, not in response body
