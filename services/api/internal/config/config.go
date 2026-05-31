@@ -35,6 +35,11 @@ const (
 	// String literal used for env-var "true" comparisons.
 	envBoolTrue = "true"
 
+	// Per-user SSE concurrency cap default. 3 in-flight streams per user
+	// is generous for the free-beta single-pod deploy while still capping
+	// a single account from saturating orchestrator goroutines.
+	defaultSSEMaxPerUser = 3
+
 	// PostgreSQL pool sizing defaults. Sized for free-beta single-pod /
 	// ~10-20 concurrent chats; operators raise via PG_* env at scale.
 	defaultPGMaxConns              = 25
@@ -240,6 +245,12 @@ type Config struct {
 	RedisDownPolicy              string
 	LocalFallbackRequestsPerHour int
 
+	// SSEMaxPerUser caps in-flight SSE streams per user (0 disables the
+	// gate). The Redis-down decision is governed by the same
+	// RedisDownPolicy + LocalFallbackRequestsPerHour pair as the LLM
+	// rate limiter so one operator knob spans both gates.
+	SSEMaxPerUser int
+
 	// PostgreSQL pool sizing. Defaults sized for free-beta single-pod;
 	// operators raise via PG_* env vars at scale. config.Load enforces
 	// 0 < PGMaxConns <= math.MaxInt32 and 0 <= PGMinConns <= PGMaxConns
@@ -411,6 +422,21 @@ func Load() (*Config, error) {
 	}
 	if cfg.RedisDownPolicy == "local_fallback" && cfg.LocalFallbackRequestsPerHour <= 0 {
 		return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be > 0 when LLM_RATELIMIT_ON_REDIS_DOWN=local_fallback")
+	}
+
+	// Per-user SSE concurrency cap. 0 disables the gate entirely.
+	// Fail-loud on non-integer input — silent default coercion has
+	// bitten cost-guard wiring before.
+	cfg.SSEMaxPerUser = defaultSSEMaxPerUser
+	if v := os.Getenv("SSE_MAX_PER_USER"); v != "" {
+		n, perr := strconv.Atoi(v)
+		if perr != nil {
+			return nil, fmt.Errorf("SSE_MAX_PER_USER must be a non-negative integer, got %q: %w", v, perr)
+		}
+		if n < 0 {
+			return nil, fmt.Errorf("SSE_MAX_PER_USER must be >= 0, got %d", n)
+		}
+		cfg.SSEMaxPerUser = n
 	}
 
 	// PostgreSQL pool sizing. Defaults sized for free-beta single-pod;
