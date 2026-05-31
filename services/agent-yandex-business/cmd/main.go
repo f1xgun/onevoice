@@ -17,16 +17,13 @@ import (
 	"github.com/f1xgun/onevoice/pkg/health"
 	"github.com/f1xgun/onevoice/pkg/tokenclient"
 	agentpkg "github.com/f1xgun/onevoice/services/agent-yandex-business/internal/agent"
+	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/config"
 	"github.com/f1xgun/onevoice/services/agent-yandex-business/internal/yandex"
 )
 
 const (
 	healthReadHeaderTimeout = 5 * time.Second
 	shutdownTimeout         = 5 * time.Second
-
-	// defaultAPIInternalURL is the dev-mode fallback for API_INTERNAL_URL —
-	// the local API service binding. Production must set the env var.
-	defaultAPIInternalURL = "http://localhost:8443"
 )
 
 func main() {
@@ -37,18 +34,20 @@ func main() {
 }
 
 func run() error {
-	apiURL := agentbase.GetEnv("API_INTERNAL_URL", defaultAPIInternalURL)
-
-	natsURL := agentbase.GetEnv("NATS_URL", natslib.DefaultURL)
-	nc, err := natslib.Connect(natsURL)
+	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("failed to connect to NATS (url=%s): %w", natsURL, err)
+		return fmt.Errorf("config: %w", err)
 	}
-	tc := tokenclient.New(apiURL, nil)
+
+	nc, err := natslib.Connect(cfg.NATSUrl)
+	if err != nil {
+		return fmt.Errorf("failed to connect to NATS (url=%s): %w", cfg.NATSUrl, err)
+	}
+	tc := tokenclient.New(cfg.APIInternalURL, nil)
 	tokens := agentbase.NewTokenResolver(tc)
-	pool := yandex.NewBrowserPool()
+	pool := yandex.NewBrowserPoolWithCap(cfg.BrowserPoolMaxContexts)
 	defer pool.Close()
-	dedupe := agentbase.NewDedupeClient(agentbase.GetEnv("REDIS_URL", "redis://redis:6379"))
+	dedupe := agentbase.NewDedupeClient(cfg.RedisURL)
 	dispatcher := agentbase.NewDispatcher(dedupe, agentbase.FuncClassifier(agentpkg.ClassifyYandexError))
 	handler := agentpkg.NewHandler(tokens, &poolAdapter{pool: pool}, dispatcher)
 	transport := a2a.NewNATSTransport(nc)
@@ -66,10 +65,9 @@ func run() error {
 	mux.HandleFunc("/health/live", hc.LiveHandler())
 	mux.HandleFunc("/health/ready", hc.ReadyHandler())
 	mux.HandleFunc("/health", hc.LiveHandler())
-	healthPort := agentbase.GetEnv("HEALTH_PORT", "8083")
-	healthSrv := &http.Server{Addr: ":" + healthPort, Handler: mux, ReadHeaderTimeout: healthReadHeaderTimeout}
+	healthSrv := &http.Server{Addr: ":" + cfg.HealthPort, Handler: mux, ReadHeaderTimeout: healthReadHeaderTimeout}
 	go func() {
-		slog.Info("health server listening", "addr", ":"+healthPort)
+		slog.Info("health server listening", "addr", ":"+cfg.HealthPort)
 		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("health server error", "error", err)
 		}
