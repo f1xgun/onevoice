@@ -57,6 +57,9 @@ func (r *agentTaskRepository) Update(ctx context.Context, task *domain.AgentTask
 	if task.Error != "" {
 		set["error"] = task.Error
 	}
+	if task.ErrorCode != "" {
+		set["error_code"] = task.ErrorCode
+	}
 	if task.StartedAt != nil {
 		set["started_at"] = task.StartedAt
 	}
