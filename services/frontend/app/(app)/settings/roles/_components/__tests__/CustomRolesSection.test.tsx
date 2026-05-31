@@ -65,7 +65,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('CustomRolesSection (D-02 / D-03)', () => {
+describe('CustomRolesSection', () => {
   it('sorts custom rows alphabetically A→Z', async () => {
     renderSection();
     await waitFor(() => {

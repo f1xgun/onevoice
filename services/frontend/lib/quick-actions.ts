@@ -1,15 +1,9 @@
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 
-// Quick-action defaults — request-scoped (Phase B1).
-//
-// Defaults are sourced from `quickActions.defaults` in messages/*.json
-// (a JSON array). `useDefaultQuickActions()` returns the array for the
-// active locale; the empty-state composer renders the items as
-// suggestion chips when a project hasn't customised its own list yet.
-//
-// `createDefaultQuickActions(t)` is the underlying factory — call from
-// server-side code that already has a translator instance.
+// Request-scoped quick-action defaults sourced from `quickActions.defaults`
+// in messages/*.json. The empty-state composer renders these as suggestion
+// chips when a project hasn't customised its own list yet.
 
 // Minimal structural type that mirrors the `.raw()` method on next-intl's
 // `Translator`. We accept anything with this shape so the factory works

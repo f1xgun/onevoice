@@ -1,15 +1,10 @@
 // Status vocabularies for the three list-view pages (posts / tasks / reviews).
+// Each surface has its own state machine — labels do NOT collapse to a single
+// map. Copy lives in messages/*.json; the tone mapping for reviews stays
+// here because `<Badge tone>` is a TS-side prop union, not translatable copy.
 //
-// Each surface has its own state machine, so labels DON'T collapse to a
-// single map — they're three separate hooks. The Russian copy lives in
-// `messages/ru.json` under `posts.status.*`, `tasks.status.*`, and
-// `reviews.status.*`; the tone mapping for reviews stays here because the
-// `<Badge tone>` prop union is a TS-side concern, not translatable copy.
-//
-// Phase B1: replaced the module-level *_LABELS / *_BADGES exports with
-// request-scoped hooks. Each hook calls useTranslations(...) and
-// memoizes the record on translator identity so consumers can pass it
-// into dependency arrays.
+// Each hook memoizes its record on translator identity so callers can safely
+// pass it into dependency arrays.
 
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';

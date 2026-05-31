@@ -1,22 +1,6 @@
-// useConversationFlow — single state machine for the chat conversation,
-// merging the messages/streaming half (formerly useChat) and the HITL
-// approval half (formerly usePendingApprovalFlow) that ChatWindow always
-// consumed together. originally split these into sibling
-// hooks for a "single writer for messages" invariant; in practice the
-// split required ChatWindow to wire two bidirectional callbacks
-// (chat.onApprovalRequired ↔ approvalFlow.setPending and
-// approvalFlow.onResumeEvent ↔ chat.appendSSEEvent) plus a ref-bouncing
-// trick to break the forward-reference between two sequentially-declared
-// hooks — usePendingApprovalFlow already wrote to messages indirectly
-// through appendSSEEvent, so single-writer was preserved on paper only.
-// Collapsing back to one hook keeps the same observable contract while
-// eliminating the wiring cost — there was only ever one consumer
-// (ChatWindow) and one cohesive state machine.
-//
-// RBAC: all fetch URLs are business-scoped via the active business id
-// from useBusinessStore. The conversation list invalidation uses
-// conversationsQueryKey(activeBusinessId) so per-business cache
-// partitioning stays intact across SSE 'done' events.
+// Single state machine for the chat conversation: messages/streaming and
+// HITL approval. All fetch URLs are business-scoped via activeBusinessId;
+// conversations cache is partitioned by business via conversationsQueryKey.
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -37,13 +21,11 @@ import type {
   ToolCall,
 } from '@/types/chat';
 
-// Defensive cap on free-form reject reasons echoed to the server. The
-// server enforces its own cap; this is the client-side mirror.
+// Client-side mirror of the server's reject-reason cap.
 const REJECT_REASON_MAX_LEN = 500;
 
-// Typed cast + defensive defaults. Preserves status === 'expired' so the
-// UI layer owns the render decision (ExpiredApprovalBanner). Used by the
-// GET /messages hydration path on mount.
+// Preserves status === 'expired' so the UI owns the render decision
+// (ExpiredApprovalBanner).
 function normalizePendingApproval(raw: unknown): PendingApproval | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -69,10 +51,8 @@ function normalizePendingApproval(raw: unknown): PendingApproval | null {
   };
 }
 
-// Business-scoped URL builders. Kept inline rather than centralised
-// because every call site needs to forward the nullable activeBusinessId
-// from the store and gracefully fall back to the legacy non-scoped path
-// when no business is active.
+// Business-scoped URL builders fall back to the non-scoped path when no
+// business is active.
 function messagesUrl(activeBusinessId: string | null, conversationId: string): string {
   return activeBusinessId
     ? `${API_BASE_URL}/businesses/${activeBusinessId}/conversations/${conversationId}/messages`
@@ -139,30 +119,19 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
   const isStreamingRef = useRef(false);
   const isResolvingRef = useRef(false);
 
-  // Request-scoped translators. common.connectionError → assistant bubble
-  // on stream errors; common.errors.connectionRetry → toast on resolve
-  // network failure; resumeStreamError → toast on resume SSE failure.
   const tCommon = useTranslations('common');
   const tCommonErrors = useTranslations('common.errors');
   const { resolveError, resumeStreamError } = useResolveErrorMap();
 
   const accessToken = useAuthStore((s) => s.accessToken);
   const activeBusinessId = useBusinessStore((s) => s.activeBusinessId);
-  // Separate abort controllers so that send and resolve/resume flows
-  // never cancel each other. sendMessage uses its own controller, the
-  // resume SSE inside resolveApproval uses its own.
+  // Separate abort controllers so send and resolve/resume flows never cancel each other.
   const sendAbortRef = useRef<AbortController | null>(null);
   const resumeAbortRef = useRef<AbortController | null>(null);
-  // SSE 'done' invalidates conversationsQueryKey(activeBusinessId) for
-  // out-of-band auto-title pickup. NEVER mux titles into chat SSE.
+  // SSE 'done' invalidates the conversations cache for out-of-band auto-title pickup.
+  // NEVER mux titles into chat SSE.
   const queryClient = useQueryClient();
 
-  // applyEventToLastAssistant extends the in-place assistant message with
-  // an SSE frame. Used by both the live-stream consumer (sendMessage) and
-  // the resume-stream consumer (resolveApproval); the previous split
-  // required exposing this as a public appendSSEEvent function so the
-  // sibling hook could re-enter the messages state — now it's a single
-  // closure with no public surface.
   const applyEventToLastAssistant = useCallback((event: Record<string, unknown>) => {
     setMessages((prev) => {
       const last = prev[prev.length - 1];
@@ -171,7 +140,7 @@ export function useConversationFlow({ conversationId }: UseConversationFlowOptio
     });
   }, []);
 
-  // Mount-load: legacy ApiMessage[] or {messages, pendingApprovals} envelope.
+  // Mount-load accepts legacy ApiMessage[] or {messages, pendingApprovals} envelope.
   // Sole /messages round trip; envelope's first batch flows into pendingApproval.
   useEffect(() => {
     setIsLoading(true);

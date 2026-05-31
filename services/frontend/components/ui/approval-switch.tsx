@@ -23,9 +23,7 @@ export type ApprovalMode = 'off' | 'manual' | 'auto-with-review' | 'auto';
 
 const ORDER: ApprovalMode[] = ['off', 'manual', 'auto-with-review', 'auto'];
 
-// Hook variant of the old APPROVAL_MODE_LABEL constant (Phase B1). Call
-// from inside a React component to get a locale-bound label record. The
-// constant export is gone — there were no out-of-tree consumers.
+// Hook returning locale-bound label record for the four approval modes.
 export function useApprovalModeLabels(): Record<ApprovalMode, string> {
   const tModes = useTranslations('common.approvalSwitch.modes');
   return React.useMemo(

@@ -24,18 +24,12 @@ type ValidationTranslator = (
   params?: Record<string, string | number | Date>
 ) => string;
 
-// Schema factories — request-scoped (Phase B1).
+// Request-scoped schema factories.
 //
-// Forms declared inside the React tree should call
-// `const t = useTranslations('validation')` and then wrap the schema in
-// `useMemo( => createXxxSchema(t), [t])` so the schema is rebuilt with
-// the active locale's strings on every re-render. Server-side callers
-// pass an async-resolved `t` from `getServerTranslator('validation')`.
-//
-// The previous module-level `loginSchema` / `registerSchema` /
-// `businessSchema` exports are gone — keeping them around would re-pin
-// the runtime to `ru` (B1 fragility-removal). All consumers were
-// migrated in the same commit series.
+// React forms: `const t = useTranslations('validation')` and wrap with
+// `useMemo(() => createXxxSchema(t), [t])` so the schema rebuilds with
+// the active locale on every re-render. Server-side callers pass an
+// async-resolved `t` from `getServerTranslator('validation')`.
 
 export function createLoginSchema(t: ValidationTranslator) {
   const minChars = (count: number) => t('minChars', { count });
@@ -203,9 +197,8 @@ export const rolesListSchema = z.array(roleSchema);
 // Effective wire shape (services/api/internal/handler/permissions.go me handler):
 // { permissions: string[] }
 //
-// Both endpoints come from. The catalog is app-static (cached with
-// staleTime: Infinity); the effective list is per-actor-per-business (cached
-// with staleTime: 60_000 + refetchInterval: 60_000 per UI-RBAC-12).
+// Catalog is app-static (cached with staleTime: Infinity); the effective
+// list is per-actor-per-business (staleTime: 60_000 + refetchInterval: 60_000).
 export const permissionMetaSchema = z.object({
   name: z.string(),
   description: z.string(),
