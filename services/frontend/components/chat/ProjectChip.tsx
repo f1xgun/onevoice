@@ -5,10 +5,9 @@ import { FolderOpen } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 
-// Size variants. The `xs` size is used by PinnedSection rows as a mini
-// project-affiliation indicator (chats inside «Без проекта» get NO chip;
-// only chats that belong to a real project are chipped on their pinned
-// row to disambiguate the duplicated entry).
+// Size variants. `xs` is the mini chip for pinned rows; chats inside
+// «Без проекта» get NO chip — only real-project chats are chipped on
+// their pinned row to disambiguate the duplicated entry.
 type Size = 'xs' | 'sm' | 'md';
 
 const sizeClasses: Record<Size, string> = {

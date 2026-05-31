@@ -15,9 +15,8 @@ import type { PlatformStatus } from '@/lib/api/platforms';
 // its card here). The two editorial-only teasers at the end
 // (Instagram, Odnoklassniki) have no agent / no roadmap commitment.
 //
-// `iconName` is an EN brand id consumed by ChannelMark (icon hint). The
-// user-facing label + meta blurb resolve from i18n via
-// landing.platforms.<key>.{display,meta}.
+// `iconName` is an EN brand id (icon hint). The user-facing label + meta
+// blurb resolve from i18n via landing.platforms.<key>.{display,meta}.
 type LandingPlatform = {
   id: string | null;
   iconName: string;

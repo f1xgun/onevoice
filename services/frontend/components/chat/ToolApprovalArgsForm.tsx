@@ -473,9 +473,8 @@ function commitEdit(
   editableFields: string[],
   onEdit: (k: string, v: string | number | boolean) => void
 ) {
-  // The same gate used by the legacy JSON editor — keeps the safety
-  // contract (root-only + scalar-only + whitelist) intact at the input
-  // boundary even if future props widen to include nested forms.
+  // Keep the safety contract (root-only + scalar-only + whitelist) intact at
+  // the input boundary even if future props widen to include nested forms.
   const accepted = evaluateEditGate(
     {
       value,
