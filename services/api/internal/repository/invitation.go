@@ -59,9 +59,8 @@ func (r *invitationRepository) Create(ctx context.Context, inv *domain.Invitatio
 	return nil
 }
 
-// CreateInTx — tx-scoped INSERT. Called by the create handler under
-// pgx.Serializable so the 20-pending cap invariant holds against
-// concurrent creates (research §"20-Pending Cap Concurrency").
+// CreateInTx — tx-scoped INSERT. Runs under pgx.Serializable so the
+// 20-pending cap invariant holds against concurrent creates.
 func (r *invitationRepository) CreateInTx(ctx context.Context, tx pgx.Tx, inv *domain.Invitation) error {
 	if tx == nil {
 		return fmt.Errorf("CreateInTx: tx is required")
@@ -333,8 +332,7 @@ func (r *invitationRepository) buildMarkAcceptedSQL(id, accepterUserID uuid.UUID
 // already-accepted / already-revoked / expired / not-found cases for the
 // loser tx in a race or for an idempotent revoke. If tx is non-nil, reads
 // inside the tx; else uses the pool. businessID may be uuid.Nil to skip
-// business scoping (used by accept-time classification, where the handler
-// has already loaded the row by token_hash).
+// business scoping when the caller has already loaded the row by token_hash.
 func (r *invitationRepository) classifyTerminalState(ctx context.Context, tx pgx.Tx, id, businessID uuid.UUID) error {
 	q := r.sb.
 		Select("accepted_at", "revoked_at", "expires_at").

@@ -38,7 +38,7 @@ const (
 )
 
 // DBHandles aggregates every connection / primitive that survives startup
-// and is consumed by Repositories, Services, and Handlers.
+// and is shared across Repositories, Services, and Handlers.
 //
 // NATS is optional — Connect() leaves it nil when the configured URL is
 // unreachable so platform syncer / review syncer can fall back to degraded
@@ -169,8 +169,8 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	//      Idempotent: safe on every boot. HITL is broken without these
 	//      indexes (the resolve handler would scan the whole collection)
 	//      so we fail fast if creation errors.
-	//   2. NewPendingToolCallRepository — constructs the repo used by
-	//      chat_proxy / resolve / resume handlers.
+	//   2. NewPendingToolCallRepository — constructs the repo for chat_proxy /
+	//      resolve / resume handlers.
 	//   3. ReconcileOrphanPreparing (goroutine, 30s bound) — one-shot
 	//      sweep that marks "preparing" batches older than 5 minutes as
 	//      "expired" (crash recovery: orchestrator inserted a preparing

@@ -33,8 +33,8 @@ type TurnRequest struct {
 	ResumeBatchID string
 
 	// Locale is the language tag captured at the request edge so every
-	// persist op + the auto-titler spawn ctx (Phase D2) sees the language
-	// the user is chatting in.
+	// persist op + the auto-titler spawn ctx sees the language the user is
+	// chatting in.
 	Locale language.Tag
 }
 
@@ -118,21 +118,21 @@ func (o TurnOutcome) String() string {
 	}
 }
 
-// BusinessReader is the narrow subset of *service.BusinessService consumed by
-// the enrichment step. Declared where consumed (CONVENTIONS.md §"Service
-// Interfaces") so tests can inject a fake without importing the full service.
+// BusinessReader is the narrow subset of *service.BusinessService that
+// enrichment needs. Declared where it is used so tests can inject a fake
+// without importing the full service.
 type BusinessReader interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Business, error)
 }
 
 // IntegrationLister is the narrow subset of *service.IntegrationService
-// consumed by enrichment.
+// that enrichment needs.
 type IntegrationLister interface {
 	ListByBusinessID(ctx context.Context, businessID uuid.UUID) ([]domain.Integration, error)
 }
 
-// ProjectReader is the narrow subset of *service.ProjectService consumed by
-// enrichment for project-scoped prompt / whitelist / approval-override
+// ProjectReader is the narrow subset of *service.ProjectService that
+// enrichment uses for project-scoped prompt / whitelist / approval-override
 // resolution.
 type ProjectReader interface {
 	GetByID(ctx context.Context, businessID, id uuid.UUID) (*domain.Project, error)

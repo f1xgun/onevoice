@@ -228,11 +228,10 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 	return &user, nil
 }
 
-// GetByIDIncludingDeleted —. Same SELECT as GetByID minus the
-// `deleted_at IS NULL` filter. Used by handlers that need to read the
-// accountDeletion state of a soft-deleted user (e.g. /auth/me must
-// surface the grace banner; POST /users/me/restore must find the row
-// to cancel).
+// GetByIDIncludingDeleted is the same SELECT as GetByID minus the
+// `deleted_at IS NULL` filter. Lets callers read the accountDeletion state
+// of a soft-deleted user (e.g. /auth/me surfaces the grace banner; POST
+// /users/me/restore needs the row to cancel).
 func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
 		Select("id", "email", "password_hash", "preferred_locale",
@@ -343,9 +342,8 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 }
 
 // UpdatePasswordHashInTx sets users.password_hash + updated_at for the
-// given userID inside the caller-supplied tx. Used by PasswordResetService
-// to commit the password update in the same transaction as the token
-// consume.
+// given userID inside the caller-supplied tx. PasswordResetService commits
+// the password update in the same transaction as the token consume.
 //
 // NOT part of the domain.UserRepository interface — the interface stays
 // tx-free for callers that don't compose transactions. Service callers
@@ -613,9 +611,9 @@ func (r *userRepository) HardDeleteInTx(ctx context.Context, tx pgx.Tx, userID u
 // Returns domain.ErrUserNotFound when 0 rows matched (mirrors Update above).
 //
 // Validation of the locale value itself ('ru' | 'en') happens at the handler
-// boundary. The DB CHECK constraint (migration 000010 prod / 000008 test — i18n Phase A3) is the defense-in-depth
-// floor — passing an invalid value here surfaces as a pgx error, NOT
-// ErrUserNotFound, because RowsAffected will be 0 only when id doesn't match.
+// boundary. The DB CHECK constraint is the defense-in-depth floor — passing
+// an invalid value here surfaces as a pgx error, NOT ErrUserNotFound,
+// because RowsAffected will be 0 only when id doesn't match.
 func (r *userRepository) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
 	sql, args, err := r.sb.
 		Update("users").

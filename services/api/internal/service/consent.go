@@ -35,7 +35,7 @@ import (
 )
 
 // PolicyAccepted carries one (slug, version, sha256) tuple submitted by
-// the client. Used by Register + ReConsent.
+// the client.
 type PolicyAccepted struct {
 	Slug    string // "tos" | "privacy" | "pdn".
 	Version string

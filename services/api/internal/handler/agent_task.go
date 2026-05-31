@@ -27,7 +27,7 @@ const (
 // connections. Browsers ignore comment lines.
 const streamHeartbeatInterval = 20 * time.Second
 
-// AgentTaskService defines the interface for agent task operations used by handler
+// AgentTaskService defines the interface for agent task operations.
 type AgentTaskService interface {
 	List(ctx context.Context, businessID uuid.UUID, filter domain.TaskFilter) ([]domain.AgentTask, int, error)
 }

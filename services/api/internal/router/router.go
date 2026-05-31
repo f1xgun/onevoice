@@ -27,10 +27,9 @@ import (
 // middleware needs the value to compute the 423 body's deletionDate.
 const deletionGraceDaysForRouter = 30
 
-// passThroughMiddleware is a no-op middleware used by the soft-restrict
-// wrappers when the caller passes a nil UserLookup (legacy / test deploys
-// that don't wire yet). Preserves existing behavior in those
-// environments while keeping the route declarations uniform.
+// passThroughMiddleware is a no-op middleware. The soft-restrict wrappers
+// fall back to it when the caller passes a nil UserLookup, preserving
+// existing behavior while keeping the route declarations uniform.
 func passThroughMiddleware(next http.Handler) http.Handler { return next }
 
 // Per-endpoint per-window rate limits (window is always time.Minute today).
@@ -63,9 +62,8 @@ type Handlers struct {
 	OAuth         *oauth.OAuthHandler     // true OAuth code-flow (VK / Yandex / Google)
 	Connect       *connect.ConnectHandler // paste-flow integrations (Telegram bot-token, VK community access token)
 	InternalToken *handler.InternalTokenHandler
-	// POST /internal/v1/billing/usage_logs — internal-only billing write path
-	// consumed by the orchestrator (via pkg/billingclient). Lives under the
-	// same mTLS-protected SetupInternal mux as InternalToken.
+	// POST /internal/v1/billing/usage_logs — internal-only billing write path.
+	// Lives under the same mTLS-protected SetupInternal mux as InternalToken.
 	InternalBilling *handler.InternalBillingHandler
 	ChatProxy       *handler.ChatProxyHandler
 	Review          *handler.ReviewHandler
@@ -511,7 +509,7 @@ func SetupInternal(handlers *Handlers, hc *health.Checker) *chi.Mux {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireServiceIdentity(internalServiceIdentityAllowlist, nil))
 			r.Post("/internal/v1/billing/usage_logs", handlers.InternalBilling.LogUsage)
-			// Daily-spend read path consumed by the orchestrator's rate-limiter
+			// Daily-spend read path for the orchestrator's rate-limiter, called
 			// before every chat turn. Same mTLS + service-identity gate as the
 			// write path so it cannot be probed off-cluster.
 			r.Get("/internal/v1/billing/daily_spend", handlers.InternalBilling.GetDailySpend)

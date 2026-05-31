@@ -34,9 +34,7 @@ const (
 type ConversationHandler struct {
 	conversationRepo domain.ConversationRepository
 	messageRepo      domain.MessageRepository
-	// businessService retained for wiring compatibility; not called by handlers
-	// after RBAC refactor — BusinessContext from RequireBusinessAccess
-	// middleware provides businessID + userID directly.
+	// businessService is retained for wiring compatibility.
 	businessService BusinessService
 	// projectService validates projectId belongs to caller's business
 	// during CreateConversation. Move-conversation goes through
