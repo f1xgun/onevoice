@@ -10,15 +10,10 @@
 // consumers (landing, /integrations, filter dropdowns, tool whitelist UI,
 // chat tool cards) read from here, so nothing else needs to be touched.
 //
-// Locale split (Phase B1): everything that depends on a string from
-// messages/*.json — `fullLabel`, the optional `comingSoonWhen` subtitle —
-// lives behind a factory (`createPlatformMeta(t)` /
-// `createPlatformFullLabels(t)`). Static fields (color, shortLabel,
-// displayOrder, defaultStatus) stay on a module-level constant
-// (`PLATFORM_STATIC_META`) and ship to the client bundle as-is. The
-// previous module-level `PLATFORM_META` / `PLATFORM_FULL_LABELS` shape is
-// preserved via a single hook (`usePlatformMeta`) so React consumers can
-// keep their existing record-lookup ergonomics.
+// Anything that depends on a string from messages/*.json lives behind a
+// factory (`createPlatformMeta(t)` / `createPlatformFullLabels(t)`).
+// Static fields ship to the client bundle as-is via PLATFORM_STATIC_META.
+// React consumers get the merged shape via the `usePlatformMeta` hook.
 
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
@@ -110,9 +105,8 @@ export const PLATFORM_LABELS: Record<string, string> = Object.fromEntries(
   ])
 );
 
-// Factories — request-scoped (Phase B1). Use the hook below from React
-// components; call the factory directly from server-side code that has
-// already resolved a translator instance (via `getServerTranslator`).
+// Request-scoped factories. Use the hook from React components; call the
+// factory directly from server-side code with a resolved translator.
 
 export function createPlatformFullLabels(t: FullLabelTranslator): Record<string, string> {
   return Object.fromEntries(

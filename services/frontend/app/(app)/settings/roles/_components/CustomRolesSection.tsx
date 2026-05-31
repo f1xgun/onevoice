@@ -13,17 +13,16 @@ import { RoleActionsMenu } from './RoleActionsMenu';
 export interface CustomRolesSectionProps {
   roles: Role[];
   businessId: string | null;
-  // The full role list (system + custom) — forwarded into RoleActionsMenu →
-  // DeleteRoleDialog so the reassign picker (D-08 picker variant) has every
-  // candidate target available without re-fetching.
+  // Full role list forwarded into DeleteRoleDialog's reassign picker so
+  // every candidate target is available without re-fetching.
   allRoles: Role[];
 }
 
 export function CustomRolesSection({ roles, businessId, allRoles }: CustomRolesSectionProps) {
   const t = useTranslations('roles.list');
 
-  // Custom roles alphabetical A→Z (D-03). 'ru' locale comparison so Cyrillic
-  // names sort correctly when mixed with Latin (e.g. "Аналитик" vs "Marketing").
+  // 'ru' locale comparison so Cyrillic names sort correctly when mixed
+  // with Latin (e.g. "Аналитик" vs "Marketing").
   const sorted = [...roles].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
   return (
@@ -55,10 +54,7 @@ export function CustomRolesSection({ roles, businessId, allRoles }: CustomRolesS
           className="divide-y divide-line rounded-md border border-line bg-paper-raised"
         >
           {sorted.map((role) => (
-            // Whole-row Link to /settings/roles/[id]/edit (D-02). Anchor
-            // wraps an inline flex container so the row reads as one
-            // tab-stop / one click target. The action menu inside stops
-            // propagation so its trigger doesn't fire navigation.
+            // Whole-row anchor → one tab-stop / one click target.
             <li key={role.id} className="relative">
               <Link
                 href={`/settings/roles/${role.id}/edit`}

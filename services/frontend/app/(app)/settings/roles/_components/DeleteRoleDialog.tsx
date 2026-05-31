@@ -190,12 +190,9 @@ export function DeleteRoleDialog({
   }, [variant, reassignToId, firstEligible]);
 
   async function handleConfirm() {
-    // NIT-03 (review): on success this handler does NOT invalidate
-    // the roles cache itself — useDeleteRole.onSuccess (lib/hooks/useRoles.ts)
-    // already invalidates ROLES + PERMISSIONS + MEMBERS for the active
-    // business. Duplicating the invalidation here would be a cheap no-op
-    // but obscures the contract that "the mutation hook owns cache
-    // invalidation; the component owns UX side effects (toast, close)."
+    // Cache invalidation is owned by useDeleteRole.onSuccess
+    // (ROLES + PERMISSIONS + MEMBERS for the active business). This handler
+    // only owns UX side effects (toast, close).
     try {
       if (variant === 'simple') {
         await deleteMut.mutateAsync({ roleId: role.id, reassignTo: null });

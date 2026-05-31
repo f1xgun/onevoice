@@ -74,7 +74,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('RolesPage (UI-RBAC-08)', () => {
+describe('RolesPage', () => {
   it('renders both sections with all system + custom rows', async () => {
     mockedListRoles.mockResolvedValue([...SYSTEM_ROLES, MARKETING_ROLE, EMPTY_CUSTOM_ROLE]);
     renderPage();

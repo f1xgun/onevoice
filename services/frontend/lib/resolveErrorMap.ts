@@ -4,13 +4,10 @@ import { useTranslations } from 'next-intl';
 
 import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 
-// Request-scoped error-map factories (Phase B1).
-//
-// Each factory takes a namespaced translator and returns a closure over
-// that translator. React consumers use the matching `useXxxError` hook,
-// which calls `useTranslations(...)` and memoizes the closure on the
-// translator's identity. The closure is safe to pass to event handlers
-// and React Query mutation callbacks.
+// Request-scoped error-map factories. Each factory takes a namespaced
+// translator and returns a closure; React consumers use the matching
+// `useXxxError` hook, which memoizes on translator identity. The closure
+// is safe to pass to event handlers and React Query mutation callbacks.
 //
 // Strings live under:
 // common.errors.*               → resolve/resume flow
@@ -19,8 +16,8 @@ import { HTTP_STATUS } from '@/lib/constants/httpStatus';
 // team.invite.errors.*          → invite-form 429
 // roles.errors.*                → /roles mutations
 //
-// Tests pass a translator stub that returns the key — they assert mapping
-// BEHAVIOR (which key the branch picks), not the localized copy.
+// Tests pass a translator stub returning the key — they assert which
+// branch picks which key, not the localized copy.
 
 type TranslateFn = (key: string) => string;
 

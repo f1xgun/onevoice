@@ -18,23 +18,15 @@ import { BusinessRow } from './BusinessRow';
 const ANNOUNCE_RESET_MS = 1000;
 
 /**
- * BusinessSwitcher — Popover trigger mounted at the top of NavRail.
+ * Popover trigger mounted at the top of NavRail. Reads `useBusinessList()`
+ * for memberships and `useBusinessStore` for the persisted `activeBusinessId`.
+ * Selecting a row calls `setActive(id)`; persist middleware writes
+ * localStorage, and React Query keys derived from `activeBusinessId`
+ * re-fetch automatically.
  *
- * Visible payoff of the v2.0 multi-tenant model (UI-RBAC-01). Reads
- * `useBusinessList()` for the user's memberships and `useBusinessStore` for
- * the persisted `activeBusinessId` (Zustand + localStorage `onevoice.business`).
- *
- * Selecting a row calls `setActive(id)` synchronously; the store's persist
- * middleware writes to localStorage, and React Query keys derived from
- * `activeBusinessId` re-fetch automatically via their `enabled` predicate.
- *
- * Open Question #1 resolution (per RESEARCH): the popover still renders for
- * users with a single business — the single row plus the «+ Создать
- * организацию» CTA provide a consistent affordance.
- *
- * Arrow Up/Down cycle through business rows via the shared
- * `useRovingTabIndex` hook (W3C ARIA Authoring Practices listbox pattern);
- * Tab enters the list once and falls through to the «+ Создать» link.
+ * Renders even with a single business so the «+ Создать организацию» CTA
+ * stays available. Arrow Up/Down cycle rows via `useRovingTabIndex` (listbox
+ * pattern); Tab enters the list once and falls through to the «+ Создать» link.
  */
 export function BusinessSwitcher() {
   const tSwitcher = useTranslations('team.switcher');
