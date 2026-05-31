@@ -12,6 +12,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
@@ -19,6 +20,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/lockout"
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -191,22 +193,31 @@ type RegisterRequest struct {
 	Consents RegisterConsents `json:"consents"`
 }
 
-// LoginRequest is the login body.
-type LoginRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=8"`
+// Re-export spec-owned shapes under the historic handler.* names.
+type (
+	LoginRequest         = openapi.LoginRequest
+	LoginResponse        = openapi.LoginResponse
+	RefreshTokenResponse = openapi.RefreshTokenResponse
+)
+
+func userToOpenAPI(u *domain.User) openapi.User {
+	return openapi.User{
+		Id:              u.ID,
+		Email:           openapi_types.Email(u.Email),
+		PreferredLocale: openapi.UserPreferredLocale(u.PreferredLocale),
+		CreatedAt:       u.CreatedAt,
+		UpdatedAt:       u.UpdatedAt,
+	}
 }
 
-// LoginResponse is the login success payload.
-type LoginResponse struct {
-	User        *domain.User `json:"user"`
-	AccessToken string       `json:"accessToken"`
-}
-
-// RefreshTokenResponse is the refresh-token success payload.
-type RefreshTokenResponse struct {
-	User        *domain.User `json:"user"`
-	AccessToken string       `json:"accessToken"`
+// Generated LoginRequest carries no validate tags; enforce the spec's
+// constraints in-handler against an anonymous tagged twin.
+func validateLoginRequest(req openapi.LoginRequest) error {
+	type tagged struct {
+		Email    string `validate:"required,email"`
+		Password string `validate:"required,min=8"`
+	}
+	return validate.Struct(tagged{Email: string(req.Email), Password: req.Password})
 }
 
 // ChangePasswordRequest is the password change body.
@@ -289,34 +300,27 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	audit.LogUserRegistered(r.Context(), h.audit, user.ID, user.Email, middleware.ClientIP(r), r.UserAgent())
 
 	writeJSON(w, http.StatusCreated, LoginResponse{
-		User:        user,
+		User:        userToOpenAPI(user),
 		AccessToken: accessToken,
 	})
 }
 
-// Login handles user login.
-//
-// Layered defense: (1) lockout middleware short-circuits TierLocked requests
-// and annotates ctx with CaptchaRequired/LoginEmail/LoginClientIP; (2) if
-// CaptchaRequired, verify X-Captcha-Token (missing→400, invalid→403,
-// transient outage→fail-open if configured); (3) ErrInvalidCredentials
-// increments the lockout counter; (4) success clears it.
+// Login layered defense: lockout middleware short-circuits TierLocked
+// requests, captcha gate verifies X-Captcha-Token when middleware demands it,
+// ErrInvalidCredentials increments the lockout counter, success clears it.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var req LoginRequest
-
+	var req openapi.LoginRequest
 	// Lockout middleware has already restored r.Body via io.NopCloser(bytes.NewReader(...)).
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
-	if err := h.validate.Struct(req); err != nil {
+	if err := validateLoginRequest(req); err != nil {
 		writeValidationError(w, r, err)
 		return
 	}
+	email := string(req.Email)
 
-	// Captcha gate skipped when middleware didn't annotate ctx (test fixtures)
-	// or verifier is nil (no SMARTCAPTCHA_SECRET_KEY).
 	if middleware.CaptchaRequired(r.Context()) && h.captcha != nil {
 		token := r.Header.Get("X-Captcha-Token")
 		if token == "" {
@@ -330,18 +334,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			clientIPForCaptcha = middleware.ClientIP(r)
 		}
 		if verr := h.captcha.Verify(r.Context(), token, clientIPForCaptcha); verr != nil {
-			if errors.Is(verr, service.ErrCaptchaTransient) {
+			if errors.Is(verr, service.ErrCaptchaTransient) && h.captchaFailOpen {
 				// Fail-open during outage: bot-through is acceptable, locking
 				// every real user out is not.
-				if h.captchaFailOpen {
-					slog.Warn("smartcaptcha: transient error, failing open",
-						slog.String("error", verr.Error()),
-						slog.String("client_ip", clientIPForCaptcha),
-					)
-				} else {
-					writeJSONCodeError(w, http.StatusForbidden, ErrCodeCaptchaInvalid)
-					return
-				}
+				slog.Warn("smartcaptcha: transient error, failing open",
+					slog.String("error", verr.Error()),
+					slog.String("client_ip", clientIPForCaptcha),
+				)
 			} else {
 				writeJSONCodeError(w, http.StatusForbidden, ErrCodeCaptchaInvalid)
 				return
@@ -349,19 +348,19 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
+	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), email, req.Password)
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidCredentials) {
 			slog.Warn("login failed",
-				slog.String("email", req.Email),
+				slog.String("email", email),
 				slog.String("remote_addr", r.RemoteAddr),
 				slog.String("user_agent", r.UserAgent()),
 			)
 			// user_id intentionally nil — attempted email goes only into Details
 			// for brute-force analysis, not into a users-table lookup.
-			audit.LogLoginFailed(r.Context(), h.audit, req.Email, middleware.ClientIP(r), r.UserAgent(), "invalid_credentials")
+			audit.LogLoginFailed(r.Context(), h.audit, email, middleware.ClientIP(r), r.UserAgent(), "invalid_credentials")
 			// Best-effort — Redis error must not flip 401 into 500.
-			h.recordLoginFailure(r, req.Email)
+			h.recordLoginFailure(r, email)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
@@ -372,10 +371,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	h.setRefreshTokenCookie(w, refreshToken)
 	audit.LogLoginSuccess(r.Context(), h.audit, user.ID, middleware.ClientIP(r), r.UserAgent())
-	h.clearLockoutForLogin(r, req.Email)
+	h.clearLockoutForLogin(r, email)
 
 	writeJSON(w, http.StatusOK, LoginResponse{
-		User:        user,
+		User:        userToOpenAPI(user),
 		AccessToken: accessToken,
 	})
 }
@@ -418,7 +417,7 @@ func (h *AuthHandler) clearLockoutForLogin(r *http.Request, email string) {
 	}
 }
 
-// RefreshToken rotates the refresh token.
+// RefreshToken rotates the refresh-token cookie and mints a new access token.
 func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := h.readRefreshTokenCookie(r)
 	if err != nil {
@@ -440,14 +439,12 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	h.setRefreshTokenCookie(w, newRefreshToken)
 	writeJSON(w, http.StatusOK, RefreshTokenResponse{
-		User:        user,
+		User:        userToOpenAPI(user),
 		AccessToken: accessToken,
 	})
 }
 
-// Logout invalidates the refresh token.
-//
-// user_id is extracted from refresh-token claims BEFORE the service
+// Logout extracts user_id from refresh-token claims BEFORE the service
 // invalidates the token in Redis — otherwise we lose the audit attribution.
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := h.readRefreshTokenCookie(r)
@@ -492,8 +489,9 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
-// MeResponse wraps *domain.User with verification banner + deletion + consent
-// fields so /auth/me can render in a single round-trip.
+// MeResponse keeps `omitempty` on optional fields so verified users do not
+// receive emailVerificationDeadline:null and the deletion banner suppresses
+// cleanly. The wire shape is mirrored in openapi.MeResponse (allOf User).
 type MeResponse struct {
 	*domain.User
 	EmailVerified             bool                           `json:"emailVerified"`
@@ -509,18 +507,15 @@ type AccountDeletionInfo struct {
 	CanRestoreUntil     time.Time `json:"canRestoreUntil"`
 }
 
-// emailVerifyGraceDuration mirrors the soft-restrict middleware constant.
-// Duplicated to avoid circular import (handler → middleware → service); both
-// must agree on the 7-day value.
+// Duplicated to avoid circular import (handler → middleware → service);
+// both must agree on the 7-day value.
 const emailVerifyGraceDuration = 7 * 24 * time.Hour
 
-// deletionGraceDurationForMe mirrors AccountDeletionService.graceDays. If the
-// grace period ever changes, both constants must be updated together.
+// Mirrors AccountDeletionService.graceDays; both must be updated together.
 const deletionGraceDurationForMe = 30 * 24 * time.Hour
 
-// Me returns the authenticated user's profile. Uses the deletion-aware
-// getter when wired so users inside the 30-day grace window can still
-// exercise restore.
+// Me uses the deletion-aware getter when wired so users inside the 30-day
+// grace window can still exercise restore.
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserID(r.Context())
 	if err != nil {
