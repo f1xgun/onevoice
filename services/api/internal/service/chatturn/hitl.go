@@ -231,6 +231,7 @@ func (t *Turn) streamResume(
 					ToolCallID: ev.ToolCallID,
 					Content:    content,
 					IsError:    ev.ToolError != "",
+					Code:       ev.Code,
 				})
 				if idx, ok := callIdx[ev.ToolCallID]; ok {
 					if ev.ToolError != "" {

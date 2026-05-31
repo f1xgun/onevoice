@@ -3,6 +3,7 @@ package natsexec_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -223,6 +224,42 @@ func TestNATSExecutor_Execute_IsBackwardCompatibleShim(t *testing.T) {
 	require.NoError(t, json.Unmarshal(fake.capturedReq, &toolReq))
 	assert.Equal(t, a2a.AgentID(tools.TelegramSendChannelPost), toolReq.Tool)
 	assert.Empty(t, toolReq.ApprovalID)
+}
+
+func TestExecutor_Dispatch_PropagatesCodeFromAgent(t *testing.T) {
+	fake := &fakeRequester{
+		response: &a2a.ToolResponse{
+			TaskID:  "t-code",
+			Success: false,
+			Error:   "telegram: send message: token revoked",
+			Code:    "integration_token_invalid",
+		},
+	}
+
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
+	_, err := exec.Execute(context.Background(), map[string]interface{}{})
+
+	require.Error(t, err)
+	var ce *a2a.CodedError
+	require.True(t, errors.As(err, &ce), "expected *a2a.CodedError in error chain")
+	assert.Equal(t, "integration_token_invalid", ce.Code)
+	assert.Equal(t, "integration_token_invalid", a2a.CodeOf(err))
+}
+
+func TestExecutor_Dispatch_NoCodeFromAgent_ReturnsPlainError(t *testing.T) {
+	fake := &fakeRequester{
+		response: &a2a.ToolResponse{
+			TaskID:  "t-nocode",
+			Success: false,
+			Error:   "transient network error",
+		},
+	}
+
+	exec := natsexec.New(a2a.AgentTelegram, tools.TelegramSendChannelPost, fake)
+	_, err := exec.Execute(context.Background(), map[string]interface{}{})
+
+	require.Error(t, err)
+	assert.Empty(t, a2a.CodeOf(err))
 }
 
 func TestExecute_EmptyCorrelationID(t *testing.T) {

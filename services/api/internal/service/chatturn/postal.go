@@ -92,6 +92,7 @@ func (t *Turn) onToolResult(
 	toolCallID string,
 	content map[string]interface{},
 	toolError string,
+	toolErrorCode string,
 	idMap map[string]string,
 ) {
 	if t.deps.AgentTasks == nil {
@@ -120,6 +121,7 @@ func (t *Turn) onToolResult(
 		if msg, ok := content["error"].(string); ok && msg != "" {
 			update.Error = msg
 		}
+		update.ErrorCode = toolErrorCode
 	} else {
 		update.Output = content
 	}
