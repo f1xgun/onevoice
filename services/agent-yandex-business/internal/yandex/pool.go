@@ -151,14 +151,10 @@ func (p *BrowserPool) getOrCreateContext(ctx context.Context, businessID, cookie
 		var count int
 		p.contexts.Range(func(_, _ any) bool { count++; return true })
 		if count >= p.maxContexts {
-			// Loop evict-or-wait until either a slot is reserved or the
-			// deadline elapses. After waitForNonBusy returns, the freed
+			// Evict-or-wait loop. After waitForNonBusy returns, the freed
 			// context may already have been re-acquired by another caller,
 			// so we re-check the cap from scratch before falling through.
-			for {
-				if p.evictLRUUnlessBusy() {
-					break
-				}
+			for !p.evictLRUUnlessBusy() {
 				if !p.waitForNonBusy(ctx, acquireWaitTimeout) {
 					return nil, ErrPoolExhausted
 				}
