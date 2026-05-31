@@ -9,9 +9,7 @@ import { useEffect } from 'react';
  * Internal Next.js App Router navigations are NOT intercepted (App Router
  * exposes no route-change-start event in v14; the router.push() in
  * RoleEditorForm's submit handler therefore navigates silently — that's the
- * correct behavior for a successful save). Internal-nav guard for cancel /
- * back-link / sidebar clicks is deferred to v2.1 per Plan 05-07 CONTEXT
- * Claude's discretion.
+ * correct behavior for a successful save).
  *
  * Modern Chrome / Firefox / Safari ignore the custom `message` and show their
  * own generic «Покинуть сайт?» / «Leave site?» dialog — that's by design to

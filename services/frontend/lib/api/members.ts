@@ -8,7 +8,7 @@ import {
   type Role,
 } from '@/lib/schemas';
 
-// Backend contracts (Phase 2/3, plural URL via bizApi):
+// Backend contracts (plural URL via bizApi):
 //   GET    /api/v1/businesses/{id}/members           → 200 Member[]
 //   PATCH  /api/v1/businesses/{id}/members/{userId}  → 200 Member
 //          body: { role_id: string }
@@ -20,7 +20,7 @@ import {
 //
 // Every response is parsed through the canonical zod schema before the
 // caller sees it. Malformed payloads fail loudly at the seam rather than
-// surfacing as `undefined` deep in the UI tree (threat T-04-02-01).
+// surfacing as `undefined` deep in the UI tree.
 
 export async function fetchMembers(businessId: string): Promise<Member[]> {
   const { data } = await bizApi(businessId).get<unknown>(BIZ_API_PATHS.MEMBERS.ROOT);

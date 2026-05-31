@@ -8,8 +8,8 @@
 // as factory functions that return `as const` tuples for the same reason.
 //
 // Existing per-hook keys (e.g. PLATFORMS_QUERY_KEY in lib/hooks/usePlatforms,
-// TOOLS_QUERY_KEY) live next to their hooks and continue to do so —
-// this file collects only the keys that pages used inline before this PR.
+// TOOLS_QUERY_KEY) live next to their hooks; this file holds shared keys
+// referenced from multiple pages.
 
 export const QUERY_KEYS = {
   CONVERSATIONS: ['conversations'] as const,
@@ -24,21 +24,21 @@ export const QUERY_KEYS = {
   BUSINESS_PROFILE: (bizId: string | null) => ['businesses', bizId, 'business'] as const,
   BUSINESS_REVIEWS: (bizId: string | null) => ['businesses', bizId, 'reviews'] as const,
   BUSINESS_TASKS: (bizId: string | null) => ['businesses', bizId, 'tasks'] as const,
-  // Phase 4 RBAC: per-business membership data. Plural-form keys keep them
-  // adjacent to the other BUSINESS_* entries in the cache hierarchy so a
-  // single `['businesses', bizId]` partial-match invalidation can sweep
-  // every per-business slice if ever needed.
+  // Per-business membership data. Plural-form keys keep them adjacent to
+  // the other BUSINESS_* entries in the cache hierarchy so a single
+  // `['businesses', bizId]` partial-match invalidation can sweep every
+  // per-business slice if ever needed.
   MEMBERS: (bizId: string | null) => ['businesses', bizId, 'members'] as const,
   INVITATIONS: (bizId: string | null) => ['businesses', bizId, 'invitations'] as const,
   ROLES: (bizId: string | null) => ['businesses', bizId, 'roles'] as const,
-  // Phase 5 RBAC dynamic registry.
-  // PERMISSIONS_CATALOG is the global static catalog (all permissions; immutable
-  // per deploy). Kept top-level so logout's removeQueries(['businesses']) does
-  // NOT sweep it — the catalog persists across login/logout (correct: app-static).
+  // PERMISSIONS_CATALOG is the global static catalog (all permissions;
+  // immutable per deploy). Kept top-level so logout's
+  // removeQueries(['businesses']) does NOT sweep it — the catalog persists
+  // across login/logout (correct: app-static).
   // PERMISSIONS is per-business effective permissions for the active actor;
   // nested under ['businesses', bizId, 'permissions'] so partial-match logout
-  // sweeps it alongside members/invitations/roles. Distinct keys avoid the
-  // Pitfall 5 confusion documented in 05-RESEARCH.md.
+  // sweeps it alongside members/invitations/roles. Distinct keys avoid
+  // accidental conflation of the static catalog with the per-actor slice.
   PERMISSIONS_CATALOG: ['permissions-catalog'] as const,
   PERMISSIONS: (bizId: string | null) => ['businesses', bizId, 'permissions'] as const,
   REVIEWS_FILTERED: (platform: string, replyStatus: string) =>

@@ -1,14 +1,9 @@
-// Shared test fixture for Phase 5 roles UI tests.
-//
-// Used by:
-//   - Plan 05-06: list-page, SystemRolesSection, CustomRolesSection,
-//     DeleteRoleDialog tests.
-//   - Plan 05-07: roles-editor tests (clone flow, edit flow).
+// Shared test fixture for roles UI tests.
 //
 // Keep this deterministic — exact ids/names/permissions are asserted on
-// across both plans. The catalog mirrors the shape returned by
-// `GET /api/v1/permissions` (Plan 05-03 dynamic registry) and the role
-// list shape from `GET /api/v1/businesses/{id}/roles` (Plan 05-04).
+// across tests. The catalog mirrors the shape returned by
+// `GET /api/v1/permissions` and the role list shape from
+// `GET /api/v1/businesses/{id}/roles`.
 
 import type { PermissionGroup, Role } from '@/lib/schemas';
 

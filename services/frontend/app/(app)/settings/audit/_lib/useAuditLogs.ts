@@ -28,10 +28,9 @@ async function fetchPage(
     );
     return data;
   } catch (e) {
-    // Backend error envelope is flat: {"error": "code_name"} (Plan 19-05
-    // SUMMARY confirms project-standard shape, NOT the nested shape the
-    // original plan example used). Surface the code as the Error.message
-    // and as a `.code` field so callers can switch on it.
+    // Backend error envelope is flat: {"error": "code_name"}. Surface the
+    // code as the Error.message and as a `.code` field so callers can
+    // switch on it.
     const err = e as { response?: { data?: { error?: string } } };
     const code = err?.response?.data?.error ?? 'unknown';
     const wrapped = new Error(code);

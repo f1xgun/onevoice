@@ -25,22 +25,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 
-// `roleEditorSchema` — zod validation for the editor form. The `name` field is
-// the only constraint enforced at the form level (1..N chars, trimmed); the
-// backend re-validates name length + uniqueness + permission subset on every
-// POST/PATCH. Validation messages are zod *codes* (e.g. 'name_required') —
-// the i18n layer maps the code to a localized string at render time so the
-// schema stays in module scope (no React hook context).
-//
-// NIT-01 (Phase 5 review): the codes-then-map convention here is DELIBERATE
-// and differs from `lib/schemas.ts` (Phase B1) which now exposes
-// `createXxxSchema(t)` factories that React consumers wrap in `useMemo`
-// inside the component body. The reason this schema stays at module scope:
-// lifting it inside the component used to re-create it on every render and
-// defeat react-hook-form's `resolver` identity stability. The
-// codes-then-map indirection trades one extra render-time switch for that
-// stable schema identity. Adding a new code → add a branch to
-// `nameErrorMessage` below.
+// Schema lives at module scope (not inside the component) so RHF's
+// `resolver` keeps stable identity across renders. That requires the
+// validation messages to be plain codes ('name_required') that the
+// `nameErrorMessage` mapper below translates at render time — the schema
+// itself has no React hook context. Add a new code → add a branch below.
 const roleEditorSchema = z.object({
   name: z.string().trim().min(1, { message: 'name_required' }),
   description: z.string(),
@@ -53,43 +42,20 @@ export interface RoleEditorFormProps {
   mode: 'create' | 'edit';
   /** Required when mode === 'edit'. Identifies the role to load + patch. */
   roleId?: string;
-  /** Optional when mode === 'create'. Source role for clone pre-fill (D-04). */
+  /** Optional when mode === 'create'. Source role for clone pre-fill. */
   cloneFromId?: string | null;
 }
 
 /**
  * Shared role editor form for `/settings/roles/new` and
- * `/settings/roles/[id]/edit`. Mounted by both route pages with the
- * appropriate `mode`. Layout follows UI-SPEC §S-2:
+ * `/settings/roles/[id]/edit`.
  *
- *   1. Back link + page title.
- *   2. Card with Name + Description inputs.
- *   3. Card with PermissionTree (wrapped in react-hook-form Controller).
- *   4. Sticky bottom action bar with Cancel link + Save submit button.
+ * Clone pre-fill uses `sourcePerms ∩ actorPerms` as a UX affordance — the
+ * backend re-validates via CheckEscalationSubset and returns 403 if the
+ * client attempts to bypass.
  *
- * Locked behaviors:
- *   - D-04 (clone pre-fill): when `mode='create' && cloneFromId` resolves a
- *     source role, the form is pre-filled with `name = «Копия — {sourceName}»`,
- *     `description = sourceDescription`, and `permissions = sourcePerms ∩
- *     actorPerms`. The intersection is a UX affordance — the backend
- *     re-validates via CheckEscalationSubset and returns 403 if the client
- *     attempts to bypass.
- *   - Edit pre-fill: hydrates from the roles cache (no extra fetch); if the
- *     user lands on /edit cold (cache miss), useRoles fetches and a useEffect
- *     re-resets the form when the source role resolves.
- *   - Save button is disabled until `form.formState.isDirty` flips true or
- *     while a mutation is pending.
- *   - On submit success: toast.success + router.push('/settings/roles');
- *     useCreateRole/useUpdateRole already invalidate roles + permissions on
- *     success (Plan 05-04).
- *   - On submit error: toast.error(mapRoleError(err)); form stays open with
- *     the user's input intact.
- *   - Dirty-state guard via `useUnsavedChangesPrompt(isDirty, t('unsavedPrompt'))`.
- *   - PermissionTree leaves render a Tooltip — wrap the whole form in
- *     TooltipProvider so the Radix portals find their context.
- *
- * UI-RBAC-11: no hardcoded permission strings — every permission key flows
- * through the catalog from PermissionTree.
+ * PermissionTree leaves render a Tooltip — wrap the whole form in
+ * TooltipProvider so the Radix portals find their context.
  */
 export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProps) {
   const t = useTranslations('roles.editor');
@@ -105,7 +71,7 @@ export function RoleEditorForm({ mode, roleId, cloneFromId }: RoleEditorFormProp
   const sourceRole = sourceId ? rolesList?.find((r) => r.id === sourceId) : undefined;
 
   // Actor's effective permissions in the active business. Same query key as
-  // usePermission so the cache is shared (Phase 4 D-05).
+  // usePermission so the cache is shared.
   const { data: actorPermsArray } = useQuery({
     queryKey: QUERY_KEYS.PERMISSIONS(businessId),
     queryFn: () => getMyPermissions(businessId as string),

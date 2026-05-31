@@ -49,8 +49,8 @@ const VALID_IDS = new Set<string>(TONE_IDS);
 //
 // HARDCODED on purpose: this is migration data, not user-facing copy.
 // The values mirror `business.voiceTone.options.*` in messages/ru.json
-// at the time of the migration (Wave 3). If those strings ever change in
-// ru.json, update this table in lockstep so legacy reads keep mapping.
+// at the time of the migration. If those strings ever change in ru.json,
+// update this table in lockstep so legacy reads keep mapping.
 const RU_LABEL_TO_ID: Record<string, ToneId> = {
   тёплый: 'warm',
   теплый: 'warm', // alt diacritic

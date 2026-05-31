@@ -6,21 +6,13 @@ import { Check, Minus } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
-// Phase 5 / Plan 05-05 — primitive extended to render BOTH a Check glyph and
-// a Minus glyph inside the Indicator. Tailwind's `group/cb` + the arbitrary
-// `group-data-[state=*]/cb:*` variant flip visibility based on Radix's
-// `data-state` attribute (Tailwind v3.3+ supports the named-group syntax;
-// we pin v3.4.1 in package.json).
+// The Indicator renders both a Check and a Minus glyph. Tailwind's `group/cb`
+// + the `group-data-[state=*]/cb:*` variants flip visibility based on Radix's
+// `data-state` attribute (requires Tailwind v3.3+; we pin v3.4.1).
 //
 //   data-state="checked"        → Check visible, Minus hidden
 //   data-state="indeterminate"  → Check hidden,  Minus visible
 //   data-state="unchecked"      → Indicator itself is hidden by Radix
-//
-// Existing call sites (Phase 4 invitation forms, members tab) keep working —
-// the props API is unchanged; we only added one Tailwind class and a second
-// glyph SVG inside the Indicator. See RESEARCH §"Radix Checkbox `indeterminate`
-// wiring" for the syntax rationale and the imperative-MutationObserver
-// fallback (not needed since v3.4.1 is pinned).
 const Checkbox = React.forwardRef<
   React.ElementRef<typeof CheckboxPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
