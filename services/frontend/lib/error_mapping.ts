@@ -1,9 +1,7 @@
-// Backend error-code → render contract.
-//
-// Mirror of services/api/internal/handler/error_mapping.go for code→shape;
-// the localized strings live in services/frontend/messages/{ru,en}.json
-// under the i18nKey. Sibling plans 21-03 and 21-04 EXTEND the COPY map.
-// Do not change the type shape — it is fixed by.
+// Backend error-code → render contract. Mirror of
+// services/api/internal/handler/error_mapping.go for code→shape;
+// localized strings live in services/frontend/messages/{ru,en}.json
+// under the i18nKey.
 
 export type ErrorType = 'toast' | 'modal' | 'inline' | 'banner';
 export type ToastTone = 'destructive' | 'warning' | 'info';
@@ -24,12 +22,7 @@ export type ErrorEntry = {
   actionHref?: string;
 };
 
-/**
- * COPY is the union of all backend error codes surfaces.
- * 21-02 owns: reset_token_invalid, reset_token_expired, password_too_weak.
- * 21-03 and 21-04 will append their own codes (verify_*, sole_owner_*, etc.)
- * — do NOT pre-add them here; that's 21-03's / 21-04's deliverable.
- */
+/** COPY is the union of all backend error codes the frontend renders. */
 export const COPY: Record<string, ErrorEntry> = {
   reset_token_invalid: {
     i18nKey: 'auth.passwordReset.errors.invalid',
@@ -46,10 +39,8 @@ export const COPY: Record<string, ErrorEntry> = {
     type: 'inline',
   },
 
-  // email verification + soft-restrict.
-  // The i18n keys live under
-  // auth.verifyEmail.errors.* in messages/{ru,en}.json. Do not change
-  // the entry shape — fixed by §4.
+  // Email verification + soft-restrict. Keys live under
+  // auth.verifyEmail.errors.* in messages/{ru,en}.json.
   verify_token_invalid: {
     i18nKey: 'auth.verifyEmail.errors.invalid',
     type: 'inline',
@@ -81,10 +72,8 @@ export const COPY: Record<string, ErrorEntry> = {
     type: 'inline',
   },
 
-  // account deletion lifecycle.
-  // The i18n keys live under
-  // account.deletion.errors.* in messages/{ru,en}.json. Do not change
-  // the entry shape — fixed by §4.
+  // Account deletion lifecycle. Keys live under
+  // account.deletion.errors.* in messages/{ru,en}.json.
   sole_owner_of_businesses: {
     // Triggers the SoleOwnerBlockedModal via the delete-confirm
     // submit handler. The 'modal' type is the canonical render hint

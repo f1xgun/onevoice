@@ -1,22 +1,13 @@
 import '@testing-library/jest-dom';
 import { afterEach, vi } from 'vitest';
 
-// Global next-intl stub. Real translation plumbing lives at
-// lib/i18n/request.ts and only matters in production / e2e — tests
-// shouldn't have to mount NextIntlClientProvider just to render any
-// component that calls useTranslations.
+// Global next-intl stub. Looks keys up in messages/{ru,en}.json so tests
+// can assert literal copy without mounting NextIntlClientProvider. Missing
+// keys fall back to the namespaced key string for clearer failure surfaces.
 //
-// The stub looks the key up in messages/{ru,en}.json so tests that
-// assert literal copy ('Чат', 'Welcome', etc.) continue to find what
-// they expect. Missing keys fall back to the namespaced key string so
-// the failure surface is "saw 'nav.foo' instead of 'Чат'" rather than
-// a context-not-found exception.
-//
-// DEFAULT LOCALE IS `ru`. ~39 component tests assert RU literals from
-// `messages/ru.json` directly, so flipping the default would mass-fail
-// them. Tests that need to exercise EN behavior (locale-switch smoke,
-// future-localised UI assertions) opt in via `__setTestLocale('en')`,
-// which the cross-cutting `afterEach` below resets back to `ru`.
+// DEFAULT LOCALE IS `ru` — many component tests assert RU literals directly.
+// Tests exercising EN opt in via `__setTestLocale('en')`; the global
+// afterEach below resets back to `ru`.
 import ruMessages from './messages/ru.json';
 import enMessages from './messages/en.json';
 
@@ -28,10 +19,8 @@ const messageBundles: Record<SupportedLocale, unknown> = {
 
 const state: { locale: SupportedLocale } = { locale: 'ru' };
 
-// Per-test locale override hook. Call from inside a test:
-//   __setTestLocale('en');   // assertions now look up `messages/en.json`
-// The global `afterEach` below resets to 'ru' so subsequent tests stay
-// pinned.
+// Per-test locale override: `__setTestLocale('en')` switches the lookup
+// bundle; the global afterEach resets to 'ru'.
 function setTestLocale(locale: SupportedLocale): void {
   state.locale = locale;
 }
@@ -60,13 +49,8 @@ function lookupTranslation(namespace: string | undefined, key: string): string {
   return typeof v === 'string' ? v : namespace ? `${namespace}.${key}` : key;
 }
 
-// Russian plural category for an integer per CLDR rules. Used by the
-// ICU-plural branch of `interpolate` below so a key like
-// `Минимум {count, plural, one {# символ} few {# символа} many {# символов} other {# символов}}`
-// renders the right form ('Минимум 2 символа', 'Минимум 6 символов'). The
-// real next-intl runtime does this through Intl.PluralRules; the mock
-// hand-rolls the rule because jsdom's Intl is sufficient but pulling in
-// the runtime here would mean importing all of next-intl just for tests.
+// Russian CLDR plural category for an integer. Hand-rolled instead of
+// using Intl.PluralRules so the mock doesn't pull in all of next-intl.
 function ruPluralCategory(n: number): 'one' | 'few' | 'many' | 'other' {
   if (!Number.isInteger(n)) return 'other';
   const mod10 = Math.abs(n) % 10;
@@ -76,10 +60,7 @@ function ruPluralCategory(n: number): 'one' | 'few' | 'many' | 'other' {
   return 'many';
 }
 
-// Extract the body of `{<name>, plural, …}` starting at the `, plural,`
-// keyword. Returns `[innerBody, endIndex]` where `innerBody` is the
-// concatenation of every option block (e.g. `one {# x} few {# y} other {# z}`)
-// and `endIndex` is the offset of the matching closing `}`. Tracks brace
+// Extract a braced body starting after the opening `{`. Tracks brace
 // depth so nested option bodies don't terminate the outer block early.
 function extractPluralBody(src: string, start: number): { body: string; end: number } | null {
   let depth = 1;
@@ -94,9 +75,7 @@ function extractPluralBody(src: string, start: number): { body: string; end: num
   return null;
 }
 
-// Parse the option list inside an ICU plural body — `one {…} few {…} =0 {…}`.
-// Returns a map keyed by category / `=N` literal. Handles nested braces
-// inside option bodies.
+// Parse option list inside an ICU plural body: `one {…} few {…} =0 {…}`.
 function parsePluralOptions(body: string): Record<string, string> {
   const out: Record<string, string> = {};
   let i = 0;
@@ -114,12 +93,9 @@ function parsePluralOptions(body: string): Record<string, string> {
   return out;
 }
 
-// ICU-aware placeholder substitution for tests. Supports three shapes:
-//   - simple `{name}` → params[name]
-//   - `{count, plural, =N {…} one {…} few {…} many {…} other {…}}` (ru rules)
-//   - `{var, select, key {…} other {…}}` — chosen body is recursively
-//     interpolated so nested `{otherVar}` placeholders inside the select
-//     body still resolve. Number formatters are not covered.
+// ICU-aware placeholder substitution. Supports simple `{name}`, plural
+// (ru rules), and select. Nested placeholders inside select/plural bodies
+// resolve recursively. Number formatters are not covered.
 function interpolate(template: string, params?: Record<string, unknown>): string {
   if (!params) return template;
   let out = '';
@@ -129,8 +105,6 @@ function interpolate(template: string, params?: Record<string, unknown>): string
       out += template[i++];
       continue;
     }
-    // Find matching closing brace, tracking depth so nested option bodies
-    // (`one {# X}`) don't terminate the outer placeholder early.
     const inner = extractPluralBody(template, i + 1);
     if (!inner) {
       out += template[i++];
@@ -147,8 +121,7 @@ function interpolate(template: string, params?: Record<string, unknown>): string
       const exact = opts[`=${num}`];
       const cat = ruPluralCategory(num);
       const chosen = exact ?? opts[cat] ?? opts.other ?? '';
-      // `#` placeholder = the count itself; remaining `{name}` slots are
-      // resolved recursively (real ICU also drops back into normal scope).
+      // `#` = the count itself; remaining `{name}` slots resolve recursively.
       out += interpolate(chosen.replace(/#/g, String(num)), params);
     } else if (selectIdx !== -1) {
       const name = expr.slice(0, selectIdx).trim();
@@ -157,7 +130,6 @@ function interpolate(template: string, params?: Record<string, unknown>): string
       const chosen = opts[String(value)] ?? opts.other ?? '';
       out += interpolate(chosen, params);
     } else {
-      // Simple `{name}` placeholder.
       const name = expr.trim();
       const v = params[name];
       out += v === undefined || v === null ? `{${name}}` : String(v);
@@ -172,18 +144,13 @@ vi.mock('next-intl', () => {
     const t = (key: string, params?: Record<string, unknown>) =>
       interpolate(lookupTranslation(namespace, key), params);
     (t as unknown as { has: (k: string) => boolean }).has = () => true;
-    // Real next-intl returns the raw JSON node here (object, array, or
-    // string). The previous stub coerced everything to a string, which
-    // hid `t.raw('arrayKey')` callers (lib/quick-actions.ts).
+    // `.raw` returns the raw JSON node (object/array/string) — needed for
+    // callers like lib/quick-actions.ts that read an array key.
     (t as unknown as { raw: (k: string) => unknown }).raw = (k: string) => lookupRaw(namespace, k);
     return t;
   };
   return {
     useTranslations: tFactory,
-    // Module-level translator (lib/i18n/translator.ts → lib/schemas.ts,
-    // lib/resolveErrorMap.ts). Real next-intl returns a strictly-typed
-    // function; the test stub mirrors `useTranslations` so callers get
-    // the same key/params behavior.
     createTranslator: ({ namespace }: { namespace?: string } = {}) => tFactory(namespace),
     useLocale: () => state.locale,
     useFormatter: () => ({
@@ -194,8 +161,8 @@ vi.mock('next-intl', () => {
   };
 });
 
-// localStorage polyfill for jsdom in Vitest vm context
-// jsdom's localStorage proxy does not expose prototype methods across vm realms
+// localStorage polyfill — jsdom's proxy doesn't expose prototype methods
+// across the Vitest vm realm.
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
@@ -233,9 +200,8 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   (globalThis as any).ResizeObserver = ResizeObserverStub;
 }
 
-// matchMedia stub defaults matches=false (mobile-first), aligned with the
-// app shell's initial state. Tests that need desktop chrome (nav-rail,
-// project-pane) must call `setDesktopViewport()` from test-utils/viewport.
+// matchMedia stub defaults matches=false (mobile-first). Tests that need
+// desktop chrome must call `setDesktopViewport()` from test-utils/viewport.
 if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -270,20 +236,12 @@ if (typeof (globalThis as unknown as { Element?: typeof Element }).Element !== '
   }
 }
 
-// axe a11y matchers (toHaveNoViolations etc.).
-// `@chialab/vitest-axe` is the React-18-compatible fork —
-// `@axe-core/react` is incompatible with React 18 and CANNOT be used here.
-// Matcher API: `expect(await axe(container)).toHaveNoViolations()`.
+// axe a11y matchers. `@chialab/vitest-axe` is the React-18-compatible fork
+// (`@axe-core/react` is NOT React-18-compatible).
 //
-// IMPORTANT: the package exposes the matchers object as the DEFAULT export
-// of the main entry (`lib/index.js: export default { toHaveNoViolations }`).
-// The `./matchers` subpath in @chialab/vitest-axe@0.19.1's `package.json`
-// `exports` map is a TYPES-ONLY entry (no `default` runtime condition) —
-// importing it at runtime fails with "No known conditions". We therefore
-// import the default from the main entry and pass it to `expect.extend`.
-// Type augmentation for `toHaveNoViolations` is not strictly required because
-// our axe tests filter violations manually (impact-aware gate, see
-// components/sidebar/__a11y__/sidebar-axe.test.tsx).
+// Must import the DEFAULT export from the main entry: the `./matchers`
+// subpath in @chialab/vitest-axe@0.19.1 is types-only (no `default`
+// runtime condition) and fails with "No known conditions" at runtime.
 import axeMatchers from '@chialab/vitest-axe';
 import { expect as vitestExpect } from 'vitest';
 vitestExpect.extend(axeMatchers);
