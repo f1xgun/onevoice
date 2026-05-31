@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -12,6 +14,8 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
+	"github.com/f1xgun/onevoice/pkg/ratelimit"
+	"github.com/f1xgun/onevoice/pkg/ssecounter"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/service/chatturn"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
@@ -49,6 +53,60 @@ const (
 type ChatProxyHandler struct {
 	turn        *chatturn.Turn
 	messageRepo domain.MessageRepository
+
+	// sseCounter caps in-flight SSE streams per user. nil disables the
+	// gate (tests + dev deploys construct without it).
+	sseCounter *ssecounter.Counter
+
+	// defaultTier labels the SSE concurrency block metric when a request
+	// has no per-user tier override. Empty falls back to "free" at
+	// acquire time.
+	defaultTier string
+}
+
+// SetSSECounter wires the per-user SSE concurrency cap. Optional — call
+// from wire.Handlers after construction. A nil counter or a Counter built
+// with max <= 0 disables the gate.
+func (h *ChatProxyHandler) SetSSECounter(c *ssecounter.Counter, defaultTier string) {
+	h.sseCounter = c
+	if defaultTier == "" {
+		defaultTier = "free"
+	}
+	h.defaultTier = defaultTier
+}
+
+// retryAfterSeconds is advertised in the HTTP 429 Retry-After header. The
+// counter releases as soon as ANY in-flight stream from the same user
+// completes, so a 1s hint is honest under typical short-burst load.
+const retryAfterSeconds = 1
+
+// writeConcurrencyError maps the SSE counter's sentinel errors to the
+// JSON wire shape the frontend consumes:
+//   - ErrConcurrencyExceeded → 429 + Retry-After header + sse_concurrency_exceeded code.
+//   - ratelimit.ErrUnavailable / ratelimit.ErrExceeded → 503 + rate_limit_unavailable code.
+func (h *ChatProxyHandler) writeConcurrencyError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ssecounter.ErrConcurrencyExceeded):
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSeconds))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code":          "sse_concurrency_exceeded",
+			"retry_after_s": retryAfterSeconds,
+		})
+	case errors.Is(err, ratelimit.ErrUnavailable), errors.Is(err, ratelimit.ErrExceeded):
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": "rate_limit_unavailable",
+		})
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": "rate_limit_unavailable",
+		})
+	}
 }
 
 // NewChatProxyHandler keeps the legacy 12-arg signature so the wire package
@@ -152,6 +210,23 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
+
+	// Per-user SSE concurrency cap. Acquire BEFORE any branch writes
+	// the SSE Content-Type header so a rejection surfaces as a JSON
+	// HTTP 429 (never a half-stream). Release closures are idempotent.
+	if h.sseCounter != nil {
+		tier := h.defaultTier
+		if tier == "" {
+			tier = "free"
+		}
+		release, acqErr := h.sseCounter.Acquire(r.Context(), bc.UserID, tier)
+		if acqErr != nil {
+			h.writeConcurrencyError(w, acqErr)
+			return
+		}
+		defer release()
+	}
+
 	conversationID := chi.URLParam(r, "conversationID")
 
 	headerBatch := r.Header.Get(ResumeBatchHeader)
