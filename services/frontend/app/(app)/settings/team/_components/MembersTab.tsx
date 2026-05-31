@@ -60,7 +60,7 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
   const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
 
   // Defensive: gate against the auth-store hydration race where currentUserId
-  // is still undefined on first paint (HI-01 in 04-REVIEW.md).
+  // is still undefined on first paint.
   const isSelf = (m: Member) => currentUserId !== undefined && m.user.id === currentUserId;
 
   const handleRoleChange = async (m: Member, newRoleId: string) => {
@@ -205,7 +205,7 @@ export function MembersTab({ businessId, roles }: MembersTabProps) {
         <RoleChangeDialog
           // Key by member id so React re-mounts the dialog per member;
           // useState(currentRoleId) initializer otherwise sticks to the
-          // previously-opened member's value (ME-02 in 04-REVIEW.md).
+          // previously-opened member's value.
           key={roleChange.user.id}
           open
           onOpenChange={() => setRoleChange(null)}

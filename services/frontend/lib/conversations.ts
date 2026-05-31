@@ -23,12 +23,11 @@ export interface Conversation {
   updatedAt: string;
 }
 
-// API default limit is 20 (services/api/internal/handler/conversation.go).
-// The sidebar renders ALL chats grouped by project + an "Без проекта" bucket,
-// so a 20-row cap silently truncates the list — deleting a chat then makes a
-// formerly-page-2 chat take the freed slot, and the per-bucket counts appear
-// frozen. Request the server-side max (100) so the sidebar reflects reality
-// for typical users. Heavy users (>100 chats) will need real pagination.
+// API default limit is 20. The sidebar renders ALL chats grouped by project
+// + an "Без проекта" bucket, so a 20-row cap silently truncates the list and
+// per-bucket counts appear frozen. Request the server-side max (100) so the
+// sidebar reflects reality for typical users. Heavy users (>100 chats) will
+// need real pagination.
 export async function listConversations(activeBusinessId: string): Promise<Conversation[]> {
   const { data } = await bizApi(activeBusinessId).get<Conversation[]>(
     BIZ_API_PATHS.CONVERSATIONS.ROOT,

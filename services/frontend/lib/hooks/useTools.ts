@@ -26,11 +26,9 @@ export function useTools() {
 }
 
 // UI platform buckets for grouping. Single source of truth for the
-// tool-bearing platform set — `PlatformKey`, the Set used by toPlatformKey,
-// and the seed object built by groupByPlatform all derive from this tuple
-// so adding a new tool-bearing platform is one line, not four.
-// Consumer UIs (settings/tools, ProjectApprovalOverrides, ToolCheckboxGrid,
-// WhitelistWarningBanner) depend on these exact keys.
+// tool-bearing platform set — `PlatformKey`, `toPlatformKey`'s Set, and
+// `groupByPlatform`'s seed all derive from this tuple, so adding a new
+// tool-bearing platform is one line, not four.
 const TOOL_BEARING_PLATFORMS = ['telegram', 'vk', 'yandex_business', 'google_business'] as const;
 type ToolBearingPlatform = (typeof TOOL_BEARING_PLATFORMS)[number];
 export type PlatformKey = ToolBearingPlatform | 'other';
@@ -62,15 +60,12 @@ export function groupByPlatform(tools: Tool[]): Record<PlatformKey, Tool[]> {
 }
 
 // findToolsForIntegration filters the registry to tools belonging to a given
-// platform (matched on the raw backend `platform` field). Used by the
-// WhitelistWarningBanner to project which tools a new integration brings.
+// platform (matched on the raw backend `platform` field).
 export function findToolsForIntegration(tools: Tool[], platform: string): Tool[] {
   return tools.filter((t) => t.platform === platform);
 }
 
-// Convenience helper: returns the tool NAMES for a given platform. Used by
-// consumers that previously consumed a plain string[] bucket map
-// (e.g. WhitelistWarningBanner).
+// Convenience helper: returns the tool NAMES for a given platform.
 export function toolNamesForPlatform(tools: Tool[], platform: string): string[] {
   return findToolsForIntegration(tools, platform).map((t) => t.name);
 }

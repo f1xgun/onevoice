@@ -12,10 +12,8 @@ export const TOS_VERSION = 'v1.0';
 export const PRIVACY_VERSION = 'v1.0';
 export const PDN_VERSION = 'v1.0';
 
-// PolicySlug is the typed slug used by Register / ReConsent / Withdraw.
-// Mirrors the user_consents.purpose column. Exactly these three
-// values; marketing consent + 18+ confirmation deferred to v1.5 per
-// 22-/.
+// PolicySlug — typed consent slug. Mirrors the user_consents.purpose column.
+// Exactly these three values; marketing consent + 18+ confirmation deferred.
 export type PolicySlug = 'tos' | 'privacy' | 'pdn';
 
 // currentVersion returns the build's current policy version for a slug.
