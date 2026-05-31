@@ -1,6 +1,10 @@
 package gbp
 
-import "time"
+import (
+	"time"
+
+	"github.com/f1xgun/onevoice/pkg/domain"
+)
 
 // HTTP client budget for outbound Google API calls. Google's GBP endpoints
 // answer in <2s typically; 15s leaves headroom for cold paths without
@@ -21,6 +25,6 @@ const (
 // gets when it omits the count field. Exported because the agent
 // handler reuses it for the same default before calling client.GetReviews.
 const (
-	DefaultReviewLimit = 20
+	DefaultReviewLimit = domain.GoogleBusinessReviewLimitDefault
 	maxReviewLimit     = 50
 )
