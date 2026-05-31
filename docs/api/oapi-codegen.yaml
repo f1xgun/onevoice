@@ -1,0 +1,16 @@
+## Configuration for `oapi-codegen` — types-only mode (no server stubs).
+##
+## Output is committed at services/api/internal/openapi/types.gen.go.
+## Regenerate with `make oapi-gen`; CI enforces drift via `make oapi-check`.
+##
+## Output path is relative to the process working directory; the Makefile
+## targets invoke oapi-codegen from the repository root, so the path here
+## is given from that root.
+
+package: openapi
+output: services/api/internal/openapi/types.gen.go
+generate:
+  models: true
+  embedded-spec: true
+output-options:
+  skip-prune: true
