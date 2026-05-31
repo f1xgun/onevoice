@@ -227,3 +227,35 @@ export function reconnectLabelKey(platform: string | null | undefined): string {
   if (!platform || !isKnownPlatform(platform)) return 'reconnect';
   return PLATFORM_RECONNECT_LABEL_KEYS[platform];
 }
+
+// Token-error summary i18n key per platform. Mirrors the
+// PLATFORM_RECONNECT_LABEL_KEYS pattern so the chat banner and the tasks
+// explainError can't drift on the user-facing "token invalid" copy.
+// Platforms without dedicated copy share the generic 'tokenGeneric' key
+// (resolved via tokenErrorKey() for unknown / null inputs as well).
+export const PLATFORM_TOKEN_ERROR_KEYS: Record<PlatformId, string> = {
+  telegram: 'tokenTelegram',
+  vk: 'tokenVk',
+  yandex_business: 'tokenGeneric',
+  google_business: 'tokenGeneric',
+  '2gis': 'tokenGeneric',
+  avito: 'tokenGeneric',
+  whatsapp: 'tokenGeneric',
+};
+
+export function tokenErrorKey(platform: string | null | undefined): string {
+  if (!platform || !isKnownPlatform(platform)) return 'tokenGeneric';
+  return PLATFORM_TOKEN_ERROR_KEYS[platform];
+}
+
+// Lazy-refresh endpoints used by PlatformCard to backfill missing
+// friendly names. Keys are the PlatformIds whose agents expose a
+// refresh-name endpoint; values are functions producing the path
+// (relative to /businesses/{id}, matching BIZ_API_PATHS conventions).
+// Platforms not in this map skip the lazy backfill.
+export const PLATFORM_REFRESH_ENDPOINTS: Partial<
+  Record<PlatformId, (integrationId: string) => string>
+> = {
+  vk: (id) => `/integrations/vk/${id}/refresh-name`,
+  yandex_business: (id) => `/integrations/yandex_business/${id}/refresh-name`,
+};

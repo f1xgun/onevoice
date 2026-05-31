@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { bizApi } from '@/lib/api/business-api';
-import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
@@ -47,10 +47,12 @@ export function VKCommunityModal({ open, onClose }: Props) {
     e.preventDefault();
     const trimmed = token.trim();
     if (!trimmed || !activeBusinessId) return;
+    const connectPath = INTEGRATION_ENDPOINTS.vk?.connect;
+    if (!connectPath) return;
     setSubmitting(true);
     try {
       const { data } = await bizApi(activeBusinessId).post<{ id: string; externalId: string }>(
-        BIZ_API_PATHS.INTEGRATIONS.VK_CONNECT,
+        connectPath,
         { access_token: trimmed }
       );
       toast.success(tVk('connected'));

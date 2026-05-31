@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { bizApi } from '@/lib/api/business-api';
-import { BIZ_API_PATHS } from '@/lib/constants/bizApiPaths';
+import { INTEGRATION_ENDPOINTS } from '@/lib/constants/bizApiPaths';
 import { QUERY_KEYS } from '@/lib/constants/queryKeys';
 import { useBusinessStore } from '@/lib/stores/business';
 import { Button } from '@/components/ui/button';
@@ -76,8 +76,10 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
       setProbing(true);
       try {
         if (!activeBusinessId) return;
+        const probePath = INTEGRATION_ENDPOINTS.yandex_business?.probe;
+        if (!probePath) return;
         const { data } = await bizApi(activeBusinessId).post<ProbeResponse>(
-          BIZ_API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_PROBE,
+          probePath,
           { cookies: trimmed },
           { signal: controller.signal }
         );
@@ -115,8 +117,10 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
     setStep('searching');
     try {
       if (!activeBusinessId) return;
+      const companiesPath = INTEGRATION_ENDPOINTS.yandex_business?.companies;
+      if (!companiesPath) return;
       const { data } = await bizApi(activeBusinessId).post<{ companies: CompanyEntry[] }>(
-        BIZ_API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_COMPANIES,
+        companiesPath,
         { cookies: value.trim() }
       );
       const list = data.companies ?? [];
@@ -147,7 +151,9 @@ export function YandexBusinessConnectModal({ open, onClose }: Props) {
     setStep('connecting');
     try {
       if (!activeBusinessId) return;
-      await bizApi(activeBusinessId).post(BIZ_API_PATHS.INTEGRATIONS.YANDEX_BUSINESS_CONNECT, {
+      const connectPath = INTEGRATION_ENDPOINTS.yandex_business?.connect;
+      if (!connectPath) return;
+      await bizApi(activeBusinessId).post(connectPath, {
         cookies: value.trim(),
         permalink: company.permalink,
         business_name: company.name,

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
 import { API_PATHS } from '@/lib/constants/apiPaths';
-import { reconnectLabelKey } from '@/lib/platforms';
+import { reconnectLabelKey, tokenErrorKey } from '@/lib/platforms';
 import { cn } from '@/lib/utils';
 
 export interface IntegrationTokenInvalidBannerProps {
@@ -20,9 +20,7 @@ export interface IntegrationTokenInvalidBannerProps {
 export function IntegrationTokenInvalidBanner({ platform }: IntegrationTokenInvalidBannerProps) {
   const t = useTranslations('tasks.errors');
 
-  const summaryKey =
-    platform === 'telegram' ? 'tokenTelegram' : platform === 'vk' ? 'tokenVk' : 'tokenGeneric';
-
+  const summaryKey = tokenErrorKey(platform);
   const ctaKey = reconnectLabelKey(platform);
   const href = `${API_PATHS.INTEGRATIONS.ROOT}?reconnect=${platform}`;
 
