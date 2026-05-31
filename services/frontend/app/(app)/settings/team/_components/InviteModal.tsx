@@ -121,8 +121,7 @@ export function InviteModal({
   };
 
   // Capture the translator + url/state.kind narrow for the effect closure;
-  // depending on `tInviteCopy` directly would re-run on every parent rerender
-  // (HI-04 in 04-REVIEW.md).
+  // depending on `tInviteCopy` directly would re-run on every parent rerender.
   const url = state.kind === 'copy' ? state.url : null;
   useEffect(() => {
     if (!url) return;

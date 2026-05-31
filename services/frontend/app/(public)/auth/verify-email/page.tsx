@@ -24,8 +24,7 @@ import { MonoLabel } from '@/components/ui/mono-label';
 
 const HTTP_NO_CONTENT = 204;
 // Pause between success-state render and dashboard redirect so the user
-// has time to read the confirmation copy. ~1.5s mirrors the same dwell
-// used by the password-reset confirm success → /login flow.
+// has time to read the confirmation copy.
 const POST_SUCCESS_REDIRECT_DELAY_MS = 1500;
 
 type PageState = 'reveal' | 'submitting' | 'verified' | 'error';

@@ -1,10 +1,6 @@
-// components/states/ChannelConnectProgress.tsx — multi-step channel
-// connect indicator with checkmarks.
-//
-// Mock anchor: design_handoff_onevoice 2/mocks/mock-states.jsx
-// "Подключение канала: длительная операция" (lines 280–310). Used by
-// the Telegram / VK connect modals while OAuth → bot-rights →
-// message-sync stages run on the API.
+// Multi-step channel connect indicator with checkmarks. Shown by the
+// Telegram / VK connect modals while OAuth → bot-rights → message-sync
+// stages run on the API.
 //
 // Step state vocabulary (controlled — caller drives transitions):
 //   - 'done'    : checkmark, copy struck-through

@@ -6,7 +6,7 @@
 //
 // Variants:
 //   - default: dashed paper-raised card, generous padding
-//   - compact: same, smaller padding (used by inline filter empties)
+//   - compact: same, smaller padding (for inline filter empties)
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
