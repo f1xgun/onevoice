@@ -110,6 +110,29 @@ export default function IntegrationsPage() {
       toast.error(message);
       window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
     }
+
+    // Deep-link from the chat surface's IntegrationTokenInvalidBanner
+    // or from the tasks page reconnect CTA. Opens the matching modal
+    // automatically; unknown platforms are silently ignored.
+    const reconnect = searchParams.get('reconnect');
+    if (reconnect) {
+      switch (reconnect) {
+        case 'telegram':
+          setTelegramOpen(true);
+          break;
+        case 'vk':
+          setVkCommunityOpen(true);
+          break;
+        case 'yandex_business':
+          setYandexOpen(true);
+          break;
+        case 'google_business':
+          setGoogleLocationOpen(true);
+          break;
+        // Unknown values: silently ignore.
+      }
+      window.history.replaceState({}, '', API_PATHS.INTEGRATIONS.ROOT);
+    }
   }, [searchParams, qc, activeBusinessId, tIntegrations]);
 
   const { data: integrations = [], isLoading: integrationsLoading } = useQuery<Integration[]>({
