@@ -1,35 +1,16 @@
-// Single source of truth for non-business-scoped API endpoint paths used
-// by the frontend.
+// Non-business-scoped API endpoint paths. Business-scoped endpoints
+// (`/businesses/{id}/...`) live in bizApiPaths.ts and flow through bizApi().
 //
-// For business-scoped endpoints (`/businesses/{id}/...`) see BIZ_API_PATHS
-// in bizApiPaths.ts — those are consumed via the bizApi() helper which
-// prepends `/businesses/{id}` automatically.
+// API_PATHS = relative paths consumed by the wrapped axios instance.
+// API_STREAM_PATHS = absolute paths used by bare fetch() (SSE, refresh
+// interceptor); prepend API_BASE_URL explicitly.
 //
-// Two flavours of paths live here:
+// API_BASE_URL is build-time inlined from NEXT_PUBLIC_API_URL. The default
+// "/api/v1" keeps the next.config.js same-origin rewrite working; cross-
+// origin deploys can point it at an absolute URL.
 //
-// 1. Relative paths consumed by the axios instance in lib/api (which
-//    prepends API_BASE_URL). These start without "/api/v1".
-//    Example: API_PATHS.AUTH.LOGIN  →  '/auth/login'
-//
-// 2. Absolute paths used by the bare `fetch(...)` calls inside hooks that
-//    need streaming (SSE) or custom headers. They prepend API_BASE_URL
-//    explicitly. They live under API_STREAM_PATHS.
-//
-// API_BASE_URL is sourced from NEXT_PUBLIC_API_URL (build-time inlined by
-// Next.js). Default is "/api/v1" so the existing same-origin rewrite proxy
-// in next.config.js (source: /api/v1/:path*) keeps working unchanged.
-// Production deploys serving the frontend from a different origin can set
-// NEXT_PUBLIC_API_URL=https://api.example.com/api/v1 to bypass the rewrite.
-//
-// Functions vs strings:
-//   - Static endpoints are exported as plain strings (`'/auth/login'`).
-//   - Endpoints that take an id (or other path param) are exported as
-//     functions so call sites can't forget to interpolate.
-//
-// Some entries below double as frontend Next.js route hrefs (e.g.
-// BUSINESS.ROOT, INTEGRATIONS.ROOT, TASKS) because the URL slugs match
-// the API paths one-to-one. Splitting them into a FRONTEND_ROUTES module
-// is out of scope for the RBAC migration — see PR backlog.
+// Param-taking endpoints are exported as functions so call sites can't
+// forget to interpolate.
 
 export const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
@@ -40,49 +21,35 @@ export const API_PATHS = {
     PASSWORD: '/auth/password',
     ME: '/auth/me',
   },
-  // BUSINESS.ROOT also doubles as the frontend route href for the
-  // business profile page. The /business API endpoint itself moved under
-  // BIZ_API_PATHS.BUSINESS — see bizApiPaths.ts.
+  // BUSINESS / INTEGRATIONS / TASKS also double as frontend route hrefs.
+  // The API endpoints themselves moved under BIZ_API_PATHS.
   BUSINESS: {
     ROOT: '/business',
   },
-  // INTEGRATIONS.ROOT also doubles as the frontend route href. All API
-  // calls under /integrations migrated to BIZ_API_PATHS.INTEGRATIONS.
   INTEGRATIONS: {
     ROOT: '/integrations',
   },
-  // TASKS doubles as the frontend route href. Backend list/stream moved
-  // to BIZ_API_PATHS.TASKS.
   TASKS: '/tasks',
   TELEMETRY: '/telemetry',
   // POST /reviews/refresh is INTENTIONALLY NOT business-scoped — it
-  // synchronously fans out a sync request to every connected agent for
-  // the caller's businesses. Per-business calls live under
-  // BIZ_API_PATHS.REVIEWS.
+  // fans out a sync to every connected agent for the caller's businesses.
   REVIEWS: {
     REFRESH: '/reviews/refresh',
   },
-  // PUBLIC invitation routes — not business-scoped.
-  // `GET /invitations/{token}` returns the preview (rate-limited per-IP);
-  // `POST /invitations/{token}/accept` claims the invitation for the
-  // authenticated user. Both go through the raw `api` axios instance
-  // (NOT `bizApi`), and the preview call passes
-  // `metadata: { skipBusinessNotFound: true }` so the 404 interceptor
-  // never mistakes a missing token for a stale active business.
+  // Public invitation routes go through raw `api` (NOT `bizApi`). Preview
+  // call must pass `skipBusinessNotFound: true` so the 404 interceptor
+  // doesn't mistake a missing token for a stale active business.
   INVITATIONS_PUBLIC: {
     PREVIEW: (token: string) => `/invitations/${token}` as const,
     ACCEPT: (token: string) => `/invitations/${token}/accept` as const,
   },
-  // Static permission catalog. NOT business-scoped — the registry is a
-  // build-time constant exposed by the API for the frontend PermissionTree.
-  // Use top-level `api.get(API_PATHS.PERMISSIONS)`.
+  // App-static permission catalog (NOT business-scoped).
   PERMISSIONS: '/permissions',
 } as const;
 
 // Absolute paths used by bare `fetch(...)` / `axios(...)` calls that
-// bypass the wrapped api instance (SSE streaming, HITL resume, and the
-// refresh-token interceptor where wrapping would recurse). They prepend
-// API_BASE_URL explicitly so NEXT_PUBLIC_API_URL applies uniformly.
+// bypass the wrapped api instance (SSE streaming, HITL resume, refresh
+// interceptor where wrapping would recurse).
 export const API_STREAM_PATHS = {
   AUTH_REFRESH: `${API_BASE_URL}/auth/refresh`,
   TASKS_STREAM: `${API_BASE_URL}/tasks/stream`,
