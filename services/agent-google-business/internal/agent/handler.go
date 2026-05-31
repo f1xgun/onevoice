@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
@@ -95,17 +96,20 @@ func classifyGBPError(err error) error {
 }
 
 func (h *Handler) getClient(ctx context.Context, req a2a.ToolRequest) (GBPClient, string, error) {
-	info, err := h.tokens.GetToken(ctx, req.BusinessID, a2a.AgentGoogleBusiness, "")
+	info, err := agentbase.FetchToken(ctx, h.tokens, req.BusinessID, a2a.AgentGoogleBusiness, "")
 	if err != nil {
-		return nil, "", agentbase.WrapTokenFetchError(fmt.Errorf("fetch token: %w", err))
+		return nil, "", err
 	}
 	client := h.clientFactory(info.AccessToken)
 	return client, info.ExternalID, nil
 }
 
 func (h *Handler) getReviews(ctx context.Context, req a2a.ToolRequest) (*a2a.ToolResponse, error) {
-	limitF, _ := req.Args["limit"].(float64)
-	limit := int(limitF)
+	limit, err := a2a.GetIntParam(req.Args, "limit", gbp.DefaultReviewLimit)
+	if err != nil {
+		slog.Warn("google_business agent: invalid limit param, using default", "error", err)
+		limit = gbp.DefaultReviewLimit
+	}
 	if limit == 0 {
 		limit = gbp.DefaultReviewLimit
 	}
