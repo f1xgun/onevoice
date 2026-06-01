@@ -21,41 +21,28 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
-// ResumeBatchHeader is the explicit HITL resume header. Stays in the handler
-// package so the router and existing tests keep using handler.ResumeBatchHeader.
+// ResumeBatchHeader is the explicit HITL resume header. Pinned to the handler
+// package so router + tests can keep using handler.ResumeBatchHeader.
 const ResumeBatchHeader = "X-Onevoice-Resume-Batch-Id"
 
-// ChatProxyHandler is the thin HTTP-facade over services/api/internal/service/chatturn.Turn.
+// ChatProxyHandler is a thin HTTP-facade over chatturn.Turn — parses, gates,
+// maps TurnOutcome to HTTP. See docs/api/handlers/chat-proxy.md.
 //
-// Responsibilities:
-//   - request parsing (body decode, header / URL params)
-//   - auth gating (BusinessContext, PermContentCreate)
-//   - TurnOutcome → HTTP-status mapping when no SSE bytes have flowed yet
-//
-// Everything else (gate / enrich / stream / persist / postal) lives in
-// services/api/internal/service/chatturn. See CONTEXT.md §"Chat turn".
-//
-// The messageRepo field is retained for one legacy test that constructs the
-// handler with a struct literal (TestChatProxy_LoadHistory_SkipsEmptyAssistant);
-// loadHistory below reads it directly so that test does not depend on a
-// fully wired *chatturn.Turn.
+// messageRepo is retained for one legacy test (TestChatProxy_LoadHistory_SkipsEmptyAssistant)
+// that constructs the handler via struct literal; loadHistory reads it
+// directly so the test does not need a fully-wired *chatturn.Turn.
 type ChatProxyHandler struct {
 	turn        *chatturn.Turn
 	messageRepo domain.MessageRepository
 
-	// sseCounter caps in-flight SSE streams per user. nil disables the
-	// gate (tests + dev deploys construct without it).
+	// sseCounter caps in-flight SSE streams per user; nil disables the gate.
 	sseCounter *ssecounter.Counter
 
-	// defaultTier labels the SSE concurrency block metric when a request
-	// has no per-user tier override. Empty falls back to "free" at
-	// acquire time.
+	// defaultTier labels the SSE concurrency block metric; empty → "free".
 	defaultTier string
 }
 
-// SetSSECounter wires the per-user SSE concurrency cap. Optional — call
-// from wire.Handlers after construction. A nil counter or a Counter built
-// with max <= 0 disables the gate.
+// SetSSECounter wires the per-user SSE concurrency cap (optional).
 func (h *ChatProxyHandler) SetSSECounter(c *ssecounter.Counter, defaultTier string) {
 	h.sseCounter = c
 	if defaultTier == "" {
@@ -64,15 +51,12 @@ func (h *ChatProxyHandler) SetSSECounter(c *ssecounter.Counter, defaultTier stri
 	h.defaultTier = defaultTier
 }
 
-// retryAfterSeconds is advertised in the HTTP 429 Retry-After header. The
-// counter releases as soon as ANY in-flight stream from the same user
-// completes, so a 1s hint is honest under typical short-burst load.
+// retryAfterSeconds is advertised in the HTTP 429 Retry-After header; 1s is
+// honest because the counter releases on any same-user stream completion.
 const retryAfterSeconds = 1
 
-// writeConcurrencyError maps the SSE counter's sentinel errors to the
-// JSON wire shape the frontend consumes:
-//   - ErrConcurrencyExceeded → 429 + Retry-After header + sse_concurrency_exceeded code.
-//   - ratelimit.ErrUnavailable / ratelimit.ErrExceeded → 503 + rate_limit_unavailable code.
+// writeConcurrencyError maps SSE counter sentinels to the JSON wire shape.
+// See docs/api/handlers/chat-proxy.md §"Per-user SSE concurrency cap".
 func (h *ChatProxyHandler) writeConcurrencyError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ssecounter.ErrConcurrencyExceeded):
@@ -98,17 +82,8 @@ func (h *ChatProxyHandler) writeConcurrencyError(w http.ResponseWriter, err erro
 	}
 }
 
-// NewChatProxyHandler keeps the legacy 12-arg signature so the wire package
-// and existing tests continue to compile unchanged. Internally constructs
-// the chatturn.Turn that owns the lifecycle.
-//
-// A nil orchClient is replaced with a no-op client built from an empty URL —
-// preserves the chat_proxy_test.go pattern where tests pass nil to skip the
-// orchestrator handshake.
-//
-// A nil titler short-circuits to chatturn.Deps.Titler = nil so the auto-
-// title gate in chatturn returns early without doing a needless conversation
-// re-read.
+// NewChatProxyHandler keeps the legacy 12-arg signature; internally builds
+// the chatturn.Turn. See docs/api/handlers/chat-proxy.md §"Construction".
 func NewChatProxyHandler(
 	businessService BusinessService,
 	integrationService IntegrationService,
@@ -133,9 +108,7 @@ func NewChatProxyHandler(
 		panic("NewChatProxyHandler: pendingRepo cannot be nil")
 	}
 	if orchClient == nil {
-		// Tests pass nil to skip the orchestrator handshake; build a no-op
-		// client so the field is never nil and the SSE path can return
-		// orchestrator-unavailable cleanly.
+		// Tests pass nil; no-op client keeps the SSE path's unavailable branch clean.
 		orchClient = orchestratorclient.New("", http.DefaultClient)
 	}
 	var titlerImpl chatturn.Titler
@@ -164,30 +137,22 @@ func NewChatProxyHandler(
 	}
 }
 
-// titlerAdapter satisfies chatturn.Titler around the concrete *service.Titler.
-// Kept as a small struct so chatturn doesn't have to know about
-// service.Titler's wider surface.
+// titlerAdapter narrows *service.Titler down to chatturn.Titler so chatturn
+// doesn't have to import the wider service.Titler surface.
 type titlerAdapter struct{ titler *service.Titler }
 
 func (a titlerAdapter) GenerateAndSave(ctx context.Context, businessID, conversationID, userText, assistantText string) {
 	a.titler.GenerateAndSave(ctx, businessID, conversationID, userText, assistantText)
 }
 
-// chatProxyRequest is the JSON body shape; an unexported handler-local type
-// so the wire contract stays under the handler's control.
+// chatProxyRequest is the JSON body shape.
 type chatProxyRequest struct {
 	Model   string `json:"model"`
 	Message string `json:"message"`
 }
 
-// Chat parses the request, delegates the lifecycle to Turn.Run, and maps
-// the returned TurnOutcome to an HTTP status code when no SSE bytes have
-// been written yet.
-//
-// Once any SSE byte hits the wire (gate non-Fresh branches, or the fresh
-// stream successfully forwarding orchestrator output), the response body
-// is committed and HTTP-status mapping is moot — those outcomes fall
-// through silently.
+// Chat handles POST /chat/{conversationID}; delegates lifecycle to Turn.Run
+// and maps TurnOutcome → HTTP. See docs/api/handlers/chat-proxy.md.
 func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -200,9 +165,8 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Per-user SSE concurrency cap. Acquire BEFORE any branch writes
-	// the SSE Content-Type header so a rejection surfaces as a JSON
-	// HTTP 429 (never a half-stream). Release closures are idempotent.
+	// Acquire BEFORE any SSE header write so a rejection is a JSON 429,
+	// never a half-stream. release() is idempotent.
 	if h.sseCounter != nil {
 		tier := h.defaultTier
 		if tier == "" {
@@ -223,12 +187,9 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		headerBatch = r.URL.Query().Get("batch_id")
 	}
 
-	// Body decode is skipped for explicit-resume calls — they reuse the
-	// already-persisted user message and the request body is empty. For
-	// fresh calls we decode unconditionally; the Message-required check is
-	// enforced INSIDE Turn.Run's Fresh branch (via OutcomeMissingMessage)
-	// so the gate can still route an empty-body request to inline-error /
-	// re-emit-approval before any body validation fires.
+	// Explicit-resume calls reuse the persisted user message → skip decode.
+	// Fresh calls decode unconditionally so an empty Message still reaches
+	// Turn.Run's gate (inline-error / re-emit-approval branches).
 	var body chatProxyRequest
 	if headerBatch == "" {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -256,14 +217,13 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	case chatturn.OutcomeOrchestratorUnavailable:
 		writeJSONError(w, http.StatusBadGateway, "orchestrator unavailable")
 	case chatturn.OutcomeError:
-		// Bytes may already be on the wire; only log.
+		// Bytes may already be on the wire — log only, do not overwrite.
 		if err != nil {
 			slog.ErrorContext(r.Context(), "chat turn errored", "error", err)
 		}
 	default:
-		// OutcomeDone / OutcomePauseHITL / OutcomeRejoinedResume /
-		// OutcomeReemittedApproval / OutcomeInlineError — SSE bytes already
-		// committed, nothing left for the handler to do.
+		// SSE bytes already committed for OutcomeDone / PauseHITL /
+		// RejoinedResume / ReemittedApproval / InlineError — nothing to do.
 	}
 }
 
@@ -290,10 +250,8 @@ func (h *ChatProxyHandler) loadHistory(ctx context.Context, conversationID strin
 }
 
 // fireAutoTitleIfPending / fireAutoTitleIfPendingResume are test-only
-// wrappers that adapt the legacy persistCtx closure to chatturn.Turn's
-// ctx-based public API. The closure pattern was unique to the legacy
-// handler shape; preserved here so the existing chat_proxy_test.go suites
-// pass unchanged.
+// adapters around chatturn.Turn's ctx-based public API. NOT for production.
+// See docs/api/handlers/chat-proxy.md §"Test-only entry points".
 func (h *ChatProxyHandler) fireAutoTitleIfPending(persistCtx func() (context.Context, context.CancelFunc), conversationID, businessID, userText, assistantText string) {
 	parentCtx, cancel := persistCtx()
 	defer cancel()
