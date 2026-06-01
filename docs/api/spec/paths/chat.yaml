@@ -1,0 +1,315 @@
+/businesses/{id}/chat/{conversationID}:
+  post:
+    operationId: chatTurn
+    summary: |
+      Streaming chat turn. SSE response. Doubles as HITL resume trigger
+      when `X-Onevoice-Resume-Batch-Id` or `?batch_id=` is set.
+    tags:
+    - chat
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: X-Onevoice-Resume-Batch-Id
+      in: header
+      required: false
+      schema:
+        type: string
+    - name: batch_id
+      in: query
+      required: false
+      schema:
+        type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ChatTurnRequest
+    responses:
+      '200':
+        description: Streaming SSE response.
+        content:
+          text/event-stream:
+            schema:
+              type: string
+              description: |
+                Newline-delimited SSE frames `data: <json>\n\n`. See
+                components.schemas.SSEEvent for the union type.
+            x-sse-events:
+              text:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventText
+              tool_call:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolCall
+              tool_result:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolResult
+              tool_rejected:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolRejected
+              tool_approval_required:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventApprovalRequired
+              done:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventDone
+              error:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventError
+      '400':
+        description: Missing message body, or invalid JSON.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:create` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '429':
+        description: |
+          Per-user SSE concurrency cap exceeded.
+        headers:
+          Retry-After:
+            schema:
+              type: integer
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SSEConcurrencyError
+      '502':
+        description: Orchestrator unavailable (pre-stream).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '503':
+        description: |
+          Rate-limit backing store unavailable (`rate_limit_unavailable`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/businesses/{id}/chat/{conversationID}/resume:
+  post:
+    operationId: hitlResume
+    summary: |
+      Resume a paused HITL batch. SSE response — same event schema as
+      chatTurn.
+    tags:
+    - chat
+    - hitl
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: batch_id
+      in: query
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Streaming SSE.
+        content:
+          text/event-stream:
+            schema:
+              type: string
+            x-sse-events:
+              text:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventText
+              tool_call:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolCall
+              tool_result:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolResult
+              tool_rejected:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolRejected
+              tool_approval_required:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventApprovalRequired
+              done:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventDone
+              error:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventError
+      '400':
+        description: Missing `batch_id` query param.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing permission OR batch/conversation mismatch.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business or batch not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: Batch already resolved.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/HITLAlreadyResolvedError
+      '410':
+        description: Approval window expired.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/HITLExpiredError
+      '502':
+        description: Orchestrator unavailable (pre-stream).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/chat/{conversationID}:
+  post:
+    operationId: orchestratorChat
+    summary: Stream an LLM chat turn as Server-Sent Events.
+    tags:
+    - chat
+    servers:
+    - url: http://orchestrator:8090
+      description: Cluster-internal orchestrator base URL.
+    parameters:
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ChatRequest
+    responses:
+      '200':
+        description: SSE stream of orchestrator events.
+        headers:
+          Cache-Control:
+            schema:
+              type: string
+              example: no-cache
+          Connection:
+            schema:
+              type: string
+              example: keep-alive
+          X-Accel-Buffering:
+            schema:
+              type: string
+              example: 'no'
+        content:
+          text/event-stream:
+            schema:
+              type: string
+            x-sse-events:
+              text:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventText
+              tool_call:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolCall
+              tool_result:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolResult
+              tool_rejected:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolRejected
+              tool_approval_required:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventApprovalRequired
+              done:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventDone
+              error:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventError
+      '400':
+        description: Malformed body or streaming unsupported.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Streaming infrastructure failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/chat/{conversationID}/resume:
+  post:
+    operationId: orchestratorResume
+    summary: Resume a HITL-paused chat turn after approval/edit/reject.
+    tags:
+    - chat
+    - hitl-resume
+    servers:
+    - url: http://orchestrator:8090
+    parameters:
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: batch_id
+      in: query
+      required: true
+      schema:
+        type: string
+    - name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ResumeRequest
+    responses:
+      '200':
+        description: SSE stream — same wire shape as POST /chat/{conversationID}.
+        content:
+          text/event-stream:
+            schema:
+              type: string
+            x-sse-events:
+              text:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventText
+              tool_call:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolCall
+              tool_result:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolResult
+              tool_rejected:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventToolRejected
+              tool_approval_required:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventApprovalRequired
+              done:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventDone
+              error:
+                $ref: ../openapi.yaml#/components/schemas/SSEEventError
+      '400':
+        description: '`batch_id` query param missing or streaming unsupported.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Streaming infrastructure failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

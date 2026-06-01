@@ -1,0 +1,26 @@
+/telemetry:
+  post:
+    operationId: ingestTelemetry
+    summary: Ingest a batch of frontend telemetry events.
+    tags:
+    - telemetry
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: array
+            maxItems: 100
+            items:
+              $ref: ../openapi.yaml#/components/schemas/TelemetryEvent
+    responses:
+      '204':
+        description: Events accepted.
+      '400':
+        description: Invalid JSON or batch size exceeds 100.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized

@@ -1,0 +1,172 @@
+/businesses/{id}/roles:
+  get:
+    operationId: listRoles
+    summary: List roles available to a business.
+    tags:
+    - roles
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    responses:
+      '200':
+        description: Role list.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/Role
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller lacks `roles.read`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/BusinessNotFound
+  post:
+    operationId: createRole
+    summary: Create a custom role.
+    tags:
+    - roles
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: clone_from
+      in: query
+      description: Hint for the frontend pre-fill flow; ignored server-side.
+      required: false
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CreateRoleRequest
+    responses:
+      '201':
+        description: Role created.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Role
+      '400':
+        description: |
+          `invalid_body`, `validation_failed`, `invalid_permission`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller lacks `roles.create` or attempts escalation.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/BusinessNotFound
+      '500':
+        $ref: ../openapi.yaml#/components/responses/InternalError
+/businesses/{id}/roles/{roleId}:
+  patch:
+    operationId: updateRole
+    summary: Update a custom role.
+    tags:
+    - roles
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - $ref: ../openapi.yaml#/components/parameters/RoleIDPath
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateRoleRequest
+    responses:
+      '200':
+        description: Role updated.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Role
+      '400':
+        description: |
+          `invalid_role_id`, `invalid_body`, `validation_failed`,
+          `invalid_permission`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller lacks `roles.update`, self-lockout, or escalation.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Role not found (or owned by another tenant — masked).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '422':
+        description: '`role_immutable` — system roles cannot be edited.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '500':
+        $ref: ../openapi.yaml#/components/responses/InternalError
+  delete:
+    operationId: deleteRole
+    summary: Delete a custom role; optionally reassign existing members.
+    tags:
+    - roles
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - $ref: ../openapi.yaml#/components/parameters/RoleIDPath
+    - name: reassign_to
+      in: query
+      description: Destination role for members holding the doomed role.
+      required: false
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '204':
+        description: Role deleted (and members reassigned, when applicable).
+      '400':
+        description: |
+          `invalid_role_id`, `invalid_reassign_to`, or `role_in_use`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller lacks `roles.delete`, or target role escalates.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Role not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '422':
+        description: '`role_immutable` — system roles cannot be deleted.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '500':
+        $ref: ../openapi.yaml#/components/responses/InternalError
