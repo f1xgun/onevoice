@@ -15,8 +15,8 @@ var en = map[string]string{
 	// Yandex OAuth/connect handler.
 	"oauth.yandex.invalid_body":         "Invalid request body",
 	"oauth.yandex.list_orgs_failed":     "Couldn't fetch the list of organizations — please try again",
-	"oauth.yandex.missing_sessionid2":   "sessionid2 cookie is missing — it may be required for write operations (review replies, photo uploads)",
-	"oauth.yandex.missing_yandex_login": "yandex_login cookie is missing — recommended for stable authentication",
+	"oauth.yandex.missing_sessionid2":   "Some sign-in data is missing — replies to reviews and photo uploads may not work without it. Copy the cookies again in full.",
+	"oauth.yandex.missing_yandex_login": "The Yandex login is missing — sign-in may keep dropping without it. Include it when you copy the cookies.",
 
 	// VK connect handlers. %s is the VK-provided error message.
 	"connect.vk.invalid_token":            "Invalid token: %s",
@@ -43,6 +43,36 @@ var en = map[string]string{
 	// localization contract (we do NOT retranslate historical messages).
 	"api.conversation.move.default_destination": "No project",
 	"api.conversation.move.system_message":      "[Chat moved to \"%s\" — the new policy applies from this point]",
+
+	// Password-reset error messages — EN equivalents.
+	"api.password_reset.token_invalid": "This link is no longer valid. Please request a new one.",
+	"api.password_reset.token_expired": "This link has expired. Please request a new one.",
+	"api.password_reset.password_weak": "Password is too short — minimum 8 characters.",
+
+	// Permission descriptions — EN equivalents of the role-editor tooltip
+	// copy. The serving handler resolves these per request locale.
+	"permissions.business.read.desc":               "View the organization's name, description, and settings.",
+	"permissions.business.update.desc":             "Edit the name, description, and basic settings.",
+	"permissions.business.delete.desc":             "Permanently delete the organization along with all its data.",
+	"permissions.business.transfer_ownership.desc": "Transfer ownership to another member. Current owner only.",
+	"permissions.members.read.desc":                "View the list of members and their roles.",
+	"permissions.members.invite.desc":              "Create invite links for new members.",
+	"permissions.members.remove.desc":              "Remove members from the organization.",
+	"permissions.members.update_role.desc":         "Assign a different role to members. Except themselves.",
+	"permissions.roles.read.desc":                  "View the list of roles and the permissions they hold.",
+	"permissions.roles.create.desc":                "Create custom roles with a specific set of permissions.",
+	"permissions.roles.update.desc":                "Edit custom roles — name, description, permissions.",
+	"permissions.roles.delete.desc":                "Delete custom roles. If members hold the role, you'll need to pick a new role for them.",
+	"permissions.integrations.read.desc":           "View connected platforms and their status.",
+	"permissions.integrations.connect.desc":        "Connect new platforms — Telegram, VK, Yandex.Business.",
+	"permissions.integrations.disconnect.desc":     "Disconnect connected platforms.",
+	"permissions.content.read.desc":                "View posts, reviews, conversations, and tasks.",
+	"permissions.content.create.desc":              "Create posts, reply to reviews, and assign tasks.",
+	"permissions.content.update.desc":              "Edit existing posts, replies, and tasks.",
+	"permissions.content.delete.desc":              "Delete posts, replies, and tasks.",
+	"permissions.billing.read.desc":                "View the plan, invoices, and usage limits.",
+	"permissions.billing.update.desc":              "Change the plan, billing details, and payment method.",
+	"permissions.audit.read.desc":                  "View the activity log — role changes, sign-ins, platform connections.",
 
 	// Validation messages.
 	"validation.failed":        "validation failed",

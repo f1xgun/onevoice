@@ -120,7 +120,7 @@ func TestWriteValidationError(t *testing.T) {
 			input:      testStruct{},
 			wantStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"fields"`)
 				assert.Contains(t, body, `"Email"`)
 				assert.Contains(t, body, `"Password"`)
@@ -134,7 +134,7 @@ func TestWriteValidationError(t *testing.T) {
 			},
 			wantStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"Email"`)
 			},
 		},
@@ -146,7 +146,7 @@ func TestWriteValidationError(t *testing.T) {
 			},
 			wantStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body string) {
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"Password"`)
 			},
 		},

@@ -261,7 +261,7 @@ func TestBusinessHandler_CreateBusiness(t *testing.T) {
 		h.CreateBusiness(w, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "validation failed")
+		assert.Contains(t, w.Body.String(), "Проверка не пройдена")
 	})
 
 	t.Run("service error returns 500 internal_server_error", func(t *testing.T) {
