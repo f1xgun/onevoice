@@ -78,24 +78,24 @@ describe('SidebarSearch', () => {
     vi.useRealTimers();
   });
 
-  it('renders Mac placeholder «Поиск... ⌘K» on Mac UA', async () => {
+  it('renders Mac placeholder «Поиск… ⌘K» on Mac UA', async () => {
     setMacUA();
     render(
       <Wrapper>
         <SidebarSearch />
       </Wrapper>
     );
-    expect(screen.getByPlaceholderText('Поиск... ⌘K')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Поиск… ⌘K')).toBeInTheDocument();
   });
 
-  it('renders Linux placeholder «Поиск... Ctrl-K» on non-Mac UA', () => {
+  it('renders Linux placeholder «Поиск… Ctrl-K» on non-Mac UA', () => {
     setLinuxUA();
     render(
       <Wrapper>
         <SidebarSearch />
       </Wrapper>
     );
-    expect(screen.getByPlaceholderText('Поиск... Ctrl-K')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Поиск… Ctrl-K')).toBeInTheDocument();
   });
 
   it('does NOT fire /search when query is 1 char ', async () => {
@@ -176,7 +176,7 @@ describe('SidebarSearch', () => {
     expect(document.activeElement).not.toBe(input);
   });
 
-  it('shows «По всему бизнесу» checkbox on /chat/projects/{id}', async () => {
+  it('shows «По всей организации» checkbox on /chat/projects/{id}', async () => {
     pathnameValue = '/chat/projects/p-42';
     const user = userEvent.setup();
     render(
@@ -188,7 +188,7 @@ describe('SidebarSearch', () => {
     await user.type(input, 'абв');
 
     await waitFor(() => {
-      expect(screen.getByText('По всему бизнесу')).toBeInTheDocument();
+      expect(screen.getByText('По всей организации')).toBeInTheDocument();
     });
 
     // Default scope sends project_id=p-42.
@@ -198,7 +198,7 @@ describe('SidebarSearch', () => {
     });
   });
 
-  it('omits project_id from /search when «По всему бизнесу» is toggled on', async () => {
+  it('omits project_id from /search when «По всей организации» is toggled on', async () => {
     pathnameValue = '/chat/projects/p-42';
     const user = userEvent.setup();
     render(
@@ -210,7 +210,7 @@ describe('SidebarSearch', () => {
     await user.type(input, 'абв');
 
     await waitFor(() => {
-      expect(screen.getByText('По всему бизнесу')).toBeInTheDocument();
+      expect(screen.getByText('По всей организации')).toBeInTheDocument();
     });
     const checkbox = screen.getByRole('checkbox');
     await user.click(checkbox);
@@ -221,7 +221,7 @@ describe('SidebarSearch', () => {
     });
   });
 
-  it('does NOT render «По всему бизнесу» checkbox at /chat root', async () => {
+  it('does NOT render «По всей организации» checkbox at /chat root', async () => {
     pathnameValue = '/chat';
     const user = userEvent.setup();
     render(
@@ -236,7 +236,7 @@ describe('SidebarSearch', () => {
     await waitFor(() => {
       expect(screen.queryByText(/Ничего не найдено по/)).toBeInTheDocument();
     });
-    expect(screen.queryByText('По всему бизнесу')).not.toBeInTheDocument();
+    expect(screen.queryByText('По всей организации')).not.toBeInTheDocument();
   });
 
   it('shows empty state «Ничего не найдено по «{query}»» when results empty', async () => {

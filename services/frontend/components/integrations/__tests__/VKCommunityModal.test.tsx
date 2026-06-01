@@ -51,7 +51,7 @@ describe('VKCommunityModal — paste flow', () => {
 
   it('renders the title and the inline instructions', () => {
     renderModal();
-    expect(screen.getByText('Подключить сообщество VK')).toBeInTheDocument();
+    expect(screen.getByText('Подключить сообщество ВКонтакте')).toBeInTheDocument();
     expect(screen.getByText(/Где взять ключ/)).toBeInTheDocument();
     expect(screen.getByText(/Не выбирайте приложение/)).toBeInTheDocument();
   });

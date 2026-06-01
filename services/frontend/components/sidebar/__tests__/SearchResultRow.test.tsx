@@ -67,9 +67,9 @@ describe('SearchResultRow', () => {
     expect(links[0]).toHaveAttribute('href', '/chat/c-1');
   });
 
-  it('shows fallback "Новый диалог" when title is empty', () => {
+  it('shows fallback "Новый чат" when title is empty', () => {
     render(<SearchResultRow result={{ ...baseResult, title: '' }} query="hello" />);
-    expect(screen.getByText('Новый диалог')).toBeInTheDocument();
+    expect(screen.getByText('Новый чат')).toBeInTheDocument();
   });
 });
 
