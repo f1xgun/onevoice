@@ -23,6 +23,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/vkapi"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -226,12 +227,6 @@ type googleLocation struct {
 	Title string `json:"title"`
 }
 
-// ErrorResponse mirrors handler.ErrorResponse — duplicated locally to avoid
-// an import cycle once the entry handler in package handler imports oauth.
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
 // writeJSON is a oauth-local copy of the package-level helper in
 // services/api/internal/handler/response.go. Duplicated here to avoid an
 // import cycle once the entry handler in package handler imports oauth.
@@ -245,9 +240,10 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	}
 }
 
-// writeJSONError writes a JSON error response.
+// writeJSONError writes a JSON error response using the spec-owned
+// openapi.ErrorResponse envelope.
 func writeJSONError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, ErrorResponse{Error: message})
+	writeJSON(w, status, openapi.ErrorResponse{Error: message})
 }
 
 // writeJSONErrorKey resolves `key` against pkg/i18n using the locale on
@@ -256,5 +252,5 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 // duplicated locally to avoid a circular import once package handler
 // imports this oauth sub-package.
 func writeJSONErrorKey(w http.ResponseWriter, r *http.Request, status int, key string, args ...any) {
-	writeJSON(w, status, ErrorResponse{Error: i18n.Tr(r.Context(), key, args...)})
+	writeJSON(w, status, openapi.ErrorResponse{Error: i18n.Tr(r.Context(), key, args...)})
 }

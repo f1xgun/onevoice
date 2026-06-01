@@ -18,14 +18,9 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
-
-// connectTelegramRequest is the request body for ConnectTelegram.
-type connectTelegramRequest struct {
-	ChannelID      string `json:"channel_id"`
-	TelegramUserID string `json:"telegram_user_id"`
-}
 
 // telegramChatInfo holds the fields we care about from Telegram's getChat
 // response: title, and — for channels — the linked discussion group's chat
@@ -37,7 +32,10 @@ type telegramChatInfo struct {
 	LinkedChatID int64
 }
 
-// telegramGetChatResponse represents the Telegram Bot API getChat response.
+// telegramGetChatResponse mirrors the external Telegram Bot API getChat
+// envelope; it is NOT part of OneVoice's wire format (api.telegram.org
+// owns this shape), so it stays a local struct rather than coming from
+// the spec.
 type telegramGetChatResponse struct {
 	OK     bool `json:"ok"`
 	Result struct {
@@ -45,11 +43,6 @@ type telegramGetChatResponse struct {
 		LinkedChatID int64  `json:"linked_chat_id"`
 	} `json:"result"`
 	Description string `json:"description"`
-}
-
-// refreshTelegramRequest is the request body for RefreshTelegramLinkedGroup.
-type refreshTelegramRequest struct {
-	ChannelID string `json:"channel_id"`
 }
 
 // VerifyTelegramLogin verifies a Telegram Login Widget callback (JWT required).
@@ -170,21 +163,21 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var req connectTelegramRequest
+	var req openapi.ConnectTelegramRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if req.ChannelID == "" {
+	if req.ChannelId == "" {
 		writeJSONError(w, http.StatusBadRequest, "channel_id is required")
 		return
 	}
 
 	// Validate bot access and fetch channel title + linked discussion chat
-	channelInfo, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelID)
+	channelInfo, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelId)
 	if err != nil {
-		slog.Warn("telegram getChat failed", "error", err, "channel_id", req.ChannelID)
+		slog.Warn("telegram getChat failed", "error", err, "channel_id", req.ChannelId)
 		writeJSONError(w, http.StatusBadRequest, "bot does not have access to this channel")
 		return
 	}
@@ -198,15 +191,15 @@ func (h *ConnectHandler) ConnectTelegram(w http.ResponseWriter, r *http.Request)
 	if channelInfo.LinkedChatID != 0 {
 		metadata["linked_chat_id"] = channelInfo.LinkedChatID
 	}
-	if req.TelegramUserID != "" {
-		metadata["telegram_user_id"] = req.TelegramUserID
+	if req.TelegramUserId != nil && *req.TelegramUserId != "" {
+		metadata["telegram_user_id"] = *req.TelegramUserId
 	}
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
 		BusinessID:  bc.BusinessID,
 		ActorID:     bc.UserID,
 		Platform:    a2a.AgentTelegram,
-		ExternalID:  req.ChannelID,
+		ExternalID:  req.ChannelId,
 		AccessToken: h.cfg.TelegramBotToken,
 		Metadata:    metadata,
 	})
@@ -237,12 +230,12 @@ func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *ht
 		return
 	}
 
-	var req refreshTelegramRequest
+	var req openapi.RefreshTelegramRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.ChannelID == "" {
+	if req.ChannelId == "" {
 		writeJSONError(w, http.StatusBadRequest, "channel_id is required")
 		return
 	}
@@ -256,7 +249,7 @@ func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *ht
 	}
 	var target *domain.Integration
 	for i := range integrations {
-		if integrations[i].ExternalID == req.ChannelID {
+		if integrations[i].ExternalID == req.ChannelId {
 			target = &integrations[i]
 			break
 		}
@@ -266,9 +259,9 @@ func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *ht
 		return
 	}
 
-	channelInfo, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelID)
+	channelInfo, err := h.telegramGetChat(h.cfg.TelegramBotToken, req.ChannelId)
 	if err != nil {
-		slog.Warn("telegram getChat failed during refresh", "error", err, "channel_id", req.ChannelID)
+		slog.Warn("telegram getChat failed during refresh", "error", err, "channel_id", req.ChannelId)
 		writeJSONError(w, http.StatusBadGateway, "bot no longer has access to this channel")
 		return
 	}
@@ -295,9 +288,9 @@ func (h *ConnectHandler) RefreshTelegramLinkedGroup(w http.ResponseWriter, r *ht
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"linked_chat_id":      channelInfo.LinkedChatID,
-		"linked_group_status": linkedStatus,
-		"channel_title":       channelInfo.Title,
+	writeJSON(w, http.StatusOK, openapi.RefreshTelegramResponse{
+		ChannelTitle:      channelInfo.Title,
+		LinkedChatId:      channelInfo.LinkedChatID,
+		LinkedGroupStatus: openapi.RefreshTelegramResponseLinkedGroupStatus(linkedStatus),
 	})
 }

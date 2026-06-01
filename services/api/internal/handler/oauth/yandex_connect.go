@@ -18,24 +18,27 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/yandexcookies"
 )
 
-// yandexProbeRequest is the JSON body for both probe and connect.
-type yandexProbeRequest struct {
-	Cookies string `json:"cookies"`
+// optStr returns a *string pointing at s, or nil when s is empty. Used
+// for spec-side response fields that are optional (*string with omitempty).
+func optStr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
-// yandexProbeResponse carries the probe verdict; SessionValid is a tri-state
-// pointer (true/false/nil). See docs/api/handlers/oauth-yandex-connect.md.
-type yandexProbeResponse struct {
-	Ok           bool     `json:"ok"`
-	Format       string   `json:"format,omitempty"`
-	SessionValid *bool    `json:"session_valid,omitempty"`
-	Username     string   `json:"username,omitempty"`
-	Warnings     []string `json:"warnings,omitempty"`
-	Error        string   `json:"error,omitempty"`
+// optStrings returns a *[]string pointing at s, or nil when s is empty.
+// Used for spec-side response fields that are optional (*[]string).
+func optStrings(s []string) *[]string {
+	if len(s) == 0 {
+		return nil
+	}
+	return &s
 }
 
 // ProbeYandexBusiness validates pasted cookies without persisting; always 200.
@@ -46,28 +49,28 @@ func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var req yandexProbeRequest
+	var req openapi.YandexCookiesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusOK, yandexProbeResponse{
+		writeJSON(w, http.StatusOK, openapi.YandexProbeResponse{
 			Ok:    false,
-			Error: i18n.Tr(r.Context(), "oauth.yandex.invalid_body"),
+			Error: optStr(i18n.Tr(r.Context(), "oauth.yandex.invalid_body")),
 		})
 		return
 	}
 
 	parsed, err := yandexcookies.Parse(req.Cookies)
 	if err != nil {
-		writeJSON(w, http.StatusOK, yandexProbeResponse{
+		writeJSON(w, http.StatusOK, openapi.YandexProbeResponse{
 			Ok:    false,
-			Error: yandexCookiesErrorMessage(r, err),
+			Error: optStr(yandexCookiesErrorMessage(r, err)),
 		})
 		return
 	}
 
-	resp := yandexProbeResponse{
+	resp := openapi.YandexProbeResponse{
 		Ok:       true,
-		Format:   parsed.Format,
-		Warnings: cookieWarnings(r, parsed.Cookies),
+		Format:   optStr(parsed.Format),
+		Warnings: optStrings(cookieWarnings(r, parsed.Cookies)),
 	}
 
 	// Best-effort live probe; 3s wall-clock cap. Inconclusive → SessionValid=nil.
@@ -79,19 +82,11 @@ func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Reques
 	} else {
 		resp.SessionValid = &valid
 		if valid {
-			resp.Username = username
+			resp.Username = optStr(username)
 		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)
-}
-
-// connectYandexRequest is the JSON body for /connect; permalink + name
-// optional (filled by the modal's picker).
-type connectYandexRequest struct {
-	Cookies      string `json:"cookies"`
-	Permalink    string `json:"permalink,omitempty"`
-	BusinessName string `json:"business_name,omitempty"`
 }
 
 // ConnectYandexBusiness persists pasted cookies as a new integration.
@@ -109,7 +104,7 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var req connectYandexRequest
+	var req openapi.ConnectYandexRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -124,15 +119,19 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 	// Picker-supplied permalink wins so agent edit URLs work from call #1.
 	// Legacy callers get the "default" placeholder; refresh-name heals later.
 	externalID := "default"
-	if p := strings.TrimSpace(req.Permalink); p != "" {
-		externalID = p
+	if req.Permalink != nil {
+		if p := strings.TrimSpace(*req.Permalink); p != "" {
+			externalID = p
+		}
 	}
 	metadata := map[string]any{
 		"input_format": parsed.Format,
 		"connected_at": time.Now().UTC().Format(time.RFC3339),
 	}
-	if name := strings.TrimSpace(req.BusinessName); name != "" {
-		metadata["business_name"] = name
+	if req.BusinessName != nil {
+		if name := strings.TrimSpace(*req.BusinessName); name != "" {
+			metadata["business_name"] = name
+		}
 	}
 
 	integration, err := h.integrationService.Connect(r.Context(), service.ConnectParams{
@@ -156,12 +155,6 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 // SPA hydration ~25-45s).
 const yandexListCompaniesTimeout = 60 * time.Second
 
-// yandexCompanyEntry is one row in the company-picker list.
-type yandexCompanyEntry struct {
-	Permalink string `json:"permalink"`
-	Name      string `json:"name"`
-}
-
 // ListYandexCompanies dispatches the list_companies RPA and returns picker rows.
 // Synchronous; blocks the request for the full Playwright run.
 // See docs/api/handlers/oauth-yandex-connect.md §"List companies".
@@ -183,7 +176,7 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var req yandexProbeRequest
+	var req openapi.YandexCookiesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -216,7 +209,7 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 	}
 
 	companiesRaw, _ := resp.Result["companies"].([]any)
-	companies := make([]yandexCompanyEntry, 0, len(companiesRaw))
+	companies := make([]openapi.YandexCompanyEntry, 0, len(companiesRaw))
 	for _, c := range companiesRaw {
 		row, _ := c.(map[string]any)
 		permalink, _ := row["permalink"].(string)
@@ -226,9 +219,9 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 		if permalink == "" {
 			continue
 		}
-		companies = append(companies, yandexCompanyEntry{Permalink: permalink, Name: name})
+		companies = append(companies, openapi.YandexCompanyEntry{Permalink: permalink, Name: name})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"companies": companies})
+	writeJSON(w, http.StatusOK, openapi.YandexCompaniesResponse{Companies: companies})
 }
 
 // RefreshYandexBusinessName backfills metadata.business_name (and heals
@@ -281,9 +274,9 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 	bgCtx, bgCancel := context.WithTimeout(context.Background(), yandexListCompaniesTimeout+15*time.Second)
 	go h.runYandexListCompaniesRefresh(bgCtx, bgCancel, integrationID, *target, bc.BusinessID)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	_, _ = w.Write([]byte(`{"status":"refresh_started"}`))
+	writeJSON(w, http.StatusAccepted, openapi.RefreshStartedResponse{
+		Status: openapi.RefreshStarted,
+	})
 }
 
 // runYandexListCompaniesRefresh performs the detached RPA + metadata writes,
