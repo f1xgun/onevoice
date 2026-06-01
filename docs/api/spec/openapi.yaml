@@ -1127,6 +1127,7 @@ components:
       type: object
       required:
       - name
+      - description
       properties:
         name:
           type: string
@@ -1135,12 +1136,10 @@ components:
     PermissionGroup:
       type: object
       required:
-      - name
+      - resource
       - permissions
       properties:
-        name:
-          type: string
-        description:
+        resource:
           type: string
         permissions:
           type: array
