@@ -1,3 +1,5 @@
+// Package orchestrator implements the LLM agent loop and HITL pause/resume
+// flow. See docs/orchestrator/run.md and docs/orchestrator/resume.md.
 package orchestrator
 
 import (
@@ -23,6 +25,8 @@ import (
 // EventType identifies the kind of event emitted by the agent loop.
 type EventType string
 
+// Event types emitted on the agent-loop output channel.
+// See docs/orchestrator/run.md.
 const (
 	EventText       EventType = "text"
 	EventToolCall   EventType = "tool_call"
@@ -30,59 +34,32 @@ const (
 	EventError      EventType = "error"
 	EventDone       EventType = "done"
 
-	// EventToolApprovalRequired is emitted once per paused LLM turn, carrying
-	// the batch_id + summarized calls that need human approval.
-	// Emitted AFTER pendingRepo.Persist completes (status=pending committed);
-	// never emitted on a partial-persist crash.
-	// The goroutine exits immediately after.
+	// EventToolApprovalRequired is emitted once per paused LLM turn after
+	// pendingRepo.Persist commits (never on partial-persist crash).
 	EventToolApprovalRequired EventType = "tool_approval_required"
 
-	// EventToolRejected is emitted for each tool call that the policy
-	// resolver marks ToolFloorForbidden at pause time (synthetic
-	// rejection) OR that the resolve-time TOCTOU re-check marks
-	// policy_revoked. Content carries the reason.
+	// EventToolRejected is emitted per-call for synthetic rejections
+	// (Forbidden at pause time, or policy_revoked at resume).
 	EventToolRejected EventType = "tool_rejected"
 )
 
 // Event is emitted on the output channel during agent execution.
-//
-// The Type/Content/ToolName/ToolArgs/ToolResult/ToolError fields are the
-// legacy shape. BatchID + Calls are HITL additions —
-// both are omitempty in JSON so legacy events remain byte-identical
-// on the wire. ToolCallID is also present so chat_proxy can
-// persist tool_call events with the LLM's real call ID on the assistant
-// Message.ToolCalls.
+// See docs/orchestrator/run.md for field-by-field semantics.
 type Event struct {
 	Type EventType
-	// Code is a machine-readable discriminator on error events so downstream
-	// consumers (api proxy / frontend) can branch on the failure mode without
-	// parsing Content. Projected onto sse.Event.Code on the wire and stays
-	// absent (omitempty) for non-error events.
-	Code            string
-	Content         string
-	ToolCallID      string
-	ToolName        string
-	ToolDisplayName string
-	// ToolDisplayNameKey is the i18n catalog key the frontend uses to render
-	// the agent_tasks task title in the user's locale. Populated
-	// from toolregistry.Registry.DisplayNameKey at dispatch time. Empty when
-	// the tool has no registered key — the FE falls back to ToolDisplayName.
-	// Surfaces on EventToolCall + EventToolResult so chat_proxy can stamp
-	// AgentTask documents with the localizable key from either event.
+	// Code is a machine-readable discriminator on error events. Projected
+	// onto sse.Event.Code on the wire (omitempty for non-error events).
+	Code               string
+	Content            string
+	ToolCallID         string
+	ToolName           string
+	ToolDisplayName    string
 	ToolDisplayNameKey string
 	ToolArgs           map[string]interface{}
 	ToolResult         interface{}
 	ToolError          string
-	// BatchID is set on EventToolApprovalRequired events. Carries the
-	// PendingToolCallBatch._id so the frontend can POST to the resolve
-	// endpoint with the same identifier at approval time.
-	BatchID string
-	// Calls is set on EventToolApprovalRequired events with one entry per
-	// manual-floor tool call bundled into the batch. sse.ApprovalCall lives in
-	// pkg/sse so the same shape is consumed by the api's HITL coordinator and
-	// the implicit-resume re-emit path — single source of truth for the
-	// tool_approval_required wire contract.
-	Calls []sse.ApprovalCall
+	BatchID            string
+	Calls              []sse.ApprovalCall
 }
 
 // LLMClient abstracts the Router for testability.
@@ -91,45 +68,28 @@ type LLMClient interface {
 }
 
 // RunRequest holds everything needed to start an agent run.
-//
-// HITL fields (all optional to preserve backward-compat with legacy callers):
-//   - ConversationID / BusinessID / ProjectID / UserID / MessageID: identity
-//     fields persisted on the PendingToolCallBatch at pause time so the
-//     resolve handler can enforce business-scoped access control
-//     and run the TOCTOU re-check against projects.approval_overrides.
-//   - BusinessApprovals / ProjectApprovalOverrides: the policy maps
-//     that hitl.Resolve consults to classify each LLM-proposed tool call
-//     at pause time. chat_proxy.go forwards these from the
-//     business/project documents it loads to enrich the chat request.
+// See docs/orchestrator/run.md for HITL field semantics (all optional).
 type RunRequest struct {
 	UserID          uuid.UUID
 	Model           string
 	BusinessContext prompt.BusinessContext
-	// ProjectContext is the optional project prompt layer.
-	// nil means "Без проекта" — legacy behavior with no project scoping.
+	// ProjectContext is the optional project prompt layer. nil = no project scoping.
 	ProjectContext *prompt.ProjectContext
-	// WhitelistMode is the project's typed tool-whitelist mode.
-	// "" = inherit (v1.3 baseline).
-	WhitelistMode domain.WhitelistMode
-	// AllowedTools is consulted only when WhitelistMode == explicit.
+	// WhitelistMode is the project's typed tool-whitelist mode. "" = inherit.
+	WhitelistMode      domain.WhitelistMode
 	AllowedTools       []string
 	Messages           []llm.Message // conversation history (excluding system)
 	ActiveIntegrations []string
 	Tier               string
 
-	// HITL identity fields — threaded into RunState → batch.* at
-	// pause time. Empty strings are tolerated: the repo stores them
-	// verbatim and the resolve handler will 403/404 on missing context
-	// when it needs business-scoped auth.
+	// HITL identity fields — threaded into RunState → batch.* at pause time.
 	ConversationID string
 	BusinessID     string
 	ProjectID      string
 	UserIDString   string
 	MessageID      string
 
-	// HITL policy inputs — consulted by hitl.Resolve at pause
-	// time to classify each LLM-proposed tool call. nil maps are tolerated
-	// (treated as empty maps — the registry floor wins).
+	// HITL policy inputs — consulted by hitl.Resolve at pause time.
 	BusinessApprovals        map[string]domain.ToolFloor
 	ProjectApprovalOverrides map[string]domain.ToolFloor
 }
@@ -137,20 +97,17 @@ type RunRequest struct {
 // Options configures the Orchestrator.
 type Options struct {
 	MaxIterations int
-	// ToolExecTimeout bounds how long a single tool call may block.
-	// Zero means no per-tool timeout — the parent context governs.
+	// ToolExecTimeout bounds one tool call. Zero = parent context governs.
 	ToolExecTimeout time.Duration
-	// ConversationInputCap stops the agent loop when the accumulated input
-	// tokens (LLM Usage.InputTokens summed across iterations, including
-	// tool-result bytes the next iter sends back) reach this many. Zero
-	// disables enforcement and the loop runs to MaxIterations as before.
+	// ConversationInputCap stops the agent loop when accumulated input tokens
+	// (LLM Usage.InputTokens summed across iterations, including tool-result
+	// bytes the next iter sends back) reach this many. Zero disables.
 	ConversationInputCap int
-	// ConversationOutputCap is the parallel knob for accumulated output
-	// tokens. Zero disables enforcement.
+	// ConversationOutputCap is the parallel knob for accumulated output tokens.
 	ConversationOutputCap int
 }
 
-// Orchestrator runs the LLM agent loop.
+// Orchestrator runs the LLM agent loop. See docs/orchestrator/run.md.
 type Orchestrator struct {
 	llm         LLMClient
 	tools       *toolregistry.Registry
@@ -158,18 +115,15 @@ type Orchestrator struct {
 	pendingRepo domain.PendingToolCallRepository
 }
 
-// New creates an Orchestrator with default options (MaxIterations=10) and a
-// nil pendingRepo. Callers that need HITL must use NewWithOptions or
-// NewWithHITL; a nil pendingRepo causes stepRun to emit EventError
-// "HITL not configured" when a manual-floor tool is classified (fail-loud
-// at-use pattern — callers that don't use HITL never see the error).
+// New creates an Orchestrator with MaxIterations=10 and no HITL.
+// Manual-floor tools surfaced without pendingRepo cause stepRun to emit
+// EventError "HITL not configured" (fail-loud at-use).
 func New(llmClient LLMClient, toolRegistry *toolregistry.Registry) *Orchestrator {
 	return NewWithOptions(llmClient, toolRegistry, Options{MaxIterations: 10})
 }
 
-// NewWithOptions creates an Orchestrator with custom options. pendingRepo is
-// nil by default; use NewWithHITL to inject one. Backward-compatible with
-// every legacy caller that used NewWithOptions(llm, reg, opts).
+// NewWithOptions creates an Orchestrator with custom options; pendingRepo nil.
+// Use NewWithHITL to inject one.
 func NewWithOptions(llmClient LLMClient, toolRegistry *toolregistry.Registry, opts Options) *Orchestrator {
 	if opts.MaxIterations <= 0 {
 		opts.MaxIterations = 10
@@ -177,9 +131,8 @@ func NewWithOptions(llmClient LLMClient, toolRegistry *toolregistry.Registry, op
 	return &Orchestrator{llm: llmClient, tools: toolRegistry, options: opts}
 }
 
-// NewWithHITL constructs an Orchestrator with HITL wired in — pendingRepo
-// receives the Persist + MarkDispatched + MarkResolved calls from stepRun /
-// Resume. Use this constructor in cmd/main.go.
+// NewWithHITL constructs an Orchestrator with HITL wired in. Use this in
+// cmd/main.go. See docs/orchestrator/run.md.
 func NewWithHITL(
 	llmClient LLMClient,
 	toolRegistry *toolregistry.Registry,
@@ -197,21 +150,15 @@ func NewWithHITL(
 	}
 }
 
-// Run starts a fresh agent turn and returns a channel of events. The
-// channel is closed when stepRun returns (done / paused / error).
-//
-// Run is a thin wrapper over stepRun: it builds a fresh RunState from
-// RunRequest and spawns the goroutine. Resume (in resume.go) is the
-// companion wrapper that rebuilds RunState from a persisted batch
-// snapshot; both call into stepRun. This is the Run→Resume→stepRun
-// shape — no blocked goroutines on approval channels.
+// Run starts a fresh agent turn and returns a channel of events. The channel
+// is closed when stepRun returns (done / paused / error).
+// See docs/orchestrator/run.md.
 func (o *Orchestrator) Run(ctx context.Context, req RunRequest) (<-chan Event, error) {
 	ch := make(chan Event, 32)
 
-	// BuildSplit emits the two-block system prompt. Block 1 (platform) carries
-	// cache_control via SystemBlocks[0].CacheBoundary in stepRun; Block 2
-	// (business) does not. Messages no longer carries a leading role:"system"
-	// entry — SystemBlocks is the canonical channel.
+	// BuildSplit's Block 1 (platform) carries cache_control; Block 2 (business)
+	// does not. SystemBlocks (set in stepRun) is the canonical channel —
+	// Messages no longer carries a leading role:"system" entry.
 	platform, business, history := prompt.BuildSplit(req.BusinessContext, req.ProjectContext, req.Messages)
 
 	state := &RunState{
@@ -248,15 +195,11 @@ type toolOutcome struct {
 	execErr error
 }
 
-// dispatchToolCalls executes a batch of tool calls from a single LLM response
-// concurrently. Each goroutine emits its tool_result event as soon as that
-// tool finishes, so the UI reflects real per-tool latency rather than the
-// batch's slowest member. The tool messages appended to `messages` are
-// ordered to match the original tool_calls slice — OpenAI and Anthropic
-// require role:tool messages to line up with assistant.tool_calls[*].id for
-// the next iteration.
-//
-// Returns false if the context was canceled before all events could be emitted.
+// dispatchToolCalls executes a batch of tool calls concurrently and emits
+// tool_result events in completion order. The tool messages appended to
+// `messages` MUST line up with the original tool_calls slice — OpenAI and
+// Anthropic require role:tool messages to match assistant.tool_calls[*].id
+// for the next iteration. Returns false on ctx cancellation.
 func (o *Orchestrator) dispatchToolCalls(
 	ctx context.Context,
 	ch chan<- Event,
@@ -305,6 +248,7 @@ func (o *Orchestrator) dispatchToolCalls(
 		return false
 	}
 
+	// Append in original tool_calls order — provider-contract invariant.
 	for _, out := range outcomes {
 		result := out.result
 		if out.execErr != nil {
@@ -323,10 +267,8 @@ func (o *Orchestrator) dispatchToolCalls(
 	return true
 }
 
-// buildToolResultEvent wraps a tool outcome into the event emitted on the SSE
-// channel. Shaping it here keeps the goroutine body short and side-effect free.
-// displayNameKey is the i18n catalog key threaded through so chat_proxy can
-// stamp the AgentTask document with a localizable key.
+// buildToolResultEvent shapes a tool outcome into an SSE event. Out-of-line so
+// the goroutine body stays short and side-effect free.
 func buildToolResultEvent(tc llm.ToolCall, displayName, displayNameKey string, result interface{}, execErr error) Event {
 	payload := result
 	if execErr != nil {
