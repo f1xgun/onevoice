@@ -15,6 +15,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // Constants for review pagination
@@ -53,11 +54,6 @@ func NewReviewHandler(reviewService ReviewService) (*ReviewHandler, error) {
 type ReviewListResponse struct {
 	Reviews []domain.Review `json:"reviews"`
 	Total   int             `json:"total"`
-}
-
-// ReplyToReviewRequest represents the reply request body
-type ReplyToReviewRequest struct {
-	ReplyText string `json:"replyText" validate:"required"`
 }
 
 // ListReviews handles GET /api/v1/reviews
@@ -161,7 +157,7 @@ func (h *ReviewHandler) ReplyToReview(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 
-	var req ReplyToReviewRequest
+	var req openapi.ReplyToReviewRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
