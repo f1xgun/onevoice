@@ -1,14 +1,5 @@
 // Package handler — HITL resolve + resume + GET /tools endpoints.
-//
-// This file ships every HITL HTTP surface on the API service:
-//
-//	POST /api/v1/conversations/{id}/pending-tool-calls/{batch_id}/resolve
-//	POST /api/v1/chat/{id}/resume?batch_id=X
-//	GET  /api/v1/tools
-//
-// See service/hitl.go for the business-logic layer (atomic transition, TOCTOU
-// re-check, edit validation). This file handles HTTP parsing, error mapping,
-// and SSE proxying.
+// See docs/api/handlers/hitl.md.
 package handler
 
 import (
@@ -29,26 +20,18 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
-// HITL retry / SSE proxy constants.
-const (
-	// hitlBatchResolvingRetryAfterMs is what we hand the client when a 409
-	// Conflict says another goroutine is already resolving the same batch —
-	// "wait this long, then resend". 500 ms balances "don't hammer" against
-	// "feels responsive" for chat-y interactions.
-	hitlBatchResolvingRetryAfterMs = 500
-)
+// hitlBatchResolvingRetryAfterMs is the 409 retry hint (ms). 500ms balances
+// "don't hammer" vs "feels responsive". See docs/api/handlers/hitl.md.
+const hitlBatchResolvingRetryAfterMs = 500
 
-// HITLHandler serves the three new HITL endpoints. Takes the HITLService
-// (business logic), the businessService (for actor → business resolution on
-// the resume path), and the conversationRepo (ownership check on resume).
+// HITLHandler serves the three HITL HTTP endpoints. See docs/api/handlers/hitl.md.
 type HITLHandler struct {
 	hitlService      *service.HITLService
 	businessService  BusinessService
 	conversationRepo domain.ConversationRepository
 }
 
-// NewHITLHandler constructs a HITLHandler. All three deps are required; a nil
-// anywhere indicates a wiring error.
+// NewHITLHandler constructs a HITLHandler; all three deps are required.
 func NewHITLHandler(
 	hitlService *service.HITLService,
 	businessService BusinessService,
@@ -75,27 +58,8 @@ type resolveRequest struct {
 	Decisions []service.DecisionInput `json:"decisions"`
 }
 
-// ResolvePendingToolCalls handles
-// POST /api/v1/conversations/{id}/pending-tool-calls/{batch_id}/resolve.
-//
-// Error mapping (service layer → HTTP):
-//
-//	ErrHITLBatchNotFound       → 404 {"error":"batch not found"}
-//	ErrHITLForbidden           → 403 {"error":"forbidden"}
-//	ErrHITLBatchExpired        → 410 {"error":"approval_expired"}
-//	ErrHITLDecisionsShape      → 400 {"error":"shape mismatch","missing":[...]}
-//	*tools.ErrFieldNotEditable → 400 {"error":"...","editable":[...]}
-//	*tools.ErrNonScalarValue   → 400 {"error":"...","tool":"..."}
-//	ErrHITLRejectReasonTooLong → 400
-//	ErrHITLBatchAlreadyResolving → 409 {"error":"batch resolving","retry_after_ms":500,"reason":"concurrent resolve in progress"}
-//	default                    → 500
-//
-// On success: 200 with the ResolveResult JSON body.
-//
-// Pinning: the handler NEVER reads `tool_name` from the request body.
-// The service layer always uses c.ToolName from the persisted PendingCall row.
-// Any edit on a "tool_name" field is rejected by ValidateEditArgs because
-// "tool_name" is not in any tool's EditableFields allowlist.
+// ResolvePendingToolCalls handles POST /conversations/{id}/pending-tool-calls/{batch_id}/resolve.
+// See docs/api/handlers/hitl.md.
 func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -139,9 +103,8 @@ func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Req
 }
 
 // mapResolveError translates HITLService errors to HTTP status codes + bodies.
-// Centralized so the happy-path handler stays easy to read.
+// See docs/api/handlers/hitl.md for the full mapping table.
 func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, err error) {
-	// Edit validation: never silently ignore.
 	var errEdit *tools.ErrFieldNotEditable
 	if errors.As(err, &errEdit) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
@@ -159,7 +122,6 @@ func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, er
 		return
 	}
 
-	// Shape mismatch — 400 with missing call_ids.
 	var errShape *service.ErrHITLDecisionsShape
 	if errors.As(err, &errShape) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
@@ -169,7 +131,6 @@ func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, er
 		return
 	}
 
-	// Reject reason too long.
 	var errReason *service.ErrHITLRejectReasonTooLong
 	if errors.As(err, &errReason) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
@@ -179,7 +140,6 @@ func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, er
 		return
 	}
 
-	// Sentinel path mapping.
 	switch {
 	case errors.Is(err, service.ErrHITLBatchNotFound):
 		writeJSONError(w, http.StatusNotFound, "batch not found")
@@ -199,8 +159,7 @@ func (h *HITLHandler) mapResolveError(w http.ResponseWriter, r *http.Request, er
 	}
 }
 
-// nilToEmptyStringArr guarantees a non-null JSON array in the 400 body.
-// When a tool has no EditableFields, we want `"editable":[]` not `"editable":null`.
+// nilToEmptyStringArr coerces nil → [] so the JSON body emits `"editable":[]` not `null`.
 func nilToEmptyStringArr(s []string) []string {
 	if s == nil {
 		return []string{}
@@ -208,18 +167,7 @@ func nilToEmptyStringArr(s []string) []string {
 	return s
 }
 
-// Resume handles POST /api/v1/chat/{id}/resume?batch_id=X.
-//
-// The endpoint:
-//  1. Validates ownership (actor's business owns the batch's conversation).
-//  2. Rejects resume while the batch is in status=resolving (409) — this
-//     protects against the client racing its own resume call against an
-//     in-flight resolve.
-//  3. Rejects resume on expired batches (410).
-//  4. Re-fetches FRESH business approvals + project overrides so the
-//     orchestrator's TOCTOU re-check uses current state.
-//  5. Forwards to the orchestrator's POST /chat/{id}/resume?batch_id=X with
-//     the fresh maps in the JSON body and streams the SSE response back.
+// Resume handles POST /chat/{id}/resume?batch_id=X. See docs/api/handlers/hitl.md.
 func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -250,7 +198,6 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load batch for ownership + status check.
 	batch, err := h.hitlService.PendingRepo().GetByBatchID(r.Context(), batchID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBatchNotFound) {
@@ -273,16 +220,9 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusGone, map[string]string{"error": "approval_expired"})
 		return
 	}
-	// Previously rejected `status=resolving` here, but
-	// that was wrong — `Resolve` atomically transitions `pending → resolving`
-	// and the orchestrator's resume goroutine is the only writer that
-	// transitions `resolving → resolved` (via `MarkResolved` after dispatch
-	// completes). So the legitimate first resume call ALWAYS finds the batch
-	// in `resolving`; rejecting it bricked every approval flow once the
-	// 403 short-circuit was lifted. The truly-conflicting terminal state is
-	// `resolved` (already-dispatched), and `expired` is handled above as 410.
-	// Per-call double-dispatch protection lives in the orchestrator's
-	// `MarkDispatched` idempotence guard, not here.
+	// `resolving` is the legitimate first-resume state (Resolve transitions
+	// pending→resolving). Only `resolved` (already-dispatched) is conflict.
+	// See docs/api/handlers/hitl.md §"Resume vs status='resolving'".
 	if batch.Status == "resolved" {
 		writeJSON(w, http.StatusConflict, map[string]interface{}{
 			"error":  "batch already resolved",
@@ -291,7 +231,7 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fresh business + project state for TOCTOU re-check on the orchestrator side.
+	// Fresh business + project state for the orchestrator's TOCTOU re-check.
 	bizApprovals := business.ToolApprovals()
 	var projectOverrides map[string]domain.ToolFloor
 	if batch.ProjectID != "" {
@@ -302,27 +242,16 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Forward to the orchestrator's /chat/{id}/resume endpoint with the fresh
-	// maps. The orchestrator's ResumeHandler decodes this body and passes the
-	// fresh maps into orchestrator.Resume → dispatchApprovedCalls →
-	// hitl.Resolve.
 	body := map[string]interface{}{
 		"business_approvals":         bizApprovals,
 		"project_approval_overrides": projectOverrides,
 	}
 	raw, _ := json.Marshal(body)
 
-	// StreamSSE owns: URL selection (batch_id → resume), correlation-id
-	// propagation, SSE response headers, scanner with 1 MiB buffer, and
-	// the raw-forward drain loop. OnEvent is nil — this handler does no
-	// per-event domain dispatch (the chatturn paths do that for the chat
-	// stream itself; the resolve handler just proxies).
-	//
-	// Pre-connect failures wrap their error with "stream resume:". After
-	// StreamSSE writes the SSE response headers, callers cannot emit a JSON
-	// error body — so we map only the pre-connect substring to a 502.
-	// Mid-drain failures are logged at WARN and the in-flight 200 SSE
-	// response is left committed as-is (legacy behavior).
+	// StreamSSE owns URL selection, headers, scanner buffer, drain loop.
+	// Pre-connect errors carry "stream resume:" so we can still emit 502
+	// before headers; mid-stream failures must be logged only. See
+	// docs/api/handlers/hitl.md §"SSE proxy ownership".
 	streamErr := h.hitlService.OrchClient().StreamSSE(r.Context(), orchestratorclient.StreamSSERequest{
 		ConversationID: conversationID,
 		BatchID:        batchID,
@@ -340,17 +269,12 @@ func (h *HITLHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GetTools handles GET /api/v1/tools. Returns the live orchestrator registry
-// projection (name, platform, floor, editable_fields, description) via the
-// cached ToolsRegistryCache (5-min TTL).
-//
-// The frontend's React Query cache further caches the response client-side
-// so settings pages + the project edit page share a single in-browser copy.
+// GetTools handles GET /tools — registry projection via 5-min cache.
+// See docs/api/handlers/hitl.md §"GetTools projection".
 func (h *HITLHandler) GetTools(w http.ResponseWriter, r *http.Request) {
-	// Auth is enforced by middleware; no per-user scoping on this endpoint —
-	// the tool registry is the same for every business.
+	// JWT-only; the registry is the same for every business so no per-user scope.
 	entries := h.hitlService.ToolsCache().List(r.Context())
-	// Normalize nil EditableFields to [] so downstream consumers never see null.
+	// Coerce nil EditableFields → [] so downstream zod schemas never see null.
 	for i := range entries {
 		if entries[i].EditableFields == nil {
 			entries[i].EditableFields = []string{}
