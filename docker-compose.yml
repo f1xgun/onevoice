@@ -188,6 +188,16 @@ services:
       LLM_RATELIMIT_ON_REDIS_DOWN: ${LLM_RATELIMIT_ON_REDIS_DOWN:-block}
       LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR: ${LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR:-}
       LLM_LOCAL_FALLBACK_WINDOW: ${LLM_LOCAL_FALLBACK_WINDOW:-}
+      # Per-user SSE concurrency cap. Empty = defaults from code. See .env.example.
+      SSE_MAX_PER_USER: ${SSE_MAX_PER_USER:-}
+      # pgxpool tuning. Empty = defaults from code; setting any value
+      # overrides. See .env.example for guidance and bounds.
+      PG_MAX_CONNS: ${PG_MAX_CONNS:-}
+      PG_MIN_CONNS: ${PG_MIN_CONNS:-}
+      PG_MAX_CONN_LIFETIME: ${PG_MAX_CONN_LIFETIME:-}
+      PG_MAX_CONN_IDLE_TIME: ${PG_MAX_CONN_IDLE_TIME:-}
+      PG_HEALTH_CHECK_PERIOD: ${PG_HEALTH_CHECK_PERIOD:-}
+      PG_MAX_CONN_LIFETIME_JITTER: ${PG_MAX_CONN_LIFETIME_JITTER:-}
       # mTLS — internal :8443 listener uses these to terminate TLS and
       # require a client cert signed by the dev CA. See infra/mtls/README.md.
       ONEVOICE_MTLS_ENABLED: "true"
@@ -306,6 +316,8 @@ services:
       API_INTERNAL_URL: https://api:8443
       RPA_DEBUG_SCREENSHOTS: "1"
       REDIS_URL: redis://redis:6379/0
+      # BrowserPool tuning (Phase 26 LRU eviction). Empty = defaults from code.
+      BROWSER_POOL_MAX_CONTEXTS: ${BROWSER_POOL_MAX_CONTEXTS:-}
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
       ONEVOICE_MTLS_CERT_PATH: /etc/onevoice/mtls/agent-yandex-business.crt
