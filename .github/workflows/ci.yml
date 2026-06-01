@@ -32,6 +32,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend-docker: ${{ steps.filter.outputs.backend-docker }}
       frontend-docker: ${{ steps.filter.outputs.frontend-docker }}
+      observability: ${{ steps.filter.outputs.observability }}
     steps:
       - uses: actions/checkout@v4
 
@@ -75,6 +76,9 @@ jobs:
               - '.github/workflows/ci.yml'
             frontend-docker:
               - 'services/frontend/**'
+              - '.github/workflows/ci.yml'
+            observability:
+              - 'observability/**'
               - '.github/workflows/ci.yml'
 
   go-lint:
@@ -373,6 +377,45 @@ jobs:
           push: false
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+  observability:
+    name: Observability Config Validation
+    needs: changes
+    if: needs.changes.outputs.observability == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: promtool check rules
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/observability:/o" \
+            --entrypoint /bin/promtool \
+            prom/prometheus:v2.52.0 \
+            check rules /o/prometheus/alerts/http.yml \
+                       /o/prometheus/alerts/llm.yml \
+                       /o/prometheus/alerts/nats.yml \
+                       /o/prometheus/alerts/rpa.yml \
+                       /o/prometheus/alerts/dbpool.yml \
+                       /o/prometheus/alerts/fleet.yml \
+                       /o/prometheus/alerts/backup.yml
+
+      - name: promtool check config
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/observability/prometheus:/etc/prometheus" \
+            -v "${{ github.workspace }}/observability/prometheus/alerts:/etc/prometheus/alerts:ro" \
+            --entrypoint /bin/promtool \
+            prom/prometheus:v2.52.0 \
+            check config /etc/prometheus/prometheus.yml
+
+      - name: amtool check-config
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/observability:/o" \
+            --entrypoint /bin/amtool \
+            prom/alertmanager:v0.31.0 \
+            check-config /o/alertmanager/alertmanager.yml
 
   pr-meta:
     name: PR Labels & Size Check

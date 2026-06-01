@@ -52,6 +52,7 @@ services:
       - --storage.tsdb.retention.time=7d
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alerts:/etc/prometheus/alerts:ro
       - prometheus_data:/prometheus
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
@@ -86,6 +87,40 @@ services:
       retries: 5
     networks:
       - onevoice-network
+    restart: unless-stopped
+
+  # Alertmanager — operator alerting (tailnet-only, no `ports:` block).
+  # bot_token / chat_id are written by the entrypoint script from
+  # env vars into files at /etc/alertmanager/secrets/, then referenced
+  # via bot_token_file / chat_id_file in alertmanager.yml so the
+  # secrets never appear inline in any YAML literal.
+  alertmanager:
+    image: prom/alertmanager:v0.31.0
+    container_name: onevoice-alertmanager
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mkdir -p /etc/alertmanager/secrets &&
+        printf '%s' "$$AM_TELEGRAM_BOT_TOKEN" > /etc/alertmanager/secrets/bot_token &&
+        printf '%s' "$$AM_TELEGRAM_CHAT_ID" > /etc/alertmanager/secrets/chat_id &&
+        chmod 600 /etc/alertmanager/secrets/* &&
+        exec /bin/alertmanager
+        --config.file=/etc/alertmanager/alertmanager.yml
+        --storage.path=/alertmanager
+    environment:
+      AM_TELEGRAM_BOT_TOKEN: "${AM_TELEGRAM_BOT_TOKEN:?AM_TELEGRAM_BOT_TOKEN required — see .env.example and docs/runbook/observability.md}"
+      AM_TELEGRAM_CHAT_ID: "${AM_TELEGRAM_CHAT_ID:?AM_TELEGRAM_CHAT_ID required — see .env.example and docs/runbook/observability.md}"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - onevoice-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9093/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   # Pushgateway — receives short-lived job metrics (backup, etc.).
@@ -132,6 +167,8 @@ volumes:
   prometheus_data:
     driver: local
   grafana_data:
+    driver: local
+  alertmanager_data:
     driver: local
 
 networks:

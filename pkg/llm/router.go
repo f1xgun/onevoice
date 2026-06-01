@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -213,7 +214,8 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 		return nil, err
 	}
 
-	_, ch, err := Invoke(r.selector, req.Model, req.Strategy,
+	start := time.Now()
+	entry, ch, err := Invoke(r.selector, req.Model, req.Strategy,
 		func(p Provider) (<-chan StreamChunk, time.Duration, error) {
 			out, callErr := p.ChatStream(ctx, req)
 			if callErr != nil {
@@ -223,8 +225,27 @@ func (r *Router) ChatStream(ctx context.Context, req ChatRequest) (<-chan Stream
 			// so defaultSelector skips this sample for the rolling window.
 			return out, 0, nil
 		})
+	if err != nil || ch == nil {
+		return ch, err
+	}
+
+	// Wrap the provider channel so the first chunk arrival records
+	// llm_first_token_latency_seconds exactly once per ChatStream call.
+	// sync.Once guards against multi-reader races even though production
+	// code drains the channel from a single goroutine.
+	out := make(chan StreamChunk, cap(ch))
+	go func() {
+		defer close(out)
+		var once sync.Once
+		for chunk := range ch {
+			once.Do(func() {
+				metrics.RecordLLMFirstToken(req.Model, entry.Provider, time.Since(start))
+			})
+			out <- chunk
+		}
+	}()
 	// ChatStream does not bill; the terminal turn (non-streaming) accounts the cost.
-	return ch, err
+	return out, nil
 }
 
 // cachePricingMultiplierRead is Anthropic's cache-read rate as a fraction of input rate (0.1×).

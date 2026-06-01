@@ -25,42 +25,43 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 	const companiesURL = yandexSpravCompaniesURL
 
 	var result []map[string]interface{}
-	err := withRetry(ctx, 2, func() error {
-		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			if _, err := page.Goto(companiesURL, playwright.PageGotoOptions{
-				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(pageNavTimeoutMs),
-			}); err != nil {
-				return fmt.Errorf("navigate to companies: %w", err)
-			}
-			debugScreenshot(page, "list_companies_after_navigate")
+	err := recordStep("listCompanies", func() error {
+		return withRetry(ctx, 2, func() error {
+			return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
+				if _, err := page.Goto(companiesURL, playwright.PageGotoOptions{
+					WaitUntil: playwright.WaitUntilStateNetworkidle,
+					Timeout:   playwright.Float(pageNavTimeoutMs),
+				}); err != nil {
+					return fmt.Errorf("navigate to companies: %w", err)
+				}
+				debugScreenshot(page, "list_companies_after_navigate")
 
-			// Canary against passport redirect; the rest of the URL prefix is
-			// the org-list page itself, so we check the host bucket only.
-			currentURL := page.URL()
-			if strings.Contains(currentURL, "passport.yandex") {
-				return a2a.NewNonRetryableError(fmt.Errorf("%w: redirected to %s", ErrSessionExpired, currentURL))
-			}
-			closePopups(page)
+				// Canary against passport redirect; the rest of the URL prefix is
+				// the org-list page itself, so we check the host bucket only.
+				currentURL := page.URL()
+				if strings.Contains(currentURL, "passport.yandex") {
+					return a2a.NewNonRetryableError(fmt.Errorf("%w: redirected to %s", ErrSessionExpired, currentURL))
+				}
+				closePopups(page)
 
-			// Wait for the SPA to mount the company list. Empty state also
-			// uses CompaniesCompanyRow's container so this selector covers
-			// "no orgs yet" — we just return [].
-			if err := page.Locator(".CompaniesCompanyRow").First().WaitFor(playwright.LocatorWaitForOptions{
-				Timeout: playwright.Float(tabSwitchTimeoutMs),
-				State:   playwright.WaitForSelectorStateVisible,
-			}); err != nil {
-				// SPA may render a different empty layout — treat as 0 orgs.
-				slog.Info("ListCompanies: no .CompaniesCompanyRow visible; returning empty list",
-					"url", currentURL)
-				result = []map[string]interface{}{}
-				return nil
-			}
+				// Wait for the SPA to mount the company list. Empty state also
+				// uses CompaniesCompanyRow's container so this selector covers
+				// "no orgs yet" — we just return [].
+				if err := page.Locator(".CompaniesCompanyRow").First().WaitFor(playwright.LocatorWaitForOptions{
+					Timeout: playwright.Float(tabSwitchTimeoutMs),
+					State:   playwright.WaitForSelectorStateVisible,
+				}); err != nil {
+					// SPA may render a different empty layout — treat as 0 orgs.
+					slog.Info("ListCompanies: no .CompaniesCompanyRow visible; returning empty list",
+						"url", currentURL)
+					result = []map[string]interface{}{}
+					return nil
+				}
 
-			// Read all rows in one in-page evaluator. Each row anchor's href
-			// has the form /sprav/<digits>/p/edit/... — the first capture
-			// group is the canonical Sprav permalink.
-			raw, err := page.Evaluate(`() => {
+				// Read all rows in one in-page evaluator. Each row anchor's href
+				// has the form /sprav/<digits>/p/edit/... — the first capture
+				// group is the canonical Sprav permalink.
+				raw, err := page.Evaluate(`() => {
 				const rows = Array.from(document.querySelectorAll('.CompaniesCompanyRow'));
 				return rows.map(row => {
 					const href = row.getAttribute('href') || '';
@@ -71,18 +72,19 @@ func (bb *BusinessBrowser) ListCompanies(ctx context.Context) ([]map[string]inte
 					return { permalink, name };
 				}).filter(c => c.permalink);
 			}`)
-			if err != nil {
-				return fmt.Errorf("evaluate companies list: %w", err)
-			}
+				if err != nil {
+					return fmt.Errorf("evaluate companies list: %w", err)
+				}
 
-			// Playwright Evaluate returns interface{}; serialize → deserialize
-			// to land on the canonical map shape the agent handler expects.
-			b, _ := json.Marshal(raw)
-			var rows []map[string]interface{}
-			_ = json.Unmarshal(b, &rows)
-			result = rows
-			debugScreenshot(page, "list_companies_done")
-			return nil
+				// Playwright Evaluate returns interface{}; serialize → deserialize
+				// to land on the canonical map shape the agent handler expects.
+				b, _ := json.Marshal(raw)
+				var rows []map[string]interface{}
+				_ = json.Unmarshal(b, &rows)
+				result = rows
+				debugScreenshot(page, "list_companies_done")
+				return nil
+			})
 		})
 	})
 	return result, err

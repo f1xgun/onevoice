@@ -1,0 +1,60 @@
+package metrics
+
+import (
+	"strings"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+// NATS collectors emit publish + handler RED signals for the a2a transport.
+//
+// Cardinality budget — labels MUST stay in the documented allowlist (see
+// pkg/metrics/README.md). Allowed values for `subject`:
+//   - tasks.telegram, tasks.vk, tasks.yandex_business, tasks.google_business
+//   - "_INBOX" (collapsed from _INBOX.<nuid> auto-reply subjects)
+//
+// Allowed values for `result`: ok, error, timeout.
+// Banlist: business_id, user_id, email, conversation_id, request_id, raw
+// _INBOX.<nuid>. Always pass subject through CollapseSubject before recording.
+var (
+	natsPublishTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "nats_publish_total",
+		Help: "Total NATS publishes by subject and result.",
+	}, []string{"subject", "result"})
+
+	natsPublishDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "nats_publish_duration_seconds",
+		Help:    "NATS publish call duration in seconds.",
+		Buckets: []float64{0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.5},
+	}, []string{"subject"})
+
+	natsHandlerDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "nats_handler_duration_seconds",
+		Help:    "Server-side NATS handler execution duration in seconds.",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
+	}, []string{"subject", "result"})
+)
+
+// CollapseSubject normalizes NATS reply subjects so cardinality stays bounded.
+// _INBOX.<nuid> auto-reply subjects collapse to the literal "_INBOX". All
+// other subjects pass through unchanged.
+func CollapseSubject(subject string) string {
+	if strings.HasPrefix(subject, "_INBOX.") {
+		return "_INBOX"
+	}
+	return subject
+}
+
+// RecordNATSPublish records a single NATS publish attempt.
+func RecordNATSPublish(subject, result string, duration time.Duration) {
+	s := CollapseSubject(subject)
+	natsPublishTotal.WithLabelValues(s, result).Inc()
+	natsPublishDuration.WithLabelValues(s).Observe(duration.Seconds())
+}
+
+// RecordNATSHandler records server-side handler execution time.
+func RecordNATSHandler(subject, result string, duration time.Duration) {
+	natsHandlerDuration.WithLabelValues(CollapseSubject(subject), result).Observe(duration.Seconds())
+}

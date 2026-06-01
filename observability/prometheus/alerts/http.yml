@@ -1,0 +1,15 @@
+groups:
+  - name: http
+    rules:
+      - alert: SSEHigh5xxRatio
+        expr: |
+          sum(rate(http_requests_total{job="orchestrator",path=~"/chat/.+",status=~"5.."}[5m]))
+            /
+          sum(rate(http_requests_total{job="orchestrator",path=~"/chat/.+"}[5m]))
+            > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Orchestrator /chat SSE 5xx ratio above 5%"
+          description: "Orchestrator /chat 5xx rate exceeded 5% for 5m. Threshold tuning: docs/runbook/observability.md."

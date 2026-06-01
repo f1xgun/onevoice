@@ -10,53 +10,54 @@ import (
 // GetInfo scrapes current business info from the Yandex.Business edit page.
 func (bb *BusinessBrowser) GetInfo(ctx context.Context) (map[string]interface{}, error) {
 	var result map[string]interface{}
-	err := withRetry(ctx, 3, func() error {
-		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			if err := bb.navigateToEditPage(page); err != nil {
-				return err
-			}
-			debugScreenshot(page, "getinfo_after_navigate")
+	err := recordStep("getInfo", func() error {
+		return withRetry(ctx, 3, func() error {
+			return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
+				if err := bb.navigateToEditPage(page); err != nil {
+					return err
+				}
+				debugScreenshot(page, "getinfo_after_navigate")
 
-			info := make(map[string]interface{})
+				info := make(map[string]interface{})
 
-			// Business name from sidebar
-			nameEl := page.Locator("[class*='CompanyName'], [class*='company-name'], .SidebarCompanyInfo span").First()
-			if name, err := nameEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
-				info["name"] = strings.TrimSpace(name)
-			}
+				// Business name from sidebar
+				nameEl := page.Locator("[class*='CompanyName'], [class*='company-name'], .SidebarCompanyInfo span").First()
+				if name, err := nameEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
+					info["name"] = strings.TrimSpace(name)
+				}
 
-			// Hours — from WorkIntervalsUnificationInput
-			hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
-			if val, err := hoursInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
-				info["hours"] = val
-			}
+				// Hours — from WorkIntervalsUnificationInput
+				hoursInput := page.Locator(".WorkIntervalsUnificationInput-Input input.ya-business-input__control").First()
+				if val, err := hoursInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
+					info["hours"] = val
+				}
 
-			// Phone — from InfoPhones section
-			phoneInput := page.Locator(".InfoPhones input.ya-business-input__control").First()
-			if val, err := phoneInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
-				info["phone"] = val
-			}
+				// Phone — from InfoPhones section
+				phoneInput := page.Locator(".InfoPhones input.ya-business-input__control").First()
+				if val, err := phoneInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
+					info["phone"] = val
+				}
 
-			// Email — from InfoEmails section
-			emailInput := page.Locator(".InfoEmails input.ya-business-input__control").First()
-			if val, err := emailInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
-				info["email"] = val
-			}
+				// Email — from InfoEmails section
+				emailInput := page.Locator(".InfoEmails input.ya-business-input__control").First()
+				if val, err := emailInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
+					info["email"] = val
+				}
 
-			// Description
-			descInput := page.Locator("input.ya-business-input__control[placeholder*='Описание'], .ya-business-input__label:has-text('Описание') ~ input, span:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input").First()
-			if val, err := descInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
-				info["description"] = val
-			}
+				// Description
+				descInput := page.Locator("input.ya-business-input__control[placeholder*='Описание'], .ya-business-input__label:has-text('Описание') ~ input, span:has-text('Описание') >> xpath=ancestor::span[contains(@class,'ya-business-input')]//input").First()
+				if val, err := descInput.InputValue(playwright.LocatorInputValueOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil && val != "" {
+					info["description"] = val
+				}
 
-			// Address — Yandex.Business calls this "Территория оказания услуг".
-			// The .InfoAddress container is a tab widget with two modes
-			// ("По регионам" / "Вокруг точки") and is NOT a plain text field, so
-			// we cannot just read its textContent (that returns UI labels like
-			// "По регионамВокруг точкиРегионыМосква Условия Радиус в км 1 100").
-			// Instead, scope to the active mode and extract the human-readable
-			// value via a single in-page evaluator.
-			if rawAddr, evalErr := page.Evaluate(`() => {
+				// Address — Yandex.Business calls this "Территория оказания услуг".
+				// The .InfoAddress container is a tab widget with two modes
+				// ("По регионам" / "Вокруг точки") and is NOT a plain text field, so
+				// we cannot just read its textContent (that returns UI labels like
+				// "По регионамВокруг точкиРегионыМосква Условия Радиус в км 1 100").
+				// Instead, scope to the active mode and extract the human-readable
+				// value via a single in-page evaluator.
+				if rawAddr, evalErr := page.Evaluate(`() => {
 				const root = document.querySelector('.InfoAddress');
 				if (!root) return '';
 				const mode = root.querySelector('.ya-business-tab-line-item_checked .ya-business-tab-line-item__child');
@@ -79,20 +80,21 @@ func (bb *BusinessBrowser) GetInfo(ctx context.Context) (map[string]interface{},
 				}
 				return '';
 			}`); evalErr == nil {
-				if s, ok := rawAddr.(string); ok && s != "" {
-					info["address"] = normalizeWhitespace(s)
+					if s, ok := rawAddr.(string); ok && s != "" {
+						info["address"] = normalizeWhitespace(s)
+					}
 				}
-			}
 
-			// Status
-			statusEl := page.Locator(".InfoWorkIntervals-StatusWrapper .ya-business-select__button-content").First()
-			if text, err := statusEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
-				info["status"] = strings.TrimSpace(text)
-			}
+				// Status
+				statusEl := page.Locator(".InfoWorkIntervals-StatusWrapper .ya-business-select__button-content").First()
+				if text, err := statusEl.TextContent(playwright.LocatorTextContentOptions{Timeout: playwright.Float(uiPollTimeoutMs)}); err == nil {
+					info["status"] = strings.TrimSpace(text)
+				}
 
-			debugScreenshot(page, "getinfo_result")
-			result = info
-			return nil
+				debugScreenshot(page, "getinfo_result")
+				result = info
+				return nil
+			})
 		})
 	})
 	return result, err

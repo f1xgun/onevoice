@@ -1,0 +1,11 @@
+groups:
+  - name: backup
+    rules:
+      - alert: BackupStale
+        expr: (time() - backup_last_success_timestamp > 26*3600) or absent(backup_last_success_timestamp)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful backup in 26h"
+          description: "Backup cron has not reported success in over 26h. Restore-from-backup procedure: docs/runbook-restore.md."

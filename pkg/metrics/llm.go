@@ -108,6 +108,21 @@ func RecordLLMRequest(model, provider, status string, duration time.Duration) {
 	llmRequestDuration.WithLabelValues(model, provider).Observe(duration.Seconds())
 }
 
+// llmFirstTokenLatency measures the time from ChatStream request start to the
+// first streamed token reaching the caller. Labeled by {model, provider} only
+// — see pkg/metrics/README.md for the cardinality allowlist; never add
+// per-user / per-business / per-request labels here.
+var llmFirstTokenLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "llm_first_token_latency_seconds",
+	Help:    "Time from ChatStream request start to first streamed token in seconds.",
+	Buckets: []float64{0.1, 0.25, 0.5, 0.75, 1, 1.5, 2.5, 5, 10},
+}, []string{"model", "provider"})
+
+// RecordLLMFirstToken records the first-token latency for a streamed LLM call.
+func RecordLLMFirstToken(model, provider string, duration time.Duration) {
+	llmFirstTokenLatency.WithLabelValues(model, provider).Observe(duration.Seconds())
+}
+
 // RecordLLMCacheUsage emits cache-related token counters per LLM call.
 // `cacheRead` = tokens served from cache; `cacheCreate` = tokens written to
 // cache; `inputAfter` = tokens consumed after the last breakpoint. Zero values

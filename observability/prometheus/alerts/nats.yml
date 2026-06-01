@@ -1,0 +1,11 @@
+groups:
+  - name: nats
+    rules:
+      - alert: NATSPublishErrorRate
+        expr: sum(rate(nats_publish_total{result="error"}[5m])) > 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NATS publish errors > 1/s"
+          description: "Sustained publish errors. Check NATS broker connectivity and pkg/a2a transport logs."

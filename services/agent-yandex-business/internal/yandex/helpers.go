@@ -5,7 +5,24 @@ import (
 	"time"
 
 	"github.com/playwright-community/playwright-go"
+
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
+
+// recordStep wraps an RPA helper invocation and emits a single
+// rpa_step_duration_seconds observation labeled by the caller-supplied step
+// name (hard-coded — never derived from runtime variables) and the binary
+// result ("ok" on nil error, "error" otherwise).
+func recordStep(name string, fn func() error) error {
+	start := time.Now()
+	err := fn()
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	metrics.RPAStepDuration.WithLabelValues(name, result).Observe(time.Since(start).Seconds())
+	return err
+}
 
 // closePopups dismisses common Yandex popups that overlay the page.
 // Used by ListCompanies, GetReviews, navigateToEditPage (which feeds GetInfo /

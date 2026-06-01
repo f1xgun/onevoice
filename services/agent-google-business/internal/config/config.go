@@ -21,7 +21,7 @@ func Load() *Config {
 	return &Config{
 		NATSUrl:        getEnv("NATS_URL", "nats://localhost:4222"),
 		APIInternalURL: getEnv("API_INTERNAL_URL", defaultAPIInternalURL),
-		HealthPort:     getEnv("HEALTH_PORT", "8083"),
+		HealthPort:     getEnv("HEALTH_PORT", "8084"),
 		RedisURL:       getEnv("REDIS_URL", "redis://redis:6379"),
 	}
 }
