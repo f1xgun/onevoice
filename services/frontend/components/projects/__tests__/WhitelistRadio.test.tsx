@@ -9,26 +9,28 @@ describe('WhitelistRadio', () => {
     render(<WhitelistRadio value="inherit" onChange={() => {}} />);
 
     // Labels
-    expect(screen.getByText('Как у бизнеса')).toBeInTheDocument();
+    expect(screen.getByText('Как в настройках организации')).toBeInTheDocument();
     expect(screen.getByText('Все инструменты')).toBeInTheDocument();
     expect(screen.getByText('Выбранные')).toBeInTheDocument();
     expect(screen.getByText('Никаких')).toBeInTheDocument();
 
     // Helper text
     expect(
-      screen.getByText('Использовать настройки бизнеса (по умолчанию все доступные инструменты).')
+      screen.getByText(
+        'Использовать настройки организации (по умолчанию доступны все инструменты).'
+      )
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Любой инструмент активной интеграции доступен LLM.')
+      screen.getByText('Любой инструмент активной интеграции доступен ИИ.')
     ).toBeInTheDocument();
     expect(screen.getByText('Разрешить только отмеченные ниже.')).toBeInTheDocument();
     expect(
-      screen.getByText('LLM может отвечать, но не будет выполнять действия.')
+      screen.getByText('ИИ может отвечать, но не будет выполнять действия.')
     ).toBeInTheDocument();
   });
 
   it.each<[string, WhitelistMode]>([
-    ['Как у бизнеса', 'inherit'],
+    ['Как в настройках организации', 'inherit'],
     ['Все инструменты', 'all'],
     ['Выбранные', 'explicit'],
     ['Никаких', 'none'],

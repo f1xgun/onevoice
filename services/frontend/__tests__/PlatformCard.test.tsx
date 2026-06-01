@@ -115,7 +115,7 @@ describe('<PlatformCard /> Preview badge', () => {
     expect(badge).toBeInTheDocument();
 
     const expectedTooltip =
-      'Only review operations (read and reply) work today. Business info, posts, media, and metrics are coming in upcoming releases.';
+      'Only review operations (read and reply) work today. Profile info, posts, media, and metrics are coming in upcoming releases.';
     expect(badge).toHaveAttribute('title', expectedTooltip);
     expect(badge).toHaveAttribute('aria-label', expectedTooltip);
   });

@@ -109,19 +109,21 @@ describe('resolveErrorToRussian', () => {
   // copy distinct from 409 (race), policy_revoked (TOCTOU), and the
   // generic network/5xx fallback.
 
-  it('JJ) maps HTTP 403 with null body → "Отказано: операция вне вашей бизнес-области"', () => {
-    expect(resolveErrorToRussian(403, null)).toBe('Отказано: операция вне вашей бизнес-области');
+  it('JJ) maps HTTP 403 with null body → "Отказано: это действие выходит за рамки вашей организации"', () => {
+    expect(resolveErrorToRussian(403, null)).toBe(
+      'Отказано: это действие выходит за рамки вашей организации'
+    );
   });
 
   it('KK) maps HTTP 403 with arbitrary body shape → 403 dedicated toast', () => {
     expect(resolveErrorToRussian(403, { reason: 'forbidden' })).toBe(
-      'Отказано: операция вне вашей бизнес-области'
+      'Отказано: это действие выходит за рамки вашей организации'
     );
     expect(resolveErrorToRussian(403, undefined)).toBe(
-      'Отказано: операция вне вашей бизнес-области'
+      'Отказано: это действие выходит за рамки вашей организации'
     );
     expect(resolveErrorToRussian(403, { error: 'business scope mismatch' })).toBe(
-      'Отказано: операция вне вашей бизнес-области'
+      'Отказано: это действие выходит за рамки вашей организации'
     );
   });
 
@@ -131,7 +133,7 @@ describe('resolveErrorToRussian', () => {
     // says reason=policy_revoked, the 403 branch wins because the user is
     // crossing a trust boundary, not just hitting a policy gate.
     expect(resolveErrorToRussian(403, { reason: 'policy_revoked' })).toBe(
-      'Отказано: операция вне вашей бизнес-области'
+      'Отказано: это действие выходит за рамки вашей организации'
     );
   });
 });

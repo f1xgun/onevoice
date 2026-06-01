@@ -8,7 +8,7 @@ describe('NoConnection', () => {
   it('renders the calm Russian copy without a status link by default', () => {
     render(<NoConnection />);
     expect(
-      screen.getByRole('heading', { name: /Не получается дотянуться до OneVoice/ })
+      screen.getByRole('heading', { name: /Не удаётся связаться с OneVoice/ })
     ).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Открыть статус' })).not.toBeInTheDocument();
   });
