@@ -11,6 +11,5 @@ package: openapi
 output: services/api/internal/openapi/types.gen.go
 generate:
   models: true
-  embedded-spec: true
 output-options:
   skip-prune: true
