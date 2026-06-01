@@ -11,10 +11,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// mustMarshal is the internal helper for every builder. Failure means a
-// Details struct is misconfigured at compile time (unmarshalable field) —
-// a developer bug not a runtime fault — so we log and emit an empty object
-// rather than panic in the request path.
+// mustMarshal serializes a Details struct, emitting "{}" on failure
+// because a marshal error here is a developer bug (unmarshalable field),
+// not a runtime fault — must not panic the request path.
+//
+// Tx-aware builders deliberately do NOT use this helper: they propagate
+// marshal failure as an error so the surrounding transaction rolls back.
 func mustMarshal(d interface{}) json.RawMessage {
 	b, err := json.Marshal(d)
 	if err != nil {
@@ -24,10 +26,11 @@ func mustMarshal(d interface{}) json.RawMessage {
 	return b
 }
 
-// Builder signatures put ctx first (Go idiom enforced by revive
-// context-as-argument). Logger is the second parameter so call sites read
-// `audit.LogRoleGranted(ctx, logger, biz, actor, ...)` — ctx is the
-// invariant request-context, logger is the dependency.
+// Builder signatures put ctx first (revive context-as-argument) and
+// Logger second so call sites read naturally:
+// `audit.LogRoleGranted(ctx, logger, biz, actor, ...)`.
+//
+// See docs/pkg/audit-builders.md for the full discipline contract.
 
 // ---- rbac builders ------------------------------------------------------
 
@@ -90,8 +93,8 @@ func LogRoleDeleted(ctx context.Context, l Logger, businessID, actorID, roleID u
 	})
 }
 
-// LogInvitationCreated records an invitation being issued. : NO token
-// or token_hash in details.
+// LogInvitationCreated records an invitation being issued. NO token or
+// token_hash in details.
 func LogInvitationCreated(ctx context.Context, l Logger, businessID, actorID, invitationID, roleID uuid.UUID, expiresAt time.Time) {
 	l.Log(ctx, Entry{
 		Action:     ActionInvitationCreated,
@@ -127,8 +130,8 @@ func LogInvitationAccepted(ctx context.Context, l Logger, businessID, accepterUs
 
 // ---- auth builders ------------------------------------------------------
 
-// LogLoginSuccess records a successful login. business_id = nil
-// (auth events are system-wide, not business-scoped).
+// LogLoginSuccess records a successful login. business_id = nil (auth
+// events are system-wide, not business-scoped).
 func LogLoginSuccess(ctx context.Context, l Logger, userID uuid.UUID, ip, userAgent string) {
 	l.Log(ctx, Entry{
 		Action:   ActionLoginSuccess,
@@ -138,8 +141,8 @@ func LogLoginSuccess(ctx context.Context, l Logger, userID uuid.UUID, ip, userAg
 	})
 }
 
-// LogLoginFailed — UserID intentionally nil. attemptedEmail is
-// captured in details for brute-force analysis.
+// LogLoginFailed records a failed login. UserID intentionally nil;
+// attemptedEmail goes in details for brute-force analysis.
 func LogLoginFailed(ctx context.Context, l Logger, attemptedEmail, ip, userAgent, reason string) {
 	l.Log(ctx, Entry{
 		Action:   ActionLoginFailed,
@@ -158,8 +161,8 @@ func LogLogout(ctx context.Context, l Logger, userID uuid.UUID) {
 	})
 }
 
-// LogPasswordChanged records a password change. NO old or new password in
-// details.
+// LogPasswordChanged records a password change. NO old or new password
+// in details.
 func LogPasswordChanged(ctx context.Context, l Logger, userID uuid.UUID, ip, userAgent string) {
 	l.Log(ctx, Entry{
 		Action:   ActionPasswordChanged,
@@ -180,9 +183,9 @@ func LogUserRegistered(ctx context.Context, l Logger, userID uuid.UUID, email, i
 }
 
 // LogEmailVerified records a successful email verification (POST
-// /auth/verify-email/confirm). /. No old/new state in
-// details — the AuditLog.UserEmailAtEvent snapshot already captures the
-// address that was just verified.
+// /auth/verify-email/confirm). No old/new state in details — the
+// AuditLog.UserEmailAtEvent snapshot already captures the address that
+// was just verified.
 func LogEmailVerified(ctx context.Context, l Logger, userID uuid.UUID, ip, userAgent string) {
 	l.Log(ctx, Entry{
 		Action:   ActionEmailVerified,
@@ -193,8 +196,8 @@ func LogEmailVerified(ctx context.Context, l Logger, userID uuid.UUID, ip, userA
 }
 
 // LogEmailChangedBeforeVerify records PATCH /auth/email-before-verify.
-// Captures both the OLD email (was: pre-change address) and the NEW email
-// so the forensic trail shows email churn during the unverified window.
+// Captures both the OLD and NEW email so the forensic trail shows email
+// churn during the unverified window.
 func LogEmailChangedBeforeVerify(ctx context.Context, l Logger, userID uuid.UUID, oldEmail, newEmail, ip, userAgent string) {
 	l.Log(ctx, Entry{
 		Action:   ActionEmailChangedBeforeVerify,
@@ -204,10 +207,10 @@ func LogEmailChangedBeforeVerify(ctx context.Context, l Logger, userID uuid.UUID
 	})
 }
 
-// LogConsentRecorded records the user_consents INSERT that runs alongside
-// Register. /. EXTENDS this with the
-// tx-aware sister builder LogConsentRecordedTx below; this fire-and-forget
-// variant is kept for the legacy single-purpose path.
+// LogConsentRecorded is the legacy fire-and-forget Register-flow consent
+// recorder. New paths use LogConsentRecordedTx.
+//
+// See docs/pkg/audit-builders.md.
 func LogConsentRecorded(ctx context.Context, l Logger, userID uuid.UUID, purpose, policyVersion string) {
 	l.Log(ctx, Entry{
 		Action:   ActionConsentRecorded,
@@ -217,21 +220,13 @@ func LogConsentRecorded(ctx context.Context, l Logger, userID uuid.UUID, purpose
 	})
 }
 
-// ---- consent builders -----------------------------
+// ---- consent builders ---------------------------------------------------
 
 // LogConsentRecordedTx records the Register-flow consent INSERT inside
-// the caller's pgx.Tx. Mirrors LogUserSelfDeletedTx — the audit row
-// commits atomically with the user_consents UPSERTs so a rollback wipes
-// both (152-ФЗ forensic invariant ).
+// the caller's pgx.Tx so the audit row commits atomically with the
+// user_consents UPSERTs (152-ФЗ forensic invariant).
 //
-// purposes packs the three slugs ["tos","privacy","pdn"]; policyVersion
-// is the build's current version at write time; policySHA256 may be
-// empty (frontend-computed; not plumbed server-side in v1.4).
-//
-// user_email_at_event is intentionally empty: Register tx doesn't have
-// the user resolver wired (the row doesn't exist yet at audit-write
-// time); for consent re-record + withdrawal the resolver path is also
-// unused because the audit row is tx-scoped not Logger-routed.
+// See docs/pkg/audit-builders.md for tx-aware rationale.
 func LogConsentRecordedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purposes []string, policyVersion, policySHA256, ip, userAgent string) error {
 	d, err := json.Marshal(ConsentRecordedDetails{
 		Purposes:      purposes,
@@ -245,6 +240,8 @@ func LogConsentRecordedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purp
 	}
 	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
 	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
+	// user_email_at_event is empty: Register tx has no user resolver
+	// (the row doesn't exist yet at audit-write time).
 	if _, err := tx.Exec(ctx, q, userID, "", ActionConsentRecorded, "user", d); err != nil {
 		return fmt.Errorf("audit: consent_recorded insert: %w", err)
 	}
@@ -252,8 +249,8 @@ func LogConsentRecordedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purp
 }
 
 // LogConsentReconsentedTx records POST /auth/consents inside the same tx
-// as the UPSERTs. fromVersion is the user's prior version (used for
-// timeline analysis); toVersion is the build's currentVersion.
+// as the UPSERTs. fromVersion is the user's prior version; toVersion is
+// the build's currentVersion.
 func LogConsentReconsentedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purposes []string, fromVersion, toVersion, ip, userAgent string) error {
 	d, err := json.Marshal(ConsentReconsentedDetails{
 		Purposes:    purposes,
@@ -274,9 +271,7 @@ func LogConsentReconsentedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, p
 }
 
 // LogConsentWithdrawnTx records POST /users/me/consents/pdn/withdraw
-// inside the user_consents.withdrawn_at UPDATE tx. purpose is "pdn"
-// (or "tos"/"privacy" if v1.5 ever differentiates; v1.4 always
-// withdraws via /pdn/withdraw and that triggers the deletion bundle).
+// inside the user_consents.withdrawn_at UPDATE tx.
 func LogConsentWithdrawnTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purpose, ip, userAgent string) error {
 	d, err := json.Marshal(ConsentWithdrawnDetails{
 		Purpose:   purpose,
@@ -295,8 +290,7 @@ func LogConsentWithdrawnTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, pur
 }
 
 // LogConsentReconsentRequired is fire-and-forget — emitted from /auth/me
-// when DiffAgainstCurrent reports stale policies. No tx (the request is
-// read-only). Helps support debug why a user is seeing the modal.
+// when DiffAgainstCurrent reports stale policies. Read-only path, no tx.
 func LogConsentReconsentRequired(ctx context.Context, l Logger, userID uuid.UUID, policies []string, currentVersion string) {
 	l.Log(ctx, Entry{
 		Action:   ActionConsentReconsentRequired,
@@ -306,10 +300,9 @@ func LogConsentReconsentRequired(ctx context.Context, l Logger, userID uuid.UUID
 	})
 }
 
-// LogConsentPolicyVersionBumped is fire-and-forget system event with no
-// UserID. Emitted once per environment when the API detects a new
-// build's currentVersion exceeds the most-recent recorded one (Phase
-// 22-03 wires this; this plan only declares the builder).
+// LogConsentPolicyVersionBumped is a fire-and-forget system event with
+// no UserID. Emitted once per environment when the API detects a new
+// build's currentVersion exceeds the most-recent recorded one.
 func LogConsentPolicyVersionBumped(ctx context.Context, l Logger, slug, fromVersion, toVersion, sha256 string) {
 	l.Log(ctx, Entry{
 		Action:   ActionConsentPolicyVersionBumped,
@@ -319,14 +312,12 @@ func LogConsentPolicyVersionBumped(ctx context.Context, l Logger, slug, fromVers
 	})
 }
 
-// ---- account.* (deletion) -----------------------------------
+// ---- account.* (deletion) ----------------------------------------------
 
-// LogDeletionRequested records account.deletion_requested when the user
-// soft-deletes their account via DELETE /users/me. orphanedBusinessIDs is
-// the list of businesses that would have been orphaned by this deletion
-// — currently always empty because the handler returns 409 for any
-// sole-owner case, but the field is recorded for forward-compatibility
-// with v1.5 ownership-transfer.
+// LogDeletionRequested records account.deletion_requested on soft-delete
+// via DELETE /users/me. orphanedBusinessIDs is currently always empty
+// (handler returns 409 for sole-owner) but is recorded for
+// forward-compatibility with ownership-transfer.
 func LogDeletionRequested(ctx context.Context, l Logger, userID uuid.UUID, ip, ua string, orphanedBusinessIDs []uuid.UUID) {
 	l.Log(ctx, Entry{
 		Action:   ActionDeletionRequested,
@@ -349,8 +340,7 @@ func LogDeletionCanceled(ctx context.Context, l Logger, userID uuid.UUID, ip, ua
 
 // LogSoleOwnerBlocked records account.sole_owner_blocked when DELETE
 // /users/me is rejected because the user is the sole OWNER of one or
-// more businesses. Telemetry-grade record of attempts the friendly 409
-// path rejected (T-DEL-02 mitigation visibility).
+// more businesses.
 func LogSoleOwnerBlocked(ctx context.Context, l Logger, userID uuid.UUID, ip, ua string, soleOwnerBusinessIDs []uuid.UUID) {
 	l.Log(ctx, Entry{
 		Action:   ActionSoleOwnerBlocked,
@@ -361,12 +351,12 @@ func LogSoleOwnerBlocked(ctx context.Context, l Logger, userID uuid.UUID, ip, ua
 }
 
 // LogUserSelfDeletedTx is INTENTIONALLY called WITHIN the HardDelete PG
-// TX — caller passes the in-flight pgx.Tx so the audit insert is
-// atomic with the user row deletion. Signature differs from the other
-// builders (which go through the async Logger) because the audit row
-// MUST land before the DELETE so the FK SET NULL from 21-03 has
-// somewhere to land + user_email_at_event preserves the email for
-// 152-ФЗ forensic queries.
+// tx — the audit insert is atomic with the user row deletion. The audit
+// row MUST land before the DELETE so the FK SET NULL has somewhere to
+// land + user_email_at_event preserves the email for 152-ФЗ forensic
+// queries.
+//
+// See docs/pkg/audit-builders.md.
 func LogUserSelfDeletedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, originalEmail string) error {
 	const q = `INSERT INTO audit_logs (id, user_id, user_email_at_event, action, resource, details, created_at)
 	           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`
@@ -378,8 +368,8 @@ func LogUserSelfDeletedTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, orig
 
 // ---- integration builders -----------------------------------------------
 
-// LogIntegrationConnected records a new integration. : details carry
-// only platform + external_id (never token material).
+// LogIntegrationConnected records a new integration. Details carry only
+// platform + external_id — never token material.
 func LogIntegrationConnected(ctx context.Context, l Logger, businessID, actorID, integrationID uuid.UUID, platform, externalID string) {
 	l.Log(ctx, Entry{
 		Action:     ActionIntegrationConnected,
@@ -390,8 +380,8 @@ func LogIntegrationConnected(ctx context.Context, l Logger, businessID, actorID,
 	})
 }
 
-// LogIntegrationDisconnected records an integration being removed. Capture
-// platform BEFORE the row is deleted.
+// LogIntegrationDisconnected records an integration being removed.
+// Capture platform BEFORE the row is deleted.
 func LogIntegrationDisconnected(ctx context.Context, l Logger, businessID, actorID, integrationID uuid.UUID, platform string) {
 	l.Log(ctx, Entry{
 		Action:     ActionIntegrationDisconnected,
@@ -403,7 +393,7 @@ func LogIntegrationDisconnected(ctx context.Context, l Logger, businessID, actor
 }
 
 // LogIntegrationTokenRotated records a background token refresh. UserID
-// is intentionally nil (no user actor — system event).
+// intentionally nil — system event with no user actor.
 func LogIntegrationTokenRotated(ctx context.Context, l Logger, businessID, integrationID uuid.UUID, platform string) {
 	l.Log(ctx, Entry{
 		Action:     ActionIntegrationTokenRotated,
@@ -426,8 +416,8 @@ func LogBusinessCreated(ctx context.Context, l Logger, businessID, ownerUserID u
 	})
 }
 
-// LogBusinessUpdated records a business update. v1 ships without per-field
-// diff (Assumption A3).
+// LogBusinessUpdated records a business update. v1 ships without
+// per-field diff.
 func LogBusinessUpdated(ctx context.Context, l Logger, businessID, actorID uuid.UUID) {
 	l.Log(ctx, Entry{
 		Action:     ActionBusinessUpdated,
