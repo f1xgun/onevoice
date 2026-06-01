@@ -288,11 +288,22 @@ clean: ## Remove build artifacts
 # spec/paths/*.yaml + spec/components.yaml via external $refs).
 # Generated output: services/api/internal/openapi/types.gen.go
 # Config: docs/api/oapi-codegen.yaml
+#
+# Pipeline:
+#   openapi.yaml --[tools/oapi-validate-tags]--> .openapi.validate.yaml --[oapi-codegen]--> types.gen.go
+#
+# The preprocessor walks the spec and injects
+# `x-oapi-codegen-extra-tags: { validate: "..." }` annotations onto every
+# property so the generated structs carry go-playground/validator.v10
+# tags derived from JSON Schema constraints (format/min*/max*/pattern/
+# enum/required). The intermediate spec is a build artifact — see the
+# `.openapi.validate.yaml` entry in .gitignore.
 OAPI_VERSION ?= v2.4.1
 OAPI_BIN     ?= $(shell go env GOPATH)/bin/oapi-codegen
 OAPI_SPEC    := docs/api/spec/openapi.yaml
 OAPI_CONFIG  := docs/api/oapi-codegen.yaml
 OAPI_OUT     := services/api/internal/openapi/types.gen.go
+OAPI_PREP    := docs/api/spec/.openapi.validate.yaml
 
 oapi-install: ## Install oapi-codegen CLI into $$GOPATH/bin (build-time tool, not a runtime dep)
 	@echo "Installing oapi-codegen $(OAPI_VERSION)..."
@@ -301,15 +312,20 @@ oapi-install: ## Install oapi-codegen CLI into $$GOPATH/bin (build-time tool, no
 
 oapi-gen: ## Regenerate types from docs/api/spec/openapi.yaml
 	@command -v $(OAPI_BIN) >/dev/null 2>&1 || { echo "oapi-codegen not found; run 'make oapi-install'"; exit 1; }
-	@echo "Generating $(OAPI_OUT) from $(OAPI_SPEC)..."
-	@$(OAPI_BIN) -config $(OAPI_CONFIG) $(OAPI_SPEC)
+	@echo "Preprocessing $(OAPI_SPEC) -> $(OAPI_PREP) (inject validate tags)..."
+	@go run ./tools/oapi-validate-tags $(OAPI_SPEC) $(OAPI_PREP)
+	@echo "Generating $(OAPI_OUT) from $(OAPI_PREP)..."
+	@$(OAPI_BIN) -config $(OAPI_CONFIG) $(OAPI_PREP)
+	@rm -f $(OAPI_PREP)
 	@echo "Generated $(OAPI_OUT)"
 
 oapi-check: ## Fail if generated types are out of date relative to the spec
 	@command -v $(OAPI_BIN) >/dev/null 2>&1 || { echo "oapi-codegen not found; run 'make oapi-install'"; exit 1; }
 	@backup=$$(mktemp); \
 		cp $(OAPI_OUT) $$backup; \
-		$(OAPI_BIN) -config $(OAPI_CONFIG) $(OAPI_SPEC); \
+		go run ./tools/oapi-validate-tags $(OAPI_SPEC) $(OAPI_PREP); \
+		$(OAPI_BIN) -config $(OAPI_CONFIG) $(OAPI_PREP); \
+		rm -f $(OAPI_PREP); \
 		if ! diff -u $$backup $(OAPI_OUT) >/dev/null; then \
 			echo "drift detected: $(OAPI_OUT) does not match $(OAPI_SPEC)"; \
 			diff -u $$backup $(OAPI_OUT) || true; \
