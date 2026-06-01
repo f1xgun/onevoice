@@ -2,7 +2,7 @@ groups:
   - name: backup
     rules:
       - alert: BackupStale
-        expr: time() - backup_last_success_timestamp > 26*3600
+        expr: (time() - backup_last_success_timestamp > 26*3600) or absent(backup_last_success_timestamp)
         for: 10m
         labels:
           severity: critical
