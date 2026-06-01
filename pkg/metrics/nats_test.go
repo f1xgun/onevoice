@@ -45,6 +45,6 @@ func TestRecordNATSHandler(t *testing.T) {
 	RecordNATSHandler("tasks.vk", "ok", 50*time.Millisecond)
 	RecordNATSHandler("_INBOX.abc", "error", 5*time.Millisecond)
 	if natsHandlerDuration == nil {
-		t.Fatal("natsHandlerDuration not initialised")
+		t.Fatal("natsHandlerDuration not initialized")
 	}
 }

@@ -37,7 +37,7 @@ var (
 	}, []string{"subject", "result"})
 )
 
-// CollapseSubject normalises NATS reply subjects so cardinality stays bounded.
+// CollapseSubject normalizes NATS reply subjects so cardinality stays bounded.
 // _INBOX.<nuid> auto-reply subjects collapse to the literal "_INBOX". All
 // other subjects pass through unchanged.
 func CollapseSubject(subject string) string {

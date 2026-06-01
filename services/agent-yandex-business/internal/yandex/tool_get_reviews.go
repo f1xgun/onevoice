@@ -18,97 +18,99 @@ func (bb *BusinessBrowser) GetReviews(ctx context.Context, limit int) ([]map[str
 	}
 
 	var reviews []map[string]interface{}
-	err := withRetry(ctx, 3, func() error {
-		return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
-			reviewsURL := bb.baseURL() + "/reviews"
-			if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
-				WaitUntil: playwright.WaitUntilStateNetworkidle,
-				Timeout:   playwright.Float(pageNavTimeoutMs),
-			}); err != nil {
-				debugScreenshot(page, "reviews_navigate_error")
-				return fmt.Errorf("navigate to reviews: %w", err)
-			}
-			debugScreenshot(page, "reviews_after_navigate")
-
-			// Close popups that may overlay the page
-			closePopups(page)
-
-			// Session canary — bail immediately if cookies expired
-			if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
-				debugScreenshot(page, "reviews_session_expired")
-				return err
-			}
-			humanDelay()
-
-			// Wait for reviews container with fallback selectors
-			// Selectors ordered: data-testid (stable) > class-based > structural
-			containerSelectors := []string{
-				"[data-testid='reviews-list']",
-				".reviews-list",
-				"[class*='ReviewsList']",
-				"[class*='reviews-list']",
-			}
-			containerFound := false
-			for _, sel := range containerSelectors {
-				err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
-					Timeout: playwright.Float(primaryActionTimeoutMs),
-				})
-				if err == nil {
-					containerFound = true
-					break
+	err := recordStep("getReviews", func() error {
+		return withRetry(ctx, 3, func() error {
+			return bb.pool.WithPage(ctx, bb.businessID, bb.cookies, func(page playwright.Page) error {
+				reviewsURL := bb.baseURL() + "/reviews"
+				if _, err := page.Goto(reviewsURL, playwright.PageGotoOptions{
+					WaitUntil: playwright.WaitUntilStateNetworkidle,
+					Timeout:   playwright.Float(pageNavTimeoutMs),
+				}); err != nil {
+					debugScreenshot(page, "reviews_navigate_error")
+					return fmt.Errorf("navigate to reviews: %w", err)
 				}
-			}
-			if !containerFound {
-				// No reviews container — page loaded but no reviews exist
-				debugScreenshot(page, "reviews_no_container")
-				reviews = []map[string]interface{}{}
-				return nil
-			}
+				debugScreenshot(page, "reviews_after_navigate")
 
-			// Load more reviews if needed (pagination)
-			reviews = make([]map[string]interface{}, 0, limit)
-			for len(reviews) < limit {
-				cards, err := scrapeReviewCards(page, limit-len(reviews))
-				if err != nil {
-					return fmt.Errorf("scrape review cards: %w", err)
-				}
-				reviews = append(reviews, cards...)
+				// Close popups that may overlay the page
+				closePopups(page)
 
-				if len(reviews) >= limit {
-					break
+				// Session canary — bail immediately if cookies expired
+				if err := checkSessionAndEvict(page, bb.baseURL(), bb.pool, bb.businessID); err != nil {
+					debugScreenshot(page, "reviews_session_expired")
+					return err
 				}
+				humanDelay()
 
-				// Try to click "Load more" / "Show more" button
-				loadMoreSelectors := []string{
-					"[data-testid='load-more-reviews']",
-					"button:has-text('Показать ещё')",
-					"button:has-text('Ещё отзывы')",
-					"[class*='LoadMore'] button",
+				// Wait for reviews container with fallback selectors
+				// Selectors ordered: data-testid (stable) > class-based > structural
+				containerSelectors := []string{
+					"[data-testid='reviews-list']",
+					".reviews-list",
+					"[class*='ReviewsList']",
+					"[class*='reviews-list']",
 				}
-				clicked := false
-				for _, sel := range loadMoreSelectors {
-					btn := page.Locator(sel).First()
-					if err := btn.WaitFor(playwright.LocatorWaitForOptions{
-						Timeout: playwright.Float(uiPollTimeoutMs),
-						State:   playwright.WaitForSelectorStateVisible,
-					}); err == nil {
-						if err := btn.Click(); err == nil {
-							clicked = true
-							humanDelay()
-							break
-						}
+				containerFound := false
+				for _, sel := range containerSelectors {
+					err := page.Locator(sel).First().WaitFor(playwright.LocatorWaitForOptions{
+						Timeout: playwright.Float(primaryActionTimeoutMs),
+					})
+					if err == nil {
+						containerFound = true
+						break
 					}
 				}
-				if !clicked {
-					break // No more pages
+				if !containerFound {
+					// No reviews container — page loaded but no reviews exist
+					debugScreenshot(page, "reviews_no_container")
+					reviews = []map[string]interface{}{}
+					return nil
 				}
-			}
 
-			// Trim to limit
-			if len(reviews) > limit {
-				reviews = reviews[:limit]
-			}
-			return nil
+				// Load more reviews if needed (pagination)
+				reviews = make([]map[string]interface{}, 0, limit)
+				for len(reviews) < limit {
+					cards, err := scrapeReviewCards(page, limit-len(reviews))
+					if err != nil {
+						return fmt.Errorf("scrape review cards: %w", err)
+					}
+					reviews = append(reviews, cards...)
+
+					if len(reviews) >= limit {
+						break
+					}
+
+					// Try to click "Load more" / "Show more" button
+					loadMoreSelectors := []string{
+						"[data-testid='load-more-reviews']",
+						"button:has-text('Показать ещё')",
+						"button:has-text('Ещё отзывы')",
+						"[class*='LoadMore'] button",
+					}
+					clicked := false
+					for _, sel := range loadMoreSelectors {
+						btn := page.Locator(sel).First()
+						if err := btn.WaitFor(playwright.LocatorWaitForOptions{
+							Timeout: playwright.Float(uiPollTimeoutMs),
+							State:   playwright.WaitForSelectorStateVisible,
+						}); err == nil {
+							if err := btn.Click(); err == nil {
+								clicked = true
+								humanDelay()
+								break
+							}
+						}
+					}
+					if !clicked {
+						break // No more pages
+					}
+				}
+
+				// Trim to limit
+				if len(reviews) > limit {
+					reviews = reviews[:limit]
+				}
+				return nil
+			})
 		})
 	})
 	return reviews, err

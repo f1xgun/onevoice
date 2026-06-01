@@ -22,3 +22,14 @@ var BrowserPoolEvictions = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "browserpool_evictions_total",
 	Help: "BrowserContext evictions by reason (lru = cap-driven; idle = stale).",
 }, []string{"reason"})
+
+// RPAStepDuration records Yandex.Business RPA helper step duration.
+// step ∈ {listCompanies, getInfo, getReviews, replyReview, createPost,
+// updateHours, updateInfo, uploadPhoto} — bounded set, hard-coded at the
+// call site. result ∈ {ok, error}. See pkg/metrics/README.md for the
+// cardinality allowlist; never derive `step` from runtime variables.
+var RPAStepDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "rpa_step_duration_seconds",
+	Help:    "Yandex.Business RPA step duration in seconds.",
+	Buckets: []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60},
+}, []string{"step", "result"})
