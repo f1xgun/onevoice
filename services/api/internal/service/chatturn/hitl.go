@@ -13,44 +13,26 @@ import (
 	"github.com/f1xgun/onevoice/pkg/sse"
 )
 
-// gateAction enumerates the four outcomes of gateOnRequest. The tri-case
-// implicit-resume + explicit-resume contract is locked — the four constants
-// must NOT collapse to two.
+// gateAction enumerates the four outcomes of gateOnRequest.
+// See docs/services/chatturn-hitl.md.
 type gateAction int
 
 const (
 	// gateFresh — no active message, no resume header → start a new LLM turn.
 	gateFresh gateAction = iota
-	// gateRejoinResume — explicit resume header set, OR implicit rejoin
-	// (active msg + resolving batch) → call streamResume.
+	// gateRejoinResume — explicit resume header or implicit rejoin → call streamResume.
 	gateRejoinResume
-	// gateReemitApproval — pending batch but UI lost the approval card → call
-	// reemitApprovalEvent (no orchestrator roundtrip).
+	// gateReemitApproval — pending batch + UI lost the approval card → reemitApprovalEvent.
 	gateReemitApproval
-	// gateInlineError — orphan in_progress message with no active batch →
-	// call sseInlineError.
+	// gateInlineError — orphan in_progress message with no active batch → sseInlineError.
 	gateInlineError
 )
 
-// sseEventError is the SSE event-type string shared by the orchestrator
-// and the inline-error path.
+// sseEventError is the SSE event-type string for the inline-error path.
 const sseEventError = "error"
 
-// gateOnRequest inspects the conversation's active message + pending batches
-// and returns one of four actions. headerBatchID is the resolved batch id
-// from X-Onevoice-Resume-Batch-Id (or ?batch_id query) — empty means the
-// client did not request explicit resume.
-//
-// Soft-errors (FindByConversationActive failure, ListPendingByConversation
-// failure) fall through to log-and-continue — the legacy chat_proxy.go
-// behavior is preserved so a transient DB blip cannot brick a chat. No
-// terminal error is ever surfaced; only the four-tuple is returned.
-//
-// Returns:
-//   - action — what Run should do next
-//   - activeMsg — the current pending_approval/in_progress Message, or nil
-//   - batch — the pending batch for reemitApprovalEvent (nil otherwise)
-//   - batchID — resolved batch ID for the resume call (empty for fresh)
+// gateOnRequest selects one of four actions from the conversation's active message + pending batches.
+// See docs/services/chatturn-hitl.md.
 func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID string) (gateAction, *domain.Message, *domain.PendingToolCallBatch, string) {
 	activeMsg, activeErr := t.deps.Messages.FindByConversationActive(ctx, conversationID)
 	if activeErr != nil && !errors.Is(activeErr, domain.ErrMessageNotFound) {
@@ -59,8 +41,7 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 		activeMsg = nil
 	}
 
-	// Implicit-resume branch: no header, but an active message exists. Look up
-	// the conversation's active batches and apply the tri-case.
+	// Implicit-resume branch: no header but active message → tri-case over active batches.
 	if activeMsg != nil && headerBatchID == "" {
 		batches, berr := t.deps.Pending.ListPendingByConversation(ctx, conversationID)
 		if berr != nil {
@@ -83,30 +64,23 @@ func (t *Turn) gateOnRequest(ctx context.Context, conversationID, headerBatchID 
 
 		switch {
 		case resolving != nil:
-			// orchestrator is mid-dispatch; rejoin keyed on this batch.ID;
-			// reuse activeMsg.ID so tool_result events extend the same Message.
+			// Reuse activeMsg.ID so tool_result events extend the same Message row.
 			return gateRejoinResume, activeMsg, resolving, resolving.ID
 		case pending != nil:
-			// approval card dropped off the client but the batch is still
-			// pending → re-emit and close.
 			return gateReemitApproval, activeMsg, pending, ""
 		default:
-			// orphan in_progress Message with no active batch.
 			return gateInlineError, activeMsg, nil, ""
 		}
 	}
 
-	// Explicit-resume branch: header AND active message → forward to resume.
 	if activeMsg != nil && headerBatchID != "" {
 		return gateRejoinResume, activeMsg, nil, headerBatchID
 	}
 	return gateFresh, nil, nil, ""
 }
 
-// reemitApprovalEvent writes a tool_approval_required SSE event built from
-// the persisted PendingToolCallBatch. The implicit-resume gate calls this
-// when the client reopens the chat mid-approval (network flap, page reload)
-// and the batch is still in status="pending". No orchestrator roundtrip.
+// reemitApprovalEvent writes a tool_approval_required SSE event from the persisted batch (no orch hop).
+// See docs/services/chatturn-hitl.md.
 func (t *Turn) reemitApprovalEvent(w http.ResponseWriter, batch *domain.PendingToolCallBatch) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -138,9 +112,7 @@ func (t *Turn) reemitApprovalEvent(w http.ResponseWriter, batch *domain.PendingT
 	flusher.Flush()
 }
 
-// sseInlineError writes a single {"type":"error","content":reason} SSE event
-// and closes the stream. Called by the gate's orphan-in-progress case and by
-// the resume guard when the batch is missing or mis-scoped.
+// sseInlineError writes a single error SSE event and closes the stream.
 func (t *Turn) sseInlineError(w http.ResponseWriter, reason string) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -157,21 +129,8 @@ func (t *Turn) sseInlineError(w http.ResponseWriter, reason string) {
 	flusher.Flush()
 }
 
-// streamResume proxies to the orchestrator's resume endpoint and folds
-// tool_result events into the existing assistant Message. On done,
-// transitions Message.Status from pending_approval/in_progress to complete.
-//
-// Returns OutcomeOrchestratorUnavailable when the resume request fails to
-// CONNECT — no SSE bytes have been written yet, so the handler may map this
-// to 502 Bad Gateway. After the upstream connects, all paths write SSE bytes
-// and return OutcomeRejoinedResume (mid-drain failures are logged, not
-// surfaced — the message is persisted as Complete so the conversation does
-// not stay stuck).
-//
-// The SSE plumbing (detached ctx via OrchCtxBudget, correlation propagation,
-// response headers, scanner, drain loop) lives in
-// pkg/orchestratorclient.StreamSSE; this function owns the per-event
-// state-mutation closure and the post-stream persistence decision.
+// streamResume proxies the orchestrator resume SSE and finalizes the assistant Message.
+// See docs/services/chatturn-hitl.md.
 func (t *Turn) streamResume(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -179,29 +138,22 @@ func (t *Turn) streamResume(
 	activeMsg *domain.Message,
 	batchID string,
 ) (TurnOutcome, error) {
-	// Validate the batch exists for this conversation before proxying.
 	batch, err := t.deps.Pending.GetByBatchID(ctx, batchID)
 	if err != nil || batch == nil || batch.ConversationID != conversationID {
 		t.sseInlineError(w, "no_active_approval_for_conversation")
 		return OutcomeInlineError, nil
 	}
 
-	// Work on a local copy so we flush the full final state in one Update.
-	// msg.Content is intentionally not cleared — we preserve the Content
-	// builder semantics and start from whatever was persisted at pause time.
+	// Local copy so we flush full final state in one Update; preserve Content from pause-time.
 	msg := *activeMsg
 	var postText strings.Builder
 	postText.WriteString(msg.Content)
 
-	// Index existing tool calls by call_id so we can update Status on result.
 	callIdx := make(map[string]int, len(msg.ToolCalls))
 	for i, tc := range msg.ToolCalls {
 		callIdx[tc.ID] = i
 	}
 
-	// terminated → orchestrator emitted "done" or "error"; msg is already
-	// persisted as Complete. fireAutoTitle → terminated via "done" (not
-	// "error"), so the auto-title fanout should run after StreamSSE returns.
 	var terminated, fireAutoTitle bool
 
 	streamErr := t.deps.Orch.StreamSSE(ctx, orchestratorclient.StreamSSERequest{
@@ -212,9 +164,7 @@ func (t *Turn) streamResume(
 		OrchCtxBudget:  streamBudget,
 		OnEvent: func(ev sse.Event) {
 			if terminated {
-				// Defensive: ignore any frames the upstream emits after a
-				// terminal done/error. Should not happen in production but
-				// keeps the persist decision idempotent.
+				// Defensive: ignore frames after terminal done/error → persist decision stays idempotent.
 				return
 			}
 			switch ev.Type {
@@ -245,13 +195,7 @@ func (t *Turn) streamResume(
 					msg.ToolCalls[idx].Status = domain.ToolCallStatusRejected
 				}
 			case sseEventError:
-				// Resume failed mid-stream (LLM error, ctx cancel, max-
-				// iterations cap). The error event is already forwarded to
-				// the client; here we MUST transition the assistant Message
-				// off pending_approval/in_progress, otherwise every
-				// subsequent POST /chat hits the gate's
-				// "turn_already_in_progress" branch and the conversation is
-				// permanently stuck.
+				// MUST flip off pending_approval/in_progress here, else the conversation is bricked.
 				msg.Status, msg.Content = domain.MessageStatusComplete, postText.String()
 				t.persistResumeDone(ctx, &msg)
 				terminated = true
@@ -264,16 +208,12 @@ func (t *Turn) streamResume(
 		},
 	})
 
-	// Connect failure: StreamSSE returned a "stream resume:" wrapped error
-	// AND we never processed any events. No bytes were written to w, so the
-	// handler can still emit a 502 JSON body.
+	// Connect failure: no bytes written to w yet → handler may emit a 502 JSON body.
 	if streamErr != nil && !terminated && strings.Contains(streamErr.Error(), "stream resume:") {
 		slog.ErrorContext(ctx, "chatturn: orchestrator resume request failed", "error", streamErr)
 		return OutcomeOrchestratorUnavailable, fmt.Errorf("chatturn: orchestrator resume: %w", streamErr)
 	}
-	// Mid-drain failure (scanner error, flusher missing): log and fall through
-	// to the partial-persist branch below — bytes were already written, the
-	// downstream HTTP response is committed.
+	// Mid-drain failure: response is committed; log and fall through to partial-persist.
 	if streamErr != nil {
 		slog.WarnContext(ctx, "chatturn: resume stream ended with error",
 			"error", streamErr, "conversation_id", conversationID)
@@ -286,10 +226,7 @@ func (t *Turn) streamResume(
 		return OutcomeRejoinedResume, nil
 	}
 
-	// Stream ended without EventDone — transient network drop, orchestrator
-	// closed the connection after an unhandled event, or any other non-terminal
-	// exit. Transition the message off pending_approval/in_progress here;
-	// leaving it active permanently bricks the conversation.
+	// Non-terminal exit (transient drop, unhandled event): force Complete to avoid bricking the conversation.
 	msg.Content = postText.String()
 	if msg.Status == domain.MessageStatusPendingApproval || msg.Status == domain.MessageStatusInProgress {
 		msg.Status = domain.MessageStatusComplete
@@ -303,9 +240,8 @@ func (t *Turn) streamResume(
 	return OutcomeRejoinedResume, nil
 }
 
-// persistResumeDone writes the assistant message at resume-path "done". Runs
-// on a fresh persistContext (NOT the request ctx) because the request ctx is
-// canceled when the SSE stream closes.
+// persistResumeDone writes the assistant message at resume terminal events.
+// Uses persistContext (NOT request ctx — that ctx is canceled when the SSE stream closes).
 func (t *Turn) persistResumeDone(parentCtx context.Context, msg *domain.Message) {
 	saveCtx, cancel := t.persistContext(parentCtx)
 	defer cancel()
