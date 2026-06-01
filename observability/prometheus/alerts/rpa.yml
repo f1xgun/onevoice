@@ -1,0 +1,11 @@
+groups:
+  - name: rpa
+    rules:
+      - alert: BrowserPoolEvictionRate
+        expr: sum(rate(browserpool_evictions_total[5m])) * 60 > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "BrowserPool evictions > 1/min — pool may be undersized"
+          description: "Consider raising YANDEX_POOL_MAX env. See docs/runbook/observability.md."

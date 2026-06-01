@@ -1,0 +1,11 @@
+groups:
+  - name: fleet
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"api|orchestrator|agent-.+"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Prometheus failed to scrape {{ $labels.job }} for 2m. Check container health and tailnet reachability."

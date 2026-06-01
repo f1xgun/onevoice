@@ -1,0 +1,18 @@
+groups:
+  - name: dbpool
+    rules:
+      # Alert fires on MEAN acquire duration. pgxpool.Stat() does not expose a
+      # histogram, so true p99 is not derivable without additional acquire-hook
+      # instrumentation. Mean > 500ms is a sufficient operator signal.
+      - alert: PgxpoolHighAcquireDuration
+        expr: |
+          rate(pgxpool_acquire_duration_seconds_total[5m])
+            /
+          rate(pgxpool_acquire_count_total[5m])
+            > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "pgxpool mean acquire > 500ms — pool may be exhausted"
+          description: "Investigate slow queries or undersized pool. See docs/runbook/observability.md."
