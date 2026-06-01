@@ -10,7 +10,7 @@ receivers:
         parse_mode: ""
         send_resolved: true
         message: |
-          {{ if eq .CommonLabels.severity "critical" }}🔴 CRITICAL{{ else }}🟡 WARNING{{ end }}
+          {{ if eq .Status "resolved" }}✅ RESOLVED{{ else if eq .CommonLabels.severity "critical" }}🔴 CRITICAL{{ else }}🟡 WARNING{{ end }}
           {{ range .Alerts -}}
           {{ .Labels.alertname }}
           {{ .Annotations.summary }}
