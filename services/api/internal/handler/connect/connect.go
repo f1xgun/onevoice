@@ -23,6 +23,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/pkg/vkapi"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -118,13 +119,6 @@ func (h *ConnectHandler) telegramAPIBase() string {
 	return defaultTelegramBotAPIBase
 }
 
-// ErrorResponse mirrors handler.ErrorResponse — duplicated locally to
-// avoid an import cycle once the entry handler in package handler imports
-// connect.
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
 // writeJSON is a connect-local copy of the package-level helper in
 // services/api/internal/handler/response.go. Duplicated here to avoid an
 // import cycle once package handler imports connect.
@@ -138,9 +132,10 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	}
 }
 
-// writeJSONError writes a JSON error response.
+// writeJSONError writes a JSON error response using the spec-owned
+// openapi.ErrorResponse envelope.
 func writeJSONError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, ErrorResponse{Error: message})
+	writeJSON(w, status, openapi.ErrorResponse{Error: message})
 }
 
 // writeJSONErrorKey resolves `key` against pkg/i18n using the locale on
@@ -155,5 +150,5 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 //
 //nolint:unparam // status currently 400 only; widening planned in Phase C2/C3.
 func writeJSONErrorKey(w http.ResponseWriter, r *http.Request, status int, key string, args ...any) {
-	writeJSON(w, status, ErrorResponse{Error: i18n.Tr(r.Context(), key, args...)})
+	writeJSON(w, status, openapi.ErrorResponse{Error: i18n.Tr(r.Context(), key, args...)})
 }

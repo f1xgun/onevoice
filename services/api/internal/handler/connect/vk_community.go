@@ -14,18 +14,9 @@ import (
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
-
-// connectVKRequest is the request body for ConnectVK. GroupID is optional —
-// when omitted the handler asks VK for the community the token is bound to
-// (community access tokens know their own scope). Pasting from the VK admin
-// panel is the canonical flow: open Управление → Работа с API → Создать ключ
-// (no app association, scopes wall + manage minimum), then paste the value.
-type connectVKRequest struct {
-	GroupID     string `json:"group_id,omitempty"`
-	AccessToken string `json:"access_token"`
-}
 
 // ConnectVK validates a pasted community access token and stores it as a VK
 // integration (JWT required). Two calling shapes are supported:
@@ -53,7 +44,7 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req connectVKRequest
+	var req openapi.ConnectVKRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -68,7 +59,11 @@ func (h *ConnectHandler) ConnectVK(w http.ResponseWriter, r *http.Request) {
 	// supplied (legacy / explicit picker), pass it; otherwise rely on the
 	// community-token-knows-its-group behavior. Either way the response
 	// gives us the canonical numeric id, name, screen_name, and avatar.
-	group, vkErr, transportErr := h.probeVKCommunityToken(r.Context(), req.AccessToken, req.GroupID)
+	var groupID string
+	if req.GroupId != nil {
+		groupID = *req.GroupId
+	}
+	group, vkErr, transportErr := h.probeVKCommunityToken(r.Context(), req.AccessToken, groupID)
 	if transportErr != nil {
 		// Domain-classified sentinel — the resolver step before the API
 		// call failed. Surface as 400 with a localized template.
