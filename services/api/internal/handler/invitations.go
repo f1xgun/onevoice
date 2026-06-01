@@ -23,6 +23,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
 
@@ -96,11 +97,6 @@ func NewInvitationsHandler(
 
 // --- Request / response types ---
 
-type createInvitationRequest struct {
-	RoleID    uuid.UUID `json:"role_id"`
-	ExpiresIn int       `json:"expires_in,omitempty"` // seconds; range [3600, 2592000]
-}
-
 type createInvitationResponse struct {
 	ID        uuid.UUID `json:"id"`
 	Token     string    `json:"token"` // raw token — returned ONCE, only on create
@@ -129,11 +125,6 @@ type previewResponse struct {
 	RoleID       uuid.UUID `json:"role_id"`
 	RoleName     string    `json:"role_name"`
 	ExpiresAt    string    `json:"expires_at"`
-}
-
-type acceptResponse struct {
-	BusinessID uuid.UUID `json:"business_id"`
-	RoleID     uuid.UUID `json:"role_id"`
 }
 
 // parseInvitationIDParam extracts {inviteId} from chi URL params; writes 400 on failure.
@@ -168,18 +159,18 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req createInvitationRequest
+	var req openapi.CreateInvitationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_body")
 		return
 	}
-	if req.RoleID == uuid.Nil {
+	if req.RoleId == uuid.Nil {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed")
 		return
 	}
-	expiresIn := req.ExpiresIn
-	if expiresIn == 0 {
-		expiresIn = invitationDefaultExpirySeconds
+	expiresIn := invitationDefaultExpirySeconds
+	if req.ExpiresIn != nil {
+		expiresIn = *req.ExpiresIn
 	}
 	if expiresIn < invitationMinExpirySeconds || expiresIn > invitationMaxExpirySeconds {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed")
@@ -187,7 +178,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Cross-tenant defense: role must be a system role OR belong to this business.
-	role, err := h.roleRepo.GetByID(r.Context(), req.RoleID)
+	role, err := h.roleRepo.GetByID(r.Context(), req.RoleId)
 	if err != nil {
 		if errors.Is(err, domain.ErrRoleNotFound) {
 			writeJSONError(w, http.StatusBadRequest, "invalid_role_id")
@@ -245,7 +236,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	now := h.now().UTC()
 	inv := &domain.Invitation{
 		BusinessID: bc.BusinessID,
-		RoleID:     req.RoleID,
+		RoleID:     req.RoleId,
 		TokenHash:  hash,
 		ExpiresAt:  now.Add(time.Duration(expiresIn) * time.Second),
 		CreatedBy:  bc.UserID,
@@ -519,8 +510,8 @@ func (h *InvitationsHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		"invitation_id", inv.ID,
 	)
 
-	writeJSON(w, http.StatusOK, acceptResponse{
-		BusinessID: inv.BusinessID,
-		RoleID:     inv.RoleID,
+	writeJSON(w, http.StatusOK, openapi.AcceptInvitationResponse{
+		BusinessId: inv.BusinessID,
+		RoleId:     inv.RoleID,
 	})
 }
