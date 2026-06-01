@@ -1,3 +1,7 @@
+// Package config loads the API service's env-driven configuration.
+//
+// See docs/api/config.md for the full field reference, env var defaults,
+// ranges, and fail-loud parsing policy.
 package config
 
 import (
@@ -13,35 +17,24 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
 )
 
-// Configuration constants. These back default values for environment-driven
-// knobs and validation thresholds. Named here (rather than inlined) so the
-// linter doesn't flag them as magic numbers and so callers see semantic intent.
-//
-// Cryptographic key lengths are sourced from their owning packages:
-// - JWT secret minimum: services/api/internal/auth.JWTSecretMinLen
-// - Encryption key length: pkg/crypto.AES256KeyLen
-//
-// keeping a single source of truth across the API service.
+// HTTP server + orchestrator timeout defaults.
 const (
-	// HTTP server timeout defaults.
 	defaultHTTPReadTimeout       = 15 * time.Second
 	defaultHTTPReadHeaderTimeout = 10 * time.Second
 	defaultHTTPIdleTimeout       = 60 * time.Second
 	defaultOrchestratorFetchTO   = 10 * time.Second
+)
 
-	// Lifecycle.
+// Lifecycle + misc defaults.
+const (
 	defaultShutdownTimeout = 30 * time.Second
+	envBoolTrue            = "true"
+	defaultSSEMaxPerUser   = 3
+)
 
-	// String literal used for env-var "true" comparisons.
-	envBoolTrue = "true"
-
-	// Per-user SSE concurrency cap default. 3 in-flight streams per user
-	// is generous for the free-beta single-pod deploy while still capping
-	// a single account from saturating orchestrator goroutines.
-	defaultSSEMaxPerUser = 3
-
-	// PostgreSQL pool sizing defaults. Sized for free-beta single-pod /
-	// ~10-20 concurrent chats; operators raise via PG_* env at scale.
+// PostgreSQL pool sizing defaults. Sized for free-beta single-pod /
+// ~10-20 concurrent chats; operators raise via PG_* env at scale.
+const (
 	defaultPGMaxConns              = 25
 	defaultPGMinConns              = 2
 	defaultPGMaxConnLifetime       = 30 * time.Minute
@@ -50,8 +43,8 @@ const (
 	defaultPGMaxConnLifetimeJitter = 3 * time.Minute
 )
 
-// Default endpoint URLs for env-driven config. These are dev-mode
-// fallbacks; production deployments must set the corresponding env vars.
+// Default endpoint URLs — dev-mode fallbacks; production deployments must
+// set the corresponding env vars.
 const (
 	defaultVKRedirectURI     = "http://localhost/api/v1/oauth/vk/callback"
 	defaultYandexRedirectURI = "http://localhost/api/v1/oauth/yandex_business/callback"
@@ -62,15 +55,14 @@ const (
 )
 
 // SelfHostedEndpoint holds configuration for one self-hosted LLM inference
-// endpoint. Lifted verbatim from
-// services/orchestrator/internal/config/config.go so the API-side titler
-// reuses the same wiring shape.
+// endpoint. Mirrors services/orchestrator/internal/config/config.go.
 type SelfHostedEndpoint struct {
 	URL    string
 	Model  string
 	APIKey string // optional
 }
 
+// Config is the API service's runtime configuration.
 type Config struct {
 	Port          string
 	PostgresHost  string
@@ -86,129 +78,72 @@ type Config struct {
 	EncryptionKey string
 	SecureCookies bool
 
-	// OAuth credentials
 	VKClientID     string
 	VKClientSecret string
 	VKRedirectURI  string
-	// VKServiceKey is the service access token from the VK Mini-App that
-	// backs wall.getComments / groups.getById. It's intentionally separate
-	// from VKClientID (a VK ID app used only for user auth).
+	// VKServiceKey backs wall.getComments / groups.getById. Intentionally
+	// separate from VKClientID (the VK ID app used only for user auth).
 	VKServiceKey       string
 	YandexClientID     string
 	YandexClientSecret string
 	YandexRedirectURI  string
 	TelegramBotToken   string
 
-	// Google OAuth
 	GoogleClientID     string
 	GoogleClientSecret string
 	GoogleRedirectURI  string
 
-	// Internal server
 	InternalPort string
 
-	// Orchestrator
 	OrchestratorURL string
 
-	// NATS (optional — review sync is disabled if empty)
-	NATSUrl string
+	NATSUrl string // empty disables review sync
 
-	// Review sync
 	ReviewSyncInterval int // minutes, 0 = disabled
 
-	// AI review-draft generation. When ReviewDraftEnabled is true, every
-	// successful sync pass triggers an LLM-backed pass over pending reviews
-	// without a draft. Disabled by default to avoid silent LLM spend on
-	// upgrade. ReviewDraftMaxExamples caps the few-shot context window;
-	// ReviewDraftBatchLimit caps how many drafts one sync pass produces.
 	ReviewDraftEnabled     bool
 	ReviewDraftMaxExamples int
 	ReviewDraftBatchLimit  int
 
-	// Object storage (MinIO / S3) for user uploads
 	S3Endpoint        string
 	S3AccessKey       string
 	S3SecretKey       string
 	S3Bucket          string
 	S3UseSSL          bool
-	S3PublicURLPrefix string // prefix used in client-facing URLs, e.g. "/media"
+	S3PublicURLPrefix string
 
 	PublicURL string
 
-	// CORS — comma-separated list of allowed origins, parsed from
-	// CORS_ALLOWED_ORIGINS. Defaults to a single localhost:3000 entry for
-	// dev parity. In production this MUST be set to the public frontend
-	// origin (e.g. https://app.example.com); a missing env var leaves the
-	// API reachable only from localhost.
 	CORSAllowedOrigins []string
 
-	// HTTP server / orchestrator timeouts. All optional; defaults preserve
-	// the values that were hardcoded in services/api/cmd/main.go. Knob purpose:
-	// HTTPReadTimeout       — http.Server.ReadTimeout for the public API.
-	// HTTPReadHeaderTimeout — http.Server.ReadHeaderTimeout for the internal mTLS server.
-	// HTTPIdleTimeout       — http.Server.IdleTimeout for keepalive sockets.
-	// OrchestratorFetchTimeout — per-request budget on /internal/tools/* and
-	// token-refresh fan-out toward Google/etc.
 	HTTPReadTimeout          time.Duration
 	HTTPReadHeaderTimeout    time.Duration
 	HTTPIdleTimeout          time.Duration
 	OrchestratorFetchTimeout time.Duration
 
-	// Per-endpoint per-minute request budgets. Operators tune these via
-	// RATE_LIMIT_* env vars when the service sees abnormal traffic shape
-	// (e.g., a customer integration polling /chat).
 	RateLimitRegister int
 	RateLimitLogin    int
 	RateLimitChat     int
 	RateLimitHITL     int
-	RateLimitConsents int // per-minute budget for /auth/consents + /users/me/consents/pdn/withdraw
+	RateLimitConsents int
 
-	// Shutdown
 	ShutdownTimeout time.Duration
 
-	// transactional email infrastructure.
-	// UnisenderAPIKey: empty = NoopSender (dev/local); set = UnisenderSender.
-	// Operators: see docs/runbook-email-dns.md for the DKIM/SPF/DMARC
-	// pre-req that gates production sends.
 	UnisenderAPIKey    string
-	UnisenderFromEmail string        // default "noreply@onevoice.app"
-	UnisenderFromName  string        // default "OneVoice"
-	OutboxPollInterval time.Duration // default 5s
-	OutboxMaxAttempts  int           // default 5
+	UnisenderFromEmail string
+	UnisenderFromName  string
+	OutboxPollInterval time.Duration
+	OutboxMaxAttempts  int
 
-	// Legal entity (152-ФЗ Art. 14 data controller).,.
-	// When any of these is a placeholder, /legal/* renders fallback copy
-	// and the footer emits console.warn (must not crash). Phase
-	// 22-03 launch checklist verifies non-placeholder values in
-	// production. Frontend reads the mirrored NEXT_PUBLIC_LEGAL_* vars
-	// (see .env.example) so the data-controller block renders SSR-safe.
+	// Legal entity (152-ФЗ Art. 14 data controller). Placeholder defaults
+	// render fallback /legal/* copy; pre-launch checklist verifies real values.
 	LegalEntityName string
 	LegalINN        string
 	LegalAddress    string
 	LegalEmailPDN   string
 
-	// HealthCheckTimeout caps any single dep ping inside /health/ready.
-	// Checks run concurrently (sync.WaitGroup in pkg/health.ReadyHandler),
-	// so total wall-clock budget = HealthCheckTimeout (max, not Σ deps ×
-	// timeout). Default 2s preserves k8s readinessProbe (5s default) headroom.
 	HealthCheckTimeout time.Duration
 
-	// Lockout + SmartCaptcha + trusted-proxy knobs.
-	//
-	// LockoutFailThresholdCaptcha — counter at which TierCaptcha kicks in.
-	// LockoutFailThresholdLock    — counter at which TierLocked kicks in.
-	// LockoutDuration             — Redis TTL and lock window (also the
-	// retry_after_seconds value on 423 responses).
-	// SmartCaptchaSiteKey         — public key for the JS widget; exposed to
-	// the frontend via NEXT_PUBLIC_SMARTCAPTCHA_SITE_KEY.
-	// SmartCaptchaSecretKey       — server-side validation secret. Empty = Noop
-	// verifier (captcha disabled).
-	// TrustedProxyCIDRs           — comma-separated CIDR list controlling which
-	// X-Forwarded-For sources are trusted.
-	// Empty falls back to Yandex Cloud LB defaults.
-	// SmartCaptchaFailOpen        — on ErrCaptchaTransient (Yandex unreachable):
-	// true → log+proceed (safer default);
-	// false → reject as 403.
 	LockoutFailThresholdCaptcha int
 	LockoutFailThresholdLock    int
 	LockoutDuration             time.Duration
@@ -217,43 +152,21 @@ type Config struct {
 	TrustedProxyCIDRs           string
 	SmartCaptchaFailOpen        bool
 
-	// Auto-titler. TitlerModel falls back to LLMModel when unset;
-	// when both are unset the titler is disabled (graceful no-op —
-	// API must boot cleanly without any LLM env).
 	LLMModel    string
 	LLMTier     string
 	TitlerModel string
 
-	// LLM provider API keys. Lifted verbatim from
-	// services/orchestrator/internal/config/config.go so the API-side
-	// titler Router constructs over the same provider set as the orchestrator.
-	// At least one must be set when TitlerModel != "" — otherwise the titler
-	// is left disabled (graceful no-op) and the trigger gate becomes a
-	// no-op. The API service itself does NOT fail-fast on missing keys
-	// (different from orchestrator, which requires LLM_MODEL).
 	OpenRouterAPIKey    string
 	OpenAIAPIKey        string
 	AnthropicAPIKey     string
 	SelfHostedEndpoints []SelfHostedEndpoint
 
-	// Cost-guard knobs. Same env vars + semantics as the orchestrator config
-	// so the titler / draft-reply Router (api-side) honors the same daily-
-	// spend gate and Redis-down policy. Validation lives at boot in
-	// services/api/internal/wire.
 	FreeTierDailySpendUSD        float64
 	RedisDownPolicy              string
 	LocalFallbackRequestsPerHour int
 
-	// SSEMaxPerUser caps in-flight SSE streams per user (0 disables the
-	// gate). The Redis-down decision is governed by the same
-	// RedisDownPolicy + LocalFallbackRequestsPerHour pair as the LLM
-	// rate limiter so one operator knob spans both gates.
 	SSEMaxPerUser int
 
-	// PostgreSQL pool sizing. Defaults sized for free-beta single-pod;
-	// operators raise via PG_* env vars at scale. config.Load enforces
-	// 0 < PGMaxConns <= math.MaxInt32 and 0 <= PGMinConns <= PGMaxConns
-	// so wire/databases.go int→int32 conversions are gosec G115 safe.
 	PGMaxConns              int
 	PGMinConns              int
 	PGMaxConnLifetime       time.Duration
@@ -262,6 +175,7 @@ type Config struct {
 	PGMaxConnLifetimeJitter time.Duration
 }
 
+// Load reads env vars and returns a validated *Config or a fail-loud error.
 func Load() (*Config, error) {
 	shutdownTimeout := defaultShutdownTimeout
 	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
@@ -324,40 +238,32 @@ func Load() (*Config, error) {
 		RateLimitLogin:    getEnvInt("RATE_LIMIT_LOGIN", 10),
 		RateLimitChat:     getEnvInt("RATE_LIMIT_CHAT", 10),
 		RateLimitHITL:     getEnvInt("RATE_LIMIT_HITL", 10),
-		RateLimitConsents: getEnvInt("RATE_LIMIT_CONSENTS", 10), // 10/min/user is generous (genuine retry budget, blocks UPSERT thrash)
+		RateLimitConsents: getEnvInt("RATE_LIMIT_CONSENTS", 10),
 
 		ShutdownTimeout: shutdownTimeout,
 
-		// transactional email infrastructure.
 		UnisenderAPIKey:    os.Getenv("UNISENDER_API_KEY"),
 		UnisenderFromEmail: getEnv("UNISENDER_FROM_EMAIL", "noreply@onevoice.app"),
 		UnisenderFromName:  getEnv("UNISENDER_FROM_NAME", "OneVoice"),
 		OutboxPollInterval: getEnvDuration("OUTBOX_POLL_INTERVAL", 5*time.Second), //nolint:mnd // env-driven default
 		OutboxMaxAttempts:  getEnvInt("OUTBOX_MAX_ATTEMPTS", 5),                   //nolint:mnd // env-driven default
 
-		// Legal entity (152-ФЗ Art. 14 data controller).,
-		// Defaults render the «[Юридическое лицо — будет
-		// обновлено]» / «—» stubs so the API boots without operator
-		// configuration; pre-launch checklist catches placeholders.
+		// placeholder defaults so the API boots without operator config
 		LegalEntityName: getEnv("LEGAL_ENTITY_NAME", "[Юридическое лицо — будет обновлено]"),
 		LegalINN:        os.Getenv("LEGAL_INN"),
 		LegalAddress:    os.Getenv("LEGAL_ADDRESS"),
 		LegalEmailPDN:   getEnv("LEGAL_EMAIL_PDN", "—"),
 
-		// Per-dep readiness check timeout. Never trust the operator's bytes;
-		// getEnvDuration already falls back on parse errors, and a zero or
-		// negative explicit value would be rejected by the defensive clamp
-		// below.
 		HealthCheckTimeout: getEnvDuration("HEALTH_CHECK_TIMEOUT", 2*time.Second),
 	}
 
+	// defensive clamp — getEnvDuration falls back on parse errors; a zero or
+	// negative explicit value would slip past otherwise.
 	if cfg.HealthCheckTimeout <= 0 {
 		cfg.HealthCheckTimeout = 2 * time.Second
 	}
 
-	// Lockout + SmartCaptcha + trusted-proxy env loading. Defaults match
-	// pkg/lockout.Default* constants so they stay in sync; the clamp below
-	// also defends against operator typos (negative threshold etc.).
+	// defaults match pkg/lockout.Default* constants so they stay in sync.
 	const (
 		defaultLockoutCaptcha  = 4
 		defaultLockoutLock     = 10
@@ -366,6 +272,7 @@ func Load() (*Config, error) {
 	cfg.LockoutFailThresholdCaptcha = getEnvInt("LOCKOUT_FAIL_THRESHOLD_CAPTCHA", defaultLockoutCaptcha)
 	cfg.LockoutFailThresholdLock = getEnvInt("LOCKOUT_FAIL_THRESHOLD_LOCK", defaultLockoutLock)
 	cfg.LockoutDuration = getEnvDuration("LOCKOUT_DURATION", defaultLockoutDuration)
+	// defend against operator typo (negative threshold etc.)
 	if cfg.LockoutFailThresholdCaptcha <= 0 {
 		cfg.LockoutFailThresholdCaptcha = defaultLockoutCaptcha
 	}
@@ -378,14 +285,12 @@ func Load() (*Config, error) {
 	cfg.SmartCaptchaSiteKey = os.Getenv("SMARTCAPTCHA_SITE_KEY")
 	cfg.SmartCaptchaSecretKey = os.Getenv("SMARTCAPTCHA_SECRET_KEY")
 	cfg.TrustedProxyCIDRs = os.Getenv("TRUSTED_PROXY_CIDRS")
-	// SMARTCAPTCHA_FAIL_OPEN defaults to "true" — fail-open during Yandex
-	// outages so legitimate users keep logging in.
+	// fail-open during Yandex outages so legitimate users keep logging in
 	cfg.SmartCaptchaFailOpen = getEnv("SMARTCAPTCHA_FAIL_OPEN", envBoolTrue) == envBoolTrue
 
-	// Auto-titler env loading. Mirrors
-	// services/orchestrator/internal/config/config.go but does NOT fail-fast
-	// on missing LLMModel — graceful disable mandated so the API service
-	// boots in dev environments with no LLM env configured at all.
+	// Auto-titler: API does NOT fail-fast on missing LLMModel (different
+	// from orchestrator) — graceful disable so the API boots in dev with no
+	// LLM env at all.
 	cfg.LLMModel = os.Getenv("LLM_MODEL")
 	cfg.LLMTier = os.Getenv("LLM_TIER")
 	if cfg.LLMTier == "" {
@@ -413,6 +318,7 @@ func Load() (*Config, error) {
 	}
 	cfg.LocalFallbackRequestsPerHour = 2000
 	if v := os.Getenv("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR"); v != "" {
+		// strconv.Atoi fails loud — non-integer is misconfiguration
 		n, perr := strconv.Atoi(v)
 		if perr != nil {
 			return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be a positive integer, got %q: %w", v, perr)
@@ -423,9 +329,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("LLM_LOCAL_FALLBACK_REQUESTS_PER_HOUR must be > 0 when LLM_RATELIMIT_ON_REDIS_DOWN=local_fallback")
 	}
 
-	// Per-user SSE concurrency cap. 0 disables the gate entirely.
-	// Fail-loud on non-integer input — silent default coercion has
-	// bitten cost-guard wiring before.
+	// SSE_MAX_PER_USER: fail loud on non-integer — silent default coercion
+	// has bitten cost-guard wiring before. 0 disables the gate entirely.
 	cfg.SSEMaxPerUser = defaultSSEMaxPerUser
 	if v := os.Getenv("SSE_MAX_PER_USER"); v != "" {
 		n, perr := strconv.Atoi(v)
@@ -438,10 +343,8 @@ func Load() (*Config, error) {
 		cfg.SSEMaxPerUser = n
 	}
 
-	// PostgreSQL pool sizing. Defaults sized for free-beta single-pod;
-	// operators tune via PG_* env. Parse + validate fail loud — silent
-	// default coercion on a typo would silently hide pool starvation in
-	// production.
+	// PG_* parse + validate fail loud — silent default coercion on a typo
+	// would silently hide pool starvation in production.
 	pgMaxConns, err := parseIntEnv("PG_MAX_CONNS", defaultPGMaxConns)
 	if err != nil {
 		return nil, err
@@ -481,7 +384,7 @@ func Load() (*Config, error) {
 	if cfg.PGMaxConns <= 0 {
 		return nil, fmt.Errorf("PG_MAX_CONNS must be > 0, got %d", cfg.PGMaxConns)
 	}
-	// Upper bound matches pgxpool.Config.MaxConns (int32). Bounding here
+	// upper bound matches pgxpool.Config.MaxConns (int32) — bounding here
 	// lets wire/databases.go convert without a gosec G115 false positive.
 	if cfg.PGMaxConns > math.MaxInt32 {
 		return nil, fmt.Errorf("PG_MAX_CONNS must be <= %d, got %d", math.MaxInt32, cfg.PGMaxConns)
@@ -493,7 +396,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("PG_MIN_CONNS=%d must be <= PG_MAX_CONNS=%d", cfg.PGMinConns, cfg.PGMaxConns)
 	}
 
-	// Validate required fields
 	if cfg.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required")
 	}
@@ -510,6 +412,7 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+// getEnv returns the env var or defaultValue when unset / empty.
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -517,6 +420,8 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+// getEnvInt returns the env var parsed as int or defaultValue on miss /
+// parse error (silent fallback).
 func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if n, err := strconv.Atoi(value); err == nil {
@@ -526,9 +431,9 @@ func getEnvInt(key string, defaultValue int) int {
 	return defaultValue
 }
 
-// getEnvDuration parses a Go-style duration env var (e.g. "30s", "5m").
-// Invalid or missing values fall back to the supplied default so an
-// operator typo can't crash startup of an otherwise-healthy service.
+// getEnvDuration returns the env var parsed as Go duration or defaultValue
+// on miss / parse error (silent fallback so a typo can't crash startup of
+// an otherwise-healthy service).
 func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
 		if d, err := time.ParseDuration(value); err == nil {
@@ -538,9 +443,8 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
-// getEnvSlice parses a comma-separated env var into a trimmed []string.
-// Empty entries (e.g. "a,,b") are dropped; a fully blank value falls back
-// to the supplied default (typically a dev-friendly localhost entry).
+// getEnvSlice splits a comma-separated env var into a trimmed []string.
+// Empty entries are dropped; a fully blank value returns defaultValue.
 func getEnvSlice(key string, defaultValue []string) []string {
 	value := os.Getenv(key)
 	if value == "" {
@@ -559,13 +463,9 @@ func getEnvSlice(key string, defaultValue []string) []string {
 	return out
 }
 
-// parseIndexedEndpoints scans SELF_HOSTED_N_URL / _MODEL / _API_KEY env vars
-// for N = 0, 1, 2, … stopping when SELF_HOSTED_N_URL is missing.
-// Entries without MODEL are skipped.
-//
-// Lifted verbatim from
-// services/orchestrator/internal/config/config.go so byte-identical
-// semantics apply on the API side.
+// parseIndexedEndpoints scans SELF_HOSTED_N_URL / _MODEL / _API_KEY env
+// vars for N = 0, 1, 2, … stopping when SELF_HOSTED_N_URL is missing.
+// Entries without MODEL are skipped. Mirrors orchestrator config.
 func parseIndexedEndpoints() []SelfHostedEndpoint {
 	var result []SelfHostedEndpoint
 	for i := 0; ; i++ {
@@ -588,13 +488,13 @@ func parseIndexedEndpoints() []SelfHostedEndpoint {
 }
 
 // parseIntEnv reads an integer env var with fail-loud parsing. Empty
-// returns the default; non-empty must parse to an int or Load() aborts
-// boot with a forensic error message. Mirrors parseDurationEnv.
+// returns the default; non-empty must parse or Load() aborts boot.
 func parseIntEnv(key string, defaultValue int) (int, error) {
 	value := os.Getenv(key)
 	if value == "" {
 		return defaultValue, nil
 	}
+	// strconv.Atoi fails loud — non-integer is misconfiguration
 	n, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, fmt.Errorf("%s must be an integer, got %q: %w", key, value, err)
@@ -603,13 +503,14 @@ func parseIntEnv(key string, defaultValue int) (int, error) {
 }
 
 // parseDurationEnv reads a Go-duration env var with fail-loud parsing.
-// Empty returns the default; non-empty must parse via time.ParseDuration
-// or Load() aborts boot with a forensic error message. Mirrors parseIntEnv.
+// Empty returns the default; non-empty must parse via time.ParseDuration or
+// Load() aborts boot.
 func parseDurationEnv(key string, defaultValue time.Duration) (time.Duration, error) {
 	value := os.Getenv(key)
 	if value == "" {
 		return defaultValue, nil
 	}
+	// time.ParseDuration fails loud — bad duration is misconfiguration
 	d, err := time.ParseDuration(value)
 	if err != nil {
 		return 0, fmt.Errorf("%s must be a Go duration, got %q: %w", key, value, err)

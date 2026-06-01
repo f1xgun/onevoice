@@ -20,12 +20,10 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
-// init wires the SoleOwnerExtractor hook so handler.UserDeletionHandler
-// can return the 409 body with the businesses payload without importing
-// the service package directly (which would force the service package
-// to re-import a handler-side definition). The hook runs errors.As
-// against *service.ErrSoleOwnerBusinesses and remaps to the public
-// handler.SoleOwnerEntry shape.
+// init wires handler.SoleOwnerExtractor so UserDeletionHandler can return
+// the 409 body with the businesses payload without importing service
+// directly (which would force service to re-import a handler-side
+// definition). See docs/api/wire-handlers.md.
 func init() {
 	handler.SoleOwnerExtractor = func(err error) ([]handler.SoleOwnerEntry, bool) {
 		var soleErr *service.ErrSoleOwnerBusinesses
@@ -40,18 +38,9 @@ func init() {
 	}
 }
 
-// NewChatProxyHandler consumes the shared *orchestratorclient.Client built
-// once in BuildServices (svcs.OrchClient) — there is no separate
-// (orchestratorURL, httpClient) plumbing.
-
 // Handlers constructs every HTTP handler for the API service and returns
-// them aggregated in *router.Handlers ready for router.Setup.
-//
-// Each handler constructor signature is locked by the existing handler
-// package — this function is wiring only, no business logic.
-//
-// OAuthHandler (true OAuth code-flow) lives in handler/oauth; ConnectHandler
-// (paste-flow) lives in handler/connect. Both are constructed here.
+// them aggregated in *router.Handlers ready for router.Setup. See
+// docs/api/wire-handlers.md for the construction order + setter rationale.
 func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*router.Handlers, error) {
 	oauthHandler := oauth.NewOAuthHandler(svcs.OAuth, svcs.Integration, svcs.Business, oauth.OAuthConfig{
 		VKClientID:         cfg.VKClientID,
@@ -69,9 +58,7 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		oauthHandler.WithAgentTaskPublisher(svcs.AgentTaskPublisher)
 	}
 
-	// Paste-flow handler (Telegram + VK community access token).
-	// Narrow ConnectConfig — paste-flow doesn't need the OAuth client
-	// credentials.
+	// paste-flow only — narrow ConnectConfig (no OAuth client credentials).
 	connectHandler := connect.NewConnectHandler(
 		svcs.Integration,
 		svcs.Business,
@@ -84,47 +71,37 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 
 	internalTokenHandler := handler.NewInternalTokenHandler(svcs.Integration)
 
-	// Internal billing write handler — POST /internal/v1/billing/usage_logs.
-	// repos.Billing (Postgres-backed BillingRepository) satisfies
-	// handler.BillingService via the LogUsage method.
+	// repos.Billing satisfies handler.BillingService via LogUsage.
 	internalBillingHandler := handler.NewInternalBillingHandler(repos.Billing, nil)
 
-	// AuthHandler gains audit + jwtSecret args so it
-	// can emit auth.* audit events and extract userID from refresh-token
-	// claims before Redis invalidation during Logout.
+	// AuthHandler takes audit + jwtSecret so it can emit auth.* audit events
+	// and extract userID from refresh-token claims before Redis invalidation
+	// during Logout.
 	authHandler, err := handler.NewAuthHandler(svcs.User, cfg.SecureCookies, svcs.AuditLogger, []byte(cfg.JWTSecret))
 	if err != nil {
 		return nil, fmt.Errorf("wire: create auth handler: %w", err)
 	}
-	// inject password-reset service via setter to keep
-	// NewAuthHandler's signature stable across the rest of the codebase.
+	// setter pattern keeps NewAuthHandler's signature stable across phases
 	if svcs.PasswordReset != nil {
 		authHandler.SetPasswordResetService(svcs.PasswordReset)
 	}
-	// inject email-verification service via setter.
 	if svcs.EmailVerification != nil {
 		authHandler.SetEmailVerificationService(svcs.EmailVerification)
 	}
-	// /auth/me must surface accountDeletion state
-	// for soft-deleted users so they can render the grace banner +
-	// click restore. Wire the deletion-aware GetByIDIncludingDeleted
-	// pathway through the existing UserResetExt adapter.
+	// /auth/me must surface deletion state via GetByIDIncludingDeleted so
+	// soft-deleted users can render the grace banner + click restore.
 	if repos.UserResetExt != nil {
 		authHandler.SetMeUserExtraGetter(func(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 			return repos.UserResetExt.GetByIDIncludingDeleted(ctx, userID)
 		})
 	}
-	// Install lockout + SmartCaptcha verifier. Both dependencies are
-	// nil-safe inside AuthHandler.Login. The router mounts
-	// middleware.LockoutMiddleware on /auth/login using the same
-	// svcs.Lockout instance.
+	// lockout + SmartCaptcha verifier — both nil-safe inside AuthHandler.Login
 	authHandler.WithLockout(svcs.Lockout, svcs.SmartCaptcha, cfg.SmartCaptchaFailOpen)
 	businessHandler, err := handler.NewBusinessHandler(svcs.Business, svcs.PlatformSync, svcs.ObjectStorage)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create business handler: %w", err)
 	}
-	// + svcs.AuditLogger for integration.disconnected
-	// audit events from the handler-level Delete path.
+	// + svcs.AuditLogger for integration.disconnected audit events
 	integrationHandler, err := handler.NewIntegrationHandler(svcs.Integration, svcs.Business, svcs.AuditLogger)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create integration handler: %w", err)
@@ -142,23 +119,20 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create agent task handler: %w", err)
 	}
 
-	// Projects — three-line wiring through the project service already
-	// constructed in wire.Services.
 	projectHandler, err := handler.NewProjectHandler(svcs.Project)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create project handler: %w", err)
 	}
 
-	// Conversation handler depends on business + project services for
-	// create-conversation scoping; the /move endpoint and GET /messages
-	// view are owned by svcs.Conversation.
+	// depends on business + project services for create-conversation
+	// scoping; svcs.Conversation owns the /move endpoint + GET /messages view.
 	conversationHandler, err := handler.NewConversationHandler(repos.Conversation, repos.Message, svcs.Business, svcs.Project, svcs.Conversation)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create conversation handler: %w", err)
 	}
 
-	// Chat proxy enriches each /chat/{id} request with the conversation's
-	// project_* fields — requires projectService and conversationRepo.
+	// chat proxy needs projectService + conversationRepo for the project_*
+	// enrichment on every /chat/{id} request.
 	chatProxyHandler := handler.NewChatProxyHandler(
 		svcs.Business,
 		svcs.Integration,
@@ -170,16 +144,12 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		repos.Review,
 		repos.AgentTask,
 		svcs.TaskHub,
-		svcs.OrchClient, // single shared orchestrator client.
-		svcs.Titler,     // optional auto-titler; nil when titling is disabled.
+		svcs.OrchClient, // single shared orchestrator client
+		svcs.Titler,     // nil when titling disabled
 	)
 
-	// Per-user SSE concurrency cap. The Policy instance is the single
-	// shared source of truth for the Redis-down decision — future LLM
-	// rate-limiter wiring can compose the same instance so one operator
-	// knob governs both gates. SSE_MAX_PER_USER=0 disables the cap.
-	// Tests construct without a Redis client (h.Redis == nil), so skip
-	// the gate when Redis is unavailable rather than failing closed.
+	// Per-user SSE concurrency cap. SSE_MAX_PER_USER=0 disables. Tests
+	// construct without Redis (h.Redis == nil) — skip rather than fail closed.
 	if h.Redis != nil && cfg.SSEMaxPerUser > 0 {
 		policy, perr := ratelimit.PolicyFromEnv(cfg.RedisDownPolicy, cfg.LocalFallbackRequestsPerHour)
 		if perr != nil {
@@ -194,29 +164,23 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create hitl handler: %w", err)
 	}
 
-	// Wire the shared ToolsRegistryCache into the business + project
-	// handlers so PUT /business/{id}/tool-approvals and
-	// PUT /projects/{id} can validate approval-overrides keys against the
-	// live orchestrator registry before persisting.
+	// shared ToolsRegistryCache so PUT /tool-approvals + PUT /projects/{id}
+	// validate approval-overrides against the live orchestrator registry.
 	businessHandler.SetToolsCache(svcs.ToolsCache)
 	projectHandler.SetToolsCache(svcs.ToolsCache)
 
-	// TitlerHandler for POST /conversations/{id}/regenerate-title.
-	// titler may be nil here (graceful disable); the handler returns 503
-	// in that case. conversationRepo + messageRepo are required (panic-on-nil).
+	// svcs.Titler may be nil (graceful disable) — handler returns 503.
+	// conversationRepo + messageRepo are required (panic-on-nil).
 	titlerHandler := handler.NewTitlerHandler(svcs.Titler, repos.Conversation, repos.Message)
 
-	// Search handler. Constructed with the searcher (built in wire.Services;
-	// readiness flag already flipped). Business scoping comes from the
-	// RequireBusinessAccess middleware via BusinessContext in handler.
+	// readiness flag already flipped by wire.BuildServices
 	searchHandler, err := handler.NewSearchHandler(svcs.Searcher)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create search handler: %w", err)
 	}
 
-	// Platform registry — drives the public GET /api/v1/platforms endpoint.
-	// Availability is derived from cfg so platforms missing required
-	// credentials are surfaced as oauth_not_configured to the frontend.
+	// availability derived from cfg so platforms missing credentials surface
+	// as oauth_not_configured to the frontend.
 	platformsHandler := handler.NewPlatformsHandler(handler.PlatformAvailability{
 		Telegram:       cfg.TelegramBotToken != "",
 		VK:             cfg.VKClientID != "" && cfg.VKClientSecret != "",
@@ -224,17 +188,14 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		GoogleBusiness: cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "",
 	})
 
-	// v2.0 RBAC handlers — members, roles, permissions registry.
-	// MembersHandler gains svcs.AuditLogger so
-	// rbac.role_granted + rbac.member_removed audit events fire AFTER tx.Commit.
+	// + svcs.AuditLogger for rbac.role_granted + rbac.member_removed events
 	membersHandler, err := handler.NewMembersHandler(repos.BusinessMembership, repos.Role, repos.User, h.PG, svcs.AuthzCache, svcs.AuditLogger)
 	if err != nil {
 		return nil, fmt.Errorf("wire: create members handler: %w", err)
 	}
-	// extended signature: + membership repo (Delete fanout target
-	// lookup) + pool (RepeatableRead tx for Create/Update/Delete) + invalidator
-	// (InvalidateRole AFTER commit + InvalidateMember fanout per reassigned user).
-	// + svcs.AuditLogger for rbac.role_* audit events.
+	// + membership repo (Delete fanout target lookup) + pool (RepeatableRead
+	// tx) + invalidator (InvalidateRole after commit + InvalidateMember
+	// fanout per reassigned user) + AuditLogger (rbac.role_* events).
 	rolesHandler, err := handler.NewRolesHandler(
 		repos.Role,
 		repos.BusinessMembership,
@@ -246,9 +207,8 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create roles handler: %w", err)
 	}
 
-	// v2.0 RBAC: invitations handler — 5 endpoints (3 business-scoped,
-	// 1 auth-only token, 1 public token). See plan 03-04 / 03-05.
-	// + svcs.AuditLogger for rbac.invitation_* audit events.
+	// 5 endpoints (3 business-scoped, 1 auth-only token, 1 public token).
+	// + svcs.AuditLogger for rbac.invitation_* events.
 	invitationsHandler, err := handler.NewInvitationsHandler(
 		repos.Invitation,
 		repos.BusinessMembership,
@@ -263,57 +223,43 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		return nil, fmt.Errorf("wire: create invitations handler: %w", err)
 	}
 
-	// audit-log read handler. repos.AuditLog is
-	// typed as the domain interface (Insert/ListByBusiness/DeleteOlderThan)
-	// which does NOT include ListByBusinessWithActors — that method
-	// returns a repository-package AuditLogRow type that intentionally
-	// stays out of the domain layer. Type-assert here to bridge: the
-	// underlying value IS the concrete *auditLogRepository, which
-	// satisfies handler.AuditLogLister. The assertion is checked (panic
-	// at boot if Repos ever swaps in a non-concrete impl) rather than the
-	// silent comma-ok form because a missing reader at request time would
-	// be a 500 with no telemetry — the boot panic surfaces wiring drift
-	// loud and early.
+	// repos.AuditLog is the domain interface (Insert/ListByBusiness/
+	// DeleteOlderThan) which does NOT include ListByBusinessWithActors.
+	// Checked type-assert — panic at boot on wiring drift rather than 500
+	// silently at request time.
 	auditLister, ok := repos.AuditLog.(handler.AuditLogLister)
 	if !ok {
 		return nil, fmt.Errorf("wire: AuditLog repo does not satisfy handler.AuditLogLister (impl drift)")
 	}
 	auditLogHandler := handler.NewAuditLogHandler(auditLister)
 
-	// DELETE /users/me + POST /users/me/restore.
-	// The handler needs the AccountDeletionService + the CORS-allowed
-	// origins for the Restore endpoint's Origin-header CSRF check
-	// (T-DEL-10). When svcs.AccountDeletion is nil (legacy/test deploys),
-	// we register a nil pointer so route registration knows to skip.
+	// cfg.CORSAllowedOrigins backs the Restore endpoint's Origin-header CSRF
+	// check. Nil-typed when svcs.AccountDeletion is nil so route registration
+	// can skip.
 	var userDeletionHandler *handler.UserDeletionHandler
 	if svcs.AccountDeletion != nil {
 		userDeletionHandler = handler.NewUserDeletionHandler(svcs.AccountDeletion, cfg.CORSAllowedOrigins)
 	}
 
-	// /auth/consents + /users/me/consents +
-	// /users/me/consents/pdn/withdraw. The handler needs the
-	// ConsentService for write paths + the UserConsents repo for the
-	// GET list path. CORS-allowed origins back the Origin-header
-	// CSRF check on the two write endpoints.
+	// cfg.CORSAllowedOrigins backs the Origin-header CSRF check on the two
+	// write endpoints (/auth/consents + /users/me/consents/pdn/withdraw).
 	var consentsHandler *handler.ConsentsHandler
 	if svcs.Consent != nil {
 		consentsHandler = handler.NewConsentsHandler(svcs.Consent, repos.UserConsents, cfg.CORSAllowedOrigins)
 	}
-	// inject the ConsentDiffer into the auth handler so /auth/me
-	// populates requiresReconsent. Always wired when svcs.Consent is set.
+	// /auth/me populates requiresReconsent via the ConsentDiffer
 	if svcs.Consent != nil {
 		authHandler.SetConsentDiffer(svcs.Consent)
 	}
 
 	return &router.Handlers{
-		Auth:          authHandler,
-		Business:      businessHandler,
-		Integration:   integrationHandler,
-		Conversation:  conversationHandler,
-		OAuth:         oauthHandler,
-		Connect:       connectHandler,
-		InternalToken: internalTokenHandler,
-		// Internal billing write path.
+		Auth:            authHandler,
+		Business:        businessHandler,
+		Integration:     integrationHandler,
+		Conversation:    conversationHandler,
+		OAuth:           oauthHandler,
+		Connect:         connectHandler,
+		InternalToken:   internalTokenHandler,
 		InternalBilling: internalBillingHandler,
 		ChatProxy:       chatProxyHandler,
 		Review:          reviewHandler,
@@ -324,21 +270,13 @@ func Handlers(cfg *config.Config, svcs *Services, repos *Repos, h *DBHandles) (*
 		Titler:          titlerHandler,
 		Search:          searchHandler,
 		Platforms:       platformsHandler,
-		// v2.0 RBAC: static permission registry endpoint.
-		Permissions: handler.NewPermissionsHandler(),
-		// v2.0 RBAC: member + role management.
-		Members: membersHandler,
-		Roles:   rolesHandler,
-		// v2.0 RBAC: invitation lifecycle (Create/ListPending/Revoke/Preview/Accept).
-		Invitations: invitationsHandler,
-		// audit-log read handler. Bound to
-		// GET /businesses/{id}/audit-logs via router.Setup.
-		AuditLog: auditLogHandler,
-		// DELETE /users/me + POST /users/me/restore.
-		UserDeletion: userDeletionHandler,
-		// /auth/consents + /users/me/consents +../pdn/withdraw.
-		Consents: consentsHandler,
-		// Telemetry handler is zero-dep; constructed inline.
-		Telemetry: &handler.TelemetryHandler{},
+		Permissions:     handler.NewPermissionsHandler(),
+		Members:         membersHandler,
+		Roles:           rolesHandler,
+		Invitations:     invitationsHandler,
+		AuditLog:        auditLogHandler,
+		UserDeletion:    userDeletionHandler,
+		Consents:        consentsHandler,
+		Telemetry:       &handler.TelemetryHandler{}, // zero-dep
 	}, nil
 }
