@@ -13,6 +13,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // Constants for post pagination
@@ -42,10 +43,48 @@ func NewPostHandler(postService PostService) (*PostHandler, error) {
 	}, nil
 }
 
-// PostListResponse represents the post list response
-type PostListResponse struct {
-	Posts []domain.Post `json:"posts"`
-	Total int           `json:"total"`
+// domainPostToOpenAPI maps the internal domain.Post to the spec-owned
+// openapi.Post wire shape. BusinessID parses string→UUID (corrupt rows
+// fall back to uuid.Nil and are logged so we don't 500 the entire list).
+// scheduledAt/publishedAt switch from absent (omitempty) to explicit null
+// to match the spec's nullable: true contract.
+func domainPostToOpenAPI(p domain.Post) openapi.Post {
+	businessID, err := uuid.Parse(p.BusinessID)
+	if err != nil {
+		slog.Warn("post BusinessID not a valid UUID", "postID", p.ID, "raw", p.BusinessID, "error", err)
+		businessID = uuid.Nil
+	}
+
+	out := openapi.Post{
+		Id:          p.ID,
+		BusinessId:  businessID,
+		Content:     p.Content,
+		Status:      p.Status,
+		CreatedAt:   p.CreatedAt,
+		ScheduledAt: p.ScheduledAt,
+		PublishedAt: p.PublishedAt,
+	}
+	if p.MediaURLs != nil {
+		mu := p.MediaURLs
+		out.MediaUrls = &mu
+	}
+	if p.PlatformResults != nil {
+		pr := make(map[string]openapi.PostPlatformResult, len(p.PlatformResults))
+		for k, v := range p.PlatformResults {
+			r := openapi.PostPlatformResult{
+				PostId: v.PostID,
+				Url:    v.URL,
+				Status: v.Status,
+			}
+			if v.Error != "" {
+				e := v.Error
+				r.Error = &e
+			}
+			pr[k] = r
+		}
+		out.PlatformResults = &pr
+	}
+	return out
 }
 
 // ListPosts handles GET /api/v1/posts
@@ -95,8 +134,13 @@ func (h *PostHandler) ListPosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, PostListResponse{
-		Posts: posts,
+	out := make([]openapi.Post, 0, len(posts))
+	for _, p := range posts {
+		out = append(out, domainPostToOpenAPI(p))
+	}
+
+	writeJSON(w, http.StatusOK, openapi.PostListResponse{
+		Posts: out,
 		Total: total,
 	})
 }
@@ -131,5 +175,5 @@ func (h *PostHandler) GetPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, post)
+	writeJSON(w, http.StatusOK, domainPostToOpenAPI(*post))
 }

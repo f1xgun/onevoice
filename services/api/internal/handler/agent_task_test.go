@@ -13,6 +13,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -60,7 +61,7 @@ func TestListTasks_Success(t *testing.T) {
 	h.ListTasks(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	var resp TaskListResponse
+	var resp openapi.AgentTaskListResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	assert.Len(t, resp.Tasks, 2)
 	assert.Equal(t, 2, resp.Total)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // mockReviewService implements ReviewService for tests.
@@ -88,7 +89,7 @@ func TestListReviews_Success(t *testing.T) {
 	h.ListReviews(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	var resp ReviewListResponse
+	var resp openapi.ReviewListResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	assert.Len(t, resp.Reviews, 1)
 	assert.Equal(t, 5, resp.Reviews[0].Rating)
