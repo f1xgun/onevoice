@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
@@ -88,20 +88,26 @@ func NewMembersHandler(
 	}, nil
 }
 
-type memberResponseItem struct {
-	User struct {
-		ID    uuid.UUID `json:"id"`
-		Email string    `json:"email"`
-	} `json:"user"`
-	Role struct {
-		ID          uuid.UUID `json:"id"`
-		Name        string    `json:"name"`
-		Permissions []string  `json:"permissions"`
-	} `json:"role"`
-	Status    string     `json:"status"`
-	JoinedAt  string     `json:"joined_at"`
-	InvitedBy *uuid.UUID `json:"invited_by"`
-	InvitedAt *string    `json:"invited_at"`
+// domainMemberToOpenAPI maps the (membership, user, role) domain triple into
+// the spec-side Member wire shape. JoinedAt / InvitedAt are normalized to UTC
+// so JSON time-zone is stable across hosts (oapi-codegen emits time.Time which
+// serializes as RFC3339Nano in UTC).
+func domainMemberToOpenAPI(m domain.BusinessMember, user *domain.User, role *domain.Role) openapi.Member {
+	out := openapi.Member{
+		Status:    m.Status,
+		JoinedAt:  m.JoinedAt.UTC(),
+		InvitedBy: m.InvitedBy,
+	}
+	out.User.Id = user.ID
+	out.User.Email = openapi_types.Email(user.Email)
+	out.Role.Id = role.ID
+	out.Role.Name = role.Name
+	out.Role.Permissions = role.Permissions
+	if m.InvitedAt != nil {
+		t := m.InvitedAt.UTC()
+		out.InvitedAt = &t
+	}
+	return out
 }
 
 // ListMembers handles GET /api/v1/businesses/{id}/members.
@@ -123,7 +129,7 @@ func (h *MembersHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := make([]memberResponseItem, 0, len(members))
+	out := make([]openapi.Member, 0, len(members))
 	for _, m := range members {
 		user, err := h.userRepo.GetByID(r.Context(), m.UserID)
 		if err != nil {
@@ -135,21 +141,7 @@ func (h *MembersHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 			writeAuthzInvariantError(r.Context(), w, "list_members.role_lookup", err)
 			return
 		}
-		item := memberResponseItem{
-			Status:    m.Status,
-			JoinedAt:  m.JoinedAt.UTC().Format(time.RFC3339),
-			InvitedBy: m.InvitedBy,
-		}
-		item.User.ID = user.ID
-		item.User.Email = user.Email
-		item.Role.ID = role.ID
-		item.Role.Name = role.Name
-		item.Role.Permissions = role.Permissions
-		if m.InvitedAt != nil {
-			s := m.InvitedAt.UTC().Format(time.RFC3339)
-			item.InvitedAt = &s
-		}
-		out = append(out, item)
+		out = append(out, domainMemberToOpenAPI(m, user, role))
 	}
 
 	writeJSON(w, http.StatusOK, out)
