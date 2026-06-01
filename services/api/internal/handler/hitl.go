@@ -17,6 +17,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/tools"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -53,9 +54,32 @@ func NewHITLHandler(
 	}, nil
 }
 
-// resolveRequest is the JSON body shape for POST /resolve.
-type resolveRequest struct {
-	Decisions []service.DecisionInput `json:"decisions"`
+// resolveRequest is the spec-owned wire shape for POST /resolve. The
+// handler accepts openapi.HITLResolveRequest (decisions: HITLDecisionInput[])
+// and the local toServiceDecisions mapper translates each row into the
+// internal service.DecisionInput (string-action + value-typed maps).
+type resolveRequest = openapi.HITLResolveRequest
+
+// toServiceDecisions converts the spec-side decision rows to the internal
+// service.DecisionInput slice. EditedArgs and RejectReason are pointer-typed
+// in the spec (omitempty); the service layer expects value-typed fields with
+// nil maps / empty strings standing in for "absent".
+func toServiceDecisions(rows []openapi.HITLDecisionInput) []service.DecisionInput {
+	out := make([]service.DecisionInput, 0, len(rows))
+	for _, d := range rows {
+		di := service.DecisionInput{
+			ID:     d.Id,
+			Action: string(d.Action),
+		}
+		if d.EditedArgs != nil {
+			di.EditedArgs = *d.EditedArgs
+		}
+		if d.RejectReason != nil {
+			di.RejectReason = *d.RejectReason
+		}
+		out = append(out, di)
+	}
+	return out
 }
 
 // ResolvePendingToolCalls handles POST /conversations/{id}/pending-tool-calls/{batch_id}/resolve.
@@ -90,7 +114,7 @@ func (h *HITLHandler) ResolvePendingToolCalls(w http.ResponseWriter, r *http.Req
 		BatchID:         batchID,
 		ActorUserID:     bc.UserID.String(),
 		ActorBusinessID: bc.BusinessID.String(),
-		Decisions:       req.Decisions,
+		Decisions:       toServiceDecisions(req.Decisions),
 	}
 
 	result, err := h.hitlService.Resolve(r.Context(), in)

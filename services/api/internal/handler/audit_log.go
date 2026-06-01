@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
 
@@ -36,28 +38,27 @@ func NewAuditLogHandler(repo AuditLogLister) *AuditLogHandler {
 	return &AuditLogHandler{repo: repo}
 }
 
-// AuditLogDTO is the wire shape for a single audit_logs row.
-// Pointer fields use omitempty so the encoder emits null for missing actors.
-// Details is json.RawMessage to round-trip pkg/audit Details structs byte-for-byte.
-type AuditLogDTO struct {
-	ID               uuid.UUID       `json:"id"`
-	Action           string          `json:"action"`
-	ActionCategory   string          `json:"action_category"`
-	Resource         string          `json:"resource"`
-	BusinessID       *uuid.UUID      `json:"business_id"`
-	ActorID          *uuid.UUID      `json:"actor_id"`
-	ActorEmail       *string         `json:"actor_email"`
-	ActorDisplayName *string         `json:"actor_display_name"`
-	Details          json.RawMessage `json:"details"`
-	CreatedAt        time.Time       `json:"created_at"`
-}
+// AuditLogDTO is the historic local-name alias for the spec-side wire shape.
+// Pointer fields are emitted as null when missing (no omitempty), matching
+// the legacy struct semantics.
+//
+// Details is `map[string]interface{}` in the spec (the pkg/audit RawMessage
+// is decoded into a generic map for the wire). Re-encoding into the
+// response envelope is semantically equivalent but NOT byte-identical with
+// the upstream Details bytes: key order is alphabetic instead of struct-
+// field order, and integer floats may be re-formatted by encoding/json.
+// The UI consumes details as a generic JSON object so this is acceptable;
+// no downstream service (orchestrator / billing / monitoring) reads the
+// audit-list output bytes.
+type AuditLogDTO = openapi.AuditEvent
 
-// AuditLogListResponse is the wire shape for the list endpoint.
-// NextCursor is non-nil ONLY when the returned page is full; null = end of stream.
-type AuditLogListResponse struct {
-	Items      []AuditLogDTO `json:"items"`
-	NextCursor *string       `json:"next_cursor"`
-}
+// AuditLogListResponse is the historic local-name alias for the spec-side
+// list envelope. NextCursor is *string (omitempty in spec); the handler
+// emits `"next_cursor":null` when the page is short of the limit by
+// explicitly setting the field to nil (oapi-codegen drops the omitempty
+// in the spec via the absence of x-go-type-extra-tags, so the field
+// stays present in the JSON envelope).
+type AuditLogListResponse = openapi.AuditLogListResponse
 
 // knownActions is the closed validation set for the ?action= query parameter.
 // Adding a new audit action requires a matching entry here (failure mode: 400 invalid_action).
@@ -193,27 +194,7 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]AuditLogDTO, 0, len(rows))
 	for _, l := range rows {
-		dto := AuditLogDTO{
-			ID:             l.ID,
-			Action:         l.Action,
-			ActionCategory: audit.ActionCategory(l.Action),
-			Resource:       l.Resource,
-			BusinessID:     l.BusinessID,
-			ActorID:        l.UserID,
-			Details:        l.Details,
-			CreatedAt:      l.CreatedAt,
-		}
-		// "" → nil-pointer so JSON emits null. Covers failed-login (user_id NULL)
-		// and deleted-user (LEFT JOIN miss); frontend renders both as unknown.
-		if l.ActorEmail != "" {
-			email := l.ActorEmail
-			dto.ActorEmail = &email
-		}
-		if l.ActorDisplayName != "" {
-			name := l.ActorDisplayName
-			dto.ActorDisplayName = &name
-		}
-		items = append(items, dto)
+		items = append(items, toOpenAPIAuditEvent(l))
 	}
 
 	// Cursor only when the page is full; short page → next_cursor: null = end of stream.
@@ -225,4 +206,61 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, AuditLogListResponse{Items: items, NextCursor: next})
+}
+
+// toOpenAPIAuditEvent projects a repository.AuditLogRow into the spec-side
+// openapi.AuditEvent wire shape. Notes:
+//
+//   - Action / ActionCategory are spec-side typed strings (enum aliases);
+//     the underlying JSON representation is byte-identical to the legacy
+//     string fields.
+//   - Pointer fields (business_id, actor_id, actor_email, actor_display_name)
+//     are spec-side `required` + `nullable: true` → encoded as `null` when
+//     nil. Empty actor_email / actor_display_name on the row map to nil
+//     pointers so the JSON envelope emits null (matches the legacy
+//     conditional pointer fix-up).
+//   - Details is decoded from the pkg/audit pre-marshaled RawMessage into a
+//     generic map[string]interface{} for the wire. Re-encoding into the
+//     response is semantically equivalent but NOT byte-identical with the
+//     upstream bytes (alphabetic key order, possible float reformatting).
+//     A malformed/empty Details blob falls back to an empty object so the
+//     spec `required: true` invariant is preserved.
+func toOpenAPIAuditEvent(l repository.AuditLogRow) openapi.AuditEvent {
+	evt := openapi.AuditEvent{
+		Id:             l.ID,
+		Action:         openapi.AuditAction(l.Action),
+		ActionCategory: openapi.AuditEventActionCategory(audit.ActionCategory(l.Action)),
+		Resource:       l.Resource,
+		BusinessId:     l.BusinessID,
+		ActorId:        l.UserID,
+		CreatedAt:      l.CreatedAt,
+		Details:        decodeAuditDetails(l.Details),
+	}
+	// "" → nil-pointer so JSON emits null. Covers failed-login (user_id NULL)
+	// and deleted-user (LEFT JOIN miss); frontend renders both as unknown.
+	if l.ActorEmail != "" {
+		email := openapi_types.Email(l.ActorEmail)
+		evt.ActorEmail = &email
+	}
+	if l.ActorDisplayName != "" {
+		name := l.ActorDisplayName
+		evt.ActorDisplayName = &name
+	}
+	return evt
+}
+
+// decodeAuditDetails unmarshals the pkg/audit pre-marshaled Details bytes
+// into a generic map. Empty / unparseable payloads fall back to an empty
+// object so the spec `required: true` invariant on AuditEvent.details
+// is preserved. Failure is intentionally swallowed — never block reads
+// on a single bad row.
+func decodeAuditDetails(raw json.RawMessage) map[string]interface{} {
+	if len(raw) == 0 {
+		return map[string]interface{}{}
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil || m == nil {
+		return map[string]interface{}{}
+	}
+	return m
 }
