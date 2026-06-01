@@ -1,39 +1,28 @@
 package domain
 
-// PlatformStatus is the runtime status of an integration platform as exposed
-// through the public /api/v1/platforms endpoint. The frontend uses it to decide
-// whether to render a connect button, a "coming soon" placeholder, or a
-// disabled card with a "not configured" hint.
+// Platform registry exposed via GET /api/v1/platforms. IDs are wire-stable and
+// match a2a.AgentID for platforms that have an agent. See
+// docs/domain/platforms.md for the full catalog and adding-a-platform steps.
+
+// PlatformStatus is the runtime status of an integration platform.
 type PlatformStatus string
 
 const (
-	// PlatformStatusActive — agent is implemented and OAuth credentials (or
-	// equivalent: bot token, service key) are present in the API config.
+	// PlatformStatusActive — agent implemented and credentials present.
 	PlatformStatusActive PlatformStatus = "active"
-	// PlatformStatusComingSoon — declared in the registry but held back from
-	// MVP. May lack an agent (2gis, avito, whatsapp), or be implemented but
-	// intentionally hidden until the product launch is approved
-	// (google_business — agent exists, marketing/support not ready).
+	// PlatformStatusComingSoon — declared in the registry but held back from MVP.
 	PlatformStatusComingSoon PlatformStatus = "coming_soon"
-	// PlatformStatusOAuthNotConfigured — agent exists but the deployment is
-	// missing required credentials. The frontend hides connect buttons for
-	// these to avoid leading the user into a broken flow.
+	// PlatformStatusOAuthNotConfigured — agent exists but credentials are missing.
 	PlatformStatusOAuthNotConfigured PlatformStatus = "oauth_not_configured"
 )
 
-// Platform is the canonical descriptor for a third-party integration the
-// product exposes. IDs match the a2a.AgentID constants for platforms that
-// have an agent (snake_case, e.g. yandex_business, google_business);
-// coming-soon-only entries follow the same casing so the frontend can join
-// by id without normalisation.
+// Platform is the canonical descriptor for a third-party integration.
 //
-// Name and Description are not serialized over the wire — the frontend
-// resolves both via its messages/*.json bundles
-// (platforms.fullLabel.<id>, platforms.description.<id>). The fields are
-// kept on the Go struct as empty values so in-process callers that
-// reference them keep compiling, but `json:"-"` ensures /api/v1/platforms
-// only ships id + status. Telegram clients (frontend, marketing landing)
-// pin the on-disk schema in services/frontend/lib/api/platforms.ts.
+// Name and Description are intentionally not serialized: the frontend
+// resolves both from its i18n bundles (platforms.fullLabel.<id>,
+// platforms.description.<id>). They remain on the struct as empty values so
+// in-process callers keep compiling; `json:"-"` ensures the wire payload
+// only ships id + status.
 type Platform struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"-"`
@@ -42,23 +31,15 @@ type Platform struct {
 }
 
 // Platforms returns the canonical platform registry in display order. All
-// "real" platforms are returned with PlatformStatusActive — callers that know
-// which credentials are present (typically the API platforms handler) are
-// expected to downgrade entries to PlatformStatusOAuthNotConfigured before
-// surfacing the list to clients.
-//
-// Name / Description left empty here on purpose: the wire serialization
-// drops them via `json:"-"` and the frontend renders both from its i18n
-// bundles. Adding new platforms is a one-line append in frontend
-// `messages/*.json` per locale.
+// real platforms are returned as PlatformStatusActive; callers that know
+// which credentials are present (typically the API platforms handler)
+// downgrade entries to PlatformStatusOAuthNotConfigured before surfacing
+// the list to clients.
 func Platforms() []Platform {
 	return []Platform{
 		{ID: "telegram", Status: PlatformStatusActive},
 		{ID: "vk", Status: PlatformStatusActive},
 		{ID: "yandex_business", Status: PlatformStatusActive},
-		// Google Business agent exists but is held back from MVP per
-		// product decision (Linen design v2 §5). Promote to Active once
-		// the marketing+support pipeline for Google is ready.
 		{ID: "google_business", Status: PlatformStatusComingSoon},
 		{ID: "2gis", Status: PlatformStatusComingSoon},
 		{ID: "avito", Status: PlatformStatusComingSoon},
