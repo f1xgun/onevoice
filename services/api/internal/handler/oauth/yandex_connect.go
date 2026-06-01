@@ -27,17 +27,8 @@ type yandexProbeRequest struct {
 	Cookies string `json:"cookies"`
 }
 
-// yandexProbeResponse is the result of a probe attempt.
-//
-// Field semantics:
-//   - Ok: input parsed successfully (does NOT imply session validity).
-//   - SessionValid: tri-state via pointer. true → live HTTP probe confirmed
-//     login; false → probe redirected to login or returned 401/403; nil →
-//     probe failed (network/anti-bot) and we can't determine — accept and
-//     let the agent's canary decide on first real call.
-//   - Username: best-effort display name pulled from passport.yandex.ru/profile
-//     when SessionValid is true. Empty otherwise.
-//   - Warnings: missing-but-recommended cookies (sessionid2, yandex_login).
+// yandexProbeResponse carries the probe verdict; SessionValid is a tri-state
+// pointer (true/false/nil). See docs/api/handlers/oauth-yandex-connect.md.
 type yandexProbeResponse struct {
 	Ok           bool     `json:"ok"`
 	Format       string   `json:"format,omitempty"`
@@ -47,9 +38,8 @@ type yandexProbeResponse struct {
 	Error        string   `json:"error,omitempty"`
 }
 
-// ProbeYandexBusiness validates pasted Yandex cookies without persisting
-// anything. Always returns 200 (the "ok" field carries the verdict);
-// HTTP errors here would be misread by the UI as network failures.
+// ProbeYandexBusiness validates pasted cookies without persisting; always 200.
+// See docs/api/handlers/oauth-yandex-connect.md §"Probe".
 func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Request) {
 	if !authz.Can(r.Context(), authz.PermIntegrationsConnect) {
 		writeJSONError(w, http.StatusForbidden, "forbidden")
@@ -80,15 +70,12 @@ func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Reques
 		Warnings: cookieWarnings(r, parsed.Cookies),
 	}
 
-	// Best-effort live probe. We never block on this; a 2s timeout means
-	// the worst case for UX is "format OK, can't verify" which is already
-	// better than today's "paste and pray".
+	// Best-effort live probe; 3s wall-clock cap. Inconclusive → SessionValid=nil.
 	probeCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	valid, username, probeErr := h.probeYandexSession(probeCtx, parsed.Cookies)
 	if probeErr != nil {
 		slog.Info("yandex session probe inconclusive", "error", probeErr)
-		// Leave SessionValid as nil; UI will render "Не удалось проверить".
 	} else {
 		resp.SessionValid = &valid
 		if valid {
@@ -99,18 +86,16 @@ func (h *OAuthHandler) ProbeYandexBusiness(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// connectYandexRequest is the JSON body for /connect. Permalink + name
-// are optional — the modal's company-picker fills them in when present
-// so the integration is created with the correct Sprav id from the
-// start. Without them, refresh-name resolves both later.
+// connectYandexRequest is the JSON body for /connect; permalink + name
+// optional (filled by the modal's picker).
 type connectYandexRequest struct {
 	Cookies      string `json:"cookies"`
 	Permalink    string `json:"permalink,omitempty"`
 	BusinessName string `json:"business_name,omitempty"`
 }
 
-// ConnectYandexBusiness persists pasted Yandex cookies as a new active
-// integration. Mirrors ConnectTelegram / VK community connect.
+// ConnectYandexBusiness persists pasted cookies as a new integration.
+// See docs/api/handlers/oauth-yandex-connect.md §"Connect".
 func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -136,10 +121,8 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// When the modal's picker supplies an explicit permalink, store it
-	// directly so the agent's edit URLs work from the very first call.
-	// Without it (legacy /connect callers, or any path that skipped the
-	// picker), use a placeholder; refresh-name heals lazily.
+	// Picker-supplied permalink wins so agent edit URLs work from call #1.
+	// Legacy callers get the "default" placeholder; refresh-name heals later.
 	externalID := "default"
 	if p := strings.TrimSpace(req.Permalink); p != "" {
 		externalID = p
@@ -169,9 +152,8 @@ func (h *OAuthHandler) ConnectYandexBusiness(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusCreated, integration)
 }
 
-// yandexListCompaniesTimeout caps the agent's list_companies RPA. The
-// page is a Yandex SPA — Playwright must wait for client-side hydration
-// to render the org list. 30s cap with one retry inside withRetry.
+// yandexListCompaniesTimeout caps the agent's list_companies RPA (Playwright
+// SPA hydration ~25-45s).
 const yandexListCompaniesTimeout = 60 * time.Second
 
 // yandexCompanyEntry is one row in the company-picker list.
@@ -180,11 +162,9 @@ type yandexCompanyEntry struct {
 	Name      string `json:"name"`
 }
 
-// ListYandexCompanies dispatches the agent's list_companies RPA with the
-// caller's pasted cookies (no integration row required) and returns the
-// list of orgs the user can pick from. Synchronous: blocks the request
-// for the duration of the Playwright run (~25–45s). Drives the connect
-// modal's company picker.
+// ListYandexCompanies dispatches the list_companies RPA and returns picker rows.
+// Synchronous; blocks the request for the full Playwright run.
+// See docs/api/handlers/oauth-yandex-connect.md §"List companies".
 func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -251,15 +231,9 @@ func (h *OAuthHandler) ListYandexCompanies(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]any{"companies": companies})
 }
 
-// RefreshYandexBusinessName backfills metadata.business_name and (when
-// missing) the Sprav permalink on an existing Yandex integration. The
-// /sprav/companies page is a SPA — server-rendered HTML is empty — so
-// we dispatch the agent's yandex_business__list_companies tool which
-// drives a real Playwright browser. Async fire-and-forget: returns 202
-// immediately, the frontend polls /integrations to pick up the new
-// business_name once persisted.
-//
-// Lookup failures are non-fatal: logged, integration left untouched.
+// RefreshYandexBusinessName backfills metadata.business_name (and heals
+// legacy external_id) async via Playwright RPA. Returns 202 immediately.
+// See docs/api/handlers/oauth-yandex-connect.md §"Refresh name".
 func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -302,9 +276,8 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Detach the agent dispatch from the request context — Playwright RPA
-	// takes 20–40s, easily longer than axios's idle timeout, and the work
-	// must complete even if the user navigates away mid-flight.
+	// Detached ctx so the RPA survives r.Context() cancellation (mid-flight
+	// navigations) and outlives axios idle timeouts.
 	bgCtx, bgCancel := context.WithTimeout(context.Background(), yandexListCompaniesTimeout+15*time.Second)
 	go h.runYandexListCompaniesRefresh(bgCtx, bgCancel, integrationID, *target, bc.BusinessID)
 
@@ -313,12 +286,8 @@ func (h *OAuthHandler) RefreshYandexBusinessName(w http.ResponseWriter, r *http.
 	_, _ = w.Write([]byte(`{"status":"refresh_started"}`))
 }
 
-// runYandexListCompaniesRefresh performs the actual list_companies RPA
-// dispatch + metadata writes in a detached goroutine. Heals legacy
-// external_id="default" rows along the way: the Sprav permalink we
-// extract from the agent response replaces the placeholder and lets
-// every subsequent agent call (reviews, info, posts) build correct
-// /sprav/<permalink>/p/edit URLs.
+// runYandexListCompaniesRefresh performs the detached RPA + metadata writes,
+// healing legacy external_id="default" rows. See docs/api/handlers/oauth-yandex-connect.md.
 func (h *OAuthHandler) runYandexListCompaniesRefresh(
 	ctx context.Context,
 	cancel context.CancelFunc,
@@ -348,7 +317,6 @@ func (h *OAuthHandler) runYandexListCompaniesRefresh(
 		return
 	}
 
-	// Result shape: {"companies": [{"permalink": "...", "name": "..."}, ...]}
 	companiesRaw, _ := resp.Result["companies"].([]any)
 	if len(companiesRaw) == 0 {
 		slog.Info("yandex name refresh: agent returned no companies", "integration_id", integrationID)
@@ -360,11 +328,8 @@ func (h *OAuthHandler) runYandexListCompaniesRefresh(
 	permalink = strings.TrimSpace(permalink)
 	name = strings.TrimSpace(name)
 
-	// Trust the agent over whatever's currently stored. The previous
-	// resolver (campaign-list/api) wrote ad-campaign permalinks instead
-	// of Sprav permalinks; legacy rows have "default"; either way the
-	// list_companies-derived permalink IS the canonical Sprav id, so we
-	// overwrite whenever it differs.
+	// Agent's list_companies permalink IS the canonical Sprav id; always
+	// overwrite differences (legacy "default" or ad-campaign permalinks).
 	if permalink != "" && permalink != target.ExternalID {
 		if updateErr := h.integrationService.UpdateExternalID(ctx, integrationID, permalink); updateErr != nil {
 			slog.Error("yandex name refresh: failed to persist healed external_id",
@@ -392,11 +357,8 @@ func (h *OAuthHandler) runYandexListCompaniesRefresh(
 	}
 }
 
-// cookieWarnings flags missing-but-recommended cookies. Session_id alone
-// authenticates most Yandex.Business reads, but writes (reply review,
-// upload photo) need sessionid2 and Yandex's anti-CSRF flow expects the
-// `yandexuid` / `yandex_login` pair to be present. The request is threaded
-// in so the warning copy can be localized via pkg/i18n.
+// cookieWarnings flags missing-but-recommended cookies (sessionid2,
+// yandex_login). See docs/api/handlers/oauth-yandex-connect.md §"Cookie warnings".
 func cookieWarnings(r *http.Request, cookies []yandexcookies.Cookie) []string {
 	have := map[string]bool{}
 	for _, c := range cookies {
@@ -412,11 +374,8 @@ func cookieWarnings(r *http.Request, cookies []yandexcookies.Cookie) []string {
 	return warnings
 }
 
-// yandexCookiesErrorMessage maps a yandexcookies.Parse error to its
-// localized message via pkg/i18n. Unknown errors surface as the literal
-// Error() string so anything not pre-classified still reaches the user.
-// errors.Is is used so wrapped errors (e.g. ErrJSONUnmarshal wrapping the
-// underlying json.SyntaxError) match.
+// yandexCookiesErrorMessage maps yandexcookies.Parse errors to localized
+// strings via pkg/i18n. See docs/api/handlers/oauth-yandex-connect.md §"Probe".
 func yandexCookiesErrorMessage(r *http.Request, err error) string {
 	ctx := r.Context()
 	switch {
@@ -429,8 +388,7 @@ func yandexCookiesErrorMessage(r *http.Request, err error) string {
 	case errors.Is(err, yandexcookies.ErrSessionIDInvalid):
 		return i18n.Tr(ctx, "yandex.cookies.invalid_sessionid")
 	case errors.Is(err, yandexcookies.ErrJSONUnmarshal):
-		// Strip the "yandexcookies: json parse failed: " prefix to surface
-		// just the underlying json error detail in the localized template.
+		// Strip prefix so the localized template carries only the json detail.
 		detail := strings.TrimPrefix(err.Error(), yandexcookies.ErrJSONUnmarshal.Error()+": ")
 		return i18n.Tr(ctx, "yandex.cookies.json_error", detail)
 	default:
@@ -438,19 +396,9 @@ func yandexCookiesErrorMessage(r *http.Request, err error) string {
 	}
 }
 
-// probeYandexSession determines whether the supplied cookies represent a
-// live Yandex session. Mirrors the agent's Playwright canary by hitting
-// business.yandex.ru and watching for the passport.yandex.ru redirect.
-//
-// Username is sourced from the `yandex_login` cookie value when present —
-// no extra request, no HTML scraping, immune to anti-bot. The Yandex SPA
-// returns a JS shell rather than embedded user JSON, so HTML parsing is
-// unreliable; the cookie path is.
-//
-// Signal:
-//   - 200 OK on business.yandex.ru → session valid.
-//   - 302/303 to passport.yandex.ru* → not logged in.
-//   - Anything else → return error so caller treats verdict as "unknown".
+// probeYandexSession checks whether the supplied cookies form a live session
+// by watching for the passport.yandex.ru redirect.
+// See docs/api/handlers/oauth-yandex-connect.md §"Live session probe".
 func (h *OAuthHandler) probeYandexSession(ctx context.Context, cookies []yandexcookies.Cookie) (valid bool, username string, err error) {
 	probeURL := h.yandexProbeURL()
 
@@ -459,12 +407,12 @@ func (h *OAuthHandler) probeYandexSession(ctx context.Context, cookies []yandexc
 		return false, "", err
 	}
 	req.Header.Set("Cookie", buildCookieHeader(cookies))
-	// Realistic UA reduces the chance of being served a captcha-gate page.
+	// Realistic UA reduces captcha-gate odds.
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,*/*")
 	req.Header.Set("Accept-Language", "ru,en;q=0.5")
 
-	// Don't follow redirects — we want to see the 302 to passport itself.
+	// Don't follow redirects — the 302 to passport IS the verdict signal.
 	client := *h.httpClient
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	if client.Timeout == 0 {
@@ -487,8 +435,7 @@ func (h *OAuthHandler) probeYandexSession(ctx context.Context, cookies []yandexc
 		if parseErr == nil && strings.Contains(u.Host, "passport.yandex") {
 			return false, "", nil
 		}
-		// Other redirect (rare; probably internal): treat as live session
-		// since we weren't bounced to login.
+		// Non-passport redirect → treat as live session (not bounced to login).
 		return true, "", nil
 
 	case resp.StatusCode == http.StatusOK:
@@ -511,10 +458,7 @@ func buildCookieHeader(cookies []yandexcookies.Cookie) string {
 	return strings.Join(parts, "; ")
 }
 
-// yandexProbeURL returns the live-probe endpoint, honoring an optional
-// test override on OAuthConfig. Production target mirrors the agent's
-// Playwright canary (business.yandex.ru — 302's unauthenticated visitors
-// to passport.yandex.ru/auth, returns 200 for live sessions).
+// yandexProbeURL returns the probe endpoint (test override via cfg).
 func (h *OAuthHandler) yandexProbeURL() string {
 	if h.cfg.yandexProbeBaseURL != "" {
 		return h.cfg.yandexProbeBaseURL
