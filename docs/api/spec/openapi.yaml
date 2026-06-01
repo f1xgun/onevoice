@@ -413,14 +413,12 @@ components:
           emailVerificationDeadline:
             type: string
             format: date-time
-            nullable: true
           accountDeletion:
             $ref: '#/components/schemas/AccountDeletionInfo'
           requiresReconsent:
             $ref: '#/components/schemas/RequiresReconsentInfo'
     AccountDeletionInfo:
       type: object
-      nullable: true
       required:
       - requestedAt
       - scheduledDeletionAt
@@ -437,7 +435,6 @@ components:
           format: date-time
     RequiresReconsentInfo:
       type: object
-      nullable: true
       required:
       - policies
       properties:
@@ -447,15 +444,18 @@ components:
             type: object
             required:
             - slug
-            - currentVersion
+            - oldVersion
+            - newVersion
+            - sha256
             properties:
               slug:
                 type: string
-              currentVersion:
+              oldVersion:
                 type: string
-              acceptedVersion:
+              newVersion:
                 type: string
-                nullable: true
+              sha256:
+                type: string
     User:
       type: object
       required:
@@ -998,7 +998,6 @@ components:
           type: string
         session_valid:
           type: boolean
-          nullable: true
         username:
           type: string
         warnings:

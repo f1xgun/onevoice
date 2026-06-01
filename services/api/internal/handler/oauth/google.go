@@ -12,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/authz"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -265,15 +266,23 @@ func (h *OAuthHandler) GoogleLocations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"locations": tempData.Locations,
+	writeJSON(w, http.StatusOK, openapi.GoogleLocationsResponse{
+		Locations: googleLocationRefsToOpenAPI(tempData.Locations),
 	})
 }
 
-// googleSelectLocationRequest is the request body for GoogleSelectLocation.
-type googleSelectLocationRequest struct {
-	AccountID  string `json:"account_id"`
-	LocationID string `json:"location_id"`
+// googleLocationRefsToOpenAPI maps the redis-cached googleLocationRef
+// slice to the spec-owned openapi.GoogleLocationRef.
+func googleLocationRefsToOpenAPI(in []googleLocationRef) []openapi.GoogleLocationRef {
+	out := make([]openapi.GoogleLocationRef, len(in))
+	for i, l := range in {
+		out[i] = openapi.GoogleLocationRef{
+			AccountName:  l.AccountName,
+			LocationName: l.LocationName,
+			Title:        l.Title,
+		}
+	}
+	return out
 }
 
 // GoogleSelectLocation connects the selected Google Business location (PermIntegrationsConnect required, POST).
@@ -290,13 +299,13 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var req googleSelectLocationRequest
+	var req openapi.GoogleSelectLocationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if req.AccountID == "" || req.LocationID == "" {
+	if req.AccountId == "" || req.LocationId == "" {
 		writeJSONError(w, http.StatusBadRequest, "account_id and location_id are required")
 		return
 	}
@@ -318,7 +327,7 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 	var locationTitle string
 	found := false
 	for _, loc := range tempData.Locations {
-		if loc.AccountName == req.AccountID && loc.LocationName == req.LocationID {
+		if loc.AccountName == req.AccountId && loc.LocationName == req.LocationId {
 			locationTitle = loc.Title
 			found = true
 			break
@@ -334,13 +343,13 @@ func (h *OAuthHandler) GoogleSelectLocation(w http.ResponseWriter, r *http.Reque
 		BusinessID:   bc.BusinessID,
 		ActorID:      bc.UserID,
 		Platform:     a2a.AgentGoogleBusiness,
-		ExternalID:   req.LocationID,
+		ExternalID:   req.LocationId,
 		AccessToken:  tempData.AccessToken,
 		RefreshToken: tempData.RefreshToken,
 		ExpiresAt:    &expiresAt,
 		Metadata: map[string]interface{}{
-			"account_id":     req.AccountID,
-			"location_id":    req.LocationID,
+			"account_id":     req.AccountId,
+			"location_id":    req.LocationId,
 			"location_title": locationTitle,
 		},
 	})
