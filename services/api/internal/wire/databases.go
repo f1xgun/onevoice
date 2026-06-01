@@ -4,12 +4,14 @@ package wire
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	natslib "github.com/nats-io/nats.go"
+	"github.com/prometheus/client_golang/prometheus"
 	goredis "github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -17,6 +19,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/crypto"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/hitlstore"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 	"github.com/f1xgun/onevoice/services/api/internal/config"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
@@ -95,8 +98,22 @@ func BootstrapDatabases(ctx context.Context, log *slog.Logger, cfg *config.Confi
 	h.PG = pgPool
 	log.Info("connected to postgres")
 
-	// MongoDB
-	mongoClient, err := mongo.Connect(options.Client().ApplyURI(cfg.MongoURI))
+	// Register pgxpool prometheus collector. Idempotent across restarts within
+	// the same process: a re-register is swallowed via AlreadyRegisteredError.
+	if regErr := prometheus.Register(metrics.NewPGXPoolCollector(pgPool)); regErr != nil {
+		var are prometheus.AlreadyRegisteredError
+		if !errors.As(regErr, &are) {
+			h.Close()
+			return nil, fmt.Errorf("wire: register pgxpool collector: %w", regErr)
+		}
+	}
+
+	// MongoDB. Pool + command monitors emit mongo_pool_in_use,
+	// mongo_pool_checkout_duration_seconds, and mongo_op_duration_seconds.
+	mongoClient, err := mongo.Connect(options.Client().
+		ApplyURI(cfg.MongoURI).
+		SetPoolMonitor(metrics.NewMongoPoolMonitor()).
+		SetMonitor(metrics.NewMongoCommandMonitor()))
 	if err != nil {
 		h.Close()
 		return nil, fmt.Errorf("wire: connect to mongodb: %w", err)
