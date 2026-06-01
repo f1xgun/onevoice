@@ -1,0 +1,2763 @@
+openapi: 3.0.3
+info:
+  title: OneVoice API
+  version: 1.0.0
+  description: |
+    Consolidated OpenAPI contract covering both the api service
+    (services/api, port 8080, base `/api/v1`) and the orchestrator service
+    (services/orchestrator, port 8090, no version prefix).
+
+    Default security: `cookieAuth` (access_token cookie). Public endpoints
+    declare `security: []`. Cluster-internal endpoints declare
+    `security: [{mtls: []}]` and live on the mTLS listener — the public
+    reverse proxy MUST drop matching prefixes.
+
+    Orchestrator endpoints carry a per-operation `servers:` override so
+    they document the cluster-internal base URL (`http://orchestrator:8090`)
+    while the rest of the spec remains under `/api/v1`. The whole spec is
+    one file for code-generator simplicity.
+
+    Error envelope diverges by endpoint:
+      - Free-form messages use `{"error":"<string>"}` (`ErrorResponse`).
+      - Machine-routable failures use `{"code":"<code>"}`
+        (`CodeErrorResponse`) — frontend i18n routes on the `code` field.
+      - The internal billing endpoints use `BillingErrorResponse`
+        (a distinct shape with both `error` and `detail`).
+
+    Streaming responses (chat / resume / tasks-stream) document themselves
+    as `text/event-stream` with a string schema for the raw frame bytes
+    and a vendor `x-sse-events` extension mapping event-type discriminator
+    values to per-event JSON schemas. Generators that ignore the extension
+    can still consume `SSEEvent` (oneOf union under components.schemas).
+servers:
+- url: /api/v1
+  description: Public api service (services/api, port 8080).
+security:
+- cookieAuth: []
+tags:
+- name: auth
+  description: Authentication, password reset, email verification, locale.
+- name: business
+  description: Business CRUD + schedule + voice-tone + logo + tool-approvals.
+- name: integrations
+  description: Per-business integration list + connect helpers (Telegram, VK).
+- name: oauth
+  description: OAuth helpers and callbacks (VK, Yandex.Business, Google).
+- name: consents
+  description: Policy reconsent + ledger + PDN withdrawal.
+- name: user-deletion
+  description: 30-day soft-delete grace flow.
+- name: members
+  description: Business membership rows.
+- name: roles
+  description: System + custom RBAC roles.
+- name: invitations
+  description: Single-use invitation tokens.
+- name: permissions
+  description: RBAC permission registry.
+- name: audit
+  description: Business audit log with cursor pagination.
+- name: telemetry
+  description: Frontend telemetry ingest.
+- name: chat
+  description: Chat-proxy SSE + HITL resume + tools registry.
+- name: hitl
+  description: Human-in-the-loop tool approval surface.
+- name: hitl-resume
+  description: Post-approval continuation of a paused chat turn.
+- name: conversations
+  description: Conversation CRUD + move/pin/unpin/messages.
+- name: posts
+  description: Posts read surface.
+- name: reviews
+  description: Reviews list/get/reply + cross-business refresh.
+- name: projects
+  description: Project CRUD + cascade delete.
+- name: tasks
+  description: Agent-task list + SSE lifecycle stream.
+- name: search
+  description: Full-text conversation/message search.
+- name: titler
+  description: Auto-titler regenerate trigger.
+- name: internal
+  description: Cluster-only endpoints (mTLS). Not exposed publicly.
+paths:
+  /auth/login:
+    $ref: paths/auth.yaml#/~1auth~1login
+  /auth/logout:
+    $ref: paths/auth.yaml#/~1auth~1logout
+  /auth/refresh:
+    $ref: paths/auth.yaml#/~1auth~1refresh
+  /auth/me:
+    $ref: paths/auth.yaml#/~1auth~1me
+  /auth/register:
+    $ref: paths/auth.yaml#/~1auth~1register
+  /auth/password-reset/request:
+    $ref: paths/auth.yaml#/~1auth~1password-reset~1request
+  /auth/password-reset/confirm:
+    $ref: paths/auth.yaml#/~1auth~1password-reset~1confirm
+  /auth/verify-email/confirm:
+    $ref: paths/auth.yaml#/~1auth~1verify-email~1confirm
+  /auth/verify-email/resend:
+    $ref: paths/auth.yaml#/~1auth~1verify-email~1resend
+  /auth/email-before-verify:
+    $ref: paths/auth.yaml#/~1auth~1email-before-verify
+  /auth/password:
+    $ref: paths/auth.yaml#/~1auth~1password
+  /auth/locale:
+    $ref: paths/auth.yaml#/~1auth~1locale
+  /auth/consents:
+    $ref: paths/consents.yaml#/~1auth~1consents
+  /users/me/consents:
+    $ref: paths/consents.yaml#/~1users~1me~1consents
+  /users/me/consents/pdn/withdraw:
+    $ref: paths/consents.yaml#/~1users~1me~1consents~1pdn~1withdraw
+  /users/me:
+    $ref: paths/user_deletion.yaml#/~1users~1me
+  /users/me/restore:
+    $ref: paths/user_deletion.yaml#/~1users~1me~1restore
+  /platforms:
+    $ref: paths/integrations.yaml#/~1platforms
+  /businesses/{id}/integrations:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations
+  /businesses/{id}/integrations/{integrationId}:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1{integrationId}
+  /businesses/{id}/integrations/vk/connect:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1vk~1connect
+  /businesses/{id}/integrations/vk/{integrationId}/refresh-name:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1vk~1{integrationId}~1refresh-name
+  /businesses/{id}/integrations/telegram/verify:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1telegram~1verify
+  /businesses/{id}/integrations/telegram/connect:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1telegram~1connect
+  /businesses/{id}/integrations/telegram/refresh:
+    $ref: paths/integrations.yaml#/~1businesses~1{id}~1integrations~1telegram~1refresh
+  /businesses:
+    $ref: paths/business.yaml#/~1businesses
+  /businesses/{id}:
+    $ref: paths/business.yaml#/~1businesses~1{id}
+  /businesses/{id}/schedule:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1schedule
+  /businesses/{id}/voice-tone:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1voice-tone
+  /businesses/{id}/logo:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1logo
+  /businesses/{id}/tool-approvals:
+    $ref: paths/business.yaml#/~1businesses~1{id}~1tool-approvals
+  /businesses/{id}/integrations/vk/auth-url:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1vk~1auth-url
+  /businesses/{id}/integrations/vk/communities:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1vk~1communities
+  /businesses/{id}/integrations/vk/community-auth-url:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1vk~1community-auth-url
+  /businesses/{id}/integrations/yandex_business/auth-url:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1auth-url
+  /businesses/{id}/integrations/google_business/auth-url:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1google_business~1auth-url
+  /businesses/{id}/integrations/google_business/locations:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1google_business~1locations
+  /businesses/{id}/integrations/google_business/select-location:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1google_business~1select-location
+  /businesses/{id}/integrations/yandex_business/probe:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1probe
+  /businesses/{id}/integrations/yandex_business/companies:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1companies
+  /businesses/{id}/integrations/yandex_business/connect:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1connect
+  /businesses/{id}/integrations/yandex_business/{integrationId}/refresh-name:
+    $ref: paths/oauth.yaml#/~1businesses~1{id}~1integrations~1yandex_business~1{integrationId}~1refresh-name
+  /oauth/vk/callback:
+    $ref: paths/oauth.yaml#/~1oauth~1vk~1callback
+  /oauth/vk/community-callback:
+    $ref: paths/oauth.yaml#/~1oauth~1vk~1community-callback
+  /oauth/yandex_business/callback:
+    $ref: paths/oauth.yaml#/~1oauth~1yandex_business~1callback
+  /oauth/google_business/callback:
+    $ref: paths/oauth.yaml#/~1oauth~1google_business~1callback
+  /permissions:
+    $ref: paths/permissions.yaml#/~1permissions
+  /businesses/{id}/me/permissions:
+    $ref: paths/permissions.yaml#/~1businesses~1{id}~1me~1permissions
+  /businesses/{id}/members:
+    $ref: paths/members.yaml#/~1businesses~1{id}~1members
+  /businesses/{id}/members/{userId}:
+    $ref: paths/members.yaml#/~1businesses~1{id}~1members~1{userId}
+  /businesses/{id}/roles:
+    $ref: paths/roles.yaml#/~1businesses~1{id}~1roles
+  /businesses/{id}/roles/{roleId}:
+    $ref: paths/roles.yaml#/~1businesses~1{id}~1roles~1{roleId}
+  /businesses/{id}/invitations:
+    $ref: paths/invitations.yaml#/~1businesses~1{id}~1invitations
+  /businesses/{id}/invitations/{inviteId}:
+    $ref: paths/invitations.yaml#/~1businesses~1{id}~1invitations~1{inviteId}
+  /invitations/{token}:
+    $ref: paths/invitations.yaml#/~1invitations~1{token}
+  /invitations/{token}/accept:
+    $ref: paths/invitations.yaml#/~1invitations~1{token}~1accept
+  /businesses/{id}/audit-logs:
+    $ref: paths/audit.yaml#/~1businesses~1{id}~1audit-logs
+  /telemetry:
+    $ref: paths/telemetry.yaml#/~1telemetry
+  /businesses/{id}/chat/{conversationID}:
+    $ref: paths/chat.yaml#/~1businesses~1{id}~1chat~1{conversationID}
+  /businesses/{id}/chat/{conversationID}/resume:
+    $ref: paths/chat.yaml#/~1businesses~1{id}~1chat~1{conversationID}~1resume
+  /chat/{conversationID}:
+    $ref: paths/chat.yaml#/~1chat~1{conversationID}
+  /chat/{conversationID}/resume:
+    $ref: paths/chat.yaml#/~1chat~1{conversationID}~1resume
+  /businesses/{id}/conversations/{conversationID}/pending-tool-calls/{batch_id}/resolve:
+    $ref: paths/hitl.yaml#/~1businesses~1{id}~1conversations~1{conversationID}~1pending-tool-calls~1{batch_id}~1resolve
+  /businesses/{id}/tools:
+    $ref: paths/hitl.yaml#/~1businesses~1{id}~1tools
+  /businesses/{id}/conversations:
+    $ref: paths/conversations.yaml#/~1businesses~1{id}~1conversations
+  /businesses/{id}/conversations/{conversationID}:
+    $ref: paths/conversations.yaml#/~1businesses~1{id}~1conversations~1{conversationID}
+  /businesses/{id}/conversations/{conversationID}/messages:
+    $ref: paths/conversations.yaml#/~1businesses~1{id}~1conversations~1{conversationID}~1messages
+  /businesses/{id}/conversations/{conversationID}/move:
+    $ref: paths/conversations.yaml#/~1businesses~1{id}~1conversations~1{conversationID}~1move
+  /businesses/{id}/conversations/{conversationID}/pin:
+    $ref: paths/conversations.yaml#/~1businesses~1{id}~1conversations~1{conversationID}~1pin
+  /businesses/{id}/conversations/{conversationID}/unpin:
+    $ref: paths/conversations.yaml#/~1businesses~1{id}~1conversations~1{conversationID}~1unpin
+  /businesses/{id}/conversations/{conversationID}/regenerate-title:
+    $ref: paths/titler.yaml#/~1businesses~1{id}~1conversations~1{conversationID}~1regenerate-title
+  /businesses/{id}/projects:
+    $ref: paths/projects.yaml#/~1businesses~1{id}~1projects
+  /businesses/{id}/projects/{projectID}:
+    $ref: paths/projects.yaml#/~1businesses~1{id}~1projects~1{projectID}
+  /businesses/{id}/projects/{projectID}/conversation-count:
+    $ref: paths/projects.yaml#/~1businesses~1{id}~1projects~1{projectID}~1conversation-count
+  /businesses/{id}/posts:
+    $ref: paths/posts.yaml#/~1businesses~1{id}~1posts
+  /businesses/{id}/posts/{postID}:
+    $ref: paths/posts.yaml#/~1businesses~1{id}~1posts~1{postID}
+  /reviews/refresh:
+    $ref: paths/reviews.yaml#/~1reviews~1refresh
+  /businesses/{id}/reviews:
+    $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews
+  /businesses/{id}/reviews/{reviewID}:
+    $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1{reviewID}
+  /businesses/{id}/reviews/{reviewID}/reply:
+    $ref: paths/reviews.yaml#/~1businesses~1{id}~1reviews~1{reviewID}~1reply
+  /businesses/{id}/tasks:
+    $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks
+  /businesses/{id}/tasks/stream:
+    $ref: paths/tasks.yaml#/~1businesses~1{id}~1tasks~1stream
+  /businesses/{id}/search:
+    $ref: paths/search.yaml#/~1businesses~1{id}~1search
+  /internal/draft-reply:
+    $ref: paths/internal.yaml#/~1internal~1draft-reply
+  /internal/tools:
+    $ref: paths/internal.yaml#/~1internal~1tools
+  /internal/tools/names:
+    $ref: paths/internal.yaml#/~1internal~1tools~1names
+  /tokens:
+    $ref: paths/internal.yaml#/~1tokens
+  /billing/usage_logs:
+    $ref: paths/internal.yaml#/~1billing~1usage_logs
+  /billing/daily_spend:
+    $ref: paths/internal.yaml#/~1billing~1daily_spend
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: |
+        Access-token cookie set by /auth/login. The orchestrator delegates
+        cookie validation to services/api's chat_proxy facade, so this
+        scheme also documents the public contract for orchestrator
+        endpoints reached through that proxy.
+    mtls:
+      type: mutualTLS
+      description: |
+        Cluster-only mutual TLS. The public reverse proxy MUST drop any
+        request matching an mTLS-protected prefix (/internal/*, /tokens,
+        /billing/*) — application-level checks supplement the network
+        boundary but do not replace it.
+  parameters:
+    BusinessIDPath:
+      name: id
+      in: path
+      required: true
+      description: Business UUID. Non-members receive 404 (not 403).
+      schema:
+        type: string
+        format: uuid
+    IntegrationIDPath:
+      name: integrationId
+      in: path
+      required: true
+      description: Integration UUID.
+      schema:
+        type: string
+        format: uuid
+    UserIDPath:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RoleIDPath:
+      name: roleId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    InvitationTokenPath:
+      name: token
+      in: path
+      required: true
+      description: Raw single-use invitation token. Server hashes before lookup.
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Missing or expired access token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BusinessNotFound:
+      description: Business not found or caller is not a member (masked).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal failure (`internal_server_error`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CodeErrorResponse'
+  schemas:
+    ErrorResponse:
+      description: Plain-text error envelope; emitted by writeJSONError.
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string
+    CodeErrorResponse:
+      description: |
+        Machine-routable error envelope; emitted by writeJSONCodeError.
+        Frontend resolves `code` to a localized message via i18n catalog.
+      type: object
+      required:
+      - code
+      properties:
+        code:
+          type: string
+    BillingErrorResponse:
+      description: |
+        Error envelope used by the internal billing endpoints. `error`
+        values map to pkg/billingclient sentinels.
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+    LoginRequest:
+      type: object
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+    LoginResponse:
+      type: object
+      required:
+      - user
+      - accessToken
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+    RefreshTokenResponse:
+      type: object
+      required:
+      - user
+      - accessToken
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+    MeResponse:
+      description: |
+        Flattened user payload plus verification banner, deletion grace,
+        and reconsent fields.
+      allOf:
+      - $ref: '#/components/schemas/User'
+      - type: object
+        required:
+        - emailVerified
+        properties:
+          emailVerified:
+            type: boolean
+          emailVerificationDeadline:
+            type: string
+            format: date-time
+            nullable: true
+          accountDeletion:
+            $ref: '#/components/schemas/AccountDeletionInfo'
+          requiresReconsent:
+            $ref: '#/components/schemas/RequiresReconsentInfo'
+    AccountDeletionInfo:
+      type: object
+      nullable: true
+      required:
+      - requestedAt
+      - scheduledDeletionAt
+      - canRestoreUntil
+      properties:
+        requestedAt:
+          type: string
+          format: date-time
+        scheduledDeletionAt:
+          type: string
+          format: date-time
+        canRestoreUntil:
+          type: string
+          format: date-time
+    RequiresReconsentInfo:
+      type: object
+      nullable: true
+      required:
+      - policies
+      properties:
+        policies:
+          type: array
+          items:
+            type: object
+            required:
+            - slug
+            - currentVersion
+            properties:
+              slug:
+                type: string
+              currentVersion:
+                type: string
+              acceptedVersion:
+                type: string
+                nullable: true
+    User:
+      type: object
+      required:
+      - id
+      - email
+      - preferred_locale
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        preferred_locale:
+          type: string
+          enum:
+          - ru
+          - en
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RegisterRequest:
+      type: object
+      required:
+      - email
+      - password
+      - consents
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        consents:
+          $ref: '#/components/schemas/RegisterConsents'
+    RegisterConsents:
+      type: object
+      required:
+      - tos
+      - privacy
+      - pdn
+      properties:
+        tos:
+          type: string
+        privacy:
+          type: string
+        pdn:
+          type: string
+    RequestPasswordResetRequest:
+      type: object
+      required:
+      - email
+      properties:
+        email:
+          type: string
+          format: email
+    ConfirmPasswordResetRequest:
+      type: object
+      required:
+      - token
+      - newPassword
+      properties:
+        token:
+          type: string
+          minLength: 1
+        newPassword:
+          type: string
+          minLength: 8
+    VerifyConfirmRequest:
+      type: object
+      required:
+      - token
+      properties:
+        token:
+          type: string
+          minLength: 20
+    EmailBeforeVerifyRequest:
+      type: object
+      required:
+      - newEmail
+      properties:
+        newEmail:
+          type: string
+          format: email
+    ChangePasswordRequest:
+      type: object
+      required:
+      - currentPassword
+      - newPassword
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+    UpdatePreferredLocaleRequest:
+      type: object
+      required:
+      - locale
+      properties:
+        locale:
+          type: string
+          enum:
+          - ru
+          - en
+    StatusOKResponse:
+      description: |
+        `{status:"ok"}` envelope used by ChangePassword. Distinct from
+        `StatusOkResponse` (camelCase variant) used by review reply and
+        review-refresh handlers.
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+    StatusOkResponse:
+      description: |
+        `{status:"ok"}` envelope used by reviewReply and refreshReviews.
+        Enum-pinned variant of `StatusOKResponse`.
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+    ConsentRequiredResponse:
+      type: object
+      required:
+      - code
+      - missing
+      properties:
+        code:
+          type: string
+          enum:
+          - consent_required
+        missing:
+          type: array
+          items:
+            type: string
+    ReconsentRequest:
+      type: object
+      required:
+      - policies
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReconsentPolicy'
+    ReconsentPolicy:
+      type: object
+      required:
+      - slug
+      - version
+      properties:
+        slug:
+          type: string
+        version:
+          type: string
+        sha256:
+          type: string
+    VersionMismatchResponse:
+      type: object
+      required:
+      - code
+      - currentVersion
+      properties:
+        code:
+          type: string
+          enum:
+          - version_mismatch
+        currentVersion:
+          type: string
+    ListConsentsResponse:
+      type: object
+      required:
+      - consents
+      properties:
+        consents:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentRecord'
+    ConsentRecord:
+      type: object
+      required:
+      - slug
+      - version
+      - acceptedAt
+      properties:
+        slug:
+          type: string
+        version:
+          type: string
+        sha256:
+          type: string
+        acceptedAt:
+          type: string
+          format: date-time
+        withdrawnAt:
+          type: string
+          format: date-time
+          nullable: true
+    DeleteAccountRequest:
+      type: object
+      required:
+      - password
+      properties:
+        password:
+          type: string
+          minLength: 1
+    SoleOwnerResponse:
+      type: object
+      required:
+      - code
+      - businesses
+      properties:
+        code:
+          type: string
+          enum:
+          - sole_owner_of_businesses
+        businesses:
+          type: array
+          items:
+            $ref: '#/components/schemas/SoleOwnerBusinessEntry'
+    SoleOwnerBusinessEntry:
+      type: object
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    PendingDeletionResponse:
+      type: object
+      required:
+      - code
+      - deletionDate
+      - restoreUrl
+      properties:
+        code:
+          type: string
+          enum:
+          - account_pending_deletion
+        deletionDate:
+          type: string
+        restoreUrl:
+          type: string
+    Platform:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+        status:
+          $ref: '#/components/schemas/PlatformStatus'
+    PlatformStatus:
+      type: string
+      enum:
+      - active
+      - coming_soon
+      - oauth_not_configured
+    Business:
+      type: object
+      required:
+      - id
+      - name
+      - settings
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        category:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+          nullable: true
+        description:
+          type: string
+        logoUrl:
+          type: string
+        settings:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    BusinessMembershipSummary:
+      type: object
+      required:
+      - id
+      - name
+      - role
+      - status
+      - joined_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/BusinessMembershipRoleRef'
+        status:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+    BusinessMembershipRoleRef:
+      type: object
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    CreateBusinessRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+          nullable: true
+        description:
+          type: string
+    UpdateBusinessRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+          nullable: true
+        description:
+          type: string
+    UpdateScheduleRequest:
+      type: object
+      properties:
+        schedule:
+          description: Free-form per-day schedule blob.
+        specialDates:
+          description: Optional special-date overrides.
+    UpdateVoiceToneRequest:
+      type: object
+      properties:
+        tones:
+          type: array
+          items:
+            type: string
+    UploadLogoRequest:
+      type: object
+      required:
+      - logo
+      properties:
+        logo:
+          type: string
+          format: binary
+    ToolApprovalsResponse:
+      type: object
+      required:
+      - toolApprovals
+      properties:
+        toolApprovals:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolFloor'
+    UpdateToolApprovalsRequest:
+      type: object
+      required:
+      - toolApprovals
+      properties:
+        toolApprovals:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolFloor'
+    ToolFloor:
+      type: string
+      enum:
+      - auto
+      - manual
+      - forbidden
+      description: |
+        Per-tool HITL floor (strictness: auto < manual < forbidden).
+        Business-level approvals only persist `auto` / `manual`;
+        `forbidden` is reserved for tool-registry defaults.
+    Integration:
+      type: object
+      required:
+      - id
+      - businessId
+      - platform
+      - status
+      - externalId
+      - metadata
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        businessId:
+          type: string
+          format: uuid
+        platform:
+          type: string
+        status:
+          type: string
+        externalId:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        tokenExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AuthURLResponse:
+      type: object
+      required:
+      - url
+      properties:
+        url:
+          type: string
+    VKCommunity:
+      type: object
+      required:
+      - id
+      - name
+      - screen_name
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        screen_name:
+          type: string
+        photo_50:
+          type: string
+        members_count:
+          type: integer
+    GoogleLocationsResponse:
+      type: object
+      required:
+      - locations
+      properties:
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoogleLocationRef'
+    GoogleLocationRef:
+      type: object
+      required:
+      - account_name
+      - location_name
+      - title
+      properties:
+        account_name:
+          type: string
+        location_name:
+          type: string
+        title:
+          type: string
+    GoogleSelectLocationRequest:
+      type: object
+      required:
+      - account_id
+      - location_id
+      properties:
+        account_id:
+          type: string
+        location_id:
+          type: string
+    YandexCookiesRequest:
+      type: object
+      required:
+      - cookies
+      properties:
+        cookies:
+          type: string
+    YandexProbeResponse:
+      type: object
+      required:
+      - ok
+      properties:
+        ok:
+          type: boolean
+        format:
+          type: string
+        session_valid:
+          type: boolean
+          nullable: true
+        username:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+    YandexCompaniesResponse:
+      type: object
+      required:
+      - companies
+      properties:
+        companies:
+          type: array
+          items:
+            $ref: '#/components/schemas/YandexCompanyEntry'
+    YandexCompanyEntry:
+      type: object
+      required:
+      - permalink
+      - name
+      properties:
+        permalink:
+          type: string
+        name:
+          type: string
+    ConnectYandexRequest:
+      type: object
+      required:
+      - cookies
+      properties:
+        cookies:
+          type: string
+        permalink:
+          type: string
+        business_name:
+          type: string
+    RefreshStartedResponse:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - refresh_started
+    ConnectVKRequest:
+      type: object
+      required:
+      - access_token
+      properties:
+        access_token:
+          type: string
+        group_id:
+          type: string
+    ConnectTelegramRequest:
+      type: object
+      required:
+      - channel_id
+      properties:
+        channel_id:
+          type: string
+        telegram_user_id:
+          type: string
+    RefreshTelegramRequest:
+      type: object
+      required:
+      - channel_id
+      properties:
+        channel_id:
+          type: string
+    RefreshTelegramResponse:
+      type: object
+      required:
+      - linked_chat_id
+      - linked_group_status
+      - channel_title
+      properties:
+        linked_chat_id:
+          type: integer
+          format: int64
+        linked_group_status:
+          type: string
+          enum:
+          - ok
+          - bot_not_member
+          - no_linked_group
+        channel_title:
+          type: string
+    TelegramLoginRequest:
+      type: object
+      additionalProperties: true
+      required:
+      - hash
+      - auth_date
+      properties:
+        hash:
+          type: string
+        auth_date:
+          oneOf:
+          - type: string
+          - type: integer
+        id:
+          type: integer
+          format: int64
+        first_name:
+          type: string
+        last_name:
+          type: string
+        username:
+          type: string
+        photo_url:
+          type: string
+    TelegramLoginVerifiedResponse:
+      type: object
+      required:
+      - verified
+      - user
+      properties:
+        verified:
+          type: boolean
+        user:
+          type: object
+          additionalProperties: true
+    Permission:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    PermissionGroup:
+      type: object
+      required:
+      - name
+      - permissions
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+    PermissionRegistryResponse:
+      type: object
+      required:
+      - groups
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionGroup'
+    MyPermissionsResponse:
+      type: object
+      required:
+      - permissions
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+    Member:
+      type: object
+      required:
+      - user
+      - role
+      - status
+      - joined_at
+      - invited_by
+      - invited_at
+      properties:
+        user:
+          type: object
+          required:
+          - id
+          - email
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+        role:
+          type: object
+          required:
+          - id
+          - name
+          - permissions
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            permissions:
+              type: array
+              items:
+                type: string
+        status:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+        invited_by:
+          type: string
+          format: uuid
+          nullable: true
+        invited_at:
+          type: string
+          format: date-time
+          nullable: true
+    UpdateMemberRoleRequest:
+      type: object
+      required:
+      - role_id
+      properties:
+        role_id:
+          type: string
+          format: uuid
+    UpdateMemberRoleResponse:
+      type: object
+      required:
+      - business_id
+      - user_id
+      - role_id
+      - status
+      properties:
+        business_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        role_changed_at:
+          type: string
+          format: date-time
+          nullable: true
+        role_changed_by:
+          type: string
+          format: uuid
+          nullable: true
+    Role:
+      type: object
+      required:
+      - id
+      - business_id
+      - name
+      - description
+      - permissions
+      - is_system
+      properties:
+        id:
+          type: string
+          format: uuid
+        business_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        is_system:
+          type: boolean
+        member_count:
+          type: integer
+    CreateRoleRequest:
+      type: object
+      required:
+      - name
+      - permissions
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        permissions:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+    UpdateRoleRequest:
+      allOf:
+      - $ref: '#/components/schemas/CreateRoleRequest'
+    CreateInvitationRequest:
+      type: object
+      required:
+      - role_id
+      properties:
+        role_id:
+          type: string
+          format: uuid
+        expires_in:
+          type: integer
+          minimum: 3600
+          maximum: 2592000
+    CreateInvitationResponse:
+      type: object
+      required:
+      - id
+      - token
+      - role_id
+      - expires_at
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        role_id:
+          type: string
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    PendingInvitation:
+      type: object
+      required:
+      - id
+      - role_id
+      - role_name
+      - expires_at
+      - created_at
+      - created_by
+      properties:
+        id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+        role_name:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: object
+          required:
+          - id
+          - email
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+    InvitationPreview:
+      type: object
+      required:
+      - business_id
+      - business_name
+      - role_id
+      - role_name
+      - expires_at
+      properties:
+        business_id:
+          type: string
+          format: uuid
+        business_name:
+          type: string
+        role_id:
+          type: string
+          format: uuid
+        role_name:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    AcceptInvitationResponse:
+      type: object
+      required:
+      - business_id
+      - role_id
+      properties:
+        business_id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+    AuditAction:
+      type: string
+      enum:
+      - rbac.role_granted
+      - rbac.member_removed
+      - rbac.role_created
+      - rbac.role_updated
+      - rbac.role_deleted
+      - rbac.invitation_created
+      - rbac.invitation_revoked
+      - rbac.invitation_accepted
+      - auth.login_success
+      - auth.login_failed
+      - auth.logout
+      - auth.password_changed
+      - auth.user_registered
+      - integration.connected
+      - integration.disconnected
+      - integration.token_rotated
+      - business.created
+      - business.updated
+      - project.created
+      - project.updated
+      - project.deleted
+    AuditEvent:
+      type: object
+      required:
+      - id
+      - action
+      - action_category
+      - resource
+      - business_id
+      - actor_id
+      - actor_email
+      - actor_display_name
+      - details
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        action_category:
+          type: string
+          enum:
+          - rbac
+          - auth
+          - integration
+          - business
+          - project
+          - other
+        resource:
+          type: string
+        business_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_email:
+          type: string
+          format: email
+          nullable: true
+        actor_display_name:
+          type: string
+          nullable: true
+        details:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    AuditLogListResponse:
+      type: object
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        next_cursor:
+          type: string
+          nullable: true
+    TelemetryEvent:
+      type: object
+      required:
+      - eventType
+      - page
+      - action
+      - timestamp
+      properties:
+        eventType:
+          type: string
+        page:
+          type: string
+        action:
+          type: string
+        correlationId:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        timestamp:
+          type: string
+    InternalTokenResponse:
+      type: object
+      required:
+      - integration_id
+      - platform
+      - external_id
+      - access_token
+      properties:
+        integration_id:
+          type: string
+          format: uuid
+        platform:
+          type: string
+        external_id:
+          type: string
+        access_token:
+          type: string
+        user_token:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        user_token_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+    UsageLog:
+      type: object
+      required:
+      - business_id
+      - user_id
+      - model
+      - provider
+      - input_tokens
+      - output_tokens
+      - provider_cost_usd
+      - commission_usd
+      - user_cost_usd
+      - user_tier
+      properties:
+        id:
+          type: string
+          format: uuid
+        business_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+        request_id:
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
+        input_tokens:
+          type: integer
+          minimum: 0
+        output_tokens:
+          type: integer
+          minimum: 0
+        cache_read_tokens:
+          type: integer
+          minimum: 0
+        cache_creation_tokens:
+          type: integer
+          minimum: 0
+        provider_cost_usd:
+          type: number
+          format: double
+        commission_usd:
+          type: number
+          format: double
+        user_cost_usd:
+          type: number
+          format: double
+        user_tier:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    DailySpendResponse:
+      type: object
+      required:
+      - daily_spend_usd
+      properties:
+        daily_spend_usd:
+          type: number
+          format: double
+    ChatTurnRequest:
+      type: object
+      properties:
+        message:
+          type: string
+        model:
+          type: string
+    SSEConcurrencyError:
+      type: object
+      required:
+      - code
+      - retry_after_s
+      properties:
+        code:
+          type: string
+          enum:
+          - sse_concurrency_exceeded
+        retry_after_s:
+          type: integer
+    HITLResolveRequest:
+      type: object
+      required:
+      - decisions
+      properties:
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/HITLDecisionInput'
+    HITLDecisionInput:
+      type: object
+      required:
+      - id
+      - action
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+          enum:
+          - approve
+          - edit
+          - reject
+        edited_args:
+          type: object
+          additionalProperties: true
+        reject_reason:
+          type: string
+    HITLResolveResponse:
+      type: object
+      required:
+      - batch_id
+      - resolved_at
+      - decisions
+      properties:
+        batch_id:
+          type: string
+        resolved_at:
+          type: string
+          format: date-time
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/HITLResolvedCall'
+    HITLResolvedCall:
+      type: object
+      required:
+      - id
+      - action
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+          enum:
+          - approve
+          - edit
+          - reject
+        reason:
+          type: string
+    HITLShapeMismatchError:
+      type: object
+      required:
+      - error
+      - missing
+      properties:
+        error:
+          type: string
+          enum:
+          - shape mismatch
+        missing:
+          type: array
+          items:
+            type: string
+    HITLFieldNotEditableError:
+      type: object
+      required:
+      - error
+      - editable
+      properties:
+        error:
+          type: string
+        editable:
+          type: array
+          items:
+            type: string
+    HITLNonScalarFieldError:
+      type: object
+      required:
+      - error
+      - tool
+      properties:
+        error:
+          type: string
+        tool:
+          type: string
+    HITLRejectReasonTooLongError:
+      type: object
+      required:
+      - error
+      - max
+      properties:
+        error:
+          type: string
+          enum:
+          - reject_reason too long
+        max:
+          type: integer
+    HITLBatchResolvingError:
+      type: object
+      required:
+      - error
+      - retry_after_ms
+      - reason
+      properties:
+        error:
+          type: string
+          enum:
+          - batch resolving
+        retry_after_ms:
+          type: integer
+        reason:
+          type: string
+          enum:
+          - concurrent resolve in progress
+    HITLExpiredError:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string
+          enum:
+          - approval_expired
+    HITLAlreadyResolvedError:
+      type: object
+      required:
+      - error
+      - reason
+      properties:
+        error:
+          type: string
+          enum:
+          - batch already resolved
+        reason:
+          type: string
+          enum:
+          - already_resolved
+    ToolEntry:
+      description: |
+        Locale-resolved tool registry projection returned by the api
+        service's hitlGetTools (cached 5 minutes). The `floor` here is the
+        wire-effective HITL floor — `auto` or `manual`. Distinct from
+        `ToolRegistryEntry` which is the orchestrator's internal-only
+        projection that may carry `forbidden`.
+      type: object
+      required:
+      - name
+      - displayName
+      - platform
+      - floor
+      - editableFields
+      - description
+      - userDescription
+      properties:
+        name:
+          type: string
+        displayName:
+          type: string
+        displayNameKey:
+          type: string
+        platform:
+          type: string
+        floor:
+          type: string
+          enum:
+          - auto
+          - manual
+        editableFields:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        userDescription:
+          type: string
+    Conversation:
+      type: object
+      required:
+      - id
+      - userId
+      - businessId
+      - title
+      - titleStatus
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+          format: uuid
+        businessId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          nullable: true
+        title:
+          type: string
+        titleStatus:
+          type: string
+          enum:
+          - auto_pending
+          - auto
+          - manual
+        pinnedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastMessageAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateConversationRequest:
+      type: object
+      required:
+      - title
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        projectId:
+          type: string
+          nullable: true
+    UpdateConversationRequest:
+      type: object
+      required:
+      - title
+      properties:
+        title:
+          type: string
+          maxLength: 200
+    MoveConversationRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          nullable: true
+    Message:
+      type: object
+      required:
+      - id
+      - conversationId
+      - role
+      - content
+      - createdAt
+      properties:
+        id:
+          type: string
+        conversationId:
+          type: string
+        role:
+          type: string
+          enum:
+          - user
+          - assistant
+          - system
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageAttachment'
+        toolCalls:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageToolCall'
+        toolResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageToolResult'
+        metadata:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    MessageAttachment:
+      type: object
+      required:
+      - type
+      - url
+      - mimeType
+      - name
+      properties:
+        type:
+          type: string
+        url:
+          type: string
+        mimeType:
+          type: string
+        name:
+          type: string
+    MessageToolCall:
+      type: object
+      required:
+      - id
+      - name
+      - arguments
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        arguments:
+          type: object
+          additionalProperties: true
+        approvalId:
+          type: string
+        status:
+          type: string
+    MessageToolResult:
+      type: object
+      required:
+      - toolCallId
+      - content
+      - isError
+      properties:
+        toolCallId:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+        isError:
+          type: boolean
+        code:
+          type: string
+    ChatView:
+      type: object
+      required:
+      - messages
+      - pendingApprovals
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        pendingApprovals:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingApproval'
+    PendingApproval:
+      type: object
+      required:
+      - batchId
+      - messageId
+      - calls
+      - status
+      - createdAt
+      - expiresAt
+      properties:
+        batchId:
+          type: string
+        messageId:
+          type: string
+        calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingApprovalCall'
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    PendingApprovalCall:
+      type: object
+      required:
+      - callId
+      - toolName
+      - args
+      - editableFields
+      properties:
+        callId:
+          type: string
+        toolName:
+          type: string
+        args:
+          type: object
+          additionalProperties: true
+        editableFields:
+          type: array
+          items:
+            type: string
+    TitlerConflictError:
+      type: object
+      required:
+      - error
+      - message
+      properties:
+        error:
+          type: string
+          enum:
+          - title_is_manual
+          - title_in_flight
+          - title_state_changed
+        message:
+          type: string
+    TitlerDisabledError:
+      type: object
+      required:
+      - error
+      - message
+      properties:
+        error:
+          type: string
+          enum:
+          - titler_disabled
+        message:
+          type: string
+    Project:
+      type: object
+      required:
+      - id
+      - businessId
+      - name
+      - whitelistMode
+      - allowedTools
+      - quickActions
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        businessId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        systemPrompt:
+          type: string
+          maxLength: 4000
+        whitelistMode:
+          type: string
+          enum:
+          - inherit
+          - all
+          - explicit
+          - none
+        allowedTools:
+          type: array
+          items:
+            type: string
+        approvalOverrides:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+            - auto
+            - manual
+        quickActions:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProjectRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        systemPrompt:
+          type: string
+          maxLength: 4000
+        whitelistMode:
+          type: string
+          enum:
+          - inherit
+          - all
+          - explicit
+          - none
+        allowedTools:
+          type: array
+          items:
+            type: string
+        approvalOverrides:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+            - auto
+            - manual
+            - inherit
+        quickActions:
+          type: array
+          items:
+            type: string
+    ProjectDeleteResponse:
+      type: object
+      required:
+      - deletedConversations
+      - deletedMessages
+      properties:
+        deletedConversations:
+          type: integer
+        deletedMessages:
+          type: integer
+    ProjectConversationCountResponse:
+      type: object
+      required:
+      - count
+      properties:
+        count:
+          type: integer
+    Post:
+      type: object
+      required:
+      - id
+      - businessId
+      - content
+      - status
+      - createdAt
+      properties:
+        id:
+          type: string
+        businessId:
+          type: string
+          format: uuid
+        content:
+          type: string
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        platformResults:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PostPlatformResult'
+        status:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    PostPlatformResult:
+      type: object
+      required:
+      - postId
+      - url
+      - status
+      properties:
+        postId:
+          type: string
+        url:
+          type: string
+        status:
+          type: string
+        error:
+          type: string
+    PostListResponse:
+      type: object
+      required:
+      - posts
+      - total
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+        total:
+          type: integer
+    Review:
+      type: object
+      required:
+      - id
+      - businessId
+      - platform
+      - externalId
+      - authorName
+      - rating
+      - text
+      - replyStatus
+      - createdAt
+      properties:
+        id:
+          type: string
+        businessId:
+          type: string
+          format: uuid
+        platform:
+          type: string
+        externalId:
+          type: string
+        authorName:
+          type: string
+        rating:
+          type: integer
+        text:
+          type: string
+        replyText:
+          type: string
+        replyStatus:
+          type: string
+          enum:
+          - pending
+          - replied
+          - error
+        platformMeta:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        draftReply:
+          type: string
+        draftStatus:
+          type: string
+          enum:
+          - generating
+          - ready
+          - failed
+        draftGeneratedAt:
+          type: string
+          format: date-time
+        draftError:
+          type: string
+    ReviewListResponse:
+      type: object
+      required:
+      - reviews
+      - total
+      properties:
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+        total:
+          type: integer
+    ReplyToReviewRequest:
+      type: object
+      required:
+      - replyText
+      properties:
+        replyText:
+          type: string
+    AgentTask:
+      type: object
+      required:
+      - id
+      - businessId
+      - type
+      - status
+      - platform
+      - createdAt
+      properties:
+        id:
+          type: string
+        businessId:
+          type: string
+          format: uuid
+        type:
+          type: string
+        displayName:
+          type: string
+        displayNameKey:
+          type: string
+        status:
+          type: string
+        platform:
+          type: string
+        input:
+          description: Free-form per-task input payload.
+        output:
+          description: Free-form per-task output payload.
+        error:
+          type: string
+        errorCode:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    AgentTaskListResponse:
+      type: object
+      required:
+      - tasks
+      - total
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentTask'
+        total:
+          type: integer
+    SearchResult:
+      type: object
+      required:
+      - conversationId
+      - matchCount
+      - score
+      properties:
+        conversationId:
+          type: string
+        title:
+          type: string
+        projectId:
+          type: string
+          nullable: true
+        snippet:
+          type: string
+        matchCount:
+          type: integer
+        topMessageId:
+          type: string
+        score:
+          type: number
+          format: double
+        marks:
+          type: array
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items:
+              type: integer
+        lastMessageAt:
+          type: string
+          format: date-time
+          nullable: true
+    ChatRequest:
+      type: object
+      required:
+      - message
+      properties:
+        model:
+          type: string
+        message:
+          type: string
+        business_id:
+          type: string
+          format: uuid
+        business_name:
+          type: string
+        business_category:
+          type: string
+        business_address:
+          type: string
+        business_phone:
+          type: string
+        business_website:
+          type: string
+        business_description:
+          type: string
+        business_voice_tone:
+          type: array
+          items:
+            type: string
+        active_integrations:
+          type: array
+          items:
+            type: string
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatHistoryEntry'
+        project_id:
+          type: string
+        project_name:
+          type: string
+        project_system_prompt:
+          type: string
+        project_whitelist_mode:
+          type: string
+          enum:
+          - inherit
+          - all
+          - explicit
+          - none
+          - ''
+        project_allowed_tools:
+          type: array
+          items:
+            type: string
+        user_id:
+          type: string
+        message_id:
+          type: string
+        tier:
+          type: string
+        business_approvals:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolFloor'
+        project_approval_overrides:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolFloor'
+        locale:
+          type: string
+    ChatHistoryEntry:
+      type: object
+      required:
+      - role
+      - content
+      properties:
+        role:
+          type: string
+          enum:
+          - system
+          - user
+          - assistant
+          - tool
+        content:
+          type: string
+    ResumeRequest:
+      type: object
+      properties:
+        business_approvals:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolFloor'
+        project_approval_overrides:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolFloor'
+        active_integrations:
+          type: array
+          items:
+            type: string
+        whitelist_mode:
+          type: string
+          enum:
+          - inherit
+          - all
+          - explicit
+          - none
+          - ''
+        allowed_tools:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+        tier:
+          type: string
+    DraftReplyRequest:
+      type: object
+      required:
+      - reviewText
+      - businessId
+      - platform
+      - rating
+      properties:
+        businessId:
+          type: string
+        businessName:
+          type: string
+        businessCategory:
+          type: string
+        businessDescription:
+          type: string
+        platform:
+          type: string
+        reviewText:
+          type: string
+        rating:
+          type: integer
+          minimum: 0
+          maximum: 5
+        authorName:
+          type: string
+        examples:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftReplyExample'
+    DraftReplyExample:
+      type: object
+      required:
+      - reviewText
+      - replyText
+      properties:
+        reviewText:
+          type: string
+        replyText:
+          type: string
+        rating:
+          type: integer
+          minimum: 0
+          maximum: 5
+    DraftReplyResponse:
+      type: object
+      required:
+      - draftReply
+      properties:
+        draftReply:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+    ToolNamesResponse:
+      type: object
+      required:
+      - names
+      properties:
+        names:
+          type: array
+          items:
+            type: string
+    ToolRegistryEntry:
+      description: |
+        Orchestrator's internal tool registry projection. The `floor` may
+        carry `forbidden` (in addition to `auto` / `manual`); the api side
+        uses `ToolEntry` (auto/manual only).
+      type: object
+      required:
+      - name
+      - displayName
+      - platform
+      - floor
+      - editableFields
+      - description
+      - userDescription
+      properties:
+        name:
+          type: string
+        displayName:
+          type: string
+        displayNameKey:
+          type: string
+        platform:
+          type: string
+        floor:
+          $ref: '#/components/schemas/ToolFloor'
+        editableFields:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        userDescription:
+          type: string
+    SSEEvent:
+      description: |
+        Discriminated union over the per-type SSE event schemas. `type`
+        is the discriminator. Wire envelope is `data: <json>\n\n`.
+      oneOf:
+      - $ref: '#/components/schemas/SSEEventText'
+      - $ref: '#/components/schemas/SSEEventToolCall'
+      - $ref: '#/components/schemas/SSEEventToolResult'
+      - $ref: '#/components/schemas/SSEEventToolRejected'
+      - $ref: '#/components/schemas/SSEEventApprovalRequired'
+      - $ref: '#/components/schemas/SSEEventDone'
+      - $ref: '#/components/schemas/SSEEventError'
+      discriminator:
+        propertyName: type
+        mapping:
+          text: '#/components/schemas/SSEEventText'
+          tool_call: '#/components/schemas/SSEEventToolCall'
+          tool_result: '#/components/schemas/SSEEventToolResult'
+          tool_rejected: '#/components/schemas/SSEEventToolRejected'
+          tool_approval_required: '#/components/schemas/SSEEventApprovalRequired'
+          done: '#/components/schemas/SSEEventDone'
+          error: '#/components/schemas/SSEEventError'
+    SSEEventText:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - text
+        content:
+          type: string
+    SSEEventToolCall:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - tool_call
+        tool_call_id:
+          type: string
+        tool_name:
+          type: string
+        tool_display_name:
+          type: string
+        tool_display_name_key:
+          type: string
+        tool_args:
+          type: object
+          additionalProperties: true
+    SSEEventToolResult:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - tool_result
+        tool_call_id:
+          type: string
+        tool_name:
+          type: string
+        tool_display_name:
+          type: string
+        tool_display_name_key:
+          type: string
+        result:
+          description: Tool reply payload (any JSON).
+          nullable: true
+        error:
+          type: string
+    SSEEventToolRejected:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - tool_rejected
+        tool_call_id:
+          type: string
+        tool_name:
+          type: string
+        tool_display_name:
+          type: string
+        tool_display_name_key:
+          type: string
+        error:
+          type: string
+    SSEEventApprovalRequired:
+      type: object
+      required:
+      - type
+      - batch_id
+      - calls
+      properties:
+        type:
+          type: string
+          enum:
+          - tool_approval_required
+        batch_id:
+          type: string
+        calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalCall'
+    SSEEventDone:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - done
+        content:
+          type: string
+    SSEEventError:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - error
+        code:
+          type: string
+        content:
+          type: string
+    ApprovalCall:
+      type: object
+      required:
+      - call_id
+      - tool_name
+      - args
+      - editable_fields
+      - floor
+      properties:
+        call_id:
+          type: string
+        tool_name:
+          type: string
+        args:
+          type: object
+          additionalProperties: true
+        editable_fields:
+          type: array
+          items:
+            type: string
+        floor:
+          $ref: '#/components/schemas/ToolFloor'

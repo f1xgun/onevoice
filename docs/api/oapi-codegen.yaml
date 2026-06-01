@@ -11,6 +11,15 @@ package: openapi
 output: services/api/internal/openapi/types.gen.go
 generate:
   models: true
-  embedded-spec: true
 output-options:
   skip-prune: true
+## External-ref → "-" tells oapi-codegen to inline these refs into the
+## current package instead of demanding a Go import. The spec is split
+## into docs/api/spec/openapi.yaml (root + components inline) and
+## docs/api/spec/paths/<tag>.yaml (one file per tag). Path files reference
+## back into the root via '../openapi.yaml#/components/...'; kin-openapi
+## resolves the payloads (loader.IsExternalRefsAllowed=true) and this
+## mapping lets the Go-typename pass treat each external ref as a local
+## schema.
+import-mapping:
+  ../openapi.yaml: "-"

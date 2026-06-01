@@ -1,0 +1,153 @@
+/reviews/refresh:
+  post:
+    operationId: refreshReviews
+    summary: Cross-business on-demand review pull.
+    tags:
+    - reviews
+    responses:
+      '200':
+        description: Refresh dispatched.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/StatusOkResponse
+      '401':
+        description: Missing or invalid access token.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Caller has no business.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/reviews:
+  get:
+    operationId: listReviews
+    tags:
+    - reviews
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: platform
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: reply_status
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+        - pending
+        - replied
+        - error
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+    - name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+    responses:
+      '200':
+        description: Reviews list + total.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ReviewListResponse
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/reviews/{reviewID}:
+  get:
+    operationId: getReview
+    tags:
+    - reviews
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: reviewID
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Review row.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Review
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Review or business not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/reviews/{reviewID}/reply:
+  put:
+    operationId: replyToReview
+    tags:
+    - reviews
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: reviewID
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ReplyToReviewRequest
+    responses:
+      '200':
+        description: Reply persisted.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/StatusOkResponse
+      '400':
+        description: Invalid body / validation failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:update` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Review or business not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

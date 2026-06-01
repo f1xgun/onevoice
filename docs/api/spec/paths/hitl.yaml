@@ -1,0 +1,85 @@
+/businesses/{id}/conversations/{conversationID}/pending-tool-calls/{batch_id}/resolve:
+  post:
+    operationId: hitlResolveBatch
+    summary: Approve / edit / reject a pending HITL tool-call batch.
+    tags:
+    - hitl
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: batch_id
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/HITLResolveRequest
+    responses:
+      '200':
+        description: Resolve succeeded.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/HITLResolveResponse
+      '400':
+        description: |
+          Missing path params, malformed body, shape mismatch, edit
+          rejected, non-scalar edit value, or reject_reason too long.
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+              - $ref: ../openapi.yaml#/components/schemas/HITLShapeMismatchError
+              - $ref: ../openapi.yaml#/components/schemas/HITLFieldNotEditableError
+              - $ref: ../openapi.yaml#/components/schemas/HITLNonScalarFieldError
+              - $ref: ../openapi.yaml#/components/schemas/HITLRejectReasonTooLongError
+      '403':
+        description: Missing `content:update` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Batch not found (also cross-tenant — uniform 404).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: Concurrent resolve in progress.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/HITLBatchResolvingError
+      '410':
+        description: Batch already expired.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/HITLExpiredError
+/businesses/{id}/tools:
+  get:
+    operationId: hitlGetTools
+    summary: Tools registry projection (5-minute cache).
+    tags:
+    - hitl
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    responses:
+      '200':
+        description: Live registry projection.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/ToolEntry

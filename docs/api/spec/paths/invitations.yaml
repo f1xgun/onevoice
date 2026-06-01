@@ -1,0 +1,186 @@
+/businesses/{id}/invitations:
+  get:
+    operationId: listPendingInvitations
+    summary: List pending invitations for a business.
+    tags:
+    - invitations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    responses:
+      '200':
+        description: Pending invitation list.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/PendingInvitation
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller lacks `members.invite`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/BusinessNotFound
+  post:
+    operationId: createInvitation
+    summary: Mint a single-use invitation token.
+    tags:
+    - invitations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CreateInvitationRequest
+    responses:
+      '201':
+        description: Invitation created.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CreateInvitationResponse
+      '400':
+        description: |
+          `invalid_body`, `validation_failed`, or `invalid_role_id`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller lacks `members.invite` or attempts escalation.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/BusinessNotFound
+      '429':
+        description: '`too_many_pending`.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '500':
+        $ref: ../openapi.yaml#/components/responses/InternalError
+/businesses/{id}/invitations/{inviteId}:
+  delete:
+    operationId: revokeInvitation
+    summary: Revoke (cancel) a pending invitation.
+    tags:
+    - invitations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: inviteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '204':
+        description: Invitation revoked.
+      '400':
+        description: '`invalid_invite_id`.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller lacks `members.invite`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Invitation not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '409':
+        description: Invitation already accepted/revoked/expired.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/invitations/{token}:
+  get:
+    operationId: previewInvitation
+    summary: Resolve an invitation token to a human-readable preview.
+    tags:
+    - invitations
+    security: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/InvitationTokenPath
+    responses:
+      '200':
+        description: Invitation preview.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/InvitationPreview
+      '400':
+        description: '`validation_failed` (empty token).'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '404':
+        description: Token not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '409':
+        description: Invitation in terminal state.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/invitations/{token}/accept:
+  post:
+    operationId: acceptInvitation
+    summary: Accept an invitation as the authenticated user.
+    tags:
+    - invitations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/InvitationTokenPath
+    responses:
+      '200':
+        description: Accepted.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AcceptInvitationResponse
+      '400':
+        description: '`validation_failed` (empty token).'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '404':
+        description: Token not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '409':
+        description: Terminal-state error.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '500':
+        $ref: ../openapi.yaml#/components/responses/InternalError
