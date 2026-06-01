@@ -1,6 +1,6 @@
-// Package orchestratorclient is a thin HTTP client for the orchestrator's
+// Package orchestratorclient is a thin typed HTTP client for the orchestrator's
 // cluster-internal endpoints (chat streaming, HITL resume, tool registry,
-// draft-reply).
+// draft-reply). See docs/pkg/orchestratorclient.md.
 package orchestratorclient
 
 import (
@@ -18,17 +18,14 @@ import (
 	"github.com/f1xgun/onevoice/pkg/sse"
 )
 
-// Client wraps the orchestrator's base URL and an http.Client. Stream*
-// methods return the raw *http.Response for SSE forwarding consumers; ListTools
-// / ListToolNames / DraftReply close the body and return decoded values.
+// Client wraps the orchestrator's base URL and an http.Client. See docs/pkg/orchestratorclient.md.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
 }
 
-// New constructs a Client. If httpClient is nil, http.DefaultClient is used.
-// Trailing slashes on baseURL are stripped so callers cannot create
-// double-slash URLs.
+// New constructs a Client. nil httpClient → http.DefaultClient; trailing
+// slashes on baseURL are stripped so callers cannot create double-slash URLs.
 func New(baseURL string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -42,18 +39,12 @@ func New(baseURL string, httpClient *http.Client) *Client {
 // BaseURL returns the trimmed base URL the client is configured with.
 func (c *Client) BaseURL() string { return c.baseURL }
 
-// HTTPClient exposes the underlying http.Client for callers that need to
-// share the same transport (timeouts, tracing wrappers).
+// HTTPClient exposes the underlying http.Client for callers that need to share
+// the same transport (timeouts, tracing wrappers).
 func (c *Client) HTTPClient() *http.Client { return c.httpClient }
 
-// ToolEntry is the per-tool projection returned by GET /internal/tools. JSON
-// tags mirror services/orchestrator/internal/handler/internal_tools.go's
-// AllEntries output.
-//
-// DisplayNameKey is the i18n catalog key the frontend uses to render the
-// settings UI's tool label in the user's locale. Optional —
-// orchestrator deploys without the key send "" and the FE falls back to
-// DisplayName.
+// ToolEntry is the per-tool projection returned by GET /internal/tools.
+// See docs/pkg/orchestratorclient.md.
 type ToolEntry struct {
 	Name            string   `json:"name"`
 	DisplayName     string   `json:"displayName"`
@@ -93,52 +84,11 @@ type DraftReplyResponse struct {
 	Model      string `json:"model,omitempty"`
 }
 
-// sseScannerBufferBytes is the bufio.Scanner buffer cap for upstream SSE
-// frames. 1 MiB matches the prior chatproxy/chat_proxy buffer — large
-// tool_result payloads (whole-channel review batches) must fit a single line.
+// sseScannerBufferBytes is the bufio.Scanner buffer cap for upstream SSE frames.
+// 1 MiB — large tool_result payloads (whole-channel review batches) must fit a single line.
 const sseScannerBufferBytes = 1 << 20
 
-// StreamSSERequest configures a StreamSSE call. URL selection:
-//
-//   - BatchID == ""  → POST /chat/{ConversationID}             (fresh chat)
-//   - BatchID != ""  → POST /chat/{ConversationID}/resume?batch_id=X (HITL resume)
-//
-// Body may be nil/empty (the resume-from-chatturn path sends no body; the
-// resume-from-handler path sends a JSON object with the fresh approval maps).
-// Content-Type is set automatically when Body is non-empty.
-//
-// Writer receives the raw upstream bytes line-by-line; the standard SSE
-// response headers (Content-Type: text/event-stream, Cache-Control, etc.) are
-// written by StreamSSE before the first byte is forwarded — callers MUST NOT
-// write to Writer before invoking StreamSSE.
-//
-// Headers are extra upstream request headers (typically X-Correlation-ID).
-// If the caller-supplied ctx carries a correlation ID via pkg/logger and the
-// Headers map does NOT already contain "X-Correlation-ID", StreamSSE
-// propagates it automatically.
-//
-// OrchCtxBudget controls how the upstream request is contextualized:
-//
-//   - 0                → upstream request inherits ctx directly. ctx
-//     cancellation aborts the upstream.
-//   - > 0              → upstream runs on a fresh context.Background() with
-//     the given timeout. ctx is still consulted for
-//     client-gone detection: when ctx.Done() fires,
-//     StreamSSE STOPS writing to Writer but keeps draining
-//     the upstream so the orchestrator's side effects
-//     (tool dispatch, message persistence) reach terminal
-//     states. This is the chatturn lifecycle invariant —
-//     a client navigating away mid-stream must not abort
-//     the LLM call.
-//
-// OnEvent, if non-nil, is invoked synchronously for every successfully parsed
-// "data: ..." SSE frame AFTER the raw line is forwarded to Writer. Use it for
-// domain dispatch (tool_call → AgentTask creation, etc.). Malformed frames are
-// forwarded as raw bytes but skipped for OnEvent — the upstream's responsibility
-// to emit well-formed JSON; a single garbled frame should not crash the loop.
-//
-// OnEvent == nil means raw forwarding only — the handler/hitl.go resume-proxy
-// path uses this.
+// StreamSSERequest configures a StreamSSE call. See docs/pkg/orchestratorclient.md.
 type StreamSSERequest struct {
 	ConversationID string
 	BatchID        string
@@ -149,31 +99,24 @@ type StreamSSERequest struct {
 	OnEvent        func(sse.Event)
 }
 
-// StreamSSE proxies the orchestrator's SSE response into req.Writer. It
-// owns four cross-cutting concerns: URL selection, upstream context
-// handling (correlation + optional detach), SSE response-header setup,
-// and the buffered drain loop with optional per-event domain dispatch.
-//
-// Returns:
-//   - nil after a clean drain (including the "client went away" case under
-//     OrchCtxBudget > 0 — upstream was drained but writes were skipped).
-//   - non-nil on connect failure, on a Writer that does not implement
-//     http.Flusher (no bytes are written in this case so callers can still
-//     map to a non-SSE HTTP error), or on a scanner read error.
+// StreamSSE proxies the orchestrator's SSE response into req.Writer.
+// See docs/pkg/orchestratorclient.md.
 func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 	flusher, ok := req.Writer.(http.Flusher)
 	if !ok {
+		// No bytes have been written yet, so callers can still map this to a
+		// non-SSE HTTP error response.
 		return fmt.Errorf("orchestratorclient: StreamSSE: writer does not implement http.Flusher")
 	}
 
-	// Resolve correlation_id once; reused for both ctx propagation and the
-	// upstream header. We do NOT overwrite a caller-supplied header — the
-	// chatturn paths inject their own merged map and that override wins.
+	// Resolve correlation_id once; reused for ctx propagation and upstream header.
+	// We do NOT overwrite a caller-supplied header — the chatturn paths inject
+	// their own merged map and that override wins.
 	corrID := logger.CorrelationIDFromContext(ctx)
 
-	// Upstream context: detached when budget > 0, inherited otherwise. The
-	// detached branch is what makes the "client navigated away mid-stream"
-	// drain semantics possible — see streamShouldWriteToClient below.
+	// Upstream context: detached when budget > 0 (preserves chatturn lifecycle
+	// invariant — client disconnect must not abort the LLM call), inherited
+	// otherwise.
 	var (
 		upstreamCtx context.Context
 		cancel      context.CancelFunc
@@ -195,6 +138,8 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
+		// "stream chat" / "stream resume" wording lets caller substring matchers
+		// distinguish pre-connect failures from mid-drain ones.
 		verb := "stream chat"
 		if req.BatchID != "" {
 			verb = "stream resume"
@@ -215,9 +160,9 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, sseScannerBufferBytes), sseScannerBufferBytes)
 
-	// clientGone is the client-disconnect signal under the detached-ctx
-	// regime. When OrchCtxBudget == 0, upstreamCtx == ctx and a client
-	// disconnect already aborts the upstream — there is nothing to skip.
+	// Client-disconnect signal under the detached-ctx regime. When
+	// OrchCtxBudget == 0, upstreamCtx == ctx and a client disconnect already
+	// aborts the upstream — clientGone stays nil so the select default wins.
 	var clientGone <-chan struct{}
 	if req.OrchCtxBudget > 0 {
 		clientGone = ctx.Done()
@@ -226,9 +171,8 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 	for scanner.Scan() {
 		line := scanner.Text()
 		// Skip writes to a dead socket but keep draining the upstream so
-		// tool_result frames still arrive and the orchestrator's
-		// post-stream cleanup runs. Under OrchCtxBudget == 0 this branch
-		// never fires (clientGone is nil → the select default always wins).
+		// tool_result frames still arrive and the orchestrator's post-stream
+		// cleanup runs.
 		write := true
 		if clientGone != nil {
 			select {
@@ -249,8 +193,8 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 		}
 		ev, err := sse.Unmarshal([]byte(line[6:]))
 		if err != nil {
-			// Malformed frame: do not invoke OnEvent (avoids handing
-			// callers a zero-valued domain event), but keep draining.
+			// Malformed frame: don't hand callers a zero-valued domain event,
+			// but keep draining — a single garbled frame should not crash the loop.
 			continue
 		}
 		req.OnEvent(ev)
@@ -262,10 +206,8 @@ func (c *Client) StreamSSE(ctx context.Context, req StreamSSERequest) error {
 	return nil
 }
 
-// buildStreamRequest assembles the http.Request for StreamSSE. The error
-// is wrapped with "orchestratorclient: build <verb> request" / "stream <verb>:"
-// so caller substring matchers can distinguish pre-connect failures from
-// mid-drain ones.
+// buildStreamRequest assembles the http.Request for StreamSSE. Error prefixes
+// let caller substring matchers distinguish pre-connect from mid-drain failures.
 func (c *Client) buildStreamRequest(ctx context.Context, conversationID, batchID string, body []byte, headers map[string]string, corrID string) (*http.Request, error) {
 	verb := "chat"
 	u := c.baseURL + "/chat/" + url.PathEscape(conversationID)
@@ -291,22 +233,17 @@ func (c *Client) buildStreamRequest(ctx context.Context, conversationID, batchID
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+	// Never overwrite a caller-supplied X-Correlation-ID — chatturn paths
+	// inject their own merged map and that override wins.
 	if corrID != "" && req.Header.Get("X-Correlation-ID") == "" {
 		req.Header.Set("X-Correlation-ID", corrID)
 	}
 	return req, nil
 }
 
-// ListTools fetches the full tool registry projection via
-// GET {baseURL}/internal/tools. Replaces the inline HTTP fetch in
-// services/api/internal/service/hitl.go's ToolsRegistryCache.refresh.
-//
-// acceptLanguage is forwarded as the request's Accept-Language header so the
-// orchestrator's locale-aware projection returns the description
-// in the caller's preferred language. Pass "" to use the orchestrator's
-// default (RU). Single-tag values ("en") and preference lists
-// ("en-US,en;q=0.9") are both accepted — the orchestrator parses with
-// pkg/i18n.MatchAcceptLanguage.
+// ListTools fetches the full tool registry projection via GET /internal/tools.
+// acceptLanguage is forwarded as Accept-Language; "" uses the orchestrator default (RU).
+// See docs/pkg/orchestratorclient.md.
 func (c *Client) ListTools(ctx context.Context, acceptLanguage string) ([]ToolEntry, error) {
 	u := c.baseURL + "/internal/tools"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
@@ -331,9 +268,7 @@ func (c *Client) ListTools(ctx context.Context, acceptLanguage string) ([]ToolEn
 	return entries, nil
 }
 
-// ListToolNames fetches the registered tool name set via
-// GET {baseURL}/internal/tools/names. Replaces wire/policy_sweep.go's
-// fetchOrchestratorToolNames.
+// ListToolNames fetches the registered tool name set via GET /internal/tools/names.
 func (c *Client) ListToolNames(ctx context.Context) (map[string]struct{}, error) {
 	u := c.baseURL + "/internal/tools/names"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
@@ -361,8 +296,8 @@ func (c *Client) ListToolNames(ctx context.Context) (map[string]struct{}, error)
 	return out, nil
 }
 
-// DraftReply posts to /internal/draft-reply and decodes the response. Replaces
-// services/api/internal/service/review_drafter.go's inline HTTP call.
+// DraftReply posts to /internal/draft-reply and decodes the response.
+// See docs/pkg/orchestratorclient.md.
 func (c *Client) DraftReply(ctx context.Context, in DraftReplyRequest) (*DraftReplyResponse, error) {
 	body, err := json.Marshal(in)
 	if err != nil {
@@ -380,7 +315,8 @@ func (c *Client) DraftReply(ctx context.Context, in DraftReplyRequest) (*DraftRe
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Snippet readback so callers can log a useful error without OOMing.
+		// Bounded readback (512 bytes) — a streaming JSON error response
+		// must not be slurped into memory wholesale.
 		snippet := make([]byte, 0, 512)
 		buf := make([]byte, 512)
 		n, _ := resp.Body.Read(buf)

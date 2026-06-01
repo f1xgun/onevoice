@@ -8,55 +8,26 @@ import (
 	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
-// Selector chooses a Provider for a model based on registry config plus
-// runtime policy (rolling latency window, failure-rate → health
-// transitions). Router consults Selector once per Chat / ChatStream call
-// and feeds the outcome back via Record so the next pick can adapt.
-//
-// Concurrent use: implementations must be safe for concurrent Pick / Record
-// from any number of goroutines — the Router fans out across requests.
+// Selector chooses a Provider for a model and folds call outcomes back into
+// rolling latency / health state. See docs/pkg/llm.md.
 type Selector interface {
-	// Pick chooses a provider for `model` under `strategy`. Returns the
-	// entry the choice came from so Router can log billing / metrics
-	// without the Selector exposing its registry. Returns ErrNoProvider
-	// when no enabled+registered provider exists for the model.
+	// Pick returns the priority-ordered head candidate for `model` under `strategy`.
 	Pick(model string, strategy Strategy) (*ModelProviderEntry, Provider, error)
-	// Candidates returns the priority-ordered candidate list for `model`
-	// under `strategy`. Index 0 is the entry Pick would return; subsequent
-	// entries are the siblings the Router walks for the one-shot retry.
-	// Empty slice when no enabled+registered provider serves the model.
+	// Candidates returns the priority-ordered candidate list for `model` under `strategy`.
 	Candidates(model string, strategy Strategy) []Candidate
-	// Record folds an Outcome back into the Selector's policy state. The
-	// entry must be one returned by Pick — the default impl uses
-	// entry.Provider + entry.Model as its metrics key and mirrors the new
-	// health / latency state onto the entry pointer so the next Pick (and
-	// any registry consumer) sees it immediately.
+	// Record folds a call Outcome back into the Selector's policy state.
 	Record(entry *ModelProviderEntry, outcome Outcome)
 }
 
-// Candidate pairs a registry entry with its registered Provider, so
-// Router.Chat can iterate the priority-ordered list without re-resolving
-// providers from the entry.Provider name on every step.
+// Candidate pairs a registry entry with its registered Provider.
 type Candidate struct {
 	Entry    *ModelProviderEntry
 	Provider Provider
 }
 
-// Outcome is the verdict reported back to Selector.Record after a single
-// provider invocation. Two latencies live here for two purposes:
-//
-//   - Latency: end-of-response duration reported by the provider (set by
-//     non-stream Chat after the body arrives; zero for streaming starts
-//     because the channel-open instant is not user-perceived). Drives the
-//     rolling-window AvgLatencyMs for Pick(StrategySpeed).
-//   - Wall: wall-clock duration spent inside the provider call as seen by
-//     the caller (Invoke fills this from start/time.Since). Drives the
-//     prometheus per-call latency histogram via metrics.RecordLLMRequest.
-//
-// Model is the model name the caller requested. Invoke fills it; direct
-// Record callers may leave it empty — in that case the defaultSelector
-// skips the prometheus emission to avoid polluting the histogram with
-// empty labels.
+// Outcome is the verdict reported back to Selector.Record after a single provider invocation.
+// Latency drives the rolling AvgLatencyMs; Wall drives the prometheus per-call histogram.
+// See docs/pkg/llm.md.
 type Outcome struct {
 	Success bool
 	Latency time.Duration
@@ -64,9 +35,7 @@ type Outcome struct {
 	Wall    time.Duration
 }
 
-// defaultSelector policy tuning. Lives at package scope so future Selector
-// implementations can lean on the same conventions or override them with
-// their own constants.
+// defaultSelector policy tuning. See docs/pkg/llm.md.
 const (
 	latencyWindow            = 100 // rolling latency samples kept per provider:model
 	healthDegradedRate       = 0.2 // failure rate above which a provider is "degraded"
@@ -74,21 +43,15 @@ const (
 	healthRecoverySuccessMin = 3   // consecutive successes that reset a degraded/down state
 )
 
-// metricsMaxEntries caps the per-(provider,model) metrics map. With many
-// model variants and routing strategies the unique key space is unbounded
-// over time; a hard cap with single-pass LRU eviction is sufficient at this
-// size (1000 keys = a sub-millisecond linear scan on cold-path eviction,
-// no background goroutine to lifecycle). Var (not const) so eviction tests
-// can lower it without inserting 1000 fixtures.
+// metricsMaxEntries caps the per-(provider,model) metrics map. Var (not const)
+// so eviction tests can lower it without inserting 1000 fixtures.
 var metricsMaxEntries = 1000
 
 // nowFunc is the clock source used for metrics last-touched bookkeeping.
 // Overridden by tests to drive deterministic LRU eviction.
 var nowFunc = time.Now
 
-// defaultSelector is the production Selector. It consults Registry for
-// entries (config) and owns the rolling-window latency + health-transition
-// state in its own metrics map.
+// defaultSelector is the production Selector. See docs/pkg/llm.md.
 type defaultSelector struct {
 	mu        sync.Mutex
 	registry  *Registry
@@ -96,9 +59,7 @@ type defaultSelector struct {
 	metrics   map[string]*providerMetrics // key: provider + ":" + model
 }
 
-// providerMetrics holds runtime state owned by defaultSelector. Unexported
-// — callers that need policy state read it off the ModelProviderEntry that
-// Pick / Record mirror it onto, not directly through the Selector.
+// providerMetrics holds runtime state owned by defaultSelector.
 type providerMetrics struct {
 	totalRequests   int64
 	successCount    int64
@@ -109,10 +70,7 @@ type providerMetrics struct {
 	lastTouchedUnix int64
 }
 
-// NewSelector constructs the default Selector. Exposed so callers wanting
-// to wrap or trace the production policy (e.g. a tracing Selector
-// decorator) can compose off it instead of reimplementing the rolling
-// window from scratch.
+// NewSelector constructs the default Selector. See docs/pkg/llm.md.
 func NewSelector(registry *Registry, providers map[string]Provider) Selector {
 	return &defaultSelector{
 		registry:  registry,
@@ -121,11 +79,8 @@ func NewSelector(registry *Registry, providers map[string]Provider) Selector {
 	}
 }
 
-// Pick chooses the best healthy, enabled, registered provider for `model`.
-// Falls back to the first enabled+registered entry (regardless of health)
-// when every healthy provider is unavailable — keeps a single-provider
-// outage from permanently deadlocking the Router once the provider
-// recovers.
+// Pick returns the priority-ordered head candidate, falling back to an unhealthy
+// entry rather than ErrNoProvider when no healthy candidate exists. See docs/pkg/llm.md.
 func (s *defaultSelector) Pick(model string, strategy Strategy) (*ModelProviderEntry, Provider, error) {
 	cands := s.buildCandidates(model, strategy)
 	if len(cands) == 0 {
@@ -134,22 +89,13 @@ func (s *defaultSelector) Pick(model string, strategy Strategy) (*ModelProviderE
 	return cands[0].Entry, cands[0].Provider, nil
 }
 
-// Candidates returns the priority-ordered candidate list for `model` under
-// `strategy`. Index 0 matches Pick's choice; the remaining entries are
-// siblings the Router walks for the one-shot retry. Unhealthy and
-// degraded entries appear after healthy ones but are NOT filtered out —
-// the retry path can attempt a known-bad sibling if the primary fails,
-// which is preferable to surfacing the failure to the caller when the
-// sibling might have recovered between health checks.
+// Candidates returns the priority-ordered candidate list; unhealthy entries
+// are kept at the tail so the Router's retry path can still attempt them.
 func (s *defaultSelector) Candidates(model string, strategy Strategy) []Candidate {
 	return s.buildCandidates(model, strategy)
 }
 
-// buildCandidates is the shared ordering pass driven by both Pick and
-// Candidates. Two phases: collect enabled+registered entries, then sort
-// stably with healthy entries first and the strategy's tie-break inside
-// each health bucket. Registry order is preserved for equal keys so the
-// output is deterministic across calls.
+// buildCandidates is the shared ordering pass driven by both Pick and Candidates.
 func (s *defaultSelector) buildCandidates(model string, strategy Strategy) []Candidate {
 	entries := s.registry.GetModelProviders(model)
 	if len(entries) == 0 {
@@ -163,6 +109,7 @@ func (s *defaultSelector) buildCandidates(model string, strategy Strategy) []Can
 		}
 		p, ok := s.providers[e.Provider]
 		if !ok {
+			// An entry with no resolvable Provider is invisible to the Router.
 			continue
 		}
 		out = append(out, Candidate{Entry: e, Provider: p})
@@ -171,13 +118,14 @@ func (s *defaultSelector) buildCandidates(model string, strategy Strategy) []Can
 		return nil
 	}
 
+	// Stable sort: healthy first, then strategy tie-break inside each bucket.
+	// Stability preserves registry order for equal keys → deterministic output.
 	sort.SliceStable(out, func(i, j int) bool {
 		hi := out[i].Entry.HealthStatus == HealthStatusHealthy
 		hj := out[j].Entry.HealthStatus == HealthStatusHealthy
 		if hi != hj {
 			return hi
 		}
-		// Within the same health bucket, apply the strategy's tie-break.
 		if strategy == StrategyCost {
 			ci := avgCost(out[i].Entry)
 			cj := avgCost(out[j].Entry)
@@ -186,9 +134,6 @@ func (s *defaultSelector) buildCandidates(model string, strategy Strategy) []Can
 			}
 			return false
 		}
-		// StrategySpeed: cheaper average latency wins; zero AvgLatencyMs
-		// (no measurements) ranks last so a fresh entry doesn't win on a
-		// phantom "zero is smallest" comparison.
 		return betterLatency(out[i].Entry, out[j].Entry)
 	})
 
@@ -196,9 +141,7 @@ func (s *defaultSelector) buildCandidates(model string, strategy Strategy) []Can
 }
 
 // Record folds an Outcome into the rolling metrics and mirrors the new
-// HealthStatus / AvgLatencyMs onto the entry pointer so the next Pick
-// (and any registry consumer reading entries for an admin / status
-// endpoint) sees the policy state without consulting the Selector.
+// HealthStatus / AvgLatencyMs onto the entry pointer. See docs/pkg/llm.md.
 func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 	if entry == nil {
 		return
@@ -236,8 +179,7 @@ func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 			}
 			m.avgLatencyMs = int(sum / int64(len(m.lastLatencies)))
 		}
-		// Recovery: enough consecutive successes since the last failure
-		// flip a degraded / down provider back to healthy.
+		// Recovery: enough consecutive successes flip a degraded/down provider back to healthy.
 		if m.healthStatus != HealthStatusHealthy && m.successCount >= healthRecoverySuccessMin {
 			m.healthStatus = HealthStatusHealthy
 		}
@@ -260,11 +202,8 @@ func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 	}
 	entry.LastCheckedAt = time.Now()
 
-	// Per-call prometheus emission lives here so the seam owns ALL
-	// "what to report about a provider invocation" decisions. Gated on
-	// outcome.Model so direct Record callers (integration tests etc.)
-	// don't leak empty-label series into the histogram — only Invoke
-	// callers (Router + future similar wrappers) emit.
+	// Gated on outcome.Model so direct Record callers (integration tests)
+	// don't leak empty-label series into the histogram.
 	if outcome.Model != "" {
 		status := "success"
 		if !outcome.Success {
@@ -274,36 +213,8 @@ func (s *defaultSelector) Record(entry *ModelProviderEntry, outcome Outcome) {
 	}
 }
 
-// Invoke brackets a single Selector cycle — pick a provider, run fn, record
-// the outcome, return — so callers don't have to remember to call Record
-// (and don't risk drift between two near-identical Chat / ChatStream
-// bookkeeping blocks). The closure shape is shared by the blocking and
-// streaming paths:
-//
-//	entry, resp, err := Invoke(sel, req.Model, req.Strategy,
-//	    func(p Provider) (*ChatResponse, time.Duration, error) {
-//	        r, err := p.Chat(ctx, req)
-//	        if err != nil { return nil, 0, err }
-//	        return r, r.Latency, nil
-//	    })
-//
-//	entry, ch, err := Invoke(sel, req.Model, req.Strategy,
-//	    func(p Provider) (<-chan StreamChunk, time.Duration, error) {
-//	        ch, err := p.ChatStream(ctx, req)
-//	        if err != nil { return nil, 0, err }
-//	        return ch, 0, nil // channel-open instant not user-perceived
-//	    })
-//
-// fn returns the caller's typed result, the provider-reported latency
-// (used by the rolling window — zero means "don't sample me"), and any
-// error. Invoke fills outcome.Model + outcome.Wall from the caller-
-// supplied model and the observed wall-clock; outcome.Success is set
-// from err == nil so fn doesn't have to think about it.
-//
-// On Pick failure fn is not called and Record is not invoked — the error
-// has no provider entry to attribute. The Selector seam owns retry policy,
-// not Invoke; if multi-provider retry ever lands it goes on Selector,
-// not duplicated across each Invoke call site.
+// Invoke brackets a single Selector cycle — Pick, run fn, Record — so callers
+// can't forget Record and Chat / ChatStream bookkeeping cannot drift. See docs/pkg/llm.md.
 func Invoke[T any](
 	s Selector,
 	model string,
@@ -313,6 +224,8 @@ func Invoke[T any](
 	var zero T
 	entry, provider, err := s.Pick(model, strategy)
 	if err != nil {
+		// On Pick failure fn is not called and Record is not invoked — the
+		// error has no provider entry to attribute.
 		return nil, zero, err
 	}
 	start := time.Now()
@@ -326,20 +239,15 @@ func Invoke[T any](
 	return entry, result, fnErr
 }
 
-// avgCost averages the input + output per-1M-token list price. Tie-breaker
-// for StrategyCost so a model with cheaper input but pricier output isn't
-// blindly preferred over a balanced model — we score on the symmetric
-// midpoint.
+// avgCost averages the input + output per-1M-token list price for StrategyCost.
 func avgCost(e *ModelProviderEntry) float64 {
 	const ioPair = 2.0
 	return (e.InputCostPer1MTok + e.OutputCostPer1MTok) / ioPair
 }
 
-// betterLatency returns true when candidate's rolling AvgLatencyMs beats
-// current's. Zero AvgLatencyMs means "no measurements yet" and ranks last
-// — preferring a provider we have data on over one we don't keeps fresh
-// entries from monopolising traffic just because their unknown latency
-// happens to compare as "smaller."
+// betterLatency returns true when candidate's rolling AvgLatencyMs beats current's.
+// Zero AvgLatencyMs ("no measurements yet") ranks last so a fresh entry doesn't
+// win on a phantom "zero is smallest" comparison.
 func betterLatency(candidate, current *ModelProviderEntry) bool {
 	if candidate.AvgLatencyMs == 0 {
 		return false
@@ -350,10 +258,10 @@ func betterLatency(candidate, current *ModelProviderEntry) bool {
 	return candidate.AvgLatencyMs < current.AvgLatencyMs
 }
 
-// evictOldestMetricLocked drops the single least-recently-touched metrics
-// entry. Caller must hold s.mu. Linear scan is fine because the map is
-// bounded at metricsMaxEntries (1000) and eviction only runs on the cold
-// path of inserting into a full map.
+// evictOldestMetricLocked drops the single least-recently-touched metrics entry.
+// Linear scan is fine because the map is bounded at metricsMaxEntries and
+// eviction only runs on the cold path of inserting into a full map.
+// Caller must hold s.mu.
 func (s *defaultSelector) evictOldestMetricLocked() {
 	var oldestKey string
 	var oldestTouched int64
