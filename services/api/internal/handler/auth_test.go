@@ -167,14 +167,20 @@ func TestRegister(t *testing.T) {
 			},
 		},
 		{
-			name:        "invalid email format",
+			name: "invalid email format",
+			// The generated openapi.RegisterRequest types Email as
+			// openapi_types.Email, whose UnmarshalJSON rejects malformed
+			// addresses at decode time — so the body fails with
+			// "invalid request body" before the per-field validator runs.
+			// This is stricter than the previous string-typed twin and is
+			// the spec's `format: email` contract; clients see HTTP 400
+			// in both cases.
 			requestBody: `{"email":"not-an-email","password":"password123"}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
-				assert.Contains(t, body, `"Email"`)
+				assert.Contains(t, body, `"error":"invalid request body"`)
 			},
 		},
 		{

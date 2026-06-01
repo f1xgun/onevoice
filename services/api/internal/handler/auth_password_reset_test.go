@@ -12,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -62,7 +63,7 @@ func newTestAuthHandler(t *testing.T, prs PasswordResetServiceAPI) *AuthHandler 
 func TestRequestPasswordReset_UnknownEmail_Returns204(t *testing.T) {
 	prs := &mockPasswordResetService{}
 	h := newTestAuthHandler(t, prs)
-	body, _ := json.Marshal(RequestPasswordResetRequest{Email: "nobody@example.com"})
+	body, _ := json.Marshal(openapi.RequestPasswordResetRequest{Email: "nobody@example.com"})
 	r := httptest.NewRequest("POST", "/api/v1/auth/password-reset/request", bytes.NewBuffer(body))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -77,7 +78,7 @@ func TestRequestPasswordReset_UnknownEmail_Returns204(t *testing.T) {
 func TestRequestPasswordReset_KnownEmail_Returns204(t *testing.T) {
 	prs := &mockPasswordResetService{}
 	h := newTestAuthHandler(t, prs)
-	body, _ := json.Marshal(RequestPasswordResetRequest{Email: "alice@example.com"})
+	body, _ := json.Marshal(openapi.RequestPasswordResetRequest{Email: "alice@example.com"})
 	r := httptest.NewRequest("POST", "/api/v1/auth/password-reset/request", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 
@@ -99,7 +100,7 @@ func TestRequestPasswordReset_MalformedJSON_Returns400(t *testing.T) {
 func TestRequestPasswordReset_InvalidEmail_Returns400(t *testing.T) {
 	prs := &mockPasswordResetService{}
 	h := newTestAuthHandler(t, prs)
-	body, _ := json.Marshal(RequestPasswordResetRequest{Email: "not-an-email"})
+	body, _ := json.Marshal(openapi.RequestPasswordResetRequest{Email: "not-an-email"})
 	r := httptest.NewRequest("POST", "/api/v1/auth/password-reset/request", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 
@@ -113,7 +114,7 @@ func TestRequestPasswordReset_InvalidEmail_Returns400(t *testing.T) {
 func TestConfirmPasswordReset_Valid_Returns204(t *testing.T) {
 	prs := &mockPasswordResetService{}
 	h := newTestAuthHandler(t, prs)
-	body, _ := json.Marshal(ConfirmPasswordResetRequest{Token: "valid-token-abc", NewPassword: "newpassword456"})
+	body, _ := json.Marshal(openapi.ConfirmPasswordResetRequest{Token: "valid-token-abc", NewPassword: "newpassword456"})
 	r := httptest.NewRequest("POST", "/api/v1/auth/password-reset/confirm", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 
@@ -127,7 +128,7 @@ func TestConfirmPasswordReset_Valid_Returns204(t *testing.T) {
 func TestConfirmPasswordReset_InvalidToken_Returns400_CodeResetTokenInvalid(t *testing.T) {
 	prs := &mockPasswordResetService{confirmErr: service.ErrResetTokenInvalid}
 	h := newTestAuthHandler(t, prs)
-	body, _ := json.Marshal(ConfirmPasswordResetRequest{Token: "garbage", NewPassword: "newpassword456"})
+	body, _ := json.Marshal(openapi.ConfirmPasswordResetRequest{Token: "garbage", NewPassword: "newpassword456"})
 	r := httptest.NewRequest("POST", "/api/v1/auth/password-reset/confirm", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 
@@ -142,7 +143,7 @@ func TestConfirmPasswordReset_InvalidToken_Returns400_CodeResetTokenInvalid(t *t
 func TestConfirmPasswordReset_DomainExpired_Returns400_CodeResetTokenExpired(t *testing.T) {
 	prs := &mockPasswordResetService{confirmErr: domain.ErrResetTokenExpired}
 	h := newTestAuthHandler(t, prs)
-	body, _ := json.Marshal(ConfirmPasswordResetRequest{Token: "expired", NewPassword: "newpassword456"})
+	body, _ := json.Marshal(openapi.ConfirmPasswordResetRequest{Token: "expired", NewPassword: "newpassword456"})
 	r := httptest.NewRequest("POST", "/api/v1/auth/password-reset/confirm", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 
@@ -162,7 +163,7 @@ func TestConfirmPasswordReset_ShortPassword_Returns400_CodePasswordTooWeak(t *te
 	// tests with a tampered request) — that branch is covered below.
 	prs := &mockPasswordResetService{}
 	h := newTestAuthHandler(t, prs)
-	body, _ := json.Marshal(ConfirmPasswordResetRequest{Token: "tok", NewPassword: "short"})
+	body, _ := json.Marshal(openapi.ConfirmPasswordResetRequest{Token: "tok", NewPassword: "short"})
 	r := httptest.NewRequest("POST", "/api/v1/auth/password-reset/confirm", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 
@@ -179,7 +180,7 @@ func TestConfirmPasswordReset_ShortPassword_Returns400_CodePasswordTooWeak(t *te
 func TestConfirmPasswordReset_ServicePasswordTooWeak_Returns400_CodePasswordTooWeak(t *testing.T) {
 	prs := &mockPasswordResetService{confirmErr: service.ErrPasswordTooWeak}
 	h := newTestAuthHandler(t, prs)
-	body, _ := json.Marshal(ConfirmPasswordResetRequest{Token: "tok", NewPassword: "longenoughpassword"})
+	body, _ := json.Marshal(openapi.ConfirmPasswordResetRequest{Token: "tok", NewPassword: "longenoughpassword"})
 	r := httptest.NewRequest("POST", "/api/v1/auth/password-reset/confirm", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 
