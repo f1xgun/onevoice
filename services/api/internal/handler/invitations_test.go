@@ -23,6 +23,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // --- New mocks (those not already declared in members_test.go) ---
@@ -197,10 +198,10 @@ func TestInvitationsHandler_Create_HappyPath(t *testing.T) {
 	f.handler.Create(w, req)
 
 	require.Equal(t, http.StatusCreated, w.Code, "body=%s", w.Body.String())
-	var resp createInvitationResponse
+	var resp openapi.CreateInvitationResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.NotEmpty(t, resp.Token, "token must be present in create response")
-	require.Equal(t, roleID, resp.RoleID)
+	require.Equal(t, roleID, resp.RoleId)
 	require.NoError(t, f.mockPool.ExpectationsWereMet())
 }
 

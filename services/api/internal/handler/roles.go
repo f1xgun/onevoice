@@ -69,16 +69,19 @@ func NewRolesHandler(
 	}, nil
 }
 
-// roleResponseItem is the wire shape for a single role.
-// MemberCount is a pointer with omitempty so List populates it and Create/Update omit it.
-type roleResponseItem struct {
-	ID          uuid.UUID  `json:"id"`
-	BusinessID  *uuid.UUID `json:"business_id"`
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Permissions []string   `json:"permissions"`
-	IsSystem    bool       `json:"is_system"`
-	MemberCount *int       `json:"member_count,omitempty"`
+// domainRoleToOpenAPI maps a domain.Role into the spec-side openapi.Role.
+// memberCount is a pointer so List can populate it and Create/Update omit it
+// (Role.MemberCount has json:"member_count,omitempty").
+func domainRoleToOpenAPI(r *domain.Role, memberCount *int) openapi.Role {
+	return openapi.Role{
+		Id:          r.ID,
+		BusinessId:  r.BusinessID,
+		Name:        r.Name,
+		Description: r.Description,
+		Permissions: r.Permissions,
+		IsSystem:    r.IsSystem,
+		MemberCount: memberCount,
+	}
 }
 
 // maxPermissionsPerRole caps the permissions[] array on POST/PATCH to bound
@@ -104,18 +107,11 @@ func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := make([]roleResponseItem, 0, len(rows))
+	out := make([]openapi.Role, 0, len(rows))
 	for _, row := range rows {
 		count := row.MemberCount
-		out = append(out, roleResponseItem{
-			ID:          row.ID,
-			BusinessID:  row.BusinessID,
-			Name:        row.Name,
-			Description: row.Description,
-			Permissions: row.Permissions,
-			IsSystem:    row.IsSystem,
-			MemberCount: &count,
-		})
+		role := row.Role
+		out = append(out, domainRoleToOpenAPI(&role, &count))
 	}
 
 	writeJSON(w, http.StatusOK, out)
@@ -209,14 +205,7 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"role_name", role.Name,
 	)
 
-	writeJSON(w, http.StatusCreated, roleResponseItem{
-		ID:          role.ID,
-		BusinessID:  role.BusinessID,
-		Name:        role.Name,
-		Description: role.Description,
-		Permissions: role.Permissions,
-		IsSystem:    role.IsSystem,
-	})
+	writeJSON(w, http.StatusCreated, domainRoleToOpenAPI(role, nil))
 }
 
 // Update handles PATCH /api/v1/businesses/{id}/roles/{roleId} (PermRolesUpdate).
@@ -320,14 +309,7 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		"role_id", roleID,
 	)
 
-	writeJSON(w, http.StatusOK, roleResponseItem{
-		ID:          existing.ID,
-		BusinessID:  existing.BusinessID,
-		Name:        existing.Name,
-		Description: existing.Description,
-		Permissions: existing.Permissions,
-		IsSystem:    existing.IsSystem,
-	})
+	writeJSON(w, http.StatusOK, domainRoleToOpenAPI(existing, nil))
 }
 
 // Delete handles DELETE /api/v1/businesses/{id}/roles/{roleId}?reassign_to=<uuid> (PermRolesDelete).
