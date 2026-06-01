@@ -330,56 +330,56 @@ const (
 
 // AcceptInvitationResponse defines model for AcceptInvitationResponse.
 type AcceptInvitationResponse struct {
-	BusinessId openapi_types.UUID `json:"business_id"`
-	RoleId     openapi_types.UUID `json:"role_id"`
+	BusinessId openapi_types.UUID `json:"business_id" validate:"required,uuid"`
+	RoleId     openapi_types.UUID `json:"role_id" validate:"required,uuid"`
 }
 
 // AccountDeletionInfo defines model for AccountDeletionInfo.
 type AccountDeletionInfo struct {
-	CanRestoreUntil     time.Time `json:"canRestoreUntil"`
-	RequestedAt         time.Time `json:"requestedAt"`
-	ScheduledDeletionAt time.Time `json:"scheduledDeletionAt"`
+	CanRestoreUntil     time.Time `json:"canRestoreUntil" validate:"required"`
+	RequestedAt         time.Time `json:"requestedAt" validate:"required"`
+	ScheduledDeletionAt time.Time `json:"scheduledDeletionAt" validate:"required"`
 }
 
 // AgentTask defines model for AgentTask.
 type AgentTask struct {
-	BusinessId     openapi_types.UUID `json:"businessId"`
+	BusinessId     openapi_types.UUID `json:"businessId" validate:"required,uuid"`
 	CompletedAt    *time.Time         `json:"completedAt"`
-	CreatedAt      time.Time          `json:"createdAt"`
+	CreatedAt      time.Time          `json:"createdAt" validate:"required"`
 	DisplayName    *string            `json:"displayName,omitempty"`
 	DisplayNameKey *string            `json:"displayNameKey,omitempty"`
 	Error          *string            `json:"error,omitempty"`
 	ErrorCode      *string            `json:"errorCode,omitempty"`
-	Id             string             `json:"id"`
+	Id             string             `json:"id" validate:"required"`
 
 	// Input Free-form per-task input payload.
 	Input *interface{} `json:"input,omitempty"`
 
 	// Output Free-form per-task output payload.
 	Output    *interface{} `json:"output,omitempty"`
-	Platform  string       `json:"platform"`
+	Platform  string       `json:"platform" validate:"required"`
 	StartedAt *time.Time   `json:"startedAt"`
-	Status    string       `json:"status"`
-	Type      string       `json:"type"`
+	Status    string       `json:"status" validate:"required"`
+	Type      string       `json:"type" validate:"required"`
 }
 
 // AgentTaskListResponse defines model for AgentTaskListResponse.
 type AgentTaskListResponse struct {
-	Tasks []AgentTask `json:"tasks"`
-	Total int         `json:"total"`
+	Tasks []AgentTask `json:"tasks" validate:"required"`
+	Total int         `json:"total" validate:"required"`
 }
 
 // ApprovalCall defines model for ApprovalCall.
 type ApprovalCall struct {
-	Args           map[string]interface{} `json:"args"`
-	CallId         string                 `json:"call_id"`
-	EditableFields []string               `json:"editable_fields"`
+	Args           map[string]interface{} `json:"args" validate:"required"`
+	CallId         string                 `json:"call_id" validate:"required"`
+	EditableFields []string               `json:"editable_fields" validate:"required"`
 
 	// Floor Per-tool HITL floor (strictness: auto < manual < forbidden).
 	// Business-level approvals only persist `auto` / `manual`;
 	// `forbidden` is reserved for tool-registry defaults.
 	Floor    ToolFloor `json:"floor"`
-	ToolName string    `json:"tool_name"`
+	ToolName string    `json:"tool_name" validate:"required"`
 }
 
 // AuditAction defines model for AuditAction.
@@ -388,15 +388,15 @@ type AuditAction string
 // AuditEvent defines model for AuditEvent.
 type AuditEvent struct {
 	Action           AuditAction              `json:"action"`
-	ActionCategory   AuditEventActionCategory `json:"action_category"`
+	ActionCategory   AuditEventActionCategory `json:"action_category" validate:"required,oneof=rbac auth integration business project other"`
 	ActorDisplayName *string                  `json:"actor_display_name"`
-	ActorEmail       *openapi_types.Email     `json:"actor_email"`
-	ActorId          *openapi_types.UUID      `json:"actor_id"`
-	BusinessId       *openapi_types.UUID      `json:"business_id"`
-	CreatedAt        time.Time                `json:"created_at"`
-	Details          map[string]interface{}   `json:"details"`
-	Id               openapi_types.UUID       `json:"id"`
-	Resource         string                   `json:"resource"`
+	ActorEmail       *openapi_types.Email     `json:"actor_email" validate:"omitempty,email"`
+	ActorId          *openapi_types.UUID      `json:"actor_id" validate:"omitempty,uuid"`
+	BusinessId       *openapi_types.UUID      `json:"business_id" validate:"omitempty,uuid"`
+	CreatedAt        time.Time                `json:"created_at" validate:"required"`
+	Details          map[string]interface{}   `json:"details" validate:"required"`
+	Id               openapi_types.UUID       `json:"id" validate:"required,uuid"`
+	Resource         string                   `json:"resource" validate:"required"`
 }
 
 // AuditEventActionCategory defines model for AuditEvent.ActionCategory.
@@ -404,62 +404,62 @@ type AuditEventActionCategory string
 
 // AuditLogListResponse defines model for AuditLogListResponse.
 type AuditLogListResponse struct {
-	Items      []AuditEvent `json:"items"`
+	Items      []AuditEvent `json:"items" validate:"required"`
 	NextCursor *string      `json:"next_cursor"`
 }
 
 // AuthURLResponse defines model for AuthURLResponse.
 type AuthURLResponse struct {
-	Url string `json:"url"`
+	Url string `json:"url" validate:"required"`
 }
 
 // BillingErrorResponse Error envelope used by the internal billing endpoints. `error`
 // values map to pkg/billingclient sentinels.
 type BillingErrorResponse struct {
 	Detail *string `json:"detail,omitempty"`
-	Error  string  `json:"error"`
+	Error  string  `json:"error" validate:"required"`
 }
 
 // Business defines model for Business.
 type Business struct {
 	Address     *string                `json:"address,omitempty"`
 	Category    *string                `json:"category,omitempty"`
-	CreatedAt   time.Time              `json:"createdAt"`
+	CreatedAt   time.Time              `json:"createdAt" validate:"required"`
 	Description *string                `json:"description,omitempty"`
-	Id          openapi_types.UUID     `json:"id"`
+	Id          openapi_types.UUID     `json:"id" validate:"required,uuid"`
 	LogoUrl     *string                `json:"logoUrl,omitempty"`
-	Name        string                 `json:"name"`
+	Name        string                 `json:"name" validate:"required"`
 	Phone       *string                `json:"phone,omitempty"`
-	Settings    map[string]interface{} `json:"settings"`
-	UpdatedAt   time.Time              `json:"updatedAt"`
+	Settings    map[string]interface{} `json:"settings" validate:"required"`
+	UpdatedAt   time.Time              `json:"updatedAt" validate:"required"`
 	Website     *string                `json:"website"`
 }
 
 // BusinessMembershipRoleRef defines model for BusinessMembershipRoleRef.
 type BusinessMembershipRoleRef struct {
-	Id   openapi_types.UUID `json:"id"`
-	Name string             `json:"name"`
+	Id   openapi_types.UUID `json:"id" validate:"required,uuid"`
+	Name string             `json:"name" validate:"required"`
 }
 
 // BusinessMembershipSummary defines model for BusinessMembershipSummary.
 type BusinessMembershipSummary struct {
-	Id       openapi_types.UUID        `json:"id"`
-	JoinedAt time.Time                 `json:"joined_at"`
-	Name     string                    `json:"name"`
+	Id       openapi_types.UUID        `json:"id" validate:"required,uuid"`
+	JoinedAt time.Time                 `json:"joined_at" validate:"required"`
+	Name     string                    `json:"name" validate:"required"`
 	Role     BusinessMembershipRoleRef `json:"role"`
-	Status   string                    `json:"status"`
+	Status   string                    `json:"status" validate:"required"`
 }
 
 // ChangePasswordRequest defines model for ChangePasswordRequest.
 type ChangePasswordRequest struct {
-	CurrentPassword string `json:"currentPassword"`
-	NewPassword     string `json:"newPassword"`
+	CurrentPassword string `json:"currentPassword" validate:"required"`
+	NewPassword     string `json:"newPassword" validate:"required,min=8"`
 }
 
 // ChatHistoryEntry defines model for ChatHistoryEntry.
 type ChatHistoryEntry struct {
-	Content string               `json:"content"`
-	Role    ChatHistoryEntryRole `json:"role"`
+	Content string               `json:"content" validate:"required"`
+	Role    ChatHistoryEntryRole `json:"role" validate:"required,oneof=system user assistant tool"`
 }
 
 // ChatHistoryEntryRole defines model for ChatHistoryEntry.Role.
@@ -472,14 +472,14 @@ type ChatRequest struct {
 	BusinessApprovals        *map[string]ToolFloor            `json:"business_approvals,omitempty"`
 	BusinessCategory         *string                          `json:"business_category,omitempty"`
 	BusinessDescription      *string                          `json:"business_description,omitempty"`
-	BusinessId               *openapi_types.UUID              `json:"business_id,omitempty"`
+	BusinessId               *openapi_types.UUID              `json:"business_id,omitempty" validate:"omitempty,uuid"`
 	BusinessName             *string                          `json:"business_name,omitempty"`
 	BusinessPhone            *string                          `json:"business_phone,omitempty"`
 	BusinessVoiceTone        *[]string                        `json:"business_voice_tone,omitempty"`
 	BusinessWebsite          *string                          `json:"business_website,omitempty"`
 	History                  *[]ChatHistoryEntry              `json:"history,omitempty"`
 	Locale                   *string                          `json:"locale,omitempty"`
-	Message                  string                           `json:"message"`
+	Message                  string                           `json:"message" validate:"required"`
 	MessageId                *string                          `json:"message_id,omitempty"`
 	Model                    *string                          `json:"model,omitempty"`
 	ProjectAllowedTools      *[]string                        `json:"project_allowed_tools,omitempty"`
@@ -487,7 +487,7 @@ type ChatRequest struct {
 	ProjectId                *string                          `json:"project_id,omitempty"`
 	ProjectName              *string                          `json:"project_name,omitempty"`
 	ProjectSystemPrompt      *string                          `json:"project_system_prompt,omitempty"`
-	ProjectWhitelistMode     *ChatRequestProjectWhitelistMode `json:"project_whitelist_mode,omitempty"`
+	ProjectWhitelistMode     *ChatRequestProjectWhitelistMode `json:"project_whitelist_mode,omitempty" validate:"omitempty,oneof=inherit all explicit none"`
 	Tier                     *string                          `json:"tier,omitempty"`
 	UserId                   *string                          `json:"user_id,omitempty"`
 }
@@ -503,54 +503,54 @@ type ChatTurnRequest struct {
 
 // ChatView defines model for ChatView.
 type ChatView struct {
-	Messages         []Message         `json:"messages"`
-	PendingApprovals []PendingApproval `json:"pendingApprovals"`
+	Messages         []Message         `json:"messages" validate:"required"`
+	PendingApprovals []PendingApproval `json:"pendingApprovals" validate:"required"`
 }
 
 // CodeErrorResponse Machine-routable error envelope; emitted by writeJSONCodeError.
 // Frontend resolves `code` to a localized message via i18n catalog.
 type CodeErrorResponse struct {
-	Code string `json:"code"`
+	Code string `json:"code" validate:"required"`
 }
 
 // ConfirmPasswordResetRequest defines model for ConfirmPasswordResetRequest.
 type ConfirmPasswordResetRequest struct {
-	NewPassword string `json:"newPassword"`
-	Token       string `json:"token"`
+	NewPassword string `json:"newPassword" validate:"required,min=8"`
+	Token       string `json:"token" validate:"required,min=1"`
 }
 
 // ConnectTelegramRequest defines model for ConnectTelegramRequest.
 type ConnectTelegramRequest struct {
-	ChannelId      string  `json:"channel_id"`
+	ChannelId      string  `json:"channel_id" validate:"required"`
 	TelegramUserId *string `json:"telegram_user_id,omitempty"`
 }
 
 // ConnectVKRequest defines model for ConnectVKRequest.
 type ConnectVKRequest struct {
-	AccessToken string  `json:"access_token"`
+	AccessToken string  `json:"access_token" validate:"required"`
 	GroupId     *string `json:"group_id,omitempty"`
 }
 
 // ConnectYandexRequest defines model for ConnectYandexRequest.
 type ConnectYandexRequest struct {
 	BusinessName *string `json:"business_name,omitempty"`
-	Cookies      string  `json:"cookies"`
+	Cookies      string  `json:"cookies" validate:"required"`
 	Permalink    *string `json:"permalink,omitempty"`
 }
 
 // ConsentRecord defines model for ConsentRecord.
 type ConsentRecord struct {
-	AcceptedAt  time.Time  `json:"acceptedAt"`
+	AcceptedAt  time.Time  `json:"acceptedAt" validate:"required"`
 	Sha256      *string    `json:"sha256,omitempty"`
-	Slug        string     `json:"slug"`
-	Version     string     `json:"version"`
+	Slug        string     `json:"slug" validate:"required"`
+	Version     string     `json:"version" validate:"required"`
 	WithdrawnAt *time.Time `json:"withdrawnAt"`
 }
 
 // ConsentRequiredResponse defines model for ConsentRequiredResponse.
 type ConsentRequiredResponse struct {
-	Code    ConsentRequiredResponseCode `json:"code"`
-	Missing []string                    `json:"missing"`
+	Code    ConsentRequiredResponseCode `json:"code" validate:"required,oneof=consent_required"`
+	Missing []string                    `json:"missing" validate:"required"`
 }
 
 // ConsentRequiredResponseCode defines model for ConsentRequiredResponse.Code.
@@ -558,16 +558,16 @@ type ConsentRequiredResponseCode string
 
 // Conversation defines model for Conversation.
 type Conversation struct {
-	BusinessId    openapi_types.UUID      `json:"businessId"`
-	CreatedAt     time.Time               `json:"createdAt"`
-	Id            string                  `json:"id"`
+	BusinessId    openapi_types.UUID      `json:"businessId" validate:"required,uuid"`
+	CreatedAt     time.Time               `json:"createdAt" validate:"required"`
+	Id            string                  `json:"id" validate:"required"`
 	LastMessageAt *time.Time              `json:"lastMessageAt"`
 	PinnedAt      *time.Time              `json:"pinnedAt"`
 	ProjectId     *string                 `json:"projectId"`
-	Title         string                  `json:"title"`
-	TitleStatus   ConversationTitleStatus `json:"titleStatus"`
-	UpdatedAt     time.Time               `json:"updatedAt"`
-	UserId        openapi_types.UUID      `json:"userId"`
+	Title         string                  `json:"title" validate:"required"`
+	TitleStatus   ConversationTitleStatus `json:"titleStatus" validate:"required,oneof=auto_pending auto manual"`
+	UpdatedAt     time.Time               `json:"updatedAt" validate:"required"`
+	UserId        openapi_types.UUID      `json:"userId" validate:"required,uuid"`
 }
 
 // ConversationTitleStatus defines model for Conversation.TitleStatus.
@@ -578,7 +578,7 @@ type CreateBusinessRequest struct {
 	Address     *string `json:"address,omitempty"`
 	Category    *string `json:"category,omitempty"`
 	Description *string `json:"description,omitempty"`
-	Name        string  `json:"name"`
+	Name        string  `json:"name" validate:"required"`
 	Phone       *string `json:"phone,omitempty"`
 	Website     *string `json:"website"`
 }
@@ -586,46 +586,46 @@ type CreateBusinessRequest struct {
 // CreateConversationRequest defines model for CreateConversationRequest.
 type CreateConversationRequest struct {
 	ProjectId *string `json:"projectId"`
-	Title     string  `json:"title"`
+	Title     string  `json:"title" validate:"required,max=200"`
 }
 
 // CreateInvitationRequest defines model for CreateInvitationRequest.
 type CreateInvitationRequest struct {
-	ExpiresIn *int               `json:"expires_in,omitempty"`
-	RoleId    openapi_types.UUID `json:"role_id"`
+	ExpiresIn *int               `json:"expires_in,omitempty" validate:"omitempty,min=3600,max=2592000"`
+	RoleId    openapi_types.UUID `json:"role_id" validate:"required,uuid"`
 }
 
 // CreateInvitationResponse defines model for CreateInvitationResponse.
 type CreateInvitationResponse struct {
-	CreatedAt time.Time          `json:"created_at"`
-	ExpiresAt time.Time          `json:"expires_at"`
-	Id        openapi_types.UUID `json:"id"`
-	RoleId    openapi_types.UUID `json:"role_id"`
-	Token     string             `json:"token"`
+	CreatedAt time.Time          `json:"created_at" validate:"required"`
+	ExpiresAt time.Time          `json:"expires_at" validate:"required"`
+	Id        openapi_types.UUID `json:"id" validate:"required,uuid"`
+	RoleId    openapi_types.UUID `json:"role_id" validate:"required,uuid"`
+	Token     string             `json:"token" validate:"required"`
 }
 
 // CreateRoleRequest defines model for CreateRoleRequest.
 type CreateRoleRequest struct {
 	Description *string  `json:"description,omitempty"`
-	Name        string   `json:"name"`
-	Permissions []string `json:"permissions"`
+	Name        string   `json:"name" validate:"required,min=1"`
+	Permissions []string `json:"permissions" validate:"required"`
 }
 
 // DailySpendResponse defines model for DailySpendResponse.
 type DailySpendResponse struct {
-	DailySpendUsd float64 `json:"daily_spend_usd"`
+	DailySpendUsd float64 `json:"daily_spend_usd" validate:"required"`
 }
 
 // DeleteAccountRequest defines model for DeleteAccountRequest.
 type DeleteAccountRequest struct {
-	Password string `json:"password"`
+	Password string `json:"password" validate:"required,min=1"`
 }
 
 // DraftReplyExample defines model for DraftReplyExample.
 type DraftReplyExample struct {
-	Rating     *int   `json:"rating,omitempty"`
-	ReplyText  string `json:"replyText"`
-	ReviewText string `json:"reviewText"`
+	Rating     *int   `json:"rating,omitempty" validate:"omitempty,min=0,max=5"`
+	ReplyText  string `json:"replyText" validate:"required"`
+	ReviewText string `json:"reviewText" validate:"required"`
 }
 
 // DraftReplyRequest defines model for DraftReplyRequest.
@@ -633,53 +633,53 @@ type DraftReplyRequest struct {
 	AuthorName          *string              `json:"authorName,omitempty"`
 	BusinessCategory    *string              `json:"businessCategory,omitempty"`
 	BusinessDescription *string              `json:"businessDescription,omitempty"`
-	BusinessId          string               `json:"businessId"`
+	BusinessId          string               `json:"businessId" validate:"required"`
 	BusinessName        *string              `json:"businessName,omitempty"`
 	Examples            *[]DraftReplyExample `json:"examples,omitempty"`
-	Platform            string               `json:"platform"`
-	Rating              int                  `json:"rating"`
-	ReviewText          string               `json:"reviewText"`
+	Platform            string               `json:"platform" validate:"required"`
+	Rating              int                  `json:"rating" validate:"required,min=0,max=5"`
+	ReviewText          string               `json:"reviewText" validate:"required"`
 }
 
 // DraftReplyResponse defines model for DraftReplyResponse.
 type DraftReplyResponse struct {
-	DraftReply string  `json:"draftReply"`
+	DraftReply string  `json:"draftReply" validate:"required"`
 	Model      *string `json:"model,omitempty"`
 	Provider   *string `json:"provider,omitempty"`
 }
 
 // EmailBeforeVerifyRequest defines model for EmailBeforeVerifyRequest.
 type EmailBeforeVerifyRequest struct {
-	NewEmail openapi_types.Email `json:"newEmail"`
+	NewEmail openapi_types.Email `json:"newEmail" validate:"required,email"`
 }
 
 // ErrorResponse Plain-text error envelope; emitted by writeJSONError.
 type ErrorResponse struct {
-	Error string `json:"error"`
+	Error string `json:"error" validate:"required"`
 }
 
 // GoogleLocationRef defines model for GoogleLocationRef.
 type GoogleLocationRef struct {
-	AccountName  string `json:"account_name"`
-	LocationName string `json:"location_name"`
-	Title        string `json:"title"`
+	AccountName  string `json:"account_name" validate:"required"`
+	LocationName string `json:"location_name" validate:"required"`
+	Title        string `json:"title" validate:"required"`
 }
 
 // GoogleLocationsResponse defines model for GoogleLocationsResponse.
 type GoogleLocationsResponse struct {
-	Locations []GoogleLocationRef `json:"locations"`
+	Locations []GoogleLocationRef `json:"locations" validate:"required"`
 }
 
 // GoogleSelectLocationRequest defines model for GoogleSelectLocationRequest.
 type GoogleSelectLocationRequest struct {
-	AccountId  string `json:"account_id"`
-	LocationId string `json:"location_id"`
+	AccountId  string `json:"account_id" validate:"required"`
+	LocationId string `json:"location_id" validate:"required"`
 }
 
 // HITLAlreadyResolvedError defines model for HITLAlreadyResolvedError.
 type HITLAlreadyResolvedError struct {
-	Error  HITLAlreadyResolvedErrorError  `json:"error"`
-	Reason HITLAlreadyResolvedErrorReason `json:"reason"`
+	Error  HITLAlreadyResolvedErrorError  `json:"error" validate:"required"`
+	Reason HITLAlreadyResolvedErrorReason `json:"reason" validate:"required,oneof=already_resolved"`
 }
 
 // HITLAlreadyResolvedErrorError defines model for HITLAlreadyResolvedError.Error.
@@ -690,9 +690,9 @@ type HITLAlreadyResolvedErrorReason string
 
 // HITLBatchResolvingError defines model for HITLBatchResolvingError.
 type HITLBatchResolvingError struct {
-	Error        HITLBatchResolvingErrorError  `json:"error"`
-	Reason       HITLBatchResolvingErrorReason `json:"reason"`
-	RetryAfterMs int                           `json:"retry_after_ms"`
+	Error        HITLBatchResolvingErrorError  `json:"error" validate:"required"`
+	Reason       HITLBatchResolvingErrorReason `json:"reason" validate:"required"`
+	RetryAfterMs int                           `json:"retry_after_ms" validate:"required"`
 }
 
 // HITLBatchResolvingErrorError defines model for HITLBatchResolvingError.Error.
@@ -703,9 +703,9 @@ type HITLBatchResolvingErrorReason string
 
 // HITLDecisionInput defines model for HITLDecisionInput.
 type HITLDecisionInput struct {
-	Action       HITLDecisionInputAction `json:"action"`
+	Action       HITLDecisionInputAction `json:"action" validate:"required,oneof=approve edit reject"`
 	EditedArgs   *map[string]interface{} `json:"edited_args,omitempty"`
-	Id           string                  `json:"id"`
+	Id           string                  `json:"id" validate:"required"`
 	RejectReason *string                 `json:"reject_reason,omitempty"`
 }
 
@@ -714,7 +714,7 @@ type HITLDecisionInputAction string
 
 // HITLExpiredError defines model for HITLExpiredError.
 type HITLExpiredError struct {
-	Error HITLExpiredErrorError `json:"error"`
+	Error HITLExpiredErrorError `json:"error" validate:"required,oneof=approval_expired"`
 }
 
 // HITLExpiredErrorError defines model for HITLExpiredError.Error.
@@ -722,20 +722,20 @@ type HITLExpiredErrorError string
 
 // HITLFieldNotEditableError defines model for HITLFieldNotEditableError.
 type HITLFieldNotEditableError struct {
-	Editable []string `json:"editable"`
-	Error    string   `json:"error"`
+	Editable []string `json:"editable" validate:"required"`
+	Error    string   `json:"error" validate:"required"`
 }
 
 // HITLNonScalarFieldError defines model for HITLNonScalarFieldError.
 type HITLNonScalarFieldError struct {
-	Error string `json:"error"`
-	Tool  string `json:"tool"`
+	Error string `json:"error" validate:"required"`
+	Tool  string `json:"tool" validate:"required"`
 }
 
 // HITLRejectReasonTooLongError defines model for HITLRejectReasonTooLongError.
 type HITLRejectReasonTooLongError struct {
-	Error HITLRejectReasonTooLongErrorError `json:"error"`
-	Max   int                               `json:"max"`
+	Error HITLRejectReasonTooLongErrorError `json:"error" validate:"required"`
+	Max   int                               `json:"max" validate:"required"`
 }
 
 // HITLRejectReasonTooLongErrorError defines model for HITLRejectReasonTooLongError.Error.
@@ -743,20 +743,20 @@ type HITLRejectReasonTooLongErrorError string
 
 // HITLResolveRequest defines model for HITLResolveRequest.
 type HITLResolveRequest struct {
-	Decisions []HITLDecisionInput `json:"decisions"`
+	Decisions []HITLDecisionInput `json:"decisions" validate:"required"`
 }
 
 // HITLResolveResponse defines model for HITLResolveResponse.
 type HITLResolveResponse struct {
-	BatchId    string             `json:"batch_id"`
-	Decisions  []HITLResolvedCall `json:"decisions"`
-	ResolvedAt time.Time          `json:"resolved_at"`
+	BatchId    string             `json:"batch_id" validate:"required"`
+	Decisions  []HITLResolvedCall `json:"decisions" validate:"required"`
+	ResolvedAt time.Time          `json:"resolved_at" validate:"required"`
 }
 
 // HITLResolvedCall defines model for HITLResolvedCall.
 type HITLResolvedCall struct {
-	Action HITLResolvedCallAction `json:"action"`
-	Id     string                 `json:"id"`
+	Action HITLResolvedCallAction `json:"action" validate:"required,oneof=approve edit reject"`
+	Id     string                 `json:"id" validate:"required"`
 	Reason *string                `json:"reason,omitempty"`
 }
 
@@ -765,8 +765,8 @@ type HITLResolvedCallAction string
 
 // HITLShapeMismatchError defines model for HITLShapeMismatchError.
 type HITLShapeMismatchError struct {
-	Error   HITLShapeMismatchErrorError `json:"error"`
-	Missing []string                    `json:"missing"`
+	Error   HITLShapeMismatchErrorError `json:"error" validate:"required"`
+	Missing []string                    `json:"missing" validate:"required"`
 }
 
 // HITLShapeMismatchErrorError defines model for HITLShapeMismatchError.Error.
@@ -774,66 +774,66 @@ type HITLShapeMismatchErrorError string
 
 // Integration defines model for Integration.
 type Integration struct {
-	BusinessId     openapi_types.UUID     `json:"businessId"`
-	CreatedAt      time.Time              `json:"createdAt"`
-	ExternalId     string                 `json:"externalId"`
-	Id             openapi_types.UUID     `json:"id"`
-	Metadata       map[string]interface{} `json:"metadata"`
-	Platform       string                 `json:"platform"`
-	Status         string                 `json:"status"`
+	BusinessId     openapi_types.UUID     `json:"businessId" validate:"required,uuid"`
+	CreatedAt      time.Time              `json:"createdAt" validate:"required"`
+	ExternalId     string                 `json:"externalId" validate:"required"`
+	Id             openapi_types.UUID     `json:"id" validate:"required,uuid"`
+	Metadata       map[string]interface{} `json:"metadata" validate:"required"`
+	Platform       string                 `json:"platform" validate:"required"`
+	Status         string                 `json:"status" validate:"required"`
 	TokenExpiresAt *time.Time             `json:"tokenExpiresAt"`
-	UpdatedAt      time.Time              `json:"updatedAt"`
+	UpdatedAt      time.Time              `json:"updatedAt" validate:"required"`
 }
 
 // InternalTokenResponse defines model for InternalTokenResponse.
 type InternalTokenResponse struct {
-	AccessToken        string                  `json:"access_token"`
+	AccessToken        string                  `json:"access_token" validate:"required"`
 	ExpiresAt          *time.Time              `json:"expires_at"`
-	ExternalId         string                  `json:"external_id"`
-	IntegrationId      openapi_types.UUID      `json:"integration_id"`
+	ExternalId         string                  `json:"external_id" validate:"required"`
+	IntegrationId      openapi_types.UUID      `json:"integration_id" validate:"required,uuid"`
 	Metadata           *map[string]interface{} `json:"metadata,omitempty"`
-	Platform           string                  `json:"platform"`
+	Platform           string                  `json:"platform" validate:"required"`
 	UserToken          *string                 `json:"user_token,omitempty"`
 	UserTokenExpiresAt *time.Time              `json:"user_token_expires_at"`
 }
 
 // InvitationPreview defines model for InvitationPreview.
 type InvitationPreview struct {
-	BusinessId   openapi_types.UUID `json:"business_id"`
-	BusinessName string             `json:"business_name"`
-	ExpiresAt    time.Time          `json:"expires_at"`
-	RoleId       openapi_types.UUID `json:"role_id"`
-	RoleName     string             `json:"role_name"`
+	BusinessId   openapi_types.UUID `json:"business_id" validate:"required,uuid"`
+	BusinessName string             `json:"business_name" validate:"required"`
+	ExpiresAt    time.Time          `json:"expires_at" validate:"required"`
+	RoleId       openapi_types.UUID `json:"role_id" validate:"required,uuid"`
+	RoleName     string             `json:"role_name" validate:"required"`
 }
 
 // ListConsentsResponse defines model for ListConsentsResponse.
 type ListConsentsResponse struct {
-	Consents []ConsentRecord `json:"consents"`
+	Consents []ConsentRecord `json:"consents" validate:"required"`
 }
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
-	Email    openapi_types.Email `json:"email"`
-	Password string              `json:"password"`
+	Email    openapi_types.Email `json:"email" validate:"required,email"`
+	Password string              `json:"password" validate:"required,min=8"`
 }
 
 // LoginResponse defines model for LoginResponse.
 type LoginResponse struct {
-	AccessToken string `json:"accessToken"`
+	AccessToken string `json:"accessToken" validate:"required"`
 	User        User   `json:"user"`
 }
 
 // MeResponse defines model for MeResponse.
 type MeResponse struct {
 	AccountDeletion           *AccountDeletionInfo      `json:"accountDeletion"`
-	CreatedAt                 time.Time                 `json:"createdAt"`
-	Email                     openapi_types.Email       `json:"email"`
+	CreatedAt                 time.Time                 `json:"createdAt" validate:"required"`
+	Email                     openapi_types.Email       `json:"email" validate:"required,email"`
 	EmailVerificationDeadline *time.Time                `json:"emailVerificationDeadline"`
-	EmailVerified             bool                      `json:"emailVerified"`
-	Id                        openapi_types.UUID        `json:"id"`
-	PreferredLocale           MeResponsePreferredLocale `json:"preferred_locale"`
+	EmailVerified             bool                      `json:"emailVerified" validate:"required"`
+	Id                        openapi_types.UUID        `json:"id" validate:"required,uuid"`
+	PreferredLocale           MeResponsePreferredLocale `json:"preferred_locale" validate:"required,oneof=ru en"`
 	RequiresReconsent         *RequiresReconsentInfo    `json:"requiresReconsent"`
-	UpdatedAt                 time.Time                 `json:"updatedAt"`
+	UpdatedAt                 time.Time                 `json:"updatedAt" validate:"required"`
 }
 
 // MeResponsePreferredLocale defines model for MeResponse.PreferredLocale.
@@ -842,29 +842,29 @@ type MeResponsePreferredLocale string
 // Member defines model for Member.
 type Member struct {
 	InvitedAt *time.Time          `json:"invited_at"`
-	InvitedBy *openapi_types.UUID `json:"invited_by"`
-	JoinedAt  time.Time           `json:"joined_at"`
+	InvitedBy *openapi_types.UUID `json:"invited_by" validate:"omitempty,uuid"`
+	JoinedAt  time.Time           `json:"joined_at" validate:"required"`
 	Role      struct {
-		Id          openapi_types.UUID `json:"id"`
-		Name        string             `json:"name"`
-		Permissions []string           `json:"permissions"`
-	} `json:"role"`
-	Status string `json:"status"`
+		Id          openapi_types.UUID `json:"id" validate:"required,uuid"`
+		Name        string             `json:"name" validate:"required"`
+		Permissions []string           `json:"permissions" validate:"required"`
+	} `json:"role" validate:"required"`
+	Status string `json:"status" validate:"required"`
 	User   struct {
-		Email openapi_types.Email `json:"email"`
-		Id    openapi_types.UUID  `json:"id"`
-	} `json:"user"`
+		Email openapi_types.Email `json:"email" validate:"required,email"`
+		Id    openapi_types.UUID  `json:"id" validate:"required,uuid"`
+	} `json:"user" validate:"required"`
 }
 
 // Message defines model for Message.
 type Message struct {
 	Attachments    *[]MessageAttachment    `json:"attachments,omitempty"`
-	Content        string                  `json:"content"`
-	ConversationId string                  `json:"conversationId"`
-	CreatedAt      time.Time               `json:"createdAt"`
-	Id             string                  `json:"id"`
+	Content        string                  `json:"content" validate:"required"`
+	ConversationId string                  `json:"conversationId" validate:"required"`
+	CreatedAt      time.Time               `json:"createdAt" validate:"required"`
+	Id             string                  `json:"id" validate:"required"`
 	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
-	Role           MessageRole             `json:"role"`
+	Role           MessageRole             `json:"role" validate:"required,oneof=user assistant system"`
 	Status         *string                 `json:"status,omitempty"`
 	ToolCalls      *[]MessageToolCall      `json:"toolCalls,omitempty"`
 	ToolResults    *[]MessageToolResult    `json:"toolResults,omitempty"`
@@ -875,27 +875,27 @@ type MessageRole string
 
 // MessageAttachment defines model for MessageAttachment.
 type MessageAttachment struct {
-	MimeType string `json:"mimeType"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Url      string `json:"url"`
+	MimeType string `json:"mimeType" validate:"required"`
+	Name     string `json:"name" validate:"required"`
+	Type     string `json:"type" validate:"required"`
+	Url      string `json:"url" validate:"required"`
 }
 
 // MessageToolCall defines model for MessageToolCall.
 type MessageToolCall struct {
 	ApprovalId *string                `json:"approvalId,omitempty"`
-	Arguments  map[string]interface{} `json:"arguments"`
-	Id         string                 `json:"id"`
-	Name       string                 `json:"name"`
+	Arguments  map[string]interface{} `json:"arguments" validate:"required"`
+	Id         string                 `json:"id" validate:"required"`
+	Name       string                 `json:"name" validate:"required"`
 	Status     *string                `json:"status,omitempty"`
 }
 
 // MessageToolResult defines model for MessageToolResult.
 type MessageToolResult struct {
 	Code       *string                `json:"code,omitempty"`
-	Content    map[string]interface{} `json:"content"`
-	IsError    bool                   `json:"isError"`
-	ToolCallId string                 `json:"toolCallId"`
+	Content    map[string]interface{} `json:"content" validate:"required"`
+	IsError    bool                   `json:"isError" validate:"required"`
+	ToolCallId string                 `json:"toolCallId" validate:"required"`
 }
 
 // MoveConversationRequest defines model for MoveConversationRequest.
@@ -905,32 +905,32 @@ type MoveConversationRequest struct {
 
 // MyPermissionsResponse defines model for MyPermissionsResponse.
 type MyPermissionsResponse struct {
-	Permissions []string `json:"permissions"`
+	Permissions []string `json:"permissions" validate:"required"`
 }
 
 // PendingApproval defines model for PendingApproval.
 type PendingApproval struct {
-	BatchId   string                `json:"batchId"`
-	Calls     []PendingApprovalCall `json:"calls"`
-	CreatedAt time.Time             `json:"createdAt"`
-	ExpiresAt time.Time             `json:"expiresAt"`
-	MessageId string                `json:"messageId"`
-	Status    string                `json:"status"`
+	BatchId   string                `json:"batchId" validate:"required"`
+	Calls     []PendingApprovalCall `json:"calls" validate:"required"`
+	CreatedAt time.Time             `json:"createdAt" validate:"required"`
+	ExpiresAt time.Time             `json:"expiresAt" validate:"required"`
+	MessageId string                `json:"messageId" validate:"required"`
+	Status    string                `json:"status" validate:"required"`
 }
 
 // PendingApprovalCall defines model for PendingApprovalCall.
 type PendingApprovalCall struct {
-	Args           map[string]interface{} `json:"args"`
-	CallId         string                 `json:"callId"`
-	EditableFields []string               `json:"editableFields"`
-	ToolName       string                 `json:"toolName"`
+	Args           map[string]interface{} `json:"args" validate:"required"`
+	CallId         string                 `json:"callId" validate:"required"`
+	EditableFields []string               `json:"editableFields" validate:"required"`
+	ToolName       string                 `json:"toolName" validate:"required"`
 }
 
 // PendingDeletionResponse defines model for PendingDeletionResponse.
 type PendingDeletionResponse struct {
-	Code         PendingDeletionResponseCode `json:"code"`
-	DeletionDate string                      `json:"deletionDate"`
-	RestoreUrl   string                      `json:"restoreUrl"`
+	Code         PendingDeletionResponseCode `json:"code" validate:"required,oneof=account_pending_deletion"`
+	DeletionDate string                      `json:"deletionDate" validate:"required"`
+	RestoreUrl   string                      `json:"restoreUrl" validate:"required"`
 }
 
 // PendingDeletionResponseCode defines model for PendingDeletionResponse.Code.
@@ -938,38 +938,38 @@ type PendingDeletionResponseCode string
 
 // PendingInvitation defines model for PendingInvitation.
 type PendingInvitation struct {
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"created_at" validate:"required"`
 	CreatedBy struct {
-		Email openapi_types.Email `json:"email"`
-		Id    openapi_types.UUID  `json:"id"`
-	} `json:"created_by"`
-	ExpiresAt time.Time          `json:"expires_at"`
-	Id        openapi_types.UUID `json:"id"`
-	RoleId    openapi_types.UUID `json:"role_id"`
-	RoleName  string             `json:"role_name"`
+		Email openapi_types.Email `json:"email" validate:"required,email"`
+		Id    openapi_types.UUID  `json:"id" validate:"required,uuid"`
+	} `json:"created_by" validate:"required"`
+	ExpiresAt time.Time          `json:"expires_at" validate:"required"`
+	Id        openapi_types.UUID `json:"id" validate:"required,uuid"`
+	RoleId    openapi_types.UUID `json:"role_id" validate:"required,uuid"`
+	RoleName  string             `json:"role_name" validate:"required"`
 }
 
 // Permission defines model for Permission.
 type Permission struct {
 	Description *string `json:"description,omitempty"`
-	Name        string  `json:"name"`
+	Name        string  `json:"name" validate:"required"`
 }
 
 // PermissionGroup defines model for PermissionGroup.
 type PermissionGroup struct {
 	Description *string      `json:"description,omitempty"`
-	Name        string       `json:"name"`
-	Permissions []Permission `json:"permissions"`
+	Name        string       `json:"name" validate:"required"`
+	Permissions []Permission `json:"permissions" validate:"required"`
 }
 
 // PermissionRegistryResponse defines model for PermissionRegistryResponse.
 type PermissionRegistryResponse struct {
-	Groups []PermissionGroup `json:"groups"`
+	Groups []PermissionGroup `json:"groups" validate:"required"`
 }
 
 // Platform defines model for Platform.
 type Platform struct {
-	Id     string         `json:"id"`
+	Id     string         `json:"id" validate:"required"`
 	Status PlatformStatus `json:"status"`
 }
 
@@ -978,44 +978,44 @@ type PlatformStatus string
 
 // Post defines model for Post.
 type Post struct {
-	BusinessId      openapi_types.UUID             `json:"businessId"`
-	Content         string                         `json:"content"`
-	CreatedAt       time.Time                      `json:"createdAt"`
-	Id              string                         `json:"id"`
+	BusinessId      openapi_types.UUID             `json:"businessId" validate:"required,uuid"`
+	Content         string                         `json:"content" validate:"required"`
+	CreatedAt       time.Time                      `json:"createdAt" validate:"required"`
+	Id              string                         `json:"id" validate:"required"`
 	MediaUrls       *[]string                      `json:"mediaUrls,omitempty"`
 	PlatformResults *map[string]PostPlatformResult `json:"platformResults,omitempty"`
 	PublishedAt     *time.Time                     `json:"publishedAt"`
 	ScheduledAt     *time.Time                     `json:"scheduledAt"`
-	Status          string                         `json:"status"`
+	Status          string                         `json:"status" validate:"required"`
 }
 
 // PostListResponse defines model for PostListResponse.
 type PostListResponse struct {
-	Posts []Post `json:"posts"`
-	Total int    `json:"total"`
+	Posts []Post `json:"posts" validate:"required"`
+	Total int    `json:"total" validate:"required"`
 }
 
 // PostPlatformResult defines model for PostPlatformResult.
 type PostPlatformResult struct {
 	Error  *string `json:"error,omitempty"`
-	PostId string  `json:"postId"`
-	Status string  `json:"status"`
-	Url    string  `json:"url"`
+	PostId string  `json:"postId" validate:"required"`
+	Status string  `json:"status" validate:"required"`
+	Url    string  `json:"url" validate:"required"`
 }
 
 // Project defines model for Project.
 type Project struct {
-	AllowedTools      []string                             `json:"allowedTools"`
+	AllowedTools      []string                             `json:"allowedTools" validate:"required"`
 	ApprovalOverrides *map[string]ProjectApprovalOverrides `json:"approvalOverrides,omitempty"`
-	BusinessId        openapi_types.UUID                   `json:"businessId"`
-	CreatedAt         time.Time                            `json:"createdAt"`
+	BusinessId        openapi_types.UUID                   `json:"businessId" validate:"required,uuid"`
+	CreatedAt         time.Time                            `json:"createdAt" validate:"required"`
 	Description       *string                              `json:"description,omitempty"`
-	Id                openapi_types.UUID                   `json:"id"`
-	Name              string                               `json:"name"`
-	QuickActions      []string                             `json:"quickActions"`
-	SystemPrompt      *string                              `json:"systemPrompt,omitempty"`
-	UpdatedAt         time.Time                            `json:"updatedAt"`
-	WhitelistMode     ProjectWhitelistMode                 `json:"whitelistMode"`
+	Id                openapi_types.UUID                   `json:"id" validate:"required,uuid"`
+	Name              string                               `json:"name" validate:"required"`
+	QuickActions      []string                             `json:"quickActions" validate:"required"`
+	SystemPrompt      *string                              `json:"systemPrompt,omitempty" validate:"omitempty,max=4000"`
+	UpdatedAt         time.Time                            `json:"updatedAt" validate:"required"`
+	WhitelistMode     ProjectWhitelistMode                 `json:"whitelistMode" validate:"required,oneof=inherit all explicit none"`
 }
 
 // ProjectApprovalOverrides defines model for Project.ApprovalOverrides.
@@ -1026,13 +1026,13 @@ type ProjectWhitelistMode string
 
 // ProjectConversationCountResponse defines model for ProjectConversationCountResponse.
 type ProjectConversationCountResponse struct {
-	Count int `json:"count"`
+	Count int `json:"count" validate:"required"`
 }
 
 // ProjectDeleteResponse defines model for ProjectDeleteResponse.
 type ProjectDeleteResponse struct {
-	DeletedConversations int `json:"deletedConversations"`
-	DeletedMessages      int `json:"deletedMessages"`
+	DeletedConversations int `json:"deletedConversations" validate:"required"`
+	DeletedMessages      int `json:"deletedMessages" validate:"required"`
 }
 
 // ProjectRequest defines model for ProjectRequest.
@@ -1040,10 +1040,10 @@ type ProjectRequest struct {
 	AllowedTools      *[]string                                   `json:"allowedTools,omitempty"`
 	ApprovalOverrides *map[string]ProjectRequestApprovalOverrides `json:"approvalOverrides,omitempty"`
 	Description       *string                                     `json:"description,omitempty"`
-	Name              string                                      `json:"name"`
+	Name              string                                      `json:"name" validate:"required"`
 	QuickActions      *[]string                                   `json:"quickActions,omitempty"`
-	SystemPrompt      *string                                     `json:"systemPrompt,omitempty"`
-	WhitelistMode     *ProjectRequestWhitelistMode                `json:"whitelistMode,omitempty"`
+	SystemPrompt      *string                                     `json:"systemPrompt,omitempty" validate:"omitempty,max=4000"`
+	WhitelistMode     *ProjectRequestWhitelistMode                `json:"whitelistMode,omitempty" validate:"omitempty,oneof=inherit all explicit none"`
 }
 
 // ProjectRequestApprovalOverrides defines model for ProjectRequest.ApprovalOverrides.
@@ -1055,18 +1055,18 @@ type ProjectRequestWhitelistMode string
 // ReconsentPolicy defines model for ReconsentPolicy.
 type ReconsentPolicy struct {
 	Sha256  *string `json:"sha256,omitempty"`
-	Slug    string  `json:"slug"`
-	Version string  `json:"version"`
+	Slug    string  `json:"slug" validate:"required"`
+	Version string  `json:"version" validate:"required"`
 }
 
 // ReconsentRequest defines model for ReconsentRequest.
 type ReconsentRequest struct {
-	Policies []ReconsentPolicy `json:"policies"`
+	Policies []ReconsentPolicy `json:"policies" validate:"required"`
 }
 
 // RefreshStartedResponse defines model for RefreshStartedResponse.
 type RefreshStartedResponse struct {
-	Status RefreshStartedResponseStatus `json:"status"`
+	Status RefreshStartedResponseStatus `json:"status" validate:"required,oneof=refresh_started"`
 }
 
 // RefreshStartedResponseStatus defines model for RefreshStartedResponse.Status.
@@ -1074,14 +1074,14 @@ type RefreshStartedResponseStatus string
 
 // RefreshTelegramRequest defines model for RefreshTelegramRequest.
 type RefreshTelegramRequest struct {
-	ChannelId string `json:"channel_id"`
+	ChannelId string `json:"channel_id" validate:"required"`
 }
 
 // RefreshTelegramResponse defines model for RefreshTelegramResponse.
 type RefreshTelegramResponse struct {
-	ChannelTitle      string                                   `json:"channel_title"`
-	LinkedChatId      int64                                    `json:"linked_chat_id"`
-	LinkedGroupStatus RefreshTelegramResponseLinkedGroupStatus `json:"linked_group_status"`
+	ChannelTitle      string                                   `json:"channel_title" validate:"required"`
+	LinkedChatId      int64                                    `json:"linked_chat_id" validate:"required"`
+	LinkedGroupStatus RefreshTelegramResponseLinkedGroupStatus `json:"linked_group_status" validate:"required,oneof=ok bot_not_member no_linked_group"`
 }
 
 // RefreshTelegramResponseLinkedGroupStatus defines model for RefreshTelegramResponse.LinkedGroupStatus.
@@ -1089,41 +1089,41 @@ type RefreshTelegramResponseLinkedGroupStatus string
 
 // RefreshTokenResponse defines model for RefreshTokenResponse.
 type RefreshTokenResponse struct {
-	AccessToken string `json:"accessToken"`
+	AccessToken string `json:"accessToken" validate:"required"`
 	User        User   `json:"user"`
 }
 
 // RegisterConsents defines model for RegisterConsents.
 type RegisterConsents struct {
-	Pdn     string `json:"pdn"`
-	Privacy string `json:"privacy"`
-	Tos     string `json:"tos"`
+	Pdn     string `json:"pdn" validate:"required"`
+	Privacy string `json:"privacy" validate:"required"`
+	Tos     string `json:"tos" validate:"required"`
 }
 
 // RegisterRequest defines model for RegisterRequest.
 type RegisterRequest struct {
 	Consents RegisterConsents    `json:"consents"`
-	Email    openapi_types.Email `json:"email"`
-	Password string              `json:"password"`
+	Email    openapi_types.Email `json:"email" validate:"required,email"`
+	Password string              `json:"password" validate:"required,min=8"`
 }
 
 // ReplyToReviewRequest defines model for ReplyToReviewRequest.
 type ReplyToReviewRequest struct {
-	ReplyText string `json:"replyText"`
+	ReplyText string `json:"replyText" validate:"required"`
 }
 
 // RequestPasswordResetRequest defines model for RequestPasswordResetRequest.
 type RequestPasswordResetRequest struct {
-	Email openapi_types.Email `json:"email"`
+	Email openapi_types.Email `json:"email" validate:"required,email"`
 }
 
 // RequiresReconsentInfo defines model for RequiresReconsentInfo.
 type RequiresReconsentInfo struct {
 	Policies []struct {
 		AcceptedVersion *string `json:"acceptedVersion"`
-		CurrentVersion  string  `json:"currentVersion"`
-		Slug            string  `json:"slug"`
-	} `json:"policies"`
+		CurrentVersion  string  `json:"currentVersion" validate:"required"`
+		Slug            string  `json:"slug" validate:"required"`
+	} `json:"policies" validate:"required"`
 }
 
 // ResumeRequest defines model for ResumeRequest.
@@ -1134,7 +1134,7 @@ type ResumeRequest struct {
 	Model                    *string                     `json:"model,omitempty"`
 	ProjectApprovalOverrides *map[string]ToolFloor       `json:"project_approval_overrides,omitempty"`
 	Tier                     *string                     `json:"tier,omitempty"`
-	WhitelistMode            *ResumeRequestWhitelistMode `json:"whitelist_mode,omitempty"`
+	WhitelistMode            *ResumeRequestWhitelistMode `json:"whitelist_mode,omitempty" validate:"omitempty,oneof=inherit all explicit none"`
 }
 
 // ResumeRequestWhitelistMode defines model for ResumeRequest.WhitelistMode.
@@ -1142,21 +1142,21 @@ type ResumeRequestWhitelistMode string
 
 // Review defines model for Review.
 type Review struct {
-	AuthorName       string                  `json:"authorName"`
-	BusinessId       openapi_types.UUID      `json:"businessId"`
-	CreatedAt        time.Time               `json:"createdAt"`
+	AuthorName       string                  `json:"authorName" validate:"required"`
+	BusinessId       openapi_types.UUID      `json:"businessId" validate:"required,uuid"`
+	CreatedAt        time.Time               `json:"createdAt" validate:"required"`
 	DraftError       *string                 `json:"draftError,omitempty"`
 	DraftGeneratedAt *time.Time              `json:"draftGeneratedAt,omitempty"`
 	DraftReply       *string                 `json:"draftReply,omitempty"`
-	DraftStatus      *ReviewDraftStatus      `json:"draftStatus,omitempty"`
-	ExternalId       string                  `json:"externalId"`
-	Id               string                  `json:"id"`
-	Platform         string                  `json:"platform"`
+	DraftStatus      *ReviewDraftStatus      `json:"draftStatus,omitempty" validate:"omitempty,oneof=generating ready failed"`
+	ExternalId       string                  `json:"externalId" validate:"required"`
+	Id               string                  `json:"id" validate:"required"`
+	Platform         string                  `json:"platform" validate:"required"`
 	PlatformMeta     *map[string]interface{} `json:"platformMeta,omitempty"`
-	Rating           int                     `json:"rating"`
-	ReplyStatus      ReviewReplyStatus       `json:"replyStatus"`
+	Rating           int                     `json:"rating" validate:"required"`
+	ReplyStatus      ReviewReplyStatus       `json:"replyStatus" validate:"required,oneof=pending replied error"`
 	ReplyText        *string                 `json:"replyText,omitempty"`
-	Text             string                  `json:"text"`
+	Text             string                  `json:"text" validate:"required"`
 }
 
 // ReviewDraftStatus defines model for Review.DraftStatus.
@@ -1167,25 +1167,25 @@ type ReviewReplyStatus string
 
 // ReviewListResponse defines model for ReviewListResponse.
 type ReviewListResponse struct {
-	Reviews []Review `json:"reviews"`
-	Total   int      `json:"total"`
+	Reviews []Review `json:"reviews" validate:"required"`
+	Total   int      `json:"total" validate:"required"`
 }
 
 // Role defines model for Role.
 type Role struct {
-	BusinessId  *openapi_types.UUID `json:"business_id"`
-	Description string              `json:"description"`
-	Id          openapi_types.UUID  `json:"id"`
-	IsSystem    bool                `json:"is_system"`
+	BusinessId  *openapi_types.UUID `json:"business_id" validate:"omitempty,uuid"`
+	Description string              `json:"description" validate:"required"`
+	Id          openapi_types.UUID  `json:"id" validate:"required,uuid"`
+	IsSystem    bool                `json:"is_system" validate:"required"`
 	MemberCount *int                `json:"member_count,omitempty"`
-	Name        string              `json:"name"`
-	Permissions []string            `json:"permissions"`
+	Name        string              `json:"name" validate:"required"`
+	Permissions []string            `json:"permissions" validate:"required"`
 }
 
 // SSEConcurrencyError defines model for SSEConcurrencyError.
 type SSEConcurrencyError struct {
-	Code        SSEConcurrencyErrorCode `json:"code"`
-	RetryAfterS int                     `json:"retry_after_s"`
+	Code        SSEConcurrencyErrorCode `json:"code" validate:"required,oneof=sse_concurrency_exceeded"`
+	RetryAfterS int                     `json:"retry_after_s" validate:"required"`
 }
 
 // SSEConcurrencyErrorCode defines model for SSEConcurrencyError.Code.
@@ -1199,9 +1199,9 @@ type SSEEvent struct {
 
 // SSEEventApprovalRequired defines model for SSEEventApprovalRequired.
 type SSEEventApprovalRequired struct {
-	BatchId string                       `json:"batch_id"`
-	Calls   []ApprovalCall               `json:"calls"`
-	Type    SSEEventApprovalRequiredType `json:"type"`
+	BatchId string                       `json:"batch_id" validate:"required"`
+	Calls   []ApprovalCall               `json:"calls" validate:"required"`
+	Type    SSEEventApprovalRequiredType `json:"type" validate:"required,oneof=tool_approval_required"`
 }
 
 // SSEEventApprovalRequiredType defines model for SSEEventApprovalRequired.Type.
@@ -1210,7 +1210,7 @@ type SSEEventApprovalRequiredType string
 // SSEEventDone defines model for SSEEventDone.
 type SSEEventDone struct {
 	Content *string          `json:"content,omitempty"`
-	Type    SSEEventDoneType `json:"type"`
+	Type    SSEEventDoneType `json:"type" validate:"required,oneof=done"`
 }
 
 // SSEEventDoneType defines model for SSEEventDone.Type.
@@ -1220,7 +1220,7 @@ type SSEEventDoneType string
 type SSEEventError struct {
 	Code    *string           `json:"code,omitempty"`
 	Content *string           `json:"content,omitempty"`
-	Type    SSEEventErrorType `json:"type"`
+	Type    SSEEventErrorType `json:"type" validate:"required,oneof=error"`
 }
 
 // SSEEventErrorType defines model for SSEEventError.Type.
@@ -1229,7 +1229,7 @@ type SSEEventErrorType string
 // SSEEventText defines model for SSEEventText.
 type SSEEventText struct {
 	Content *string          `json:"content,omitempty"`
-	Type    SSEEventTextType `json:"type"`
+	Type    SSEEventTextType `json:"type" validate:"required,oneof=text"`
 }
 
 // SSEEventTextType defines model for SSEEventText.Type.
@@ -1242,7 +1242,7 @@ type SSEEventToolCall struct {
 	ToolDisplayName    *string                 `json:"tool_display_name,omitempty"`
 	ToolDisplayNameKey *string                 `json:"tool_display_name_key,omitempty"`
 	ToolName           *string                 `json:"tool_name,omitempty"`
-	Type               SSEEventToolCallType    `json:"type"`
+	Type               SSEEventToolCallType    `json:"type" validate:"required,oneof=tool_call"`
 }
 
 // SSEEventToolCallType defines model for SSEEventToolCall.Type.
@@ -1255,7 +1255,7 @@ type SSEEventToolRejected struct {
 	ToolDisplayName    *string                  `json:"tool_display_name,omitempty"`
 	ToolDisplayNameKey *string                  `json:"tool_display_name_key,omitempty"`
 	ToolName           *string                  `json:"tool_name,omitempty"`
-	Type               SSEEventToolRejectedType `json:"type"`
+	Type               SSEEventToolRejectedType `json:"type" validate:"required,oneof=tool_rejected"`
 }
 
 // SSEEventToolRejectedType defines model for SSEEventToolRejected.Type.
@@ -1271,7 +1271,7 @@ type SSEEventToolResult struct {
 	ToolDisplayName    *string                `json:"tool_display_name,omitempty"`
 	ToolDisplayNameKey *string                `json:"tool_display_name_key,omitempty"`
 	ToolName           *string                `json:"tool_name,omitempty"`
-	Type               SSEEventToolResultType `json:"type"`
+	Type               SSEEventToolResultType `json:"type" validate:"required,oneof=tool_result"`
 }
 
 // SSEEventToolResultType defines model for SSEEventToolResult.Type.
@@ -1279,12 +1279,12 @@ type SSEEventToolResultType string
 
 // SearchResult defines model for SearchResult.
 type SearchResult struct {
-	ConversationId string     `json:"conversationId"`
+	ConversationId string     `json:"conversationId" validate:"required"`
 	LastMessageAt  *time.Time `json:"lastMessageAt"`
 	Marks          *[][]int   `json:"marks,omitempty"`
-	MatchCount     int        `json:"matchCount"`
+	MatchCount     int        `json:"matchCount" validate:"required"`
 	ProjectId      *string    `json:"projectId"`
-	Score          float64    `json:"score"`
+	Score          float64    `json:"score" validate:"required"`
 	Snippet        *string    `json:"snippet,omitempty"`
 	Title          *string    `json:"title,omitempty"`
 	TopMessageId   *string    `json:"topMessageId,omitempty"`
@@ -1292,14 +1292,14 @@ type SearchResult struct {
 
 // SoleOwnerBusinessEntry defines model for SoleOwnerBusinessEntry.
 type SoleOwnerBusinessEntry struct {
-	Id   openapi_types.UUID `json:"id"`
-	Name string             `json:"name"`
+	Id   openapi_types.UUID `json:"id" validate:"required,uuid"`
+	Name string             `json:"name" validate:"required"`
 }
 
 // SoleOwnerResponse defines model for SoleOwnerResponse.
 type SoleOwnerResponse struct {
-	Businesses []SoleOwnerBusinessEntry `json:"businesses"`
-	Code       SoleOwnerResponseCode    `json:"code"`
+	Businesses []SoleOwnerBusinessEntry `json:"businesses" validate:"required"`
+	Code       SoleOwnerResponseCode    `json:"code" validate:"required,oneof=sole_owner_of_businesses"`
 }
 
 // SoleOwnerResponseCode defines model for SoleOwnerResponse.Code.
@@ -1309,13 +1309,13 @@ type SoleOwnerResponseCode string
 // `StatusOkResponse` (camelCase variant) used by review reply and
 // review-refresh handlers.
 type StatusOKResponse struct {
-	Status string `json:"status"`
+	Status string `json:"status" validate:"required"`
 }
 
 // StatusOkResponse `{status:"ok"}` envelope used by reviewReply and refreshReviews.
 // Enum-pinned variant of `StatusOKResponse`.
 type StatusOkResponse struct {
-	Status StatusOkResponseStatus `json:"status"`
+	Status StatusOkResponseStatus `json:"status" validate:"required,oneof=ok"`
 }
 
 // StatusOkResponseStatus defines model for StatusOkResponse.Status.
@@ -1323,9 +1323,9 @@ type StatusOkResponseStatus string
 
 // TelegramLoginRequest defines model for TelegramLoginRequest.
 type TelegramLoginRequest struct {
-	AuthDate             TelegramLoginRequest_AuthDate `json:"auth_date"`
+	AuthDate             TelegramLoginRequest_AuthDate `json:"auth_date" validate:"required"`
 	FirstName            *string                       `json:"first_name,omitempty"`
-	Hash                 string                        `json:"hash"`
+	Hash                 string                        `json:"hash" validate:"required"`
 	Id                   *int64                        `json:"id,omitempty"`
 	LastName             *string                       `json:"last_name,omitempty"`
 	PhotoUrl             *string                       `json:"photo_url,omitempty"`
@@ -1346,24 +1346,24 @@ type TelegramLoginRequest_AuthDate struct {
 
 // TelegramLoginVerifiedResponse defines model for TelegramLoginVerifiedResponse.
 type TelegramLoginVerifiedResponse struct {
-	User     map[string]interface{} `json:"user"`
-	Verified bool                   `json:"verified"`
+	User     map[string]interface{} `json:"user" validate:"required"`
+	Verified bool                   `json:"verified" validate:"required"`
 }
 
 // TelemetryEvent defines model for TelemetryEvent.
 type TelemetryEvent struct {
-	Action        string             `json:"action"`
+	Action        string             `json:"action" validate:"required"`
 	CorrelationId *string            `json:"correlationId,omitempty"`
-	EventType     string             `json:"eventType"`
+	EventType     string             `json:"eventType" validate:"required"`
 	Metadata      *map[string]string `json:"metadata,omitempty"`
-	Page          string             `json:"page"`
-	Timestamp     string             `json:"timestamp"`
+	Page          string             `json:"page" validate:"required"`
+	Timestamp     string             `json:"timestamp" validate:"required"`
 }
 
 // TitlerConflictError defines model for TitlerConflictError.
 type TitlerConflictError struct {
-	Error   TitlerConflictErrorError `json:"error"`
-	Message string                   `json:"message"`
+	Error   TitlerConflictErrorError `json:"error" validate:"required,oneof=title_is_manual title_in_flight title_state_changed"`
+	Message string                   `json:"message" validate:"required"`
 }
 
 // TitlerConflictErrorError defines model for TitlerConflictError.Error.
@@ -1371,8 +1371,8 @@ type TitlerConflictErrorError string
 
 // TitlerDisabledError defines model for TitlerDisabledError.
 type TitlerDisabledError struct {
-	Error   TitlerDisabledErrorError `json:"error"`
-	Message string                   `json:"message"`
+	Error   TitlerDisabledErrorError `json:"error" validate:"required,oneof=titler_disabled"`
+	Message string                   `json:"message" validate:"required"`
 }
 
 // TitlerDisabledErrorError defines model for TitlerDisabledError.Error.
@@ -1380,7 +1380,7 @@ type TitlerDisabledErrorError string
 
 // ToolApprovalsResponse defines model for ToolApprovalsResponse.
 type ToolApprovalsResponse struct {
-	ToolApprovals map[string]ToolFloor `json:"toolApprovals"`
+	ToolApprovals map[string]ToolFloor `json:"toolApprovals" validate:"required"`
 }
 
 // ToolEntry Locale-resolved tool registry projection returned by the api
@@ -1389,14 +1389,14 @@ type ToolApprovalsResponse struct {
 // `ToolRegistryEntry` which is the orchestrator's internal-only
 // projection that may carry `forbidden`.
 type ToolEntry struct {
-	Description     string         `json:"description"`
-	DisplayName     string         `json:"displayName"`
+	Description     string         `json:"description" validate:"required"`
+	DisplayName     string         `json:"displayName" validate:"required"`
 	DisplayNameKey  *string        `json:"displayNameKey,omitempty"`
-	EditableFields  []string       `json:"editableFields"`
-	Floor           ToolEntryFloor `json:"floor"`
-	Name            string         `json:"name"`
-	Platform        string         `json:"platform"`
-	UserDescription string         `json:"userDescription"`
+	EditableFields  []string       `json:"editableFields" validate:"required"`
+	Floor           ToolEntryFloor `json:"floor" validate:"required,oneof=auto manual"`
+	Name            string         `json:"name" validate:"required"`
+	Platform        string         `json:"platform" validate:"required"`
+	UserDescription string         `json:"userDescription" validate:"required"`
 }
 
 // ToolEntryFloor defines model for ToolEntry.Floor.
@@ -1409,25 +1409,25 @@ type ToolFloor string
 
 // ToolNamesResponse defines model for ToolNamesResponse.
 type ToolNamesResponse struct {
-	Names []string `json:"names"`
+	Names []string `json:"names" validate:"required"`
 }
 
 // ToolRegistryEntry Orchestrator's internal tool registry projection. The `floor` may
 // carry `forbidden` (in addition to `auto` / `manual`); the api side
 // uses `ToolEntry` (auto/manual only).
 type ToolRegistryEntry struct {
-	Description    string   `json:"description"`
-	DisplayName    string   `json:"displayName"`
+	Description    string   `json:"description" validate:"required"`
+	DisplayName    string   `json:"displayName" validate:"required"`
 	DisplayNameKey *string  `json:"displayNameKey,omitempty"`
-	EditableFields []string `json:"editableFields"`
+	EditableFields []string `json:"editableFields" validate:"required"`
 
 	// Floor Per-tool HITL floor (strictness: auto < manual < forbidden).
 	// Business-level approvals only persist `auto` / `manual`;
 	// `forbidden` is reserved for tool-registry defaults.
 	Floor           ToolFloor `json:"floor"`
-	Name            string    `json:"name"`
-	Platform        string    `json:"platform"`
-	UserDescription string    `json:"userDescription"`
+	Name            string    `json:"name" validate:"required"`
+	Platform        string    `json:"platform" validate:"required"`
+	UserDescription string    `json:"userDescription" validate:"required"`
 }
 
 // UpdateBusinessRequest defines model for UpdateBusinessRequest.
@@ -1435,34 +1435,34 @@ type UpdateBusinessRequest struct {
 	Address     *string `json:"address,omitempty"`
 	Category    *string `json:"category,omitempty"`
 	Description *string `json:"description,omitempty"`
-	Name        string  `json:"name"`
+	Name        string  `json:"name" validate:"required"`
 	Phone       *string `json:"phone,omitempty"`
 	Website     *string `json:"website"`
 }
 
 // UpdateConversationRequest defines model for UpdateConversationRequest.
 type UpdateConversationRequest struct {
-	Title string `json:"title"`
+	Title string `json:"title" validate:"required,max=200"`
 }
 
 // UpdateMemberRoleRequest defines model for UpdateMemberRoleRequest.
 type UpdateMemberRoleRequest struct {
-	RoleId openapi_types.UUID `json:"role_id"`
+	RoleId openapi_types.UUID `json:"role_id" validate:"required,uuid"`
 }
 
 // UpdateMemberRoleResponse defines model for UpdateMemberRoleResponse.
 type UpdateMemberRoleResponse struct {
-	BusinessId    openapi_types.UUID  `json:"business_id"`
+	BusinessId    openapi_types.UUID  `json:"business_id" validate:"required,uuid"`
 	RoleChangedAt *time.Time          `json:"role_changed_at"`
-	RoleChangedBy *openapi_types.UUID `json:"role_changed_by"`
-	RoleId        openapi_types.UUID  `json:"role_id"`
-	Status        string              `json:"status"`
-	UserId        openapi_types.UUID  `json:"user_id"`
+	RoleChangedBy *openapi_types.UUID `json:"role_changed_by" validate:"omitempty,uuid"`
+	RoleId        openapi_types.UUID  `json:"role_id" validate:"required,uuid"`
+	Status        string              `json:"status" validate:"required"`
+	UserId        openapi_types.UUID  `json:"user_id" validate:"required,uuid"`
 }
 
 // UpdatePreferredLocaleRequest defines model for UpdatePreferredLocaleRequest.
 type UpdatePreferredLocaleRequest struct {
-	Locale UpdatePreferredLocaleRequestLocale `json:"locale"`
+	Locale UpdatePreferredLocaleRequestLocale `json:"locale" validate:"required,oneof=ru en"`
 }
 
 // UpdatePreferredLocaleRequestLocale defines model for UpdatePreferredLocaleRequest.Locale.
@@ -1482,7 +1482,7 @@ type UpdateScheduleRequest struct {
 
 // UpdateToolApprovalsRequest defines model for UpdateToolApprovalsRequest.
 type UpdateToolApprovalsRequest struct {
-	ToolApprovals map[string]ToolFloor `json:"toolApprovals"`
+	ToolApprovals map[string]ToolFloor `json:"toolApprovals" validate:"required"`
 }
 
 // UpdateVoiceToneRequest defines model for UpdateVoiceToneRequest.
@@ -1492,36 +1492,36 @@ type UpdateVoiceToneRequest struct {
 
 // UploadLogoRequest defines model for UploadLogoRequest.
 type UploadLogoRequest struct {
-	Logo openapi_types.File `json:"logo"`
+	Logo openapi_types.File `json:"logo" validate:"required"`
 }
 
 // UsageLog defines model for UsageLog.
 type UsageLog struct {
-	BusinessId          openapi_types.UUID  `json:"business_id"`
-	CacheCreationTokens *int                `json:"cache_creation_tokens,omitempty"`
-	CacheReadTokens     *int                `json:"cache_read_tokens,omitempty"`
-	CommissionUsd       float64             `json:"commission_usd"`
+	BusinessId          openapi_types.UUID  `json:"business_id" validate:"required,uuid"`
+	CacheCreationTokens *int                `json:"cache_creation_tokens,omitempty" validate:"omitempty,min=0"`
+	CacheReadTokens     *int                `json:"cache_read_tokens,omitempty" validate:"omitempty,min=0"`
+	CommissionUsd       float64             `json:"commission_usd" validate:"required"`
 	ConversationId      *string             `json:"conversation_id,omitempty"`
 	CreatedAt           *time.Time          `json:"created_at,omitempty"`
-	Id                  *openapi_types.UUID `json:"id,omitempty"`
-	InputTokens         int                 `json:"input_tokens"`
-	Model               string              `json:"model"`
-	OutputTokens        int                 `json:"output_tokens"`
-	Provider            string              `json:"provider"`
-	ProviderCostUsd     float64             `json:"provider_cost_usd"`
+	Id                  *openapi_types.UUID `json:"id,omitempty" validate:"omitempty,uuid"`
+	InputTokens         int                 `json:"input_tokens" validate:"required,min=0"`
+	Model               string              `json:"model" validate:"required"`
+	OutputTokens        int                 `json:"output_tokens" validate:"required,min=0"`
+	Provider            string              `json:"provider" validate:"required"`
+	ProviderCostUsd     float64             `json:"provider_cost_usd" validate:"required"`
 	RequestId           *string             `json:"request_id,omitempty"`
-	UserCostUsd         float64             `json:"user_cost_usd"`
-	UserId              openapi_types.UUID  `json:"user_id"`
-	UserTier            string              `json:"user_tier"`
+	UserCostUsd         float64             `json:"user_cost_usd" validate:"required"`
+	UserId              openapi_types.UUID  `json:"user_id" validate:"required,uuid"`
+	UserTier            string              `json:"user_tier" validate:"required"`
 }
 
 // User defines model for User.
 type User struct {
-	CreatedAt       time.Time           `json:"createdAt"`
-	Email           openapi_types.Email `json:"email"`
-	Id              openapi_types.UUID  `json:"id"`
-	PreferredLocale UserPreferredLocale `json:"preferred_locale"`
-	UpdatedAt       time.Time           `json:"updatedAt"`
+	CreatedAt       time.Time           `json:"createdAt" validate:"required"`
+	Email           openapi_types.Email `json:"email" validate:"required,email"`
+	Id              openapi_types.UUID  `json:"id" validate:"required,uuid"`
+	PreferredLocale UserPreferredLocale `json:"preferred_locale" validate:"required,oneof=ru en"`
+	UpdatedAt       time.Time           `json:"updatedAt" validate:"required"`
 }
 
 // UserPreferredLocale defines model for User.PreferredLocale.
@@ -1529,22 +1529,22 @@ type UserPreferredLocale string
 
 // VKCommunity defines model for VKCommunity.
 type VKCommunity struct {
-	Id           int64   `json:"id"`
+	Id           int64   `json:"id" validate:"required"`
 	MembersCount *int    `json:"members_count,omitempty"`
-	Name         string  `json:"name"`
+	Name         string  `json:"name" validate:"required"`
 	Photo50      *string `json:"photo_50,omitempty"`
-	ScreenName   string  `json:"screen_name"`
+	ScreenName   string  `json:"screen_name" validate:"required"`
 }
 
 // VerifyConfirmRequest defines model for VerifyConfirmRequest.
 type VerifyConfirmRequest struct {
-	Token string `json:"token"`
+	Token string `json:"token" validate:"required,min=20"`
 }
 
 // VersionMismatchResponse defines model for VersionMismatchResponse.
 type VersionMismatchResponse struct {
-	Code           VersionMismatchResponseCode `json:"code"`
-	CurrentVersion string                      `json:"currentVersion"`
+	Code           VersionMismatchResponseCode `json:"code" validate:"required,oneof=version_mismatch"`
+	CurrentVersion string                      `json:"currentVersion" validate:"required"`
 }
 
 // VersionMismatchResponseCode defines model for VersionMismatchResponse.Code.
@@ -1552,25 +1552,25 @@ type VersionMismatchResponseCode string
 
 // YandexCompaniesResponse defines model for YandexCompaniesResponse.
 type YandexCompaniesResponse struct {
-	Companies []YandexCompanyEntry `json:"companies"`
+	Companies []YandexCompanyEntry `json:"companies" validate:"required"`
 }
 
 // YandexCompanyEntry defines model for YandexCompanyEntry.
 type YandexCompanyEntry struct {
-	Name      string `json:"name"`
-	Permalink string `json:"permalink"`
+	Name      string `json:"name" validate:"required"`
+	Permalink string `json:"permalink" validate:"required"`
 }
 
 // YandexCookiesRequest defines model for YandexCookiesRequest.
 type YandexCookiesRequest struct {
-	Cookies string `json:"cookies"`
+	Cookies string `json:"cookies" validate:"required"`
 }
 
 // YandexProbeResponse defines model for YandexProbeResponse.
 type YandexProbeResponse struct {
 	Error        *string   `json:"error,omitempty"`
 	Format       *string   `json:"format,omitempty"`
-	Ok           bool      `json:"ok"`
+	Ok           bool      `json:"ok" validate:"required"`
 	SessionValid *bool     `json:"session_valid"`
 	Username     *string   `json:"username,omitempty"`
 	Warnings     *[]string `json:"warnings,omitempty"`

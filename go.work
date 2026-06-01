@@ -13,4 +13,5 @@ use (
 	./test/integration
 	./tools/lint-rbac
 	./tools/nourl
+	./tools/oapi-validate-tags
 )
