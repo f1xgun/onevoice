@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // mockPostService implements PostService for tests.
@@ -66,7 +67,7 @@ func TestListPosts_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 
-	var resp PostListResponse
+	var resp openapi.PostListResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	assert.Len(t, resp.Posts, 1)
 	assert.Equal(t, 1, resp.Total)

@@ -14,6 +14,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
 )
 
@@ -52,10 +53,53 @@ func NewAgentTaskHandler(agentTaskService AgentTaskService, hub *taskhub.Hub) (*
 	}, nil
 }
 
-// TaskListResponse represents the task list response
-type TaskListResponse struct {
-	Tasks []domain.AgentTask `json:"tasks"`
-	Total int                `json:"total"`
+// domainAgentTaskToOpenAPI maps the internal domain.AgentTask to the
+// spec-owned openapi.AgentTask wire shape. BusinessID parses string→UUID
+// (corrupt rows fall back to uuid.Nil and are logged). startedAt and
+// completedAt switch from absent (omitempty) to explicit null when nil
+// to match the spec's nullable: true contract.
+func domainAgentTaskToOpenAPI(t domain.AgentTask) openapi.AgentTask {
+	businessID, err := uuid.Parse(t.BusinessID)
+	if err != nil {
+		slog.Warn("agent task BusinessID not a valid UUID", "taskID", t.ID, "raw", t.BusinessID, "error", err)
+		businessID = uuid.Nil
+	}
+
+	out := openapi.AgentTask{
+		Id:          t.ID,
+		BusinessId:  businessID,
+		Type:        t.Type,
+		Status:      t.Status,
+		Platform:    t.Platform,
+		StartedAt:   t.StartedAt,
+		CompletedAt: t.CompletedAt,
+		CreatedAt:   t.CreatedAt,
+	}
+	if t.DisplayName != "" {
+		v := t.DisplayName
+		out.DisplayName = &v
+	}
+	if t.DisplayNameKey != "" {
+		v := t.DisplayNameKey
+		out.DisplayNameKey = &v
+	}
+	if t.Input != nil {
+		v := t.Input
+		out.Input = &v
+	}
+	if t.Output != nil {
+		v := t.Output
+		out.Output = &v
+	}
+	if t.Error != "" {
+		v := t.Error
+		out.Error = &v
+	}
+	if t.ErrorCode != "" {
+		v := t.ErrorCode
+		out.ErrorCode = &v
+	}
+	return out
 }
 
 // ListTasks handles GET /api/v1/tasks
@@ -106,8 +150,13 @@ func (h *AgentTaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, TaskListResponse{
-		Tasks: tasks,
+	out := make([]openapi.AgentTask, 0, len(tasks))
+	for _, t := range tasks {
+		out = append(out, domainAgentTaskToOpenAPI(t))
+	}
+
+	writeJSON(w, http.StatusOK, openapi.AgentTaskListResponse{
+		Tasks: out,
 		Total: total,
 	})
 }
