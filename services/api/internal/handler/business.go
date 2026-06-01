@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/storage"
 )
@@ -75,26 +76,6 @@ type ToolsCache interface {
 // churn. Safe to call with nil to disable the endpoints.
 func (h *BusinessHandler) SetToolsCache(c ToolsCache) {
 	h.toolsCache = c
-}
-
-// UpdateBusinessRequest represents the business update request
-type UpdateBusinessRequest struct {
-	Name        string  `json:"name" validate:"required"`
-	Category    string  `json:"category"`
-	Address     string  `json:"address"`
-	Phone       string  `json:"phone"`
-	Website     *string `json:"website"`
-	Description string  `json:"description"`
-}
-
-// createBusinessRequest mirrors UpdateBusinessRequest exactly (BIZ-03 body shape).
-type createBusinessRequest struct {
-	Name        string  `json:"name" validate:"required"`
-	Category    string  `json:"category"`
-	Address     string  `json:"address"`
-	Phone       string  `json:"phone"`
-	Website     *string `json:"website"`
-	Description string  `json:"description"`
 }
 
 // NewBusinessHandler creates a new business handler instance.
@@ -169,7 +150,7 @@ func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var req createBusinessRequest
+	var req openapi.CreateBusinessRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -183,11 +164,11 @@ func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request)
 	newBusiness := &domain.Business{
 		ID:          uuid.New(),
 		Name:        req.Name,
-		Category:    req.Category,
-		Address:     req.Address,
-		Phone:       req.Phone,
+		Category:    strDeref(req.Category),
+		Address:     strDeref(req.Address),
+		Phone:       strDeref(req.Phone),
 		Website:     req.Website,
-		Description: req.Description,
+		Description: strDeref(req.Description),
 		Settings:    map[string]interface{}{},
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -251,7 +232,7 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var req UpdateBusinessRequest
+	var req openapi.UpdateBusinessRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -274,11 +255,11 @@ func (h *BusinessHandler) UpdateBusiness(w http.ResponseWriter, r *http.Request)
 	}
 
 	business.Name = req.Name
-	business.Category = req.Category
-	business.Address = req.Address
-	business.Phone = req.Phone
+	business.Category = strDeref(req.Category)
+	business.Address = strDeref(req.Address)
+	business.Phone = strDeref(req.Phone)
 	business.Website = req.Website
-	business.Description = req.Description
+	business.Description = strDeref(req.Description)
 	business.UpdatedAt = time.Now()
 
 	updatedBusiness, err := h.businessService.Update(r.Context(), business, bc.UserID)
@@ -310,10 +291,7 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var req struct {
-		Schedule     interface{} `json:"schedule"`
-		SpecialDates interface{} `json:"specialDates"`
-	}
+	var req openapi.UpdateScheduleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -333,9 +311,13 @@ func (h *BusinessHandler) UpdateSchedule(w http.ResponseWriter, r *http.Request)
 	if business.Settings == nil {
 		business.Settings = make(map[string]interface{})
 	}
-	business.Settings["schedule"] = req.Schedule
+	var schedule interface{}
+	if req.Schedule != nil {
+		schedule = *req.Schedule
+	}
+	business.Settings["schedule"] = schedule
 	if req.SpecialDates != nil {
-		business.Settings["specialDates"] = req.SpecialDates
+		business.Settings["specialDates"] = *req.SpecialDates
 	}
 	business.UpdatedAt = time.Now()
 
@@ -369,9 +351,7 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var req struct {
-		Tones []string `json:"tones"`
-	}
+	var req openapi.UpdateVoiceToneRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -391,7 +371,11 @@ func (h *BusinessHandler) UpdateVoiceTone(w http.ResponseWriter, r *http.Request
 	if business.Settings == nil {
 		business.Settings = make(map[string]interface{})
 	}
-	business.Settings["voiceTone"] = req.Tones
+	var tones []string
+	if req.Tones != nil {
+		tones = *req.Tones
+	}
+	business.Settings["voiceTone"] = tones
 	business.UpdatedAt = time.Now()
 
 	updated, err := h.businessService.Update(r.Context(), business, bc.UserID)
@@ -437,12 +421,6 @@ func (h *BusinessHandler) GetBusinessToolApprovals(w http.ResponseWriter, r *htt
 	})
 }
 
-// updateToolApprovalsRequest is the PUT body shape. Values are strings
-// (Auto/Manual); handler converts to ToolFloor after validation.
-type updateToolApprovalsRequest struct {
-	ToolApprovals map[string]string `json:"toolApprovals"`
-}
-
 // UpdateBusinessToolApprovals handles PUT /business/{id}/tool-approvals.
 // Requires PermBusinessUpdate.
 func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *http.Request) {
@@ -463,28 +441,30 @@ func (h *BusinessHandler) UpdateBusinessToolApprovals(w http.ResponseWriter, r *
 		return
 	}
 
-	var req updateToolApprovalsRequest
+	var req openapi.UpdateToolApprovalsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
+	// "forbidden" is a valid ToolFloor in the spec but rejected here — only
+	// auto/manual can be overridden via PUT; the registry floor is server-owned.
 	approvals := make(map[string]domain.ToolFloor, len(req.ToolApprovals))
-	for toolName, floorStr := range req.ToolApprovals {
+	for toolName, floor := range req.ToolApprovals {
 		if !h.toolsCache.Has(toolName) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": "unknown tool: " + toolName,
 			})
 			return
 		}
-		floor := domain.ToolFloor(floorStr)
-		if floor != domain.ToolFloorAuto && floor != domain.ToolFloorManual {
+		df := domain.ToolFloor(floor)
+		if df != domain.ToolFloorAuto && df != domain.ToolFloorManual {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": "invalid floor for tool " + toolName + ": must be auto or manual",
 			})
 			return
 		}
-		approvals[toolName] = floor
+		approvals[toolName] = df
 	}
 
 	if err := h.businessService.UpdateToolApprovals(r.Context(), bc.BusinessID, approvals); err != nil {
