@@ -16,11 +16,15 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
+// userRepository persists users in PostgreSQL.
+// See docs/api/repositories/user.md.
 type userRepository struct {
 	pool *pgxpool.Pool
 	sb   squirrel.StatementBuilderType
 }
 
+// NewUserRepository constructs the Postgres-backed user repository
+// exposing the tx-free domain.UserRepository surface.
 func NewUserRepository(pool *pgxpool.Pool) domain.UserRepository {
 	return &userRepository{
 		pool: pool,
@@ -28,18 +32,17 @@ func NewUserRepository(pool *pgxpool.Pool) domain.UserRepository {
 	}
 }
 
-// UserResetExtAdapter is the public façade exposing GetByEmail +
-// UpdatePasswordHashInTx — the slice of UserRepository the
-// PasswordResetService consumes. Returned as a concrete type
-// (not an interface) so wire/repositories.go can construct it without
-// importing the service package (and avoid the type-assertion dance).
+// UserResetExtAdapter exposes the tx-aware slice of userRepository that
+// PasswordResetService, EmailVerificationService and AccountDeletionService
+// consume. Concrete type so wire/repositories.go does not need to import
+// the service package.
+// See docs/api/repositories/user.md.
 type UserResetExtAdapter struct {
 	inner *userRepository
 }
 
-// NewUserResetExtAdapter constructs the extension repo. Re-uses
-// the same connection pool as NewUserRepository — both struct values
-// share state through the pgxpool's connection multiplex.
+// NewUserResetExtAdapter constructs the extension repo sharing the pool
+// with NewUserRepository via the pgxpool connection multiplex.
 func NewUserResetExtAdapter(pool *pgxpool.Pool) *UserResetExtAdapter {
 	return &UserResetExtAdapter{
 		inner: &userRepository{
@@ -54,47 +57,46 @@ func (a *UserResetExtAdapter) GetByEmail(ctx context.Context, email string) (*do
 	return a.inner.GetByEmail(ctx, email)
 }
 
-// GetByID delegates to the inner concrete repo. : needed by
-// EmailVerificationService.RequestResend + ChangeEmailBeforeVerify which
-// must load the user state (email_verified + email) before mutating.
+// GetByID delegates to the inner concrete repo; consumed by callers that
+// must load user state (email_verified, email) before mutating.
 func (a *UserResetExtAdapter) GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 	return a.inner.GetByID(ctx, userID)
 }
 
-// GetByIDIncludingDeleted delegates to the inner concrete repo. :
-// AccountDeletionService.RequestDeletion calls this so it can detect a
-// soft-deleted user and return ErrDeletionAlreadyPending instead of
-// ErrUserNotFound on the retry path.
+// GetByIDIncludingDeleted delegates to the inner concrete repo; lets
+// AccountDeletionService.RequestDeletion detect a soft-deleted user and
+// return ErrDeletionAlreadyPending instead of ErrUserNotFound.
 func (a *UserResetExtAdapter) GetByIDIncludingDeleted(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 	return a.inner.GetByIDIncludingDeleted(ctx, userID)
 }
 
-// delegates: account deletion lifecycle on the same adapter
-// so AccountDeletionService consumes a single tx-aware user-repo seam.
-
+// RequestDeletionInTx delegates to the inner concrete repo.
 func (a *UserResetExtAdapter) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	return a.inner.RequestDeletionInTx(ctx, tx, userID)
 }
 
+// CancelDeletion delegates to the inner concrete repo.
 func (a *UserResetExtAdapter) CancelDeletion(ctx context.Context, userID uuid.UUID, graceDays int) (bool, error) {
 	return a.inner.CancelDeletion(ctx, userID, graceDays)
 }
 
+// EnumeratePendingDeletionsInTx delegates to the inner concrete repo.
 func (a *UserResetExtAdapter) EnumeratePendingDeletionsInTx(ctx context.Context, tx pgx.Tx, before time.Time, limit int) ([]uuid.UUID, error) {
 	return a.inner.EnumeratePendingDeletionsInTx(ctx, tx, before, limit)
 }
 
+// EnumerateUpcomingDeletions delegates to the inner concrete repo.
 func (a *UserResetExtAdapter) EnumerateUpcomingDeletions(ctx context.Context, fromTime, toTime time.Time, limit int) ([]*domain.User, error) {
 	return a.inner.EnumerateUpcomingDeletions(ctx, fromTime, toTime, limit)
 }
 
+// HardDeleteInTx delegates to the inner concrete repo.
 func (a *UserResetExtAdapter) HardDeleteInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	return a.inner.HardDeleteInTx(ctx, tx, userID)
 }
 
-// CreateInTx delegates to the inner concrete repo. :
-// UserService.Register uses this so the user row commits atomically with
-// the user_consents + email_verification_tokens + email_outbox INSERTs.
+// CreateInTx delegates to the inner concrete repo so the user row commits
+// atomically with consents/verification/outbox INSERTs.
 func (a *UserResetExtAdapter) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain.User) error {
 	return a.inner.CreateInTx(ctx, tx, user)
 }
@@ -104,20 +106,19 @@ func (a *UserResetExtAdapter) UpdatePasswordHashInTx(ctx context.Context, tx pgx
 	return a.inner.UpdatePasswordHashInTx(ctx, tx, userID, bcryptHash)
 }
 
-// UpdateEmailInTx delegates to the inner concrete repo. :
-// PATCH /auth/email-before-verify mutates users.email inside the same tx
-// as token invalidation + fresh-token issuance.
+// UpdateEmailInTx delegates to the inner concrete repo so users.email
+// mutates inside the same tx as token invalidation + fresh-token issuance.
 func (a *UserResetExtAdapter) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, newEmail string) error {
 	return a.inner.UpdateEmailInTx(ctx, tx, userID, newEmail)
 }
 
 // MarkEmailVerifiedInTx delegates to the inner concrete repo.
-// POST /auth/verify-email/confirm flips email_verified + sets
-// email_verified_at inside the same tx as token consume.
 func (a *UserResetExtAdapter) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	return a.inner.MarkEmailVerifiedInTx(ctx, tx, userID)
 }
 
+// Create inserts a user via the pool; used by test paths that don't compose
+// a surrounding transaction. Production registration uses CreateInTx.
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()
@@ -137,6 +138,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 	_, err = r.pool.Exec(ctx, sql, args...)
 	if err != nil {
+		// String-match fallback because pgconn may not classify before pgx attempts the bind.
 		if strings.Contains(err.Error(), "duplicate key") {
 			return domain.ErrUserExists
 		}
@@ -146,13 +148,9 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
-// CreateInTx inserts a user inside the caller-supplied tx. :
-// UserService.Register opens a tx so the user_consents + email_verification_tokens
-// + email_outbox INSERTs commit atomically with the user row (no half-registered
-// user with no verification email).
-//
-// Maps Postgres unique-violation on email to domain.ErrUserExists, same
-// behavior as Create.
+// CreateInTx inserts a user inside the caller-supplied tx so the user row
+// commits atomically with user_consents + email_verification_tokens +
+// email_outbox INSERTs (no half-registered user without verification email).
 func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain.User) error {
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()
@@ -170,12 +168,12 @@ func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain
 		return fmt.Errorf("build insert tx: %w", err)
 	}
 	if _, err := tx.Exec(ctx, sql, args...); err != nil {
+		// Maps Postgres unique-violation on email to domain.ErrUserExists.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return domain.ErrUserExists
 		}
-		// pgconn may not classify before pgx attempts the bind — fall back
-		// to the string check (matches Create above).
+		// pgconn may not classify before pgx attempts the bind — fall back to the string check.
 		if strings.Contains(err.Error(), "duplicate key") {
 			return domain.ErrUserExists
 		}
@@ -184,11 +182,9 @@ func (r *userRepository) CreateInTx(ctx context.Context, tx pgx.Tx, user *domain
 	return nil
 }
 
-// GetByID — : filters `deleted_at IS NULL` so a soft-deleted
-// user (deletion requested, inside the 30-day grace window) looks like
-// ErrUserNotFound to every read path. Deletion-aware code paths
-// (AccountDeletionService, BlockWritesDuringGrace middleware, /auth/me)
-// call GetByIDIncludingDeleted instead.
+// GetByID returns the active user row matching id. Soft-deleted rows are
+// filtered out via `deleted_at IS NULL` and surface as ErrUserNotFound;
+// deletion-aware callers use GetByIDIncludingDeleted.
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
 		Select("id", "email", "password_hash", "preferred_locale",
@@ -198,7 +194,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 			"created_at", "updated_at").
 		From("users").
 		Where(squirrel.Eq{"id": id}).
-		Where("deleted_at IS NULL").
+		Where("deleted_at IS NULL"). // hides soft-deleted users from active read paths.
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)
@@ -229,9 +225,8 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 }
 
 // GetByIDIncludingDeleted is the same SELECT as GetByID minus the
-// `deleted_at IS NULL` filter. Lets callers read the accountDeletion state
-// of a soft-deleted user (e.g. /auth/me surfaces the grace banner; POST
-// /users/me/restore needs the row to cancel).
+// `deleted_at IS NULL` filter; lets callers read the account-deletion state
+// of a soft-deleted user (grace banner, restore endpoint).
 func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	sql, args, err := r.sb.
 		Select("id", "email", "password_hash", "preferred_locale",
@@ -270,12 +265,8 @@ func (r *userRepository) GetByIDIncludingDeleted(ctx context.Context, id uuid.UU
 	return &user, nil
 }
 
-// GetByEmail — : filters `deleted_at IS NULL` so the same
-// email can be re-registered post-purge without colliding with a
-// soft-deleted account during the grace window (the legacy UNIQUE
-// constraint on users.email still applies, so during the 30-day grace the
-// email is genuinely unavailable — but at least no read confuses "soft-
-// deleted" with "active").
+// GetByEmail returns the active user row matching email; filters
+// `deleted_at IS NULL` so soft-deleted accounts don't bleed into reads.
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	sql, args, err := r.sb.
 		Select("id", "email", "password_hash", "preferred_locale",
@@ -315,6 +306,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	return &user, nil
 }
 
+// Update mutates email + password_hash + updated_at via the pool.
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	user.UpdatedAt = time.Now()
 
@@ -341,14 +333,9 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
-// UpdatePasswordHashInTx sets users.password_hash + updated_at for the
-// given userID inside the caller-supplied tx. PasswordResetService commits
-// the password update in the same transaction as the token consume.
-//
-// NOT part of the domain.UserRepository interface — the interface stays
-// tx-free for callers that don't compose transactions. Service callers
-// type-assert against the concrete *userRepository to access this method
-// (an adapter is registered in wire/services.go).
+// UpdatePasswordHashInTx sets users.password_hash + updated_at inside the
+// caller-supplied tx so the password update commits with the token consume.
+// Not on domain.UserRepository so the interface stays tx-free.
 func (r *userRepository) UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, bcryptHash []byte) error {
 	sqlStr, args, err := r.sb.
 		Update("users").
@@ -369,13 +356,9 @@ func (r *userRepository) UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, 
 	return nil
 }
 
-// UpdateEmailInTx sets users.email for the given userID inside the
-// caller-supplied tx. : PATCH /auth/email-before-verify
-// runs this alongside InvalidateAllForUser + a fresh token issue + outbox
-// enqueue, all in one tx.
-//
-// Maps pgconn UNIQUE-violation (sqlstate 23505 on users.email) to
-// domain.ErrEmailTaken so the caller doesn't have to re-check after a race.
+// UpdateEmailInTx sets users.email inside the caller-supplied tx (PATCH
+// /auth/email-before-verify). Maps unique-violation → ErrEmailTaken so
+// concurrent change-email/register races surface the friendly sentinel.
 func (r *userRepository) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, newEmail string) error {
 	sqlStr, args, err := r.sb.
 		Update("users").
@@ -388,9 +371,7 @@ func (r *userRepository) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID 
 	}
 	cmdTag, err := tx.Exec(ctx, sqlStr, args...)
 	if err != nil {
-		// Postgres unique-violation maps to ErrEmailTaken so a race between
-		// two concurrent ChangeEmailBeforeVerify calls (or against a fresh
-		// Register) surfaces the friendly error code, not a raw pg error.
+		// Postgres unique-violation maps to ErrEmailTaken so a race surfaces a friendly sentinel.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return domain.ErrEmailTaken
@@ -403,11 +384,9 @@ func (r *userRepository) UpdateEmailInTx(ctx context.Context, tx pgx.Tx, userID 
 	return nil
 }
 
-// MarkEmailVerifiedInTx flips users.email_verified=TRUE and stamps
-// email_verified_at=NOW for the given userID inside the caller-supplied
-// tx. : POST /auth/verify-email/confirm runs this in the
-// same tx as the token consume so a partial state (token consumed but
-// flag not flipped) cannot occur on a connection drop.
+// MarkEmailVerifiedInTx flips email_verified=TRUE and stamps
+// email_verified_at=NOW inside the caller-supplied tx so a connection drop
+// cannot leave "token consumed but flag not flipped".
 func (r *userRepository) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	const q = `UPDATE users
 	              SET email_verified = TRUE,
@@ -424,11 +403,10 @@ func (r *userRepository) MarkEmailVerifiedInTx(ctx context.Context, tx pgx.Tx, u
 	return nil
 }
 
-// RequestDeletionInTx —. Sets deleted_at + deletion_requested_at
-// + updated_at on the user row inside the caller-supplied tx. The
-// `deletion_requested_at IS NULL` guard makes this idempotent: a second
-// concurrent call surfaces ErrDeletionAlreadyPending so the handler can
-// return 423 instead of double-scheduling.
+// RequestDeletionInTx flips active → pending. The
+// `deletion_requested_at IS NULL` guard makes the write idempotent; the
+// follow-up classify-read distinguishes ErrUserNotFound from
+// ErrDeletionAlreadyPending.
 func (r *userRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	const q = `UPDATE users
 	              SET deletion_requested_at = NOW(),
@@ -442,9 +420,7 @@ func (r *userRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, use
 		return fmt.Errorf("request deletion: %w", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-		// Either user doesn't exist OR deletion_requested_at is already set.
-		// Distinguish via a follow-up read so the service can map to the
-		// right sentinel.
+		// Zero matches could mean row missing OR already-pending; classify to map to the right sentinel.
 		var requestedAt *time.Time
 		var deletedAt *time.Time
 		err2 := r.pool.QueryRow(ctx, `SELECT deletion_requested_at, deleted_at FROM users WHERE id = $1`, userID).
@@ -463,14 +439,11 @@ func (r *userRepository) RequestDeletionInTx(ctx context.Context, tx pgx.Tx, use
 	return nil
 }
 
-// CancelDeletion —. Atomic UPDATE..RETURNING that clears
-// deleted_at and stamps deletion_canceled_at iff the user is currently
-// inside the 30-day grace window. Returns:
-//
-//	(true, nil)  — restored.
-//	(false, ErrAlreadyPurged) — past 30d boundary OR row already gone.
-//	(false, ErrNoDeletionPending) — row exists but had no pending deletion.
+// CancelDeletion flips pending → restored via UPDATE..RETURNING gated by the
+// 30-day grace boundary. Distinguishes ErrAlreadyPurged from
+// ErrNoDeletionPending via a follow-up classify-read on zero matches.
 func (r *userRepository) CancelDeletion(ctx context.Context, userID uuid.UUID, graceDays int) (bool, error) {
+	// Grace interval is formatted inline because Postgres rejects parameterised INTERVAL literals.
 	sql := fmt.Sprintf(`UPDATE users
 	                       SET deletion_canceled_at = NOW(),
 	                           deleted_at = NULL,
@@ -503,20 +476,16 @@ func (r *userRepository) CancelDeletion(ctx context.Context, userID uuid.UUID, g
 	if requestedAt == nil {
 		return false, domain.ErrNoDeletionPending
 	}
-	// requestedAt is set AND we matched 0 rows → either canceledAt is already
-	// set (idempotent re-cancel) OR past the grace boundary.
 	if canceledAt != nil {
-		// Already canceled — treat as success-noop.
+		// Idempotent re-cancel.
 		return true, nil
 	}
 	return false, domain.ErrAlreadyPurged
 }
 
-// EnumeratePendingDeletionsInTx — hard-delete sweeper helper.
-// Claims a batch of soft-deleted users whose 30-day grace has elapsed via
-// `FOR UPDATE SKIP LOCKED` so concurrent sweepers + the cancel endpoint
-// don't deadlock or race-clobber. Returns up to `limit` IDs ordered oldest-
-// first so the queue progresses deterministically.
+// EnumeratePendingDeletionsInTx claims a batch for the hard-delete sweeper
+// using FOR UPDATE SKIP LOCKED so concurrent sweepers + the cancel endpoint
+// don't deadlock or race-clobber. Oldest-first for deterministic progress.
 func (r *userRepository) EnumeratePendingDeletionsInTx(ctx context.Context, tx pgx.Tx, before time.Time, limit int) ([]uuid.UUID, error) {
 	const q = `SELECT id FROM users
 	            WHERE deletion_requested_at IS NOT NULL
@@ -544,13 +513,9 @@ func (r *userRepository) EnumeratePendingDeletionsInTx(ctx context.Context, tx p
 	return ids, nil
 }
 
-// EnumerateUpcomingDeletions — warning sweeper helper.
-// Returns users whose deletion_requested_at falls between `fromTime`
-// (exclusive) and `toTime` (inclusive) — the T-7 window the
-// AccountDeletionService.WarningSweeper covers. Pool-based (no tx
-// needed; the warning sweeper has no business transaction). Returns full
-// user records so the caller can read the email + deletion_requested_at
-// without a second round-trip.
+// EnumerateUpcomingDeletions returns users whose deletion_requested_at falls
+// inside (fromTime, toTime] — the T-7 warning window. Pool-based because the
+// warning sweeper has no surrounding business transaction.
 func (r *userRepository) EnumerateUpcomingDeletions(ctx context.Context, fromTime, toTime time.Time, limit int) ([]*domain.User, error) {
 	const q = `SELECT id, email, password_hash, preferred_locale,
 	                  COALESCE(email_verified, FALSE) AS email_verified,
@@ -588,13 +553,9 @@ func (r *userRepository) EnumerateUpcomingDeletions(ctx context.Context, fromTim
 	return out, nil
 }
 
-// HardDeleteInTx — hard-delete sweeper. Issues `DELETE FROM
-// users WHERE id = $1` inside the caller-supplied tx. The caller is
-// responsible for writing the user_self_deleted audit row BEFORE the
-// DELETE (in the same tx) so the FK SET NULL behavior (audit_logs.user_id
-// from 21-03 ) has somewhere to land. After DELETE, the audit
-// row's FK becomes NULL but user_email_at_event preserves the email for
-// 152-ФЗ forensic queries.
+// HardDeleteInTx issues DELETE FROM users inside the caller-supplied tx.
+// The caller must write the user_self_deleted audit row BEFORE the DELETE in
+// the same tx so the FK SET NULL on audit_logs.user_id has somewhere to land.
 func (r *userRepository) HardDeleteInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	cmdTag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
 	if err != nil {
@@ -606,14 +567,9 @@ func (r *userRepository) HardDeleteInTx(ctx context.Context, tx pgx.Tx, userID u
 	return nil
 }
 
-// UpdatePreferredLocale sets users.preferred_locale for the row matching
-// userID, also touching updated_at so audit-style queries notice the change.
-// Returns domain.ErrUserNotFound when 0 rows matched (mirrors Update above).
-//
-// Validation of the locale value itself ('ru' | 'en') happens at the handler
-// boundary. The DB CHECK constraint is the defense-in-depth floor — passing
-// an invalid value here surfaces as a pgx error, NOT ErrUserNotFound,
-// because RowsAffected will be 0 only when id doesn't match.
+// UpdatePreferredLocale sets users.preferred_locale + updated_at. Locale
+// validation ('ru' | 'en') happens at the handler boundary; the DB CHECK
+// is the defense-in-depth floor.
 func (r *userRepository) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
 	sql, args, err := r.sb.
 		Update("users").
