@@ -15,6 +15,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -67,13 +68,6 @@ func NewConversationHandler(
 	}, nil
 }
 
-// CreateConversationRequest is the JSON body shape; nullable ProjectID
-// collapses null/absent → nil. See docs/api/handlers/conversation.md.
-type CreateConversationRequest struct {
-	Title     string  `json:"title" validate:"required,max=200"`
-	ProjectID *string `json:"projectId"`
-}
-
 // CreateConversation handles POST /conversations. See docs/api/handlers/conversation.md.
 func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
@@ -87,7 +81,7 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		return
 	}
 
-	var req CreateConversationRequest
+	var req openapi.CreateConversationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -98,8 +92,8 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 	}
 
 	// Cross-business project → uniform 404 (no existence leak via 403).
-	if req.ProjectID != nil && *req.ProjectID != "" {
-		projUUID, parseErr := uuid.Parse(*req.ProjectID)
+	if req.ProjectId != nil && *req.ProjectId != "" {
+		projUUID, parseErr := uuid.Parse(*req.ProjectId)
 		if parseErr != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid project id")
 			return
@@ -122,7 +116,7 @@ func (h *ConversationHandler) CreateConversation(w http.ResponseWriter, r *http.
 		ID:          primitive.NewObjectID().Hex(),
 		UserID:      bc.UserID.String(),
 		BusinessID:  bc.BusinessID.String(),
-		ProjectID:   req.ProjectID, // nil → "Без проекта" bucket
+		ProjectID:   req.ProjectId, // nil → "Без проекта" bucket
 		Title:       req.Title,
 		TitleStatus: domain.TitleStatusAutoPending,
 		CreatedAt:   now,
@@ -222,11 +216,6 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, conversation)
 }
 
-// UpdateConversationRequest is the JSON body for PUT /conversations/{id}.
-type UpdateConversationRequest struct {
-	Title string `json:"title" validate:"required,max=200"`
-}
-
 // UpdateConversation handles PUT /conversations/{id} — manual rename.
 // See docs/api/handlers/conversation.md §"UpdateConversation".
 func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +232,7 @@ func (h *ConversationHandler) UpdateConversation(w http.ResponseWriter, r *http.
 
 	conversationID := chi.URLParam(r, "id")
 
-	var req UpdateConversationRequest
+	var req openapi.UpdateConversationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -352,13 +341,8 @@ func (h *ConversationHandler) ListMessages(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, view)
 }
 
-// MoveConversationRequest is the body for POST /conversations/{id}/move;
-// null/empty/absent ProjectID all map to the "Без проекта" bucket.
-type MoveConversationRequest struct {
-	ProjectID *string `json:"projectId"`
-}
-
 // MoveConversation handles POST /conversations/{id}/move. See docs/api/handlers/conversation.md.
+// Null/empty/absent ProjectId all map to the "Без проекта" bucket.
 func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -373,14 +357,14 @@ func (h *ConversationHandler) MoveConversation(w http.ResponseWriter, r *http.Re
 
 	conversationID := chi.URLParam(r, "id")
 
-	var req MoveConversationRequest
+	var req openapi.MoveConversationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	updated, err := h.conversationService.MoveToProject(
-		r.Context(), conversationID, bc.BusinessID, bc.UserID, req.ProjectID)
+		r.Context(), conversationID, bc.BusinessID, bc.UserID, req.ProjectId)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrConversationNotFound):

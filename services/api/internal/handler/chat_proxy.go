@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/orchestratorclient"
 	"github.com/f1xgun/onevoice/pkg/ratelimit"
 	"github.com/f1xgun/onevoice/pkg/ssecounter"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 	"github.com/f1xgun/onevoice/services/api/internal/service/chatturn"
 	"github.com/f1xgun/onevoice/services/api/internal/taskhub"
@@ -145,12 +146,6 @@ func (a titlerAdapter) GenerateAndSave(ctx context.Context, businessID, conversa
 	a.titler.GenerateAndSave(ctx, businessID, conversationID, userText, assistantText)
 }
 
-// chatProxyRequest is the JSON body shape.
-type chatProxyRequest struct {
-	Model   string `json:"model"`
-	Message string `json:"message"`
-}
-
 // Chat handles POST /chat/{conversationID}; delegates lifecycle to Turn.Run
 // and maps TurnOutcome → HTTP. See docs/api/handlers/chat-proxy.md.
 func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
@@ -190,7 +185,7 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// Explicit-resume calls reuse the persisted user message → skip decode.
 	// Fresh calls decode unconditionally so an empty Message still reaches
 	// Turn.Run's gate (inline-error / re-emit-approval branches).
-	var body chatProxyRequest
+	var body openapi.ChatTurnRequest
 	if headerBatch == "" {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -202,8 +197,8 @@ func (h *ChatProxyHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		BusinessID:     bc.BusinessID,
 		UserID:         bc.UserID,
 		ConversationID: conversationID,
-		Message:        body.Message,
-		Model:          body.Model,
+		Message:        strDeref(body.Message),
+		Model:          strDeref(body.Model),
 		ResumeBatchID:  headerBatch,
 		Locale:         i18n.LocaleFromContext(r.Context()),
 	}
