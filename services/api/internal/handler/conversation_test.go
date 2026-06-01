@@ -396,10 +396,7 @@ func TestCreateConversation_Success(t *testing.T) {
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
-	reqBody := CreateConversationRequest{
-		Title: "My New Conversation",
-	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := json.Marshal(map[string]any{"title": "My New Conversation"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
 
 	// Add user ID to context (simulating auth middleware)
@@ -432,10 +429,7 @@ func TestCreateConversation_NoBusinessContext(t *testing.T) {
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request without BusinessContext in context
-	reqBody := CreateConversationRequest{
-		Title: "My New Conversation",
-	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := json.Marshal(map[string]any{"title": "My New Conversation"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
 
 	// Execute
@@ -450,17 +444,17 @@ func TestCreateConversation_NoBusinessContext(t *testing.T) {
 func TestCreateConversation_ValidationError(t *testing.T) {
 	tests := []struct {
 		name          string
-		request       CreateConversationRequest
+		request       map[string]any
 		expectedField string
 	}{
 		{
 			name:          "missing title",
-			request:       CreateConversationRequest{Title: ""},
+			request:       map[string]any{"title": ""},
 			expectedField: "Title",
 		},
 		{
 			name:          "title too long",
-			request:       CreateConversationRequest{Title: strings.Repeat("a", 201)},
+			request:       map[string]any{"title": strings.Repeat("a", 201)},
 			expectedField: "Title",
 		},
 	}
@@ -507,10 +501,7 @@ func TestCreateConversation_RepositoryError(t *testing.T) {
 	handler := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
 	// Create request
-	reqBody := CreateConversationRequest{
-		Title: "My New Conversation",
-	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := json.Marshal(map[string]any{"title": "My New Conversation"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
 
 	// Add user ID to context
@@ -1158,7 +1149,7 @@ func TestCreateConversation_WithProjectID(t *testing.T) {
 	require.NoError(t, err)
 
 	pid := projectID.String()
-	body, _ := json.Marshal(CreateConversationRequest{Title: "Chat", ProjectID: &pid})
+	body, _ := json.Marshal(map[string]any{"title": "Chat", "projectId": pid})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
 	req = req.WithContext(convBizCtx(businessID, userID))
 	w := httptest.NewRecorder()
@@ -1231,7 +1222,7 @@ func TestCreateConversation_ProjectCrossBusiness(t *testing.T) {
 	require.NoError(t, err)
 
 	pid := projectID.String()
-	body, _ := json.Marshal(CreateConversationRequest{Title: "x", ProjectID: &pid})
+	body, _ := json.Marshal(map[string]any{"title": "x", "projectId": pid})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewReader(body))
 	req = req.WithContext(convBizCtx(businessID, userID))
 	w := httptest.NewRecorder()
@@ -1299,7 +1290,7 @@ func TestMoveConversation_ToProject(t *testing.T) {
 	require.NoError(t, err)
 
 	pid := projectID.String()
-	body, _ := json.Marshal(MoveConversationRequest{ProjectID: &pid})
+	body, _ := json.Marshal(map[string]any{"projectId": pid})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID+"/move", bytes.NewReader(body))
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", convID)
@@ -1468,7 +1459,7 @@ func TestMoveConversation_EnglishLocale_RealProject(t *testing.T) {
 	require.NoError(t, err)
 
 	pid := projectID.String()
-	body, _ := json.Marshal(MoveConversationRequest{ProjectID: &pid})
+	body, _ := json.Marshal(map[string]any{"projectId": pid})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID+"/move", bytes.NewReader(body))
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", convID)
@@ -1515,7 +1506,7 @@ func TestMoveConversation_ProjectCrossBusiness(t *testing.T) {
 	require.NoError(t, err)
 
 	pid := projectID.String()
-	body, _ := json.Marshal(MoveConversationRequest{ProjectID: &pid})
+	body, _ := json.Marshal(map[string]any{"projectId": pid})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID+"/move", bytes.NewReader(body))
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", convID)
@@ -1801,7 +1792,7 @@ func TestUpdateConversation_TitleStatusManual(t *testing.T) {
 	}
 	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	body, _ := json.Marshal(UpdateConversationRequest{Title: "Новый ручной заголовок"})
+	body, _ := json.Marshal(map[string]any{"title": "Новый ручной заголовок"})
 	req := makeAuthedReq(t, http.MethodPut,
 		"/api/v1/conversations/"+convID, body, userID, convID)
 	w := httptest.NewRecorder()
@@ -1853,7 +1844,7 @@ func TestUpdateConversation_TitleStatusManual_FromAutoPending(t *testing.T) {
 	}
 	h := newTestConversationHandler(mockRepo, &MockMessageRepository{})
 
-	body, _ := json.Marshal(UpdateConversationRequest{Title: "Победил гонку"})
+	body, _ := json.Marshal(map[string]any{"title": "Победил гонку"})
 	req := makeAuthedReq(t, http.MethodPut,
 		"/api/v1/conversations/"+convID, body, userID, convID)
 	w := httptest.NewRecorder()
