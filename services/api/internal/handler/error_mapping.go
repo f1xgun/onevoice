@@ -16,9 +16,12 @@ import (
 // Wire envelopes returned by the error-mapping helpers are owned by the
 // OpenAPI spec; the historic local-name aliases keep call sites readable.
 // passwordResetErrorBody → openapi.PasswordResetErrorResponse
-//   ({code, message}, both required) — emitted by writePasswordResetError.
+//
+//	({code, message}, both required) — emitted by writePasswordResetError.
+//
 // invitationStateBody → openapi.InvitationStateErrorResponse
-//   ({error, reason?}, reason omitempty) — emitted by writeInvitationStateError.
+//
+//	({error, reason?}, reason omitempty) — emitted by writeInvitationStateError.
 type (
 	passwordResetErrorBody = openapi.PasswordResetErrorResponse
 	invitationStateBody    = openapi.InvitationStateErrorResponse
