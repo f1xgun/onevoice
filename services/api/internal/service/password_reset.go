@@ -21,6 +21,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/lockout"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 )
 
@@ -49,6 +50,7 @@ var (
 // See docs/services/password-reset.md.
 type UserRepoForReset interface {
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
 	UpdatePasswordHashInTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, bcryptHash []byte) error
 }
 
@@ -61,9 +63,11 @@ type PasswordResetService struct {
 	outbox    *repository.EmailOutboxRepository
 	auditLog  audit.Logger
 	redis     *redis.Client
+	lockout   *lockout.Lockout
 }
 
-// NewPasswordResetService constructs a PasswordResetService. All deps are required.
+// NewPasswordResetService constructs a PasswordResetService. lockout is optional:
+// when nil (no Redis), self-unlock on successful reset is silently skipped.
 func NewPasswordResetService(
 	pool *pgxpool.Pool,
 	tokenRepo *repository.PasswordResetTokenRepository,
@@ -71,6 +75,7 @@ func NewPasswordResetService(
 	outbox *repository.EmailOutboxRepository,
 	auditLogger audit.Logger,
 	redisClient *redis.Client,
+	lockoutSvc *lockout.Lockout,
 ) *PasswordResetService {
 	return &PasswordResetService{
 		pool:      pool,
@@ -79,6 +84,7 @@ func NewPasswordResetService(
 		outbox:    outbox,
 		auditLog:  auditLogger,
 		redis:     redisClient,
+		lockout:   lockoutSvc,
 	}
 }
 
@@ -206,6 +212,19 @@ func (s *PasswordResetService) ConfirmReset(ctx context.Context, plaintextToken,
 	// Best-effort post-commit wipe: errors here do not poison the success response.
 	if err := s.wipeRefreshTokens(ctx, userID); err != nil {
 		slog.ErrorContext(ctx, "password reset: wipe refresh tokens", "error", err, "user_id", userID)
+	}
+
+	// Self-unlock: a successful reset clears the per-(email_hash, /16) lockout state
+	// so the user is not still tier-locked the moment they try to log in with the
+	// new password. Best-effort — never poisons the success response.
+	if s.lockout != nil {
+		if u, err := s.userRepo.GetByID(ctx, userID); err == nil && u != nil {
+			if err := s.lockout.ClearAllForEmail(ctx, u.Email); err != nil {
+				slog.ErrorContext(ctx, "password reset: clear lockout state", "error", err, "user_id", userID)
+			}
+		} else if err != nil {
+			slog.ErrorContext(ctx, "password reset: lookup user for lockout clear", "error", err, "user_id", userID)
+		}
 	}
 
 	s.audit(ctx, audit.ActionPasswordResetCompleted, &userID, map[string]any{

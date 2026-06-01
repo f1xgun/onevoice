@@ -300,6 +300,25 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		orchClient,
 	)
 
+	// Lockout keyed off Redis; nil when Redis is unavailable (matches
+	// rate-limiter pattern — Redis is soft infra, not a hard boot dep).
+	// Initialized here (instead of after middleware setup) so PasswordReset
+	// can clear lockout state on a successful self-unlock.
+	if h.Redis != nil {
+		s.Lockout = lockout.New(h.Redis, lockout.Config{
+			FailThresholdCaptcha: cfg.LockoutFailThresholdCaptcha,
+			FailThresholdLock:    cfg.LockoutFailThresholdLock,
+			Duration:             cfg.LockoutDuration,
+		})
+		log.Info("lockout: enabled",
+			"captcha_threshold", cfg.LockoutFailThresholdCaptcha,
+			"lock_threshold", cfg.LockoutFailThresholdLock,
+			"duration", cfg.LockoutDuration,
+		)
+	} else {
+		log.Warn("lockout: disabled (no Redis client) — /auth/login will not enforce brute-force protection")
+	}
+
 	s.PasswordReset = service.NewPasswordResetService(
 		h.PG,
 		repos.PasswordResetToken,
@@ -307,6 +326,7 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 		repos.EmailOutbox,
 		s.AuditLogger,
 		h.Redis,
+		s.Lockout,
 	)
 
 	s.EmailVerification = service.NewEmailVerificationService(
@@ -369,22 +389,6 @@ func BuildServices(ctx context.Context, log *slog.Logger, cfg *config.Config, re
 	// degrade to "trust nothing" would lock the wrong IPs.
 	if err := middleware.InitTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
 		return nil, fmt.Errorf("wire: init trusted proxies: %w", err)
-	}
-	// Lockout keyed off Redis; nil when Redis is unavailable (matches
-	// rate-limiter pattern — Redis is soft infra, not a hard boot dep).
-	if h.Redis != nil {
-		s.Lockout = lockout.New(h.Redis, lockout.Config{
-			FailThresholdCaptcha: cfg.LockoutFailThresholdCaptcha,
-			FailThresholdLock:    cfg.LockoutFailThresholdLock,
-			Duration:             cfg.LockoutDuration,
-		})
-		log.Info("lockout: enabled",
-			"captcha_threshold", cfg.LockoutFailThresholdCaptcha,
-			"lock_threshold", cfg.LockoutFailThresholdLock,
-			"duration", cfg.LockoutDuration,
-		)
-	} else {
-		log.Warn("lockout: disabled (no Redis client) — /auth/login will not enforce brute-force protection")
 	}
 	// SmartCaptcha always non-nil so the handler has a stable dep to inject.
 	if cfg.SmartCaptchaSecretKey != "" {

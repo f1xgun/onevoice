@@ -73,6 +73,15 @@ func (f *fakeUserRepo) GetByEmail(_ context.Context, email string) (*domain.User
 	return nil, domain.ErrUserNotFound
 }
 
+func (f *fakeUserRepo) GetByID(_ context.Context, userID uuid.UUID) (*domain.User, error) {
+	for _, u := range f.users {
+		if u.ID == userID {
+			return u, nil
+		}
+	}
+	return nil, domain.ErrUserNotFound
+}
+
 func (f *fakeUserRepo) UpdatePasswordHashInTx(_ context.Context, _ pgx.Tx, userID uuid.UUID, bcryptHash []byte) error {
 	f.updateCalls++
 	f.updateLastUser = userID
