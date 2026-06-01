@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
@@ -95,36 +96,48 @@ func NewInvitationsHandler(
 	}, nil
 }
 
-// --- Request / response types ---
+// --- Domain → openapi mappers ---
 
-type createInvitationResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Token     string    `json:"token"` // raw token — returned ONCE, only on create
-	RoleID    uuid.UUID `json:"role_id"`
-	ExpiresAt string    `json:"expires_at"` // RFC3339
-	CreatedAt string    `json:"created_at"`
+// domainInvitationToCreateResponse maps a freshly-inserted Invitation + its
+// raw token (returned ONCE on create only) into the spec-side
+// CreateInvitationResponse wire shape. Time fields are UTC-normalized so the
+// JSON serializer (time.Time → RFC3339Nano) emits a stable representation.
+func domainInvitationToCreateResponse(inv *domain.Invitation, rawToken string) openapi.CreateInvitationResponse {
+	return openapi.CreateInvitationResponse{
+		Id:        inv.ID,
+		Token:     rawToken,
+		RoleId:    inv.RoleID,
+		ExpiresAt: inv.ExpiresAt.UTC(),
+		CreatedAt: inv.CreatedAt.UTC(),
+	}
 }
 
-type listInvitationItem struct {
-	ID        uuid.UUID                      `json:"id"`
-	RoleID    uuid.UUID                      `json:"role_id"`
-	RoleName  string                         `json:"role_name"`
-	ExpiresAt string                         `json:"expires_at"`
-	CreatedAt string                         `json:"created_at"`
-	CreatedBy listInvitationCreatedByPayload `json:"created_by"`
+// domainInvitationToPending maps a pending Invitation + its hydrated role/user
+// into the spec-side PendingInvitation wire shape.
+func domainInvitationToPending(inv *domain.Invitation, roleName string, createdBy *domain.User) openapi.PendingInvitation {
+	out := openapi.PendingInvitation{
+		Id:        inv.ID,
+		RoleId:    inv.RoleID,
+		RoleName:  roleName,
+		ExpiresAt: inv.ExpiresAt.UTC(),
+		CreatedAt: inv.CreatedAt.UTC(),
+	}
+	out.CreatedBy.Id = createdBy.ID
+	out.CreatedBy.Email = openapi_types.Email(createdBy.Email)
+	return out
 }
 
-type listInvitationCreatedByPayload struct {
-	ID    uuid.UUID `json:"id"`
-	Email string    `json:"email"`
-}
-
-type previewResponse struct {
-	BusinessID   uuid.UUID `json:"business_id"`
-	BusinessName string    `json:"business_name"`
-	RoleID       uuid.UUID `json:"role_id"`
-	RoleName     string    `json:"role_name"`
-	ExpiresAt    string    `json:"expires_at"`
+// domainInvitationToPreview maps an Invitation + its hydrated business/role
+// names into the spec-side InvitationPreview wire shape used by the public
+// preview endpoint.
+func domainInvitationToPreview(inv *domain.Invitation, businessName, roleName string) openapi.InvitationPreview {
+	return openapi.InvitationPreview{
+		BusinessId:   inv.BusinessID,
+		BusinessName: businessName,
+		RoleId:       inv.RoleID,
+		RoleName:     roleName,
+		ExpiresAt:    inv.ExpiresAt.UTC(),
+	}
 }
 
 // parseInvitationIDParam extracts {inviteId} from chi URL params; writes 400 on failure.
@@ -263,13 +276,7 @@ func (h *InvitationsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Audit AFTER commit so a rolled-back tx never leaves an orphaned audit row.
 	audit.LogInvitationCreated(r.Context(), h.audit, bc.BusinessID, bc.UserID, inv.ID, inv.RoleID, inv.ExpiresAt)
 
-	writeJSON(w, http.StatusCreated, createInvitationResponse{
-		ID:        inv.ID,
-		Token:     rawToken, // ONLY response that includes the raw token
-		RoleID:    inv.RoleID,
-		ExpiresAt: inv.ExpiresAt.Format(time.RFC3339),
-		CreatedAt: inv.CreatedAt.Format(time.RFC3339),
-	})
+	writeJSON(w, http.StatusCreated, domainInvitationToCreateResponse(inv, rawToken))
 }
 
 // ListPending handles GET /api/v1/businesses/{id}/invitations.
@@ -291,7 +298,7 @@ func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	out := make([]listInvitationItem, 0, len(invs))
+	out := make([]openapi.PendingInvitation, 0, len(invs))
 	for _, inv := range invs {
 		role, err := h.roleRepo.GetByID(r.Context(), inv.RoleID)
 		if err != nil {
@@ -303,14 +310,10 @@ func (h *InvitationsHandler) ListPending(w http.ResponseWriter, r *http.Request)
 			writeAuthzInvariantError(r.Context(), w, "list_pending.user_lookup", err)
 			return
 		}
-		out = append(out, listInvitationItem{
-			ID:        inv.ID,
-			RoleID:    inv.RoleID,
-			RoleName:  role.Name,
-			ExpiresAt: inv.ExpiresAt.UTC().Format(time.RFC3339),
-			CreatedAt: inv.CreatedAt.UTC().Format(time.RFC3339),
-			CreatedBy: listInvitationCreatedByPayload{ID: user.ID, Email: user.Email},
-		})
+		// inv is a value type from the range loop; take its address for the
+		// pointer-typed mapper signature.
+		invCopy := inv
+		out = append(out, domainInvitationToPending(&invCopy, role.Name, user))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -394,13 +397,7 @@ func (h *InvitationsHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		"invitation_id", inv.ID,
 	)
 
-	writeJSON(w, http.StatusOK, previewResponse{
-		BusinessID:   inv.BusinessID,
-		BusinessName: biz.Name,
-		RoleID:       inv.RoleID,
-		RoleName:     role.Name,
-		ExpiresAt:    inv.ExpiresAt.Format(time.RFC3339),
-	})
+	writeJSON(w, http.StatusOK, domainInvitationToPreview(inv, biz.Name, role.Name))
 }
 
 // Accept handles POST /api/v1/invitations/{token}/accept — auth-required, NOT business-scoped.

@@ -93,18 +93,20 @@ func NewBusinessHandler(businessService BusinessService, syncer BusinessSyncer, 
 	}, nil
 }
 
-// listUserBusinessesResponse is the per-item shape for GET /api/v1/businesses.
-type listUserBusinessesResponse struct {
-	ID       uuid.UUID              `json:"id"`
-	Name     string                 `json:"name"`
-	Role     listUserBusinessesRole `json:"role"`
-	Status   string                 `json:"status"`
-	JoinedAt time.Time              `json:"joined_at"`
-}
-
-type listUserBusinessesRole struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+// domainMembershipToOpenAPI maps a service-layer MembershipSummary to the
+// spec-side BusinessMembershipSummary used as the wire shape for
+// GET /api/v1/businesses.
+func domainMembershipToOpenAPI(m service.MembershipSummary) openapi.BusinessMembershipSummary {
+	return openapi.BusinessMembershipSummary{
+		Id:   m.BusinessID,
+		Name: m.BusinessName,
+		Role: openapi.BusinessMembershipRoleRef{
+			Id:   m.RoleID,
+			Name: m.RoleName,
+		},
+		Status:   m.Status,
+		JoinedAt: m.JoinedAt,
+	}
 }
 
 // ListUserBusinesses handles GET /api/v1/businesses (BIZ-02).
@@ -125,18 +127,9 @@ func (h *BusinessHandler) ListUserBusinesses(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	out := make([]listUserBusinessesResponse, 0, len(memberships))
+	out := make([]openapi.BusinessMembershipSummary, 0, len(memberships))
 	for _, m := range memberships {
-		out = append(out, listUserBusinessesResponse{
-			ID:   m.BusinessID,
-			Name: m.BusinessName,
-			Role: listUserBusinessesRole{
-				ID:   m.RoleID,
-				Name: m.RoleName,
-			},
-			Status:   m.Status,
-			JoinedAt: m.JoinedAt,
-		})
+		out = append(out, domainMembershipToOpenAPI(m))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
