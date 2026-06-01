@@ -3,7 +3,7 @@ groups:
     rules:
       - alert: LLMProviderHighErrorRate
         expr: |
-          sum by (provider) (rate(llm_requests_total{status!="ok"}[5m]))
+          sum by (provider) (rate(llm_requests_total{status="error"}[5m]))
             /
           sum by (provider) (rate(llm_requests_total[5m]))
             > 0.10
@@ -12,4 +12,4 @@ groups:
           severity: critical
         annotations:
           summary: "LLM provider {{ $labels.provider }} error rate > 10%"
-          description: "Provider {{ $labels.provider }} non-ok rate exceeded 10% for 5m. See docs/runbook/observability.md."
+          description: "Provider {{ $labels.provider }} error rate exceeded 10% for 5m. See docs/runbook/observability.md."
