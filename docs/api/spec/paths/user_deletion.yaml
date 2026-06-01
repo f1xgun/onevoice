@@ -1,0 +1,105 @@
+/users/me:
+  delete:
+    operationId: deleteAccount
+    summary: Request account deletion (30-day grace window).
+    description: |
+      Server-side password re-verification defends against XSS-stolen
+      JWT scenarios. On success the row is soft-deleted and a 30-day
+      grace window starts; the user can call /users/me/restore until
+      the grace expires.
+    tags:
+    - user-deletion
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/DeleteAccountRequest
+    responses:
+      '204':
+        description: Deletion requested; grace window active.
+      '400':
+        description: Validation failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '401':
+        description: |
+          Unauthorized, or password re-verification failed
+          (`password_invalid`).
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+              - $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '404':
+        description: User row missing (`user_not_found`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: |
+          Sole owner of one or more businesses
+          (`sole_owner_of_businesses`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SoleOwnerResponse
+      '423':
+        description: Deletion already pending (`account_pending_deletion`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/PendingDeletionResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/users/me/restore:
+  post:
+    operationId: restoreAccount
+    summary: Cancel a pending account deletion within the grace window.
+    description: |
+      CSRF defense: Origin header MUST match an allowed CORS origin.
+      Outside the 30-day grace the row may already be purged; the
+      handler returns 410 `deletion_too_old` in that case.
+    tags:
+    - user-deletion
+    responses:
+      '204':
+        description: Deletion canceled; account restored.
+      '401':
+        description: Unauthorized.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Origin header missing or not allow-listed (`origin_not_allowed`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '404':
+        description: No deletion pending (`no_deletion_pending`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '410':
+        description: Grace window expired and the row is purged (`deletion_too_old`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

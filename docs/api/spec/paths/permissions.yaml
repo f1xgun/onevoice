@@ -1,0 +1,52 @@
+/permissions:
+  get:
+    operationId: listPermissions
+    summary: List the static RBAC permission registry.
+    tags:
+    - permissions
+    responses:
+      '200':
+        description: Permission registry.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/PermissionRegistryResponse
+      '401':
+        description: Missing or expired access token.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/me/permissions:
+  get:
+    operationId: getMyBusinessPermissions
+    summary: Return the caller's effective permissions inside this business.
+    tags:
+    - permissions
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    responses:
+      '200':
+        description: Effective permissions.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/MyPermissionsResponse
+      '401':
+        description: Missing or expired access token.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Membership exists but is suspended.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Caller is not a member of this business.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

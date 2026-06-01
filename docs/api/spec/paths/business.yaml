@@ -1,0 +1,364 @@
+/businesses:
+  get:
+    operationId: listUserBusinesses
+    summary: List businesses the authenticated user is a member of.
+    tags:
+    - business
+    responses:
+      '200':
+        description: Membership rows hydrated with business name + role.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/BusinessMembershipSummary
+      '401':
+        description: Unauthorized.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  post:
+    operationId: createBusiness
+    summary: Create a new business and owner membership for the caller.
+    description: |
+      Subject to a day-7 soft-restrict on unverified accounts when
+      configured. On success the caller becomes the OWNER member.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CreateBusinessRequest
+    responses:
+      '201':
+        description: Business created.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '400':
+        description: Validation failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '401':
+        description: Unauthorized.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: Business already exists (`business_already_exists`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getBusiness
+    summary: Return the business profile.
+    tags:
+    - business
+    responses:
+      '200':
+        description: Business profile.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: |
+          Business not found OR caller is not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  put:
+    operationId: updateBusiness
+    summary: Update the business profile.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateBusinessRequest
+    responses:
+      '200':
+        description: Updated business profile.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '400':
+        description: Validation failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/schedule:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  put:
+    operationId: updateBusinessSchedule
+    summary: Update the business schedule.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateScheduleRequest
+    responses:
+      '200':
+        description: Updated business with new schedule.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '400':
+        description: Malformed body.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/voice-tone:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  put:
+    operationId: updateBusinessVoiceTone
+    summary: Update the business voice/tone tags.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateVoiceToneRequest
+    responses:
+      '200':
+        description: Updated business with new tones.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '400':
+        description: Malformed body.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/logo:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  put:
+    operationId: uploadBusinessLogo
+    summary: Upload a business logo (multipart).
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UploadLogoRequest
+    responses:
+      '200':
+        description: Updated business with new logo URL.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Business
+      '400':
+        description: Missing file, unsupported MIME, or file too large.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure or storage backend unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/tool-approvals:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getBusinessToolApprovals
+    summary: Return the per-tool approval floor overrides for the business.
+    tags:
+    - business
+    responses:
+      '200':
+        description: Tool approval map.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ToolApprovalsResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  put:
+    operationId: updateBusinessToolApprovals
+    summary: Update per-tool approval floor overrides.
+    tags:
+    - business
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateToolApprovalsRequest
+    responses:
+      '200':
+        description: Updated tool approval map.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ToolApprovalsResponse
+      '400':
+        description: Unknown tool name or invalid floor.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Business not found or caller not a member.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '503':
+        description: Tools registry cache unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

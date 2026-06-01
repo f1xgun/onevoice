@@ -1,0 +1,476 @@
+/businesses/{id}/integrations/vk/auth-url:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getVKAuthURL
+    summary: Build the VK OAuth2 authorization URL (step 1 — user token).
+    tags:
+    - oauth
+    responses:
+      '200':
+        description: Authorization URL the frontend should redirect to.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthURLResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/vk/communities:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: listVKCommunities
+    summary: List VK communities where the temp-stored user is admin.
+    tags:
+    - oauth
+    responses:
+      '200':
+        description: Community rows.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/VKCommunity
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '410':
+        description: Temp token expired (VK session expired, reconnect).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '502':
+        description: Upstream VK error.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/vk/community-auth-url:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  - in: query
+    name: group_id
+    required: true
+    schema:
+      type: string
+    description: |
+      Numeric VK group_id, screen_name, or full VK URL. Resolved
+      server-side to a numeric id before the OAuth URL is built.
+  get:
+    operationId: getVKCommunityAuthURL
+    summary: Build the VK community OAuth2 URL (step 2 — community token).
+    tags:
+    - oauth
+    responses:
+      '200':
+        description: Authorization URL the frontend should redirect to.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthURLResponse
+      '400':
+        description: Missing or unresolvable group_id.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/yandex_business/auth-url:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getYandexAuthURL
+    summary: Build the Yandex OAuth2 authorization URL.
+    tags:
+    - oauth
+    responses:
+      '200':
+        description: Authorization URL the frontend should redirect to.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthURLResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/google_business/auth-url:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: getGoogleAuthURL
+    summary: Build the Google Business OAuth2 authorization URL.
+    tags:
+    - oauth
+    responses:
+      '200':
+        description: Authorization URL the frontend should redirect to.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuthURLResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/google_business/locations:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: listGoogleLocations
+    summary: Return Google Business locations stashed during the OAuth callback.
+    tags:
+    - oauth
+    responses:
+      '200':
+        description: Discovered location list.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/GoogleLocationsResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '410':
+        description: Temp data expired (Google session expired, reconnect).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/google_business/select-location:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: selectGoogleLocation
+    summary: Persist the user's chosen Google Business location as an integration.
+    tags:
+    - oauth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/GoogleSelectLocationRequest
+    responses:
+      '201':
+        description: Integration created.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Integration
+      '400':
+        description: Validation failure or location not in the discovered set.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '410':
+        description: Temp data expired.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/yandex_business/probe:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: probeYandexBusiness
+    summary: Validate pasted Yandex cookies without persisting.
+    tags:
+    - oauth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/YandexCookiesRequest
+    responses:
+      '200':
+        description: Probe verdict.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/YandexProbeResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/yandex_business/companies:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: listYandexCompanies
+    summary: Dispatch the list_companies RPA and return picker rows.
+    tags:
+    - oauth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/YandexCookiesRequest
+    responses:
+      '200':
+        description: Picker rows.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/YandexCompaniesResponse
+      '400':
+        description: Invalid cookie format.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '502':
+        description: Upstream agent error.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '503':
+        description: Agent task publisher not configured.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/yandex_business/connect:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: connectYandexBusiness
+    summary: Persist pasted Yandex cookies as a new integration.
+    tags:
+    - oauth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ConnectYandexRequest
+    responses:
+      '201':
+        description: Integration created.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Integration
+      '400':
+        description: Invalid cookie format or validation failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/yandex_business/{integrationId}/refresh-name:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  - $ref: ../openapi.yaml#/components/parameters/IntegrationIDPath
+  post:
+    operationId: refreshYandexBusinessName
+    summary: Asynchronously backfill metadata.business_name via RPA.
+    tags:
+    - oauth
+    responses:
+      '202':
+        description: Refresh started.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/RefreshStartedResponse
+      '400':
+        description: Invalid integration ID.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Integration not found in this business.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '503':
+        description: Agent task publisher not configured.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/oauth/vk/callback:
+  get:
+    operationId: vkOAuthCallback
+    summary: Handle the classic VK OAuth callback (step 1 — user token).
+    tags:
+    - oauth
+    security: []
+    parameters:
+    - in: query
+      name: code
+      required: true
+      schema:
+        type: string
+    - in: query
+      name: state
+      required: true
+      schema:
+        type: string
+    responses:
+      '302':
+        description: Redirect to the frontend (`/integrations?...`).
+/oauth/vk/community-callback:
+  get:
+    operationId: vkCommunityOAuthCallback
+    summary: Handle the VK community OAuth callback (step 2 — community token).
+    tags:
+    - oauth
+    security: []
+    parameters:
+    - in: query
+      name: code
+      required: true
+      schema:
+        type: string
+    - in: query
+      name: state
+      required: true
+      schema:
+        type: string
+    responses:
+      '302':
+        description: Redirect to the frontend (`/integrations?...`).
+/oauth/yandex_business/callback:
+  get:
+    operationId: yandexBusinessOAuthCallback
+    summary: Handle the Yandex Business OAuth callback.
+    tags:
+    - oauth
+    security: []
+    parameters:
+    - in: query
+      name: code
+      required: true
+      schema:
+        type: string
+    - in: query
+      name: state
+      required: true
+      schema:
+        type: string
+    responses:
+      '302':
+        description: Redirect to the frontend (`/integrations?...`).
+/oauth/google_business/callback:
+  get:
+    operationId: googleBusinessOAuthCallback
+    summary: Handle the Google Business OAuth callback.
+    tags:
+    - oauth
+    security: []
+    parameters:
+    - in: query
+      name: code
+      required: true
+      schema:
+        type: string
+    - in: query
+      name: state
+      required: true
+      schema:
+        type: string
+    responses:
+      '302':
+        description: Redirect to the frontend (`/integrations?...`).

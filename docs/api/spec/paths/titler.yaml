@@ -1,0 +1,42 @@
+/businesses/{id}/conversations/{conversationID}/regenerate-title:
+  post:
+    operationId: regenerateConversationTitle
+    summary: Fire-and-forget auto-titler trigger.
+    tags:
+    - titler
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Spawned; no body.
+      '403':
+        description: Missing `content:update` permission OR not the owner.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Conversation not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: |
+          `title_is_manual`, `title_in_flight`, or `title_state_changed`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/TitlerConflictError
+      '503':
+        description: '`titler_disabled`.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/TitlerDisabledError

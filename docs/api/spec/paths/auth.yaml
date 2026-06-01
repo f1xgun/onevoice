@@ -1,0 +1,419 @@
+/auth/login:
+  post:
+    operationId: login
+    summary: Exchange email + password for an access token and refresh cookie.
+    tags:
+    - auth
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/LoginRequest
+    responses:
+      '200':
+        description: Login succeeded; refresh token set as HttpOnly cookie.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/LoginResponse
+      '400':
+        description: |
+          Malformed body, validation failure, or `captcha_required` when
+          the lockout middleware demands a SmartCaptcha token but none was
+          supplied via `X-Captcha-Token`.
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+              - $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        description: Invalid credentials. Lockout counter is incremented.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: SmartCaptcha verification failed (`captcha_invalid`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '423':
+        description: |
+          Account locked by the lockout middleware (`account_locked`).
+          Emitted before this handler runs; documented here for completeness.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/auth/logout:
+  post:
+    operationId: logout
+    summary: Invalidate the refresh token bound to the request cookie.
+    tags:
+    - auth
+    responses:
+      '204':
+        description: Logout succeeded (or no cookie was present — idempotent).
+      '401':
+        description: Refresh token was supplied but is invalid or already revoked.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Logout service failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/auth/refresh:
+  post:
+    operationId: refreshToken
+    summary: Rotate the refresh token cookie and mint a new access token.
+    tags:
+    - auth
+    responses:
+      '200':
+        description: Rotation succeeded; new refresh cookie set.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/RefreshTokenResponse
+      '401':
+        description: Missing or invalid refresh cookie.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure during rotation.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/auth/me:
+  get:
+    operationId: getMe
+    summary: Return the authenticated user's profile and reconsent state.
+    tags:
+    - auth
+    responses:
+      '200':
+        description: Authenticated user payload.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/MeResponse
+      '401':
+        description: Missing or expired access token.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: User row not found (e.g. hard-deleted).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal lookup failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/auth/register:
+  post:
+    operationId: register
+    summary: Register a new user, accept consents, and auto-login.
+    description: |
+      Creates the user row, writes the three required policy acceptances
+      (TOS / Privacy / PDN) in the same transaction, enqueues the
+      verification email, then auto-logs the user in (same as
+      /auth/login). 400 `consent_required` when any of the three
+      submitted versions disagrees with the build's currentVersion.
+    tags:
+    - auth
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/RegisterRequest
+    responses:
+      '201':
+        description: Registration succeeded; access token returned and refresh cookie set.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/LoginResponse
+      '400':
+        description: |
+          Validation failure or `consent_required` (carries the list of
+          missing policy slugs).
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+              - $ref: ../openapi.yaml#/components/schemas/ConsentRequiredResponse
+      '409':
+        description: User with this email already exists.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Registration or auto-login failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/auth/password-reset/request:
+  post:
+    operationId: requestPasswordReset
+    summary: Send a password-reset email to the supplied address.
+    description: |
+      Always returns 204 regardless of whether the email is registered —
+      the service handles per-email rate-limit, dummy-audit-on-unknown
+      email, and outbox enqueue with symmetric timing across branches.
+    tags:
+    - auth
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/RequestPasswordResetRequest
+    responses:
+      '204':
+        description: Request accepted (regardless of email existence).
+      '400':
+        description: Malformed body or validation failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/auth/password-reset/confirm:
+  post:
+    operationId: confirmPasswordReset
+    summary: Consume a password-reset token and rotate the password.
+    description: |
+      On success the service has consumed the token, rotated the
+      password hash, and wiped all refresh tokens for the user.
+      POST-only (scanner-protection against link prefetch).
+    tags:
+    - auth
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ConfirmPasswordResetRequest
+    responses:
+      '204':
+        description: Password rotated.
+      '400':
+        description: Invalid, expired, or already-used token, or validation failure.
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+              - $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/auth/verify-email/confirm:
+  post:
+    operationId: confirmEmailVerification
+    summary: Confirm an email-verification token.
+    description: |
+      Public — token IS the proof. CRITICAL: no Set-Cookie is emitted,
+      so an attacker who registered with a victim's email cannot
+      thereby become the victim's session. POST-only.
+    tags:
+    - auth
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/VerifyConfirmRequest
+    responses:
+      '204':
+        description: Email verified.
+      '400':
+        description: |
+          Token invalid (`verify_token_invalid`) or expired
+          (`verify_token_expired`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/auth/verify-email/resend:
+  post:
+    operationId: resendEmailVerification
+    summary: Resend the email-verification mail for the authenticated user.
+    tags:
+    - auth
+    responses:
+      '204':
+        description: Resend enqueued.
+      '401':
+        description: Missing or invalid access token.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: User is already verified (`email_already_verified`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '429':
+        description: Resend throttle hit (`verify_resend_throttled`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/auth/email-before-verify:
+  patch:
+    operationId: changeEmailBeforeVerify
+    summary: Change the unverified user's email before verification.
+    description: |
+      Only allowed while `email_verified=false`; otherwise 403
+      `email_already_verified`. On success the old verification token
+      is invalidated and a new one is mailed.
+    tags:
+    - auth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/EmailBeforeVerifyRequest
+    responses:
+      '204':
+        description: Email rotated; new verification mail enqueued.
+      '400':
+        description: Validation failure or malformed body.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '401':
+        description: Missing or invalid access token.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Already verified (`email_already_verified`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '409':
+        description: New email taken (`email_taken`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/auth/password:
+  put:
+    operationId: changePassword
+    summary: Change the authenticated user's password.
+    tags:
+    - auth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ChangePasswordRequest
+    responses:
+      '200':
+        description: Password rotated.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/StatusOKResponse
+      '400':
+        description: Validation failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '401':
+        description: Current password incorrect, or unauthorized.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: User not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+/auth/locale:
+  patch:
+    operationId: updatePreferredLocale
+    summary: Update the authenticated user's preferred locale.
+    description: |
+      Deliberately does NOT read Accept-Language — locale persistence
+      is an explicit user action. Allowed values: `ru`, `en`.
+    tags:
+    - auth
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdatePreferredLocaleRequest
+    responses:
+      '204':
+        description: Locale updated.
+      '400':
+        description: Validation failure (locale outside allow-list).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '401':
+        description: Missing or invalid access token.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: User not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
