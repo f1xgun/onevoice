@@ -975,15 +975,14 @@ type PendingInvitation struct {
 
 // Permission defines model for Permission.
 type Permission struct {
-	Description *string `json:"description,omitempty"`
-	Name        string  `json:"name" validate:"required"`
+	Description string `json:"description" validate:"required"`
+	Name        string `json:"name" validate:"required"`
 }
 
 // PermissionGroup defines model for PermissionGroup.
 type PermissionGroup struct {
-	Description *string      `json:"description,omitempty"`
-	Name        string       `json:"name" validate:"required"`
 	Permissions []Permission `json:"permissions" validate:"required"`
+	Resource    string       `json:"resource" validate:"required"`
 }
 
 // PermissionRegistryResponse defines model for PermissionRegistryResponse.

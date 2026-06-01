@@ -5,6 +5,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // PermissionsHandler exposes the static permission registry as a JSON
@@ -24,12 +25,29 @@ func NewPermissionsHandler() *PermissionsHandler {
 	return &PermissionsHandler{}
 }
 
-// permissionsResponse wraps the registry under "groups" so future fields
-// (e.g. version, etag) can be added without breaking the wire shape. A
-// bare top-level array is an OWASP anti-pattern; the wrapper also gives
-// frontend consumers a stable place to bind `data.groups` against.
-type permissionsResponse struct {
-	Groups []authz.PermissionGroup `json:"groups"`
+// authzGroupsToOpenAPI maps the typed authz registry groups into the
+// spec-side PermissionRegistryResponse wire shape. The handler wraps the
+// list under "groups" so future fields (e.g. version, etag) can be added
+// without breaking the wire shape; a bare top-level array is an OWASP
+// anti-pattern.
+func authzGroupsToOpenAPI(groups []authz.PermissionGroup) openapi.PermissionRegistryResponse {
+	out := openapi.PermissionRegistryResponse{
+		Groups: make([]openapi.PermissionGroup, 0, len(groups)),
+	}
+	for _, g := range groups {
+		perms := make([]openapi.Permission, 0, len(g.Permissions))
+		for _, p := range g.Permissions {
+			perms = append(perms, openapi.Permission{
+				Name:        string(p.Name),
+				Description: p.Description,
+			})
+		}
+		out.Groups = append(out.Groups, openapi.PermissionGroup{
+			Resource:    g.Resource,
+			Permissions: perms,
+		})
+	}
+	return out
 }
 
 // List returns the permission registry as JSON. Auth is enforced upstream
@@ -41,10 +59,10 @@ type permissionsResponse struct {
 //
 // GET /api/v1/permissions
 //
-//	200 -> permissionsResponse
+//	200 -> openapi.PermissionRegistryResponse
 //	401 -> handled by authMiddleware before we get here
 func (h *PermissionsHandler) List(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, permissionsResponse{Groups: localizedPermissions(r)})
+	writeJSON(w, http.StatusOK, authzGroupsToOpenAPI(localizedPermissions(r)))
 }
 
 // localizedPermissions copies the registry and overrides each Description
