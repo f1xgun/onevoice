@@ -3,6 +3,7 @@ package natsexec
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/logger"
+	"github.com/f1xgun/onevoice/pkg/metrics"
 )
 
 // Requester abstracts NATS request-reply for testability.
@@ -78,6 +80,16 @@ func (e *NATSExecutor) dispatch(ctx context.Context, req a2a.ToolRequest) (inter
 	start := time.Now()
 	replyData, err := e.req.Request(ctx, subject, data)
 	elapsed := time.Since(start)
+
+	result := "ok"
+	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			result = "timeout"
+		} else {
+			result = "error"
+		}
+	}
+	metrics.RecordNATSPublish(subject, result, elapsed)
 
 	if err != nil {
 		slog.ErrorContext(ctx, "natsexec: tool request failed",
