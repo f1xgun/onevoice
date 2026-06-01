@@ -67,10 +67,10 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
     expect(screen.getByText('Запланировать пост')).toBeInTheDocument();
   });
 
-  it("renders 'Новый диалог' when title='' or titleStatus='auto_pending'", () => {
+  it("renders 'Новый чат' when title='' or titleStatus='auto_pending'", () => {
     const { wrapper: w1 } = setup([{ id: 'c1', title: '', titleStatus: 'auto_pending' }]);
     const { unmount } = render(<ChatHeader conversationId="c1" />, { wrapper: w1 });
-    expect(screen.getByText('Новый диалог')).toBeInTheDocument();
+    expect(screen.getByText('Новый чат')).toBeInTheDocument();
     unmount();
 
     // titleStatus='auto_pending' wins even with a non-empty title.
@@ -78,7 +78,7 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
       { id: 'c2', title: 'Stale title', titleStatus: 'auto_pending' },
     ]);
     render(<ChatHeader conversationId="c2" />, { wrapper: w2 });
-    expect(screen.getByText('Новый диалог')).toBeInTheDocument();
+    expect(screen.getByText('Новый чат')).toBeInTheDocument();
   });
 
   it('does NOT re-render when an unrelated field of the same conversation changes (isolation)', () => {
@@ -166,7 +166,7 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
     // projection's output string changes because the placeholder rule
     // depends on titleStatus AS WELL AS title. This positive-control test
     // covers that branch so we don't ship a regression where the auto-title
-    // FAILED placeholder ('Новый диалог') sticks forever.
+    // FAILED placeholder ('Новый чат') sticks forever.
     const { qc, wrapper } = setup([
       { id: 'c1', title: 'Backend-supplied title', titleStatus: 'auto_pending' },
     ]);
@@ -179,7 +179,7 @@ describe('ChatHeader — isolation (vi.fn() + Profiler.onRender)', () => {
       { wrapper }
     );
     expect(onRender).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('Новый диалог')).toBeInTheDocument();
+    expect(screen.getByText('Новый чат')).toBeInTheDocument();
 
     await act(async () => {
       qc.setQueryData(

@@ -23,14 +23,14 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
       />
     );
 
-    const inherit = screen.getByLabelText('«как у бизнеса»');
+    const inherit = screen.getByLabelText('Как в настройках организации');
     expect(inherit).toHaveAttribute('data-state', 'checked');
 
     // Business-default chip must render the business policy explicitly.
-    expect(screen.getByText(/Бизнес:\s*Автоматически/)).toBeInTheDocument();
+    expect(screen.getByText(/Организация:\s*Автоматически/)).toBeInTheDocument();
   });
 
-  it('shows «Бизнес: Вручную» when the business default is manual', () => {
+  it('shows «Организация: Спрашивать каждый раз» when the business default is manual', () => {
     render(
       <ProjectApprovalOverrides
         tools={[telegramPost]}
@@ -40,7 +40,7 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
       />
     );
 
-    expect(screen.getByText(/Бизнес:\s*Вручную/)).toBeInTheDocument();
+    expect(screen.getByText(/Организация:\s*Спрашивать каждый раз/)).toBeInTheDocument();
   });
 
   it('calls onChange with the tool set to "manual" when user clicks Manual', async () => {
@@ -54,7 +54,7 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
       />
     );
 
-    await userEvent.click(screen.getByLabelText('Вручную'));
+    await userEvent.click(screen.getByLabelText('Спрашивать каждый раз'));
     expect(onChange).toHaveBeenCalledWith({ [telegramPost.name]: 'manual' });
   });
 
@@ -88,7 +88,7 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
       />
     );
 
-    await userEvent.click(screen.getByLabelText('«как у бизнеса»'));
+    await userEvent.click(screen.getByLabelText('Как в настройках организации'));
 
     // Empty map — the tool key MUST NOT be present. NOT {tool: "inherit"}.
     expect(onChange).toHaveBeenCalledWith({});
@@ -116,7 +116,9 @@ describe('ProjectApprovalOverrides — inherit-as-absence (Overview invariant #8
     );
 
     await userEvent.click(
-      screen.getByLabelText(/«как у бизнеса»/i, { selector: '[id^="po-inherit-telegram"]' })
+      screen.getByLabelText(/Как в настройках организации/i, {
+        selector: '[id^="po-inherit-telegram"]',
+      })
     );
     expect(onChange).toHaveBeenCalledWith({ [vkPost.name]: 'manual' });
   });

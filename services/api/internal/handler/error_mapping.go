@@ -8,6 +8,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/pkg/i18n"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -51,21 +52,22 @@ func EmailVerificationErrorStatus(code string) int {
 // then mutate" service path and is mapped so the frontend already learns
 // it (matches COPY map).
 func writePasswordResetError(w http.ResponseWriter, r *http.Request, err error) {
+	ctx := r.Context()
 	switch {
 	case errors.Is(err, service.ErrResetTokenInvalid):
 		writeJSON(w, http.StatusBadRequest, passwordResetErrorBody{
 			Code:    "reset_token_invalid",
-			Message: "Ссылка недействительна. Запросите новую.",
+			Message: i18n.Tr(ctx, "api.password_reset.token_invalid"),
 		})
 	case errors.Is(err, domain.ErrResetTokenExpired):
 		writeJSON(w, http.StatusBadRequest, passwordResetErrorBody{
 			Code:    "reset_token_expired",
-			Message: "Ссылка просрочена. Запросите новую.",
+			Message: i18n.Tr(ctx, "api.password_reset.token_expired"),
 		})
 	case errors.Is(err, service.ErrPasswordTooWeak):
 		writeJSON(w, http.StatusBadRequest, passwordResetErrorBody{
 			Code:    "password_too_weak",
-			Message: "Пароль слишком короткий — минимум 8 символов.",
+			Message: i18n.Tr(ctx, "api.password_reset.password_weak"),
 		})
 	default:
 		slog.ErrorContext(r.Context(), "password reset handler error", "error", err)

@@ -178,13 +178,13 @@ describe('ToolsPageClient — /settings/tools', () => {
     expect(saveBtn).toBeDisabled();
 
     // The 2-mode segmented control replaces the legacy Switch. Clicking the
-    // «Сам» segment of the TELEGRAM_POST row flips it from manual → auto.
+    // «Автоматически» segment of the TELEGRAM_POST row flips it from manual → auto.
     // Tools / approvals load async after PageHeader, so the radiogroup
     // doesn't exist on first render — `findByRole` waits for it.
     const radiogroup = await screen.findByRole('radiogroup', {
       name: `Режим одобрения для ${TELEGRAM_POST.name}`,
     });
-    const samBtn = within(radiogroup).getByRole('radio', { name: 'Сам' });
+    const samBtn = within(radiogroup).getByRole('radio', { name: 'Автоматически' });
     await userEvent.click(samBtn);
 
     await waitFor(() => {
@@ -205,7 +205,7 @@ describe('ToolsPageClient — /settings/tools', () => {
     const radiogroup = screen.getByRole('radiogroup', {
       name: `Режим одобрения для ${TELEGRAM_POST.name}`,
     });
-    await userEvent.click(within(radiogroup).getByRole('radio', { name: 'Сам' }));
+    await userEvent.click(within(radiogroup).getByRole('radio', { name: 'Автоматически' }));
 
     await userEvent.click(screen.getByRole('button', { name: /Сохранить/ }));
 

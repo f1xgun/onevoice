@@ -98,7 +98,7 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
     await screen.findByRole('region', { name: /Ожидает подтверждения/ });
 
     // Composer input carries `disabled` attribute (HTML-level).
-    const input = screen.getByPlaceholderText('Напишите сообщение...');
+    const input = screen.getByPlaceholderText('Напишите сообщение…');
     expect(input).toBeDisabled();
 
     // Send button: the only button outside the approval card with an SVG
@@ -134,7 +134,7 @@ describe('ChatWindow — HITL integration (Invariants 5 + 9)', () => {
       screen.queryByText('Эта операция истекла — отправьте новое сообщение, чтобы продолжить.')
     ).not.toBeInTheDocument();
     // Composer input is enabled.
-    const input = screen.getByPlaceholderText('Напишите сообщение...');
+    const input = screen.getByPlaceholderText('Напишите сообщение…');
     expect(input).not.toBeDisabled();
   });
 

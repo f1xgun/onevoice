@@ -119,7 +119,7 @@ describe('ProjectSection', () => {
         userId: 'u-1',
         businessId: 'b-1',
         projectId: sampleProject.id,
-        title: 'Новый диалог',
+        title: 'Новый чат',
         titleStatus: 'auto_pending',
         createdAt: '2026-04-18T00:00:00Z',
         updatedAt: '2026-04-18T00:00:00Z',
@@ -137,7 +137,7 @@ describe('ProjectSection', () => {
 
     await waitFor(() => {
       expect(bizApiPost).toHaveBeenCalledWith('test-biz-id', '/conversations', {
-        title: 'Новый диалог',
+        title: 'Новый чат',
         projectId: 'p-1',
       });
     });
