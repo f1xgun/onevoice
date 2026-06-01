@@ -538,13 +538,17 @@ type ConnectYandexRequest struct {
 	Permalink    *string `json:"permalink,omitempty"`
 }
 
-// ConsentRecord defines model for ConsentRecord.
+// ConsentRecord Per-policy consent ledger row returned by GET /users/me/consents.
+// `withdrawnAt` is optional (`omitempty`): the field is OMITTED from
+// the JSON envelope when the row is active. Frontend treats a missing
+// `withdrawnAt` as "consent still in force". `sha256` is also optional
+// (early ledger rows may not carry the policy hash).
 type ConsentRecord struct {
 	AcceptedAt  time.Time  `json:"acceptedAt" validate:"required"`
 	Sha256      *string    `json:"sha256,omitempty"`
 	Slug        string     `json:"slug" validate:"required"`
 	Version     string     `json:"version" validate:"required"`
-	WithdrawnAt *time.Time `json:"withdrawnAt"`
+	WithdrawnAt *time.Time `json:"withdrawnAt,omitempty"`
 }
 
 // ConsentRequiredResponse defines model for ConsentRequiredResponse.
