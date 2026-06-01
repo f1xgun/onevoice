@@ -76,6 +76,7 @@ func projectRequestToInput(req openapi.ProjectRequest, overrides map[string]doma
 //
 // When the handler's toolsCache is nil, returns (nil, 503, ...) because we
 // cannot validate without the live registry.
+//
 //nolint:gocritic // pointer signature matches the optional *map[string]X codegen emits for ProjectRequest.ApprovalOverrides; rewrapping at every callsite costs more than it buys.
 func (h *ProjectHandler) buildApprovalOverrides(body *map[string]openapi.ProjectRequestApprovalOverrides) (overrides map[string]domain.ToolFloor, status int, errBody map[string]string) {
 	if body == nil || len(*body) == 0 {
