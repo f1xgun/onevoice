@@ -1,7 +1,7 @@
 {
   "metadata": {
     "title": "OneVoice — manage your digital presence",
-    "description": "A multi-agent system that automates digital presence for small businesses"
+    "description": "A platform that automates digital presence for small businesses"
   },
   "businessGuard": {
     "loadFailed": "Couldn't load the list of organizations",
@@ -276,13 +276,13 @@
       "connectionRetry": "Connection error — please try again",
       "resumeStream": "Couldn't resume — reload the page",
       "alreadyHandled": "Error: this action was already handled",
-      "outOfScope": "Denied: this action is outside your business scope",
+      "outOfScope": "Denied: this action is outside what you can do for your organization",
       "policyRevoked": "Denied: this tool is blocked by current policy",
       "account_locked": "Account temporarily locked.",
       "captcha_required": "Please complete the captcha check.",
       "captcha_invalid": "Captcha check failed. Please try again.",
       "register_internal": "Could not create your account. Please try again later.",
-      "auto_login_failed": "Account created, but automatic sign-in failed. Please sign in manually.",
+      "auto_login_failed": "Account created, but automatic login failed. Please log in manually.",
       "refresh_internal": "Your session has expired. Please sign in again.",
       "logout_internal": "Could not sign you out.",
       "get_user_internal": "Could not load your account.",
@@ -294,8 +294,8 @@
       "defaultAriaLabel": "Approval mode",
       "modes": {
         "off": "Never",
-        "manual": "With your approval",
-        "auto-with-review": "On its own, but shows you",
+        "manual": "Ask every time",
+        "auto-with-review": "On its own, but shows the result",
         "auto": "Fully automatic"
       }
     }
@@ -324,6 +324,7 @@
       "rename": "Rename",
       "regenerateTitle": "Regenerate title",
       "delete": "Delete",
+      "triggerAria": "Chat menu \"{title}\"",
       "renameDialogTitle": "Rename chat",
       "renameDialogDescription": "The new name will appear everywhere this chat is shown.",
       "renamePlaceholder": "Chat name",
@@ -333,7 +334,7 @@
     "window": {
       "helpPrompt": "How can I help?",
       "moveError": "Couldn't move the chat",
-      "messagePlaceholder": "Type a message...",
+      "messagePlaceholder": "Type a message…",
       "sendAria": "Send",
       "typingAria": "OneVoice is typing"
     },
@@ -446,10 +447,10 @@
         "website": "Website",
         "category": "Category",
         "review_id": "Review ID",
-        "review_name": "Review",
+        "review_name": "Reviewer name",
         "count": "Count",
         "limit": "Limit",
-        "parse_mode": "Markup format"
+        "parse_mode": "Text formatting"
       }
     }
   },
@@ -478,6 +479,8 @@
     },
     "errorFallback": "Couldn't publish. Check your channel connections and try again.",
     "mediaFile": "file {index}",
+    "platformLabel": "Platform",
+    "statusLabel": "Status",
     "tabs": {
       "all": "All · {count}",
       "published": "Published · {count}",
@@ -539,22 +542,22 @@
       "reconnectGoogle": "Reconnect Google",
       "reconnect": "Reconnect",
       "rateLimit": "The platform asked us to wait — we'll try again in a few minutes automatically.",
-      "transient": "The service was temporarily unreachable. We've already tried a few times — we'll retry on the next sync.",
+      "transient": "The service was temporarily unreachable. We've already tried a few times — we'll retry on the next update.",
       "notFound": "Channel not found. Check that it's still connected and accessible.",
       "openIntegrations": "Open channels",
       "media": "Couldn't upload the image — the file may be too large or the platform rejected it.",
-      "fallback": "Something went wrong. We'll try again on the next sync.",
+      "fallback": "Something went wrong. We'll try again on the next update.",
       "autoRetryHint": "You don't have to click anything — we'll try again on our own."
     }
   },
   "agentTasks": {
     "displayName": {
       "sync": {
-        "business_name": "Sync business name",
-        "business_description": "Sync description",
-        "photo": "Sync photo",
-        "data": "Sync data",
-        "hours": "Sync hours"
+        "business_name": "Update name",
+        "business_description": "Update description",
+        "photo": "Update photo",
+        "data": "Update data",
+        "hours": "Update hours"
       },
       "tools": {
         "telegram": {
@@ -568,7 +571,7 @@
             "name": "Owner notification"
           },
           "get_reviews": {
-            "name": "Fetch reviews"
+            "name": "Load reviews"
           },
           "reply_to_comment": {
             "name": "Reply to comment"
@@ -588,7 +591,7 @@
             "name": "Update community info"
           },
           "get_comments": {
-            "name": "Fetch comments"
+            "name": "Load comments"
           },
           "reply_comment": {
             "name": "Reply to comment"
@@ -597,24 +600,24 @@
             "name": "Delete comment"
           },
           "get_community_info": {
-            "name": "Fetch community info"
+            "name": "Load community info"
           },
           "get_wall_posts": {
-            "name": "Fetch wall posts"
+            "name": "Load wall posts"
           }
         },
         "yandex_business": {
           "get_info": {
-            "name": "Fetch business profile"
+            "name": "Load profile"
           },
           "update_hours": {
             "name": "Update business hours"
           },
           "update_info": {
-            "name": "Update business info"
+            "name": "Update organization info"
           },
           "get_reviews": {
-            "name": "Fetch Yandex reviews"
+            "name": "Load Yandex reviews"
           },
           "reply_review": {
             "name": "Reply to Yandex review"
@@ -628,7 +631,7 @@
         },
         "google_business": {
           "get_reviews": {
-            "name": "Fetch Google reviews"
+            "name": "Load Google reviews"
           },
           "reply_review": {
             "name": "Reply to Google review"
@@ -660,6 +663,7 @@
       "pending": "Unanswered",
       "replied": "Answered"
     },
+    "replyStatusLabel": "Reply status",
     "dialog": {
       "title": "Reply to review",
       "yourReply": "Your reply"
@@ -708,8 +712,8 @@
     "refreshError": "Couldn't refresh the reviews"
   },
   "business": {
-    "title": "Business profile",
-    "createTitle": "Create your business profile",
+    "title": "Organization profile",
+    "createTitle": "Create your organization profile",
     "subtitle": "The more you tell us about yourself, the better the AI will sound like you.",
     "createSubtitle": "Fill in \"Basics\" and the other sections will appear. OneVoice uses this whenever it writes on your behalf.",
     "errorLoad": "Couldn't load the data. Try refreshing the page.",
@@ -724,7 +728,7 @@
     "sections": {
       "profile": {
         "caption": "Basics",
-        "title": "About the business",
+        "title": "About the organization",
         "sub": "Name, contacts, and a description for the AI assistant."
       },
       "voice": {
@@ -749,7 +753,8 @@
       "tips": "Tips",
       "tip1": "Mention your neighborhood — customers will recognize you by it.",
       "tip2": "Note parking or a landmark: people ask about this all the time.",
-      "tip3": "Leave one detail in the description that's distinctly you."
+      "tip3": "Leave one detail in the description that's distinctly you.",
+      "railAria": "Profile tips"
     },
     "profileForm": {
       "logoBadge": "logo",
@@ -834,8 +839,8 @@
       "sun": "Sunday"
     },
     "aiSummaryRail": {
-      "placeholder": "Fill in the basics and OneVoice will describe your business here — so you can see how it'll sound to customers.",
-      "nameFallback": "Your business",
+      "placeholder": "Fill in the basics and OneVoice will describe your organization here — so you can see how it'll sound to customers.",
+      "nameFallback": "Your organization",
       "describes": "OneVoice describes you as a {kind}{hasName, select, true { \"{name}\"} other {}}{hasWhere, select, true { — {where}} other {}}.",
       "toneLine": "Tone — {list}."
     }
@@ -853,13 +858,13 @@
     "description": {
       "telegram": "Bot for your channel and notifications",
       "vk": "Posts and comments",
-      "yandex_business": "Reviews and profile info",
-      "google_business": "Reviews and business profile info",
+      "yandex_business": "Reviews and organization info",
+      "google_business": "Reviews and organization info",
       "2gis": "Coming soon",
       "avito": "Coming soon",
       "whatsapp": "Coming soon"
     },
-    "comingSoonWhen": "being evaluated",
+    "comingSoonWhen": "under review",
     "comingSoonFallback": "soon"
   },
   "quickActions": {
@@ -880,10 +885,10 @@
     "telegramStep2IntroBefore": "Enter your channel's ID or username (for example,",
     "telegramStep2IntroOr": "or",
     "telegramStep2IntroAfter": "):",
-    "telegramStep2Placeholder": "@channel or -100...",
+    "telegramStep2Placeholder": "@channel or -100…",
     "telegramConnectFail": "Connection failed. Make sure the bot has been added as an admin to the channel.",
     "telegramSubmit": "Connect",
-    "telegramChecking": "Checking...",
+    "telegramChecking": "Checking…",
     "telegramBot": "@OneVoiceBot",
     "telegramExampleChannel": "@mychannel",
     "page": {
@@ -901,11 +906,11 @@
       "connected": "Connected",
       "notConnected": "Not connected",
       "previewBadge": "Preview",
-      "previewTooltip": "Only review operations (read and reply) work today. Business info, posts, media, and metrics are coming in upcoming releases.",
+      "previewTooltip": "Only review operations (read and reply) work today. Profile info, posts, media, and metrics are coming in upcoming releases.",
       "channels": "Channels",
       "addChannel": "+ Add channel",
       "connect": "Connect",
-      "connecting": "Connecting...",
+      "connecting": "Connecting…",
       "addBotToGroupTitle": "Add the bot to the discussion group",
       "addBotToGroupBody": "This channel has a linked discussion group for comments, but the bot isn't in it — so comments on posts aren't being collected. Open the discussion group → members → invite the bot.",
       "close": "Close",
@@ -955,7 +960,7 @@
     "yandexBusiness": {
       "title": "Connect Yandex.Business",
       "whyCookies": "Why cookies?",
-      "whyCookiesBody": "Yandex.Business doesn't have a public API for managing reviews and company info, so OneVoice works through your session — as if you'd opened the site yourself. Cookies are stored encrypted and only used by our RPA agent.",
+      "whyCookiesBody": "Yandex.Business doesn't have a public API for managing reviews and company info, so OneVoice works through your session — as if you'd opened the site yourself. Cookies are stored encrypted and only used by our automation.",
       "howToCopy": "How to copy cookies",
       "step1Prefix": "Install the ",
       "step1Link": "Cookie-Editor",
@@ -976,7 +981,7 @@
       "next": "Next",
       "searching": "Looking up your organizations on Yandex…",
       "searchingBody": "This may take up to a minute. We're opening Yandex.Business on your behalf to fetch the list.",
-      "pastePlaceholder": "Paste here: a JSON array, a \"Cookie:\" header, or Session_id=...",
+      "pastePlaceholder": "Paste here: a JSON array, a \"Cookie:\" header, or Session_id=…",
       "formatLabels": {
         "json": "JSON array (Cookie-Editor)",
         "cookie_header": "Cookie header",
@@ -1009,12 +1014,12 @@
       "noLocations": "No locations found.",
       "cancel": "Cancel",
       "connect": "Connect",
-      "connecting": "Connecting...",
+      "connecting": "Connecting…",
       "connectFailed": "Couldn't connect the location"
     },
     "whitelistWarning": {
-      "title": "New integration won't be added to project whitelists",
-      "body": "These projects use an explicit whitelist and don't include {platform} tools: {names}. Open a project to add the tools.",
+      "title": "New integration won't be added to projects with their own tool list",
+      "body": "These projects use their own list of allowed tools and don't include {platform} tools: {names}. Open a project to add them.",
       "dismissAria": "Got it",
       "closeAria": "Dismiss warning"
     },
@@ -1033,13 +1038,15 @@
   "nav": {
     "chat": "Chat",
     "integrations": "Integrations",
-    "business": "Business profile",
+    "business": "Organization profile",
     "reviews": "Reviews",
     "posts": "Posts",
     "tasks": "Tasks",
     "settings": "Settings",
     "logout": "Log out",
-    "platformsGroup": "Platforms"
+    "platformsGroup": "Platforms",
+    "railAria": "Main navigation",
+    "skipToContent": "Skip to content"
   },
   "noConnection": {
     "heading": "Can't reach OneVoice",
@@ -1063,7 +1070,7 @@
       "wordmark": "OneVoice"
     },
     "hero": {
-      "kicker": "One Voice · v 0.9 · open beta",
+      "kicker": "OneVoice · v 0.9 · open beta",
       "headlineLine1": "One conversation",
       "headlineLine2Prefix": "for every channel ",
       "headlinePunctuation": ".",
@@ -1252,7 +1259,7 @@
       "sectionLabel": "Project chats",
       "empty": {
         "title": "No chats in this project yet",
-        "body": "Start the first one — it'll inherit this project's system prompt and whitelist."
+        "body": "Start the first one — it'll inherit this project's system prompt and allowed tools."
       }
     },
     "form": {
@@ -1267,13 +1274,13 @@
       "optional": "(optional)",
       "systemPrompt": "System prompt",
       "systemPromptPlaceholder": "You're a review assistant. Reply politely and to the point…",
-      "systemPromptDescription": "Describes the AI's role and limits. Added to the business context with every message.",
+      "systemPromptDescription": "Describes the AI's role and limits. Added to the organization context with every message.",
       "promptCounter": "{current} / {max} characters",
       "tools": "Available tools",
       "toolsDescription": "Which actions are allowed at all in this project.",
       "toolsList": "Tool list",
       "approval": "Tool approval",
-      "approvalDescription": "Which actions the AI runs on its own, and which need your approval. \"Same as business\" — use the shared setting from \"Settings → Tool approval\".",
+      "approvalDescription": "Which actions the AI runs on its own, and which need your approval. \"Use organization default\" — apply the organization-wide approval mode from settings.",
       "loadingTools": "Loading tool list…",
       "quickActions": "Quick actions",
       "quickActionsDescription": "Prompt buttons that appear above the input in a new chat.",
@@ -1289,24 +1296,24 @@
     },
     "approvalOverrides": {
       "auto": "Automatic",
-      "manual": "Manual",
-      "inherit": "\"same as business\"",
-      "businessTag": "Business: {label}",
+      "manual": "Ask every time",
+      "inherit": "Use organization default",
+      "businessTag": "Organization: {label}",
       "noTools": "No tools require approval — everything runs automatically.",
       "businessDefault": {
         "auto": "Automatic",
-        "manual": "Manual"
+        "manual": "Ask every time"
       }
     },
     "whitelist": {
       "options": {
         "inherit": {
-          "label": "Same as business",
-          "helper": "Use the business-level settings (by default, every available tool)."
+          "label": "Use organization default",
+          "helper": "Use the organization's settings (every available tool by default)."
         },
         "all": {
           "label": "All tools",
-          "helper": "Any tool from an active integration is available to the LLM."
+          "helper": "Any tool from an active integration is available to the AI."
         },
         "explicit": {
           "label": "Selected",
@@ -1314,7 +1321,7 @@
         },
         "none": {
           "label": "None",
-          "helper": "The LLM can reply but won't take any actions."
+          "helper": "The AI can reply but won't take any actions."
         }
       }
     },
@@ -1382,9 +1389,9 @@
       "confirmPasswordLabel": "Confirm",
       "haveAccount": "Already have an account?",
       "login": "Log in",
-      "eyebrow": "Create account",
+      "eyebrow": "Sign up",
       "title": "Let's get started.",
-      "description": "A minute to sign up — then we'll connect your channels and talk about your business voice.",
+      "description": "A minute to sign up — then we'll connect your channels and talk about your organization's voice.",
       "submit": "Create account",
       "submitting": "Creating account…",
       "benefitsLabel": "What you'll get",
@@ -1402,7 +1409,8 @@
     },
     "shell": {
       "wordmark": "OneVoice",
-      "footer": "© {year} OneVoice"
+      "footer": "© {year} OneVoice",
+      "illustrationAria": "Illustration"
     },
     "passwordReset": {
       "request": {
@@ -1416,8 +1424,8 @@
         "submitting": "Sending…",
         "networkError": "Could not send request. Check your connection and try again.",
         "sentBody": "If this email is registered, we sent a recovery link. Check your spam folder.",
-        "sentCTA": "Back to sign-in",
-        "backToLogin": "Remembered your password? Sign in"
+        "sentCTA": "Back to login",
+        "backToLogin": "Remembered your password? Log in"
       },
       "confirm": {
         "eyebrow": "NEW PASSWORD",
@@ -1454,8 +1462,8 @@
       "errors": {
         "invalid": "This link is no longer valid. Request a new one from your account.",
         "verify_token_invalid": "This link is no longer valid. Request a new one from your account.",
-        "expired": "This link has expired. Sign in and click \"Resend email\".",
-        "verify_token_expired": "This link has expired. Sign in and click \"Resend email\".",
+        "expired": "This link has expired. Log in and click \"Resend email\".",
+        "verify_token_expired": "This link has expired. Log in and click \"Resend email\".",
         "throttled": "Too many requests. Try again in a minute.",
         "required": "Verify your email to continue.",
         "alreadyVerified": "Email is already verified.",
@@ -1515,7 +1523,7 @@
       "securityTitle": "Change password",
       "currentPassword": "Current password",
       "newPassword": "New password",
-      "confirmPassword": "Confirm",
+      "confirmPassword": "Confirm password",
       "submit": "Change password",
       "submitting": "Saving…",
       "passwordChanged": "Password changed",
@@ -1535,6 +1543,7 @@
       "tools": "Tools",
       "team": "Team",
       "roles": "Roles",
+      "audit": "Activity log",
       "navAria": "Settings — sections"
     },
     "tools": {
@@ -1556,8 +1565,8 @@
       "blockedHint": "This tool can't be enabled from settings",
       "modeAriaLabel": "Approval mode for {label}",
       "modes": {
-        "manual": "With your approval",
-        "auto": "On its own"
+        "manual": "Ask every time",
+        "auto": "Automatic"
       }
     },
     "privacy": {
@@ -1574,14 +1583,14 @@
       "loading": "Loading consents…",
       "loadError": "Could not load consents. Please refresh the page.",
       "pdn": {
-        "note": "Withdrawing PDN consent leads to account deletion within 30 days. ToS and Privacy Policy consents are withdrawn alongside it.",
-        "cta": "Withdraw PDN consent",
+        "note": "Withdrawing your personal-data consent leads to account deletion within 30 days. Your Terms of Service and Privacy Policy consents are withdrawn alongside it.",
+        "cta": "Withdraw personal-data consent",
         "submitting": "Withdrawing…",
         "alreadyScheduled": "Deletion scheduled for {deletionDate}. Manage cancellation in the Account section."
       },
       "dialog": {
-        "title": "Withdraw PDN consent",
-        "body": "Withdrawing PDN consent leads to account deletion within 30 days (152-FZ Art. 21). All your data, including businesses where you are sole owner, will be deleted. This process is irreversible after 30 days.",
+        "title": "Withdraw personal-data consent",
+        "body": "Withdrawing your personal-data consent leads to account deletion within 30 days (152-FZ Art. 21). All your data, including organizations where you're the sole owner, will be deleted. This process is irreversible after 30 days.",
         "cancel": "Cancel",
         "confirm": "Withdraw consent and delete account"
       },
@@ -1589,6 +1598,74 @@
         "scheduled": "Deletion scheduled for {deletionDate}",
         "error": "Could not withdraw consent. Please try again."
       }
+    }
+  },
+  "audit": {
+    "title": "Activity log",
+    "subtitle": "All role changes, sign-ins, integration connections, and organization operations.",
+    "filters": {
+      "categoryLabel": "Category",
+      "categoryAll": "All",
+      "categoryRbac": "Access",
+      "categoryAuth": "Authentication",
+      "categoryIntegration": "Integrations",
+      "categoryBusiness": "Organization",
+      "categoryProject": "Projects",
+      "actionLabel": "Action",
+      "actionAny": "Any",
+      "dateLabel": "Period",
+      "datePreset24h": "24 hours",
+      "datePreset7d": "7 days",
+      "datePreset30d": "30 days",
+      "datePresetCustom": "Custom range",
+      "actorLabel": "Author",
+      "actorAny": "Any",
+      "actorUnknown": "Unknown ({email})"
+    },
+    "table": {
+      "colTime": "Time",
+      "colActor": "Author",
+      "colAction": "Action",
+      "colResource": "Object",
+      "loadMore": "Load more",
+      "loading": "Loading…",
+      "empty": "No events in the selected period yet.",
+      "relJustNow": "just now",
+      "relMinutes": "{m} min ago",
+      "relHours": "{h} h ago",
+      "relDays": "{d} d ago"
+    },
+    "panel": {
+      "actor": "Author",
+      "resource": "Object",
+      "rawDetails": "Details (JSON)"
+    },
+    "errors": {
+      "loadFailed": "Couldn't load the log. Please try again later.",
+      "forbidden": "Your role doesn't have access to the activity log."
+    },
+    "actions": {
+      "rbac_role_granted": "Role assigned",
+      "rbac_member_removed": "Member removed",
+      "rbac_role_created": "Custom role created",
+      "rbac_role_updated": "Custom role updated",
+      "rbac_role_deleted": "Custom role deleted",
+      "rbac_invitation_created": "Invitation created",
+      "rbac_invitation_revoked": "Invitation revoked",
+      "rbac_invitation_accepted": "Invitation accepted",
+      "auth_login_success": "Signed in",
+      "auth_login_failed": "Failed sign-in attempt",
+      "auth_logout": "Signed out",
+      "auth_password_changed": "Password changed",
+      "auth_user_registered": "Registered",
+      "integration_connected": "Integration connected",
+      "integration_disconnected": "Integration disconnected",
+      "integration_token_rotated": "Integration token updated",
+      "business_created": "Organization created",
+      "business_updated": "Organization updated",
+      "project_created": "Project created",
+      "project_updated": "Project updated",
+      "project_deleted": "Project deleted"
     }
   },
   "sidebar": {
@@ -1600,10 +1677,12 @@
     "newProject": "+ New project",
     "noChatsInProject": "No chats in this project yet",
     "matchCount": "+{count} matches",
-    "scopeAllBusiness": "Across the whole business",
+    "scopeAllBusiness": "Across the whole organization",
     "noResults": "Try a shorter query or change the date range.",
     "unassigned": "No project",
     "unassignedChats": "Chats without a project",
+    "paneAria": "Projects and chats",
+    "railWrapperAria": "Sidebar",
     "toggleAria": "Open side menu",
     "resizeAria": "Resize side panel",
     "unassignedNewChatAria": "New chat without a project",
@@ -1618,8 +1697,9 @@
     "search": {
       "resultsAria": "Search results",
       "stateAria": "Search state",
-      "placeholder": "Search... {os, select, mac {⌘K} other {Ctrl-K}}",
-      "noResultsByQuery": "Nothing found for \"{query}\""
+      "placeholder": "Search… {os, select, mac {⌘K} other {Ctrl-K}}",
+      "noResultsByQuery": "Nothing found for \"{query}\"",
+      "inputAria": "Search chats"
     },
     "project": {
       "expandAria": "Expand \"{name}\"",
@@ -1692,15 +1772,15 @@
         "cancel": "Cancel",
         "successToast": "Account will be deleted in 30 days.",
         "passwordTooShort": "Minimum 8 characters",
-        "loadingImpact": "Loading impact…"
+        "loadingImpact": "Checking what will be affected…"
       },
       "soleOwnerModal": {
-        "heading": "Resolve businesses first",
-        "body": "You are the sole owner of the following businesses. Before deleting your account, transfer ownership or delete the businesses.",
+        "heading": "Transfer or delete organizations first",
+        "body": "You're the sole owner of the following organizations. Before deleting your account, transfer ownership or delete those organizations.",
         "requiresAction": "Requires action",
         "transferButton": "Transfer ownership",
-        "transferDisabledTooltip": "Available in the next version — delete the business or wait",
-        "deleteBusinessButton": "Delete business",
+        "transferDisabledTooltip": "Available in the next version — delete the organization or wait",
+        "deleteBusinessButton": "Delete organization",
         "andMore": "and {count} more",
         "cancel": "Cancel"
       },
@@ -1712,7 +1792,7 @@
       "errors": {
         "pendingDeletion": "Account is pending deletion. Cancel deletion to continue.",
         "pendingDeletionAction": "Cancel deletion",
-        "soleOwner": "Cannot delete account — you are the sole owner of a business.",
+        "soleOwner": "Cannot delete account — you're the sole owner of an organization.",
         "passwordInvalid": "Invalid password",
         "tooOld": "The cancellation window has expired. Account is already deleted.",
         "noPending": "No pending deletion for this account.",
@@ -1731,7 +1811,7 @@
     "consent": {
       "title": "Personal Data Processing Consent",
       "crossBorderHeading": "Cross-border data transfer",
-      "crossBorderBody": "OneVoice uses LLM providers (Anthropic, OpenAI) based in the USA. Cross-border transfer is performed under Art. 12 of Federal Law 152-FZ.",
+      "crossBorderBody": "OneVoice uses AI providers (Anthropic, OpenAI) based in the USA. Cross-border transfer is performed under Art. 12 of Federal Law 152-FZ.",
       "roskomnadzorHeading": "Personal data processing notification",
       "roskomnadzorBody": "Operator registration data in the Roskomnadzor personal-data-operator registry is published at pd.rkn.gov.ru."
     },
@@ -1744,7 +1824,7 @@
       "effectiveTag": "Effective from {effectiveFrom} · version {version}",
       "controllerHeading": "Personal data controller",
       "controllerOperatorLabel": "Operator",
-      "controllerInnLabel": "TIN",
+      "controllerInnLabel": "INN",
       "controllerAddressLabel": "Address",
       "controllerEmailLabel": "Email for personal data requests",
       "bodyLoadError": "Could not load the document. Please refresh the page.",
@@ -1797,10 +1877,10 @@
     "links": {
       "privacy": "Privacy Policy",
       "terms": "Terms of Service",
-      "consent": "PDN Consent"
+      "consent": "Data processing consent"
     },
     "copyright": "© {year} {entityName}",
-    "contact": "Contact PDN operator: {email}",
+    "contact": "Contact the data operator: {email}",
     "contactAria": "Email the personal data operator: {email}"
   }
 }
