@@ -7,19 +7,13 @@ import (
 	"time"
 )
 
-// defaultShutdownTimeout is the fallback graceful-shutdown budget when no
-// SHUTDOWN_TIMEOUT env override is provided. 30s gives in-flight LLM and
-// tool-dispatch requests time to drain before SIGKILL.
+// defaultShutdownTimeout is the fallback graceful-shutdown budget when SHUTDOWN_TIMEOUT is unset.
 const defaultShutdownTimeout = 30 * time.Second
 
-// defaultAPIInternalURL is the in-cluster mTLS endpoint the orchestrator dials
-// for internal API calls (billing usage_logs, future internal endpoints) when
-// API_INTERNAL_URL env is unset. Matches docker-compose service DNS + the API's
-// internal :8443 listener.
+// defaultAPIInternalURL is the in-cluster mTLS endpoint dialed for internal API calls.
 const defaultAPIInternalURL = "https://api:8443"
 
-// Cost-guard defaults. These are documented in .env.example and
-// docs/llm-cost-guards.md; operators tune via env.
+// Cost-guard defaults; see docs/orchestrator/config.md and docs/llm-cost-guards.md.
 const (
 	// defaultConversationInputCap stops the agent loop once the running input
 	// budget for a single conversation hits this many tokens.
@@ -29,12 +23,11 @@ const (
 	defaultConversationOutputCap = 10000
 
 	// defaultLocalFallbackRequestsPerHour roughly matches the "$10/h" ceiling
-	// at the v1.4 average per-request cost (~$0.005). Operators tune in
-	// docs/llm-cost-guards.md.
+	// at the v1.4 average per-request cost (~$0.005).
 	defaultLocalFallbackRequestsPerHour = 2000
 
-	// defaultLocalFallbackWindow is how long the limiter consults the in-
-	// process bucket before re-probing Redis.
+	// defaultLocalFallbackWindow is how long the limiter consults the
+	// in-process bucket before re-probing Redis.
 	defaultLocalFallbackWindow = 30 * time.Second
 
 	// redisDownPolicyBlock / redisDownPolicyLocalFallback are the literal
@@ -44,93 +37,65 @@ const (
 )
 
 // Config holds orchestrator configuration loaded from environment.
+// Field reference table: docs/orchestrator/config.md.
 type Config struct {
-	Port     string
-	LLMModel string
-	// DraftReplyModel is a cheap-tier model used to draft AI-suggested replies
-	// in the review_sync pipeline (services/orchestrator/internal/handler/
-	// draft_reply.go). Falls back to LLMModel when DRAFT_REPLY_MODEL env is
-	// unset, which mirrors the TitlerModel fallback in
-	// services/api/internal/config/config.go::Load. The two cheap-tier
-	// callsites are kept separate (rather than a unified CHEAP_MODEL var) so a
-	// future tuning round can route titler at one model and draft_reply at
-	// another without API surface churn. DraftReply does not use tools —
-	// routing it at any chat-completion model is safe.
+	Port            string
+	LLMModel        string
 	DraftReplyModel string
 	LLMTier         string
 	MaxIterations   int
 	NATSUrl         string
 	ShutdownTimeout time.Duration
-	// ToolExecTimeout bounds a single tool call. Zero disables the per-tool
-	// deadline — the request context still governs overall cancellation.
+	// ToolExecTimeout bounds a single tool call; zero disables the per-tool deadline.
 	ToolExecTimeout time.Duration
 
-	// HealthCheckTimeout caps any single dep ping inside /health/ready.
-	// Checks run concurrently (pkg/health.ReadyHandler), so total wall-clock
-	// budget = HealthCheckTimeout (max, not sum). Default 2s.
+	// HealthCheckTimeout caps any single dep ping inside /health/ready
+	// (checks run concurrently → budget is max, not sum).
 	HealthCheckTimeout time.Duration
 
-	// MongoDB connection. The
-	// orchestrator writes pending_tool_calls batches at pause time, so it
-	// needs its own Mongo connection (avoids a circular dependency where
-	// orchestrator → API → orchestrator). Defaults match the API service's
-	// docker-compose values so dev setups that only set one MONGO_URI
-	// continue to work.
+	// Orchestrator owns a direct Mongo connection (avoids orchestrator→API→orchestrator cycle).
 	MongoURI string
 	MongoDB  string
 
-	// LLM provider API keys (at least one must be set)
+	// LLM provider API keys (at least one must be set for the Router to boot).
 	OpenRouterAPIKey string
 	OpenAIAPIKey     string
 	AnthropicAPIKey  string
 
-	// APIInternalURL is the base URL of the API service's mTLS-protected
-	// internal :8443 listener. pkg/billingclient is wired against it for the
-	// orchestrator → api billing POST hop. Defaults to "https://api:8443"
-	// which matches the docker-compose env contract. Must be HTTPS — the
-	// mTLS substrate requires it on this endpoint.
+	// APIInternalURL must be HTTPS — the mTLS substrate requires it on this endpoint.
 	APIInternalURL string
 
 	SelfHostedEndpoints []SelfHostedEndpoint
 
-	// RedisURL is the connection string the orchestrator dials for the
-	// rate-limiter's per-minute / per-month counters. Empty disables the
-	// rate-limiter wiring at boot.
+	// RedisURL empty disables rate-limiter wiring at boot.
 	RedisURL string
 
-	// Cost-guard knobs.
-	//
-	// FreeTierDailySpendUSD overrides DefaultTierLimits["free"].DailySpendUSD
-	// at wire time. 0 keeps the compiled default; -1 disables the gate
-	// (unlimited); positive sets the dollar cap.
+	// FreeTierDailySpendUSD: 0 keeps compiled default, -1 disables gate, positive sets cap.
 	FreeTierDailySpendUSD float64
 
-	// ConversationInputCap / ConversationOutputCap configure the per-
-	// conversation agent-loop token budget. 0 disables that axis.
+	// ConversationInputCap / ConversationOutputCap: 0 disables that axis.
 	ConversationInputCap  int
 	ConversationOutputCap int
 
-	// RedisDownPolicy selects the behavior when Redis fails: "block"
-	// (default, fail-closed) or "local_fallback" (in-process bucket).
+	// RedisDownPolicy is "block" (fail-closed) or "local_fallback".
 	RedisDownPolicy string
 
-	// LocalFallbackRequestsPerHour is the bucket rate when policy is
-	// local_fallback. Required (>0) when policy is local_fallback.
+	// LocalFallbackRequestsPerHour: required (>0) when policy is local_fallback.
 	LocalFallbackRequestsPerHour int
 
-	// LocalFallbackWindow is how long after a Redis failure the limiter
-	// consults the in-process bucket before retrying Redis. Default 30s.
+	// LocalFallbackWindow is the re-probe interval after a Redis failure.
 	LocalFallbackWindow time.Duration
 }
 
-// SelfHostedEndpoint holds configuration for one self-hosted LLM inference endpoint.
+// SelfHostedEndpoint holds one self-hosted LLM inference endpoint.
 type SelfHostedEndpoint struct {
 	URL    string
 	Model  string
 	APIKey string // optional
 }
 
-// Load reads config from environment variables.
+// Load reads config from environment, applying defaults and failing loud on
+// semantically invalid combinations. See docs/orchestrator/config.md.
 func Load() (*Config, error) {
 	model := os.Getenv("LLM_MODEL")
 	if model == "" {
@@ -158,9 +123,8 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// Per-dep readiness check timeout. Defensive default + clamp so an
-	// operator typo (or zero/negative explicit value) can't disable the
-	// safety net. Matches the API service's HealthCheckTimeout semantics.
+	// Defensive default + clamp so an operator typo (zero/negative explicit
+	// value) can't disable the readiness-check safety net.
 	healthCheckTimeout := 2 * time.Second
 	if v := os.Getenv("HEALTH_CHECK_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
@@ -168,20 +132,16 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// DraftReplyModel mirrors the TitlerModel fallback pattern in
-	// services/api/internal/config/config.go: explicit DRAFT_REPLY_MODEL wins;
-	// otherwise reuse LLMModel so the review_sync drafter still has a model
-	// to call against. We resolve the fallback at Load time (not inside the
-	// handler) so the redacted startup log records the effective model.
+	// DraftReplyModel fallback resolved at Load (not in the handler) so the
+	// redacted startup log records the effective model.
 	draftReplyModel := os.Getenv("DRAFT_REPLY_MODEL")
 	if draftReplyModel == "" {
 		draftReplyModel = model
 	}
 
-	// Cost-guard knobs. Parse defensively: parse errors keep the default and
-	// log a warning; semantically invalid combinations (unknown policy, or
-	// local_fallback with zero rate) are hard boot errors so a misconfigured
-	// deploy refuses to start instead of silently disabling the limiter.
+	// Cost-guard knobs: parse errors keep the default; semantically invalid
+	// combinations are hard boot errors so a misconfigured deploy refuses to
+	// start instead of silently disabling the limiter.
 	conversationInputCap := defaultConversationInputCap
 	if v := os.Getenv("LLM_CONVERSATION_INPUT_CAP"); v != "" {
 		if n, perr := strconv.Atoi(v); perr == nil && n >= 0 {
@@ -265,20 +225,14 @@ func Load() (*Config, error) {
 	}, nil
 }
 
-// RedactMongoURI returns the Mongo connection URI with any embedded user:
-// password stripped, suitable for logging on startup. Implementation is
-// intentionally conservative: if the URI fails to parse it returns the
-// string `<mongo-uri-redacted>` rather than leaking the raw value.
+// RedactMongoURI returns the Mongo URI with embedded user:password stripped, safe for logs.
+// Returns "<mongo-uri-redacted>" on parse failure rather than leaking the raw value.
 func (c *Config) RedactMongoURI() string {
-	// Supported forms: mongodb://user:pass@host[:port]/db and
-	// mongodb+srv://user:pass@host/db. We only redact the user-info segment
-	// between "//" and "@"; everything after "@" is host/path which is
-	// non-sensitive.
 	uri := c.MongoURI
 	if uri == "" {
 		return ""
 	}
-	// Find the scheme separator.
+	// Locate the scheme separator (mongodb:// or mongodb+srv://).
 	schemeEnd := -1
 	for i := 0; i+2 < len(uri); i++ {
 		if uri[i] == ':' && uri[i+1] == '/' && uri[i+2] == '/' {
@@ -296,21 +250,19 @@ func (c *Config) RedactMongoURI() string {
 			atIdx = i
 		case '/':
 			if atIdx < 0 {
-				// Path started before any '@' — no user-info segment. Safe as-is.
+				// Path started before any '@' — no user-info segment to redact.
 				return uri
 			}
 		}
 	}
 	if atIdx < 0 {
-		// No user-info segment. Safe as-is.
 		return uri
 	}
 	return uri[:schemeEnd] + "***:***@" + uri[atIdx+1:]
 }
 
-// parseIndexedEndpoints scans SELF_HOSTED_N_URL / _MODEL / _API_KEY env vars
-// for N = 0, 1, 2, … stopping when SELF_HOSTED_N_URL is missing.
-// Entries without MODEL are skipped.
+// parseIndexedEndpoints scans SELF_HOSTED_N_URL/_MODEL/_API_KEY for N=0,1,…
+// stopping at the first missing _URL; entries without _MODEL are skipped.
 func parseIndexedEndpoints() []SelfHostedEndpoint {
 	var result []SelfHostedEndpoint
 	for i := 0; ; i++ {
@@ -332,6 +284,7 @@ func parseIndexedEndpoints() []SelfHostedEndpoint {
 	return result
 }
 
+// getEnv returns defaultValue when the env var is absent or empty.
 func getEnv(key, defaultValue string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
