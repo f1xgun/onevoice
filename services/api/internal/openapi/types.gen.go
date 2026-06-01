@@ -1093,15 +1093,24 @@ type RefreshTokenResponse struct {
 	User        User   `json:"user"`
 }
 
-// RegisterConsents defines model for RegisterConsents.
+// RegisterConsents Per-slug version map submitted with /auth/register. The handler enforces
+// version-equality (vs `legalconfig.*Version`) and returns 400
+// consent_required listing the missing slugs, so individual fields are
+// NOT marked `required` at the schema level — a missing field is treated
+// as a stale consent, not a schema violation.
 type RegisterConsents struct {
-	Pdn     string `json:"pdn" validate:"required"`
-	Privacy string `json:"privacy" validate:"required"`
-	Tos     string `json:"tos" validate:"required"`
+	Pdn     *string `json:"pdn,omitempty"`
+	Privacy *string `json:"privacy,omitempty"`
+	Tos     *string `json:"tos,omitempty"`
 }
 
 // RegisterRequest defines model for RegisterRequest.
 type RegisterRequest struct {
+	// Consents Per-slug version map submitted with /auth/register. The handler enforces
+	// version-equality (vs `legalconfig.*Version`) and returns 400
+	// consent_required listing the missing slugs, so individual fields are
+	// NOT marked `required` at the schema level — a missing field is treated
+	// as a stale consent, not a schema violation.
 	Consents RegisterConsents    `json:"consents"`
 	Email    openapi_types.Email `json:"email" validate:"required,email"`
 	Password string              `json:"password" validate:"required,min=8"`
