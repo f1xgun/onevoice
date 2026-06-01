@@ -1,3 +1,5 @@
+// Package prompt assembles the two-block system prompt that fronts every
+// orchestrator LLM turn. See docs/orchestrator/prompt.md.
 package prompt
 
 import (
@@ -13,16 +15,7 @@ import (
 )
 
 // BusinessContext holds all data needed to build the system prompt.
-//
-// Locale steers BOTH the section labels ("## Бизнес" vs "## Business") AND
-// the language-directive line at the end of the rules block ("Общайся на
-// русском языке" vs "Respond in English"). The directive is load-bearing —
-// it is the single string that flips the LLM's output language.
-//
-// Locale may be any language.Tag, including the zero Tag — Build normalizes
-// it via i18n.NormalizeToSupported before any internal helper sees it, so
-// "anything that isn't English" produces the Russian template (preserving
-// byte-for-byte pre-i18n output for legacy callers that leave Locale unset).
+// See docs/orchestrator/prompt.md for locale dispatch rules.
 type BusinessContext struct {
 	Name               string
 	Category           string
@@ -34,45 +27,24 @@ type BusinessContext struct {
 	ActiveIntegrations []string // e.g., ["telegram", "vk", "google_business"]
 	Now                time.Time
 	// Locale drives the system-prompt language. Zero Tag = RU (legacy).
-	// Populated by services/orchestrator/internal/handler/chat.go from the
-	// per-request body's `locale` field or, as a fallback, from
-	// i18n.LocaleFromContext(r.Context()) (LocaleResolver middleware).
 	Locale language.Tag
 }
 
-// ProjectContext carries the optional project prompt layer that is appended
-// after the business rules block when a chat lives inside a project. When nil,
-// the builder emits the legacy business-only system message.
-//
-// Layering order: business context → project system prompt → conversation
-// history. The project block is appended AFTER the business
-// rules because LLM attention gives the last-emitted block precedence, which
-// matches the UX intent: project-level instructions override general business
-// rules for chats inside a project.
+// ProjectContext carries the optional project prompt layer appended after the
+// business rules block. nil = legacy business-only system message.
+// See docs/orchestrator/prompt.md.
 type ProjectContext struct {
 	ID            string
 	Name          string
 	SystemPrompt  string
-	WhitelistMode domain.WhitelistMode // drives the Ограничения инструментов hint in appendProjectBlock
-	AllowedTools  []string             // listed verbatim when WhitelistMode == WhitelistModeExplicit
+	WhitelistMode domain.WhitelistMode
+	AllowedTools  []string
 }
 
-// Build returns a []llm.Message starting with a system message built from
-// the business context, followed by the conversation history. When proj is
-// non-nil, the system message ends with a "## Проект: {Name}" /
-// "## Project: {Name}" block (per locale) after the business rules and before
-// the history.
-//
-// Locale handling: ctx.Locale is normalized once via i18n.NormalizeToSupported
-// and the resulting tag is passed down to internal helpers as an explicit
-// argument. Helpers therefore trust their tag and never re-normalize — the
-// "collapse arbitrary tag → Russian|English" rule lives in pkg/i18n alongside
-// MatchAcceptLanguage, not scattered through prompt/.
-//
-// Build is retained as a back-compat wrapper over BuildSplit for callers that
-// still want a single concatenated system message (titler, draft_reply). New
-// callers should prefer BuildSplit + llm.ChatRequest.SystemBlocks for the
-// two-block Anthropic prompt cache split.
+// Build returns a single concatenated system message followed by the
+// conversation history. Back-compat wrapper over BuildSplit for legacy callers
+// (titler, draft_reply). New callers should prefer BuildSplit.
+// See docs/orchestrator/prompt.md.
 func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []llm.Message {
 	platform, business, msgs := BuildSplit(ctx, proj, history)
 	system := platform + "\n" + business
@@ -82,34 +54,11 @@ func Build(ctx BusinessContext, proj *ProjectContext, history []llm.Message) []l
 	return out
 }
 
-// BuildSplit returns the two-block system prompt — Block 1 (platform-wide,
-// byte-stable per locale) and Block 2 (per-business, varies per request) —
-// along with the conversation history (no leading system message).
-//
-// Block 1 (platform):
-//   - Preamble ("Ты — AI-ассистент..." / "You are an AI assistant...")
-//   - "## Правила" / "## Rules" with the platform-wide rule list
-//   - Trailing language directive ("Общайся на русском языке" / "Respond in English")
-//
-// Block 2 (business):
-//   - "## Бизнес:" / "## Business:" header + business details (Name, Category,
-//     Address, Phone, Website, Description)
-//   - "Тон общения:" / "Tone:"
-//   - "Текущая дата и время:" / "Current date and time:"
-//   - "## Активные интеграции" / "## Active integrations" list
-//   - Optional "## Проект: ..." / "## Project: ..." block when proj != nil
-//
-// Anthropic stamps cache_control on Block 1 ONLY — see the CacheBoundary flag
-// on llm.SystemBlock and stampSystemCacheControl in pkg/llm/providers/anthropic.go.
-// Block 1 byte-stability across BusinessContext variations is guarded by
-// TestSystemPromptHash_Stability (builder_stability_test.go).
-//
-// Reordering note: the legacy single-block builder emitted preamble → Business
-// → Tone → Now → Integrations → Rules. Splitting it reorders to preamble →
-// Rules → Business → Tone → Now → Integrations because the cache prefix MUST
-// be platform-only — rules-first ordering is in fact preferred: platform
-// rules lead the prompt and carry the cache_control marker.
+// BuildSplit returns the two-block system prompt (platform, business) and the
+// conversation history. Block 1 is byte-stable per locale — Anthropic stamps
+// cache_control on it. See docs/orchestrator/prompt.md.
 func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message) (platform, business string, msgs []llm.Message) {
+	// Normalize Locale ONCE here; internal helpers trust their tag.
 	tag := i18n.NormalizeToSupported(ctx.Locale)
 	platform = buildPlatformBlock(tag)
 	business = buildBusinessBlock(ctx, tag)
@@ -121,9 +70,8 @@ func BuildSplit(ctx BusinessContext, proj *ProjectContext, history []llm.Message
 	return platform, business, msgs
 }
 
-// buildPlatformBlock renders the locale-fixed platform prefix (Block 1). It
-// takes NO BusinessContext — its output is byte-stable per locale, which is
-// the invariant Anthropic's cross-business prompt cache depends on.
+// buildPlatformBlock renders the locale-fixed platform prefix (Block 1).
+// Takes NO BusinessContext — output is byte-stable per locale.
 func buildPlatformBlock(tag language.Tag) string {
 	if tag == language.English {
 		return buildPlatformBlockEn()
@@ -131,15 +79,10 @@ func buildPlatformBlock(tag language.Tag) string {
 	return buildPlatformBlockRu()
 }
 
-// buildPlatformBlockRu is the Russian platform prefix. The trailing language
-// directive "Общайся на русском языке" is load-bearing and MUST remain at the
-// end of Block 1 so it appears just before the per-business business block in
-// the concatenated prompt.
-//
-// Block 1 size invariant: this block is padded to comfortably exceed Anthropic
-// Sonnet 4.6's 1024-token cache minimum (≥ ~1100 tokens per locale). Tests
-// TestSystemPromptHash_Stability_LockedHash pin the per-locale sha256, so any
-// rewording requires hash rotation.
+// buildPlatformBlockRu is the Russian platform prefix (Block 1).
+// See docs/orchestrator/prompt.md for the load-bearing trailing-directive
+// invariant and the ~1100-token cache-size invariant
+// (TestSystemPromptHash_Stability_LockedHash pins the per-locale sha256).
 func buildPlatformBlockRu() string {
 	var sb strings.Builder
 	sb.WriteString("Ты — AI-ассистент для управления цифровым присутствием бизнеса в OneVoice — многоагентной платформе, объединяющей Telegram, ВКонтакте и Яндекс.Бизнес под единым диалоговым интерфейсом. Ты работаешь от имени владельца бизнеса: каждое твоё действие напрямую отражается на публичных страницах, каналах и отзывах. Поэтому действуй осознанно, лаконично и без лишней самопрезентации.\n")
@@ -183,14 +126,13 @@ func buildPlatformBlockRu() string {
 	sb.WriteString("- Уважительный, деловой, на «вы» с пользователем-владельцем. Без излишнего пафоса и без фамильярности.\n")
 	sb.WriteString("- Если бизнес задаёт собственный тон (см. блок «Бизнес» ниже), он имеет приоритет над этим значением по умолчанию для исходящих публикаций и ответов клиентам, но не меняет твою манеру общения с самим пользователем-владельцем.\n")
 
-	// Trailing language directive — load-bearing, MUST remain at the end of Block 1.
+	// Load-bearing — MUST remain the final line of Block 1.
 	sb.WriteString("\n- Общайся на русском языке\n")
 	return sb.String()
 }
 
-// buildPlatformBlockEn is the English platform prefix. See buildPlatformBlockRu
-// for the load-bearing-directive invariant and the Block 1 size invariant
-// (padded to ≥ 1100 tokens for Anthropic cache compatibility).
+// buildPlatformBlockEn is the English platform prefix (Block 1).
+// See buildPlatformBlockRu / docs/orchestrator/prompt.md for invariants.
 func buildPlatformBlockEn() string {
 	var sb strings.Builder
 	sb.WriteString("You are an AI assistant for managing a business's digital presence inside OneVoice — a multi-agent platform that unifies Telegram, VK, and Yandex.Business behind a single conversational interface. You act on behalf of the business owner: every action you take is reflected on public channels, profiles, and reviews. Behave deliberately, stay concise, and skip self-promotion.\n")
@@ -234,14 +176,13 @@ func buildPlatformBlockEn() string {
 	sb.WriteString("- Respectful, businesslike, and professional with the owner-user. Skip needless pomp and avoid familiarity.\n")
 	sb.WriteString("- If the business specifies its own tone (see the Business block below), that tone takes priority for outbound posts and customer replies, but it does not change how you address the owner-user.\n")
 
-	// Trailing language directive — load-bearing, MUST remain at the end of Block 1.
+	// Load-bearing — MUST remain the final line of Block 1.
 	sb.WriteString("\n- Respond in English\n")
 	return sb.String()
 }
 
 // buildBusinessBlock renders the per-business Block 2. Everything that varies
-// per request (business fields, integrations, current time) lives here so it
-// never participates in the cache prefix.
+// per request lives here so it never participates in the cache prefix.
 func buildBusinessBlock(ctx BusinessContext, tag language.Tag) string {
 	if tag == language.English {
 		return buildBusinessBlockEn(ctx)
@@ -330,19 +271,9 @@ func buildBusinessBlockEn(ctx BusinessContext) string {
 }
 
 // appendProjectBlock glues the project prompt layer onto the business-only
-// system text. The header is always emitted (even when SystemPrompt is empty)
-// so the LLM knows which project is in scope; this makes the transition
-// visible during move-chat.
-//
-// When WhitelistMode is explicit or none, a follow-up
-// "### Ограничения инструментов" section is emitted so the LLM knows to
-// refuse/explain unavailable-platform requests instead of silently
-// substituting the closest allowed tool.
-//
-// tag must already be one of i18n.Supported (Russian or English) — Build
-// normalizes ctx.Locale before invoking this helper. Section labels and
-// explanatory phrasing follow tag; the tool name list itself is rendered
-// as-is (LLM tool names are not localized).
+// system text. The header is always emitted (even with empty SystemPrompt) so
+// the LLM knows which project is in scope. tag must already be normalized.
+// See docs/orchestrator/prompt.md.
 func appendProjectBlock(base string, proj *ProjectContext, tag language.Tag) string {
 	var sb strings.Builder
 	sb.WriteString(base)
@@ -363,13 +294,10 @@ func appendProjectBlock(base string, proj *ProjectContext, tag language.Tag) str
 		}
 	}
 
-	// Whitelist explanation. Only emitted for restrictive modes.
 	switch proj.WhitelistMode {
 	case domain.WhitelistModeExplicit:
 		if len(proj.AllowedTools) == 0 {
-			// Defensive: shouldn't happen (service layer rejects this via
-			// ErrProjectWhitelistEmpty), but if it does we tell the LLM the
-			// same thing WhitelistModeNone would say.
+			// Defensive: service layer rejects empty explicit via ErrProjectWhitelistEmpty.
 			sb.WriteString(restrictionsAllDisabled(tag))
 		} else {
 			sb.WriteString(restrictionsAllowedOnly(tag, proj.AllowedTools))
@@ -377,17 +305,13 @@ func appendProjectBlock(base string, proj *ProjectContext, tag language.Tag) str
 	case domain.WhitelistModeNone:
 		sb.WriteString(restrictionsAllDisabled(tag))
 	case domain.WhitelistModeAll, domain.WhitelistModeInherit, "":
-		// No hint — permissive whitelist modes don't constrain the LLM.
+		// Permissive modes — no hint emitted.
 	}
 
 	return sb.String()
 }
 
-// restrictionsAllDisabled returns the per-locale "all tools disabled" hint
-// emitted under "### Ограничения инструментов" / "### Tool restrictions".
-// The two language variants intentionally carry the same semantic load
-// (refuse-with-explanation + anti-substitution instruction) so the LLM
-// behavior is identical across locales.
+// restrictionsAllDisabled returns the per-locale "all tools disabled" hint.
 func restrictionsAllDisabled(tag language.Tag) string {
 	if tag == language.English {
 		return "\n### Tool restrictions\n" +
@@ -401,10 +325,8 @@ func restrictionsAllDisabled(tag language.Tag) string {
 		"НЕ подменяй канал молча.\n"
 }
 
-// restrictionsAllowedOnly returns the per-locale "only these tools allowed"
-// hint. Tool names are emitted verbatim (e.g. `telegram__send_channel_post`)
-// in both locales because they are stable identifiers the LLM matches against
-// its tools schema, not user-facing copy.
+// restrictionsAllowedOnly returns the per-locale "only these tools allowed" hint.
+// Tool names are emitted verbatim (stable identifiers, not user-facing copy).
 func restrictionsAllowedOnly(tag language.Tag, allowed []string) string {
 	if tag == language.English {
 		return "\n### Tool restrictions\n" +

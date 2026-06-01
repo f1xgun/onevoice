@@ -13,13 +13,9 @@ import (
 	"github.com/f1xgun/onevoice/pkg/llm"
 )
 
-// ResumeRequest carries the fresh state passed to Resume at approval-resolution
-// time. The "fresh" qualifier is load-bearing for TOCTOU: the caller
-// (resolve handler + chat_proxy) re-fetches
-// business.settings.tool_approvals and project.approval_overrides from
-// Postgres at the moment of resume — they may have changed since the batch
-// was persisted. dispatchApprovedCalls re-runs hitl.Resolve against THESE
-// maps, never the maps embedded in the snapshot.
+// ResumeRequest carries the FRESH state passed to Resume at approval-
+// resolution time. "Fresh" is load-bearing for TOCTOU.
+// See docs/orchestrator/resume.md.
 type ResumeRequest struct {
 	BatchID                  string
 	BusinessApprovals        map[string]domain.ToolFloor
@@ -34,21 +30,7 @@ type ResumeRequest struct {
 }
 
 // Resume continues a paused agent turn from its persisted PendingToolCallBatch
-// snapshot. Returns a fresh event channel; the spawned goroutine:
-//
-//  1. Loads the batch via pendingRepo.GetByBatchID; emits EventError on
-//     missing or expired batches without advancing state.
-//  2. Reconstructs RunState from the snapshot (batch.ModelMessages) — this
-//     is what makes pause survive process restarts.
-//  3. Dispatches each approved call in parallel (Redis dedupe absorbs
-//     retries) with TOCTOU re-check via hitl.Resolve against the FRESH
-//     approval maps in the ResumeRequest. Forbidden-after-pause → synthetic
-//     policy_revoked rejection, no dispatch.
-//  4. Skips calls with Dispatched==true (orchestrator crash-recovery).
-//  5. Reject verdicts → synthetic rejection message + tool_rejected event,
-//     no NATS dispatch.
-//  6. After all parallel dispatches complete, MarkResolved is called and
-//     stepRun re-enters the agent loop at Iter = batch.IterationIdx + 1.
+// snapshot. See docs/orchestrator/resume.md for the goroutine lifecycle.
 func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Event, error) {
 	ch := make(chan Event, 32)
 
@@ -71,6 +53,7 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Ev
 	if batch.Status == "expired" {
 		go func() {
 			defer close(ch)
+			// "approval_expired" is the sentinel the API proxy maps to the public expired-batch status.
 			ch <- Event{Type: EventError, Content: "approval_expired"}
 		}()
 		return ch, nil
@@ -83,24 +66,8 @@ func (o *Orchestrator) Resume(ctx context.Context, req ResumeRequest) (<-chan Ev
 	return ch, nil
 }
 
-// decodeSnapshot reads batch.ModelMessages and returns the RunState fields it
-// carries. Two shapes are accepted:
-//
-//   - Versioned envelope: {"v":2,"messages":[...],"system_platform":"...","system_business":"..."}
-//     Messages is system-free; SystemPlatform/SystemBusiness travel separately
-//     and are wired into llm.ChatRequest.SystemBlocks on the next stepRun.
-//   - Legacy raw array: [{"role":"system",...}, ...]. Messages still carries a
-//     leading role:"system" entry; SystemPlatform/Business stay empty so
-//     stepRun falls through to provider-side legacy scrub.
-//
-// Distinguishing shape: a versioned envelope begins with '{' as the first
-// non-whitespace byte, a legacy raw array begins with '['. Resume logs a
-// debug entry on legacy batches so operators can confirm in-flight legacy
-// batches drained naturally.
-// snapshotDecoded carries the decoded fields of a pause snapshot so the
-// resume goroutine can populate RunState without juggling a long return list.
-// Legacy V1 snapshots leave most fields zero — the `legacy` flag tells the
-// caller to expect a leading system message in Messages instead.
+// snapshotDecoded carries the decoded fields of a pause snapshot.
+// See docs/orchestrator/resume.md for V1-legacy vs V2-envelope semantics.
 type snapshotDecoded struct {
 	Messages                []llm.Message
 	SystemPlatform          string
@@ -110,6 +77,9 @@ type snapshotDecoded struct {
 	Legacy                  bool
 }
 
+// decodeSnapshot reads batch.ModelMessages into a snapshotDecoded. Accepts
+// versioned envelope ({...}) and legacy raw array ([...]). Shape is
+// discriminated by the first non-whitespace byte.
 func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
 	var out snapshotDecoded
 	if len(raw) == 0 {
@@ -135,7 +105,7 @@ func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
 		out.AccumulatedOutputTokens = env.AccumulatedOutputTokens
 		return out, nil
 	}
-	// Legacy array shape.
+	// Legacy raw-array shape (V1) — leading role:"system" stays in Messages.
 	var msgs []llm.Message
 	if uErr := json.Unmarshal(raw, &msgs); uErr != nil {
 		return snapshotDecoded{}, uErr
@@ -145,13 +115,10 @@ func decodeSnapshot(raw []byte) (snapshotDecoded, error) {
 	return out, nil
 }
 
-// resumeGoroutine is the body of the spawned resume goroutine. Extracted so
-// tests can be written against narrower helpers and so the spawn wrapper in
-// Resume stays trivially inspectable.
+// resumeGoroutine is the body of the spawned resume goroutine. Extracted from
+// Resume so tests can target narrower helpers and the spawn wrapper stays
+// trivially inspectable. See docs/orchestrator/resume.md.
 func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.PendingToolCallBatch, req ResumeRequest, out chan<- Event) {
-	// 1. Reconstruct state from the snapshot. decodeSnapshot accepts both
-	// the versioned envelope and the legacy raw-array shape; legacy batches
-	// in flight at deploy time drain through the legacy fallback.
 	snap, err := decodeSnapshot(batch.ModelMessages)
 	if err != nil {
 		out <- Event{Type: EventError, Content: fmt.Sprintf("corrupt snapshot: %v", err)}
@@ -177,31 +144,21 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 		Model:                    req.Model,
 		Tier:                     req.Tier,
 		Iter:                     batch.IterationIdx + 1,
-		// Hydrate accumulated token counts so the per-conversation cap
-		// continues to measure from the pre-pause budget. Legacy V1/V2
-		// snapshots without these fields land at zero — correct because
+		// Hydrate accumulated counts so the per-conversation cap measures from
+		// the pre-pause budget. Legacy snapshots land at zero — correct because
 		// pre-cap turns were not subject to enforcement.
 		AccumulatedInputTokens:  snap.AccumulatedInputTokens,
 		AccumulatedOutputTokens: snap.AccumulatedOutputTokens,
 	}
 
-	// Inject batch.BusinessID into the dispatch context so the NATS executor's
-	// a2a.BusinessIDFromContext lookup picks it up. The handler entrypoint for
-	// /chat does this on the regular path (handler/chat.go), but the resume
-	// handler does not — without this line, every HITL-approved tool call
-	// reaches platform agents with business_id="" and fails token resolution.
+	// MUST inject batch.BusinessID before dispatch — handler/chat.go does this
+	// on the fresh-turn path; without it, agents see business_id="" and fail
+	// token resolution.
 	ctx = a2a.WithBusinessID(ctx, batch.BusinessID)
 
-	// 2. Dispatch approved calls in parallel with TOCTOU re-check. Pass
-	//    the ResumeRequest so that hitl.Resolve inside the fan-out uses
-	//    the FRESH approval maps, not the ones embedded in
-	//    the snapshot which may be stale.
 	o.dispatchApprovedCalls(ctx, batch, req, state, out)
 
-	// 3. Mark batch resolved (best-effort — marking is hygienic, not
-	//    load-bearing). If the mark fails we still continue stepRun: the
-	//    conversation state is already correct; the batch will eventually
-	//    be reaped by the TTL / reconciliation.
+	// Best-effort — not load-bearing. Mongo TTL / reconciliation reaps stragglers.
 	if err := o.pendingRepo.MarkResolved(ctx, batch.ID); err != nil {
 		slog.WarnContext(ctx, "resume: failed to mark batch resolved",
 			"error", err,
@@ -209,16 +166,14 @@ func (o *Orchestrator) resumeGoroutine(ctx context.Context, batch *domain.Pendin
 		)
 	}
 
-	// 4. Continue the agent loop.
 	_, _, _ = o.stepRun(ctx, state, out)
 }
 
-// dispatchApprovedCalls is the parallel fan-out core. Holds a WaitGroup to
-// join all in-flight dispatches before returning; a mutex around
-// state.Messages to keep llm.Message appends race-safe (go test -race
-// mandatory). Emits tool_call / tool_result / tool_rejected events in
-// whatever order goroutines finish — the caller (chat_proxy + frontend)
-// associates them by ToolCallID, not by arrival order.
+// dispatchApprovedCalls is the parallel fan-out core. WaitGroup joins all
+// in-flight dispatches; mutex on state.Messages keeps appends race-safe
+// (go test -race invariant). Events are emitted in goroutine-completion
+// order; consumers correlate by ToolCallID.
+// See docs/orchestrator/resume.md.
 func (o *Orchestrator) dispatchApprovedCalls(
 	ctx context.Context,
 	batch *domain.PendingToolCallBatch,
@@ -229,10 +184,8 @@ func (o *Orchestrator) dispatchApprovedCalls(
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	// sendOrCancel writes ev to out, but returns false if ctx is canceled
-	// first. Mirrors the gate used by dispatchToolCalls (orchestrator.go) so a
-	// caller that hangs up mid-resume cannot leave the per-call goroutines
-	// blocked indefinitely on a full channel buffer.
+	// Mirrors the gate used by dispatchToolCalls in orchestrator.go so a hung-up
+	// caller cannot block goroutines on a full channel buffer.
 	sendOrCancel := func(ev Event) bool {
 		select {
 		case out <- ev:
@@ -243,15 +196,12 @@ func (o *Orchestrator) dispatchApprovedCalls(
 	}
 
 	for i := range batch.Calls {
-		// Bail out early if the caller has gone away — no point queueing
-		// further rejections or spawning goroutines that will immediately
-		// hit the same cancellation gate.
+		// Bail early if caller hung up — avoid queueing rejections / spawning goroutines.
 		if ctx.Err() != nil {
 			break
 		}
 		call := batch.Calls[i]
 
-		// Reject verdict → synthetic rejection, no dispatch.
 		if call.Verdict == "reject" {
 			reason := call.RejectReason
 			if reason == "" {
@@ -276,10 +226,9 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			continue
 		}
 
-		// TOCTOU re-check — re-run hitl.Resolve against the
-		// FRESH approval maps carried in the ResumeRequest. If the
-		// effective floor flipped to Forbidden after pause, synthesize
-		// a policy_revoked rejection and skip dispatch.
+		// TOCTOU re-check — MUST run against FRESH maps from ResumeRequest,
+		// never the snapshot's embedded copy. Forbidden-after-pause → synthetic
+		// policy_revoked rejection.
 		floor := o.tools.Floor(call.ToolName)
 		effective := hitl.Resolve(floor, req.BusinessApprovals, req.ProjectApprovalOverrides, call.ToolName)
 		if effective == domain.ToolFloorForbidden {
@@ -302,24 +251,18 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			continue
 		}
 
-		// Crash-recovery: skip calls that were already dispatched in a
-		// prior attempt (belt-and-suspenders with the agent's Redis
-		// SetNX dedupe).
+		// Crash-recovery — belt-and-suspenders with the agent's Redis SetNX.
 		if call.Dispatched {
 			continue
 		}
 
-		// Parallel dispatch
 		wg.Add(1)
 		go func(c domain.PendingCall) {
 			defer wg.Done()
 
 			args := c.Arguments
 			if c.Verdict == "edit" && c.EditedArgs != nil {
-				// Merge: EditedArgs values override originals. The
-				// EditableFields whitelist was already enforced by
-				// the resolve handler, so any key present
-				// in EditedArgs is safe to overwrite.
+				// EditableFields was enforced at resolve time — overwrite is safe.
 				merged := make(map[string]interface{}, len(args)+len(c.EditedArgs))
 				for k, v := range args {
 					merged[k] = v
@@ -332,12 +275,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 
 			approvalID := fmt.Sprintf("%s-%s", batch.ID, c.CallID)
 
-			// Emit tool_call event so chat_proxy can persist it on
-			// Message.ToolCalls (the LLM's real call_id flows all
-			// the way through — no synthetic tc-N). DisplayName +
-			// DisplayNameKey populated so the AgentTask row created on
-			// the resume path also carries the i18n key —
-			// matches the fresh-turn path in dispatchToolCalls.
 			if !sendOrCancel(Event{
 				Type:               EventToolCall,
 				ToolCallID:         c.CallID,
@@ -351,7 +288,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 
 			result, execErr := o.tools.ExecuteWithApproval(ctx, c.ToolName, args, approvalID)
 
-			// Append tool result to conversation (race-safe append).
 			mu.Lock()
 			errStr := ""
 			var resultJSON []byte
@@ -372,9 +308,7 @@ func (o *Orchestrator) dispatchApprovedCalls(
 			})
 			mu.Unlock()
 
-			// Mark the call dispatched (best-effort — Redis dedupe
-			// at the agent is the primary safety layer; this is the
-			// belt-and-suspenders Mongo flag).
+			// Best-effort — Redis dedupe at the agent is primary; this is the Mongo belt-and-suspenders.
 			if markErr := o.pendingRepo.MarkDispatched(ctx, batch.ID, c.CallID); markErr != nil {
 				slog.WarnContext(ctx, "resume: failed to mark call dispatched",
 					"error", markErr,
@@ -383,10 +317,6 @@ func (o *Orchestrator) dispatchApprovedCalls(
 				)
 			}
 
-			// Emit tool_result event to the SSE stream. DisplayName +
-			// DisplayNameKey carried through so chat_proxy can update
-			// the AgentTask with the localizable key even when the row
-			// was first created by a different orchestrator instance.
 			_ = sendOrCancel(Event{
 				Type:               EventToolResult,
 				ToolCallID:         c.CallID,

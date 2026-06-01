@@ -1,3 +1,5 @@
+// Package toolregistry is the orchestrator's in-process catalog of LLM-callable
+// tools. See docs/orchestrator/toolregistry.md.
 package toolregistry
 
 import (
@@ -18,12 +20,8 @@ type Executor interface {
 	Execute(ctx context.Context, args map[string]interface{}) (interface{}, error)
 }
 
-// ApprovalExecutor extends Executor with a variant that accepts an approvalID
-// propagated into the dispatch payload (a2a.ToolRequest.ApprovalID
-// field). Implemented by natsexec.NATSExecutor; internal-only executors that
-// never pass through HITL approval do not need to implement it — Registry
-// falls back to plain Execute (discarding approvalID, which is correct for
-// tools that have no agent-side Redis dedupe).
+// ApprovalExecutor is Executor plus a variant that propagates an approvalID
+// into the dispatch payload. See docs/orchestrator/toolregistry.md.
 type ApprovalExecutor interface {
 	Executor
 	ExecuteWithApproval(ctx context.Context, args map[string]interface{}, approvalID string) (interface{}, error)
@@ -32,6 +30,7 @@ type ApprovalExecutor interface {
 // ExecutorFunc is a function that implements Executor.
 type ExecutorFunc func(ctx context.Context, args map[string]interface{}) (interface{}, error)
 
+// Execute implements Executor.
 func (f ExecutorFunc) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	return f(ctx, args)
 }
@@ -39,7 +38,7 @@ func (f ExecutorFunc) Execute(ctx context.Context, args map[string]interface{}) 
 type entry struct {
 	def                     llm.ToolDefinition
 	displayName             string
-	userDescription         string // human-readable description surfaced in settings UI (LLM-facing description stays in def.Function.Description).
+	userDescription         string // human-readable; LLM-facing description stays in def.Function.Description
 	displayNameKey          string
 	descriptionEn           string
 	parameterDescriptionsEn map[string]string
@@ -49,6 +48,7 @@ type entry struct {
 }
 
 // Registry holds tool definitions and their executors.
+// See docs/orchestrator/toolregistry.md.
 type Registry struct {
 	tools map[string]entry
 }
@@ -58,38 +58,8 @@ func NewRegistry() *Registry {
 	return &Registry{tools: make(map[string]entry)}
 }
 
-// ToolSpec is the declarative description of a tool — everything the registry
-// needs to know about a tool at registration time, in one atomic shape. The
-// runtime executor is passed separately to Register so the spec can stay pure
-// data (per-platform spec builders in services/orchestrator/internal/wire/
-// don't have to thread the NATS connection through).
-//
-// Policy guidelines for choosing Floor:
-//   - ToolFloorAuto      — read-only / safe queries (no external side effects).
-//   - ToolFloorManual    — any public mutation (post, reply, update, schedule,
-//     upload). EditableFields covers ONLY human-facing
-//     text fields (text/caption/description); ids,
-//     recipients, URLs, dates, categories, and
-//     quantities are pinned at pause time.
-//   - ToolFloorForbidden — reserved for actions that must NEVER be lifted via
-//     settings (e.g., a future "wipe all posts"). Kept
-//     registered so the LLM sees it exists but
-//     policy.Resolve always denies. Destructive-but-
-//     legitimate operations (comment moderation, etc.)
-//     belong under Manual, not Forbidden — users with a
-//     valid use-case can opt into auto-approval.
-//
-// When in doubt, prefer Manual + a narrow EditableFields list (conservative
-// default). EditableFields is always lowercase_with_underscore matching the
-// tool's JSON arguments schema keys; the comparison performed by
-// ValidateEditArgs is case-sensitive.
-//
-// All fields except Def and Floor are optional. DisplayNameKey, DescriptionEn,
-// and ParameterDescriptionsEn power frontend localization (catalog key + EN
-// fallback for the LLM-facing description). UserDescription is the short
-// user-facing blurb rendered in /settings/tools (the LLM-facing description on
-// Def.Function.Description may reference other tool names and disambiguation
-// rules that would confuse end users).
+// ToolSpec is the declarative description of a tool at registration time.
+// See docs/orchestrator/toolregistry.md for Floor / EditableFields policy.
 type ToolSpec struct {
 	Def                     llm.ToolDefinition
 	DisplayName             string
@@ -102,13 +72,7 @@ type ToolSpec struct {
 }
 
 // Register stores spec under spec.Def.Function.Name and binds exec as the
-// executor (nil is legal for stub tools — e.g., when NATS is unavailable, the
-// registry still answers metadata queries but Execute returns an error).
-//
-// EditableFields and ParameterDescriptionsEn are copied defensively so
-// subsequent caller-side mutations cannot change registered behavior. There is
-// no default Floor — every registration site must deliberately choose so a
-// newly-added tool cannot silently inherit an unsafe policy.
+// executor. See docs/orchestrator/toolregistry.md.
 func (r *Registry) Register(spec ToolSpec, exec Executor) {
 	var paramsEn map[string]string
 	if len(spec.ParameterDescriptionsEn) > 0 {
@@ -125,13 +89,14 @@ func (r *Registry) Register(spec ToolSpec, exec Executor) {
 		descriptionEn:           spec.DescriptionEn,
 		parameterDescriptionsEn: paramsEn,
 		executor:                exec,
-		floor:                   spec.Floor,
-		editableFields:          append([]string(nil), spec.EditableFields...),
+		// Defensive copy — caller-side mutations after Register MUST NOT change registered behavior.
+		floor:          spec.Floor,
+		editableFields: append([]string(nil), spec.EditableFields...),
 	}
 }
 
-// DisplayName returns the human-readable label registered for the named tool.
-// Returns an empty string for unknown tools.
+// DisplayName returns the human-readable label registered for the named tool,
+// or "" when unknown.
 func (r *Registry) DisplayName(name string) string {
 	e, ok := r.tools[name]
 	if !ok {
@@ -151,11 +116,8 @@ func (r *Registry) DisplayNameKey(name string) string {
 }
 
 // Available returns tool definitions available for the given active integrations.
-// Tools named "{platform}__{action}" are included only if platform is active.
-// Tools without "__" are always included (internal tools).
-//
-// Descriptions are returned in the registry's source-of-truth language (RU).
-// Use AvailableForWhitelist (ctx-aware) for the locale-resolved variant.
+// Returns RU descriptions; use AvailableForWhitelist for the locale-aware variant.
+// See docs/orchestrator/toolregistry.md.
 func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 	active := make(map[string]bool, len(activeIntegrations))
 	for _, p := range activeIntegrations {
@@ -167,7 +129,7 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 		name := e.def.Function.Name
 		idx := strings.Index(name, "__")
 		if idx == -1 {
-			// Internal tool — always available
+			// Bare name = internal tool, always available.
 			result = append(result, e.def)
 			continue
 		}
@@ -179,9 +141,8 @@ func (r *Registry) Available(activeIntegrations []string) []llm.ToolDefinition {
 	return result
 }
 
-// localizeDef returns a copy of e.def with Description and parameter
-// descriptions swapped to the per-locale text. Non-English locales (and the
-// zero Tag) return e.def by value, preserving byte-identical output.
+// localizeDef returns e.def with Description/parameter descriptions swapped to
+// the per-locale text. Non-English locales return e.def by value (byte-identical).
 func (r *Registry) localizeDef(e entry, tag language.Tag) llm.ToolDefinition {
 	if tag != language.English {
 		return e.def
@@ -202,9 +163,7 @@ func (r *Registry) localizeDef(e entry, tag language.Tag) llm.ToolDefinition {
 }
 
 // localizeParameters returns a deep-copied parameters schema with
-// `properties.<name>.description` swapped to the EN values. Properties
-// without a translation keep their original description. Source map is never
-// mutated.
+// properties.<name>.description swapped to the EN values. Source map is never mutated.
 func localizeParameters(params map[string]interface{}, translations map[string]string) map[string]interface{} {
 	if params == nil {
 		return nil
@@ -245,31 +204,12 @@ func localizeParameters(params map[string]interface{}, translations map[string]s
 	return outParams
 }
 
-// AvailableForWhitelist applies a typed WhitelistMode filter on top
-// of Available. Unknown tool names in `allowed` are logged (slog WARN) and
-// silently dropped — the safe-default behavior (whitelist drift: a renamed
-// or missing tool is treated as denied rather than surfaced as an error).
+// AvailableForWhitelist applies a typed WhitelistMode filter on top of
+// Available. See docs/orchestrator/toolregistry.md for whitelist semantics
+// (auto-floor exemption, unknown-tool safe-default, mode fallthroughs).
 //
-// ctx is the request-scoped context threaded from orchestrator.Run. It is
-// used for slog attribution (correlation_id, business_id) and cancellation
-// hygiene. Callers MUST NOT fabricate a root context here — there is always
-// a request-scoped ctx available at the call site in Run.
-//
-// v1.3 scope note: inherit == all. Replaced later with a business-level
-// tool_approvals map that will serve as the actual "inherited" baseline;
-// until then, the baseline is "every registered tool for the active
-// integrations".
-//
-// Auto-floor read tools are always included in WhitelistModeExplicit. Tools
-// registered with ToolFloorAuto are read-only / safe queries by definition
-// (cmd/main.go's policy guideline: "no external side effects") — denying
-// the LLM a way to read public state forces it to hallucinate around the
-// missing context (e.g. clicking "Проверить отзывы" with only a write tool
-// in the whitelist made the LLM publish posts ABOUT checking reviews
-// instead of fetching them). Whitelist intent is to gate write actions;
-// HITL still gates execution of every Manual-floor tool, so this exemption
-// does not weaken the security posture. WhitelistModeNone remains absolute
-// — if the operator picks "no tools", we honor it.
+// ctx must be the request-scoped context from orchestrator.Run — used for
+// slog attribution and cancellation hygiene. Never fabricate a root ctx.
 func (r *Registry) AvailableForWhitelist(
 	ctx context.Context,
 	activeIntegrations []string,
@@ -291,6 +231,7 @@ func (r *Registry) AvailableForWhitelist(
 		allowSet := make(map[string]bool, len(allowed))
 		for _, name := range allowed {
 			if !known[name] {
+				// Safe-default: whitelist drift drops unknown names rather than erroring.
 				slog.WarnContext(ctx, "project whitelist contains unknown tool",
 					"tool", name,
 				)
@@ -301,6 +242,7 @@ func (r *Registry) AvailableForWhitelist(
 		result := make([]llm.ToolDefinition, 0, len(base))
 		for _, def := range base {
 			name := def.Function.Name
+			// Auto-floor read tools are always included — see docs.
 			if allowSet[name] || r.tools[name].floor == domain.ToolFloorAuto {
 				result = append(result, def)
 			}
@@ -314,11 +256,8 @@ func (r *Registry) AvailableForWhitelist(
 	}
 }
 
-// availableLocalized is the locale-aware twin of Available. Returns the same
-// set of tools, with Description swapped to the requested locale for entries
-// that registered a translation. Internal: callers should use
-// AvailableForWhitelist (the public surface that also enforces whitelist
-// rules).
+// availableLocalized is the locale-aware twin of Available. Internal: callers
+// should use AvailableForWhitelist.
 func (r *Registry) availableLocalized(activeIntegrations []string, tag language.Tag) []llm.ToolDefinition {
 	active := make(map[string]bool, len(activeIntegrations))
 	for _, p := range activeIntegrations {
@@ -352,14 +291,10 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]int
 	return e.executor.Execute(ctx, args)
 }
 
-// ExecuteWithApproval runs the registered executor with the given approvalID
-// propagated into the dispatch payload when the executor implements
-// ApprovalExecutor (production NATS executors do). Executors that do not
-// implement ApprovalExecutor fall back to plain Execute — safe for internal
-// tools that have no agent-side dedupe requirement.
-//
-// approvalID is always "<batch_id>-<call_id>", so each approved call within
-// a batch has a unique dedupe key for the agent's Redis SetNX.
+// ExecuteWithApproval runs the registered executor with approvalID propagated
+// when the executor implements ApprovalExecutor; otherwise falls back to
+// Execute. approvalID is always "<batch_id>-<call_id>".
+// See docs/orchestrator/toolregistry.md.
 func (r *Registry) ExecuteWithApproval(ctx context.Context, name string, args map[string]interface{}, approvalID string) (interface{}, error) {
 	e, ok := r.tools[name]
 	if !ok {
@@ -371,16 +306,12 @@ func (r *Registry) ExecuteWithApproval(ctx context.Context, name string, args ma
 	if ae, ok := e.executor.(ApprovalExecutor); ok {
 		return ae.ExecuteWithApproval(ctx, args, approvalID)
 	}
-	// Fallback: executor doesn't carry approval metadata — safe for
-	// internal/stub tools with no agent-side dedupe.
+	// Executor doesn't carry approval metadata — safe for internal/stub tools.
 	return e.executor.Execute(ctx, args)
 }
 
 // Floor returns the registered ToolFloor for toolName or ToolFloorForbidden
-// if the tool is unknown (safe default — the runtime policy resolver treats
-// unknown tools as "not permitted", matching the startup validation sweep
-// that logs tool_approval_whitelist_unknown for entries referencing missing
-// tools).
+// when unknown (safe default — matches the startup validation sweep).
 func (r *Registry) Floor(toolName string) domain.ToolFloor {
 	if e, ok := r.tools[toolName]; ok {
 		return e.floor
@@ -388,10 +319,8 @@ func (r *Registry) Floor(toolName string) domain.ToolFloor {
 	return domain.ToolFloorForbidden
 }
 
-// EditableFields returns the registered edit allowlist for toolName, or nil
-// if the tool is unknown. The returned slice is a defensive copy — mutating
-// it does not alter registry state. The list is always lowercase_with_underscore
-// matching the tool's JSON args schema.
+// EditableFields returns the registered edit allowlist for toolName as a
+// defensive copy, or nil when the tool is unknown.
 func (r *Registry) EditableFields(toolName string) []string {
 	if e, ok := r.tools[toolName]; ok {
 		return append([]string(nil), e.editableFields...)
@@ -399,17 +328,13 @@ func (r *Registry) EditableFields(toolName string) []string {
 	return nil
 }
 
-// Has reports whether toolName is currently registered. Used by the
-// startup validation sweep to detect whitelist entries that reference a tool
-// which has been renamed or removed between deploys.
+// Has reports whether toolName is currently registered.
 func (r *Registry) Has(toolName string) bool {
 	_, ok := r.tools[toolName]
 	return ok
 }
 
-// AllFloors returns a snapshot of every registered tool's floor. Used by
-// startup validation and by GET /api/v1/tools to populate the settings UI's
-// per-tool toggles.
+// AllFloors returns a snapshot of every registered tool's floor.
 func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 	out := make(map[string]domain.ToolFloor, len(r.tools))
 	for name, e := range r.tools {
@@ -419,27 +344,18 @@ func (r *Registry) AllFloors() map[string]domain.ToolFloor {
 }
 
 // RegistryEntry is the projection exposed by GET /api/v1/tools — aliased to
-// domain.ToolEntry so the API and the orchestrator share one canonical type
-// instead of redefining the same JSON shape on both sides of the internal/
-// visibility wall. See pkg/domain/tool_entry.go for full field documentation.
+// domain.ToolEntry so the API and orchestrator share one canonical type.
+// See pkg/domain/tool_entry.go.
 type RegistryEntry = domain.ToolEntry
 
-// AllEntries returns a snapshot of (name, displayName, platform, floor, editable, description)
-// for every registered tool. Description is returned in the registry's
-// source-of-truth language (RU). Feeds GET /api/v1/tools as well as the
-// cluster-internal /internal/tools/names endpoint used by the startup
-// validation sweep.
-//
-// Callers that need locale-aware descriptions (the live /internal/tools
-// endpoint reached from the API on every cache miss) should use
-// AllEntriesForLocale.
+// AllEntries returns a per-tool projection (RU descriptions).
+// Callers needing locale-aware descriptions should use AllEntriesForLocale.
 func (r *Registry) AllEntries() []RegistryEntry {
 	return r.AllEntriesForLocale(i18n.DefaultTag)
 }
 
-// AllEntriesForLocale returns the projection of AllEntries with each tool's
-// Description resolved to tag. Tools without a descriptionEn fall back to
-// def.Function.Description.
+// AllEntriesForLocale returns AllEntries with each tool's Description resolved
+// to tag. Tools without descriptionEn fall back to def.Function.Description.
 func (r *Registry) AllEntriesForLocale(tag language.Tag) []RegistryEntry {
 	out := make([]RegistryEntry, 0, len(r.tools))
 	for _, e := range r.tools {
@@ -462,10 +378,8 @@ func (r *Registry) AllEntriesForLocale(tag language.Tag) []RegistryEntry {
 	return out
 }
 
-// toolPlatform extracts the prefix of a "{platform}__{action}" tool name.
-// Returns "" for bare (internal) tools without the "__" separator and for
-// names that start with "__" (edge case: leading separator means no platform
-// prefix).
+// toolPlatform extracts the prefix of a "{platform}__{action}" tool name, or
+// "" for bare internal tools and names starting with "__".
 func toolPlatform(toolName string) string {
 	idx := strings.Index(toolName, "__")
 	if idx <= 0 {
