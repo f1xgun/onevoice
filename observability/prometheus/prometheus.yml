@@ -13,11 +13,31 @@ scrape_configs:
       - targets: ["orchestrator:8090"]
     metrics_path: /metrics
 
+  - job_name: agent-telegram
+    static_configs:
+      - targets: ["agent-telegram:8081"]
+    metrics_path: /metrics
+
+  - job_name: agent-vk
+    static_configs:
+      - targets: ["agent-vk:8082"]
+    metrics_path: /metrics
+
+  - job_name: agent-yandex-business
+    static_configs:
+      - targets: ["agent-yandex-business:8083"]
+    metrics_path: /metrics
+
+  - job_name: agent-google-business
+    static_configs:
+      - targets: ["agent-google-business:8084"]
+    metrics_path: /metrics
+
   - job_name: pushgateway
     # honor_labels: true so backup_* metrics keep the job/instance labels
     # the producer set (e.g. job=onevoice_backup). Without this scrape
     # job, backup_last_success_timestamp never reaches Prometheus and the
-    # D-05 alerting rule cannot fire (plan-checker W-5).
+    # alerting rule cannot fire.
     honor_labels: true
     static_configs:
       - targets: ["pushgateway:9091"]
