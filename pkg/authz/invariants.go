@@ -1,17 +1,6 @@
-// Package authz — invariants.go
-//
-// Three cross-cutting RBAC invariants invoked by member/role mutation
-// handlers in Phases 2 and 5. Each is a free function (no constructor,
-// no DI seam) so handlers can call them without wiring concerns.
-//
-// All three return the sentinel errors declared in errors.go; handlers
-// translate to HTTP codes (last_owner→422, cannot_grant_unowned_permissions
-// →403, self_lockout→422).
-//
-// "Owner" for last-owner purposes means "member with role_id =
-// pkg/domain.SystemRoleOwnerID" — NOT "member with all permissions" — per
-// CONTEXT decision. This keeps the check tractable and lets the
-// system owner role stay immutable.
+// Package authz — invariants.go declares three RBAC invariant enforcers
+// (EnsureOwnerExistsAfter, CheckEscalationSubset, CheckSelfLockout) plus
+// CheckSystemRoleImmutable. See docs/pkg/authz-invariants.md.
 package authz
 
 import (
@@ -26,60 +15,38 @@ import (
 )
 
 // OwnerChangeKind enumerates the mutation paths that can strand a business.
-// Each handler picks the kind matching the operation it is about to commit.
+// See docs/pkg/authz-invariants.md.
 type OwnerChangeKind int
 
 const (
-	// OwnerChangeUnspecified is the zero value; passing it to
-	// EnsureOwnerExistsAfter returns an error (defensive guard against
-	// uninitialized OwnerChange structs).
+	// OwnerChangeUnspecified is the zero value — passing it returns an error (defensive guard).
 	OwnerChangeUnspecified OwnerChangeKind = iota
 
-	// OwnerChangeDemote — actor is changing MemberUserID's role to a
-	// non-owner role on the given business. Triggered by
-	// PATCH /businesses/{id}/members/{userId}.
+	// OwnerChangeDemote — actor is changing MemberUserID's role to a non-owner role.
 	OwnerChangeDemote
 
 	// OwnerChangeRemove — actor is removing MemberUserID from the business.
-	// Triggered by DELETE /businesses/{id}/members/{userId} and by
-	// the self-removal path (member removing themselves).
 	OwnerChangeRemove
 
-	// OwnerChangeRoleEditRemovesOwnerPerm — actor is editing a custom role
-	// (RoleID) that currently functions as owner-equivalent and the new
-	// permission set strips owner-equivalence. system owner role is
-	// is_system=true and is therefore not editable, so this path fires only
-	// for synthetic / future custom-role-as-owner paths exercised by Plan H
-	// integration tests for symmetry. RoleID is required.
+	// OwnerChangeRoleEditRemovesOwnerPerm — custom-role edit stripping owner-equivalence.
+	// System owner role is is_system=true so this path fires only for synthetic fixtures.
 	OwnerChangeRoleEditRemovesOwnerPerm
 
-	// OwnerChangeRoleDelete — actor is deleting a role (RoleID); if any
-	// members held the role and were the sole-owner via that role, the
-	// business would lose its owner. RoleID is required.
+	// OwnerChangeRoleDelete — deleting a role whose holders would lose owner status.
 	OwnerChangeRoleDelete
 )
 
-// OwnerChange describes a proposed mutation to a business's membership
-// graph. EnsureOwnerExistsAfter inspects this struct, simulates the change
-// against the locked snapshot of business_members rows, and returns
-// ErrLastOwner if the resulting owner count would drop below 1.
+// OwnerChange describes a proposed mutation to a business's membership graph.
+// See docs/pkg/authz-invariants.md.
 type OwnerChange struct {
 	Kind         OwnerChangeKind
-	MemberUserID *uuid.UUID // required for Demote/Remove
-	RoleID       *uuid.UUID // required for RoleEditRemovesOwnerPerm/RoleDelete
+	MemberUserID *uuid.UUID
+	RoleID       *uuid.UUID
 }
 
-// EnsureOwnerExistsAfter refuses any operation that would leave a business
-// with zero owners. Callers MUST pass a pgx.Tx already inside a
-// transaction; the function executes SELECT ... FOR UPDATE on the
-// business_members rows for the given business so concurrent demote/remove
-// requests serialize.
-//
-// Returns nil when the change is safe (≥1 owner remains after the
-// simulated mutation), ErrLastOwner when the change would strand the
-// business, or a wrapped error from the underlying query.
-//
-// Definition: "owner" = member with role_id = SystemRoleOwnerID.
+// EnsureOwnerExistsAfter refuses any operation that would leave a business with zero owners.
+// Callers MUST pass a pgx.Tx already inside a transaction.
+// See docs/pkg/authz-invariants.md.
 func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID, change OwnerChange) error {
 	if tx == nil {
 		return fmt.Errorf("authz.EnsureOwnerExistsAfter: tx is required")
@@ -94,18 +61,9 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 		return fmt.Errorf("authz.EnsureOwnerExistsAfter: parse SystemRoleOwnerID: %w", err)
 	}
 
-	// Lock the membership rows for this business so concurrent mutations
-	// see a consistent snapshot. Snapshot of (user_id, role_id) is enough
-	// for the simulation.
-	//
-	// filter status='active'. Suspended members cannot act
-	// (middleware returns 403 for status='suspended'); counting them as
-	// owners lets a business pass the invariant with one active + one
-	// suspended owner, then demote the active one — leaving an "owner"
-	// who can never act. Effectively a back-door last-owner stranding.
-	// This matches the active-only filter that
-	// repository.business_member.go:CountOwnersByBusiness already applies
-	// for the same conceptual question.
+	// FOR UPDATE serializes concurrent demote/remove against the same business.
+	// status='active' only: suspended members cannot act, so counting them would create
+	// a back-door last-owner stranding (matches CountOwnersByBusiness).
 	const lockSQL = `
 		SELECT user_id, role_id
 		FROM business_members
@@ -134,7 +92,6 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 		return fmt.Errorf("authz.EnsureOwnerExistsAfter: iterate member rows: %w", rowsErr)
 	}
 
-	// Apply the simulated change in memory and count remaining owners.
 	postOwners := 0
 	for _, m := range snapshot {
 		isOwner := m.RoleID == ownerRoleID
@@ -144,7 +101,6 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 				return fmt.Errorf("authz.EnsureOwnerExistsAfter: OwnerChangeDemote requires MemberUserID")
 			}
 			if m.UserID == *change.MemberUserID {
-				// Demoted member is no longer an owner.
 				continue
 			}
 		case OwnerChangeRemove:
@@ -152,15 +108,12 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 				return fmt.Errorf("authz.EnsureOwnerExistsAfter: OwnerChangeRemove requires MemberUserID")
 			}
 			if m.UserID == *change.MemberUserID {
-				// Removed member contributes 0.
 				continue
 			}
 		case OwnerChangeRoleEditRemovesOwnerPerm:
 			if change.RoleID == nil {
 				return fmt.Errorf("authz.EnsureOwnerExistsAfter: OwnerChangeRoleEditRemovesOwnerPerm requires RoleID")
 			}
-			// The edited role no longer counts as owner: every member
-			// currently holding *change.RoleID stops being an owner.
 			if m.RoleID == *change.RoleID {
 				continue
 			}
@@ -168,9 +121,7 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 			if change.RoleID == nil {
 				return fmt.Errorf("authz.EnsureOwnerExistsAfter: OwnerChangeRoleDelete requires RoleID")
 			}
-			// The deleted role no longer exists: members holding it stop
-			// being members at all (the FK is ON DELETE RESTRICT in the
-			// schema, but the simulation captures the intent).
+			// FK ON DELETE RESTRICT prevents the delete in practice; the simulation captures intent.
 			if m.RoleID == *change.RoleID {
 				continue
 			}
@@ -188,15 +139,9 @@ func EnsureOwnerExistsAfter(ctx context.Context, tx pgx.Tx, businessID uuid.UUID
 	return nil
 }
 
-// CheckEscalationSubset refuses creating/editing a custom role with
-// permissions not held by the actor. The actor's effective permissions are
-// the union of every permission in their current role.
-//
-// System owner is exempt: when the actor's role is the system owner role,
-// every proposed permission is allowed (owner can grant anything).
-//
-// To indicate the actor is the system owner, callers pass actorRoleID =
-// pkg/domain.SystemRoleOwnerID.
+// CheckEscalationSubset refuses creating/editing a custom role with permissions the actor lacks.
+// System owner (actorRoleID == SystemRoleOwnerID) is exempt.
+// See docs/pkg/authz-invariants.md.
 func CheckEscalationSubset(actorRoleID uuid.UUID, actorPerms, proposedPerms []Permission) error {
 	ownerRoleID, _ := uuid.Parse(domain.SystemRoleOwnerID)
 	if actorRoleID == ownerRoleID {
@@ -208,26 +153,18 @@ func CheckEscalationSubset(actorRoleID uuid.UUID, actorPerms, proposedPerms []Pe
 	}
 	for _, p := range proposedPerms {
 		if _, ok := have[p]; !ok {
-			// Wrap with the missing permission for log/error context;
-			// errors.Is(err, ErrCannotGrantUnownedPermissions) still matches.
+			// Wrap with the missing permission for audit context; errors.Is still matches sentinel.
 			return fmt.Errorf("%w: missing %q", ErrCannotGrantUnownedPermissions, p)
 		}
 	}
 	return nil
 }
 
-// CheckSelfLockout refuses a role edit that would remove the actor's own
-// roles.update or members.update_role permission, leaving them unable to
-// recover from a misedit. The check fires only when actorRoleID ==
-// editedRoleID — editing a different role cannot remove the actor's own
-// permissions.
-//
-// Recovery (when this fires) is "another admin edits the role" or "another
-// owner grants the actor a different role first." single-role-per-
-// membership (PK on business_members) means the only escape is admin help
-// from another user.
+// CheckSelfLockout refuses a role edit that would remove the actor's roles.update or
+// members.update_role permission. Fires only when actorRoleID == editedRoleID.
+// See docs/pkg/authz-invariants.md.
 func CheckSelfLockout(actorUserID, actorRoleID, editedRoleID uuid.UUID, newPerms []Permission) error {
-	_ = actorUserID // reserved for future audit logging; unused by the invariant itself
+	_ = actorUserID // reserved for future audit logging
 	if actorRoleID != editedRoleID {
 		return nil
 	}
@@ -244,11 +181,8 @@ func CheckSelfLockout(actorUserID, actorRoleID, editedRoleID uuid.UUID, newPerms
 	return nil
 }
 
-// CheckSystemRoleImmutable returns ErrSystemRoleImmutable if role.IsSystem == true.
-// (ROLE-02) ships the guard for role-mutation endpoints;
-// no endpoint enforces it directly. Returns a non-sentinel error
-// for nil input (defensive) so misuse fails loudly rather than silently
-// returning nil.
+// CheckSystemRoleImmutable returns ErrSystemRoleImmutable if role.IsSystem.
+// Nil role returns a non-sentinel error so misuse fails loud rather than passing.
 func CheckSystemRoleImmutable(role *domain.Role) error {
 	if role == nil {
 		return fmt.Errorf("authz.CheckSystemRoleImmutable: role is required")
@@ -259,8 +193,7 @@ func CheckSystemRoleImmutable(role *domain.Role) error {
 	return nil
 }
 
-// _ asserts package-level error sentinels are not silently shadowed by a
-// future refactor. Compile-only.
+// Compile-time guard against silent shadowing of the package error sentinels.
 var (
 	_ error = ErrLastOwner
 	_ error = ErrCannotGrantUnownedPermissions
