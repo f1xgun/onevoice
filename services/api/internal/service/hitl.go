@@ -1,24 +1,8 @@
-// Package service — HITL approval resolve logic.
+// Package service exposes the HITL approval resolve logic and the
+// orchestrator-backed tools registry cache.
 //
-// This file implements the core atomic-resolve path behind
-// POST /api/v1/conversations/{id}/pending-tool-calls/{batch_id}/resolve. It
-// enforces every HITL safety property at the business-logic layer:
-//
-//   - Ownership (actor.BusinessID == batch.BusinessID) — cross-tenant → 403
-//   - Decision shape (exactly one decision per call) — bad shape → 400 {missing:[...]}
-//   - Edit validation via pkg/tools.ValidateEditArgs — invalid field → 400 {editable:[...]}
-//   - Atomic status transition via findOneAndUpdate — race → 409 {retry_after_ms}
-//   - TOCTOU re-check via pkg/hitl.Resolve with FRESH business/project maps —
-//     post-pause Forbidden flips to a synthetic "policy_revoked" rejection
-//     (the resolve call still succeeds so the response to the
-//     client is 200; the LLM sees the synthetic rejection on resume)
-//   - tool_name pinning — the server NEVER reads tool_name from the
-//     request body; it always pulls from the persisted PendingCall row
-//
-// Anti-footgun: the AtomicTransitionToResolving primitive (findOneAndUpdate
-// with filter {_id, status: "pending"}) guarantees exactly-one-wins on
-// concurrent resolve attempts. Under contention, the loser gets
-// ErrBatchNotPending which maps to 409 — see handler/hitl.go.
+// See docs/services/hitl.md for business rules, lifecycle, and error
+// semantics.
 package service
 
 import (
@@ -36,29 +20,24 @@ import (
 	"github.com/f1xgun/onevoice/pkg/tools"
 )
 
-// defaultToolsRegistryCacheTTL is the fallback TTL applied when the caller
-// passes a non-positive value to NewToolsRegistryCache. 5 minutes balances
-// freshness of orchestrator tool advertisements against per-request fan-out
-// chatter into /internal/tools.
+// defaultToolsRegistryCacheTTL is the fallback TTL when callers pass a
+// non-positive value to NewToolsRegistryCache.
 const defaultToolsRegistryCacheTTL = 5 * time.Minute
 
-// Typed errors exposed by the HITL service layer. Each maps to a specific HTTP
-// status code in the handler layer (see handler/hitl.go).
-var (
-	// ErrHITLBatchNotFound → 404. The batch_id is not in the collection.
-	ErrHITLBatchNotFound = errors.New("hitl: batch not found")
-	// ErrHITLForbidden → 403. Actor's business does not own the batch.
-	ErrHITLForbidden = errors.New("hitl: cross-tenant access forbidden")
-	// ErrHITLBatchExpired → 410. The batch has passed its TTL window.
-	ErrHITLBatchExpired = errors.New("hitl: approval expired")
-	// ErrHITLBatchAlreadyResolving → 409. Concurrent resolve won the race.
-	ErrHITLBatchAlreadyResolving = errors.New("hitl: batch is already resolving")
-)
+// ErrHITLBatchNotFound is returned when batch_id is not in the collection (→ 404).
+var ErrHITLBatchNotFound = errors.New("hitl: batch not found")
 
-// ErrHITLDecisionsShape is returned when the decisions array doesn't exactly
-// cover every call in the batch. Missing carries the call_ids that were NOT
-// covered by the submitted decisions — the handler echoes this slice in the
-// 400 body so the client can retry with a corrected payload.
+// ErrHITLForbidden is returned when the actor's business does not own the batch (→ 403).
+var ErrHITLForbidden = errors.New("hitl: cross-tenant access forbidden")
+
+// ErrHITLBatchExpired is returned when the batch has passed its TTL window (→ 410).
+var ErrHITLBatchExpired = errors.New("hitl: approval expired")
+
+// ErrHITLBatchAlreadyResolving is returned when a concurrent resolve won the race (→ 409).
+var ErrHITLBatchAlreadyResolving = errors.New("hitl: batch is already resolving")
+
+// ErrHITLDecisionsShape signals that the decisions array does not exactly cover the batch's calls.
+// Missing carries the uncovered call_ids; the handler echoes it into the 400 body.
 type ErrHITLDecisionsShape struct {
 	Missing []string
 }
@@ -67,8 +46,7 @@ func (e *ErrHITLDecisionsShape) Error() string {
 	return fmt.Sprintf("hitl: decisions shape mismatch, missing call_ids: %v", e.Missing)
 }
 
-// ErrHITLRejectReasonTooLong is returned when a reject_reason exceeds the
-// 500-char cap.
+// ErrHITLRejectReasonTooLong signals that a reject_reason exceeds MaxRejectReasonChars.
 type ErrHITLRejectReasonTooLong struct {
 	Max int
 	Got int
@@ -79,15 +57,12 @@ func (e *ErrHITLRejectReasonTooLong) Error() string {
 }
 
 // MaxRejectReasonChars caps the user-supplied reject_reason free-form text.
-// Frontend textarea enforces the same limit.
+// The frontend textarea enforces the same limit.
 const MaxRejectReasonChars = 500
 
-// HITLService wires every HITL primitive (pending-tool-call repo, business
-// repo, project repo, tool registry cache) together behind the Resolve
-// business-logic entry point.
-//
-// HITLService exposes the *orchestratorclient.Client via OrchClient() so
-// callers can invoke StreamResume without re-implementing the HTTP plumbing.
+// HITLService wires the pending-tool-call repo, business/project repos, tool
+// registry cache, and orchestrator client behind the Resolve entry point.
+// See docs/services/hitl.md.
 type HITLService struct {
 	pendingRepo  domain.PendingToolCallRepository
 	businessRepo domain.BusinessRepository
@@ -96,9 +71,7 @@ type HITLService struct {
 	orch         *orchestratorclient.Client
 }
 
-// NewHITLService constructs a HITLService. All five required deps are
-// mandatory — a nil anywhere indicates a wiring bug and is rejected with a
-// panic at construction time.
+// NewHITLService constructs a HITLService; a nil dep is a wiring bug and panics.
 func NewHITLService(
 	pendingRepo domain.PendingToolCallRepository,
 	businessRepo domain.BusinessRepository,
@@ -130,27 +103,23 @@ func NewHITLService(
 	}
 }
 
-// PendingRepo exposes the pending-tool-call repo so the resume-path handler
-// can perform pre-flight status checks (e.g., 409 when batch is resolving).
+// PendingRepo exposes the pending-tool-call repo for the resume-path handler's pre-flight status check.
 func (s *HITLService) PendingRepo() domain.PendingToolCallRepository { return s.pendingRepo }
 
-// BusinessRepo exposes the business repo so the resume-path handler can
-// re-fetch FRESH tool_approvals before forwarding to the orchestrator.
+// BusinessRepo exposes the business repo so the resume handler can re-fetch fresh tool_approvals.
 func (s *HITLService) BusinessRepo() domain.BusinessRepository { return s.businessRepo }
 
 // ProjectRepo exposes the project repo for the same fresh-fetch reason.
 func (s *HITLService) ProjectRepo() domain.ProjectRepository { return s.projectRepo }
 
-// ToolsCache exposes the tools-registry cache so handlers outside this file
-// (GET /api/v1/tools, PUT approvals) can share the cache.
+// ToolsCache exposes the shared tools-registry cache used by tools/approvals handlers.
 func (s *HITLService) ToolsCache() *ToolsRegistryCache { return s.toolsCache }
 
 // OrchClient exposes the shared orchestrator HTTP client.
 func (s *HITLService) OrchClient() *orchestratorclient.Client { return s.orch }
 
 // DecisionInput is the per-call verdict submitted in the resolve body.
-// ID must match the `CallID` of a PendingCall in the batch. Action is one of
-// "approve" | "edit" | "reject".
+// Action is one of "approve" | "edit" | "reject".
 type DecisionInput struct {
 	ID           string                 `json:"id"`
 	Action       string                 `json:"action"`
@@ -168,8 +137,7 @@ type ResolveInput struct {
 }
 
 // ResolvedCall is a single per-call projection in the resolve response.
-// Reason is populated only when Action was rewritten server-side (e.g., by
-// TOCTOU policy_revoked).
+// Reason is populated only when Action was rewritten server-side (e.g. policy_revoked).
 type ResolvedCall struct {
 	ID     string `json:"id"`
 	Action string `json:"action"`
@@ -183,27 +151,9 @@ type ResolveResult struct {
 	Decisions  []ResolvedCall `json:"decisions"`
 }
 
-// Resolve is the atomic business-logic entry point for
-// POST /api/v1/conversations/{id}/pending-tool-calls/{batch_id}/resolve.
-//
-// Steps (order-sensitive):
-//
-//  1. Load the batch (ownership + existence check)
-//  2. Validate decisions shape (must cover every call exactly once)
-//  3. Validate edit arguments against the pinned tool_name's EditableFields
-//     (400 with editable list on violation; client-supplied
-//     tool_name is NEVER read — we always use the persisted PendingCall row)
-//  4. Atomic status transition to "resolving" — 409 on concurrent-resolve
-//     race (anti-footgun)
-//  5. Re-fetch business/project state and re-run pkg/hitl.Resolve against
-//     FRESH maps (TOCTOU). Forbidden-after-pause becomes a synthetic
-//     rejection ("policy_revoked") that the LLM sees on resume.
-//  6. Persist final per-call verdicts via RecordDecisions
-//
-// The response is plain JSON — the client separately opens the
-// /chat/{id}/resume endpoint to get the SSE continuation stream.
+// Resolve is the atomic business-logic entry point for the HITL resolve endpoint.
+// See docs/services/hitl.md for the ordered lifecycle and TOCTOU rules.
 func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveResult, error) {
-	// Step 1: load batch for ownership + existence checks.
 	batch, err := s.pendingRepo.GetByBatchID(ctx, in.BatchID)
 	if err != nil {
 		if errors.Is(err, domain.ErrBatchNotFound) {
@@ -221,7 +171,6 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		return nil, ErrHITLBatchExpired
 	}
 
-	// Step 2: validate decisions shape — exactly one per call.
 	if missing := missingCallIDs(batch.Calls, in.Decisions); len(missing) > 0 {
 		return nil, &ErrHITLDecisionsShape{Missing: missing}
 	}
@@ -231,15 +180,13 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		decisionByID[d.ID] = d
 	}
 
-	// Step 3: edit validation (per call).
-	// tool_name is ALWAYS read from the persisted PendingCall (c.ToolName),
-	// NEVER from the client's body. This is the pinning invariant.
 	for _, c := range batch.Calls {
 		d := decisionByID[c.CallID]
 		if d.Action == "edit" {
+			// tool_name pinned to c.ToolName from the persisted PendingCall;
+			// the client body's tool_name is never read here.
 			editable := s.toolsCache.EditableFields(c.ToolName)
 			if err := tools.ValidateEditArgs(c.ToolName, d.EditedArgs, editable); err != nil {
-				// Typed error — handler maps to 400 with the correct body shape.
 				return nil, err
 			}
 		}
@@ -251,7 +198,7 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		}
 	}
 
-	// Step 4: atomic status transition → 409 on concurrent-resolve race.
+	// Atomic status transition → 409 on concurrent-resolve race (anti-footgun).
 	if _, err := s.pendingRepo.AtomicTransitionToResolving(ctx, in.BatchID); err != nil {
 		if errors.Is(err, domain.ErrBatchNotPending) {
 			return nil, ErrHITLBatchAlreadyResolving
@@ -262,7 +209,6 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		return nil, fmt.Errorf("atomic transition to resolving: %w", err)
 	}
 
-	// Step 5: TOCTOU re-check with FRESH business/project maps.
 	business, err := s.businessRepo.GetByID(ctx, parseUUIDSafe(batch.BusinessID))
 	businessApprovals := map[string]domain.ToolFloor{}
 	if err == nil && business != nil {
@@ -287,30 +233,22 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 
 	for i, c := range batch.Calls {
 		d := decisionByID[c.CallID]
-		// Copy the persisted call verbatim — tool_name, arguments, call_id all
-		// stay pinned. Only verdict/edited_args/reject_reason are mutated.
+		// Copy the persisted call verbatim — tool_name, arguments, call_id stay pinned.
 		finalized[i] = c
 		finalized[i].Verdict = d.Action
 		finalized[i].EditedArgs = d.EditedArgs
 		finalized[i].RejectReason = d.RejectReason
 
 		if d.Action == "approve" || d.Action == "edit" {
-			// Consult the pause-time floor persisted by
-			// the orchestrator rather than s.toolsCache.Floor. The api-side
-			// ToolsRegistryCache is HTTP-backed and lazily warmed (only
-			// GET /api/v1/tools triggers a refresh), so it would spuriously
-			// return Forbidden for valid manual-floor tools whenever the
-			// settings page had not been visited in this api process
-			// lifetime. The persisted FloorAtPause is the faithful echo
-			// of the orchestrator's in-process tools.Registry (always
-			// warm) at the moment of pause; the orchestrator-side resume
-			// goroutine remains the load-bearing TOCTOU recheck
-			// (resume.go: dispatchApprovedCalls).
+			// Use the orchestrator-persisted FloorAtPause rather than
+			// s.toolsCache.Floor: the api-side cache is HTTP-backed and only
+			// warms on GET /api/v1/tools, so it would spuriously return
+			// Forbidden whenever the settings page had not been visited in
+			// this api process lifetime. See docs/services/hitl.md.
 			floor := c.FloorAtPause
 			effective := pkghitl.Resolve(floor, businessApprovals, projectOverrides, c.ToolName)
 			if effective == domain.ToolFloorForbidden {
-				// TOCTOU: flipped to forbidden post-pause. Rewrite to synthetic
-				// rejection — the LLM sees the outcome on resume.
+				// TOCTOU: post-pause forbidden → synthetic rejection; LLM sees it on resume.
 				finalized[i].Verdict = "reject"
 				finalized[i].RejectReason = "policy_revoked"
 				result.Decisions = append(result.Decisions, ResolvedCall{
@@ -327,7 +265,6 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 		})
 	}
 
-	// Step 6: persist finalized decisions on the batch.
 	if err := s.pendingRepo.RecordDecisions(ctx, in.BatchID, finalized); err != nil {
 		return nil, fmt.Errorf("record decisions: %w", err)
 	}
@@ -335,14 +272,8 @@ func (s *HITLService) Resolve(ctx context.Context, in ResolveInput) (*ResolveRes
 	return result, nil
 }
 
-// missingCallIDs returns the call_ids in the batch that are NOT covered by
-// the decisions list. Caller uses the return as the `missing` field in the
-// 400 body shape.
-//
-// Note: we don't separately check for extra decisions — an extra decision
-// whose ID doesn't match any call in the batch implicitly makes some real
-// call missing (by pigeonhole: N calls, N decisions, one doesn't match →
-// some real call ID has no matching decision).
+// missingCallIDs returns the call_ids in the batch not covered by decisions.
+// See docs/services/hitl.md for the strict-shape / pigeonhole rationale.
 func missingCallIDs(calls []domain.PendingCall, decisions []DecisionInput) []string {
 	have := make(map[string]struct{}, len(decisions))
 	for _, d := range decisions {
@@ -354,52 +285,29 @@ func missingCallIDs(calls []domain.PendingCall, decisions []DecisionInput) []str
 			missing = append(missing, c.CallID)
 		}
 	}
-	// Also handle the strict-shape case: different counts flag as mismatch.
 	if len(missing) == 0 && len(decisions) != len(calls) {
-		// Extra decisions (or duplicates) — not missing per se but the shape is
-		// still wrong. We do not surface duplicate IDs here because the batch's
-		// call_ids are unique and decisions map to them; a duplicate decision
-		// simply overwrites in decisionByID.
+		// Extra/duplicate decisions: batch call_ids are unique and decisionByID
+		// overwrites on duplicate IDs, so no "missing" surfaces here.
 		return nil
 	}
 	return missing
 }
 
-// ToolsRegistryCache is a thin in-memory cache over GET /internal/tools on
-// the orchestrator. The cache stores the full registry projection (name,
-// platform, floor, editable_fields, description) with a 5-minute TTL so
-// the resolve handler's edit-validation path stays a map lookup in the hot
-// path.
-//
-// The cache is CONCURRENT-SAFE: sync.RWMutex guards the entries slice and
-// the refresh-in-flight guard. On TTL expiration, the first reader triggers
-// a single refresh via pkg/orchestratorclient; subsequent concurrent readers
-// wait on the in-flight channel and observe the refreshed entries.
-//
-// Cache miss / orchestrator unreachable semantics:
-//   - Stale entries are preferred over empty results (avoid cascading 500s).
-//   - On first-ever load failure, the cache returns empty — every tool then
-//     has nil EditableFields which causes edit validation to reject every
-//     field as not-editable (safe default: fail-closed).
-//
-// ToolsRegistryCache keeps per-locale snapshots so the orchestrator's
-// locale-aware /internal/tools projection round-trips correctly
-// for both RU and EN users. Floor / EditableFields / Has are
-// locale-independent and read from whichever snapshot was loaded last.
+// ToolsRegistryCache is a concurrent-safe in-memory cache over the
+// orchestrator's GET /internal/tools projection with per-locale TTL.
+// See docs/services/hitl.md for stale-on-error and fail-closed semantics.
 type ToolsRegistryCache struct {
 	orch *orchestratorclient.Client // nil when orchestratorURL was empty (test/seed-only mode)
 	ttl  time.Duration
 
 	mu sync.RWMutex
-	// byLocale stores one snapshot per language tag (".String()" keyed —
+	// byLocale stores one snapshot per language tag (Tag.String()-keyed —
 	// "ru", "en", "" for unspecified). Each snapshot independently tracks
 	// its own loadedAt so the TTL works per-locale.
 	byLocale map[string]localeSnapshot
 	inFlight map[string]chan struct{} // refresh-in-flight guard, per locale
 	// latestEntries is the most recently loaded snapshot, used for the
-	// locale-agnostic Floor/EditableFields/Has lookups. Updated on every
-	// successful refresh — Floor data is identical across locales so any
-	// locale's entries are equivalent for those callers.
+	// locale-agnostic Floor/EditableFields/Has lookups.
 	latestEntries []ToolsRegistryEntry
 }
 
@@ -408,19 +316,14 @@ type localeSnapshot struct {
 	loadedAt time.Time
 }
 
-// ToolsRegistryEntry is the per-tool projection returned by GET /api/v1/tools
-// (frontend) and by GET /internal/tools (internal — orchestrator-to-API).
-// Aliased to domain.ToolEntry so the orchestrator and the API share one
-// canonical type instead of redefining the same JSON shape on both sides of
-// the internal/ visibility wall. Full field documentation lives in
+// ToolsRegistryEntry is the per-tool projection shared by GET /api/v1/tools
+// and GET /internal/tools. Aliased to domain.ToolEntry so the orchestrator
+// and the API share one canonical type; field docs live in
 // pkg/domain/tool_entry.go.
 type ToolsRegistryEntry = domain.ToolEntry
 
-// NewToolsRegistryCache constructs a cache bound to orchestratorURL (e.g.,
-// "http://orchestrator:8090"). Pass httpClient=nil to use http.DefaultClient.
-// ttl defaults to 5 minutes when zero. Internally builds
-// an *orchestratorclient.Client; signature preserved so existing callers and
-// tests (including hitl_test.go) compile unchanged.
+// NewToolsRegistryCache constructs a cache bound to orchestratorURL.
+// httpClient=nil uses http.DefaultClient; ttl<=0 defaults to 5 minutes.
 func NewToolsRegistryCache(orchestratorURL string, httpClient *http.Client, ttl time.Duration) *ToolsRegistryCache {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -439,9 +342,7 @@ func NewToolsRegistryCache(orchestratorURL string, httpClient *http.Client, ttl 
 	return c
 }
 
-// Seed pre-populates the cache with a static snapshot, so callers can avoid
-// HTTP round-trips against the orchestrator. The seeded snapshot satisfies
-// every locale — tests typically don't care about the description language.
+// Seed pre-populates the cache with a static snapshot for all supported locales.
 func (c *ToolsRegistryCache) Seed(entries []ToolsRegistryEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -455,10 +356,7 @@ func (c *ToolsRegistryCache) Seed(entries []ToolsRegistryEntry) {
 	c.byLocale["en"] = localeSnapshot{entries: copied, loadedAt: now}
 }
 
-// List returns the cached entries for the requested locale, refreshing if the
-// per-locale TTL elapsed. Safe for concurrent callers. Locale resolved from
-// ctx via i18n.LocaleFromContext (set by middleware.Locale earlier in the
-// HTTP chain).
+// List returns cached entries for the locale on ctx, refreshing on per-locale TTL expiry.
 func (c *ToolsRegistryCache) List(ctx context.Context) []ToolsRegistryEntry {
 	tag := i18n.LocaleFromContext(ctx)
 	key := tag.String()
@@ -484,12 +382,9 @@ func (c *ToolsRegistryCache) List(ctx context.Context) []ToolsRegistryEntry {
 	return out
 }
 
-// Floor returns the ToolFloor for toolName from the cache (or Forbidden if
-// absent). Refreshes on stale. The method is hot-path (called per decision in
-// the resolve loop) so the entries search is a linear scan rather than a
-// preallocated map — 20-30 tools total in v1.3, a loop beats a map's pointer
-// chase and GC pressure. Floor is locale-independent so we use whichever
-// snapshot was loaded most recently.
+// Floor returns the ToolFloor for toolName (Forbidden if absent).
+// Linear scan beats a map at the ~20-30 tools in v1.3; floor data is
+// locale-independent so latestEntries is authoritative.
 func (c *ToolsRegistryCache) Floor(toolName string) domain.ToolFloor {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -501,8 +396,8 @@ func (c *ToolsRegistryCache) Floor(toolName string) domain.ToolFloor {
 	return domain.ToolFloorForbidden
 }
 
-// EditableFields returns the per-tool edit allowlist, or nil for unknown
-// tools. nil means "every edit on this tool is rejected".
+// EditableFields returns the per-tool edit allowlist or nil for unknown tools.
+// nil means every edit on this tool is rejected (fail-closed default).
 func (c *ToolsRegistryCache) EditableFields(toolName string) []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -528,10 +423,8 @@ func (c *ToolsRegistryCache) Has(toolName string) bool {
 	return false
 }
 
-// refresh fetches a fresh snapshot from GET {orchestratorURL}/internal/tools
-// for the given locale key (passed as Accept-Language). On failure, preserves
-// existing entries (stale-safe). Single-in-flight per-locale dedupes
-// concurrent refresh attempts for the same locale.
+// refresh fetches a fresh snapshot for localeKey via GET /internal/tools.
+// On failure, existing entries are preserved (stale-safe).
 func (c *ToolsRegistryCache) refresh(ctx context.Context, localeKey string) {
 	c.mu.Lock()
 	if ch, ok := c.inFlight[localeKey]; ok {
