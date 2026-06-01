@@ -107,11 +107,11 @@ func TestAuditLogHandler_List_HappyPath_EnrichesActor(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Len(t, body.Items, 3)
 	require.Nil(t, body.NextCursor, "page shorter than limit ⇒ no next cursor")
-	require.Equal(t, "rbac.role_granted", body.Items[0].Action)
-	require.Equal(t, "rbac", body.Items[0].ActionCategory)
+	require.Equal(t, "rbac.role_granted", string(body.Items[0].Action))
+	require.Equal(t, "rbac", string(body.Items[0].ActionCategory))
 	require.NotNil(t, body.Items[0].ActorEmail)
-	require.Equal(t, "viewer@test.local", *body.Items[0].ActorEmail)
-	require.Equal(t, actor, *body.Items[0].ActorID)
+	require.Equal(t, "viewer@test.local", string(*body.Items[0].ActorEmail))
+	require.Equal(t, actor, *body.Items[0].ActorId)
 }
 
 // Full-page response: len(rows) == limit ⇒ NextCursor is set and round-trips
