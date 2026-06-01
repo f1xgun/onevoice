@@ -50,10 +50,56 @@ func NewReviewHandler(reviewService ReviewService) (*ReviewHandler, error) {
 	}, nil
 }
 
-// ReviewListResponse represents the review list response
-type ReviewListResponse struct {
-	Reviews []domain.Review `json:"reviews"`
-	Total   int             `json:"total"`
+// domainReviewToOpenAPI maps the internal domain.Review to the spec-owned
+// openapi.Review wire shape. BusinessID parses string→UUID (corrupt rows
+// fall back to uuid.Nil and are logged). DraftGeneratedAt switches from
+// always-emitted-zero (the zero time.Time round-trips as the legacy null-ish
+// "0001-01-01T00:00:00Z") to omitted when zero — this matches the spec's
+// optional contract: domain still stores the zero value, but the wire now
+// drops the field when generation never happened.
+func domainReviewToOpenAPI(r domain.Review) openapi.Review {
+	businessID, err := uuid.Parse(r.BusinessID)
+	if err != nil {
+		slog.Warn("review BusinessID not a valid UUID", "reviewID", r.ID, "raw", r.BusinessID, "error", err)
+		businessID = uuid.Nil
+	}
+
+	out := openapi.Review{
+		Id:          r.ID,
+		BusinessId:  businessID,
+		Platform:    r.Platform,
+		ExternalId:  r.ExternalID,
+		AuthorName:  r.AuthorName,
+		Rating:      r.Rating,
+		Text:        r.Text,
+		ReplyStatus: openapi.ReviewReplyStatus(r.ReplyStatus),
+		CreatedAt:   r.CreatedAt,
+	}
+	if r.ReplyText != "" {
+		v := r.ReplyText
+		out.ReplyText = &v
+	}
+	if r.PlatformMeta != nil {
+		m := r.PlatformMeta
+		out.PlatformMeta = &m
+	}
+	if r.DraftReply != "" {
+		v := r.DraftReply
+		out.DraftReply = &v
+	}
+	if r.DraftStatus != "" {
+		v := openapi.ReviewDraftStatus(r.DraftStatus)
+		out.DraftStatus = &v
+	}
+	if !r.DraftGeneratedAt.IsZero() {
+		v := r.DraftGeneratedAt
+		out.DraftGeneratedAt = &v
+	}
+	if r.DraftError != "" {
+		v := r.DraftError
+		out.DraftError = &v
+	}
+	return out
 }
 
 // ListReviews handles GET /api/v1/reviews
@@ -103,8 +149,13 @@ func (h *ReviewHandler) ListReviews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ReviewListResponse{
-		Reviews: reviews,
+	out := make([]openapi.Review, 0, len(reviews))
+	for _, rv := range reviews {
+		out = append(out, domainReviewToOpenAPI(rv))
+	}
+
+	writeJSON(w, http.StatusOK, openapi.ReviewListResponse{
+		Reviews: out,
 		Total:   total,
 	})
 }
@@ -139,7 +190,7 @@ func (h *ReviewHandler) GetReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, review)
+	writeJSON(w, http.StatusOK, domainReviewToOpenAPI(*review))
 }
 
 // ReplyToReview handles PUT /api/v1/reviews/{id}/reply
