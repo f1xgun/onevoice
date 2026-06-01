@@ -19,20 +19,15 @@ import (
 )
 
 // roleCacheInvalidator is the narrow cache interface RolesHandler needs.
-// InvalidateMember handles the fanout after role-delete-with-reassign:
-// the membership cache still holds the OLD role_id until evicted.
+// InvalidateMember handles the fanout after role-delete-with-reassign: the
+// membership cache still holds the OLD role_id until evicted.
 type roleCacheInvalidator interface {
 	InvalidateRole(businessID, roleID uuid.UUID)
 	InvalidateMember(businessID, userID uuid.UUID)
 }
 
 // RolesHandler serves the business role CRUD + MyPermissions endpoints.
-//
-// Response wire-shape discriminator:
-//   - List returns roleResponseItem with member_count populated (incl. 0).
-//   - Create / Update omit member_count via `omitempty` (fresh role = 0;
-//     update doesn't change count).
-//   - Description is plain string (no omitempty) — always present, even "".
+// See docs/api/handlers/roles.md.
 type RolesHandler struct {
 	roleRepo       domain.RoleRepository
 	membershipRepo domain.BusinessMembershipRepository
@@ -41,9 +36,7 @@ type RolesHandler struct {
 	audit          audit.Logger
 }
 
-// NewRolesHandler constructs a RolesHandler. All dependencies are required.
-// auditLogger emits rbac.role_created / role_updated / role_deleted AFTER
-// tx.Commit succeeds.
+// NewRolesHandler constructs a RolesHandler; every dep is required.
 func NewRolesHandler(
 	rr domain.RoleRepository,
 	mr domain.BusinessMembershipRepository,
@@ -75,9 +68,8 @@ func NewRolesHandler(
 	}, nil
 }
 
-// roleResponseItem is the wire shape for a single role. MemberCount is a
-// pointer so List (which has counts) can populate it while Create/Update
-// (which don't) can omit it via the `omitempty` tag.
+// roleResponseItem is the wire shape for a single role.
+// MemberCount is a pointer with omitempty so List populates it and Create/Update omit it.
 type roleResponseItem struct {
 	ID          uuid.UUID  `json:"id"`
 	BusinessID  *uuid.UUID `json:"business_id"`
@@ -88,13 +80,12 @@ type roleResponseItem struct {
 	MemberCount *int       `json:"member_count,omitempty"`
 }
 
-// maxPermissionsPerRole caps the permissions[] array on POST/PATCH at 100 to
-// bound serialization cost and protect against bloat. Registry has <100 perms.
+// maxPermissionsPerRole caps the permissions[] array on POST/PATCH to bound
+// serialization cost (the static registry has <100 perms).
 const maxPermissionsPerRole = 100
 
-// List handles GET /api/v1/businesses/{id}/roles (PermRolesRead). Returns
-// system + custom roles ordered by is_system DESC, name ASC, each with
-// member_count from the ListByBusinessWithCounts LEFT JOIN.
+// List handles GET /api/v1/businesses/{id}/roles (PermRolesRead).
+// See docs/api/handlers/roles.md.
 func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -136,21 +127,11 @@ type createRoleRequest struct {
 	Permissions []string `json:"permissions"`
 }
 
-// Create handles POST /api/v1/businesses/{id}/roles. Permission: PermRolesCreate.
+// Create handles POST /api/v1/businesses/{id}/roles (PermRolesCreate).
+// See docs/api/handlers/roles.md.
 //
-// Order: authz.Can → decode → validation → CheckEscalationSubset (no self-lockout
-// since actor doesn't hold the new role) → RepeatableRead tx → CreateInTx → commit.
-// No InvalidateRole on create — no existing memberships reference this role.
-//
-// The query param `?clone_from=` is IGNORED
-// server-side. The frontend handles all clone semantics:
-// when the user picks a source role to clone, the editor pre-fills the
-// permissions array on the client and then POSTs the result here exactly
-// as if the user had built it from scratch. body.permissions is the
-// authoritative source; CheckEscalationSubset already gates the security
-// envelope. The backend does NOT parse `?clone_from=` — a malformed value
-// is silently accepted. Documented for frontend symmetry only; remove if
-// a future contract change splits cloning into a dedicated POST route.
+// Note: `?clone_from=` is intentionally ignored server-side — the frontend
+// pre-fills permissions on the client and POSTs the result here.
 func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -186,8 +167,7 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Persist the deduplicated slice (mirrors `proposed`), not raw request
-	// — duplicate keys must not leak into the JSONB column.
+	// Persist the deduplicated slice — duplicates must not leak into JSONB.
 	dedupedPerms := typedPermsToStrings(proposed)
 
 	businessID := bc.BusinessID
@@ -226,8 +206,6 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// No InvalidateRole on Create — no existing memberships reference this
 	// brand-new role, so no cache entry can be stale.
 
-	// emit rbac.role_created AFTER tx.Commit.
-	// role.Permissions is the deduplicated slice persisted to JSONB.
 	audit.LogRoleCreated(r.Context(), h.audit, bc.BusinessID, bc.UserID, role.ID, role.Name, role.Permissions)
 
 	slog.InfoContext(r.Context(), "role created",
@@ -254,10 +232,8 @@ type updateRoleRequest struct {
 	Permissions []string `json:"permissions"`
 }
 
-// Update handles PATCH /api/v1/businesses/{id}/roles/{roleId}. Permission: PermRolesUpdate.
-//
-// Critical ordering: InvalidateRole runs AFTER tx.Commit only — invalidating before
-// commit would expose stale-then-rolled-back permissions on cache miss.
+// Update handles PATCH /api/v1/businesses/{id}/roles/{roleId} (PermRolesUpdate).
+// See docs/api/handlers/roles.md.
 func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -298,10 +274,8 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAuthzInvariantError(r.Context(), w, "update_role.lookup", err)
 		return
 	}
-	// Tenant isolation (pattern from members.go:200-203). System roles
-	// (BusinessID == nil) fall through to CheckSystemRoleImmutable below which
-	// returns 422 — but only after the cross-tenant check rules out custom
-	// roles owned by a different business.
+	// Cross-tenant masquerade as 404 — runs BEFORE CheckSystemRoleImmutable so
+	// roles owned by another business never reveal themselves as "system" 422.
 	if existing.BusinessID != nil && *existing.BusinessID != bc.BusinessID {
 		writeJSONError(w, http.StatusNotFound, "role_not_found")
 		return
@@ -321,7 +295,7 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	existing.Name = name
 	existing.Description = req.Description
-	// Persist the deduplicated slice so subsequent reads can't observe duplicates.
+	// Persist deduplicated slice — reads must never observe duplicates.
 	existing.Permissions = typedPermsToStrings(proposed)
 	existing.UpdatedBy = &bc.UserID
 
@@ -347,8 +321,8 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// InvalidateRole MUST run after commit; otherwise the role-perms cache could
-	// serve stale permissions for up to the TTL (~30s) if commit rolls back.
+	// InvalidateRole AFTER commit only — pre-commit eviction would cache
+	// stale-then-rolled-back permissions for up to the ~30s TTL.
 	h.invalidator.InvalidateRole(bc.BusinessID, roleID)
 
 	audit.LogRoleUpdated(r.Context(), h.audit, bc.BusinessID, bc.UserID, roleID, existing.Name, existing.Permissions)
@@ -369,11 +343,8 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Delete handles DELETE /api/v1/businesses/{id}/roles/{roleId}?reassign_to=<uuid>.
-// Permission: PermRolesDelete. SPEC ROLE-06.
-//
-// affectedUserIDs MUST be captured BEFORE the tx (the DELETE deletes the rows);
-// InvalidateRole + per-member InvalidateMember MUST run AFTER commit only.
+// Delete handles DELETE /api/v1/businesses/{id}/roles/{roleId}?reassign_to=<uuid> (PermRolesDelete).
+// See docs/api/handlers/roles.md.
 func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
@@ -397,7 +368,7 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if parsed == roleID {
-			// -10 — self-reassign would orphan members.
+			// Self-reassign would orphan members on the doomed role.
 			writeJSONError(w, http.StatusBadRequest, "invalid_reassign_to")
 			return
 		}
@@ -410,7 +381,7 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing.BusinessID != nil && *existing.BusinessID != bc.BusinessID {
-		// -02 — cross-tenant rejection masquerades as 404.
+		// Cross-tenant rejection masquerades as 404.
 		writeJSONError(w, http.StatusNotFound, "role_not_found")
 		return
 	}
@@ -425,14 +396,12 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if memberCount > 0 && reassignTo == nil {
-		// -05 — refuse before opening tx.
+		// Role-in-use: refuse before opening the tx (no `?reassign_to=` supplied).
 		writeAuthzInvariantError(r.Context(), w, "delete_role.in_use", domain.ErrRoleInUse)
 		return
 	}
 
-	// When reassignment is requested and there are members to reassign,
-	// validate the target role exists, is in-tenant, and is grantable by the
-	// actor (11).
+	// Validate target role: exists, in-tenant, AND grantable by the actor.
 	if reassignTo != nil && memberCount > 0 {
 		target, err := h.roleRepo.GetByID(r.Context(), *reassignTo)
 		if err != nil {
@@ -459,10 +428,9 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Capture the user IDs that WILL be reassigned. Open Question A2:
-	// InvalidateRole evicts only the role-perms entry; the per-member
-	// membership cache still holds the OLD role_id. We must fanout
-	// InvalidateMember per affected user AFTER commit succeeds.
+	// Capture affected user IDs BEFORE the tx — the DELETE deletes the rows,
+	// so reading after commit returns the NEW role_id. Needed for the per-member
+	// membership cache fanout after commit.
 	var affectedUserIDs []uuid.UUID
 	if memberCount > 0 && reassignTo != nil {
 		affectedUserIDs, err = h.membershipRepo.ListUserIDsByRole(r.Context(), bc.BusinessID, roleID)
@@ -502,18 +470,14 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	// RESEARCH Pitfall 2 — invalidate AFTER commit only.
+	// InvalidateRole AFTER commit only — pre-commit eviction would cache stale state.
 	h.invalidator.InvalidateRole(bc.BusinessID, roleID)
-	// Open Question A2 — InvalidateRole evicts only role-perms entries; the
-	// membership cache still holds the OLD role_id. Fanout per-user
-	// InvalidateMember so the next Can pulls fresh membership.
+	// InvalidateRole evicts only the role-perms cache; the membership cache
+	// still pins the OLD role_id. Fanout so the next Can pulls fresh membership.
 	for _, uid := range affectedUserIDs {
 		h.invalidator.InvalidateMember(bc.BusinessID, uid)
 	}
 
-	// emit rbac.role_deleted AFTER tx.Commit +
-	// cache invalidation. Captures blast-radius (memberCount) and where
-	// members were reassigned (nil if no members held the role).
 	audit.LogRoleDeleted(r.Context(), h.audit, bc.BusinessID, bc.UserID, roleID, existing.Name, reassignTo, memberCount)
 
 	slog.InfoContext(r.Context(), "role deleted",
@@ -533,31 +497,20 @@ type myPermissionsResponse struct {
 	Permissions []string `json:"permissions"`
 }
 
-// MyPermissions handles GET /api/v1/businesses/{id}/me/permissions. No
-// additional permission gate beyond RequireBusinessAccess — any member can
-// read their own permissions. SPEC UI-RBAC-08.
+// MyPermissions handles GET /api/v1/businesses/{id}/me/permissions.
+// See docs/api/handlers/roles.md.
 //
-// Open Question A6 resolution (RESEARCH Option 1): read from bc.Permissions
-// directly. The middleware-loaded permission slice is already scoped to the
-// actor + active business. The 60s frontend refetchInterval combined with the
-// 30s server cache TTL provides the freshness signal without a fresh DB hit.
-// -08 — no path to query another user.
-//
-// (review): the absence of an authz.Can gate here is BY
-// DESIGN — any active member can read their own effective permissions. The
-// RequireBusinessAccess middleware on the parent /businesses/{id} route still
-// rejects non-members (404) and suspended members (403 forbidden_suspended)
-// before the handler runs. See TestRBACCoverage_SuspendedMember_MyPermissions
-// for the regression covering the suspended path.
+// No additional authz.Can gate — BY DESIGN. RequireBusinessAccess on the parent
+// route already rejects non-members (404) and suspended members (403); any
+// active member can read their own permissions.
 func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
 	bc, ok := authz.BusinessContextFromCtx(r.Context())
 	if !ok {
 		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 		return
 	}
-	// Defensive copy — bc.Permissions backs the middleware LRU cache slice.
-	// Aliasing it would share the cached pointer with the JSON encoder and
-	// race with cache mutations. Cost O(N) for N<100.
+	// Defensive copy — bc.Permissions backs the middleware LRU cache; aliasing
+	// it into the JSON encoder would race with cache mutations.
 	perms := make([]string, len(bc.Permissions))
 	for i, p := range bc.Permissions {
 		perms[i] = string(p)
@@ -565,8 +518,7 @@ func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, myPermissionsResponse{Permissions: perms})
 }
 
-// parseRoleIDParam extracts and validates the {roleId} URL param. Returns
-// (uuid.Nil, false) when unparseable, having already written 400.
+// parseRoleIDParam extracts {roleId}; writes 400 invalid_role_id on failure.
 func parseRoleIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	raw := chi.URLParam(r, "roleId")
 	id, err := uuid.Parse(raw)
@@ -577,9 +529,7 @@ func parseRoleIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) 
 	return id, true
 }
 
-// typedPermsToStrings converts []authz.Permission back to []string for
-// persistence. toTypedPerms guarantees order-preserved uniqueness so the
-// JSONB column never contains duplicates.
+// typedPermsToStrings converts []authz.Permission back to []string for persistence.
 func typedPermsToStrings(perms []authz.Permission) []string {
 	out := make([]string, len(perms))
 	for i, p := range perms {
@@ -588,10 +538,8 @@ func typedPermsToStrings(perms []authz.Permission) []string {
 	return out
 }
 
-// toTypedPerms validates every entry against the authz registry and
-// returns the typed slice. Deduplicates (first-occurrence wins) — otherwise
-// downstream jsonb_array_elements would double-count. Returns (nil, err)
-// when an entry is unknown (caller maps to 400 invalid_permission).
+// toTypedPerms validates entries against the authz registry and deduplicates
+// (first-occurrence wins). Returns (nil, err) on unknown entry; caller maps to 400.
 func toTypedPerms(strs []string) ([]authz.Permission, error) {
 	valid := make(map[string]struct{})
 	for _, group := range authz.AllPermissions() {
