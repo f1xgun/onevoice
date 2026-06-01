@@ -8,18 +8,18 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
-// ErrorResponse represents a JSON error response
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
-// ValidationErrorResponse represents a validation error response with field details
-type ValidationErrorResponse struct {
-	Error  string            `json:"error"`
-	Fields map[string]string `json:"fields"`
-}
+// Re-export spec-owned error envelopes under the historic handler.* names so
+// the existing test suite continues to compile against named handler types.
+// Wire shape (keys + nesting) is identical to the legacy local definitions —
+// both `error` and `fields` are required, matching writeJSONError /
+// writeValidationError output.
+type (
+	ErrorResponse           = openapi.ErrorResponse
+	ValidationErrorResponse = openapi.ValidationErrorResponse
+)
 
 // writeJSON writes a JSON response with the given status code and data
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {

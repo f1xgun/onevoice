@@ -366,6 +366,53 @@ components:
           type: string
         detail:
           type: string
+    ValidationErrorResponse:
+      description: |
+        Field-level validation error envelope; emitted by writeValidationError.
+        `error` carries a localized summary; `fields` maps field name to
+        localized per-field message keyed by validator/v10 tag.
+      type: object
+      required:
+      - error
+      - fields
+      properties:
+        error:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+    PasswordResetErrorResponse:
+      description: |
+        Discriminated error envelope emitted by writePasswordResetError.
+        `code` is one of `reset_token_invalid` / `reset_token_expired` /
+        `password_too_weak`; `message` is a server-localized RU string the
+        frontend renders as-is when no i18n catalog entry matches.
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    InvitationStateErrorResponse:
+      description: |
+        410-gone envelope emitted by writeInvitationStateError. `error`
+        is always the literal "gone"; `reason` discriminates the cause
+        (`expired` / `revoked` / `accepted` / `unknown`) for the
+        frontend refusal matrix. `unknown` is the safe default for
+        ErrInvitationNotFound — uniform 410 defends against token
+        existence enumeration.
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string
+        reason:
+          type: string
     LoginRequest:
       type: object
       required:
@@ -649,6 +696,12 @@ components:
           items:
             $ref: '#/components/schemas/ConsentRecord'
     ConsentRecord:
+      description: |
+        Per-policy consent ledger row returned by GET /users/me/consents.
+        `withdrawnAt` is optional (`omitempty`): the field is OMITTED from
+        the JSON envelope when the row is active. Frontend treats a missing
+        `withdrawnAt` as "consent still in force". `sha256` is also optional
+        (early ledger rows may not carry the policy hash).
       type: object
       required:
       - slug
@@ -667,7 +720,6 @@ components:
         withdrawnAt:
           type: string
           format: date-time
-          nullable: true
     DeleteAccountRequest:
       type: object
       required:

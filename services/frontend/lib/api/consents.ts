@@ -25,9 +25,12 @@ export interface ConsentPolicy {
 export interface ConsentRecord {
   slug: PolicySlug;
   version: string;
-  sha256: string;
+  // Both `sha256` and `withdrawnAt` are spec-side optional (omitempty).
+  // Backend OMITS the field when the value is absent (empty string for the
+  // hash, nil time for active rows) — frontend treats missing == not-set.
+  sha256?: string;
   acceptedAt: string;
-  withdrawnAt: string | null;
+  withdrawnAt?: string;
 }
 
 export interface ConsentError {

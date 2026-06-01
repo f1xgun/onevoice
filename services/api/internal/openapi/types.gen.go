@@ -538,13 +538,17 @@ type ConnectYandexRequest struct {
 	Permalink    *string `json:"permalink,omitempty"`
 }
 
-// ConsentRecord defines model for ConsentRecord.
+// ConsentRecord Per-policy consent ledger row returned by GET /users/me/consents.
+// `withdrawnAt` is optional (`omitempty`): the field is OMITTED from
+// the JSON envelope when the row is active. Frontend treats a missing
+// `withdrawnAt` as "consent still in force". `sha256` is also optional
+// (early ledger rows may not carry the policy hash).
 type ConsentRecord struct {
 	AcceptedAt  time.Time  `json:"acceptedAt" validate:"required"`
 	Sha256      *string    `json:"sha256,omitempty"`
 	Slug        string     `json:"slug" validate:"required"`
 	Version     string     `json:"version" validate:"required"`
-	WithdrawnAt *time.Time `json:"withdrawnAt"`
+	WithdrawnAt *time.Time `json:"withdrawnAt,omitempty"`
 }
 
 // ConsentRequiredResponse defines model for ConsentRequiredResponse.
@@ -806,6 +810,17 @@ type InvitationPreview struct {
 	RoleName     string             `json:"role_name" validate:"required"`
 }
 
+// InvitationStateErrorResponse 410-gone envelope emitted by writeInvitationStateError. `error`
+// is always the literal "gone"; `reason` discriminates the cause
+// (`expired` / `revoked` / `accepted` / `unknown`) for the
+// frontend refusal matrix. `unknown` is the safe default for
+// ErrInvitationNotFound — uniform 410 defends against token
+// existence enumeration.
+type InvitationStateErrorResponse struct {
+	Error  string  `json:"error" validate:"required"`
+	Reason *string `json:"reason,omitempty"`
+}
+
 // ListConsentsResponse defines model for ListConsentsResponse.
 type ListConsentsResponse struct {
 	Consents []ConsentRecord `json:"consents" validate:"required"`
@@ -906,6 +921,15 @@ type MoveConversationRequest struct {
 // MyPermissionsResponse defines model for MyPermissionsResponse.
 type MyPermissionsResponse struct {
 	Permissions []string `json:"permissions" validate:"required"`
+}
+
+// PasswordResetErrorResponse Discriminated error envelope emitted by writePasswordResetError.
+// `code` is one of `reset_token_invalid` / `reset_token_expired` /
+// `password_too_weak`; `message` is a server-localized RU string the
+// frontend renders as-is when no i18n catalog entry matches.
+type PasswordResetErrorResponse struct {
+	Code    string `json:"code" validate:"required"`
+	Message string `json:"message" validate:"required"`
 }
 
 // PendingApproval defines model for PendingApproval.
@@ -1544,6 +1568,14 @@ type VKCommunity struct {
 	Name         string  `json:"name" validate:"required"`
 	Photo50      *string `json:"photo_50,omitempty"`
 	ScreenName   string  `json:"screen_name" validate:"required"`
+}
+
+// ValidationErrorResponse Field-level validation error envelope; emitted by writeValidationError.
+// `error` carries a localized summary; `fields` maps field name to
+// localized per-field message keyed by validator/v10 tag.
+type ValidationErrorResponse struct {
+	Error  string            `json:"error" validate:"required"`
+	Fields map[string]string `json:"fields" validate:"required"`
 }
 
 // VerifyConfirmRequest defines model for VerifyConfirmRequest.
