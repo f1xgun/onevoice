@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/f1xgun/onevoice/pkg/llm"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // maxBillingPayloadBytes caps the request body size on the internal billing
@@ -42,14 +43,6 @@ func NewInternalBillingHandler(b BillingService, log *slog.Logger) *InternalBill
 		log = slog.Default()
 	}
 	return &InternalBillingHandler{billing: b, log: log}
-}
-
-// billingErrorBody is the JSON envelope returned on 4xx and 5xx. The shape
-// matches pkg/billingclient's error-classification matrix: `error` of
-// "invalid_payload" → ErrInvalidPayload; "transient" → ErrTransient.
-type billingErrorBody struct {
-	Error  string `json:"error"`
-	Detail string `json:"detail,omitempty"`
 }
 
 // LogUsage handles POST /internal/v1/billing/usage_logs.
@@ -105,11 +98,16 @@ func (h *InternalBillingHandler) LogUsage(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// writeBillingError emits the {"error":..,"detail":..} envelope.
+// writeBillingError emits the {"error":..,"detail":..} envelope. `detail` is
+// rendered via omitempty so an empty string disappears from the wire.
 func writeBillingError(w http.ResponseWriter, status int, code, detail string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(billingErrorBody{Error: code, Detail: detail})
+	body := openapi.BillingErrorResponse{Error: code}
+	if detail != "" {
+		body.Detail = &detail
+	}
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 // dailySpendDateFormat is the wire format for the date query parameter on
@@ -117,11 +115,6 @@ func writeBillingError(w http.ResponseWriter, status int, code, detail string) {
 // so callers in non-UTC time zones still land on the UTC calendar day they
 // asked for.
 const dailySpendDateFormat = "2006-01-02"
-
-// dailySpendBody is the JSON envelope returned on 200.
-type dailySpendBody struct {
-	DailySpendUSD float64 `json:"daily_spend_usd"`
-}
 
 // GetDailySpend handles GET /internal/v1/billing/daily_spend.
 //
@@ -181,5 +174,5 @@ func (h *InternalBillingHandler) GetDailySpend(w http.ResponseWriter, r *http.Re
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(dailySpendBody{DailySpendUSD: spend})
+	_ = json.NewEncoder(w).Encode(openapi.DailySpendResponse{DailySpendUsd: spend})
 }

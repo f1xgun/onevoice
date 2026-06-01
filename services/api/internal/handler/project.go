@@ -13,6 +13,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -44,60 +45,50 @@ func (h *ProjectHandler) SetToolsCache(c ToolsCache) {
 	h.toolsCache = c
 }
 
-// projectRequest is the JSON shape for both Create and Update.
-//
-// ApprovalOverrides is a map of tool names to floor
-// strings. Valid values are "auto" | "manual" | "inherit". "inherit" is
-// stripped from the map before persistence — key-absence is the canonical
-// encoding of inherit. The handler does this translation in
-// buildApprovalOverrides() below.
-type projectRequest struct {
-	Name              string            `json:"name"`
-	Description       string            `json:"description"`
-	SystemPrompt      string            `json:"systemPrompt"`
-	WhitelistMode     string            `json:"whitelistMode"`
-	AllowedTools      []string          `json:"allowedTools"`
-	ApprovalOverrides map[string]string `json:"approvalOverrides"`
-	QuickActions      []string          `json:"quickActions"`
-}
-
-// toInput converts the wire-format request into the service-layer input struct.
-// The service layer owns validation of name/prompt-length/mode/empty-explicit.
-// Edit-field validation for approvalOverrides lives in the handler since it
-// requires the tools cache which the service doesn't have.
-func (req projectRequest) toInput(overrides map[string]domain.ToolFloor) service.CreateProjectInput {
-	return service.CreateProjectInput{
+// projectRequestToInput converts the wire-format openapi.ProjectRequest into
+// the service-layer input struct. The service layer owns validation of
+// name/prompt-length/mode/empty-explicit. Edit-field validation for
+// approvalOverrides lives in the handler since it requires the tools cache.
+func projectRequestToInput(req openapi.ProjectRequest, overrides map[string]domain.ToolFloor) service.CreateProjectInput {
+	in := service.CreateProjectInput{
 		Name:              req.Name,
-		Description:       req.Description,
-		SystemPrompt:      req.SystemPrompt,
-		WhitelistMode:     domain.WhitelistMode(req.WhitelistMode),
-		AllowedTools:      req.AllowedTools,
+		Description:       strDeref(req.Description),
+		SystemPrompt:      strDeref(req.SystemPrompt),
 		ApprovalOverrides: overrides,
-		QuickActions:      req.QuickActions,
 	}
+	if req.WhitelistMode != nil {
+		in.WhitelistMode = domain.WhitelistMode(*req.WhitelistMode)
+	}
+	if req.AllowedTools != nil {
+		in.AllowedTools = *req.AllowedTools
+	}
+	if req.QuickActions != nil {
+		in.QuickActions = *req.QuickActions
+	}
+	return in
 }
 
-// buildApprovalOverrides validates and strips inherit-valued entries from the
-// request's approvalOverrides map. Returns (overrides, httpStatus, errorBody).
+// buildApprovalOverrides validates and strips inherit-valued entries from
+// the request's approvalOverrides map. Returns (overrides, httpStatus, errorBody).
 //   - Unknown tool name → (nil, 400, {"error":"unknown tool: X"})
 //   - Invalid value (not in {auto,manual,inherit}) → (nil, 400, {"error":"..."})
 //   - "inherit" → key stripped from the returned map (inherit == absence)
 //
 // When the handler's toolsCache is nil, returns (nil, 503, ...) because we
 // cannot validate without the live registry.
-func (h *ProjectHandler) buildApprovalOverrides(body map[string]string) (overrides map[string]domain.ToolFloor, status int, errBody map[string]string) {
-	if len(body) == 0 {
+func (h *ProjectHandler) buildApprovalOverrides(body *map[string]openapi.ProjectRequestApprovalOverrides) (overrides map[string]domain.ToolFloor, status int, errBody map[string]string) {
+	if body == nil || len(*body) == 0 {
 		return nil, 0, nil
 	}
 	if h.toolsCache == nil {
 		return nil, http.StatusServiceUnavailable, map[string]string{"error": "tool registry unavailable"}
 	}
-	out := make(map[string]domain.ToolFloor, len(body))
-	for toolName, val := range body {
+	out := make(map[string]domain.ToolFloor, len(*body))
+	for toolName, val := range *body {
 		if !h.toolsCache.Has(toolName) {
 			return nil, http.StatusBadRequest, map[string]string{"error": "unknown tool: " + toolName}
 		}
-		switch val {
+		switch string(val) {
 		case "auto":
 			out[toolName] = domain.ToolFloorAuto
 		case "manual":
@@ -157,7 +148,7 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req projectRequest
+	var req openapi.ProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -168,7 +159,7 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := h.projectService.Create(r.Context(), bc.BusinessID, bc.UserID, req.toInput(overrides))
+	project, err := h.projectService.Create(r.Context(), bc.BusinessID, bc.UserID, projectRequestToInput(req, overrides))
 	if err != nil {
 		h.mapProjectError(r.Context(), w, err, "create")
 		return
@@ -239,7 +230,7 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req projectRequest
+	var req openapi.ProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -250,7 +241,7 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := h.projectService.Update(r.Context(), bc.BusinessID, id, bc.UserID, req.toInput(overrides))
+	project, err := h.projectService.Update(r.Context(), bc.BusinessID, id, bc.UserID, projectRequestToInput(req, overrides))
 	if err != nil {
 		h.mapProjectError(r.Context(), w, err, "update")
 		return

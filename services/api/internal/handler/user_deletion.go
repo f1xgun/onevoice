@@ -19,9 +19,11 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // AccountDeletionServiceAPI is the slice of *service.AccountDeletionService
@@ -55,33 +57,12 @@ func NewUserDeletionHandler(svc AccountDeletionServiceAPI, allowedOrigins []stri
 	}
 }
 
-// DeleteAccountRequest is the body shape for DELETE /api/v1/users/me.
-// The plaintext password is re-verified server-side to defend against
-// XSS-stolen JWT scenarios (T-DEL-07).
-type DeleteAccountRequest struct {
-	Password string `json:"password" validate:"required,min=1"`
-}
+// soleOwnerCode is the only valid value for SoleOwnerResponse.Code; the
+// openapi enum string-alias requires a typed value.
+const soleOwnerCode = openapi.SoleOwnerResponseCode("sole_owner_of_businesses")
 
-// soleOwnerErrorBody is the 409 response when the user is the sole
-// OWNER of one or more businesses. Mirrors UI-SPEC Surface 9 + the
-// 21-CROSS-PLAN-CONTRACTS code constant.
-type soleOwnerErrorBody struct {
-	Code       string                       `json:"code"`
-	Businesses []soleOwnerBusinessRespEntry `json:"businesses"`
-}
-
-type soleOwnerBusinessRespEntry struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
-}
-
-// pendingDeletionErrorBody is the 423 response for the idempotency
-// guard on DELETE /users/me when deletion is already pending.
-type pendingDeletionErrorBody struct {
-	Code         string `json:"code"`
-	DeletionDate string `json:"deletionDate"`
-	RestoreURL   string `json:"restoreUrl"`
-}
+// pendingDeletionCode is the only valid value for PendingDeletionResponse.Code.
+const pendingDeletionCode = openapi.PendingDeletionResponseCode("account_pending_deletion")
 
 // Delete handles DELETE /api/v1/users/me. See <api_contract> in the
 // plan for the canonical response shapes (204 / 401 / 409 / 423).
@@ -92,7 +73,7 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req DeleteAccountRequest
+	var req openapi.DeleteAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -118,10 +99,10 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, domain.ErrDeletionAlreadyPending):
 		scheduledAt, _ := h.service.GetScheduledDeletionAt(r.Context(), userID)
-		writeJSON(w, http.StatusLocked, pendingDeletionErrorBody{
-			Code:         "account_pending_deletion",
+		writeJSON(w, http.StatusLocked, openapi.PendingDeletionResponse{
+			Code:         pendingDeletionCode,
 			DeletionDate: scheduledAt.UTC().Format(time.RFC3339),
-			RestoreURL:   "/settings/account",
+			RestoreUrl:   "/settings/account",
 		})
 		return
 	case errors.Is(err, domain.ErrUserNotFound):
@@ -139,12 +120,15 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = soleOwnerErr // placeholder
 	if be, ok := asSoleOwnerErr(err); ok {
-		rows := make([]soleOwnerBusinessRespEntry, len(be))
+		rows := make([]openapi.SoleOwnerBusinessEntry, len(be))
 		for i, b := range be {
-			rows[i] = soleOwnerBusinessRespEntry(b)
+			rows[i] = openapi.SoleOwnerBusinessEntry{
+				Id:   openapi_types.UUID(b.ID),
+				Name: b.Name,
+			}
 		}
-		writeJSON(w, http.StatusConflict, soleOwnerErrorBody{
-			Code:       "sole_owner_of_businesses",
+		writeJSON(w, http.StatusConflict, openapi.SoleOwnerResponse{
+			Code:       soleOwnerCode,
 			Businesses: rows,
 		})
 		return
