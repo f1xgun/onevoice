@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // poolBeginner is the minimal interface the handler needs from a pgx pool:
@@ -154,10 +155,6 @@ func (h *MembersHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-type updateMemberRoleRequest struct {
-	RoleID uuid.UUID `json:"role_id"`
-}
-
 // UpdateMemberRole handles PATCH /api/v1/businesses/{id}/members/{userId}
 // (PermMembersUpdateRole).
 //
@@ -187,12 +184,12 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var req updateMemberRoleRequest
+	var req openapi.UpdateMemberRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_body")
 		return
 	}
-	if req.RoleID == uuid.Nil {
+	if req.RoleId == uuid.Nil {
 		writeJSONError(w, http.StatusBadRequest, "validation_failed")
 		return
 	}
@@ -204,7 +201,7 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 	// business B could assign that B-scoped role to a member of A — a
 	// cross-tenant privilege escalation. custom roles make this
 	// surface live; pre-emptively closing it here.
-	role, err := h.roleRepo.GetByID(r.Context(), req.RoleID)
+	role, err := h.roleRepo.GetByID(r.Context(), req.RoleId)
 	if err != nil {
 		if errors.Is(err, domain.ErrRoleNotFound) {
 			writeJSONError(w, http.StatusBadRequest, "invalid_role_id")
@@ -249,7 +246,7 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 	// UpdateRoleInTx writes role_changed_at + role_changed_by inside the same
 	// RepeatableRead transaction as EnsureOwnerExistsAfter's SELECT FOR UPDATE,
 	// so the mutation is serialized by the row-level lock (fix).
-	if err := h.membershipRepo.UpdateRoleInTx(r.Context(), tx, bc.BusinessID, targetUserID, req.RoleID, bc.UserID); err != nil {
+	if err := h.membershipRepo.UpdateRoleInTx(r.Context(), tx, bc.BusinessID, targetUserID, req.RoleId, bc.UserID); err != nil {
 		writeAuthzInvariantError(r.Context(), w, "update_member_role.update", err)
 		return
 	}
@@ -266,13 +263,13 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 	// oldRoleID is nil: capturing it would require either a pre-commit SELECT
 	// (race window) or an UpdateRoleInTx returning the previous role_id —
 	// both deferred. Actor + target + new role is the load-bearing forensic data.
-	audit.LogRoleGranted(r.Context(), h.audit, bc.BusinessID, bc.UserID, targetUserID, req.RoleID, nil)
+	audit.LogRoleGranted(r.Context(), h.audit, bc.BusinessID, bc.UserID, targetUserID, req.RoleId, nil)
 
 	slog.InfoContext(r.Context(), "member role updated",
 		"business_id", bc.BusinessID,
 		"actor_user_id", bc.UserID,
 		"target_user_id", targetUserID,
-		"new_role_id", req.RoleID,
+		"new_role_id", req.RoleId,
 	)
 
 	// Hydrate the response with the updated row.
@@ -281,13 +278,13 @@ func (h *MembersHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		writeAuthzInvariantError(r.Context(), w, "update_member_role.read_back", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"business_id":     m.BusinessID,
-		"user_id":         m.UserID,
-		"role_id":         m.RoleID,
-		"status":          m.Status,
-		"role_changed_at": m.RoleChangedAt,
-		"role_changed_by": m.RoleChangedBy,
+	writeJSON(w, http.StatusOK, openapi.UpdateMemberRoleResponse{
+		BusinessId:    m.BusinessID,
+		UserId:        m.UserID,
+		RoleId:        m.RoleID,
+		Status:        m.Status,
+		RoleChangedAt: m.RoleChangedAt,
+		RoleChangedBy: m.RoleChangedBy,
 	})
 }
 
