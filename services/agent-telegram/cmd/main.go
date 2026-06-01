@@ -11,6 +11,7 @@ import (
 	"time"
 
 	natslib "github.com/nats-io/nats.go"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/f1xgun/onevoice/pkg/a2a"
 	"github.com/f1xgun/onevoice/pkg/agentbase"
@@ -66,6 +67,7 @@ func run() error {
 	mux.HandleFunc("/health/live", hc.LiveHandler())
 	mux.HandleFunc("/health/ready", hc.ReadyHandler())
 	mux.HandleFunc("/health", hc.LiveHandler())
+	mux.Handle("/metrics", promhttp.Handler())
 	healthPort := agentbase.GetEnv("HEALTH_PORT", "8081")
 	healthSrv := &http.Server{Addr: ":" + healthPort, Handler: mux, ReadHeaderTimeout: healthReadHeaderTimeout}
 	go func() {

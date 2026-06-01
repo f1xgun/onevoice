@@ -278,7 +278,7 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       API_INTERNAL_URL: https://api:8443
-      HEALTH_PORT: "8083"
+      HEALTH_PORT: "8084"
       REDIS_URL: redis://redis:6379/0
       ONEVOICE_MTLS_ENABLED: "true"
       ONEVOICE_MTLS_CA_PATH: /etc/onevoice/mtls/ca.crt
