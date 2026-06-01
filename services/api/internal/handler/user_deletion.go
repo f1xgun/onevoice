@@ -19,7 +19,6 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
@@ -123,7 +122,7 @@ func (h *UserDeletionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		rows := make([]openapi.SoleOwnerBusinessEntry, len(be))
 		for i, b := range be {
 			rows[i] = openapi.SoleOwnerBusinessEntry{
-				Id:   openapi_types.UUID(b.ID),
+				Id:   b.ID,
 				Name: b.Name,
 			}
 		}
