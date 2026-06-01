@@ -1,15 +1,7 @@
 // Package hitlstore provides the Mongo-backed implementation of
-// domain.PendingToolCallRepository, shared between services/api (resolve
-// handler + reconciliation sweep + ListPending) and services/orchestrator
-// (pause-time persistence + resume-time MarkDispatched).
+// domain.PendingToolCallRepository.
 //
-// MongoDB constraints:
-//   - MongoDB is deployed STANDALONE (docker-compose.yml uses `mongo:7`
-//     without --replSet). No multi-document transactions.
-//   - Atomicity is achieved via findOneAndUpdate filter constraints, NOT
-//     via session-scoped transaction APIs. DO NOT introduce session-scoped
-//     code into this file — it will panic at runtime on standalone
-//     deployments.
+// See docs/pkg/hitlstore.md.
 package hitlstore
 
 import (
@@ -25,21 +17,12 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 )
 
-// pendingToolCallTTL is how long an approval batch stays pending before lazy
-// expiration. 24h gives users a full business-day window to act on an
-// approval card.
+// pendingToolCallTTL is the lazy-expiration window for approval batches.
 const pendingToolCallTTL = 24 * time.Hour
 
-// pendingToolCallRepo is the Mongo-backed implementation of
-// domain.PendingToolCallRepository. Owns every state-machine transition:
-// Persist (stages preparing → promotes to pending), AtomicTransitionToResolving,
-// RecordDecisions, MarkDispatched, terminal MarkResolved / MarkExpired,
-// reads (GetByBatchID with lazy expiration, ListPendingByConversation), and
-// ReconcileOrphanPreparing for crash recovery.
+// pendingToolCallRepo is the Mongo-backed PendingToolCallRepository.
 //
-// Both services construct one via NewPendingToolCallRepository; the API
-// additionally calls EnsurePendingToolCallsIndexes at startup to create
-// the TTL + compound indexes idempotently.
+// See docs/pkg/hitlstore.md.
 type pendingToolCallRepo struct {
 	coll *mongo.Collection
 }
@@ -52,25 +35,10 @@ func NewPendingToolCallRepository(db *mongo.Database) domain.PendingToolCallRepo
 	return &pendingToolCallRepo{coll: db.Collection("pending_tool_calls")}
 }
 
-// EnsurePendingToolCallsIndexes creates the three pending_tool_calls indexes
-// idempotently (TTL on expires_at, compound (conversation_id, status), and
-// business_id lookup). Safe to call on every boot — Mongo's CreateMany
-// silently succeeds when specs match existing indexes.
+// EnsurePendingToolCallsIndexes idempotently creates the TTL + compound
+// indexes for pending_tool_calls. Call at API boot only.
 //
-// Index semantics:
-//   - `pending_tool_calls_ttl` — expireAfterSeconds=0 means documents expire
-//     at their own expires_at timestamp (up to 60s lag). The transient
-//     "preparing" rows that Persist stages internally do NOT set expires_at;
-//     TTL skips them so stillborn preparing rows are reaped by
-//     ReconcileOrphanPreparing instead.
-//   - `pending_tool_calls_conv_status` — supports
-//     ListPendingByConversation's typical {conversation_id, status}
-//     predicate.
-//   - `pending_tool_calls_business` — supports future business-scoped
-//     dashboards / metrics queries.
-//
-// Only the API service calls this at boot — the orchestrator does not own
-// schema bootstrap.
+// See docs/pkg/hitlstore.md for index semantics.
 func EnsurePendingToolCallsIndexes(ctx context.Context, db *mongo.Database) error {
 	coll := db.Collection("pending_tool_calls")
 
@@ -94,9 +62,8 @@ func EnsurePendingToolCallsIndexes(ctx context.Context, db *mongo.Database) erro
 
 	_, err := coll.Indexes().CreateMany(ctx, models)
 	if err != nil {
-		// CreateMany is idempotent when spec matches, but if the DB already
-		// has an index with the same name but a different spec the driver
-		// returns IndexConflict — safe to ignore for our stable specs above.
+		// CreateMany is idempotent when spec matches; tolerate
+		// duplicate-key for stable specs across reboots.
 		if mongo.IsDuplicateKeyError(err) {
 			return nil
 		}
@@ -105,34 +72,15 @@ func EnsurePendingToolCallsIndexes(ctx context.Context, db *mongo.Database) erro
 	return nil
 }
 
-// Persist stages the batch in an internal "preparing" status and then
-// promotes it to "pending" with a 24h TTL. From the caller's perspective the
-// batch transitions atomically from non-existent to pending; the preparing
-// window is an implementation detail.
+// Persist stages the batch in "preparing" then promotes it to "pending".
+// From the caller's perspective the transition is atomic; the preparing
+// window is an implementation detail used to keep stillborn rows out of
+// the TTL sweep and let ReconcileOrphanPreparing reap them deterministically.
 //
-// Why a two-step internally:
-//
-//   - The TTL index keys on expires_at. If the row were inserted directly with
-//     expires_at set, a crash before the orchestrator finished emitting the
-//     SSE event would leave a fully-pending row exposed to TTL deletion at an
-//     arbitrary time before any user-visible interaction had a chance to
-//     happen. The preparing window holds expires_at unset so the TTL sweep
-//     ignores stillborn rows, and ReconcileOrphanPreparing is the deterministic
-//     reaper.
-//
-//   - A crash strictly between the InsertOne and the promotion UpdateOne
-//     leaves the row in preparing status. ReconcileOrphanPreparing's filter
-//     `{status: "preparing", created_at < cutoff}` picks it up at the next
-//     API startup and flips it to expired.
-//
-// Identity-field guard: ConversationID and BusinessID are the structural
-// floor — every downstream path (pending-batch hydration filter, resolve-time
-// business-scoped auth check) depends on both being non-empty. Earlier code
-// paths persisted empty IDs and broke both paths silently; fail loud here so
-// a future regression of chat.go / chat_proxy.go can never silently write
-// empty IDs again. UserID and MessageID are intentionally NOT guarded:
-// system/anonymous flows may legitimately have an empty UserID.
+// See docs/pkg/hitlstore.md for write-order rationale and identity guard.
 func (r *pendingToolCallRepo) Persist(ctx context.Context, b *domain.PendingToolCallBatch) error {
+	// Identity guard: both IDs are load-bearing for downstream auth +
+	// hydration filters; fail loud rather than silently writing empty IDs.
 	if b.ConversationID == "" {
 		return fmt.Errorf("pending_tool_call: conversation_id is required")
 	}
@@ -161,11 +109,9 @@ func (r *pendingToolCallRepo) Persist(ctx context.Context, b *domain.PendingTool
 		return fmt.Errorf("pending_tool_call: promote to pending: %w", err)
 	}
 	if res.MatchedCount == 0 {
-		// Promotion saw nothing in preparing — would only happen if a
-		// reconcile sweep flipped this batch to expired between the two
-		// writes. Surface the unusual case as ErrBatchNotFound so the
-		// caller fails loudly rather than emitting a pause event for a
-		// batch that no longer exists.
+		// Reconcile sweep flipped this batch to expired between the two
+		// writes. Surface as ErrBatchNotFound so the caller does not emit
+		// a pause event for a batch that no longer exists.
 		return domain.ErrBatchNotFound
 	}
 	b.Status = "pending"
@@ -174,11 +120,9 @@ func (r *pendingToolCallRepo) Persist(ctx context.Context, b *domain.PendingTool
 	return nil
 }
 
-// GetByBatchID implements the lazy-expiration pattern: if a document is
-// still in the collection because the TTL sweep has not yet fired (up to
-// 60s delay) but its expires_at has already passed, return it with Status
-// virtualized to "expired". Callers never see a stale "pending" status past
-// the 24h window.
+// GetByBatchID returns the batch with lazy TTL virtualization: a still-
+// resident document whose expires_at has passed is returned as Status
+// "expired" so callers never observe stale "pending" past the 24h window.
 func (r *pendingToolCallRepo) GetByBatchID(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
 	var doc domain.PendingToolCallBatch
 	err := r.coll.FindOne(ctx, bson.M{"_id": batchID}).Decode(&doc)
@@ -194,10 +138,8 @@ func (r *pendingToolCallRepo) GetByBatchID(ctx context.Context, batchID string) 
 	return &doc, nil
 }
 
-// ListPendingByConversation returns every batch for the conversation whose
-// status is pending OR resolving, sorted oldest-first. Resolved / expired /
-// preparing batches are filtered out — callers that need those use
-// GetByBatchID directly.
+// ListPendingByConversation returns open batches (pending OR resolving)
+// for the conversation, sorted oldest-first.
 func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, conversationID string) ([]*domain.PendingToolCallBatch, error) {
 	filter := bson.M{
 		"conversation_id": conversationID,
@@ -225,20 +167,11 @@ func (r *pendingToolCallRepo) ListPendingByConversation(ctx context.Context, con
 	return out, nil
 }
 
-// AtomicTransitionToResolving is the one atomicity primitive:
-// findOneAndUpdate with filter {_id, status: "pending"} guarantees at most
-// one winner across arbitrarily many racing resolve calls. Mongo serializes
-// the update at the document level, so only the first matching update
-// returns the post-update doc; every subsequent call falls into the
-// mongo.ErrNoDocuments branch.
+// AtomicTransitionToResolving is the one atomicity primitive: at most one
+// winner across racing resolve calls. The filter constraint IS the
+// serialization — do not introduce session-scoped transactional APIs.
 //
-// The ErrBatchNotFound vs ErrBatchNotPending distinction exists so the
-// resolve handler can return 404 (true miss) vs 409 (concurrent resolve /
-// already terminal). Without the second lookup the caller could not tell
-// the two apart from mongo.ErrNoDocuments alone.
-//
-// Anti-footgun #1: no session-scoped transactional APIs here. The filter
-// constraint IS the serialization — any refactor must preserve it exactly.
+// See docs/pkg/hitlstore.md.
 func (r *pendingToolCallRepo) AtomicTransitionToResolving(ctx context.Context, batchID string) (*domain.PendingToolCallBatch, error) {
 	filter := bson.M{"_id": batchID, "status": "pending"}
 	update := bson.M{"$set": bson.M{"status": "resolving", "updated_at": time.Now().UTC()}}
@@ -248,9 +181,8 @@ func (r *pendingToolCallRepo) AtomicTransitionToResolving(ctx context.Context, b
 	err := r.coll.FindOneAndUpdate(ctx, filter, update, opts).Decode(&doc)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			// Two-step disambiguation: either the batch does not exist
-			// (→ ErrBatchNotFound / 404) or it exists but its status is
-			// not "pending" (→ ErrBatchNotPending / 409).
+			// Two-step disambiguation: 404 (true miss) vs 409
+			// (concurrent resolve / already terminal).
 			var probe domain.PendingToolCallBatch
 			probeErr := r.coll.FindOne(ctx, bson.M{"_id": batchID}).Decode(&probe)
 			if probeErr != nil {
@@ -266,10 +198,8 @@ func (r *pendingToolCallRepo) AtomicTransitionToResolving(ctx context.Context, b
 	return &doc, nil
 }
 
-// RecordDecisions persists the per-call verdicts for a batch (approve / edit /
-// reject) in a single UpdateOne. The handler normally calls
-// AtomicTransitionToResolving first so the status is already "resolving"
-// when this runs.
+// RecordDecisions persists per-call verdicts (approve / edit / reject).
+// Status is normally already "resolving" via AtomicTransitionToResolving.
 func (r *pendingToolCallRepo) RecordDecisions(ctx context.Context, batchID string, calls []domain.PendingCall) error {
 	now := time.Now().UTC()
 	res, err := r.coll.UpdateOne(ctx,
@@ -288,12 +218,10 @@ func (r *pendingToolCallRepo) RecordDecisions(ctx context.Context, batchID strin
 	return nil
 }
 
-// MarkDispatched flips calls.$.dispatched=true + calls.$.dispatched_at=now
-// for the matching call_id using Mongo's positional `$` operator. The filter
-// includes "calls.call_id" so the update only runs when the batch actually
-// contains the given call — missing batch/call combinations are silent
-// no-ops, which is intentional for the resume-recovery flow where calls are
-// optimistically marked after a NATS reply lands.
+// MarkDispatched flips calls.$.dispatched=true for the matching call_id.
+// Silent no-op when the batch/call combination is missing — intentional
+// for the resume-recovery flow where calls are optimistically marked
+// after a NATS reply lands.
 func (r *pendingToolCallRepo) MarkDispatched(ctx context.Context, batchID, callID string) error {
 	now := time.Now().UTC()
 	_, err := r.coll.UpdateOne(ctx,
@@ -307,9 +235,7 @@ func (r *pendingToolCallRepo) MarkDispatched(ctx context.Context, batchID, callI
 	return err
 }
 
-// MarkResolved transitions the batch to terminal status="resolved". Used at
-// the end of the resume flow after all approved calls have dispatched and
-// their results are folded back into the conversation.
+// MarkResolved transitions the batch to terminal status="resolved".
 func (r *pendingToolCallRepo) MarkResolved(ctx context.Context, batchID string) error {
 	now := time.Now().UTC()
 	res, err := r.coll.UpdateOne(ctx,
@@ -347,14 +273,10 @@ func (r *pendingToolCallRepo) MarkExpired(ctx context.Context, batchID string) e
 	return nil
 }
 
-// ReconcileOrphanPreparing sweeps batches stuck in status="preparing" whose
-// created_at is older than `olderThan`, marking them expired. Called once
-// at API startup (services/api/cmd/main.go) to clean up crashes where the
-// orchestrator inserted a preparing row but never got to call
-// PromoteToPending.
-//
-// Returns the number of rows transitioned. Safe to re-run — idempotent by
-// filter (already-expired rows don't match status=preparing).
+// ReconcileOrphanPreparing sweeps batches stuck in status="preparing"
+// older than olderThan, marking them expired. Crash-recovery for the
+// Persist gap between InsertOne and the promotion UpdateOne. Called once
+// at API startup; idempotent.
 func (r *pendingToolCallRepo) ReconcileOrphanPreparing(ctx context.Context, olderThan time.Duration) (int64, error) {
 	cutoff := time.Now().UTC().Add(-olderThan)
 	res, err := r.coll.UpdateMany(ctx,
