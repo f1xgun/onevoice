@@ -9,17 +9,20 @@ import (
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/i18n"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
-// passwordResetErrorBody is the JSON shape returned by writePasswordResetError.
-// Discriminates failure modes via `code` so the frontend's error_mapping.ts
-// (services/frontend/lib/error_mapping.ts) can render the correct RU/EN
-// copy + CTA.
-type passwordResetErrorBody struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
+// Wire envelopes returned by the error-mapping helpers are owned by the
+// OpenAPI spec; the historic local-name aliases keep call sites readable.
+// passwordResetErrorBody → openapi.PasswordResetErrorResponse
+//   ({code, message}, both required) — emitted by writePasswordResetError.
+// invitationStateBody → openapi.InvitationStateErrorResponse
+//   ({error, reason?}, reason omitempty) — emitted by writeInvitationStateError.
+type (
+	passwordResetErrorBody = openapi.PasswordResetErrorResponse
+	invitationStateBody    = openapi.InvitationStateErrorResponse
+)
 
 // EmailVerificationErrorStatus maps verification public codes
 // to canonical HTTP status codes. Mirrors the frontend
@@ -131,16 +134,6 @@ func writeAuthzInvariantError(ctx context.Context, w http.ResponseWriter, op str
 	}
 }
 
-// invitationStateBody is the JSON shape returned by writeInvitationStateError
-// for the 410-gone family. Reason discriminates the cause for UI mapping
-// (refusal matrix). Token-existence enumeration is defended via
-// uniform 410 across miss/accepted/revoked/expired — only the reason field
-// differs, and "unknown" is the safe default for ErrInvitationNotFound.
-type invitationStateBody struct {
-	Error  string `json:"error"`
-	Reason string `json:"reason,omitempty"`
-}
-
 // writeInvitationStateError maps invitation-state sentinel errors to the
 // refusal matrix. (already_member → 409) and
 // (expired/revoked → 410). Body shape:
@@ -157,19 +150,26 @@ type invitationStateBody struct {
 func writeInvitationStateError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrInvitationExpired):
-		writeJSON(w, http.StatusGone, invitationStateBody{Error: "gone", Reason: "expired"})
+		writeJSON(w, http.StatusGone, newInvitationGone("expired"))
 	case errors.Is(err, domain.ErrInvitationRevoked):
-		writeJSON(w, http.StatusGone, invitationStateBody{Error: "gone", Reason: "revoked"})
+		writeJSON(w, http.StatusGone, newInvitationGone("revoked"))
 	case errors.Is(err, domain.ErrInvitationAccepted):
-		writeJSON(w, http.StatusGone, invitationStateBody{Error: "gone", Reason: "accepted"})
+		writeJSON(w, http.StatusGone, newInvitationGone("accepted"))
 	case errors.Is(err, domain.ErrInvitationNotFound):
 		// Token-existence enumeration defense: uniform 410 with reason "unknown".
-		writeJSON(w, http.StatusGone, invitationStateBody{Error: "gone", Reason: "unknown"})
+		writeJSON(w, http.StatusGone, newInvitationGone("unknown"))
 	case errors.Is(err, domain.ErrAlreadyMember):
 		writeJSONError(w, http.StatusConflict, "already_member")
 	default:
 		writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 	}
+}
+
+// newInvitationGone constructs the 410-gone body. Spec models `reason` as
+// optional (*string + omitempty); the handlers always set a concrete reason,
+// so the wire output is byte-identical to the legacy local struct.
+func newInvitationGone(reason string) invitationStateBody {
+	return invitationStateBody{Error: "gone", Reason: &reason}
 }
 
 // writeRevokeError is the special-case mapper for the DELETE revoke endpoint

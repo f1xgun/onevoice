@@ -806,6 +806,17 @@ type InvitationPreview struct {
 	RoleName     string             `json:"role_name" validate:"required"`
 }
 
+// InvitationStateErrorResponse 410-gone envelope emitted by writeInvitationStateError. `error`
+// is always the literal "gone"; `reason` discriminates the cause
+// (`expired` / `revoked` / `accepted` / `unknown`) for the
+// frontend refusal matrix. `unknown` is the safe default for
+// ErrInvitationNotFound — uniform 410 defends against token
+// existence enumeration.
+type InvitationStateErrorResponse struct {
+	Error  string  `json:"error" validate:"required"`
+	Reason *string `json:"reason,omitempty"`
+}
+
 // ListConsentsResponse defines model for ListConsentsResponse.
 type ListConsentsResponse struct {
 	Consents []ConsentRecord `json:"consents" validate:"required"`
@@ -906,6 +917,15 @@ type MoveConversationRequest struct {
 // MyPermissionsResponse defines model for MyPermissionsResponse.
 type MyPermissionsResponse struct {
 	Permissions []string `json:"permissions" validate:"required"`
+}
+
+// PasswordResetErrorResponse Discriminated error envelope emitted by writePasswordResetError.
+// `code` is one of `reset_token_invalid` / `reset_token_expired` /
+// `password_too_weak`; `message` is a server-localized RU string the
+// frontend renders as-is when no i18n catalog entry matches.
+type PasswordResetErrorResponse struct {
+	Code    string `json:"code" validate:"required"`
+	Message string `json:"message" validate:"required"`
 }
 
 // PendingApproval defines model for PendingApproval.
