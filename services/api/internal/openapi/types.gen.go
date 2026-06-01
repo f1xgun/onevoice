@@ -825,14 +825,14 @@ type LoginResponse struct {
 
 // MeResponse defines model for MeResponse.
 type MeResponse struct {
-	AccountDeletion           *AccountDeletionInfo      `json:"accountDeletion"`
+	AccountDeletion           *AccountDeletionInfo      `json:"accountDeletion,omitempty"`
 	CreatedAt                 time.Time                 `json:"createdAt" validate:"required"`
 	Email                     openapi_types.Email       `json:"email" validate:"required,email"`
-	EmailVerificationDeadline *time.Time                `json:"emailVerificationDeadline"`
+	EmailVerificationDeadline *time.Time                `json:"emailVerificationDeadline,omitempty"`
 	EmailVerified             bool                      `json:"emailVerified" validate:"required"`
 	Id                        openapi_types.UUID        `json:"id" validate:"required,uuid"`
 	PreferredLocale           MeResponsePreferredLocale `json:"preferred_locale" validate:"required,oneof=ru en"`
-	RequiresReconsent         *RequiresReconsentInfo    `json:"requiresReconsent"`
+	RequiresReconsent         *RequiresReconsentInfo    `json:"requiresReconsent,omitempty"`
 	UpdatedAt                 time.Time                 `json:"updatedAt" validate:"required"`
 }
 
@@ -1129,9 +1129,10 @@ type RequestPasswordResetRequest struct {
 // RequiresReconsentInfo defines model for RequiresReconsentInfo.
 type RequiresReconsentInfo struct {
 	Policies []struct {
-		AcceptedVersion *string `json:"acceptedVersion"`
-		CurrentVersion  string  `json:"currentVersion" validate:"required"`
-		Slug            string  `json:"slug" validate:"required"`
+		NewVersion string `json:"newVersion" validate:"required"`
+		OldVersion string `json:"oldVersion" validate:"required"`
+		Sha256     string `json:"sha256" validate:"required"`
+		Slug       string `json:"slug" validate:"required"`
 	} `json:"policies" validate:"required"`
 }
 
@@ -1580,7 +1581,7 @@ type YandexProbeResponse struct {
 	Error        *string   `json:"error,omitempty"`
 	Format       *string   `json:"format,omitempty"`
 	Ok           bool      `json:"ok" validate:"required"`
-	SessionValid *bool     `json:"session_valid"`
+	SessionValid *bool     `json:"session_valid,omitempty"`
 	Username     *string   `json:"username,omitempty"`
 	Warnings     *[]string `json:"warnings,omitempty"`
 }
