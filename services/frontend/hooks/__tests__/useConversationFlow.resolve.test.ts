@@ -434,7 +434,9 @@ describe('useConversationFlow.resolveApproval — error branches', () => {
       await result.current.resolveApproval([{ id: 'call-single-1', action: 'approve' }]);
     });
 
-    expect(toast.error).toHaveBeenCalledWith('Отказано: операция вне вашей бизнес-области');
+    expect(toast.error).toHaveBeenCalledWith(
+      'Отказано: это действие выходит за рамки вашей организации'
+    );
     expect(result.current.pendingApproval).not.toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

@@ -484,7 +484,7 @@ func TestCreateConversation_ValidationError(t *testing.T) {
 			var response ValidationErrorResponse
 			err := json.NewDecoder(w.Body).Decode(&response)
 			require.NoError(t, err)
-			assert.Equal(t, "validation failed", response.Error)
+			assert.Equal(t, "Проверка не пройдена", response.Error)
 			assert.Contains(t, response.Fields, tt.expectedField)
 		})
 	}

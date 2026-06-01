@@ -15,24 +15,24 @@ var ru = map[string]string{
 
 	// Yandex OAuth/connect handler (services/api/internal/handler/oauth/yandex_connect.go).
 	"oauth.yandex.invalid_body":         "Некорректное тело запроса",
-	"oauth.yandex.list_orgs_failed":     "не удалось получить список организаций — попробуйте ещё раз",
-	"oauth.yandex.missing_sessionid2":   "Не найден sessionid2 — может потребоваться для записи (ответы на отзывы, загрузка фото)",
-	"oauth.yandex.missing_yandex_login": "Не найден yandex_login — рекомендуется добавить для стабильной авторизации",
+	"oauth.yandex.list_orgs_failed":     "Не удалось получить список организаций — попробуйте ещё раз",
+	"oauth.yandex.missing_sessionid2":   "Не нашли часть данных для входа — без неё могут не работать ответы на отзывы и загрузка фото. Скопируйте cookies заново целиком.",
+	"oauth.yandex.missing_yandex_login": "Не нашли логин Яндекса — без него вход может сбрасываться. Добавьте его при копировании cookies.",
 
 	// VK connect handlers (services/api/internal/handler/connect/vk_*.go).
 	// %s is the VK-provided error message.
 	"connect.vk.invalid_token":            "Невалидный токен: %s",
 	"connect.vk.community_unknown":        "VK не вернул сообщество для этого токена — проверьте, что вы создали ключ в админке сообщества",
-	"connect.vk.wall_permission_missing":  "токену не хватает прав на «Стену» — пересоздайте ключ в админке сообщества с галочкой «Стена»",
-	"connect.vk.community_resolve_failed": "не удалось распознать сообщество: %s",
+	"connect.vk.wall_permission_missing":  "Токену не хватает прав на «Стену» — пересоздайте ключ в админке сообщества с галочкой «Стена»",
+	"connect.vk.community_resolve_failed": "Не удалось распознать сообщество: %s",
 
 	// Yandex cookies parser (services/api/internal/yandexcookies/parse.go)
 	// surfaced via handler boundary mapping (errors.Is on typed sentinels).
-	"yandex.cookies.empty":             "вставьте cookies из браузера",
-	"yandex.cookies.missing_sessionid": "не найдено значение Session_id — это главный cookie для входа в Яндекс",
-	"yandex.cookies.invalid_format":    "не удалось распознать формат: это не JSON, не Cookie-заголовок и не значение Session_id",
-	"yandex.cookies.invalid_sessionid": "значение Session_id выглядит некорректно — проверьте, что скопировали целиком",
-	"yandex.cookies.json_error":        "ошибка JSON: %s",
+	"yandex.cookies.empty":             "Вставьте cookies из браузера",
+	"yandex.cookies.missing_sessionid": "Не найдено значение Session_id — это главный cookie для входа в Яндекс",
+	"yandex.cookies.invalid_format":    "Не удалось распознать формат: это не JSON, не Cookie-заголовок и не значение Session_id",
+	"yandex.cookies.invalid_sessionid": "Значение Session_id выглядит некорректно — проверьте, что скопировали целиком",
+	"yandex.cookies.json_error":        "Ошибка JSON: %s",
 
 	// Chat proxy stream-error wrapper
 	// (services/api/internal/handler/chat_proxy.go persistAfterStream).
@@ -54,11 +54,44 @@ var ru = map[string]string{
 	"api.conversation.move.default_destination": "Без проекта",
 	"api.conversation.move.system_message":      "[Чат перемещён в «%s» — с этого момента применяется новая политика]",
 
+	// Password-reset error messages
+	// (services/api/internal/handler/error_mapping.go writePasswordResetError).
+	"api.password_reset.token_invalid": "Ссылка недействительна — запросите новую.",
+	"api.password_reset.token_expired": "Ссылка просрочена — запросите новую.",
+	"api.password_reset.password_weak": "Пароль слишком короткий — минимум 8 символов.",
+
+	// Permission descriptions (pkg/authz/permissions.go AllPermissions).
+	// Surfaced by GET /api/v1/permissions for the role-editor Info tooltip.
+	// The struct's hardcoded RU stays as a safe fallback; the handler
+	// resolves these per request locale.
+	"permissions.business.read.desc":               "Видеть название, описание и настройки организации.",
+	"permissions.business.update.desc":             "Редактировать название, описание и базовые настройки.",
+	"permissions.business.delete.desc":             "Безвозвратно удалить организацию вместе со всеми данными.",
+	"permissions.business.transfer_ownership.desc": "Передавать владение другому участнику. Только текущий владелец.",
+	"permissions.members.read.desc":                "Видеть список участников и их роли.",
+	"permissions.members.invite.desc":              "Создавать ссылки-приглашения для новых участников.",
+	"permissions.members.remove.desc":              "Исключать участников из организации.",
+	"permissions.members.update_role.desc":         "Назначать участникам другую роль. Кроме самих себя.",
+	"permissions.roles.read.desc":                  "Видеть список ролей и какие у них права.",
+	"permissions.roles.create.desc":                "Создавать свои роли с особым набором прав.",
+	"permissions.roles.update.desc":                "Редактировать свои роли — название, описание, права.",
+	"permissions.roles.delete.desc":                "Удалять свои роли. Если на роли есть участники, потребуется выбрать новую роль для них.",
+	"permissions.integrations.read.desc":           "Видеть подключённые платформы и их статус.",
+	"permissions.integrations.connect.desc":        "Подключать новые платформы — Telegram, VK, Яндекс.Бизнес.",
+	"permissions.integrations.disconnect.desc":     "Отключать подключённые платформы.",
+	"permissions.content.read.desc":                "Видеть посты, отзывы, переписку, задачи.",
+	"permissions.content.create.desc":              "Создавать посты, отвечать на отзывы, ставить задачи.",
+	"permissions.content.update.desc":              "Редактировать существующие посты, ответы, задачи.",
+	"permissions.content.delete.desc":              "Удалять посты, ответы, задачи.",
+	"permissions.billing.read.desc":                "Видеть тариф, счета, использование лимитов.",
+	"permissions.billing.update.desc":              "Менять тариф, реквизиты, способ оплаты.",
+	"permissions.audit.read.desc":                  "Видеть журнал событий — изменения ролей, входы, подключение платформ.",
+
 	// Validation messages (services/api/internal/handler/response.go).
-	"validation.failed":        "validation failed",
-	"validation.required":      "field is required",
-	"validation.invalid_email": "invalid email format",
-	"validation.too_short":     "value is too short",
-	"validation.too_long":      "value is too long",
-	"validation.generic":       "validation failed",
+	"validation.failed":        "Проверка не пройдена",
+	"validation.required":      "Заполните это поле",
+	"validation.invalid_email": "Неверный формат адреса почты",
+	"validation.too_short":     "Слишком короткое значение",
+	"validation.too_long":      "Слишком длинное значение",
+	"validation.generic":       "Проверка не пройдена",
 }

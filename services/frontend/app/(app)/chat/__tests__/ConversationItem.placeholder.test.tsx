@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import { ConversationItem } from '@/components/chat/ConversationItem';
 
 // Sidebar / chat-list rows render the verbatim Russian placeholder
-// "Новый диалог" whenever conv.title === '' OR titleStatus === 'auto_pending'.
+// "Новый чат" whenever conv.title === '' OR titleStatus === 'auto_pending'.
 // NO shimmer / skeleton / animation — "Sidebar Pending UX".
 
 vi.mock('sonner', () => ({
@@ -66,24 +66,24 @@ function renderItem(conv: TestConv) {
 }
 
 describe('ConversationItem placeholder', () => {
-  it("renders 'Новый диалог' when title is empty (auto_pending status)", () => {
+  it("renders 'Новый чат' when title is empty (auto_pending status)", () => {
     renderItem({ ...baseConv, title: '', titleStatus: 'auto_pending' });
-    expect(screen.getByText('Новый диалог')).toBeInTheDocument();
+    expect(screen.getByText('Новый чат')).toBeInTheDocument();
   });
 
-  it("renders 'Новый диалог' when title is empty and titleStatus is undefined", () => {
+  it("renders 'Новый чат' when title is empty and titleStatus is undefined", () => {
     renderItem({ ...baseConv, title: '', titleStatus: undefined });
-    expect(screen.getByText('Новый диалог')).toBeInTheDocument();
+    expect(screen.getByText('Новый чат')).toBeInTheDocument();
   });
 
-  it("renders 'Новый диалог' when titleStatus is 'auto_pending' EVEN WITH a non-empty title", () => {
+  it("renders 'Новый чат' when titleStatus is 'auto_pending' EVEN WITH a non-empty title", () => {
     // status='auto_pending' wins over a stale stored title.
     renderItem({
       ...baseConv,
       title: 'Stale title leaking from a previous render',
       titleStatus: 'auto_pending',
     });
-    expect(screen.getByText('Новый диалог')).toBeInTheDocument();
+    expect(screen.getByText('Новый чат')).toBeInTheDocument();
     expect(
       screen.queryByText('Stale title leaking from a previous render')
     ).not.toBeInTheDocument();
@@ -92,12 +92,12 @@ describe('ConversationItem placeholder', () => {
   it("renders the actual title when titleStatus is 'auto' with non-empty title", () => {
     renderItem({ ...baseConv, title: 'Запланировать пост', titleStatus: 'auto' });
     expect(screen.getByText('Запланировать пост')).toBeInTheDocument();
-    expect(screen.queryByText('Новый диалог')).not.toBeInTheDocument();
+    expect(screen.queryByText('Новый чат')).not.toBeInTheDocument();
   });
 
   it("renders the actual title when titleStatus is 'manual'", () => {
     renderItem({ ...baseConv, title: 'My custom title', titleStatus: 'manual' });
     expect(screen.getByText('My custom title')).toBeInTheDocument();
-    expect(screen.queryByText('Новый диалог')).not.toBeInTheDocument();
+    expect(screen.queryByText('Новый чат')).not.toBeInTheDocument();
   });
 });
