@@ -366,6 +366,22 @@ components:
           type: string
         detail:
           type: string
+    ValidationErrorResponse:
+      description: |
+        Field-level validation error envelope; emitted by writeValidationError.
+        `error` carries a localized summary; `fields` maps field name to
+        localized per-field message keyed by validator/v10 tag.
+      type: object
+      required:
+      - error
+      - fields
+      properties:
+        error:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
     LoginRequest:
       type: object
       required:

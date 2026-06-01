@@ -1546,6 +1546,14 @@ type VKCommunity struct {
 	ScreenName   string  `json:"screen_name" validate:"required"`
 }
 
+// ValidationErrorResponse Field-level validation error envelope; emitted by writeValidationError.
+// `error` carries a localized summary; `fields` maps field name to
+// localized per-field message keyed by validator/v10 tag.
+type ValidationErrorResponse struct {
+	Error  string            `json:"error" validate:"required"`
+	Fields map[string]string `json:"fields" validate:"required"`
+}
+
 // VerifyConfirmRequest defines model for VerifyConfirmRequest.
 type VerifyConfirmRequest struct {
 	Token string `json:"token" validate:"required,min=20"`
