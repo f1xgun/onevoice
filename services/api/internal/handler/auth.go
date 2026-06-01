@@ -193,7 +193,6 @@ func userToOpenAPI(u *domain.User) openapi.User {
 	}
 }
 
-
 // strDeref returns the dereferenced value or "" when ptr is nil. Used for
 // optional fields in spec-generated request structs.
 func strDeref(s *string) string {
