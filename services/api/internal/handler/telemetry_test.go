@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 func TestTelemetryHandler_Ingest_ValidBatch(t *testing.T) {
@@ -23,9 +25,11 @@ func TestTelemetryHandler_Ingest_ValidBatch(t *testing.T) {
 
 	h := NewTelemetryHandler()
 
-	events := []TelemetryEvent{
+	cid := "abc-123"
+	meta := map[string]string{"btn": "save"}
+	events := []openapi.TelemetryEvent{
 		{EventType: "page_view", Page: "/dashboard", Action: "load", Timestamp: "2026-03-22T09:00:00Z"},
-		{EventType: "click", Page: "/settings", Action: "save", CorrelationID: "abc-123", Metadata: map[string]string{"btn": "save"}, Timestamp: "2026-03-22T09:00:01Z"},
+		{EventType: "click", Page: "/settings", Action: "save", CorrelationId: &cid, Metadata: &meta, Timestamp: "2026-03-22T09:00:01Z"},
 	}
 	body, _ := json.Marshal(events)
 
@@ -59,7 +63,7 @@ func TestTelemetryHandler_Ingest_InvalidJSON(t *testing.T) {
 func TestTelemetryHandler_Ingest_EmptyArray(t *testing.T) {
 	h := NewTelemetryHandler()
 
-	body, _ := json.Marshal([]TelemetryEvent{})
+	body, _ := json.Marshal([]openapi.TelemetryEvent{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/telemetry", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -72,9 +76,9 @@ func TestTelemetryHandler_Ingest_EmptyArray(t *testing.T) {
 func TestTelemetryHandler_Ingest_ExceedsBatchLimit(t *testing.T) {
 	h := NewTelemetryHandler()
 
-	events := make([]TelemetryEvent, 101)
+	events := make([]openapi.TelemetryEvent, 101)
 	for i := range events {
-		events[i] = TelemetryEvent{EventType: "test", Page: "/", Action: "x", Timestamp: "2026-01-01T00:00:00Z"}
+		events[i] = openapi.TelemetryEvent{EventType: "test", Page: "/", Action: "x", Timestamp: "2026-01-01T00:00:00Z"}
 	}
 	body, err := json.Marshal(events)
 	require.NoError(t, err)
