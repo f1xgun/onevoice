@@ -16,8 +16,11 @@ package authz
 type Permission string
 
 // PermissionMeta is the registry entry for one permission. Description is a
-// short Russian imperative string for the role-editor Info tooltip. Adding
-// a new permission requires filling Description here; the drift test in
+// short Russian imperative string for the role-editor Info tooltip — it is
+// the canonical RU fallback. Localized copy lives in the i18n catalog under
+// permissions.<resource>.<action>.desc; the serving handler resolves the
+// per-request locale and overrides Description before responding. Adding a
+// new permission requires filling Description here; the drift test in
 // permissions_test.go fails CI when this is missed.
 type PermissionMeta struct {
 	Name        Permission `json:"name"`
@@ -104,8 +107,8 @@ func AllPermissions() []PermissionGroup {
 		}},
 		{Resource: "integrations", Permissions: []PermissionMeta{
 			{Name: PermIntegrationsRead, Description: "Видеть подключённые платформы и их статус."},
-			{Name: PermIntegrationsConnect, Description: "Привязывать новые аккаунты — Telegram, VK, Яндекс.Бизнес."},
-			{Name: PermIntegrationsDisconnect, Description: "Отключать привязанные аккаунты."},
+			{Name: PermIntegrationsConnect, Description: "Подключать новые платформы — Telegram, VK, Яндекс.Бизнес."},
+			{Name: PermIntegrationsDisconnect, Description: "Отключать подключённые платформы."},
 		}},
 		{Resource: "content", Permissions: []PermissionMeta{
 			{Name: PermContentRead, Description: "Видеть посты, отзывы, переписку, задачи."},
@@ -118,7 +121,7 @@ func AllPermissions() []PermissionGroup {
 			{Name: PermBillingUpdate, Description: "Менять тариф, реквизиты, способ оплаты."},
 		}},
 		{Resource: "audit", Permissions: []PermissionMeta{
-			{Name: PermAuditRead, Description: "Видеть журнал событий — изменения ролей, входы, подключение интеграций."},
+			{Name: PermAuditRead, Description: "Видеть журнал событий — изменения ролей, входы, подключение платформ."},
 		}},
 	}
 }

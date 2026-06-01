@@ -151,7 +151,7 @@ func TestRegister(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"Email"`)
 			},
 		},
@@ -162,7 +162,7 @@ func TestRegister(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"Password"`)
 			},
 		},
@@ -186,7 +186,7 @@ func TestRegister(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"Password"`)
 			},
 		},
@@ -352,7 +352,7 @@ func TestLogin(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"Email"`)
 			},
 		},
@@ -363,7 +363,7 @@ func TestLogin(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"Password"`)
 			},
 		},
@@ -701,7 +701,7 @@ func TestChangePassword(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"NewPassword"`)
 			},
 		},
@@ -716,7 +716,7 @@ func TestChangePassword(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"CurrentPassword"`)
 			},
 		},
@@ -1167,7 +1167,7 @@ func TestUpdatePreferredLocale(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"Locale"`)
 			},
 		},
@@ -1182,7 +1182,7 @@ func TestUpdatePreferredLocale(t *testing.T) {
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
+				assert.Contains(t, body, `"error":"Проверка не пройдена"`)
 				assert.Contains(t, body, `"Locale"`)
 			},
 		},
