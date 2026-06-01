@@ -459,22 +459,62 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
-// MeResponse keeps `omitempty` on optional fields so verified users do not
-// receive emailVerificationDeadline:null and the deletion banner suppresses
-// cleanly. The wire shape is mirrored in openapi.MeResponse (allOf User).
-type MeResponse struct {
-	*domain.User
-	EmailVerified             bool                           `json:"emailVerified"`
-	EmailVerificationDeadline *time.Time                     `json:"emailVerificationDeadline,omitempty"`
-	AccountDeletion           *AccountDeletionInfo           `json:"accountDeletion,omitempty"`
-	RequiresReconsent         *service.RequiresReconsentInfo `json:"requiresReconsent,omitempty"`
-}
+// MeResponse is the spec-owned wire shape for GET /auth/me. The historic
+// handler-local struct that embedded *domain.User is gone; the spec
+// (docs/api/spec/openapi.yaml#/components/schemas/MeResponse) is now the
+// sole source of truth for the field set. Mappers below copy only the
+// five wire-safe fields from domain.User — never the password hash, the
+// email_verified_at timestamp, or the soft-delete-state timestamps that
+// domain.User carries with json:"-".
+type MeResponse = openapi.MeResponse
 
 // AccountDeletionInfo carries the 30-day grace window timestamps for /auth/me.
-type AccountDeletionInfo struct {
-	RequestedAt         time.Time `json:"requestedAt"`
-	ScheduledDeletionAt time.Time `json:"scheduledDeletionAt"`
-	CanRestoreUntil     time.Time `json:"canRestoreUntil"`
+type AccountDeletionInfo = openapi.AccountDeletionInfo
+
+// meResponseFromDomain builds the spec MeResponse from the domain user
+// plus the per-call computed banner / deletion-grace / reconsent fields.
+// Field-by-field copy guarantees no domain-only state leaks onto the wire.
+func meResponseFromDomain(
+	u *domain.User,
+	deadline *time.Time,
+	deletion *AccountDeletionInfo,
+	reconsent *service.RequiresReconsentInfo,
+) MeResponse {
+	resp := MeResponse{
+		Id:                        u.ID,
+		Email:                     openapi_types.Email(u.Email),
+		PreferredLocale:           openapi.MeResponsePreferredLocale(u.PreferredLocale),
+		EmailVerified:             u.EmailVerified,
+		CreatedAt:                 u.CreatedAt,
+		UpdatedAt:                 u.UpdatedAt,
+		EmailVerificationDeadline: deadline,
+		AccountDeletion:           deletion,
+	}
+	if reconsent != nil {
+		resp.RequiresReconsent = reconsentToOpenAPI(reconsent)
+	}
+	return resp
+}
+
+// reconsentToOpenAPI maps the service.RequiresReconsentInfo onto the spec
+// type. The spec generates the policies item as an anonymous struct, so
+// the field-by-field copy is unavoidable.
+func reconsentToOpenAPI(in *service.RequiresReconsentInfo) *openapi.RequiresReconsentInfo {
+	out := openapi.RequiresReconsentInfo{
+		Policies: make([]struct {
+			NewVersion string `json:"newVersion" validate:"required"`
+			OldVersion string `json:"oldVersion" validate:"required"`
+			Sha256     string `json:"sha256" validate:"required"`
+			Slug       string `json:"slug" validate:"required"`
+		}, len(in.Policies)),
+	}
+	for i, p := range in.Policies {
+		out.Policies[i].Slug = p.Slug
+		out.Policies[i].OldVersion = p.OldVersion
+		out.Policies[i].NewVersion = p.NewVersion
+		out.Policies[i].Sha256 = p.SHA256
+	}
+	return &out
 }
 
 // Duplicated to avoid circular import (handler → middleware → service);
@@ -509,31 +549,30 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := MeResponse{
-		User:          user,
-		EmailVerified: user.EmailVerified,
-	}
+	var deadline *time.Time
 	if !user.EmailVerified {
 		d := user.CreatedAt.Add(emailVerifyGraceDuration)
-		resp.EmailVerificationDeadline = &d
+		deadline = &d
 	}
 
+	var deletion *AccountDeletionInfo
 	if user.DeletionRequestedAt != nil && user.DeletionCanceledAt == nil {
 		graceEnd := user.DeletionRequestedAt.Add(deletionGraceDurationForMe)
-		resp.AccountDeletion = &AccountDeletionInfo{
+		deletion = &AccountDeletionInfo{
 			RequestedAt:         *user.DeletionRequestedAt,
 			ScheduledDeletionAt: graceEnd,
 			CanRestoreUntil:     graceEnd,
 		}
 	}
 
+	var reconsent *service.RequiresReconsentInfo
 	if h.consents != nil {
 		diff, derr := h.consents.DiffAgainstCurrent(r.Context(), userID)
 		if derr != nil {
 			// Best-effort: /auth/me must not 500 because of a consent-diff failure.
 			slog.Warn("auth/me: diff against current consents failed", "userID", userID, "err", derr)
 		} else if diff != nil {
-			resp.RequiresReconsent = diff
+			reconsent = diff
 			// Audit row records that ReConsentModal will be shown to this user —
 			// otherwise a user can later claim "I never saw the modal" and
 			// audit_logs will not contradict them. Fire-and-forget.
@@ -545,7 +584,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, meResponseFromDomain(user, deadline, deletion, reconsent))
 }
 
 // ChangePassword handles PUT /api/v1/auth/password.
