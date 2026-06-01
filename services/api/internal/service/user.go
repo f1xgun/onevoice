@@ -18,47 +18,33 @@ import (
 	"github.com/f1xgun/onevoice/services/api/internal/auth"
 )
 
-// JWT token expiry durations
+// JWT token expiry durations.
 const (
 	AccessTokenExpiry     = 15 * time.Minute
 	RefreshTokenExpiry    = 7 * 24 * time.Hour
 	refreshTokenKeyPrefix = "onevoice:auth:refresh_token:" //nolint:gosec // not a credential, just a Redis key prefix
 )
 
-// User credential validation thresholds.
-//
-// JWT secret length lives in the auth package (auth.JWTSecretMinLen) so
-// config.go and this service share a single source of truth.
+// User credential validation thresholds. See docs/services/user.md.
 const (
-	// passwordMinLen / passwordMaxLen bound the user-supplied password length.
-	// 72 is the bcrypt silent-truncation boundary (longer passwords lose the
-	// suffix without an error); 8 is the conventional lower bound.
+	// 72 is the bcrypt silent-truncation boundary; 8 is the conventional lower bound.
 	passwordMinLen = 8
 	passwordMaxLen = 72
 )
 
-// RegistrationContext carries the per-request context needed by the
-// atomic-Register flow. The handler builds this from the HTTP
-// request (clientIP + UserAgent + the validated consents body) and
-// passes it through RegisterWithContext.
-//
-// When Policies is empty OR consentService isn't wired (legacy /
-// test path), the user.Register fallback runs and inserts a single
-// 'service_operation' consent row to keep the invariant alive
-// for environments that haven't been upgraded yet.
+// RegistrationContext carries the per-request context needed by the atomic-Register flow.
+// See docs/services/user.md.
 type RegistrationContext struct {
 	IP        string
 	UserAgent string
 	Policies  []PolicyAccepted
 }
 
-// UserService defines the interface for user-related operations
+// UserService defines the interface for user-related operations.
+// See docs/services/user.md.
 type UserService interface {
 	Register(ctx context.Context, email, password string) (*domain.User, error)
-	// RegisterWithContext is the atomic-Register entry point used by the
-	// handler. The legacy Register stays for tests that don't bring up the
-	// full collaborator wiring. When consentService is not wired,
-	// RegisterWithContext degrades to the legacy single-INSERT flow.
+	// RegisterWithContext is the atomic-Register entry point used by the handler.
 	RegisterWithContext(ctx context.Context, email, password string, regCtx RegistrationContext) (*domain.User, error)
 	Login(ctx context.Context, email, password string) (user *domain.User, accessToken, refreshToken string, err error)
 	RefreshToken(ctx context.Context, refreshToken string) (user *domain.User, accessToken, newRefreshToken string, err error)
@@ -66,10 +52,6 @@ type UserService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
 	// UpdatePreferredLocale persists the user's UI language choice.
-	// Validation of `locale` against the allow-list happens at the handler
-	// boundary so HTTP-layer responses can return field-level 400s; this
-	// method delegates straight to the repo so DB constraint violations
-	// still surface (defense-in-depth).
 	UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error
 }
 
@@ -78,26 +60,17 @@ type userService struct {
 	redis     *redis.Client
 	jwtSecret []byte
 
-	// Register collaborators. Optional — when ANY of these is nil,
-	// Register falls back to the legacy non-tx path that only inserts the
-	// user row (preserves backward compat for unit tests that don't bring
-	// up Postgres). When ALL are set, Register opens a tx, CreateInTx +
-	// user_consents INSERT + email_verification_tokens INSERT + email_outbox
-	// enqueue commit atomically.
-	registerPool     RegisterTxPool       // *pgxpool.Pool by structural typing
-	registerUserRepo RegisterUserExt      // *repository.UserResetExtAdapter
-	registerConsents ConsentInserter      // *repository.UserConsentsRepository (legacy single-INSERT path)
-	registerVerify   RegisterVerifyIssuer // *service.EmailVerificationService
-	registerAudit    audit.Logger         // for ConsentRecorded audit row (legacy path)
+	// Register collaborators are optional; nil disables the atomic path. See docs/services/user.md.
+	registerPool     RegisterTxPool
+	registerUserRepo RegisterUserExt
+	registerConsents ConsentInserter
+	registerVerify   RegisterVerifyIssuer
+	registerAudit    audit.Logger
 
-	// When non-nil, RegisterWithContext
-	// uses RecordRegistrationConsents (3× UpsertConsent + tx-aware audit
-	// row) instead of the single 'service_operation' INSERT.
 	registerConsentSvc *ConsentService
 }
 
-// RegisterTxPool is the slice of *pgxpool.Pool that Register needs.
-// Interface-typed so unit tests can pass an in-memory fake.
+// RegisterTxPool is the tx-opening seam needed by Register.
 type RegisterTxPool interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
 }
@@ -107,24 +80,17 @@ type RegisterUserExt interface {
 	CreateInTx(ctx context.Context, tx pgx.Tx, user *domain.User) error
 }
 
-// ConsentInserter records the initial 'service_operation' consent row
-// inside the same tx.
+// ConsentInserter records the initial 'service_operation' consent row inside the same tx.
 type ConsentInserter interface {
 	Insert(ctx context.Context, tx pgx.Tx, userID uuid.UUID, purpose, policyVersion string) error
 }
 
-// RegisterVerifyIssuer is the EmailVerificationService.IssueAndEnqueueTx
-// seam (token + outbox enqueue commit atomically with the user
-// row).
+// RegisterVerifyIssuer is the EmailVerificationService.IssueAndEnqueueTx seam.
 type RegisterVerifyIssuer interface {
 	IssueAndEnqueueTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, email string) error
 }
 
-// SetRegisterCollaborators wires the Register tx-flow deps.
-// All FOUR collaborators must be non-nil for the new path to activate;
-// passing nil for any disables the new path (Register falls back to the
-// legacy single-INSERT flow for backward compat). The audit logger is
-// optional even when the others are set.
+// SetRegisterCollaborators wires the Register tx-flow deps. See docs/services/user.md.
 func (s *userService) SetRegisterCollaborators(
 	pool RegisterTxPool,
 	userRepo RegisterUserExt,
@@ -139,11 +105,7 @@ func (s *userService) SetRegisterCollaborators(
 	s.registerAudit = auditLogger
 }
 
-// SetRegisterConsentService wires the
-// ConsentService into Register. When set, RegisterWithContext writes
-// THREE user_consents rows (tos, privacy, pdn) in the same tx as the
-// user row + verify token + outbox enqueue. The legacy single
-// 'service_operation' INSERT path stays available when this is nil.
+// SetRegisterConsentService wires the multi-consent (tos/privacy/pdn) tx writer. See docs/services/user.md.
 func (s *userService) SetRegisterConsentService(consentSvc *ConsentService) {
 	s.registerConsentSvc = consentSvc
 }
@@ -163,22 +125,7 @@ func NewUserService(repo domain.UserRepository, redisClient *redis.Client, jwtSe
 	}, nil
 }
 
-// Register creates a new user with encrypted password.
-//
-// when the SetRegisterCollaborators
-// hook is wired, Register opens a tx and inserts the user row + the
-// initial user_consents row + a fresh email_verification_tokens row +
-// the verification email_outbox row — all atomically. If any auxiliary
-// write fails, the user row rolls back too: no half-registered user
-// with no verification email.
-//
-// Auto-login is preserved — the handler still calls Login after
-// Register returns and sets the refresh cookie. Email verification is
-// banner-driven; the user has 7 days before soft-restrict
-// kicks in.
-//
-// When collaborators are nil, falls back to the legacy single-INSERT
-// path (backward compat for tests).
+// Register creates a new user with encrypted password. See docs/services/user.md.
 func (s *userService) Register(ctx context.Context, email, password string) (*domain.User, error) {
 	// Validate email
 	if err := validateEmail(email); err != nil {
@@ -218,11 +165,10 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 			}
 			return nil, fmt.Errorf("register create user tx: %w", err)
 		}
-		// record the initial consent row.
 		if err := s.registerConsents.Insert(ctx, tx, user.ID, "service_operation", "pre-v22"); err != nil {
 			return nil, fmt.Errorf("register insert consent: %w", err)
 		}
-		// issue verify token + enqueue email in the same tx.
+		// Verify token + outbox enqueue must commit atomically with the user row.
 		if err := s.registerVerify.IssueAndEnqueueTx(ctx, tx, user.ID, user.Email); err != nil {
 			return nil, fmt.Errorf("register issue verify: %w", err)
 		}
@@ -230,17 +176,14 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 			return nil, fmt.Errorf("register commit: %w", err)
 		}
 
-		// AFTER commit: emit consent_recorded audit row (fire-and-forget).
-		// Audit emission is intentionally OUTSIDE the tx — the pkg/audit
-		// goroutine has its own retry + bounded context, and an audit
-		// failure must never roll back a successful Register.
+		// Audit emission is OUTSIDE the tx so an audit failure can't roll back a successful Register.
 		if s.registerAudit != nil {
 			audit.LogConsentRecorded(ctx, s.registerAudit, user.ID, "service_operation", "pre-v22")
 		}
 		return sanitizeUser(user), nil
 	}
 
-	// Legacy path — no collaborators wired (tests only).
+	// Legacy non-tx path — no collaborators wired (tests only).
 	err = s.repo.Create(ctx, user)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserExists) {
@@ -252,21 +195,7 @@ func (s *userService) Register(ctx context.Context, email, password string) (*do
 	return sanitizeUser(user), nil
 }
 
-// RegisterWithContext is the atomic-Register entry point
-// When the ConsentService is wired
-// (SetRegisterConsentService called from wire/services.go), writes
-// THREE user_consents rows at the build's currentVersion in the SAME
-// pgx.Tx as the user row + email_verification_tokens INSERT + outbox
-// enqueue. Audit row written synchronously inside the tx.
-//
-// When consentSvc is nil (e.g. tests not wiring it), falls back to the
-// single 'service_operation' INSERT path so the
-// behavior stays intact.
-//
-// The handler (auth.Register) is responsible for validating the
-// submitted policy versions match legalconfig.CurrentVersion BEFORE
-// calling this. RegisterWithContext only trusts that the versions in
-// regCtx.Policies are already current.
+// RegisterWithContext is the atomic-Register entry point. See docs/services/user.md.
 func (s *userService) RegisterWithContext(ctx context.Context, email, password string, regCtx RegistrationContext) (*domain.User, error) {
 	// Validate email
 	if err := validateEmail(email); err != nil {
@@ -290,7 +219,7 @@ func (s *userService) RegisterWithContext(ctx context.Context, email, password s
 		UpdatedAt:    time.Now(),
 	}
 
-	// atomic path: all writes in one tx, including 3× consent UPSERTs.
+	// Atomic path: user + 3× consent UPSERT + verify token + outbox enqueue all in one tx.
 	if s.registerPool != nil && s.registerUserRepo != nil && s.registerVerify != nil && s.registerConsentSvc != nil {
 		tx, err := s.registerPool.Begin(ctx)
 		if err != nil {
@@ -304,13 +233,10 @@ func (s *userService) RegisterWithContext(ctx context.Context, email, password s
 			}
 			return nil, fmt.Errorf("register create user tx: %w", err)
 		}
-		// 3× UpsertConsent (tos, privacy, pdn) +
-		// tx-aware audit row via LogConsentRecordedTx — all inside the
-		// same tx as the user row + verify token + outbox enqueue.
 		if err := s.registerConsentSvc.RecordRegistrationConsents(ctx, tx, user.ID, regCtx.IP, regCtx.UserAgent, regCtx.Policies); err != nil {
 			return nil, fmt.Errorf("record registration consents: %w", err)
 		}
-		// issue verify token + enqueue email in the same tx.
+		// Verify token + outbox enqueue must commit atomically with the user row.
 		if err := s.registerVerify.IssueAndEnqueueTx(ctx, tx, user.ID, user.Email); err != nil {
 			return nil, fmt.Errorf("register issue verify: %w", err)
 		}
@@ -320,8 +246,7 @@ func (s *userService) RegisterWithContext(ctx context.Context, email, password s
 		return sanitizeUser(user), nil
 	}
 
-	// Fallback to (single service_operation INSERT) path — the
-	// existing Register implementation is the canonical legacy path.
+	// Fallback to legacy single-consent path.
 	return s.Register(ctx, email, password)
 }
 
@@ -478,10 +403,7 @@ func (s *userService) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, 
 	return sanitizeUser(user), nil
 }
 
-// UpdatePreferredLocale delegates straight to the repo. We don't re-validate
-// the locale value here because the handler already enforces the allow-list
-// (validator tag oneof=ru en) — duplicating it here would only drift. The DB
-// CHECK constraint is the safety net.
+// UpdatePreferredLocale persists the user's UI language choice. See docs/services/user.md.
 func (s *userService) UpdatePreferredLocale(ctx context.Context, userID uuid.UUID, locale string) error {
 	if err := s.repo.UpdatePreferredLocale(ctx, userID, locale); err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
@@ -555,7 +477,7 @@ func validatePassword(password string) error {
 		return fmt.Errorf("password must be at least %d characters", passwordMinLen)
 	}
 	if len(password) > passwordMaxLen {
-		// bcrypt silently truncates passwords longer than 72 bytes
+		// bcrypt silently truncates passwords longer than 72 bytes; reject to avoid lost-suffix surprises.
 		return fmt.Errorf("password must be at most %d characters", passwordMaxLen)
 	}
 	return nil
