@@ -16,6 +16,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/audit"
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 // roleCacheInvalidator is the narrow cache interface RolesHandler needs.
@@ -120,13 +121,6 @@ func (h *RolesHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// createRoleRequest is the body shape for POST /roles.
-type createRoleRequest struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Permissions []string `json:"permissions"`
-}
-
 // Create handles POST /api/v1/businesses/{id}/roles (PermRolesCreate).
 // See docs/api/handlers/roles.md.
 //
@@ -143,7 +137,7 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req createRoleRequest
+	var req openapi.CreateRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_body")
 		return
@@ -174,7 +168,7 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	role := &domain.Role{
 		BusinessID:  &businessID,
 		Name:        name,
-		Description: req.Description,
+		Description: strDeref(req.Description),
 		Permissions: dedupedPerms,
 		IsSystem:    false,
 		CreatedBy:   &bc.UserID,
@@ -225,13 +219,6 @@ func (h *RolesHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// updateRoleRequest is the body shape for PATCH /roles/{roleId}.
-type updateRoleRequest struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Permissions []string `json:"permissions"`
-}
-
 // Update handles PATCH /api/v1/businesses/{id}/roles/{roleId} (PermRolesUpdate).
 // See docs/api/handlers/roles.md.
 func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -249,7 +236,7 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req updateRoleRequest
+	var req openapi.UpdateRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_body")
 		return
@@ -294,7 +281,7 @@ func (h *RolesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	existing.Name = name
-	existing.Description = req.Description
+	existing.Description = strDeref(req.Description)
 	// Persist deduplicated slice — reads must never observe duplicates.
 	existing.Permissions = typedPermsToStrings(proposed)
 	existing.UpdatedBy = &bc.UserID
@@ -492,11 +479,6 @@ func (h *RolesHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// myPermissionsResponse is the wire shape for GET /me/permissions.
-type myPermissionsResponse struct {
-	Permissions []string `json:"permissions"`
-}
-
 // MyPermissions handles GET /api/v1/businesses/{id}/me/permissions.
 // See docs/api/handlers/roles.md.
 //
@@ -515,7 +497,7 @@ func (h *RolesHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
 	for i, p := range bc.Permissions {
 		perms[i] = string(p)
 	}
-	writeJSON(w, http.StatusOK, myPermissionsResponse{Permissions: perms})
+	writeJSON(w, http.StatusOK, openapi.MyPermissionsResponse{Permissions: perms})
 }
 
 // parseRoleIDParam extracts {roleId}; writes 400 invalid_role_id on failure.
