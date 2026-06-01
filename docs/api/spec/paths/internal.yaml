@@ -1,0 +1,220 @@
+/internal/draft-reply:
+  post:
+    operationId: orchestratorDraftReply
+    summary: Generate an LLM draft reply for a customer review.
+    tags:
+    - internal
+    servers:
+    - url: http://orchestrator:8090
+    security:
+    - mtls: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/DraftReplyRequest
+    responses:
+      '200':
+        description: Draft generated.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/DraftReplyResponse
+      '400':
+        description: Invalid body or empty reviewText.
+        content:
+          text/plain:
+            schema:
+              type: string
+      '405':
+        description: Method other than POST.
+        content:
+          text/plain:
+            schema:
+              type: string
+      '429':
+        description: LLM rate limit exceeded.
+        content:
+          text/plain:
+            schema:
+              type: string
+      '502':
+        description: LLM upstream failure.
+        content:
+          text/plain:
+            schema:
+              type: string
+/internal/tools:
+  get:
+    operationId: orchestratorListTools
+    summary: Full registry projection (locale-resolved descriptions).
+    tags:
+    - internal
+    servers:
+    - url: http://orchestrator:8090
+    security:
+    - mtls: []
+    responses:
+      '200':
+        description: Registry snapshot.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/ToolRegistryEntry
+/internal/tools/names:
+  get:
+    operationId: orchestratorListToolNames
+    summary: Tool-names projection for hitlvalidation.
+    tags:
+    - internal
+    servers:
+    - url: http://orchestrator:8090
+    security:
+    - mtls: []
+    responses:
+      '200':
+        description: List of registered tool names.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ToolNamesResponse
+/tokens:
+  get:
+    operationId: internalGetToken
+    summary: Resolve decrypted integration tokens for a business + platform.
+    tags:
+    - internal
+    security:
+    - mtls: []
+    parameters:
+    - name: business_id
+      in: query
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: platform
+      in: query
+      required: true
+      schema:
+        type: string
+    - name: external_id
+      in: query
+      required: false
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Decrypted token payload.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/InternalTokenResponse
+      '400':
+        description: Missing or invalid query parameter.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: No active integration matches.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '410':
+        description: Token expired and the refresh attempt also failed.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/billing/usage_logs:
+  post:
+    operationId: internalLogUsage
+    summary: Persist an LLM usage log row.
+    tags:
+    - internal
+    security:
+    - mtls: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UsageLog
+    responses:
+      '204':
+        description: Usage logged.
+      '400':
+        description: '`invalid_payload`.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BillingErrorResponse
+      '405':
+        description: Wrong HTTP verb.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BillingErrorResponse
+      '500':
+        description: '`transient` — repository failure.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BillingErrorResponse
+/billing/daily_spend:
+  get:
+    operationId: internalGetDailySpend
+    summary: Read a business's USD spend for a UTC calendar day.
+    tags:
+    - internal
+    security:
+    - mtls: []
+    parameters:
+    - name: business_id
+      in: query
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: date
+      in: query
+      required: true
+      schema:
+        type: string
+        pattern: ^\d{4}-\d{2}-\d{2}$
+    responses:
+      '200':
+        description: Daily spend.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/DailySpendResponse
+      '400':
+        description: Missing/invalid business_id or date.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BillingErrorResponse
+      '405':
+        description: Wrong HTTP verb.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BillingErrorResponse
+      '500':
+        description: '`transient` — repository failure.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BillingErrorResponse

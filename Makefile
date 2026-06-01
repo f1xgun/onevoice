@@ -284,12 +284,13 @@ clean: ## Remove build artifacts
 
 # OpenAPI / oapi-codegen — types-only spec-first POC.
 #
-# Source of truth: docs/api/openapi.yaml
+# Source of truth: docs/api/spec/openapi.yaml (modular; pulls in
+# spec/paths/*.yaml + spec/components.yaml via external $refs).
 # Generated output: services/api/internal/openapi/types.gen.go
 # Config: docs/api/oapi-codegen.yaml
 OAPI_VERSION ?= v2.4.1
 OAPI_BIN     ?= $(shell go env GOPATH)/bin/oapi-codegen
-OAPI_SPEC    := docs/api/openapi.yaml
+OAPI_SPEC    := docs/api/spec/openapi.yaml
 OAPI_CONFIG  := docs/api/oapi-codegen.yaml
 OAPI_OUT     := services/api/internal/openapi/types.gen.go
 
@@ -298,7 +299,7 @@ oapi-install: ## Install oapi-codegen CLI into $$GOPATH/bin (build-time tool, no
 	@GOWORK=off go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_VERSION)
 	@echo "Installed to $(OAPI_BIN)"
 
-oapi-gen: ## Regenerate types from docs/api/openapi.yaml
+oapi-gen: ## Regenerate types from docs/api/spec/openapi.yaml
 	@command -v $(OAPI_BIN) >/dev/null 2>&1 || { echo "oapi-codegen not found; run 'make oapi-install'"; exit 1; }
 	@echo "Generating $(OAPI_OUT) from $(OAPI_SPEC)..."
 	@$(OAPI_BIN) -config $(OAPI_CONFIG) $(OAPI_SPEC)
@@ -310,7 +311,7 @@ oapi-check: ## Fail if generated types are out of date relative to the spec
 		cp $(OAPI_OUT) $$backup; \
 		$(OAPI_BIN) -config $(OAPI_CONFIG) $(OAPI_SPEC); \
 		if ! diff -u $$backup $(OAPI_OUT) >/dev/null; then \
-			echo "drift detected: $(OAPI_OUT) does not match docs/api/openapi.yaml"; \
+			echo "drift detected: $(OAPI_OUT) does not match $(OAPI_SPEC)"; \
 			diff -u $$backup $(OAPI_OUT) || true; \
 			cp $$backup $(OAPI_OUT); \
 			rm -f $$backup; \

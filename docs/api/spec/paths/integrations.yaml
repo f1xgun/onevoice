@@ -1,0 +1,295 @@
+/platforms:
+  get:
+    operationId: listPlatforms
+    summary: List the integration platform registry.
+    description: |
+      Unauthenticated — the marketing landing page renders this without
+      a token. Only non-sensitive platform metadata is returned. Cached
+      for 60s.
+    tags:
+    - integrations
+    security: []
+    responses:
+      '200':
+        description: Platform registry rows.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/Platform
+/businesses/{id}/integrations:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  get:
+    operationId: listIntegrations
+    summary: List integrations for the business.
+    tags:
+    - integrations
+    responses:
+      '200':
+        description: Integration rows (empty array if none).
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/Integration
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/{integrationId}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  - $ref: ../openapi.yaml#/components/parameters/IntegrationIDPath
+  delete:
+    operationId: deleteIntegration
+    summary: Disconnect (delete) an integration.
+    tags:
+    - integrations
+    responses:
+      '204':
+        description: Integration deleted.
+      '400':
+        description: Invalid integration ID.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Integration not found in this business.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/vk/connect:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: connectVK
+    summary: Persist a pasted VK community access token as an integration.
+    tags:
+    - integrations
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ConnectVKRequest
+    responses:
+      '201':
+        description: Integration created.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Integration
+      '400':
+        description: |
+          Validation failure, unresolvable community, invalid token,
+          or `wall` scope missing.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '502':
+        description: Upstream VK error.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/vk/{integrationId}/refresh-name:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  - $ref: ../openapi.yaml#/components/parameters/IntegrationIDPath
+  post:
+    operationId: refreshVKCommunityName
+    summary: Backfill the VK community display name in metadata.
+    tags:
+    - integrations
+    responses:
+      '200':
+        description: Integration row (possibly updated).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Integration
+      '400':
+        description: Invalid integration ID.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Integration not found in this business.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/telegram/verify:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: verifyTelegramLogin
+    summary: Verify a Telegram Login Widget callback (HMAC-SHA256).
+    tags:
+    - integrations
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/TelegramLoginRequest
+    responses:
+      '200':
+        description: HMAC verified; user payload echoed back.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/TelegramLoginVerifiedResponse
+      '400':
+        description: Missing hash or malformed body.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '401':
+        description: Invalid HMAC or auth_date expired.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/telegram/connect:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: connectTelegram
+    summary: Store a Telegram channel integration using the system bot token.
+    tags:
+    - integrations
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ConnectTelegramRequest
+    responses:
+      '201':
+        description: Integration created.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Integration
+      '400':
+        description: Missing channel_id or bot does not have access.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/integrations/telegram/refresh:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+  post:
+    operationId: refreshTelegramLinkedGroup
+    summary: Re-probe a Telegram channel's linked discussion group.
+    tags:
+    - integrations
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/RefreshTelegramRequest
+    responses:
+      '200':
+        description: Updated linked-group probe.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/RefreshTelegramResponse
+      '400':
+        description: Missing channel_id or malformed body.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Insufficient permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Integration not found in this business.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '502':
+        description: Bot no longer has access to the channel.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

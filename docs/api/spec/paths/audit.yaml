@@ -1,0 +1,80 @@
+/businesses/{id}/audit-logs:
+  get:
+    operationId: listAuditLogs
+    summary: List business audit events with cursor pagination.
+    tags:
+    - audit
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: category
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+        - rbac
+        - auth
+        - integration
+        - business
+        - project
+    - name: action
+      in: query
+      required: false
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/AuditAction
+    - name: actor
+      in: query
+      required: false
+      schema:
+        type: string
+        format: uuid
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    - name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    responses:
+      '200':
+        description: Audit-log page.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AuditLogListResponse
+      '400':
+        description: Invalid filter.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller lacks `audit.read`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/BusinessNotFound
+      '500':
+        $ref: ../openapi.yaml#/components/responses/InternalError

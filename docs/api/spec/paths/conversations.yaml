@@ -1,0 +1,335 @@
+/businesses/{id}/conversations:
+  get:
+    operationId: listConversations
+    summary: List the caller's conversations in the business.
+    tags:
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+    - name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+    responses:
+      '200':
+        description: Conversation list.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/Conversation
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  post:
+    operationId: createConversation
+    summary: Create a conversation; optional project assignment.
+    tags:
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CreateConversationRequest
+    responses:
+      '201':
+        description: Created.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Conversation
+      '400':
+        description: Invalid body, or invalid project id.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:create` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Referenced project not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/conversations/{conversationID}:
+  get:
+    operationId: getConversation
+    summary: Owner-only fetch of a single conversation.
+    tags:
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Conversation document.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Conversation
+      '400':
+        description: Conversation ID is not a valid 24-char hex.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:read` permission OR not the owner.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Conversation not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  put:
+    operationId: updateConversation
+    summary: Manual rename.
+    tags:
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateConversationRequest
+    responses:
+      '200':
+        description: Updated conversation.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Conversation
+      '400':
+        description: Invalid body.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:update` permission OR not the owner.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Conversation not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  delete:
+    operationId: deleteConversation
+    summary: Owner-only conversation delete.
+    tags:
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '204':
+        description: Deleted.
+      '403':
+        description: Missing `content:delete` permission OR not the owner.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Conversation not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/conversations/{conversationID}/messages:
+  get:
+    operationId: listConversationMessages
+    summary: Conversation messages + pending HITL approval projection.
+    tags:
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: ChatView — messages + pendingApprovals.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ChatView
+      '403':
+        description: Missing `content:read` permission OR not the owner.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Conversation not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/conversations/{conversationID}/move:
+  post:
+    operationId: moveConversation
+    summary: Move conversation between projects.
+    tags:
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/MoveConversationRequest
+    responses:
+      '200':
+        description: Post-move conversation row.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Conversation
+      '400':
+        description: Invalid body OR invalid project id.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing permission OR not the owner.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Conversation or project not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/conversations/{conversationID}/pin:
+  post:
+    operationId: pinConversation
+    summary: Pin a conversation.
+    tags:
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Updated conversation (now pinned).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Conversation
+      '400':
+        description: Conversation ID is not 24-char hex.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:update` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Conversation not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/conversations/{conversationID}/unpin:
+  post:
+    operationId: unpinConversation
+    summary: Unpin a conversation.
+    tags:
+    - conversations
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Updated conversation (now unpinned).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Conversation
+      '400':
+        description: Conversation ID is not 24-char hex.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:update` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Conversation not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

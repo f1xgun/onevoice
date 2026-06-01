@@ -1,0 +1,228 @@
+/businesses/{id}/projects:
+  get:
+    operationId: listProjects
+    tags:
+    - projects
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    responses:
+      '200':
+        description: Project list.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/Project
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  post:
+    operationId: createProject
+    tags:
+    - projects
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ProjectRequest
+    responses:
+      '201':
+        description: Created.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Project
+      '400':
+        description: Invalid body or unknown tool in approvalOverrides.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:create` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '409':
+        description: Project name already exists for this business.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '503':
+        description: Tools registry cache unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/projects/{projectID}:
+  get:
+    operationId: getProject
+    tags:
+    - projects
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: projectID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Project row.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Project
+      '400':
+        description: Invalid project id.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Project not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  put:
+    operationId: updateProject
+    tags:
+    - projects
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: projectID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ProjectRequest
+    responses:
+      '200':
+        description: Updated project.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Project
+      '400':
+        description: Invalid body or invalid project id.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:update` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Project not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '503':
+        description: Tools registry cache unavailable.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+  delete:
+    operationId: deleteProject
+    summary: Cascade-delete project + conversations + messages.
+    tags:
+    - projects
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: projectID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Cascade delete counts.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ProjectDeleteResponse
+      '400':
+        description: Invalid project id.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:delete` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Project not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/businesses/{id}/projects/{projectID}/conversation-count:
+  get:
+    operationId: getProjectConversationCount
+    tags:
+    - projects
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - name: projectID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Conversation count.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ProjectConversationCountResponse
+      '400':
+        description: Invalid project id.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Missing `content:read` permission.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        description: Project not found.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

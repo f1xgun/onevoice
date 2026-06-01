@@ -1,0 +1,122 @@
+/auth/consents:
+  post:
+    operationId: reconsent
+    summary: Submit the re-consent modal (Surface E).
+    description: |
+      Auth-required; never gated by RequireVerifiedEmail* or
+      BlockWritesDuringGrace (right-to-withdraw, 152-ФЗ Art. 21).
+      Origin header is required (CSRF defense).
+    tags:
+    - consents
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/ReconsentRequest
+    responses:
+      '204':
+        description: Consents recorded.
+      '400':
+        description: |
+          `consent_required` (missing slugs) or malformed body.
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+              - $ref: ../openapi.yaml#/components/schemas/ConsentRequiredResponse
+      '401':
+        description: Unauthorized.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Origin header missing or not allow-listed (`origin_not_allowed`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '409':
+        description: |
+          `version_mismatch` — the build's currentVersion bumped since
+          the modal was rendered. Body carries the new currentVersion.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/VersionMismatchResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/users/me/consents:
+  get:
+    operationId: listMyConsents
+    summary: Return the authenticated user's consent ledger.
+    tags:
+    - consents
+    responses:
+      '200':
+        description: Consent rows.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ListConsentsResponse
+      '401':
+        description: Unauthorized.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+/users/me/consents/pdn/withdraw:
+  post:
+    operationId: withdrawPDNConsent
+    summary: Withdraw the PDN consent (triggers account deletion).
+    description: |
+      Withdrawal of the PDN consent triggers the deletion flow. 423
+      `account_pending_deletion` when the user is already mid-deletion.
+      Origin header required (CSRF defense).
+    tags:
+    - consents
+    responses:
+      '204':
+        description: PDN consent withdrawn; deletion flow started.
+      '401':
+        description: Unauthorized.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '403':
+        description: Origin header missing or not allow-listed (`origin_not_allowed`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '404':
+        description: User row missing (`user_not_found`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '423':
+        description: Deletion already pending (`account_pending_deletion`).
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/PendingDeletionResponse
+      '500':
+        description: Internal failure.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse

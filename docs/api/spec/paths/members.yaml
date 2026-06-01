@@ -1,0 +1,111 @@
+/businesses/{id}/members:
+  get:
+    operationId: listMembers
+    summary: List members of a business.
+    tags:
+    - members
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    responses:
+      '200':
+        description: Member list.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../openapi.yaml#/components/schemas/Member
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller lacks `members.read`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/BusinessNotFound
+/businesses/{id}/members/{userId}:
+  patch:
+    operationId: updateMemberRole
+    summary: Change a member's role.
+    tags:
+    - members
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - $ref: ../openapi.yaml#/components/parameters/UserIDPath
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/UpdateMemberRoleRequest
+    responses:
+      '200':
+        description: Updated membership.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/UpdateMemberRoleResponse
+      '400':
+        description: |
+          `invalid_user_id`, `invalid_body`, `validation_failed`, or
+          `invalid_role_id`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: |
+          `forbidden` or `cannot_change_own_role`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/BusinessNotFound
+      '409':
+        description: Last-owner invariant would be violated.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '500':
+        $ref: ../openapi.yaml#/components/responses/InternalError
+  delete:
+    operationId: removeMember
+    summary: Remove a member from a business.
+    tags:
+    - members
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/BusinessIDPath
+    - $ref: ../openapi.yaml#/components/parameters/UserIDPath
+    responses:
+      '204':
+        description: Member removed.
+      '400':
+        description: '`invalid_user_id`.'
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '403':
+        description: Caller is not the target user and lacks `members.remove`.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ErrorResponse
+      '404':
+        $ref: ../openapi.yaml#/components/responses/BusinessNotFound
+      '409':
+        description: Last-owner invariant would be violated.
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CodeErrorResponse
+      '500':
+        $ref: ../openapi.yaml#/components/responses/InternalError
