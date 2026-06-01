@@ -227,12 +227,12 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 //     spec `required: true` invariant is preserved.
 func toOpenAPIAuditEvent(l repository.AuditLogRow) openapi.AuditEvent {
 	evt := openapi.AuditEvent{
-		Id:             openapi_types.UUID(l.ID),
+		Id:             l.ID,
 		Action:         openapi.AuditAction(l.Action),
 		ActionCategory: openapi.AuditEventActionCategory(audit.ActionCategory(l.Action)),
 		Resource:       l.Resource,
-		BusinessId:     (*openapi_types.UUID)(l.BusinessID),
-		ActorId:        (*openapi_types.UUID)(l.UserID),
+		BusinessId:     l.BusinessID,
+		ActorId:        l.UserID,
 		CreatedAt:      l.CreatedAt,
 		Details:        decodeAuditDetails(l.Details),
 	}
