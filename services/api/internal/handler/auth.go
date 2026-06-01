@@ -176,23 +176,6 @@ func (h *AuthHandler) readRefreshTokenCookie(r *http.Request) (string, error) {
 	return "", http.ErrNoCookie
 }
 
-// RegisterConsents is the per-slug version map submitted with /auth/register.
-// All three must equal the build's currentVersion or the handler returns
-// 400 consent_required with the missing slugs.
-type RegisterConsents struct {
-	TOS     string `json:"tos"`
-	Privacy string `json:"privacy"`
-	PDN     string `json:"pdn"`
-}
-
-// RegisterRequest is the registration body. Missing/empty consents block is
-// treated as "all stale" → 400 consent_required (forces UI migration).
-type RegisterRequest struct {
-	Email    string           `json:"email" validate:"required,email"`
-	Password string           `json:"password" validate:"required,min=8"`
-	Consents RegisterConsents `json:"consents"`
-}
-
 // Re-export spec-owned shapes under the historic handler.* names.
 type (
 	LoginRequest         = openapi.LoginRequest
@@ -210,27 +193,13 @@ func userToOpenAPI(u *domain.User) openapi.User {
 	}
 }
 
-// Generated LoginRequest carries no validate tags; enforce the spec's
-// constraints in-handler against an anonymous tagged twin.
-func validateLoginRequest(req openapi.LoginRequest) error {
-	type tagged struct {
-		Email    string `validate:"required,email"`
-		Password string `validate:"required,min=8"`
+// strDeref returns the dereferenced value or "" when ptr is nil. Used for
+// optional fields in spec-generated request structs.
+func strDeref(s *string) string {
+	if s == nil {
+		return ""
 	}
-	return validate.Struct(tagged{Email: string(req.Email), Password: req.Password})
-}
-
-// ChangePasswordRequest is the password change body.
-type ChangePasswordRequest struct {
-	CurrentPassword string `json:"currentPassword" validate:"required"`
-	NewPassword     string `json:"newPassword" validate:"required,min=8"`
-}
-
-// UpdatePreferredLocaleRequest is the body for PATCH /api/v1/auth/locale.
-// `oneof=ru en` enforces the allow-list at the HTTP boundary; a DB CHECK
-// constraint is the defense-in-depth floor.
-type UpdatePreferredLocaleRequest struct {
-	Locale string `json:"locale" validate:"required,oneof=ru en"`
+	return *s
 }
 
 // Register handles user registration and auto-login. Validates the consents
@@ -238,7 +207,7 @@ type UpdatePreferredLocaleRequest struct {
 // consent_required. On success, writes consents + user + verify token +
 // outbox enqueue in the same tx.
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var req RegisterRequest
+	var req openapi.RegisterRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -251,13 +220,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var missing []string
-	if req.Consents.TOS != legalconfig.TOSVersion {
+	if strDeref(req.Consents.Tos) != legalconfig.TOSVersion {
 		missing = append(missing, string(legalconfig.PolicyTOS))
 	}
-	if req.Consents.Privacy != legalconfig.PrivacyVersion {
+	if strDeref(req.Consents.Privacy) != legalconfig.PrivacyVersion {
 		missing = append(missing, string(legalconfig.PolicyPrivacy))
 	}
-	if req.Consents.PDN != legalconfig.PDNVersion {
+	if strDeref(req.Consents.Pdn) != legalconfig.PDNVersion {
 		missing = append(missing, string(legalconfig.PolicyPDN))
 	}
 	if len(missing) > 0 {
@@ -272,12 +241,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		IP:        middleware.ClientIP(r),
 		UserAgent: r.UserAgent(),
 		Policies: []service.PolicyAccepted{
-			{Slug: string(legalconfig.PolicyTOS), Version: req.Consents.TOS},
-			{Slug: string(legalconfig.PolicyPrivacy), Version: req.Consents.Privacy},
-			{Slug: string(legalconfig.PolicyPDN), Version: req.Consents.PDN},
+			{Slug: string(legalconfig.PolicyTOS), Version: strDeref(req.Consents.Tos)},
+			{Slug: string(legalconfig.PolicyPrivacy), Version: strDeref(req.Consents.Privacy)},
+			{Slug: string(legalconfig.PolicyPDN), Version: strDeref(req.Consents.Pdn)},
 		},
 	}
-	_, err := h.userService.RegisterWithContext(r.Context(), req.Email, req.Password, regCtx)
+	email := string(req.Email)
+	_, err := h.userService.RegisterWithContext(r.Context(), email, req.Password, regCtx)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserExists) {
 			writeJSONError(w, http.StatusConflict, "user already exists")
@@ -288,7 +258,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
+	user, accessToken, refreshToken, err := h.userService.Login(r.Context(), email, req.Password)
 	if err != nil {
 		slog.Error("auto-login after register failed", "error", err)
 		// Distinct from register_internal — the account WAS created; only token issue failed.
@@ -315,7 +285,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if err := validateLoginRequest(req); err != nil {
+	if err := h.validate.Struct(req); err != nil {
 		writeValidationError(w, r, err)
 		return
 	}
@@ -586,7 +556,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req ChangePasswordRequest
+	var req openapi.ChangePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -626,7 +596,7 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var req UpdatePreferredLocaleRequest
+	var req openapi.UpdatePreferredLocaleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -637,7 +607,7 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.userService.UpdatePreferredLocale(r.Context(), userID, req.Locale); err != nil {
+	if err := h.userService.UpdatePreferredLocale(r.Context(), userID, string(req.Locale)); err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
 			writeJSONError(w, http.StatusNotFound, "user not found")
 			return
@@ -650,24 +620,13 @@ func (h *AuthHandler) UpdatePreferredLocale(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
-// RequestPasswordResetRequest is the body for POST /auth/password-reset/request.
-type RequestPasswordResetRequest struct {
-	Email string `json:"email" validate:"required,email"`
-}
-
-// ConfirmPasswordResetRequest is the body for POST /auth/password-reset/confirm.
-type ConfirmPasswordResetRequest struct {
-	Token       string `json:"token" validate:"required,min=1"`
-	NewPassword string `json:"newPassword" validate:"required,min=8"`
-}
-
 // RequestPasswordReset handles POST /api/v1/auth/password-reset/request.
 // Returns 204 ALWAYS regardless of whether the email is registered — the
 // service handles per-email rate-limit + dummy-audit-on-unknown-email +
 // outbox enqueue with symmetric timing across branches. Adding a chi.RateLimit
 // wrapper here would short-circuit and skew the timing-parity contract.
 func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
-	var req RequestPasswordResetRequest
+	var req openapi.RequestPasswordResetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -677,7 +636,7 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	// Service ALWAYS returns nil; we do not branch on its result.
-	_ = h.passwordResetService.RequestReset(r.Context(), req.Email, middleware.ClientIP(r), r.UserAgent())
+	_ = h.passwordResetService.RequestReset(r.Context(), string(req.Email), middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -685,7 +644,7 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 // On success the service has consumed the token, rotated the password hash,
 // and wiped all refresh tokens for the user.
 func (h *AuthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
-	var req ConfirmPasswordResetRequest
+	var req openapi.ConfirmPasswordResetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -701,11 +660,6 @@ func (h *AuthHandler) ConfirmPasswordReset(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// VerifyConfirmRequest is the body for POST /auth/verify-email/confirm.
-type VerifyConfirmRequest struct {
-	Token string `json:"token" validate:"required,min=20"`
-}
-
 // VerifyConfirm handles POST /api/v1/auth/verify-email/confirm.
 //
 // CRITICAL: NO Set-Cookie is emitted — no session is granted, so an attacker
@@ -714,7 +668,7 @@ type VerifyConfirmRequest struct {
 // On invalid-failure we run a single follow-up LookupExpired to surface the
 // "expired" UX hint — both codes are equally safe (token is burned either way).
 func (h *AuthHandler) VerifyConfirm(w http.ResponseWriter, r *http.Request) {
-	var req VerifyConfirmRequest
+	var req openapi.VerifyConfirmRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -776,11 +730,6 @@ func (h *AuthHandler) VerifyResend(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// EmailBeforeVerifyRequest is the body for PATCH /auth/email-before-verify.
-type EmailBeforeVerifyRequest struct {
-	NewEmail string `json:"newEmail" validate:"required,email"`
-}
-
 // EmailBeforeVerify handles PATCH /api/v1/auth/email-before-verify. Only
 // allowed when email_verified=false; otherwise 403 email_already_verified.
 func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) {
@@ -794,7 +743,7 @@ func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var req EmailBeforeVerifyRequest
+	var req openapi.EmailBeforeVerifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -804,7 +753,8 @@ func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	oldEmail, err := h.emailVerificationService.ChangeEmailBeforeVerify(r.Context(), userID, req.NewEmail)
+	newEmail := string(req.NewEmail)
+	oldEmail, err := h.emailVerificationService.ChangeEmailBeforeVerify(r.Context(), userID, newEmail)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrAlreadyVerified):
@@ -818,7 +768,7 @@ func (h *AuthHandler) EmailBeforeVerify(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	audit.LogEmailChangedBeforeVerify(r.Context(), h.audit, userID, oldEmail, req.NewEmail, middleware.ClientIP(r), r.UserAgent())
+	audit.LogEmailChangedBeforeVerify(r.Context(), h.audit, userID, oldEmail, newEmail, middleware.ClientIP(r), r.UserAgent())
 	w.WriteHeader(http.StatusNoContent)
 }
 

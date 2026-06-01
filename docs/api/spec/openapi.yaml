@@ -499,10 +499,12 @@ components:
           $ref: '#/components/schemas/RegisterConsents'
     RegisterConsents:
       type: object
-      required:
-      - tos
-      - privacy
-      - pdn
+      description: |
+        Per-slug version map submitted with /auth/register. The handler enforces
+        version-equality (vs `legalconfig.*Version`) and returns 400
+        consent_required listing the missing slugs, so individual fields are
+        NOT marked `required` at the schema level — a missing field is treated
+        as a stale consent, not a schema violation.
       properties:
         tos:
           type: string

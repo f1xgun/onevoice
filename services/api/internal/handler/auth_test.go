@@ -167,14 +167,16 @@ func TestRegister(t *testing.T) {
 			},
 		},
 		{
+			// openapi_types.Email rejects malformed addresses at JSON-decode
+			// time, so the handler short-circuits to 400 "invalid request body"
+			// before validator.Struct runs. Status code is unchanged.
 			name:        "invalid email format",
 			requestBody: `{"email":"not-an-email","password":"password123"}`,
 			mockSetup:   func(m *MockUserService) {},
 			wantStatus:  http.StatusBadRequest,
 			checkResponse: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
-				assert.Contains(t, body, `"error":"validation failed"`)
-				assert.Contains(t, body, `"Email"`)
+				assert.Contains(t, body, `"error":"invalid request body"`)
 			},
 		},
 		{
