@@ -19,97 +19,70 @@ import (
 	"github.com/f1xgun/onevoice/services/orchestrator/internal/toolregistry"
 )
 
-// StepOutcome identifies the terminal state of a stepRun invocation. Callers
-// (Run for fresh turns, Resume for post-approval continuation) branch on this
-// value to decide whether to exit the goroutine (OutcomePaused/OutcomeDone)
-// or surface an error (OutcomeError/OutcomeMaxIterations).
+// StepOutcome is the terminal state returned by stepRun. See docs/orchestrator/step.md.
 type StepOutcome int
 
 const (
 	// OutcomeDone — LLM returned a terminal response with no tool calls.
 	OutcomeDone StepOutcome = iota
-	// OutcomePaused — at least one manual-floor tool call was classified;
-	// the batch was persisted via pendingRepo.Persist and the
-	// tool_approval_required SSE event emitted. Goroutine MUST exit.
+	// OutcomePaused — manual-floor tool surfaced; batch persisted and pause event emitted. Goroutine MUST exit.
 	OutcomePaused
-	// OutcomeError — unrecoverable error; an EventError has already been emitted.
+	// OutcomeError — unrecoverable error; EventError already emitted.
 	OutcomeError
-	// OutcomeMaxIterations — safety cap hit; an EventError has been emitted.
+	// OutcomeMaxIterations — safety cap hit; EventError already emitted.
 	OutcomeMaxIterations
 )
 
-// RunState is the mutable loop state. Serialized to
-// PendingToolCallBatch.ModelMessages at pause time, reconstructed by Resume.
+// RunState is the mutable loop state; serialized to PendingToolCallBatch.ModelMessages at pause.
+// See docs/orchestrator/step.md for field semantics and snapshot envelope.
 type RunState struct {
-	// Messages is the conversation history forwarded to the LLM. MUST NOT
-	// carry a leading role:"system" entry — system content lives on
-	// SystemPlatform / SystemBusiness and is wired into SystemBlocks by
-	// stepRun. Legacy Resume snapshots with a leading system message fall
-	// back to the scrub path in resume.go.
+	// Messages MUST NOT carry a leading role:"system" entry — system content
+	// lives on SystemPlatform/SystemBusiness. Legacy Resume snapshots with a
+	// leading system message fall back to the scrub path in resume.go.
 	Messages []llm.Message
 
-	// SystemPlatform is Block 1 of the two-block system prompt — the
-	// platform-wide prefix Anthropic caches via cache_control:ephemeral.
-	// Byte-stable per locale.
+	// SystemPlatform is Block 1 (cached via cache_control:ephemeral, byte-stable per locale).
 	SystemPlatform string
-
-	// SystemBusiness is Block 2 — the per-business prefix. NEVER carries
-	// cache_control; every business has distinct bytes and stamping would
-	// defeat cross-business cache reuse.
+	// SystemBusiness is Block 2 (per-business, NEVER carries cache_control — would defeat cross-business reuse).
 	SystemBusiness string
 
 	AvailableTools []llm.ToolDefinition
 
-	// BusinessApprovals / ProjectApprovalOverrides are snapshots of
-	// settings.tool_approvals / projects.approval_overrides. Nil maps OK.
 	BusinessApprovals        map[string]domain.ToolFloor
 	ProjectApprovalOverrides map[string]domain.ToolFloor
 
-	// Identity fields persisted on PendingToolCallBatch for business-scoped
-	// access control at resolve time.
 	ConversationID string
 	BusinessID     string
+	ProjectID      string
+	UserID         string
+	MessageID      string
 
-	// ProjectID is empty when conversation has no project. Threaded into
-	// batch.ProjectID so TOCTOU re-check can load project overrides.
-	ProjectID string
-	UserID    string
-	MessageID string
-
-	// Model / Tier route subsequent iterations (including post-resume) to
-	// the same provider+tier as the initial request.
 	Model string
 	Tier  string
 
-	// UserUUID is the uuid.UUID form taken by LLMClient.Chat — kept
-	// alongside string UserID for legacy callers.
+	// UserUUID is the uuid.UUID form taken by LLMClient.Chat (alongside string UserID).
 	UserUUID uuid.UUID
 
 	// Iter is the 0-based iteration counter; resume continues at Iter+1.
 	Iter int
 
 	// Accumulated*Tokens are running per-conversation sums persisted in the
-	// pause snapshot so resume doesn't reset the budget to zero.
+	// snapshot so resume doesn't reset the budget to zero.
 	AccumulatedInputTokens  int
 	AccumulatedOutputTokens int
 }
 
-// ErrConversationTokenCap fires when the per-conversation token budget on
-// either axis (input or output) is exhausted. Distinct from MaxIterations
-// because the cap is a softer / earlier guard.
+// ErrConversationTokenCap fires when the per-conversation input or output token budget is exhausted.
 var ErrConversationTokenCap = errors.New("conversation token cap exceeded")
 
-// Friendly user-facing text for the conversation_token_cap SSE error. The
-// frontend keys off Event.Code rather than parsing this string, so the
-// content is just the human-readable fallback. Two locales only — no
-// pkg/i18n catalog migration.
+// Two-locale fallback strings for the conversation_token_cap SSE error.
+// The frontend keys off Event.Code; content is just the human-readable fallback.
 const (
 	conversationCapMessageRU = "Этот диалог достиг лимита токенов. Создайте новый чат, чтобы продолжить."
 	conversationCapMessageEN = "This conversation has reached its token limit. Start a new chat to continue."
 )
 
-// friendlyConversationCapMessage returns the cap message in the locale
-// resolved off the request context. The cap-hit code stays in Event.Code.
+// friendlyConversationCapMessage returns the cap message in the locale from ctx.
 func friendlyConversationCapMessage(ctx context.Context) string {
 	if i18n.LocaleFromContext(ctx) == language.English {
 		return conversationCapMessageEN
@@ -117,8 +90,7 @@ func friendlyConversationCapMessage(ctx context.Context) string {
 	return conversationCapMessageRU
 }
 
-// Friendly text for rate-limiter sentinels that surface mid-loop. Two-locale
-// switch matching the chat handler's bootstrap-error translation.
+// In-loop rate-limiter sentinel translations; matches the chat handler's bootstrap-error catalog.
 const (
 	dailySpendInLoopRU        = "Достигнут дневной лимит расходов для этого бизнеса. Попробуйте завтра."
 	dailySpendInLoopEN        = "Daily spend limit reached for this business. Try again tomorrow."
@@ -128,9 +100,8 @@ const (
 	rateLimitExceededInLoopEN = "Too many requests. Wait a minute and try again."
 )
 
-// translateChatError converts a Router-side rate-limiter sentinel into an SSE
-// Event carrying the machine-readable Code. Errors without a matching
-// sentinel keep their legacy free-text shape so observability is preserved.
+// translateChatError maps Router rate-limiter sentinels to coded SSE Events.
+// Non-sentinel errors keep their legacy free-text shape for observability.
 func translateChatError(ctx context.Context, err error) Event {
 	en := i18n.LocaleFromContext(ctx) == language.English
 	switch {
@@ -157,17 +128,14 @@ func translateChatError(ctx context.Context, err error) Event {
 	}
 }
 
-// stepRun is the shared loop body for Run (fresh turns) and Resume
-// (post-approval continuation). MUST NOT block waiting for approval — on
-// manual-floor classification it persists the batch, emits
+// stepRun is the shared loop body for Run and Resume. MUST NOT block waiting
+// for approval — on manual-floor classification it persists the batch, emits
 // tool_approval_required, and returns OutcomePaused.
+// See docs/orchestrator/step.md.
 //
 //nolint:unparam // StepOutcome consumed by Resume's dispatchApprovedCalls path.
 func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- Event) (StepOutcome, string, error) {
 	for state.Iter < o.options.MaxIterations {
-		// Block 1 (platform) carries CacheBoundary=true so Anthropic stamps
-		// cache_control on it; Block 2 (per-business) does not, keeping the
-		// cache prefix byte-stable across businesses.
 		// parseBizID degrades malformed BusinessID to uuid.Nil so the router's
 		// nil-guard skips billing instead of writing a corrupt row.
 		llmReq := llm.ChatRequest{
@@ -181,6 +149,8 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			MaxTokens:      llm.DefaultMaxTokensFor(state.Model),
 		}
 		if state.SystemPlatform != "" || state.SystemBusiness != "" {
+			// CacheBoundary stamps cache_control on Block 1 only; Block 2 stays
+			// uncached to preserve the cross-business cache prefix.
 			llmReq.SystemBlocks = []llm.SystemBlock{
 				{Text: state.SystemPlatform, CacheBoundary: true},
 				{Text: state.SystemBusiness},
@@ -188,8 +158,6 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 		}
 		resp, err := o.llm.Chat(ctx, llmReq)
 		if err != nil {
-			// Translate rate-limiter sentinels to coded SSE error events so
-			// consumers can branch on Code without parsing free text.
 			ev := translateChatError(ctx, err)
 			select {
 			case out <- ev:
@@ -198,9 +166,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			return OutcomeError, "", err
 		}
 
-		// Accumulate BEFORE the no-tool-calls branch so the cap fires
-		// uniformly on both terminal and tool-call iterations. Mid-iter
-		// overshoot is caught because the comparison is against the sum.
+		// Accumulate BEFORE the no-tool-calls branch so the cap fires uniformly
+		// on both terminal and tool-call iterations; mid-iter overshoot is
+		// caught because the comparison is against the running sum.
 		state.AccumulatedInputTokens += resp.Usage.InputTokens
 		state.AccumulatedOutputTokens += resp.Usage.OutputTokens
 		if o.options.ConversationInputCap > 0 && state.AccumulatedInputTokens >= o.options.ConversationInputCap {
@@ -228,7 +196,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			return OutcomeError, "", ErrConversationTokenCap
 		}
 
-		// 2. No tool calls → terminal (done)
+		// No tool calls → terminal.
 		if len(resp.ToolCalls) == 0 || resp.FinishReason == "stop" {
 			if resp.Content != "" {
 				select {
@@ -244,15 +212,15 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			return OutcomeDone, "", nil
 		}
 
-		// 3. Append assistant message with tool calls (tool results follow per-call).
+		// Append assistant message with tool calls; tool results follow per-call.
 		state.Messages = append(state.Messages, llm.Message{
 			Role:      "assistant",
 			Content:   resp.Content,
 			ToolCalls: resp.ToolCalls,
 		})
 
-		// hitl.Bucket folds registry-floor + Resolve into one pure call so
-		// this loop and the resolve-path TOCTOU re-check cannot diverge.
+		// hitl.Bucket folds registry-floor + Resolve into one pure call so this
+		// loop and the resolve-path TOCTOU re-check cannot diverge.
 		autoCalls, manualCalls, forbiddenCalls := hitl.Bucket(
 			o.tools.Floor,
 			state.BusinessApprovals,
@@ -260,8 +228,8 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			resp.ToolCalls,
 		)
 
-		// Forbidden calls: synthesize rejection message + emit tool_rejected,
-		// DO NOT dispatch. The LLM sees the outcome on the next iteration.
+		// Forbidden: synthesize rejection + tool_rejected, DO NOT dispatch.
+		// The LLM sees the outcome on the next iteration.
 		for _, tc := range forbiddenCalls {
 			rejectionMsg := `{"rejected":true,"reason":"policy_forbidden"}`
 			state.Messages = append(state.Messages, llm.Message{
@@ -281,20 +249,22 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			}
 		}
 
-		// Auto calls dispatched in parallel. dispatchToolCalls appends tool-role
-		// messages in the original tool_calls order regardless of completion
-		// order, preserving the assistant.tool_calls[i].id ↔ tool[i] mapping.
+		// dispatchToolCalls appends tool-role messages in the original
+		// tool_calls order regardless of completion order, preserving the
+		// assistant.tool_calls[i].id ↔ tool[i] provider contract.
 		if len(autoCalls) > 0 {
 			if !o.dispatchToolCalls(ctx, out, autoCalls, &state.Messages) {
 				return OutcomeError, "", ctx.Err()
 			}
 		}
 
-		// Manual calls: Persist MUST succeed before emitting the pause event.
-		// Persist's internal preparing → pending two-step is the crash-recovery
-		// seam for the orphan-reconcile sweep.
+		// Persist MUST succeed before emitting the pause event. Persist's
+		// internal preparing → pending two-step is the crash-recovery seam for
+		// the orphan-reconcile sweep.
 		if len(manualCalls) > 0 {
 			if o.pendingRepo == nil {
+				// Fail-loud at-use guard: New leaves pendingRepo nil; HITL
+				// callers must use NewWithHITL.
 				err := fmt.Errorf("HITL not configured: manual-floor tool classified but pendingRepo is nil")
 				select {
 				case out <- Event{Type: EventError, Content: err.Error()}:
@@ -314,8 +284,7 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 				return OutcomeError, "", err
 			}
 
-			// Single tool_approval_required event per turn covering every
-			// manual call in this iteration (one card per batch).
+			// One tool_approval_required per turn covering every manual call (one card per batch).
 			select {
 			case out <- Event{
 				Type:    EventToolApprovalRequired,
@@ -328,11 +297,9 @@ func (o *Orchestrator) stepRun(ctx context.Context, state *RunState, out chan<- 
 			return OutcomePaused, batchID, nil
 		}
 
-		// 8. Continue loop (only auto calls, or only forbidden + auto).
 		state.Iter++
 	}
 
-	// Max iterations exhausted
 	select {
 	case out <- Event{Type: EventError, Content: fmt.Sprintf("max iterations (%d) reached", o.options.MaxIterations)}:
 	case <-ctx.Done():
@@ -356,10 +323,7 @@ func parseBizID(s string) uuid.UUID {
 	return parsed
 }
 
-// modelMessagesSnapshotV2 versions the pause-snapshot envelope. V=2 carries
-// SystemPlatform/SystemBusiness alongside system-free Messages; legacy
-// batches unmarshal as raw []llm.Message and Resume falls through to the
-// scrub path.
+// modelMessagesSnapshotV2 versions the pause-snapshot envelope. See docs/orchestrator/step.md.
 type modelMessagesSnapshotV2 struct {
 	V              int           `json:"v"`
 	Messages       []llm.Message `json:"messages"`
@@ -371,9 +335,7 @@ type modelMessagesSnapshotV2 struct {
 	AccumulatedOutputTokens int `json:"accumulated_output_tokens,omitempty"`
 }
 
-// buildPendingBatch assembles the pause-time PendingToolCallBatch.
-// ModelMessages carries a versioned snapshot so Resume can rebuild RunState
-// after a process restart.
+// buildPendingBatch assembles the pause-time PendingToolCallBatch with a versioned snapshot.
 func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCall) *domain.PendingToolCallBatch {
 	snapshot := modelMessagesSnapshotV2{
 		V:                       2,
@@ -385,8 +347,8 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 	}
 	msgSnapshot, err := json.Marshal(snapshot)
 	if err != nil {
-		// Tolerated — Resume fails cleanly with EventError "corrupt snapshot"
-		// if this ever happens. Only theoretical for llm.Message + strings.
+		// Only theoretical for llm.Message + strings; Resume will surface
+		// "corrupt snapshot" if this ever propagates.
 		slog.Warn("stepRun: failed to marshal messages snapshot", "error", err, "batch_id", batchID)
 		msgSnapshot = []byte(`{"v":2,"messages":[]}`)
 	}
@@ -402,8 +364,8 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 			CallID:    tc.ID,
 			ToolName:  tc.Function.Name,
 			Arguments: args,
-			// Only manual-floor calls reach this branch (stepRun bucketing
-			// guarantees), so the constant is correct without a registry lookup.
+			// Only manual-floor calls reach this branch (hitl.Bucket invariant)
+			// so the constant is correct without a per-call registry lookup.
 			FloorAtPause: domain.ToolFloorManual,
 		})
 	}
@@ -421,9 +383,7 @@ func buildPendingBatch(batchID string, state *RunState, manualCalls []llm.ToolCa
 	}
 }
 
-// summarizeManualCalls projects raw tool_calls into the
-// tool_approval_required SSE event shape. Floor is always ToolFloorManual
-// because only paused calls reach here.
+// summarizeManualCalls projects raw tool_calls into tool_approval_required wire shape.
 func summarizeManualCalls(reg *toolregistry.Registry, calls []llm.ToolCall) []sse.ApprovalCall {
 	out := make([]sse.ApprovalCall, 0, len(calls))
 	for _, tc := range calls {
@@ -438,7 +398,8 @@ func summarizeManualCalls(reg *toolregistry.Registry, calls []llm.ToolCall) []ss
 			ToolName:       tc.Function.Name,
 			Args:           args,
 			EditableFields: reg.EditableFields(tc.Function.Name),
-			Floor:          domain.ToolFloorManual,
+			// Floor is always Manual — only paused calls reach here.
+			Floor: domain.ToolFloorManual,
 		})
 	}
 	return out
