@@ -12,6 +12,7 @@ import (
 
 	"github.com/f1xgun/onevoice/pkg/authz"
 	"github.com/f1xgun/onevoice/pkg/domain"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
 
@@ -62,14 +63,14 @@ func TestProbeYandexBusiness_InvalidCookies(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("probe should always return 200, got %d", rr.Code)
 	}
-	var resp yandexProbeResponse
+	var resp openapi.YandexProbeResponse
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if resp.Ok {
 		t.Errorf("expected ok=false for garbage input, got ok=true")
 	}
-	if resp.Error == "" {
+	if resp.Error == nil || *resp.Error == "" {
 		t.Errorf("expected non-empty error message")
 	}
 }
@@ -92,16 +93,16 @@ func TestProbeYandexBusiness_ValidSessionLive(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
-	var resp yandexProbeResponse
+	var resp openapi.YandexProbeResponse
 	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	if !resp.Ok {
-		t.Errorf("expected ok=true, got error=%q", resp.Error)
+		t.Errorf("expected ok=true, got error=%v", resp.Error)
 	}
 	if resp.SessionValid == nil || !*resp.SessionValid {
 		t.Errorf("expected SessionValid=true, got %v", resp.SessionValid)
 	}
-	if resp.Username != "" {
-		t.Errorf("Username should be empty (probe doesn't fetch names anymore), got %q", resp.Username)
+	if resp.Username != nil && *resp.Username != "" {
+		t.Errorf("Username should be empty (probe doesn't fetch names anymore), got %q", *resp.Username)
 	}
 }
 
@@ -120,7 +121,7 @@ func TestProbeYandexBusiness_RedirectToPassport(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ProbeYandexBusiness(rr, req)
 
-	var resp yandexProbeResponse
+	var resp openapi.YandexProbeResponse
 	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	if !resp.Ok {
 		t.Errorf("ok should be true (parse succeeded), got false")
@@ -143,10 +144,10 @@ func TestProbeYandexBusiness_ParseSucceedsButProbeFails(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ProbeYandexBusiness(rr, req)
 
-	var resp yandexProbeResponse
+	var resp openapi.YandexProbeResponse
 	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	if !resp.Ok {
-		t.Errorf("ok should be true even if probe fails; got error=%q", resp.Error)
+		t.Errorf("ok should be true even if probe fails; got error=%v", resp.Error)
 	}
 	if resp.SessionValid != nil {
 		t.Errorf("expected SessionValid=nil (inconclusive), got %v", *resp.SessionValid)
@@ -166,10 +167,10 @@ func TestProbeYandexBusiness_WarnsOnMissingCookies(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ProbeYandexBusiness(rr, req)
 
-	var resp yandexProbeResponse
+	var resp openapi.YandexProbeResponse
 	_ = json.NewDecoder(rr.Body).Decode(&resp)
-	if len(resp.Warnings) != 2 {
-		t.Errorf("expected 2 warnings (sessionid2, yandex_login), got %d: %v", len(resp.Warnings), resp.Warnings)
+	if resp.Warnings == nil || len(*resp.Warnings) != 2 {
+		t.Errorf("expected 2 warnings (sessionid2, yandex_login), got %v", resp.Warnings)
 	}
 }
 
