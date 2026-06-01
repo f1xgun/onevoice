@@ -1,0 +1,36 @@
+global:
+  resolve_timeout: 5m
+  telegram_api_url: https://api.telegram.org
+
+receivers:
+  - name: telegram-ops
+    telegram_configs:
+      - chat_id_file: /etc/alertmanager/secrets/chat_id
+        bot_token_file: /etc/alertmanager/secrets/bot_token
+        parse_mode: ""
+        send_resolved: true
+        message: |
+          {{ if eq .CommonLabels.severity "critical" }}🔴 CRITICAL{{ else }}🟡 WARNING{{ end }}
+          {{ range .Alerts -}}
+          {{ .Labels.alertname }}
+          {{ .Annotations.summary }}
+          {{ if .Annotations.description }}{{ .Annotations.description }}{{ end }}
+          {{ end -}}
+
+route:
+  receiver: telegram-ops
+  group_by: ['alertname', 'severity']
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 1h
+  routes:
+    - matchers:
+        - severity = "critical"
+      receiver: telegram-ops
+      group_wait: 10s
+      repeat_interval: 1h
+    - matchers:
+        - severity = "warning"
+      receiver: telegram-ops
+      group_wait: 30s
+      repeat_interval: 4h
