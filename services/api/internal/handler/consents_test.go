@@ -91,7 +91,7 @@ func TestReconsentHandler_400_ConsentRequired_OnMissing(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	var resp consentRequiredBody
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	require.Equal(t, "consent_required", resp.Code)
+	require.Equal(t, "consent_required", string(resp.Code))
 	require.Equal(t, []string{"pdn"}, resp.Missing)
 }
 
@@ -110,7 +110,7 @@ func TestReconsentHandler_409_VersionMismatch(t *testing.T) {
 	require.Equal(t, http.StatusConflict, w.Code)
 	var resp versionMismatchBody
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	require.Equal(t, "version_mismatch", resp.Code)
+	require.Equal(t, "version_mismatch", string(resp.Code))
 	require.NotEmpty(t, resp.CurrentVersion)
 }
 
