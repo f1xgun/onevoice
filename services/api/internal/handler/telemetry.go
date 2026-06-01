@@ -4,19 +4,11 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 )
 
 const maxTelemetryBatchSize = 100
-
-// TelemetryEvent represents a single frontend telemetry event.
-type TelemetryEvent struct {
-	EventType     string            `json:"eventType"`
-	Page          string            `json:"page"`
-	Action        string            `json:"action"`
-	CorrelationID string            `json:"correlationId,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
-	Timestamp     string            `json:"timestamp"`
-}
 
 // TelemetryHandler handles frontend telemetry ingestion.
 type TelemetryHandler struct{}
@@ -30,7 +22,7 @@ func NewTelemetryHandler() *TelemetryHandler {
 // The request context carries a correlation_id from CorrelationID middleware,
 // which is automatically included by the ContextHandler.
 func (h *TelemetryHandler) Ingest(w http.ResponseWriter, r *http.Request) {
-	var events []TelemetryEvent
+	var events []openapi.TelemetryEvent
 	if err := json.NewDecoder(r.Body).Decode(&events); err != nil {
 		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
 		return
@@ -46,7 +38,7 @@ func (h *TelemetryHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 			"event_type", e.EventType,
 			"page", e.Page,
 			"action", e.Action,
-			"frontend_correlation_id", e.CorrelationID,
+			"frontend_correlation_id", strDeref(e.CorrelationId),
 			"metadata", e.Metadata,
 			"client_ts", e.Timestamp,
 		)

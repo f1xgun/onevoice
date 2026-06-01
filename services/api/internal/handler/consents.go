@@ -30,6 +30,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -206,10 +207,10 @@ func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 		// is omitted here because the handler doesn't have the
 		// AccountDeletionService.GetScheduledDeletionAt seam; the
 		// frontend can fall back to the value already in /auth/me.
-		writeJSON(w, http.StatusLocked, pendingDeletionErrorBody{
-			Code:         "account_pending_deletion",
+		writeJSON(w, http.StatusLocked, openapi.PendingDeletionResponse{
+			Code:         pendingDeletionCode,
 			DeletionDate: "",
-			RestoreURL:   "/settings/account",
+			RestoreUrl:   "/settings/account",
 		})
 		return
 	case errors.Is(err, domain.ErrUserNotFound):
