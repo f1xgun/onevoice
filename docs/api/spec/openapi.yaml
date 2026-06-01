@@ -696,6 +696,12 @@ components:
           items:
             $ref: '#/components/schemas/ConsentRecord'
     ConsentRecord:
+      description: |
+        Per-policy consent ledger row returned by GET /users/me/consents.
+        `withdrawnAt` is optional (`omitempty`): the field is OMITTED from
+        the JSON envelope when the row is active. Frontend treats a missing
+        `withdrawnAt` as "consent still in force". `sha256` is also optional
+        (early ledger rows may not carry the policy hash).
       type: object
       required:
       - slug
@@ -714,7 +720,6 @@ components:
         withdrawnAt:
           type: string
           format: date-time
-          nullable: true
     DeleteAccountRequest:
       type: object
       required:

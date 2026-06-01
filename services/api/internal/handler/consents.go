@@ -23,7 +23,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -73,10 +72,12 @@ func NewConsentsHandler(svc ConsentsServiceAPI, repo ConsentsListerAPI, allowedO
 // Re-export spec-owned shapes under the historic handler.* names so the
 // existing test suite continues to compile against named types.
 type (
-	reconsentRequest    = openapi.ReconsentRequest
-	reconsentPolicy     = openapi.ReconsentPolicy
-	versionMismatchBody = openapi.VersionMismatchResponse
-	consentRequiredBody = openapi.ConsentRequiredResponse
+	reconsentRequest     = openapi.ReconsentRequest
+	reconsentPolicy      = openapi.ReconsentPolicy
+	versionMismatchBody  = openapi.VersionMismatchResponse
+	consentRequiredBody  = openapi.ConsentRequiredResponse
+	consentRecord        = openapi.ConsentRecord
+	listConsentsResponse = openapi.ListConsentsResponse
 )
 
 // Reconsent handles POST /auth/consents.
@@ -201,19 +202,6 @@ func (h *ConsentsHandler) WithdrawPDN(w http.ResponseWriter, r *http.Request) {
 	writeJSONError(w, http.StatusInternalServerError, "internal_server_error")
 }
 
-// consentRecord is the GET /users/me/consents row shape.
-type consentRecord struct {
-	Slug        string     `json:"slug"`
-	Version     string     `json:"version"`
-	SHA256      string     `json:"sha256,omitempty"`
-	AcceptedAt  time.Time  `json:"acceptedAt"`
-	WithdrawnAt *time.Time `json:"withdrawnAt,omitempty"`
-}
-
-type listConsentsResponse struct {
-	Consents []consentRecord `json:"consents"`
-}
-
 // ListMine handles GET /users/me/consents. Returns the user's current
 // consent state for Surface F (Withdraw / status panel).
 func (h *ConsentsHandler) ListMine(w http.ResponseWriter, r *http.Request) {
@@ -234,15 +222,27 @@ func (h *ConsentsHandler) ListMine(w http.ResponseWriter, r *http.Request) {
 		Consents: make([]consentRecord, 0, len(rows)),
 	}
 	for _, c := range rows {
-		resp.Consents = append(resp.Consents, consentRecord{
-			Slug:        c.Purpose,
-			Version:     c.PolicyVersion,
-			SHA256:      c.PolicySHA256,
-			AcceptedAt:  c.AcceptedAt,
-			WithdrawnAt: c.WithdrawnAt,
-		})
+		resp.Consents = append(resp.Consents, toOpenAPIConsentRecord(c))
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// toOpenAPIConsentRecord projects a repository.Consent row into the spec-side
+// openapi.ConsentRecord wire shape. SHA256 and WithdrawnAt are pointer-typed
+// in the spec (omitempty); empty / zero values are omitted from the JSON
+// envelope — byte-identical to the legacy local-struct encoding.
+func toOpenAPIConsentRecord(c repository.Consent) consentRecord {
+	rec := consentRecord{
+		Slug:        c.Purpose,
+		Version:     c.PolicyVersion,
+		AcceptedAt:  c.AcceptedAt,
+		WithdrawnAt: c.WithdrawnAt,
+	}
+	if c.PolicySHA256 != "" {
+		sha := c.PolicySHA256
+		rec.Sha256 = &sha
+	}
+	return rec
 }
 
 // originAllowed checks the request's Origin header against the configured
