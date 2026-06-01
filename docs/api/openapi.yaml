@@ -1,26 +1,102 @@
 openapi: 3.0.3
 info:
-  title: OneVoice API — auth (POC subset)
-  version: 0.1.0-poc
+  title: OneVoice API
+  version: 1.0.0
   description: |
-    Spec-first POC covering 4 authentication endpoints. The full API surface
-    is documented under services/api/AGENTS.md and docs/api-design.md; this
-    file is the contract source-of-truth for the subset that has been
-    migrated to generated types.
+    Consolidated OpenAPI contract covering both the api service
+    (services/api, port 8080, base `/api/v1`) and the orchestrator service
+    (services/orchestrator, port 8090, no version prefix).
+
+    Default security: `cookieAuth` (access_token cookie). Public endpoints
+    declare `security: []`. Cluster-internal endpoints declare
+    `security: [{mtls: []}]` and live on the mTLS listener — the public
+    reverse proxy MUST drop matching prefixes.
+
+    Orchestrator endpoints carry a per-operation `servers:` override so
+    they document the cluster-internal base URL (`http://orchestrator:8090`)
+    while the rest of the spec remains under `/api/v1`. The whole spec is
+    one file for code-generator simplicity.
 
     Error envelope diverges by endpoint:
-      - Free-form messages use {"error":"<string>"} (ErrorResponse).
-      - Machine-routable failures use {"code":"<code>"} (CodeErrorResponse)
-        — frontend i18n routes on the `code` field.
+      - Free-form messages use `{"error":"<string>"}` (`ErrorResponse`).
+      - Machine-routable failures use `{"code":"<code>"}`
+        (`CodeErrorResponse`) — frontend i18n routes on the `code` field.
+      - The internal billing endpoints use `BillingErrorResponse`
+        (a distinct shape with both `error` and `detail`).
+
+    Streaming responses (chat / resume / tasks-stream) document themselves
+    as `text/event-stream` with a string schema for the raw frame bytes
+    and a vendor `x-sse-events` extension mapping event-type discriminator
+    values to per-event JSON schemas. Generators that ignore the extension
+    can still consume `SSEEvent` (oneOf union under components.schemas).
+
 servers:
   - url: /api/v1
+    description: Public api service (services/api, port 8080).
+
+security:
+  - cookieAuth: []
+
+tags:
+  - name: auth
+    description: Authentication, password reset, email verification, locale.
+  - name: business
+    description: Business CRUD + schedule + voice-tone + logo + tool-approvals.
+  - name: integrations
+    description: Per-business integration list + connect helpers (Telegram, VK).
+  - name: oauth
+    description: OAuth helpers and callbacks (VK, Yandex.Business, Google).
+  - name: consents
+    description: Policy reconsent + ledger + PDN withdrawal.
+  - name: user-deletion
+    description: 30-day soft-delete grace flow.
+  - name: members
+    description: Business membership rows.
+  - name: roles
+    description: System + custom RBAC roles.
+  - name: invitations
+    description: Single-use invitation tokens.
+  - name: permissions
+    description: RBAC permission registry.
+  - name: audit
+    description: Business audit log with cursor pagination.
+  - name: telemetry
+    description: Frontend telemetry ingest.
+  - name: chat
+    description: Chat-proxy SSE + HITL resume + tools registry.
+  - name: hitl
+    description: Human-in-the-loop tool approval surface.
+  - name: hitl-resume
+    description: Post-approval continuation of a paused chat turn.
+  - name: conversations
+    description: Conversation CRUD + move/pin/unpin/messages.
+  - name: posts
+    description: Posts read surface.
+  - name: reviews
+    description: Reviews list/get/reply + cross-business refresh.
+  - name: projects
+    description: Project CRUD + cascade delete.
+  - name: tasks
+    description: Agent-task list + SSE lifecycle stream.
+  - name: search
+    description: Full-text conversation/message search.
+  - name: titler
+    description: Auto-titler regenerate trigger.
+  - name: internal
+    description: Cluster-only endpoints (mTLS). Not exposed publicly.
 
 paths:
+
+  # =====================================================================
+  # auth
+  # =====================================================================
+
   /auth/login:
     post:
       operationId: login
       summary: Exchange email + password for an access token and refresh cookie.
       tags: [auth]
+      security: []
       requestBody:
         required: true
         content:
@@ -143,8 +219,3993 @@ paths:
               schema:
                 $ref: '#/components/schemas/CodeErrorResponse'
 
+  /auth/register:
+    post:
+      operationId: register
+      summary: Register a new user, accept consents, and auto-login.
+      description: |
+        Creates the user row, writes the three required policy acceptances
+        (TOS / Privacy / PDN) in the same transaction, enqueues the
+        verification email, then auto-logs the user in (same as
+        /auth/login). 400 `consent_required` when any of the three
+        submitted versions disagrees with the build's currentVersion.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registration succeeded; access token returned and refresh cookie set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: |
+            Validation failure or `consent_required` (carries the list of
+            missing policy slugs).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/ConsentRequiredResponse'
+        '409':
+          description: User with this email already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Registration or auto-login failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /auth/password-reset/request:
+    post:
+      operationId: requestPasswordReset
+      summary: Send a password-reset email to the supplied address.
+      description: |
+        Always returns 204 regardless of whether the email is registered —
+        the service handles per-email rate-limit, dummy-audit-on-unknown
+        email, and outbox enqueue with symmetric timing across branches.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestPasswordResetRequest'
+      responses:
+        '204':
+          description: Request accepted (regardless of email existence).
+        '400':
+          description: Malformed body or validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/password-reset/confirm:
+    post:
+      operationId: confirmPasswordReset
+      summary: Consume a password-reset token and rotate the password.
+      description: |
+        On success the service has consumed the token, rotated the
+        password hash, and wiped all refresh tokens for the user.
+        POST-only (scanner-protection against link prefetch).
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmPasswordResetRequest'
+      responses:
+        '204':
+          description: Password rotated.
+        '400':
+          description: Invalid, expired, or already-used token, or validation failure.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/CodeErrorResponse'
+
+  /auth/verify-email/confirm:
+    post:
+      operationId: confirmEmailVerification
+      summary: Confirm an email-verification token.
+      description: |
+        Public — token IS the proof. CRITICAL: no Set-Cookie is emitted,
+        so an attacker who registered with a victim's email cannot
+        thereby become the victim's session. POST-only.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyConfirmRequest'
+      responses:
+        '204':
+          description: Email verified.
+        '400':
+          description: |
+            Token invalid (`verify_token_invalid`) or expired
+            (`verify_token_expired`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/verify-email/resend:
+    post:
+      operationId: resendEmailVerification
+      summary: Resend the email-verification mail for the authenticated user.
+      tags: [auth]
+      responses:
+        '204':
+          description: Resend enqueued.
+        '401':
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: User is already verified (`email_already_verified`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '429':
+          description: Resend throttle hit (`verify_resend_throttled`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /auth/email-before-verify:
+    patch:
+      operationId: changeEmailBeforeVerify
+      summary: Change the unverified user's email before verification.
+      description: |
+        Only allowed while `email_verified=false`; otherwise 403
+        `email_already_verified`. On success the old verification token
+        is invalidated and a new one is mailed.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailBeforeVerifyRequest'
+      responses:
+        '204':
+          description: Email rotated; new verification mail enqueued.
+        '400':
+          description: Validation failure or malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Already verified (`email_already_verified`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '409':
+          description: New email taken (`email_taken`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /auth/password:
+    put:
+      operationId: changePassword
+      summary: Change the authenticated user's password.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password rotated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOKResponse'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Current password incorrect, or unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /auth/locale:
+    patch:
+      operationId: updatePreferredLocale
+      summary: Update the authenticated user's preferred locale.
+      description: |
+        Deliberately does NOT read Accept-Language — locale persistence
+        is an explicit user action. Allowed values: `ru`, `en`.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePreferredLocaleRequest'
+      responses:
+        '204':
+          description: Locale updated.
+        '400':
+          description: Validation failure (locale outside allow-list).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  # =====================================================================
+  # consents
+  # =====================================================================
+
+  /auth/consents:
+    post:
+      operationId: reconsent
+      summary: Submit the re-consent modal (Surface E).
+      description: |
+        Auth-required; never gated by RequireVerifiedEmail* or
+        BlockWritesDuringGrace (right-to-withdraw, 152-ФЗ Art. 21).
+        Origin header is required (CSRF defense).
+      tags: [consents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconsentRequest'
+      responses:
+        '204':
+          description: Consents recorded.
+        '400':
+          description: |
+            `consent_required` (missing slugs) or malformed body.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/ConsentRequiredResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Origin header missing or not allow-listed (`origin_not_allowed`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '409':
+          description: |
+            `version_mismatch` — the build's currentVersion bumped since
+            the modal was rendered. Body carries the new currentVersion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionMismatchResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me/consents:
+    get:
+      operationId: listMyConsents
+      summary: Return the authenticated user's consent ledger.
+      tags: [consents]
+      responses:
+        '200':
+          description: Consent rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListConsentsResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me/consents/pdn/withdraw:
+    post:
+      operationId: withdrawPDNConsent
+      summary: Withdraw the PDN consent (triggers account deletion).
+      description: |
+        Withdrawal of the PDN consent triggers the deletion flow. 423
+        `account_pending_deletion` when the user is already mid-deletion.
+        Origin header required (CSRF defense).
+      tags: [consents]
+      responses:
+        '204':
+          description: PDN consent withdrawn; deletion flow started.
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Origin header missing or not allow-listed (`origin_not_allowed`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '404':
+          description: User row missing (`user_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '423':
+          description: Deletion already pending (`account_pending_deletion`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingDeletionResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  # user-deletion
+  # =====================================================================
+
+  /users/me:
+    delete:
+      operationId: deleteAccount
+      summary: Request account deletion (30-day grace window).
+      description: |
+        Server-side password re-verification defends against XSS-stolen
+        JWT scenarios. On success the row is soft-deleted and a 30-day
+        grace window starts; the user can call /users/me/restore until
+        the grace expires.
+      tags: [user-deletion]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteAccountRequest'
+      responses:
+        '204':
+          description: Deletion requested; grace window active.
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: |
+            Unauthorized, or password re-verification failed
+            (`password_invalid`).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/CodeErrorResponse'
+        '404':
+          description: User row missing (`user_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            Sole owner of one or more businesses
+            (`sole_owner_of_businesses`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SoleOwnerResponse'
+        '423':
+          description: Deletion already pending (`account_pending_deletion`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingDeletionResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me/restore:
+    post:
+      operationId: restoreAccount
+      summary: Cancel a pending account deletion within the grace window.
+      description: |
+        CSRF defense: Origin header MUST match an allowed CORS origin.
+        Outside the 30-day grace the row may already be purged; the
+        handler returns 410 `deletion_too_old` in that case.
+      tags: [user-deletion]
+      responses:
+        '204':
+          description: Deletion canceled; account restored.
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Origin header missing or not allow-listed (`origin_not_allowed`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '404':
+          description: No deletion pending (`no_deletion_pending`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '410':
+          description: Grace window expired and the row is purged (`deletion_too_old`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  # platforms (public)
+  # =====================================================================
+
+  /platforms:
+    get:
+      operationId: listPlatforms
+      summary: List the integration platform registry.
+      description: |
+        Unauthenticated — the marketing landing page renders this without
+        a token. Only non-sensitive platform metadata is returned. Cached
+        for 60s.
+      tags: [integrations]
+      security: []
+      responses:
+        '200':
+          description: Platform registry rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Platform'
+
+  # =====================================================================
+  # business
+  # =====================================================================
+
+  /businesses:
+    get:
+      operationId: listUserBusinesses
+      summary: List businesses the authenticated user is a member of.
+      tags: [business]
+      responses:
+        '200':
+          description: Membership rows hydrated with business name + role.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BusinessMembershipSummary'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      operationId: createBusiness
+      summary: Create a new business and owner membership for the caller.
+      description: |
+        Subject to a day-7 soft-restrict on unverified accounts when
+        configured. On success the caller becomes the OWNER member.
+      tags: [business]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBusinessRequest'
+      responses:
+        '201':
+          description: Business created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Business already exists (`business_already_exists`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    get:
+      operationId: getBusiness
+      summary: Return the business profile.
+      tags: [business]
+      responses:
+        '200':
+          description: Business profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: |
+            Business not found OR caller is not a member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: updateBusiness
+      summary: Update the business profile.
+      tags: [business]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBusinessRequest'
+      responses:
+        '200':
+          description: Updated business profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found or caller not a member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/schedule:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    put:
+      operationId: updateBusinessSchedule
+      summary: Update the business schedule.
+      tags: [business]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScheduleRequest'
+      responses:
+        '200':
+          description: Updated business with new schedule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          description: Malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found or caller not a member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/voice-tone:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    put:
+      operationId: updateBusinessVoiceTone
+      summary: Update the business voice/tone tags.
+      tags: [business]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVoiceToneRequest'
+      responses:
+        '200':
+          description: Updated business with new tones.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          description: Malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found or caller not a member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/logo:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    put:
+      operationId: uploadBusinessLogo
+      summary: Upload a business logo (multipart).
+      tags: [business]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadLogoRequest'
+      responses:
+        '200':
+          description: Updated business with new logo URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          description: Missing file, unsupported MIME, or file too large.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found or caller not a member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure or storage backend unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/tool-approvals:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    get:
+      operationId: getBusinessToolApprovals
+      summary: Return the per-tool approval floor overrides for the business.
+      tags: [business]
+      responses:
+        '200':
+          description: Tool approval map.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolApprovalsResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found or caller not a member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: updateBusinessToolApprovals
+      summary: Update per-tool approval floor overrides.
+      tags: [business]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateToolApprovalsRequest'
+      responses:
+        '200':
+          description: Updated tool approval map.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolApprovalsResponse'
+        '400':
+          description: Unknown tool name or invalid floor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found or caller not a member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Tools registry cache unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  # integrations (business-scoped)
+  # =====================================================================
+
+  /businesses/{id}/integrations:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    get:
+      operationId: listIntegrations
+      summary: List integrations for the business.
+      tags: [integrations]
+      responses:
+        '200':
+          description: Integration rows (empty array if none).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Integration'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/{integrationId}:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+      - $ref: '#/components/parameters/IntegrationIDPath'
+    delete:
+      operationId: deleteIntegration
+      summary: Disconnect (delete) an integration.
+      tags: [integrations]
+      responses:
+        '204':
+          description: Integration deleted.
+        '400':
+          description: Invalid integration ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Integration not found in this business.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/vk/auth-url:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    get:
+      operationId: getVKAuthURL
+      summary: Build the VK OAuth2 authorization URL (step 1 — user token).
+      tags: [oauth]
+      responses:
+        '200':
+          description: Authorization URL the frontend should redirect to.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthURLResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/vk/communities:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    get:
+      operationId: listVKCommunities
+      summary: List VK communities where the temp-stored user is admin.
+      tags: [oauth]
+      responses:
+        '200':
+          description: Community rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VKCommunity'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Temp token expired (VK session expired, reconnect).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream VK error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/vk/community-auth-url:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+      - in: query
+        name: group_id
+        required: true
+        schema:
+          type: string
+        description: |
+          Numeric VK group_id, screen_name, or full VK URL. Resolved
+          server-side to a numeric id before the OAuth URL is built.
+    get:
+      operationId: getVKCommunityAuthURL
+      summary: Build the VK community OAuth2 URL (step 2 — community token).
+      tags: [oauth]
+      responses:
+        '200':
+          description: Authorization URL the frontend should redirect to.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthURLResponse'
+        '400':
+          description: Missing or unresolvable group_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/yandex_business/auth-url:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    get:
+      operationId: getYandexAuthURL
+      summary: Build the Yandex OAuth2 authorization URL.
+      tags: [oauth]
+      responses:
+        '200':
+          description: Authorization URL the frontend should redirect to.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthURLResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/google_business/auth-url:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    get:
+      operationId: getGoogleAuthURL
+      summary: Build the Google Business OAuth2 authorization URL.
+      tags: [oauth]
+      responses:
+        '200':
+          description: Authorization URL the frontend should redirect to.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthURLResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/google_business/locations:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    get:
+      operationId: listGoogleLocations
+      summary: Return Google Business locations stashed during the OAuth callback.
+      tags: [oauth]
+      responses:
+        '200':
+          description: Discovered location list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleLocationsResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Temp data expired (Google session expired, reconnect).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/google_business/select-location:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    post:
+      operationId: selectGoogleLocation
+      summary: Persist the user's chosen Google Business location as an integration.
+      tags: [oauth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleSelectLocationRequest'
+      responses:
+        '201':
+          description: Integration created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Integration'
+        '400':
+          description: Validation failure or location not in the discovered set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Temp data expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/yandex_business/probe:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    post:
+      operationId: probeYandexBusiness
+      summary: Validate pasted Yandex cookies without persisting.
+      tags: [oauth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/YandexCookiesRequest'
+      responses:
+        '200':
+          description: Probe verdict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/YandexProbeResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/yandex_business/companies:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    post:
+      operationId: listYandexCompanies
+      summary: Dispatch the list_companies RPA and return picker rows.
+      tags: [oauth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/YandexCookiesRequest'
+      responses:
+        '200':
+          description: Picker rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/YandexCompaniesResponse'
+        '400':
+          description: Invalid cookie format.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream agent error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Agent task publisher not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/yandex_business/connect:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    post:
+      operationId: connectYandexBusiness
+      summary: Persist pasted Yandex cookies as a new integration.
+      tags: [oauth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectYandexRequest'
+      responses:
+        '201':
+          description: Integration created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Integration'
+        '400':
+          description: Invalid cookie format or validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/yandex_business/{integrationId}/refresh-name:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+      - $ref: '#/components/parameters/IntegrationIDPath'
+    post:
+      operationId: refreshYandexBusinessName
+      summary: Asynchronously backfill metadata.business_name via RPA.
+      tags: [oauth]
+      responses:
+        '202':
+          description: Refresh started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshStartedResponse'
+        '400':
+          description: Invalid integration ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Integration not found in this business.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Agent task publisher not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/vk/connect:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    post:
+      operationId: connectVK
+      summary: Persist a pasted VK community access token as an integration.
+      tags: [integrations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectVKRequest'
+      responses:
+        '201':
+          description: Integration created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Integration'
+        '400':
+          description: |
+            Validation failure, unresolvable community, invalid token,
+            or `wall` scope missing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Upstream VK error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/vk/{integrationId}/refresh-name:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+      - $ref: '#/components/parameters/IntegrationIDPath'
+    post:
+      operationId: refreshVKCommunityName
+      summary: Backfill the VK community display name in metadata.
+      tags: [integrations]
+      responses:
+        '200':
+          description: Integration row (possibly updated).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Integration'
+        '400':
+          description: Invalid integration ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Integration not found in this business.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/telegram/verify:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    post:
+      operationId: verifyTelegramLogin
+      summary: Verify a Telegram Login Widget callback (HMAC-SHA256).
+      tags: [integrations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelegramLoginRequest'
+      responses:
+        '200':
+          description: HMAC verified; user payload echoed back.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelegramLoginVerifiedResponse'
+        '400':
+          description: Missing hash or malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid HMAC or auth_date expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/telegram/connect:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    post:
+      operationId: connectTelegram
+      summary: Store a Telegram channel integration using the system bot token.
+      tags: [integrations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectTelegramRequest'
+      responses:
+        '201':
+          description: Integration created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Integration'
+        '400':
+          description: Missing channel_id or bot does not have access.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/integrations/telegram/refresh:
+    parameters:
+      - $ref: '#/components/parameters/BusinessIDPath'
+    post:
+      operationId: refreshTelegramLinkedGroup
+      summary: Re-probe a Telegram channel's linked discussion group.
+      tags: [integrations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTelegramRequest'
+      responses:
+        '200':
+          description: Updated linked-group probe.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTelegramResponse'
+        '400':
+          description: Missing channel_id or malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Integration not found in this business.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bot no longer has access to the channel.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  # OAuth callbacks (public — state validates identity)
+  # =====================================================================
+
+  /oauth/vk/callback:
+    get:
+      operationId: vkOAuthCallback
+      summary: Handle the classic VK OAuth callback (step 1 — user token).
+      tags: [oauth]
+      security: []
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: state
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to the frontend (`/integrations?...`).
+
+  /oauth/vk/community-callback:
+    get:
+      operationId: vkCommunityOAuthCallback
+      summary: Handle the VK community OAuth callback (step 2 — community token).
+      tags: [oauth]
+      security: []
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: state
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to the frontend (`/integrations?...`).
+
+  /oauth/yandex_business/callback:
+    get:
+      operationId: yandexBusinessOAuthCallback
+      summary: Handle the Yandex Business OAuth callback.
+      tags: [oauth]
+      security: []
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: state
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to the frontend (`/integrations?...`).
+
+  /oauth/google_business/callback:
+    get:
+      operationId: googleBusinessOAuthCallback
+      summary: Handle the Google Business OAuth callback.
+      tags: [oauth]
+      security: []
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: state
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to the frontend (`/integrations?...`).
+
+  # =====================================================================
+  # Permissions / Members / Roles / Invitations / Audit / Telemetry
+  # =====================================================================
+
+  /permissions:
+    get:
+      operationId: listPermissions
+      summary: List the static RBAC permission registry.
+      tags: [permissions]
+      responses:
+        '200':
+          description: Permission registry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionRegistryResponse'
+        '401':
+          description: Missing or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/me/permissions:
+    get:
+      operationId: getMyBusinessPermissions
+      summary: Return the caller's effective permissions inside this business.
+      tags: [permissions]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      responses:
+        '200':
+          description: Effective permissions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyPermissionsResponse'
+        '401':
+          description: Missing or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Membership exists but is suspended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Caller is not a member of this business.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/members:
+    get:
+      operationId: listMembers
+      summary: List members of a business.
+      tags: [members]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      responses:
+        '200':
+          description: Member list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks `members.read`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/BusinessNotFound'
+
+  /businesses/{id}/members/{userId}:
+    patch:
+      operationId: updateMemberRole
+      summary: Change a member's role.
+      tags: [members]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - $ref: '#/components/parameters/UserIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemberRoleRequest'
+      responses:
+        '200':
+          description: Updated membership.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateMemberRoleResponse'
+        '400':
+          description: |
+            `invalid_user_id`, `invalid_body`, `validation_failed`, or
+            `invalid_role_id`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            `forbidden` or `cannot_change_own_role`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '404':
+          $ref: '#/components/responses/BusinessNotFound'
+        '409':
+          description: Last-owner invariant would be violated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: removeMember
+      summary: Remove a member from a business.
+      tags: [members]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - $ref: '#/components/parameters/UserIDPath'
+      responses:
+        '204':
+          description: Member removed.
+        '400':
+          description: '`invalid_user_id`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is not the target user and lacks `members.remove`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/BusinessNotFound'
+        '409':
+          description: Last-owner invariant would be violated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /businesses/{id}/roles:
+    get:
+      operationId: listRoles
+      summary: List roles available to a business.
+      tags: [roles]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      responses:
+        '200':
+          description: Role list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Role'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks `roles.read`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/BusinessNotFound'
+    post:
+      operationId: createRole
+      summary: Create a custom role.
+      tags: [roles]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: clone_from
+          in: query
+          description: Hint for the frontend pre-fill flow; ignored server-side.
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        '201':
+          description: Role created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '400':
+          description: |
+            `invalid_body`, `validation_failed`, `invalid_permission`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks `roles.create` or attempts escalation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/BusinessNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /businesses/{id}/roles/{roleId}:
+    patch:
+      operationId: updateRole
+      summary: Update a custom role.
+      tags: [roles]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - $ref: '#/components/parameters/RoleIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+      responses:
+        '200':
+          description: Role updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        '400':
+          description: |
+            `invalid_role_id`, `invalid_body`, `validation_failed`,
+            `invalid_permission`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks `roles.update`, self-lockout, or escalation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Role not found (or owned by another tenant — masked).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '422':
+          description: '`role_immutable` — system roles cannot be edited.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteRole
+      summary: Delete a custom role; optionally reassign existing members.
+      tags: [roles]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - $ref: '#/components/parameters/RoleIDPath'
+        - name: reassign_to
+          in: query
+          description: Destination role for members holding the doomed role.
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Role deleted (and members reassigned, when applicable).
+        '400':
+          description: |
+            `invalid_role_id`, `invalid_reassign_to`, or `role_in_use`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks `roles.delete`, or target role escalates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Role not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '422':
+          description: '`role_immutable` — system roles cannot be deleted.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /businesses/{id}/invitations:
+    get:
+      operationId: listPendingInvitations
+      summary: List pending invitations for a business.
+      tags: [invitations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      responses:
+        '200':
+          description: Pending invitation list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PendingInvitation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks `members.invite`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/BusinessNotFound'
+    post:
+      operationId: createInvitation
+      summary: Mint a single-use invitation token.
+      tags: [invitations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvitationRequest'
+      responses:
+        '201':
+          description: Invitation created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateInvitationResponse'
+        '400':
+          description: |
+            `invalid_body`, `validation_failed`, or `invalid_role_id`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks `members.invite` or attempts escalation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/BusinessNotFound'
+        '429':
+          description: '`too_many_pending`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /businesses/{id}/invitations/{inviteId}:
+    delete:
+      operationId: revokeInvitation
+      summary: Revoke (cancel) a pending invitation.
+      tags: [invitations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Invitation revoked.
+        '400':
+          description: '`invalid_invite_id`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks `members.invite`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Invitation not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '409':
+          description: Invitation already accepted/revoked/expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /invitations/{token}:
+    get:
+      operationId: previewInvitation
+      summary: Resolve an invitation token to a human-readable preview.
+      tags: [invitations]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/InvitationTokenPath'
+      responses:
+        '200':
+          description: Invitation preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationPreview'
+        '400':
+          description: '`validation_failed` (empty token).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '404':
+          description: Token not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '409':
+          description: Invitation in terminal state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /invitations/{token}/accept:
+    post:
+      operationId: acceptInvitation
+      summary: Accept an invitation as the authenticated user.
+      tags: [invitations]
+      parameters:
+        - $ref: '#/components/parameters/InvitationTokenPath'
+      responses:
+        '200':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptInvitationResponse'
+        '400':
+          description: '`validation_failed` (empty token).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Token not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '409':
+          description: Terminal-state error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /businesses/{id}/audit-logs:
+    get:
+      operationId: listAuditLogs
+      summary: List business audit events with cursor pagination.
+      tags: [audit]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [rbac, auth, integration, business, project]
+        - name: action
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AuditAction'
+        - name: actor
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Audit-log page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogListResponse'
+        '400':
+          description: Invalid filter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller lacks `audit.read`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/BusinessNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /telemetry:
+    post:
+      operationId: ingestTelemetry
+      summary: Ingest a batch of frontend telemetry events.
+      tags: [telemetry]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 100
+              items:
+                $ref: '#/components/schemas/TelemetryEvent'
+      responses:
+        '204':
+          description: Events accepted.
+        '400':
+          description: Invalid JSON or batch size exceeds 100.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # =====================================================================
+  # chat-proxy + HITL (api service)
+  # =====================================================================
+
+  /businesses/{id}/chat/{conversationID}:
+    post:
+      operationId: chatTurn
+      summary: |
+        Streaming chat turn. SSE response. Doubles as HITL resume trigger
+        when `X-Onevoice-Resume-Batch-Id` or `?batch_id=` is set.
+      tags: [chat]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Onevoice-Resume-Batch-Id
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: batch_id
+          in: query
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatTurnRequest'
+      responses:
+        '200':
+          description: Streaming SSE response.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Newline-delimited SSE frames `data: <json>\n\n`. See
+                  components.schemas.SSEEvent for the union type.
+              x-sse-events:
+                text:                   { $ref: '#/components/schemas/SSEEventText' }
+                tool_call:              { $ref: '#/components/schemas/SSEEventToolCall' }
+                tool_result:            { $ref: '#/components/schemas/SSEEventToolResult' }
+                tool_rejected:          { $ref: '#/components/schemas/SSEEventToolRejected' }
+                tool_approval_required: { $ref: '#/components/schemas/SSEEventApprovalRequired' }
+                done:                   { $ref: '#/components/schemas/SSEEventDone' }
+                error:                  { $ref: '#/components/schemas/SSEEventError' }
+        '400':
+          description: Missing message body, or invalid JSON.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: |
+            Per-user SSE concurrency cap exceeded.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSEConcurrencyError'
+        '502':
+          description: Orchestrator unavailable (pre-stream).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: |
+            Rate-limit backing store unavailable (`rate_limit_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeErrorResponse'
+
+  /businesses/{id}/chat/{conversationID}/resume:
+    post:
+      operationId: hitlResume
+      summary: |
+        Resume a paused HITL batch. SSE response — same event schema as
+        chatTurn.
+      tags: [chat, hitl]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batch_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Streaming SSE.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              x-sse-events:
+                text:                   { $ref: '#/components/schemas/SSEEventText' }
+                tool_call:              { $ref: '#/components/schemas/SSEEventToolCall' }
+                tool_result:            { $ref: '#/components/schemas/SSEEventToolResult' }
+                tool_rejected:          { $ref: '#/components/schemas/SSEEventToolRejected' }
+                tool_approval_required: { $ref: '#/components/schemas/SSEEventApprovalRequired' }
+                done:                   { $ref: '#/components/schemas/SSEEventDone' }
+                error:                  { $ref: '#/components/schemas/SSEEventError' }
+        '400':
+          description: Missing `batch_id` query param.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing permission OR batch/conversation mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business or batch not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Batch already resolved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HITLAlreadyResolvedError'
+        '410':
+          description: Approval window expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HITLExpiredError'
+        '502':
+          description: Orchestrator unavailable (pre-stream).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/conversations/{conversationID}/pending-tool-calls/{batch_id}/resolve:
+    post:
+      operationId: hitlResolveBatch
+      summary: Approve / edit / reject a pending HITL tool-call batch.
+      tags: [hitl]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HITLResolveRequest'
+      responses:
+        '200':
+          description: Resolve succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HITLResolveResponse'
+        '400':
+          description: |
+            Missing path params, malformed body, shape mismatch, edit
+            rejected, non-scalar edit value, or reject_reason too long.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/HITLShapeMismatchError'
+                  - $ref: '#/components/schemas/HITLFieldNotEditableError'
+                  - $ref: '#/components/schemas/HITLNonScalarFieldError'
+                  - $ref: '#/components/schemas/HITLRejectReasonTooLongError'
+        '403':
+          description: Missing `content:update` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Batch not found (also cross-tenant — uniform 404).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Concurrent resolve in progress.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HITLBatchResolvingError'
+        '410':
+          description: Batch already expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HITLExpiredError'
+
+  /businesses/{id}/tools:
+    get:
+      operationId: hitlGetTools
+      summary: Tools registry projection (5-minute cache).
+      tags: [hitl]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      responses:
+        '200':
+          description: Live registry projection.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolEntry'
+
+  # =====================================================================
+  # Conversations
+  # =====================================================================
+
+  /businesses/{id}/conversations:
+    get:
+      operationId: listConversations
+      summary: List the caller's conversations in the business.
+      tags: [conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Conversation list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Conversation'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      operationId: createConversation
+      summary: Create a conversation; optional project assignment.
+      tags: [conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          description: Invalid body, or invalid project id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Referenced project not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/conversations/{conversationID}:
+    get:
+      operationId: getConversation
+      summary: Owner-only fetch of a single conversation.
+      tags: [conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Conversation document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          description: Conversation ID is not a valid 24-char hex.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:read` permission OR not the owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: updateConversation
+      summary: Manual rename.
+      tags: [conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConversationRequest'
+      responses:
+        '200':
+          description: Updated conversation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          description: Invalid body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:update` permission OR not the owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      operationId: deleteConversation
+      summary: Owner-only conversation delete.
+      tags: [conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted.
+        '403':
+          description: Missing `content:delete` permission OR not the owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/conversations/{conversationID}/messages:
+    get:
+      operationId: listConversationMessages
+      summary: Conversation messages + pending HITL approval projection.
+      tags: [conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ChatView — messages + pendingApprovals.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatView'
+        '403':
+          description: Missing `content:read` permission OR not the owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/conversations/{conversationID}/move:
+    post:
+      operationId: moveConversation
+      summary: Move conversation between projects.
+      tags: [conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveConversationRequest'
+      responses:
+        '200':
+          description: Post-move conversation row.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          description: Invalid body OR invalid project id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing permission OR not the owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation or project not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/conversations/{conversationID}/pin:
+    post:
+      operationId: pinConversation
+      summary: Pin a conversation.
+      tags: [conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Updated conversation (now pinned).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          description: Conversation ID is not 24-char hex.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:update` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/conversations/{conversationID}/unpin:
+    post:
+      operationId: unpinConversation
+      summary: Unpin a conversation.
+      tags: [conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Updated conversation (now unpinned).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          description: Conversation ID is not 24-char hex.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:update` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/conversations/{conversationID}/regenerate-title:
+    post:
+      operationId: regenerateConversationTitle
+      summary: Fire-and-forget auto-titler trigger.
+      tags: [titler, conversations]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: conversationID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Spawned; no body.
+        '403':
+          description: Missing `content:update` permission OR not the owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Conversation not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            `title_is_manual`, `title_in_flight`, or `title_state_changed`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TitlerConflictError'
+        '503':
+          description: '`titler_disabled`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TitlerDisabledError'
+
+  # =====================================================================
+  # Projects
+  # =====================================================================
+
+  /businesses/{id}/projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      responses:
+        '200':
+          description: Project list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      operationId: createProject
+      tags: [projects]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Invalid body or unknown tool in approvalOverrides.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:create` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Project name already exists for this business.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Tools registry cache unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/projects/{projectID}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Project row.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Invalid project id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Project not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: updateProject
+      tags: [projects]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectRequest'
+      responses:
+        '200':
+          description: Updated project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Invalid body or invalid project id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:update` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Project not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Tools registry cache unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      operationId: deleteProject
+      summary: Cascade-delete project + conversations + messages.
+      tags: [projects]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Cascade delete counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDeleteResponse'
+        '400':
+          description: Invalid project id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:delete` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Project not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/projects/{projectID}/conversation-count:
+    get:
+      operationId: getProjectConversationCount
+      tags: [projects]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Conversation count.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectConversationCountResponse'
+        '400':
+          description: Invalid project id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Project not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  # Posts
+  # =====================================================================
+
+  /businesses/{id}/posts:
+    get:
+      operationId: listPosts
+      tags: [posts]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Posts list + total.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostListResponse'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/posts/{postID}:
+    get:
+      operationId: getPost
+      tags: [posts]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: postID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Post.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Post or business not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  # Reviews
+  # =====================================================================
+
+  /reviews/refresh:
+    post:
+      operationId: refreshReviews
+      summary: Cross-business on-demand review pull.
+      tags: [reviews]
+      responses:
+        '200':
+          description: Refresh dispatched.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOkResponse'
+        '401':
+          description: Missing or invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Caller has no business.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/reviews:
+    get:
+      operationId: listReviews
+      tags: [reviews]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: reply_status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, replied, error]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Reviews list + total.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewListResponse'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/reviews/{reviewID}:
+    get:
+      operationId: getReview
+      tags: [reviews]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: reviewID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Review row.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Review or business not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/reviews/{reviewID}/reply:
+    put:
+      operationId: replyToReview
+      tags: [reviews]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: reviewID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplyToReviewRequest'
+      responses:
+        '200':
+          description: Reply persisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOkResponse'
+        '400':
+          description: Invalid body / validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:update` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Review or business not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  # Agent tasks
+  # =====================================================================
+
+  /businesses/{id}/tasks:
+    get:
+      operationId: listAgentTasks
+      tags: [tasks]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Tasks list + total.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTaskListResponse'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Business not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /businesses/{id}/tasks/stream:
+    get:
+      operationId: streamAgentTasks
+      summary: SSE stream of task lifecycle events.
+      tags: [tasks]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+      responses:
+        '200':
+          description: Streaming task events.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              x-sse-events:
+                'task.created': { $ref: '#/components/schemas/AgentTask' }
+                'task.updated': { $ref: '#/components/schemas/AgentTask' }
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Streaming not supported by the writer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  # Search
+  # =====================================================================
+
+  /businesses/{id}/search:
+    get:
+      operationId: search
+      summary: Conversation + message full-text search.
+      tags: [search]
+      parameters:
+        - $ref: '#/components/parameters/BusinessIDPath'
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 50
+      responses:
+        '200':
+          description: Ordered search hits.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SearchResult'
+        '400':
+          description: Query string too short.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing `content:read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Index not ready (cold-boot).
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =====================================================================
+  # Orchestrator service (port 8090, no /api/v1 prefix)
+  # Each operation overrides `servers:` to the cluster-internal base URL.
+  # =====================================================================
+
+  /chat/{conversationID}:
+    post:
+      operationId: orchestratorChat
+      summary: Stream an LLM chat turn as Server-Sent Events.
+      tags: [chat]
+      servers:
+        - url: http://orchestrator:8090
+          description: Cluster-internal orchestrator base URL.
+      parameters:
+        - name: conversationID
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: SSE stream of orchestrator events.
+          headers:
+            Cache-Control:
+              schema: { type: string, example: no-cache }
+            Connection:
+              schema: { type: string, example: keep-alive }
+            X-Accel-Buffering:
+              schema: { type: string, example: 'no' }
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              x-sse-events:
+                text:                   { $ref: '#/components/schemas/SSEEventText' }
+                tool_call:              { $ref: '#/components/schemas/SSEEventToolCall' }
+                tool_result:            { $ref: '#/components/schemas/SSEEventToolResult' }
+                tool_rejected:          { $ref: '#/components/schemas/SSEEventToolRejected' }
+                tool_approval_required: { $ref: '#/components/schemas/SSEEventApprovalRequired' }
+                done:                   { $ref: '#/components/schemas/SSEEventDone' }
+                error:                  { $ref: '#/components/schemas/SSEEventError' }
+        '400':
+          description: Malformed body or streaming unsupported.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500':
+          description: Streaming infrastructure failure.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /chat/{conversationID}/resume:
+    post:
+      operationId: orchestratorResume
+      summary: Resume a HITL-paused chat turn after approval/edit/reject.
+      tags: [chat, hitl-resume]
+      servers:
+        - url: http://orchestrator:8090
+      parameters:
+        - name: conversationID
+          in: path
+          required: true
+          schema: { type: string }
+        - name: batch_id
+          in: query
+          required: true
+          schema: { type: string }
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResumeRequest' }
+      responses:
+        '200':
+          description: SSE stream — same wire shape as POST /chat/{conversationID}.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              x-sse-events:
+                text:                   { $ref: '#/components/schemas/SSEEventText' }
+                tool_call:              { $ref: '#/components/schemas/SSEEventToolCall' }
+                tool_result:            { $ref: '#/components/schemas/SSEEventToolResult' }
+                tool_rejected:          { $ref: '#/components/schemas/SSEEventToolRejected' }
+                tool_approval_required: { $ref: '#/components/schemas/SSEEventApprovalRequired' }
+                done:                   { $ref: '#/components/schemas/SSEEventDone' }
+                error:                  { $ref: '#/components/schemas/SSEEventError' }
+        '400':
+          description: '`batch_id` query param missing or streaming unsupported.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500':
+          description: Streaming infrastructure failure.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /internal/draft-reply:
+    post:
+      operationId: orchestratorDraftReply
+      summary: Generate an LLM draft reply for a customer review.
+      tags: [internal]
+      servers:
+        - url: http://orchestrator:8090
+      security:
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftReplyRequest' }
+      responses:
+        '200':
+          description: Draft generated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftReplyResponse' }
+        '400':
+          description: Invalid body or empty reviewText.
+          content:
+            text/plain:
+              schema: { type: string }
+        '405':
+          description: Method other than POST.
+          content:
+            text/plain:
+              schema: { type: string }
+        '429':
+          description: LLM rate limit exceeded.
+          content:
+            text/plain:
+              schema: { type: string }
+        '502':
+          description: LLM upstream failure.
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /internal/tools:
+    get:
+      operationId: orchestratorListTools
+      summary: Full registry projection (locale-resolved descriptions).
+      tags: [internal]
+      servers:
+        - url: http://orchestrator:8090
+      security:
+        - mtls: []
+      responses:
+        '200':
+          description: Registry snapshot.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ToolRegistryEntry' }
+
+  /internal/tools/names:
+    get:
+      operationId: orchestratorListToolNames
+      summary: Tool-names projection for hitlvalidation.
+      tags: [internal]
+      servers:
+        - url: http://orchestrator:8090
+      security:
+        - mtls: []
+      responses:
+        '200':
+          description: List of registered tool names.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ToolNamesResponse' }
+
+  # =====================================================================
+  # Internal (api side) — mTLS — /internal/v1/...
+  # =====================================================================
+
+  /tokens:
+    get:
+      operationId: internalGetToken
+      summary: Resolve decrypted integration tokens for a business + platform.
+      tags: [internal]
+      security:
+        - mtls: []
+      parameters:
+        - name: business_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: platform
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: external_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Decrypted token payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalTokenResponse'
+        '400':
+          description: Missing or invalid query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No active integration matches.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Token expired and the refresh attempt also failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /billing/usage_logs:
+    post:
+      operationId: internalLogUsage
+      summary: Persist an LLM usage log row.
+      tags: [internal]
+      security:
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsageLog'
+      responses:
+        '204':
+          description: Usage logged.
+        '400':
+          description: '`invalid_payload`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingErrorResponse'
+        '405':
+          description: Wrong HTTP verb.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingErrorResponse'
+        '500':
+          description: '`transient` — repository failure.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingErrorResponse'
+
+  /billing/daily_spend:
+    get:
+      operationId: internalGetDailySpend
+      summary: Read a business's USD spend for a UTC calendar day.
+      tags: [internal]
+      security:
+        - mtls: []
+      parameters:
+        - name: business_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+      responses:
+        '200':
+          description: Daily spend.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailySpendResponse'
+        '400':
+          description: Missing/invalid business_id or date.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingErrorResponse'
+        '405':
+          description: Wrong HTTP verb.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingErrorResponse'
+        '500':
+          description: '`transient` — repository failure.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingErrorResponse'
+
 components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: |
+        Access-token cookie set by /auth/login. The orchestrator delegates
+        cookie validation to services/api's chat_proxy facade, so this
+        scheme also documents the public contract for orchestrator
+        endpoints reached through that proxy.
+    mtls:
+      type: mutualTLS
+      description: |
+        Cluster-only mutual TLS. The public reverse proxy MUST drop any
+        request matching an mTLS-protected prefix (/internal/*, /tokens,
+        /billing/*) — application-level checks supplement the network
+        boundary but do not replace it.
+
+  parameters:
+    BusinessIDPath:
+      name: id
+      in: path
+      required: true
+      description: Business UUID. Non-members receive 404 (not 403).
+      schema:
+        type: string
+        format: uuid
+    IntegrationIDPath:
+      name: integrationId
+      in: path
+      required: true
+      description: Integration UUID.
+      schema:
+        type: string
+        format: uuid
+    UserIDPath:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RoleIDPath:
+      name: roleId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    InvitationTokenPath:
+      name: token
+      in: path
+      required: true
+      description: Raw single-use invitation token. Server hashes before lookup.
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Missing or expired access token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BusinessNotFound:
+      description: Business not found or caller is not a member (masked).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal failure (`internal_server_error`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CodeErrorResponse'
+
   schemas:
+    # ===================================================================
+    # Shared error envelopes (canonical, defined once)
+    # ===================================================================
+
+    ErrorResponse:
+      description: Plain-text error envelope; emitted by writeJSONError.
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    CodeErrorResponse:
+      description: |
+        Machine-routable error envelope; emitted by writeJSONCodeError.
+        Frontend resolves `code` to a localized message via i18n catalog.
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+
+    BillingErrorResponse:
+      description: |
+        Error envelope used by the internal billing endpoints. `error`
+        values map to pkg/billingclient sentinels.
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+
+    # ===================================================================
+    # Auth
+    # ===================================================================
+
     LoginRequest:
       type: object
       required: [email, password]
@@ -176,10 +4237,8 @@ components:
 
     MeResponse:
       description: |
-        Flattened user payload plus verification banner, deletion grace, and
-        reconsent fields so /auth/me renders in a single round-trip. The User
-        fields are merged into the response object (anonymous embedding on the
-        Go side); the frontend treats this as an extended User.
+        Flattened user payload plus verification banner, deletion grace,
+        and reconsent fields.
       allOf:
         - $ref: '#/components/schemas/User'
         - type: object
@@ -250,20 +4309,1957 @@ components:
           type: string
           format: date-time
 
-    ErrorResponse:
-      description: Plain-text error envelope; emitted by writeJSONError.
+    RegisterRequest:
+      type: object
+      required: [email, password, consents]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        consents:
+          $ref: '#/components/schemas/RegisterConsents'
+
+    RegisterConsents:
+      type: object
+      required: [tos, privacy, pdn]
+      properties:
+        tos:
+          type: string
+        privacy:
+          type: string
+        pdn:
+          type: string
+
+    RequestPasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ConfirmPasswordResetRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          minLength: 1
+        newPassword:
+          type: string
+          minLength: 8
+
+    VerifyConfirmRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 20
+
+    EmailBeforeVerifyRequest:
+      type: object
+      required: [newEmail]
+      properties:
+        newEmail:
+          type: string
+          format: email
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+
+    UpdatePreferredLocaleRequest:
+      type: object
+      required: [locale]
+      properties:
+        locale:
+          type: string
+          enum: [ru, en]
+
+    StatusOKResponse:
+      description: |
+        `{status:"ok"}` envelope used by ChangePassword. Distinct from
+        `StatusOkResponse` (camelCase variant) used by review reply and
+        review-refresh handlers.
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    StatusOkResponse:
+      description: |
+        `{status:"ok"}` envelope used by reviewReply and refreshReviews.
+        Enum-pinned variant of `StatusOKResponse`.
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    ConsentRequiredResponse:
+      type: object
+      required: [code, missing]
+      properties:
+        code:
+          type: string
+          enum: [consent_required]
+        missing:
+          type: array
+          items:
+            type: string
+
+    # ===================================================================
+    # Consents
+    # ===================================================================
+
+    ReconsentRequest:
+      type: object
+      required: [policies]
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReconsentPolicy'
+
+    ReconsentPolicy:
+      type: object
+      required: [slug, version]
+      properties:
+        slug:
+          type: string
+        version:
+          type: string
+        sha256:
+          type: string
+
+    VersionMismatchResponse:
+      type: object
+      required: [code, currentVersion]
+      properties:
+        code:
+          type: string
+          enum: [version_mismatch]
+        currentVersion:
+          type: string
+
+    ListConsentsResponse:
+      type: object
+      required: [consents]
+      properties:
+        consents:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentRecord'
+
+    ConsentRecord:
+      type: object
+      required: [slug, version, acceptedAt]
+      properties:
+        slug:
+          type: string
+        version:
+          type: string
+        sha256:
+          type: string
+        acceptedAt:
+          type: string
+          format: date-time
+        withdrawnAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ===================================================================
+    # User-deletion
+    # ===================================================================
+
+    DeleteAccountRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+          minLength: 1
+
+    SoleOwnerResponse:
+      type: object
+      required: [code, businesses]
+      properties:
+        code:
+          type: string
+          enum: [sole_owner_of_businesses]
+        businesses:
+          type: array
+          items:
+            $ref: '#/components/schemas/SoleOwnerBusinessEntry'
+
+    SoleOwnerBusinessEntry:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    PendingDeletionResponse:
+      type: object
+      required: [code, deletionDate, restoreUrl]
+      properties:
+        code:
+          type: string
+          enum: [account_pending_deletion]
+        deletionDate:
+          type: string
+        restoreUrl:
+          type: string
+
+    # ===================================================================
+    # Platforms / business / integrations
+    # ===================================================================
+
+    Platform:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+        status:
+          $ref: '#/components/schemas/PlatformStatus'
+
+    PlatformStatus:
+      type: string
+      enum:
+        - active
+        - coming_soon
+        - oauth_not_configured
+
+    Business:
+      type: object
+      required: [id, name, settings, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        category:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+          nullable: true
+        description:
+          type: string
+        logoUrl:
+          type: string
+        settings:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    BusinessMembershipSummary:
+      type: object
+      required: [id, name, role, status, joined_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/BusinessMembershipRoleRef'
+        status:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+
+    BusinessMembershipRoleRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    CreateBusinessRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+          nullable: true
+        description:
+          type: string
+
+    UpdateBusinessRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        website:
+          type: string
+          nullable: true
+        description:
+          type: string
+
+    UpdateScheduleRequest:
+      type: object
+      properties:
+        schedule:
+          description: Free-form per-day schedule blob.
+        specialDates:
+          description: Optional special-date overrides.
+
+    UpdateVoiceToneRequest:
+      type: object
+      properties:
+        tones:
+          type: array
+          items:
+            type: string
+
+    UploadLogoRequest:
+      type: object
+      required: [logo]
+      properties:
+        logo:
+          type: string
+          format: binary
+
+    ToolApprovalsResponse:
+      type: object
+      required: [toolApprovals]
+      properties:
+        toolApprovals:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolFloor'
+
+    UpdateToolApprovalsRequest:
+      type: object
+      required: [toolApprovals]
+      properties:
+        toolApprovals:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ToolFloor'
+
+    ToolFloor:
+      type: string
+      enum: [auto, manual, forbidden]
+      description: |
+        Per-tool HITL floor (strictness: auto < manual < forbidden).
+        Business-level approvals only persist `auto` / `manual`;
+        `forbidden` is reserved for tool-registry defaults.
+
+    Integration:
+      type: object
+      required: [id, businessId, platform, status, externalId, metadata, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        businessId:
+          type: string
+          format: uuid
+        platform:
+          type: string
+        status:
+          type: string
+        externalId:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        tokenExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AuthURLResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+
+    VKCommunity:
+      type: object
+      required: [id, name, screen_name]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        screen_name:
+          type: string
+        photo_50:
+          type: string
+        members_count:
+          type: integer
+
+    GoogleLocationsResponse:
+      type: object
+      required: [locations]
+      properties:
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoogleLocationRef'
+
+    GoogleLocationRef:
+      type: object
+      required: [account_name, location_name, title]
+      properties:
+        account_name:
+          type: string
+        location_name:
+          type: string
+        title:
+          type: string
+
+    GoogleSelectLocationRequest:
+      type: object
+      required: [account_id, location_id]
+      properties:
+        account_id:
+          type: string
+        location_id:
+          type: string
+
+    YandexCookiesRequest:
+      type: object
+      required: [cookies]
+      properties:
+        cookies:
+          type: string
+
+    YandexProbeResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        format:
+          type: string
+        session_valid:
+          type: boolean
+          nullable: true
+        username:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+
+    YandexCompaniesResponse:
+      type: object
+      required: [companies]
+      properties:
+        companies:
+          type: array
+          items:
+            $ref: '#/components/schemas/YandexCompanyEntry'
+
+    YandexCompanyEntry:
+      type: object
+      required: [permalink, name]
+      properties:
+        permalink:
+          type: string
+        name:
+          type: string
+
+    ConnectYandexRequest:
+      type: object
+      required: [cookies]
+      properties:
+        cookies:
+          type: string
+        permalink:
+          type: string
+        business_name:
+          type: string
+
+    RefreshStartedResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [refresh_started]
+
+    ConnectVKRequest:
+      type: object
+      required: [access_token]
+      properties:
+        access_token:
+          type: string
+        group_id:
+          type: string
+
+    ConnectTelegramRequest:
+      type: object
+      required: [channel_id]
+      properties:
+        channel_id:
+          type: string
+        telegram_user_id:
+          type: string
+
+    RefreshTelegramRequest:
+      type: object
+      required: [channel_id]
+      properties:
+        channel_id:
+          type: string
+
+    RefreshTelegramResponse:
+      type: object
+      required: [linked_chat_id, linked_group_status, channel_title]
+      properties:
+        linked_chat_id:
+          type: integer
+          format: int64
+        linked_group_status:
+          type: string
+          enum:
+            - ok
+            - bot_not_member
+            - no_linked_group
+        channel_title:
+          type: string
+
+    TelegramLoginRequest:
+      type: object
+      additionalProperties: true
+      required: [hash, auth_date]
+      properties:
+        hash:
+          type: string
+        auth_date:
+          oneOf:
+            - type: string
+            - type: integer
+        id:
+          type: integer
+          format: int64
+        first_name:
+          type: string
+        last_name:
+          type: string
+        username:
+          type: string
+        photo_url:
+          type: string
+
+    TelegramLoginVerifiedResponse:
+      type: object
+      required: [verified, user]
+      properties:
+        verified:
+          type: boolean
+        user:
+          type: object
+          additionalProperties: true
+
+    # ===================================================================
+    # Permissions / Members / Roles / Invitations / Audit
+    # ===================================================================
+
+    Permission:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    PermissionGroup:
+      type: object
+      required: [name, permissions]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+
+    PermissionRegistryResponse:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionGroup'
+
+    MyPermissionsResponse:
+      type: object
+      required: [permissions]
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+
+    Member:
+      type: object
+      required: [user, role, status, joined_at, invited_by, invited_at]
+      properties:
+        user:
+          type: object
+          required: [id, email]
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+        role:
+          type: object
+          required: [id, name, permissions]
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            permissions:
+              type: array
+              items:
+                type: string
+        status:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+        invited_by:
+          type: string
+          format: uuid
+          nullable: true
+        invited_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    UpdateMemberRoleRequest:
+      type: object
+      required: [role_id]
+      properties:
+        role_id:
+          type: string
+          format: uuid
+
+    UpdateMemberRoleResponse:
+      type: object
+      required: [business_id, user_id, role_id, status]
+      properties:
+        business_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        role_changed_at:
+          type: string
+          format: date-time
+          nullable: true
+        role_changed_by:
+          type: string
+          format: uuid
+          nullable: true
+
+    Role:
+      type: object
+      required: [id, business_id, name, description, permissions, is_system]
+      properties:
+        id:
+          type: string
+          format: uuid
+        business_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        is_system:
+          type: boolean
+        member_count:
+          type: integer
+
+    CreateRoleRequest:
+      type: object
+      required: [name, permissions]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        permissions:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+
+    UpdateRoleRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateRoleRequest'
+
+    CreateInvitationRequest:
+      type: object
+      required: [role_id]
+      properties:
+        role_id:
+          type: string
+          format: uuid
+        expires_in:
+          type: integer
+          minimum: 3600
+          maximum: 2592000
+
+    CreateInvitationResponse:
+      type: object
+      required: [id, token, role_id, expires_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        role_id:
+          type: string
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    PendingInvitation:
+      type: object
+      required: [id, role_id, role_name, expires_at, created_at, created_by]
+      properties:
+        id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+        role_name:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: object
+          required: [id, email]
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+
+    InvitationPreview:
+      type: object
+      required: [business_id, business_name, role_id, role_name, expires_at]
+      properties:
+        business_id:
+          type: string
+          format: uuid
+        business_name:
+          type: string
+        role_id:
+          type: string
+          format: uuid
+        role_name:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    AcceptInvitationResponse:
+      type: object
+      required: [business_id, role_id]
+      properties:
+        business_id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+
+    AuditAction:
+      type: string
+      enum:
+        - rbac.role_granted
+        - rbac.member_removed
+        - rbac.role_created
+        - rbac.role_updated
+        - rbac.role_deleted
+        - rbac.invitation_created
+        - rbac.invitation_revoked
+        - rbac.invitation_accepted
+        - auth.login_success
+        - auth.login_failed
+        - auth.logout
+        - auth.password_changed
+        - auth.user_registered
+        - integration.connected
+        - integration.disconnected
+        - integration.token_rotated
+        - business.created
+        - business.updated
+        - project.created
+        - project.updated
+        - project.deleted
+
+    AuditEvent:
+      type: object
+      required: [id, action, action_category, resource, business_id, actor_id, actor_email, actor_display_name, details, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        action_category:
+          type: string
+          enum: [rbac, auth, integration, business, project, other]
+        resource:
+          type: string
+        business_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_email:
+          type: string
+          format: email
+          nullable: true
+        actor_display_name:
+          type: string
+          nullable: true
+        details:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    AuditLogListResponse:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        next_cursor:
+          type: string
+          nullable: true
+
+    TelemetryEvent:
+      type: object
+      required: [eventType, page, action, timestamp]
+      properties:
+        eventType:
+          type: string
+        page:
+          type: string
+        action:
+          type: string
+        correlationId:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        timestamp:
+          type: string
+
+    # ===================================================================
+    # Internal (api side)
+    # ===================================================================
+
+    InternalTokenResponse:
+      type: object
+      required: [integration_id, platform, external_id, access_token]
+      properties:
+        integration_id:
+          type: string
+          format: uuid
+        platform:
+          type: string
+        external_id:
+          type: string
+        access_token:
+          type: string
+        user_token:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        user_token_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    UsageLog:
+      type: object
+      required: [business_id, user_id, model, provider, input_tokens, output_tokens, provider_cost_usd, commission_usd, user_cost_usd, user_tier]
+      properties:
+        id:
+          type: string
+          format: uuid
+        business_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+        request_id:
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
+        input_tokens:
+          type: integer
+          minimum: 0
+        output_tokens:
+          type: integer
+          minimum: 0
+        cache_read_tokens:
+          type: integer
+          minimum: 0
+        cache_creation_tokens:
+          type: integer
+          minimum: 0
+        provider_cost_usd:
+          type: number
+          format: double
+        commission_usd:
+          type: number
+          format: double
+        user_cost_usd:
+          type: number
+          format: double
+        user_tier:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    DailySpendResponse:
+      type: object
+      required: [daily_spend_usd]
+      properties:
+        daily_spend_usd:
+          type: number
+          format: double
+
+    # ===================================================================
+    # Chat-proxy + HITL (api side)
+    # ===================================================================
+
+    ChatTurnRequest:
+      type: object
+      properties:
+        message:
+          type: string
+        model:
+          type: string
+
+    SSEConcurrencyError:
+      type: object
+      required: [code, retry_after_s]
+      properties:
+        code:
+          type: string
+          enum: [sse_concurrency_exceeded]
+        retry_after_s:
+          type: integer
+
+    HITLResolveRequest:
+      type: object
+      required: [decisions]
+      properties:
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/HITLDecisionInput'
+
+    HITLDecisionInput:
+      type: object
+      required: [id, action]
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+          enum: [approve, edit, reject]
+        edited_args:
+          type: object
+          additionalProperties: true
+        reject_reason:
+          type: string
+
+    HITLResolveResponse:
+      type: object
+      required: [batch_id, resolved_at, decisions]
+      properties:
+        batch_id:
+          type: string
+        resolved_at:
+          type: string
+          format: date-time
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/HITLResolvedCall'
+
+    HITLResolvedCall:
+      type: object
+      required: [id, action]
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+          enum: [approve, edit, reject]
+        reason:
+          type: string
+
+    HITLShapeMismatchError:
+      type: object
+      required: [error, missing]
+      properties:
+        error:
+          type: string
+          enum: ['shape mismatch']
+        missing:
+          type: array
+          items:
+            type: string
+
+    HITLFieldNotEditableError:
+      type: object
+      required: [error, editable]
+      properties:
+        error:
+          type: string
+        editable:
+          type: array
+          items:
+            type: string
+
+    HITLNonScalarFieldError:
+      type: object
+      required: [error, tool]
+      properties:
+        error:
+          type: string
+        tool:
+          type: string
+
+    HITLRejectReasonTooLongError:
+      type: object
+      required: [error, max]
+      properties:
+        error:
+          type: string
+          enum: ['reject_reason too long']
+        max:
+          type: integer
+
+    HITLBatchResolvingError:
+      type: object
+      required: [error, retry_after_ms, reason]
+      properties:
+        error:
+          type: string
+          enum: ['batch resolving']
+        retry_after_ms:
+          type: integer
+        reason:
+          type: string
+          enum: ['concurrent resolve in progress']
+
+    HITLExpiredError:
       type: object
       required: [error]
       properties:
         error:
           type: string
+          enum: [approval_expired]
 
-    CodeErrorResponse:
-      description: |
-        Machine-routable error envelope; emitted by writeJSONCodeError.
-        Frontend resolves `code` to a localized message via i18n catalog.
+    HITLAlreadyResolvedError:
       type: object
-      required: [code]
+      required: [error, reason]
       properties:
+        error:
+          type: string
+          enum: ['batch already resolved']
+        reason:
+          type: string
+          enum: [already_resolved]
+
+    ToolEntry:
+      description: |
+        Locale-resolved tool registry projection returned by the api
+        service's hitlGetTools (cached 5 minutes). The `floor` here is the
+        wire-effective HITL floor — `auto` or `manual`. Distinct from
+        `ToolRegistryEntry` which is the orchestrator's internal-only
+        projection that may carry `forbidden`.
+      type: object
+      required: [name, displayName, platform, floor, editableFields, description, userDescription]
+      properties:
+        name:
+          type: string
+        displayName:
+          type: string
+        displayNameKey:
+          type: string
+        platform:
+          type: string
+        floor:
+          type: string
+          enum: [auto, manual]
+        editableFields:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        userDescription:
+          type: string
+
+    Conversation:
+      type: object
+      required: [id, userId, businessId, title, titleStatus, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+          format: uuid
+        businessId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          nullable: true
+        title:
+          type: string
+        titleStatus:
+          type: string
+          enum: [auto_pending, auto, manual]
+        pinnedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastMessageAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateConversationRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        projectId:
+          type: string
+          nullable: true
+
+    UpdateConversationRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+
+    MoveConversationRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          nullable: true
+
+    Message:
+      type: object
+      required: [id, conversationId, role, content, createdAt]
+      properties:
+        id:
+          type: string
+        conversationId:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageAttachment'
+        toolCalls:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageToolCall'
+        toolResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageToolResult'
+        metadata:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    MessageAttachment:
+      type: object
+      required: [type, url, mimeType, name]
+      properties:
+        type:
+          type: string
+        url:
+          type: string
+        mimeType:
+          type: string
+        name:
+          type: string
+
+    MessageToolCall:
+      type: object
+      required: [id, name, arguments]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        arguments:
+          type: object
+          additionalProperties: true
+        approvalId:
+          type: string
+        status:
+          type: string
+
+    MessageToolResult:
+      type: object
+      required: [toolCallId, content, isError]
+      properties:
+        toolCallId:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+        isError:
+          type: boolean
         code:
           type: string
+
+    ChatView:
+      type: object
+      required: [messages, pendingApprovals]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        pendingApprovals:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingApproval'
+
+    PendingApproval:
+      type: object
+      required: [batchId, messageId, calls, status, createdAt, expiresAt]
+      properties:
+        batchId:
+          type: string
+        messageId:
+          type: string
+        calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingApprovalCall'
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    PendingApprovalCall:
+      type: object
+      required: [callId, toolName, args, editableFields]
+      properties:
+        callId:
+          type: string
+        toolName:
+          type: string
+        args:
+          type: object
+          additionalProperties: true
+        editableFields:
+          type: array
+          items:
+            type: string
+
+    TitlerConflictError:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum: [title_is_manual, title_in_flight, title_state_changed]
+        message:
+          type: string
+
+    TitlerDisabledError:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum: [titler_disabled]
+        message:
+          type: string
+
+    Project:
+      type: object
+      required: [id, businessId, name, whitelistMode, allowedTools, quickActions, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        businessId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        systemPrompt:
+          type: string
+          maxLength: 4000
+        whitelistMode:
+          type: string
+          enum: [inherit, all, explicit, none]
+        allowedTools:
+          type: array
+          items:
+            type: string
+        approvalOverrides:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [auto, manual]
+        quickActions:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        systemPrompt:
+          type: string
+          maxLength: 4000
+        whitelistMode:
+          type: string
+          enum: [inherit, all, explicit, none]
+        allowedTools:
+          type: array
+          items:
+            type: string
+        approvalOverrides:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [auto, manual, inherit]
+        quickActions:
+          type: array
+          items:
+            type: string
+
+    ProjectDeleteResponse:
+      type: object
+      required: [deletedConversations, deletedMessages]
+      properties:
+        deletedConversations:
+          type: integer
+        deletedMessages:
+          type: integer
+
+    ProjectConversationCountResponse:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+
+    Post:
+      type: object
+      required: [id, businessId, content, status, createdAt]
+      properties:
+        id:
+          type: string
+        businessId:
+          type: string
+          format: uuid
+        content:
+          type: string
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        platformResults:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PostPlatformResult'
+        status:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PostPlatformResult:
+      type: object
+      required: [postId, url, status]
+      properties:
+        postId:
+          type: string
+        url:
+          type: string
+        status:
+          type: string
+        error:
+          type: string
+
+    PostListResponse:
+      type: object
+      required: [posts, total]
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+        total:
+          type: integer
+
+    Review:
+      type: object
+      required: [id, businessId, platform, externalId, authorName, rating, text, replyStatus, createdAt]
+      properties:
+        id:
+          type: string
+        businessId:
+          type: string
+          format: uuid
+        platform:
+          type: string
+        externalId:
+          type: string
+        authorName:
+          type: string
+        rating:
+          type: integer
+        text:
+          type: string
+        replyText:
+          type: string
+        replyStatus:
+          type: string
+          enum: [pending, replied, error]
+        platformMeta:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        draftReply:
+          type: string
+        draftStatus:
+          type: string
+          enum: [generating, ready, failed]
+        draftGeneratedAt:
+          type: string
+          format: date-time
+        draftError:
+          type: string
+
+    ReviewListResponse:
+      type: object
+      required: [reviews, total]
+      properties:
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+        total:
+          type: integer
+
+    ReplyToReviewRequest:
+      type: object
+      required: [replyText]
+      properties:
+        replyText:
+          type: string
+
+    AgentTask:
+      type: object
+      required: [id, businessId, type, status, platform, createdAt]
+      properties:
+        id:
+          type: string
+        businessId:
+          type: string
+          format: uuid
+        type:
+          type: string
+        displayName:
+          type: string
+        displayNameKey:
+          type: string
+        status:
+          type: string
+        platform:
+          type: string
+        input:
+          description: Free-form per-task input payload.
+        output:
+          description: Free-form per-task output payload.
+        error:
+          type: string
+        errorCode:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AgentTaskListResponse:
+      type: object
+      required: [tasks, total]
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentTask'
+        total:
+          type: integer
+
+    SearchResult:
+      type: object
+      required: [conversationId, matchCount, score]
+      properties:
+        conversationId:
+          type: string
+        title:
+          type: string
+        projectId:
+          type: string
+          nullable: true
+        snippet:
+          type: string
+        matchCount:
+          type: integer
+        topMessageId:
+          type: string
+        score:
+          type: number
+          format: double
+        marks:
+          type: array
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items:
+              type: integer
+        lastMessageAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ===================================================================
+    # Orchestrator service
+    # ===================================================================
+
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        model:
+          type: string
+        message:
+          type: string
+        business_id:
+          type: string
+          format: uuid
+        business_name:        { type: string }
+        business_category:    { type: string }
+        business_address:     { type: string }
+        business_phone:       { type: string }
+        business_website:     { type: string }
+        business_description: { type: string }
+        business_voice_tone:
+          type: array
+          items: { type: string }
+        active_integrations:
+          type: array
+          items: { type: string }
+        history:
+          type: array
+          items: { $ref: '#/components/schemas/ChatHistoryEntry' }
+        project_id:           { type: string }
+        project_name:         { type: string }
+        project_system_prompt: { type: string }
+        project_whitelist_mode:
+          type: string
+          enum: [inherit, all, explicit, none, ""]
+        project_allowed_tools:
+          type: array
+          items: { type: string }
+        user_id:
+          type: string
+        message_id: { type: string }
+        tier:       { type: string }
+        business_approvals:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/ToolFloor' }
+        project_approval_overrides:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/ToolFloor' }
+        locale:
+          type: string
+
+    ChatHistoryEntry:
+      type: object
+      required: [role, content]
+      properties:
+        role:    { type: string, enum: [system, user, assistant, tool] }
+        content: { type: string }
+
+    ResumeRequest:
+      type: object
+      properties:
+        business_approvals:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/ToolFloor' }
+        project_approval_overrides:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/ToolFloor' }
+        active_integrations:
+          type: array
+          items: { type: string }
+        whitelist_mode:
+          type: string
+          enum: [inherit, all, explicit, none, ""]
+        allowed_tools:
+          type: array
+          items: { type: string }
+        model: { type: string }
+        tier:  { type: string }
+
+    DraftReplyRequest:
+      type: object
+      required: [reviewText, businessId, platform, rating]
+      properties:
+        businessId:          { type: string }
+        businessName:        { type: string }
+        businessCategory:    { type: string }
+        businessDescription: { type: string }
+        platform:            { type: string }
+        reviewText:          { type: string }
+        rating:
+          type: integer
+          minimum: 0
+          maximum: 5
+        authorName: { type: string }
+        examples:
+          type: array
+          items: { $ref: '#/components/schemas/DraftReplyExample' }
+
+    DraftReplyExample:
+      type: object
+      required: [reviewText, replyText]
+      properties:
+        reviewText: { type: string }
+        replyText:  { type: string }
+        rating:
+          type: integer
+          minimum: 0
+          maximum: 5
+
+    DraftReplyResponse:
+      type: object
+      required: [draftReply]
+      properties:
+        draftReply: { type: string }
+        provider:   { type: string }
+        model:      { type: string }
+
+    ToolNamesResponse:
+      type: object
+      required: [names]
+      properties:
+        names:
+          type: array
+          items: { type: string }
+
+    ToolRegistryEntry:
+      description: |
+        Orchestrator's internal tool registry projection. The `floor` may
+        carry `forbidden` (in addition to `auto` / `manual`); the api side
+        uses `ToolEntry` (auto/manual only).
+      type: object
+      required: [name, displayName, platform, floor, editableFields, description, userDescription]
+      properties:
+        name:           { type: string }
+        displayName:    { type: string }
+        displayNameKey: { type: string }
+        platform:       { type: string }
+        floor:          { $ref: '#/components/schemas/ToolFloor' }
+        editableFields:
+          type: array
+          items: { type: string }
+        description:     { type: string }
+        userDescription: { type: string }
+
+    # ===================================================================
+    # SSE event union (orchestrator + chat-proxy passthrough)
+    # ===================================================================
+
+    SSEEvent:
+      description: |
+        Discriminated union over the per-type SSE event schemas. `type`
+        is the discriminator. Wire envelope is `data: <json>\n\n`.
+      oneOf:
+        - $ref: '#/components/schemas/SSEEventText'
+        - $ref: '#/components/schemas/SSEEventToolCall'
+        - $ref: '#/components/schemas/SSEEventToolResult'
+        - $ref: '#/components/schemas/SSEEventToolRejected'
+        - $ref: '#/components/schemas/SSEEventApprovalRequired'
+        - $ref: '#/components/schemas/SSEEventDone'
+        - $ref: '#/components/schemas/SSEEventError'
+      discriminator:
+        propertyName: type
+        mapping:
+          text:                   '#/components/schemas/SSEEventText'
+          tool_call:              '#/components/schemas/SSEEventToolCall'
+          tool_result:            '#/components/schemas/SSEEventToolResult'
+          tool_rejected:          '#/components/schemas/SSEEventToolRejected'
+          tool_approval_required: '#/components/schemas/SSEEventApprovalRequired'
+          done:                   '#/components/schemas/SSEEventDone'
+          error:                  '#/components/schemas/SSEEventError'
+
+    SSEEventText:
+      type: object
+      required: [type]
+      properties:
+        type:    { type: string, enum: [text] }
+        content: { type: string }
+
+    SSEEventToolCall:
+      type: object
+      required: [type]
+      properties:
+        type:                  { type: string, enum: [tool_call] }
+        tool_call_id:          { type: string }
+        tool_name:             { type: string }
+        tool_display_name:     { type: string }
+        tool_display_name_key: { type: string }
+        tool_args:
+          type: object
+          additionalProperties: true
+
+    SSEEventToolResult:
+      type: object
+      required: [type]
+      properties:
+        type:                  { type: string, enum: [tool_result] }
+        tool_call_id:          { type: string }
+        tool_name:             { type: string }
+        tool_display_name:     { type: string }
+        tool_display_name_key: { type: string }
+        result:
+          description: Tool reply payload (any JSON).
+          nullable: true
+        error:
+          type: string
+
+    SSEEventToolRejected:
+      type: object
+      required: [type]
+      properties:
+        type:                  { type: string, enum: [tool_rejected] }
+        tool_call_id:          { type: string }
+        tool_name:             { type: string }
+        tool_display_name:     { type: string }
+        tool_display_name_key: { type: string }
+        error:                 { type: string }
+
+    SSEEventApprovalRequired:
+      type: object
+      required: [type, batch_id, calls]
+      properties:
+        type:     { type: string, enum: [tool_approval_required] }
+        batch_id: { type: string }
+        calls:
+          type: array
+          items: { $ref: '#/components/schemas/ApprovalCall' }
+
+    SSEEventDone:
+      type: object
+      required: [type]
+      properties:
+        type:    { type: string, enum: [done] }
+        content: { type: string }
+
+    SSEEventError:
+      type: object
+      required: [type]
+      properties:
+        type:    { type: string, enum: [error] }
+        code:    { type: string }
+        content: { type: string }
+
+    ApprovalCall:
+      type: object
+      required: [call_id, tool_name, args, editable_fields, floor]
+      properties:
+        call_id:   { type: string }
+        tool_name: { type: string }
+        args:
+          type: object
+          additionalProperties: true
+        editable_fields:
+          type: array
+          items: { type: string }
+        floor: { $ref: '#/components/schemas/ToolFloor' }
