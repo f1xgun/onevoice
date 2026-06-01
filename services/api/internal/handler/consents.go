@@ -30,6 +30,7 @@ import (
 	"github.com/f1xgun/onevoice/pkg/domain"
 	"github.com/f1xgun/onevoice/pkg/legalconfig"
 	"github.com/f1xgun/onevoice/services/api/internal/middleware"
+	"github.com/f1xgun/onevoice/services/api/internal/openapi"
 	"github.com/f1xgun/onevoice/services/api/internal/repository"
 	"github.com/f1xgun/onevoice/services/api/internal/service"
 )
@@ -69,31 +70,14 @@ func NewConsentsHandler(svc ConsentsServiceAPI, repo ConsentsListerAPI, allowedO
 	}
 }
 
-// reconsentRequest is the POST /auth/consents body.
-type reconsentRequest struct {
-	Policies []reconsentPolicy `json:"policies"`
-}
-
-type reconsentPolicy struct {
-	Slug    string `json:"slug"`
-	Version string `json:"version"`
-	SHA256  string `json:"sha256"`
-}
-
-// versionMismatchBody is the 409 envelope returned when the operator
-// bumped a policy mid-review. The frontend reloads the modal against
-// `currentVersion` and re-submits.
-type versionMismatchBody struct {
-	Code           string `json:"code"`
-	CurrentVersion string `json:"currentVersion"`
-}
-
-// consentRequiredBody is the 400 envelope returned when the submitted
-// policies are missing one of the three slugs.
-type consentRequiredBody struct {
-	Code    string   `json:"code"`
-	Missing []string `json:"missing"`
-}
+// Re-export spec-owned shapes under the historic handler.* names so the
+// existing test suite continues to compile against named types.
+type (
+	reconsentRequest    = openapi.ReconsentRequest
+	reconsentPolicy     = openapi.ReconsentPolicy
+	versionMismatchBody = openapi.VersionMismatchResponse
+	consentRequiredBody = openapi.ConsentRequiredResponse
+)
 
 // Reconsent handles POST /auth/consents.
 //
@@ -120,15 +104,14 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.Policies) == 0 {
 		writeJSON(w, http.StatusBadRequest, consentRequiredBody{
-			Code:    "consent_required",
+			Code:    openapi.ConsentRequired,
 			Missing: []string{string(legalconfig.PolicyTOS), string(legalconfig.PolicyPrivacy), string(legalconfig.PolicyPDN)},
 		})
 		return
 	}
 
-	// Pre-validate that every required slug is present in the body.
-	// The service does version-match checking, but presence-check at
-	// the handler boundary gives the frontend a cleaner missing list.
+	// Pre-validate every required slug is present so the frontend gets a
+	// cleaner missing list than the service's version-match check.
 	bySlug := make(map[string]reconsentPolicy, len(req.Policies))
 	for _, p := range req.Policies {
 		bySlug[p.Slug] = p
@@ -140,7 +123,7 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(missing) > 0 {
-		writeJSON(w, http.StatusBadRequest, consentRequiredBody{Code: "consent_required", Missing: missing})
+		writeJSON(w, http.StatusBadRequest, consentRequiredBody{Code: openapi.ConsentRequired, Missing: missing})
 		return
 	}
 
@@ -149,7 +132,7 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		policies = append(policies, service.PolicyAccepted{
 			Slug:    p.Slug,
 			Version: p.Version,
-			SHA256:  p.SHA256,
+			SHA256:  strDeref(p.Sha256),
 		})
 	}
 
@@ -159,18 +142,16 @@ func (h *ConsentsHandler) Reconsent(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	case errors.Is(err, domain.ErrConsentVersionMismatch):
-		// Surface the build's currentVersion for the frontend to reload.
-		// PolicyTOS / PolicyPrivacy / PolicyPDN are bumped in lockstep
-		// for v1.4; we return the TOS version as the
-		// canonical bump signal.
+		// PolicyTOS / PolicyPrivacy / PolicyPDN are bumped in lockstep; the
+		// TOS version is the canonical bump signal the frontend reloads against.
 		writeJSON(w, http.StatusConflict, versionMismatchBody{
-			Code:           "version_mismatch",
+			Code:           openapi.VersionMismatch,
 			CurrentVersion: legalconfig.TOSVersion,
 		})
 		return
 	case errors.Is(err, domain.ErrConsentMissing):
 		writeJSON(w, http.StatusBadRequest, consentRequiredBody{
-			Code:    "consent_required",
+			Code:    openapi.ConsentRequired,
 			Missing: []string{string(legalconfig.PolicyTOS), string(legalconfig.PolicyPrivacy), string(legalconfig.PolicyPDN)},
 		})
 		return
