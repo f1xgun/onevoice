@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"path"
@@ -14,7 +16,126 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+const (
+	CookieAuthScopes = "cookieAuth.Scopes"
+	MtlsScopes       = "mtls.Scopes"
+)
+
+// Defines values for AuditAction.
+const (
+	AuthLoginFailed         AuditAction = "auth.login_failed"
+	AuthLoginSuccess        AuditAction = "auth.login_success"
+	AuthLogout              AuditAction = "auth.logout"
+	AuthPasswordChanged     AuditAction = "auth.password_changed"
+	AuthUserRegistered      AuditAction = "auth.user_registered"
+	BusinessCreated         AuditAction = "business.created"
+	BusinessUpdated         AuditAction = "business.updated"
+	IntegrationConnected    AuditAction = "integration.connected"
+	IntegrationDisconnected AuditAction = "integration.disconnected"
+	IntegrationTokenRotated AuditAction = "integration.token_rotated"
+	ProjectCreated          AuditAction = "project.created"
+	ProjectDeleted          AuditAction = "project.deleted"
+	ProjectUpdated          AuditAction = "project.updated"
+	RbacInvitationAccepted  AuditAction = "rbac.invitation_accepted"
+	RbacInvitationCreated   AuditAction = "rbac.invitation_created"
+	RbacInvitationRevoked   AuditAction = "rbac.invitation_revoked"
+	RbacMemberRemoved       AuditAction = "rbac.member_removed"
+	RbacRoleCreated         AuditAction = "rbac.role_created"
+	RbacRoleDeleted         AuditAction = "rbac.role_deleted"
+	RbacRoleGranted         AuditAction = "rbac.role_granted"
+	RbacRoleUpdated         AuditAction = "rbac.role_updated"
+)
+
+// Defines values for AuditEventActionCategory.
+const (
+	AuditEventActionCategoryAuth        AuditEventActionCategory = "auth"
+	AuditEventActionCategoryBusiness    AuditEventActionCategory = "business"
+	AuditEventActionCategoryIntegration AuditEventActionCategory = "integration"
+	AuditEventActionCategoryOther       AuditEventActionCategory = "other"
+	AuditEventActionCategoryProject     AuditEventActionCategory = "project"
+	AuditEventActionCategoryRbac        AuditEventActionCategory = "rbac"
+)
+
+// Defines values for ChatHistoryEntryRole.
+const (
+	ChatHistoryEntryRoleAssistant ChatHistoryEntryRole = "assistant"
+	ChatHistoryEntryRoleSystem    ChatHistoryEntryRole = "system"
+	ChatHistoryEntryRoleTool      ChatHistoryEntryRole = "tool"
+	ChatHistoryEntryRoleUser      ChatHistoryEntryRole = "user"
+)
+
+// Defines values for ChatRequestProjectWhitelistMode.
+const (
+	ChatRequestProjectWhitelistModeAll      ChatRequestProjectWhitelistMode = "all"
+	ChatRequestProjectWhitelistModeEmpty    ChatRequestProjectWhitelistMode = ""
+	ChatRequestProjectWhitelistModeExplicit ChatRequestProjectWhitelistMode = "explicit"
+	ChatRequestProjectWhitelistModeInherit  ChatRequestProjectWhitelistMode = "inherit"
+	ChatRequestProjectWhitelistModeNone     ChatRequestProjectWhitelistMode = "none"
+)
+
+// Defines values for ConsentRequiredResponseCode.
+const (
+	ConsentRequired ConsentRequiredResponseCode = "consent_required"
+)
+
+// Defines values for ConversationTitleStatus.
+const (
+	ConversationTitleStatusAuto        ConversationTitleStatus = "auto"
+	ConversationTitleStatusAutoPending ConversationTitleStatus = "auto_pending"
+	ConversationTitleStatusManual      ConversationTitleStatus = "manual"
+)
+
+// Defines values for HITLAlreadyResolvedErrorError.
+const (
+	BatchAlreadyResolved HITLAlreadyResolvedErrorError = "batch already resolved"
+)
+
+// Defines values for HITLAlreadyResolvedErrorReason.
+const (
+	AlreadyResolved HITLAlreadyResolvedErrorReason = "already_resolved"
+)
+
+// Defines values for HITLBatchResolvingErrorError.
+const (
+	BatchResolving HITLBatchResolvingErrorError = "batch resolving"
+)
+
+// Defines values for HITLBatchResolvingErrorReason.
+const (
+	ConcurrentResolveInProgress HITLBatchResolvingErrorReason = "concurrent resolve in progress"
+)
+
+// Defines values for HITLDecisionInputAction.
+const (
+	HITLDecisionInputActionApprove HITLDecisionInputAction = "approve"
+	HITLDecisionInputActionEdit    HITLDecisionInputAction = "edit"
+	HITLDecisionInputActionReject  HITLDecisionInputAction = "reject"
+)
+
+// Defines values for HITLExpiredErrorError.
+const (
+	ApprovalExpired HITLExpiredErrorError = "approval_expired"
+)
+
+// Defines values for HITLRejectReasonTooLongErrorError.
+const (
+	RejectReasonTooLong HITLRejectReasonTooLongErrorError = "reject_reason too long"
+)
+
+// Defines values for HITLResolvedCallAction.
+const (
+	HITLResolvedCallActionApprove HITLResolvedCallAction = "approve"
+	HITLResolvedCallActionEdit    HITLResolvedCallAction = "edit"
+	HITLResolvedCallActionReject  HITLResolvedCallAction = "reject"
+)
+
+// Defines values for HITLShapeMismatchErrorError.
+const (
+	ShapeMismatch HITLShapeMismatchErrorError = "shape mismatch"
 )
 
 // Defines values for MeResponsePreferredLocale.
@@ -23,11 +144,202 @@ const (
 	MeResponsePreferredLocaleRu MeResponsePreferredLocale = "ru"
 )
 
+// Defines values for MessageRole.
+const (
+	MessageRoleAssistant MessageRole = "assistant"
+	MessageRoleSystem    MessageRole = "system"
+	MessageRoleUser      MessageRole = "user"
+)
+
+// Defines values for PendingDeletionResponseCode.
+const (
+	AccountPendingDeletion PendingDeletionResponseCode = "account_pending_deletion"
+)
+
+// Defines values for PlatformStatus.
+const (
+	Active             PlatformStatus = "active"
+	ComingSoon         PlatformStatus = "coming_soon"
+	OauthNotConfigured PlatformStatus = "oauth_not_configured"
+)
+
+// Defines values for ProjectApprovalOverrides.
+const (
+	ProjectApprovalOverridesAuto   ProjectApprovalOverrides = "auto"
+	ProjectApprovalOverridesManual ProjectApprovalOverrides = "manual"
+)
+
+// Defines values for ProjectWhitelistMode.
+const (
+	ProjectWhitelistModeAll      ProjectWhitelistMode = "all"
+	ProjectWhitelistModeExplicit ProjectWhitelistMode = "explicit"
+	ProjectWhitelistModeInherit  ProjectWhitelistMode = "inherit"
+	ProjectWhitelistModeNone     ProjectWhitelistMode = "none"
+)
+
+// Defines values for ProjectRequestApprovalOverrides.
+const (
+	ProjectRequestApprovalOverridesAuto    ProjectRequestApprovalOverrides = "auto"
+	ProjectRequestApprovalOverridesInherit ProjectRequestApprovalOverrides = "inherit"
+	ProjectRequestApprovalOverridesManual  ProjectRequestApprovalOverrides = "manual"
+)
+
+// Defines values for ProjectRequestWhitelistMode.
+const (
+	ProjectRequestWhitelistModeAll      ProjectRequestWhitelistMode = "all"
+	ProjectRequestWhitelistModeExplicit ProjectRequestWhitelistMode = "explicit"
+	ProjectRequestWhitelistModeInherit  ProjectRequestWhitelistMode = "inherit"
+	ProjectRequestWhitelistModeNone     ProjectRequestWhitelistMode = "none"
+)
+
+// Defines values for RefreshStartedResponseStatus.
+const (
+	RefreshStarted RefreshStartedResponseStatus = "refresh_started"
+)
+
+// Defines values for RefreshTelegramResponseLinkedGroupStatus.
+const (
+	RefreshTelegramResponseLinkedGroupStatusBotNotMember  RefreshTelegramResponseLinkedGroupStatus = "bot_not_member"
+	RefreshTelegramResponseLinkedGroupStatusNoLinkedGroup RefreshTelegramResponseLinkedGroupStatus = "no_linked_group"
+	RefreshTelegramResponseLinkedGroupStatusOk            RefreshTelegramResponseLinkedGroupStatus = "ok"
+)
+
+// Defines values for ResumeRequestWhitelistMode.
+const (
+	All      ResumeRequestWhitelistMode = "all"
+	Empty    ResumeRequestWhitelistMode = ""
+	Explicit ResumeRequestWhitelistMode = "explicit"
+	Inherit  ResumeRequestWhitelistMode = "inherit"
+	None     ResumeRequestWhitelistMode = "none"
+)
+
+// Defines values for ReviewDraftStatus.
+const (
+	Failed     ReviewDraftStatus = "failed"
+	Generating ReviewDraftStatus = "generating"
+	Ready      ReviewDraftStatus = "ready"
+)
+
+// Defines values for ReviewReplyStatus.
+const (
+	ReviewReplyStatusError   ReviewReplyStatus = "error"
+	ReviewReplyStatusPending ReviewReplyStatus = "pending"
+	ReviewReplyStatusReplied ReviewReplyStatus = "replied"
+)
+
+// Defines values for SSEConcurrencyErrorCode.
+const (
+	SseConcurrencyExceeded SSEConcurrencyErrorCode = "sse_concurrency_exceeded"
+)
+
+// Defines values for SSEEventApprovalRequiredType.
+const (
+	ToolApprovalRequired SSEEventApprovalRequiredType = "tool_approval_required"
+)
+
+// Defines values for SSEEventDoneType.
+const (
+	Done SSEEventDoneType = "done"
+)
+
+// Defines values for SSEEventErrorType.
+const (
+	SSEEventErrorTypeError SSEEventErrorType = "error"
+)
+
+// Defines values for SSEEventTextType.
+const (
+	Text SSEEventTextType = "text"
+)
+
+// Defines values for SSEEventToolCallType.
+const (
+	ToolCall SSEEventToolCallType = "tool_call"
+)
+
+// Defines values for SSEEventToolRejectedType.
+const (
+	ToolRejected SSEEventToolRejectedType = "tool_rejected"
+)
+
+// Defines values for SSEEventToolResultType.
+const (
+	ToolResult SSEEventToolResultType = "tool_result"
+)
+
+// Defines values for SoleOwnerResponseCode.
+const (
+	SoleOwnerOfBusinesses SoleOwnerResponseCode = "sole_owner_of_businesses"
+)
+
+// Defines values for StatusOkResponseStatus.
+const (
+	StatusOkResponseStatusOk StatusOkResponseStatus = "ok"
+)
+
+// Defines values for TitlerConflictErrorError.
+const (
+	TitleInFlight     TitlerConflictErrorError = "title_in_flight"
+	TitleIsManual     TitlerConflictErrorError = "title_is_manual"
+	TitleStateChanged TitlerConflictErrorError = "title_state_changed"
+)
+
+// Defines values for TitlerDisabledErrorError.
+const (
+	TitlerDisabled TitlerDisabledErrorError = "titler_disabled"
+)
+
+// Defines values for ToolEntryFloor.
+const (
+	ToolEntryFloorAuto   ToolEntryFloor = "auto"
+	ToolEntryFloorManual ToolEntryFloor = "manual"
+)
+
+// Defines values for ToolFloor.
+const (
+	ToolFloorAuto      ToolFloor = "auto"
+	ToolFloorForbidden ToolFloor = "forbidden"
+	ToolFloorManual    ToolFloor = "manual"
+)
+
+// Defines values for UpdatePreferredLocaleRequestLocale.
+const (
+	UpdatePreferredLocaleRequestLocaleEn UpdatePreferredLocaleRequestLocale = "en"
+	UpdatePreferredLocaleRequestLocaleRu UpdatePreferredLocaleRequestLocale = "ru"
+)
+
 // Defines values for UserPreferredLocale.
 const (
-	UserPreferredLocaleEn UserPreferredLocale = "en"
-	UserPreferredLocaleRu UserPreferredLocale = "ru"
+	En UserPreferredLocale = "en"
+	Ru UserPreferredLocale = "ru"
 )
+
+// Defines values for VersionMismatchResponseCode.
+const (
+	VersionMismatch VersionMismatchResponseCode = "version_mismatch"
+)
+
+// Defines values for ListAuditLogsParamsCategory.
+const (
+	ListAuditLogsParamsCategoryAuth        ListAuditLogsParamsCategory = "auth"
+	ListAuditLogsParamsCategoryBusiness    ListAuditLogsParamsCategory = "business"
+	ListAuditLogsParamsCategoryIntegration ListAuditLogsParamsCategory = "integration"
+	ListAuditLogsParamsCategoryProject     ListAuditLogsParamsCategory = "project"
+	ListAuditLogsParamsCategoryRbac        ListAuditLogsParamsCategory = "rbac"
+)
+
+// Defines values for ListReviewsParamsReplyStatus.
+const (
+	Error   ListReviewsParamsReplyStatus = "error"
+	Pending ListReviewsParamsReplyStatus = "pending"
+	Replied ListReviewsParamsReplyStatus = "replied"
+)
+
+// AcceptInvitationResponse defines model for AcceptInvitationResponse.
+type AcceptInvitationResponse struct {
+	BusinessId openapi_types.UUID `json:"business_id"`
+	RoleId     openapi_types.UUID `json:"role_id"`
+}
 
 // AccountDeletionInfo defines model for AccountDeletionInfo.
 type AccountDeletionInfo struct {
@@ -36,15 +348,474 @@ type AccountDeletionInfo struct {
 	ScheduledDeletionAt time.Time `json:"scheduledDeletionAt"`
 }
 
+// AgentTask defines model for AgentTask.
+type AgentTask struct {
+	BusinessId     openapi_types.UUID `json:"businessId"`
+	CompletedAt    *time.Time         `json:"completedAt"`
+	CreatedAt      time.Time          `json:"createdAt"`
+	DisplayName    *string            `json:"displayName,omitempty"`
+	DisplayNameKey *string            `json:"displayNameKey,omitempty"`
+	Error          *string            `json:"error,omitempty"`
+	ErrorCode      *string            `json:"errorCode,omitempty"`
+	Id             string             `json:"id"`
+
+	// Input Free-form per-task input payload.
+	Input *interface{} `json:"input,omitempty"`
+
+	// Output Free-form per-task output payload.
+	Output    *interface{} `json:"output,omitempty"`
+	Platform  string       `json:"platform"`
+	StartedAt *time.Time   `json:"startedAt"`
+	Status    string       `json:"status"`
+	Type      string       `json:"type"`
+}
+
+// AgentTaskListResponse defines model for AgentTaskListResponse.
+type AgentTaskListResponse struct {
+	Tasks []AgentTask `json:"tasks"`
+	Total int         `json:"total"`
+}
+
+// ApprovalCall defines model for ApprovalCall.
+type ApprovalCall struct {
+	Args           map[string]interface{} `json:"args"`
+	CallId         string                 `json:"call_id"`
+	EditableFields []string               `json:"editable_fields"`
+
+	// Floor Per-tool HITL floor (strictness: auto < manual < forbidden).
+	// Business-level approvals only persist `auto` / `manual`;
+	// `forbidden` is reserved for tool-registry defaults.
+	Floor    ToolFloor `json:"floor"`
+	ToolName string    `json:"tool_name"`
+}
+
+// AuditAction defines model for AuditAction.
+type AuditAction string
+
+// AuditEvent defines model for AuditEvent.
+type AuditEvent struct {
+	Action           AuditAction              `json:"action"`
+	ActionCategory   AuditEventActionCategory `json:"action_category"`
+	ActorDisplayName *string                  `json:"actor_display_name"`
+	ActorEmail       *openapi_types.Email     `json:"actor_email"`
+	ActorId          *openapi_types.UUID      `json:"actor_id"`
+	BusinessId       *openapi_types.UUID      `json:"business_id"`
+	CreatedAt        time.Time                `json:"created_at"`
+	Details          map[string]interface{}   `json:"details"`
+	Id               openapi_types.UUID       `json:"id"`
+	Resource         string                   `json:"resource"`
+}
+
+// AuditEventActionCategory defines model for AuditEvent.ActionCategory.
+type AuditEventActionCategory string
+
+// AuditLogListResponse defines model for AuditLogListResponse.
+type AuditLogListResponse struct {
+	Items      []AuditEvent `json:"items"`
+	NextCursor *string      `json:"next_cursor"`
+}
+
+// AuthURLResponse defines model for AuthURLResponse.
+type AuthURLResponse struct {
+	Url string `json:"url"`
+}
+
+// BillingErrorResponse Error envelope used by the internal billing endpoints. `error`
+// values map to pkg/billingclient sentinels.
+type BillingErrorResponse struct {
+	Detail *string `json:"detail,omitempty"`
+	Error  string  `json:"error"`
+}
+
+// Business defines model for Business.
+type Business struct {
+	Address     *string                `json:"address,omitempty"`
+	Category    *string                `json:"category,omitempty"`
+	CreatedAt   time.Time              `json:"createdAt"`
+	Description *string                `json:"description,omitempty"`
+	Id          openapi_types.UUID     `json:"id"`
+	LogoUrl     *string                `json:"logoUrl,omitempty"`
+	Name        string                 `json:"name"`
+	Phone       *string                `json:"phone,omitempty"`
+	Settings    map[string]interface{} `json:"settings"`
+	UpdatedAt   time.Time              `json:"updatedAt"`
+	Website     *string                `json:"website"`
+}
+
+// BusinessMembershipRoleRef defines model for BusinessMembershipRoleRef.
+type BusinessMembershipRoleRef struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
+// BusinessMembershipSummary defines model for BusinessMembershipSummary.
+type BusinessMembershipSummary struct {
+	Id       openapi_types.UUID        `json:"id"`
+	JoinedAt time.Time                 `json:"joined_at"`
+	Name     string                    `json:"name"`
+	Role     BusinessMembershipRoleRef `json:"role"`
+	Status   string                    `json:"status"`
+}
+
+// ChangePasswordRequest defines model for ChangePasswordRequest.
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+// ChatHistoryEntry defines model for ChatHistoryEntry.
+type ChatHistoryEntry struct {
+	Content string               `json:"content"`
+	Role    ChatHistoryEntryRole `json:"role"`
+}
+
+// ChatHistoryEntryRole defines model for ChatHistoryEntry.Role.
+type ChatHistoryEntryRole string
+
+// ChatRequest defines model for ChatRequest.
+type ChatRequest struct {
+	ActiveIntegrations       *[]string                        `json:"active_integrations,omitempty"`
+	BusinessAddress          *string                          `json:"business_address,omitempty"`
+	BusinessApprovals        *map[string]ToolFloor            `json:"business_approvals,omitempty"`
+	BusinessCategory         *string                          `json:"business_category,omitempty"`
+	BusinessDescription      *string                          `json:"business_description,omitempty"`
+	BusinessId               *openapi_types.UUID              `json:"business_id,omitempty"`
+	BusinessName             *string                          `json:"business_name,omitempty"`
+	BusinessPhone            *string                          `json:"business_phone,omitempty"`
+	BusinessVoiceTone        *[]string                        `json:"business_voice_tone,omitempty"`
+	BusinessWebsite          *string                          `json:"business_website,omitempty"`
+	History                  *[]ChatHistoryEntry              `json:"history,omitempty"`
+	Locale                   *string                          `json:"locale,omitempty"`
+	Message                  string                           `json:"message"`
+	MessageId                *string                          `json:"message_id,omitempty"`
+	Model                    *string                          `json:"model,omitempty"`
+	ProjectAllowedTools      *[]string                        `json:"project_allowed_tools,omitempty"`
+	ProjectApprovalOverrides *map[string]ToolFloor            `json:"project_approval_overrides,omitempty"`
+	ProjectId                *string                          `json:"project_id,omitempty"`
+	ProjectName              *string                          `json:"project_name,omitempty"`
+	ProjectSystemPrompt      *string                          `json:"project_system_prompt,omitempty"`
+	ProjectWhitelistMode     *ChatRequestProjectWhitelistMode `json:"project_whitelist_mode,omitempty"`
+	Tier                     *string                          `json:"tier,omitempty"`
+	UserId                   *string                          `json:"user_id,omitempty"`
+}
+
+// ChatRequestProjectWhitelistMode defines model for ChatRequest.ProjectWhitelistMode.
+type ChatRequestProjectWhitelistMode string
+
+// ChatTurnRequest defines model for ChatTurnRequest.
+type ChatTurnRequest struct {
+	Message *string `json:"message,omitempty"`
+	Model   *string `json:"model,omitempty"`
+}
+
+// ChatView defines model for ChatView.
+type ChatView struct {
+	Messages         []Message         `json:"messages"`
+	PendingApprovals []PendingApproval `json:"pendingApprovals"`
+}
+
 // CodeErrorResponse Machine-routable error envelope; emitted by writeJSONCodeError.
 // Frontend resolves `code` to a localized message via i18n catalog.
 type CodeErrorResponse struct {
 	Code string `json:"code"`
 }
 
+// ConfirmPasswordResetRequest defines model for ConfirmPasswordResetRequest.
+type ConfirmPasswordResetRequest struct {
+	NewPassword string `json:"newPassword"`
+	Token       string `json:"token"`
+}
+
+// ConnectTelegramRequest defines model for ConnectTelegramRequest.
+type ConnectTelegramRequest struct {
+	ChannelId      string  `json:"channel_id"`
+	TelegramUserId *string `json:"telegram_user_id,omitempty"`
+}
+
+// ConnectVKRequest defines model for ConnectVKRequest.
+type ConnectVKRequest struct {
+	AccessToken string  `json:"access_token"`
+	GroupId     *string `json:"group_id,omitempty"`
+}
+
+// ConnectYandexRequest defines model for ConnectYandexRequest.
+type ConnectYandexRequest struct {
+	BusinessName *string `json:"business_name,omitempty"`
+	Cookies      string  `json:"cookies"`
+	Permalink    *string `json:"permalink,omitempty"`
+}
+
+// ConsentRecord defines model for ConsentRecord.
+type ConsentRecord struct {
+	AcceptedAt  time.Time  `json:"acceptedAt"`
+	Sha256      *string    `json:"sha256,omitempty"`
+	Slug        string     `json:"slug"`
+	Version     string     `json:"version"`
+	WithdrawnAt *time.Time `json:"withdrawnAt"`
+}
+
+// ConsentRequiredResponse defines model for ConsentRequiredResponse.
+type ConsentRequiredResponse struct {
+	Code    ConsentRequiredResponseCode `json:"code"`
+	Missing []string                    `json:"missing"`
+}
+
+// ConsentRequiredResponseCode defines model for ConsentRequiredResponse.Code.
+type ConsentRequiredResponseCode string
+
+// Conversation defines model for Conversation.
+type Conversation struct {
+	BusinessId    openapi_types.UUID      `json:"businessId"`
+	CreatedAt     time.Time               `json:"createdAt"`
+	Id            string                  `json:"id"`
+	LastMessageAt *time.Time              `json:"lastMessageAt"`
+	PinnedAt      *time.Time              `json:"pinnedAt"`
+	ProjectId     *string                 `json:"projectId"`
+	Title         string                  `json:"title"`
+	TitleStatus   ConversationTitleStatus `json:"titleStatus"`
+	UpdatedAt     time.Time               `json:"updatedAt"`
+	UserId        openapi_types.UUID      `json:"userId"`
+}
+
+// ConversationTitleStatus defines model for Conversation.TitleStatus.
+type ConversationTitleStatus string
+
+// CreateBusinessRequest defines model for CreateBusinessRequest.
+type CreateBusinessRequest struct {
+	Address     *string `json:"address,omitempty"`
+	Category    *string `json:"category,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+	Phone       *string `json:"phone,omitempty"`
+	Website     *string `json:"website"`
+}
+
+// CreateConversationRequest defines model for CreateConversationRequest.
+type CreateConversationRequest struct {
+	ProjectId *string `json:"projectId"`
+	Title     string  `json:"title"`
+}
+
+// CreateInvitationRequest defines model for CreateInvitationRequest.
+type CreateInvitationRequest struct {
+	ExpiresIn *int               `json:"expires_in,omitempty"`
+	RoleId    openapi_types.UUID `json:"role_id"`
+}
+
+// CreateInvitationResponse defines model for CreateInvitationResponse.
+type CreateInvitationResponse struct {
+	CreatedAt time.Time          `json:"created_at"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	Id        openapi_types.UUID `json:"id"`
+	RoleId    openapi_types.UUID `json:"role_id"`
+	Token     string             `json:"token"`
+}
+
+// CreateRoleRequest defines model for CreateRoleRequest.
+type CreateRoleRequest struct {
+	Description *string  `json:"description,omitempty"`
+	Name        string   `json:"name"`
+	Permissions []string `json:"permissions"`
+}
+
+// DailySpendResponse defines model for DailySpendResponse.
+type DailySpendResponse struct {
+	DailySpendUsd float64 `json:"daily_spend_usd"`
+}
+
+// DeleteAccountRequest defines model for DeleteAccountRequest.
+type DeleteAccountRequest struct {
+	Password string `json:"password"`
+}
+
+// DraftReplyExample defines model for DraftReplyExample.
+type DraftReplyExample struct {
+	Rating     *int   `json:"rating,omitempty"`
+	ReplyText  string `json:"replyText"`
+	ReviewText string `json:"reviewText"`
+}
+
+// DraftReplyRequest defines model for DraftReplyRequest.
+type DraftReplyRequest struct {
+	AuthorName          *string              `json:"authorName,omitempty"`
+	BusinessCategory    *string              `json:"businessCategory,omitempty"`
+	BusinessDescription *string              `json:"businessDescription,omitempty"`
+	BusinessId          string               `json:"businessId"`
+	BusinessName        *string              `json:"businessName,omitempty"`
+	Examples            *[]DraftReplyExample `json:"examples,omitempty"`
+	Platform            string               `json:"platform"`
+	Rating              int                  `json:"rating"`
+	ReviewText          string               `json:"reviewText"`
+}
+
+// DraftReplyResponse defines model for DraftReplyResponse.
+type DraftReplyResponse struct {
+	DraftReply string  `json:"draftReply"`
+	Model      *string `json:"model,omitempty"`
+	Provider   *string `json:"provider,omitempty"`
+}
+
+// EmailBeforeVerifyRequest defines model for EmailBeforeVerifyRequest.
+type EmailBeforeVerifyRequest struct {
+	NewEmail openapi_types.Email `json:"newEmail"`
+}
+
 // ErrorResponse Plain-text error envelope; emitted by writeJSONError.
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+// GoogleLocationRef defines model for GoogleLocationRef.
+type GoogleLocationRef struct {
+	AccountName  string `json:"account_name"`
+	LocationName string `json:"location_name"`
+	Title        string `json:"title"`
+}
+
+// GoogleLocationsResponse defines model for GoogleLocationsResponse.
+type GoogleLocationsResponse struct {
+	Locations []GoogleLocationRef `json:"locations"`
+}
+
+// GoogleSelectLocationRequest defines model for GoogleSelectLocationRequest.
+type GoogleSelectLocationRequest struct {
+	AccountId  string `json:"account_id"`
+	LocationId string `json:"location_id"`
+}
+
+// HITLAlreadyResolvedError defines model for HITLAlreadyResolvedError.
+type HITLAlreadyResolvedError struct {
+	Error  HITLAlreadyResolvedErrorError  `json:"error"`
+	Reason HITLAlreadyResolvedErrorReason `json:"reason"`
+}
+
+// HITLAlreadyResolvedErrorError defines model for HITLAlreadyResolvedError.Error.
+type HITLAlreadyResolvedErrorError string
+
+// HITLAlreadyResolvedErrorReason defines model for HITLAlreadyResolvedError.Reason.
+type HITLAlreadyResolvedErrorReason string
+
+// HITLBatchResolvingError defines model for HITLBatchResolvingError.
+type HITLBatchResolvingError struct {
+	Error        HITLBatchResolvingErrorError  `json:"error"`
+	Reason       HITLBatchResolvingErrorReason `json:"reason"`
+	RetryAfterMs int                           `json:"retry_after_ms"`
+}
+
+// HITLBatchResolvingErrorError defines model for HITLBatchResolvingError.Error.
+type HITLBatchResolvingErrorError string
+
+// HITLBatchResolvingErrorReason defines model for HITLBatchResolvingError.Reason.
+type HITLBatchResolvingErrorReason string
+
+// HITLDecisionInput defines model for HITLDecisionInput.
+type HITLDecisionInput struct {
+	Action       HITLDecisionInputAction `json:"action"`
+	EditedArgs   *map[string]interface{} `json:"edited_args,omitempty"`
+	Id           string                  `json:"id"`
+	RejectReason *string                 `json:"reject_reason,omitempty"`
+}
+
+// HITLDecisionInputAction defines model for HITLDecisionInput.Action.
+type HITLDecisionInputAction string
+
+// HITLExpiredError defines model for HITLExpiredError.
+type HITLExpiredError struct {
+	Error HITLExpiredErrorError `json:"error"`
+}
+
+// HITLExpiredErrorError defines model for HITLExpiredError.Error.
+type HITLExpiredErrorError string
+
+// HITLFieldNotEditableError defines model for HITLFieldNotEditableError.
+type HITLFieldNotEditableError struct {
+	Editable []string `json:"editable"`
+	Error    string   `json:"error"`
+}
+
+// HITLNonScalarFieldError defines model for HITLNonScalarFieldError.
+type HITLNonScalarFieldError struct {
+	Error string `json:"error"`
+	Tool  string `json:"tool"`
+}
+
+// HITLRejectReasonTooLongError defines model for HITLRejectReasonTooLongError.
+type HITLRejectReasonTooLongError struct {
+	Error HITLRejectReasonTooLongErrorError `json:"error"`
+	Max   int                               `json:"max"`
+}
+
+// HITLRejectReasonTooLongErrorError defines model for HITLRejectReasonTooLongError.Error.
+type HITLRejectReasonTooLongErrorError string
+
+// HITLResolveRequest defines model for HITLResolveRequest.
+type HITLResolveRequest struct {
+	Decisions []HITLDecisionInput `json:"decisions"`
+}
+
+// HITLResolveResponse defines model for HITLResolveResponse.
+type HITLResolveResponse struct {
+	BatchId    string             `json:"batch_id"`
+	Decisions  []HITLResolvedCall `json:"decisions"`
+	ResolvedAt time.Time          `json:"resolved_at"`
+}
+
+// HITLResolvedCall defines model for HITLResolvedCall.
+type HITLResolvedCall struct {
+	Action HITLResolvedCallAction `json:"action"`
+	Id     string                 `json:"id"`
+	Reason *string                `json:"reason,omitempty"`
+}
+
+// HITLResolvedCallAction defines model for HITLResolvedCall.Action.
+type HITLResolvedCallAction string
+
+// HITLShapeMismatchError defines model for HITLShapeMismatchError.
+type HITLShapeMismatchError struct {
+	Error   HITLShapeMismatchErrorError `json:"error"`
+	Missing []string                    `json:"missing"`
+}
+
+// HITLShapeMismatchErrorError defines model for HITLShapeMismatchError.Error.
+type HITLShapeMismatchErrorError string
+
+// Integration defines model for Integration.
+type Integration struct {
+	BusinessId     openapi_types.UUID     `json:"businessId"`
+	CreatedAt      time.Time              `json:"createdAt"`
+	ExternalId     string                 `json:"externalId"`
+	Id             openapi_types.UUID     `json:"id"`
+	Metadata       map[string]interface{} `json:"metadata"`
+	Platform       string                 `json:"platform"`
+	Status         string                 `json:"status"`
+	TokenExpiresAt *time.Time             `json:"tokenExpiresAt"`
+	UpdatedAt      time.Time              `json:"updatedAt"`
+}
+
+// InternalTokenResponse defines model for InternalTokenResponse.
+type InternalTokenResponse struct {
+	AccessToken        string                  `json:"access_token"`
+	ExpiresAt          *time.Time              `json:"expires_at"`
+	ExternalId         string                  `json:"external_id"`
+	IntegrationId      openapi_types.UUID      `json:"integration_id"`
+	Metadata           *map[string]interface{} `json:"metadata,omitempty"`
+	Platform           string                  `json:"platform"`
+	UserToken          *string                 `json:"user_token,omitempty"`
+	UserTokenExpiresAt *time.Time              `json:"user_token_expires_at"`
+}
+
+// InvitationPreview defines model for InvitationPreview.
+type InvitationPreview struct {
+	BusinessId   openapi_types.UUID `json:"business_id"`
+	BusinessName string             `json:"business_name"`
+	ExpiresAt    time.Time          `json:"expires_at"`
+	RoleId       openapi_types.UUID `json:"role_id"`
+	RoleName     string             `json:"role_name"`
+}
+
+// ListConsentsResponse defines model for ListConsentsResponse.
+type ListConsentsResponse struct {
+	Consents []ConsentRecord `json:"consents"`
 }
 
 // LoginRequest defines model for LoginRequest.
@@ -75,10 +846,282 @@ type MeResponse struct {
 // MeResponsePreferredLocale defines model for MeResponse.PreferredLocale.
 type MeResponsePreferredLocale string
 
+// Member defines model for Member.
+type Member struct {
+	InvitedAt *time.Time          `json:"invited_at"`
+	InvitedBy *openapi_types.UUID `json:"invited_by"`
+	JoinedAt  time.Time           `json:"joined_at"`
+	Role      struct {
+		Id          openapi_types.UUID `json:"id"`
+		Name        string             `json:"name"`
+		Permissions []string           `json:"permissions"`
+	} `json:"role"`
+	Status string `json:"status"`
+	User   struct {
+		Email openapi_types.Email `json:"email"`
+		Id    openapi_types.UUID  `json:"id"`
+	} `json:"user"`
+}
+
+// Message defines model for Message.
+type Message struct {
+	Attachments    *[]MessageAttachment    `json:"attachments,omitempty"`
+	Content        string                  `json:"content"`
+	ConversationId string                  `json:"conversationId"`
+	CreatedAt      time.Time               `json:"createdAt"`
+	Id             string                  `json:"id"`
+	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
+	Role           MessageRole             `json:"role"`
+	Status         *string                 `json:"status,omitempty"`
+	ToolCalls      *[]MessageToolCall      `json:"toolCalls,omitempty"`
+	ToolResults    *[]MessageToolResult    `json:"toolResults,omitempty"`
+}
+
+// MessageRole defines model for Message.Role.
+type MessageRole string
+
+// MessageAttachment defines model for MessageAttachment.
+type MessageAttachment struct {
+	MimeType string `json:"mimeType"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Url      string `json:"url"`
+}
+
+// MessageToolCall defines model for MessageToolCall.
+type MessageToolCall struct {
+	ApprovalId *string                `json:"approvalId,omitempty"`
+	Arguments  map[string]interface{} `json:"arguments"`
+	Id         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Status     *string                `json:"status,omitempty"`
+}
+
+// MessageToolResult defines model for MessageToolResult.
+type MessageToolResult struct {
+	Code       *string                `json:"code,omitempty"`
+	Content    map[string]interface{} `json:"content"`
+	IsError    bool                   `json:"isError"`
+	ToolCallId string                 `json:"toolCallId"`
+}
+
+// MoveConversationRequest defines model for MoveConversationRequest.
+type MoveConversationRequest struct {
+	ProjectId *string `json:"projectId"`
+}
+
+// MyPermissionsResponse defines model for MyPermissionsResponse.
+type MyPermissionsResponse struct {
+	Permissions []string `json:"permissions"`
+}
+
+// PendingApproval defines model for PendingApproval.
+type PendingApproval struct {
+	BatchId   string                `json:"batchId"`
+	Calls     []PendingApprovalCall `json:"calls"`
+	CreatedAt time.Time             `json:"createdAt"`
+	ExpiresAt time.Time             `json:"expiresAt"`
+	MessageId string                `json:"messageId"`
+	Status    string                `json:"status"`
+}
+
+// PendingApprovalCall defines model for PendingApprovalCall.
+type PendingApprovalCall struct {
+	Args           map[string]interface{} `json:"args"`
+	CallId         string                 `json:"callId"`
+	EditableFields []string               `json:"editableFields"`
+	ToolName       string                 `json:"toolName"`
+}
+
+// PendingDeletionResponse defines model for PendingDeletionResponse.
+type PendingDeletionResponse struct {
+	Code         PendingDeletionResponseCode `json:"code"`
+	DeletionDate string                      `json:"deletionDate"`
+	RestoreUrl   string                      `json:"restoreUrl"`
+}
+
+// PendingDeletionResponseCode defines model for PendingDeletionResponse.Code.
+type PendingDeletionResponseCode string
+
+// PendingInvitation defines model for PendingInvitation.
+type PendingInvitation struct {
+	CreatedAt time.Time `json:"created_at"`
+	CreatedBy struct {
+		Email openapi_types.Email `json:"email"`
+		Id    openapi_types.UUID  `json:"id"`
+	} `json:"created_by"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	Id        openapi_types.UUID `json:"id"`
+	RoleId    openapi_types.UUID `json:"role_id"`
+	RoleName  string             `json:"role_name"`
+}
+
+// Permission defines model for Permission.
+type Permission struct {
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+}
+
+// PermissionGroup defines model for PermissionGroup.
+type PermissionGroup struct {
+	Description *string      `json:"description,omitempty"`
+	Name        string       `json:"name"`
+	Permissions []Permission `json:"permissions"`
+}
+
+// PermissionRegistryResponse defines model for PermissionRegistryResponse.
+type PermissionRegistryResponse struct {
+	Groups []PermissionGroup `json:"groups"`
+}
+
+// Platform defines model for Platform.
+type Platform struct {
+	Id     string         `json:"id"`
+	Status PlatformStatus `json:"status"`
+}
+
+// PlatformStatus defines model for PlatformStatus.
+type PlatformStatus string
+
+// Post defines model for Post.
+type Post struct {
+	BusinessId      openapi_types.UUID             `json:"businessId"`
+	Content         string                         `json:"content"`
+	CreatedAt       time.Time                      `json:"createdAt"`
+	Id              string                         `json:"id"`
+	MediaUrls       *[]string                      `json:"mediaUrls,omitempty"`
+	PlatformResults *map[string]PostPlatformResult `json:"platformResults,omitempty"`
+	PublishedAt     *time.Time                     `json:"publishedAt"`
+	ScheduledAt     *time.Time                     `json:"scheduledAt"`
+	Status          string                         `json:"status"`
+}
+
+// PostListResponse defines model for PostListResponse.
+type PostListResponse struct {
+	Posts []Post `json:"posts"`
+	Total int    `json:"total"`
+}
+
+// PostPlatformResult defines model for PostPlatformResult.
+type PostPlatformResult struct {
+	Error  *string `json:"error,omitempty"`
+	PostId string  `json:"postId"`
+	Status string  `json:"status"`
+	Url    string  `json:"url"`
+}
+
+// Project defines model for Project.
+type Project struct {
+	AllowedTools      []string                             `json:"allowedTools"`
+	ApprovalOverrides *map[string]ProjectApprovalOverrides `json:"approvalOverrides,omitempty"`
+	BusinessId        openapi_types.UUID                   `json:"businessId"`
+	CreatedAt         time.Time                            `json:"createdAt"`
+	Description       *string                              `json:"description,omitempty"`
+	Id                openapi_types.UUID                   `json:"id"`
+	Name              string                               `json:"name"`
+	QuickActions      []string                             `json:"quickActions"`
+	SystemPrompt      *string                              `json:"systemPrompt,omitempty"`
+	UpdatedAt         time.Time                            `json:"updatedAt"`
+	WhitelistMode     ProjectWhitelistMode                 `json:"whitelistMode"`
+}
+
+// ProjectApprovalOverrides defines model for Project.ApprovalOverrides.
+type ProjectApprovalOverrides string
+
+// ProjectWhitelistMode defines model for Project.WhitelistMode.
+type ProjectWhitelistMode string
+
+// ProjectConversationCountResponse defines model for ProjectConversationCountResponse.
+type ProjectConversationCountResponse struct {
+	Count int `json:"count"`
+}
+
+// ProjectDeleteResponse defines model for ProjectDeleteResponse.
+type ProjectDeleteResponse struct {
+	DeletedConversations int `json:"deletedConversations"`
+	DeletedMessages      int `json:"deletedMessages"`
+}
+
+// ProjectRequest defines model for ProjectRequest.
+type ProjectRequest struct {
+	AllowedTools      *[]string                                   `json:"allowedTools,omitempty"`
+	ApprovalOverrides *map[string]ProjectRequestApprovalOverrides `json:"approvalOverrides,omitempty"`
+	Description       *string                                     `json:"description,omitempty"`
+	Name              string                                      `json:"name"`
+	QuickActions      *[]string                                   `json:"quickActions,omitempty"`
+	SystemPrompt      *string                                     `json:"systemPrompt,omitempty"`
+	WhitelistMode     *ProjectRequestWhitelistMode                `json:"whitelistMode,omitempty"`
+}
+
+// ProjectRequestApprovalOverrides defines model for ProjectRequest.ApprovalOverrides.
+type ProjectRequestApprovalOverrides string
+
+// ProjectRequestWhitelistMode defines model for ProjectRequest.WhitelistMode.
+type ProjectRequestWhitelistMode string
+
+// ReconsentPolicy defines model for ReconsentPolicy.
+type ReconsentPolicy struct {
+	Sha256  *string `json:"sha256,omitempty"`
+	Slug    string  `json:"slug"`
+	Version string  `json:"version"`
+}
+
+// ReconsentRequest defines model for ReconsentRequest.
+type ReconsentRequest struct {
+	Policies []ReconsentPolicy `json:"policies"`
+}
+
+// RefreshStartedResponse defines model for RefreshStartedResponse.
+type RefreshStartedResponse struct {
+	Status RefreshStartedResponseStatus `json:"status"`
+}
+
+// RefreshStartedResponseStatus defines model for RefreshStartedResponse.Status.
+type RefreshStartedResponseStatus string
+
+// RefreshTelegramRequest defines model for RefreshTelegramRequest.
+type RefreshTelegramRequest struct {
+	ChannelId string `json:"channel_id"`
+}
+
+// RefreshTelegramResponse defines model for RefreshTelegramResponse.
+type RefreshTelegramResponse struct {
+	ChannelTitle      string                                   `json:"channel_title"`
+	LinkedChatId      int64                                    `json:"linked_chat_id"`
+	LinkedGroupStatus RefreshTelegramResponseLinkedGroupStatus `json:"linked_group_status"`
+}
+
+// RefreshTelegramResponseLinkedGroupStatus defines model for RefreshTelegramResponse.LinkedGroupStatus.
+type RefreshTelegramResponseLinkedGroupStatus string
+
 // RefreshTokenResponse defines model for RefreshTokenResponse.
 type RefreshTokenResponse struct {
 	AccessToken string `json:"accessToken"`
 	User        User   `json:"user"`
+}
+
+// RegisterConsents defines model for RegisterConsents.
+type RegisterConsents struct {
+	Pdn     string `json:"pdn"`
+	Privacy string `json:"privacy"`
+	Tos     string `json:"tos"`
+}
+
+// RegisterRequest defines model for RegisterRequest.
+type RegisterRequest struct {
+	Consents RegisterConsents    `json:"consents"`
+	Email    openapi_types.Email `json:"email"`
+	Password string              `json:"password"`
+}
+
+// ReplyToReviewRequest defines model for ReplyToReviewRequest.
+type ReplyToReviewRequest struct {
+	ReplyText string `json:"replyText"`
+}
+
+// RequestPasswordResetRequest defines model for RequestPasswordResetRequest.
+type RequestPasswordResetRequest struct {
+	Email openapi_types.Email `json:"email"`
 }
 
 // RequiresReconsentInfo defines model for RequiresReconsentInfo.
@@ -88,6 +1131,395 @@ type RequiresReconsentInfo struct {
 		CurrentVersion  string  `json:"currentVersion"`
 		Slug            string  `json:"slug"`
 	} `json:"policies"`
+}
+
+// ResumeRequest defines model for ResumeRequest.
+type ResumeRequest struct {
+	ActiveIntegrations       *[]string                   `json:"active_integrations,omitempty"`
+	AllowedTools             *[]string                   `json:"allowed_tools,omitempty"`
+	BusinessApprovals        *map[string]ToolFloor       `json:"business_approvals,omitempty"`
+	Model                    *string                     `json:"model,omitempty"`
+	ProjectApprovalOverrides *map[string]ToolFloor       `json:"project_approval_overrides,omitempty"`
+	Tier                     *string                     `json:"tier,omitempty"`
+	WhitelistMode            *ResumeRequestWhitelistMode `json:"whitelist_mode,omitempty"`
+}
+
+// ResumeRequestWhitelistMode defines model for ResumeRequest.WhitelistMode.
+type ResumeRequestWhitelistMode string
+
+// Review defines model for Review.
+type Review struct {
+	AuthorName       string                  `json:"authorName"`
+	BusinessId       openapi_types.UUID      `json:"businessId"`
+	CreatedAt        time.Time               `json:"createdAt"`
+	DraftError       *string                 `json:"draftError,omitempty"`
+	DraftGeneratedAt *time.Time              `json:"draftGeneratedAt,omitempty"`
+	DraftReply       *string                 `json:"draftReply,omitempty"`
+	DraftStatus      *ReviewDraftStatus      `json:"draftStatus,omitempty"`
+	ExternalId       string                  `json:"externalId"`
+	Id               string                  `json:"id"`
+	Platform         string                  `json:"platform"`
+	PlatformMeta     *map[string]interface{} `json:"platformMeta,omitempty"`
+	Rating           int                     `json:"rating"`
+	ReplyStatus      ReviewReplyStatus       `json:"replyStatus"`
+	ReplyText        *string                 `json:"replyText,omitempty"`
+	Text             string                  `json:"text"`
+}
+
+// ReviewDraftStatus defines model for Review.DraftStatus.
+type ReviewDraftStatus string
+
+// ReviewReplyStatus defines model for Review.ReplyStatus.
+type ReviewReplyStatus string
+
+// ReviewListResponse defines model for ReviewListResponse.
+type ReviewListResponse struct {
+	Reviews []Review `json:"reviews"`
+	Total   int      `json:"total"`
+}
+
+// Role defines model for Role.
+type Role struct {
+	BusinessId  *openapi_types.UUID `json:"business_id"`
+	Description string              `json:"description"`
+	Id          openapi_types.UUID  `json:"id"`
+	IsSystem    bool                `json:"is_system"`
+	MemberCount *int                `json:"member_count,omitempty"`
+	Name        string              `json:"name"`
+	Permissions []string            `json:"permissions"`
+}
+
+// SSEConcurrencyError defines model for SSEConcurrencyError.
+type SSEConcurrencyError struct {
+	Code        SSEConcurrencyErrorCode `json:"code"`
+	RetryAfterS int                     `json:"retry_after_s"`
+}
+
+// SSEConcurrencyErrorCode defines model for SSEConcurrencyError.Code.
+type SSEConcurrencyErrorCode string
+
+// SSEEvent Discriminated union over the per-type SSE event schemas. `type`
+// is the discriminator. Wire envelope is `data: <json>\n\n`.
+type SSEEvent struct {
+	union json.RawMessage
+}
+
+// SSEEventApprovalRequired defines model for SSEEventApprovalRequired.
+type SSEEventApprovalRequired struct {
+	BatchId string                       `json:"batch_id"`
+	Calls   []ApprovalCall               `json:"calls"`
+	Type    SSEEventApprovalRequiredType `json:"type"`
+}
+
+// SSEEventApprovalRequiredType defines model for SSEEventApprovalRequired.Type.
+type SSEEventApprovalRequiredType string
+
+// SSEEventDone defines model for SSEEventDone.
+type SSEEventDone struct {
+	Content *string          `json:"content,omitempty"`
+	Type    SSEEventDoneType `json:"type"`
+}
+
+// SSEEventDoneType defines model for SSEEventDone.Type.
+type SSEEventDoneType string
+
+// SSEEventError defines model for SSEEventError.
+type SSEEventError struct {
+	Code    *string           `json:"code,omitempty"`
+	Content *string           `json:"content,omitempty"`
+	Type    SSEEventErrorType `json:"type"`
+}
+
+// SSEEventErrorType defines model for SSEEventError.Type.
+type SSEEventErrorType string
+
+// SSEEventText defines model for SSEEventText.
+type SSEEventText struct {
+	Content *string          `json:"content,omitempty"`
+	Type    SSEEventTextType `json:"type"`
+}
+
+// SSEEventTextType defines model for SSEEventText.Type.
+type SSEEventTextType string
+
+// SSEEventToolCall defines model for SSEEventToolCall.
+type SSEEventToolCall struct {
+	ToolArgs           *map[string]interface{} `json:"tool_args,omitempty"`
+	ToolCallId         *string                 `json:"tool_call_id,omitempty"`
+	ToolDisplayName    *string                 `json:"tool_display_name,omitempty"`
+	ToolDisplayNameKey *string                 `json:"tool_display_name_key,omitempty"`
+	ToolName           *string                 `json:"tool_name,omitempty"`
+	Type               SSEEventToolCallType    `json:"type"`
+}
+
+// SSEEventToolCallType defines model for SSEEventToolCall.Type.
+type SSEEventToolCallType string
+
+// SSEEventToolRejected defines model for SSEEventToolRejected.
+type SSEEventToolRejected struct {
+	Error              *string                  `json:"error,omitempty"`
+	ToolCallId         *string                  `json:"tool_call_id,omitempty"`
+	ToolDisplayName    *string                  `json:"tool_display_name,omitempty"`
+	ToolDisplayNameKey *string                  `json:"tool_display_name_key,omitempty"`
+	ToolName           *string                  `json:"tool_name,omitempty"`
+	Type               SSEEventToolRejectedType `json:"type"`
+}
+
+// SSEEventToolRejectedType defines model for SSEEventToolRejected.Type.
+type SSEEventToolRejectedType string
+
+// SSEEventToolResult defines model for SSEEventToolResult.
+type SSEEventToolResult struct {
+	Error *string `json:"error,omitempty"`
+
+	// Result Tool reply payload (any JSON).
+	Result             *interface{}           `json:"result"`
+	ToolCallId         *string                `json:"tool_call_id,omitempty"`
+	ToolDisplayName    *string                `json:"tool_display_name,omitempty"`
+	ToolDisplayNameKey *string                `json:"tool_display_name_key,omitempty"`
+	ToolName           *string                `json:"tool_name,omitempty"`
+	Type               SSEEventToolResultType `json:"type"`
+}
+
+// SSEEventToolResultType defines model for SSEEventToolResult.Type.
+type SSEEventToolResultType string
+
+// SearchResult defines model for SearchResult.
+type SearchResult struct {
+	ConversationId string     `json:"conversationId"`
+	LastMessageAt  *time.Time `json:"lastMessageAt"`
+	Marks          *[][]int   `json:"marks,omitempty"`
+	MatchCount     int        `json:"matchCount"`
+	ProjectId      *string    `json:"projectId"`
+	Score          float64    `json:"score"`
+	Snippet        *string    `json:"snippet,omitempty"`
+	Title          *string    `json:"title,omitempty"`
+	TopMessageId   *string    `json:"topMessageId,omitempty"`
+}
+
+// SoleOwnerBusinessEntry defines model for SoleOwnerBusinessEntry.
+type SoleOwnerBusinessEntry struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
+// SoleOwnerResponse defines model for SoleOwnerResponse.
+type SoleOwnerResponse struct {
+	Businesses []SoleOwnerBusinessEntry `json:"businesses"`
+	Code       SoleOwnerResponseCode    `json:"code"`
+}
+
+// SoleOwnerResponseCode defines model for SoleOwnerResponse.Code.
+type SoleOwnerResponseCode string
+
+// StatusOKResponse `{status:"ok"}` envelope used by ChangePassword. Distinct from
+// `StatusOkResponse` (camelCase variant) used by review reply and
+// review-refresh handlers.
+type StatusOKResponse struct {
+	Status string `json:"status"`
+}
+
+// StatusOkResponse `{status:"ok"}` envelope used by reviewReply and refreshReviews.
+// Enum-pinned variant of `StatusOKResponse`.
+type StatusOkResponse struct {
+	Status StatusOkResponseStatus `json:"status"`
+}
+
+// StatusOkResponseStatus defines model for StatusOkResponse.Status.
+type StatusOkResponseStatus string
+
+// TelegramLoginRequest defines model for TelegramLoginRequest.
+type TelegramLoginRequest struct {
+	AuthDate             TelegramLoginRequest_AuthDate `json:"auth_date"`
+	FirstName            *string                       `json:"first_name,omitempty"`
+	Hash                 string                        `json:"hash"`
+	Id                   *int64                        `json:"id,omitempty"`
+	LastName             *string                       `json:"last_name,omitempty"`
+	PhotoUrl             *string                       `json:"photo_url,omitempty"`
+	Username             *string                       `json:"username,omitempty"`
+	AdditionalProperties map[string]interface{}        `json:"-"`
+}
+
+// TelegramLoginRequestAuthDate0 defines model for .
+type TelegramLoginRequestAuthDate0 = string
+
+// TelegramLoginRequestAuthDate1 defines model for .
+type TelegramLoginRequestAuthDate1 = int
+
+// TelegramLoginRequest_AuthDate defines model for TelegramLoginRequest.AuthDate.
+type TelegramLoginRequest_AuthDate struct {
+	union json.RawMessage
+}
+
+// TelegramLoginVerifiedResponse defines model for TelegramLoginVerifiedResponse.
+type TelegramLoginVerifiedResponse struct {
+	User     map[string]interface{} `json:"user"`
+	Verified bool                   `json:"verified"`
+}
+
+// TelemetryEvent defines model for TelemetryEvent.
+type TelemetryEvent struct {
+	Action        string             `json:"action"`
+	CorrelationId *string            `json:"correlationId,omitempty"`
+	EventType     string             `json:"eventType"`
+	Metadata      *map[string]string `json:"metadata,omitempty"`
+	Page          string             `json:"page"`
+	Timestamp     string             `json:"timestamp"`
+}
+
+// TitlerConflictError defines model for TitlerConflictError.
+type TitlerConflictError struct {
+	Error   TitlerConflictErrorError `json:"error"`
+	Message string                   `json:"message"`
+}
+
+// TitlerConflictErrorError defines model for TitlerConflictError.Error.
+type TitlerConflictErrorError string
+
+// TitlerDisabledError defines model for TitlerDisabledError.
+type TitlerDisabledError struct {
+	Error   TitlerDisabledErrorError `json:"error"`
+	Message string                   `json:"message"`
+}
+
+// TitlerDisabledErrorError defines model for TitlerDisabledError.Error.
+type TitlerDisabledErrorError string
+
+// ToolApprovalsResponse defines model for ToolApprovalsResponse.
+type ToolApprovalsResponse struct {
+	ToolApprovals map[string]ToolFloor `json:"toolApprovals"`
+}
+
+// ToolEntry Locale-resolved tool registry projection returned by the api
+// service's hitlGetTools (cached 5 minutes). The `floor` here is the
+// wire-effective HITL floor — `auto` or `manual`. Distinct from
+// `ToolRegistryEntry` which is the orchestrator's internal-only
+// projection that may carry `forbidden`.
+type ToolEntry struct {
+	Description     string         `json:"description"`
+	DisplayName     string         `json:"displayName"`
+	DisplayNameKey  *string        `json:"displayNameKey,omitempty"`
+	EditableFields  []string       `json:"editableFields"`
+	Floor           ToolEntryFloor `json:"floor"`
+	Name            string         `json:"name"`
+	Platform        string         `json:"platform"`
+	UserDescription string         `json:"userDescription"`
+}
+
+// ToolEntryFloor defines model for ToolEntry.Floor.
+type ToolEntryFloor string
+
+// ToolFloor Per-tool HITL floor (strictness: auto < manual < forbidden).
+// Business-level approvals only persist `auto` / `manual`;
+// `forbidden` is reserved for tool-registry defaults.
+type ToolFloor string
+
+// ToolNamesResponse defines model for ToolNamesResponse.
+type ToolNamesResponse struct {
+	Names []string `json:"names"`
+}
+
+// ToolRegistryEntry Orchestrator's internal tool registry projection. The `floor` may
+// carry `forbidden` (in addition to `auto` / `manual`); the api side
+// uses `ToolEntry` (auto/manual only).
+type ToolRegistryEntry struct {
+	Description    string   `json:"description"`
+	DisplayName    string   `json:"displayName"`
+	DisplayNameKey *string  `json:"displayNameKey,omitempty"`
+	EditableFields []string `json:"editableFields"`
+
+	// Floor Per-tool HITL floor (strictness: auto < manual < forbidden).
+	// Business-level approvals only persist `auto` / `manual`;
+	// `forbidden` is reserved for tool-registry defaults.
+	Floor           ToolFloor `json:"floor"`
+	Name            string    `json:"name"`
+	Platform        string    `json:"platform"`
+	UserDescription string    `json:"userDescription"`
+}
+
+// UpdateBusinessRequest defines model for UpdateBusinessRequest.
+type UpdateBusinessRequest struct {
+	Address     *string `json:"address,omitempty"`
+	Category    *string `json:"category,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+	Phone       *string `json:"phone,omitempty"`
+	Website     *string `json:"website"`
+}
+
+// UpdateConversationRequest defines model for UpdateConversationRequest.
+type UpdateConversationRequest struct {
+	Title string `json:"title"`
+}
+
+// UpdateMemberRoleRequest defines model for UpdateMemberRoleRequest.
+type UpdateMemberRoleRequest struct {
+	RoleId openapi_types.UUID `json:"role_id"`
+}
+
+// UpdateMemberRoleResponse defines model for UpdateMemberRoleResponse.
+type UpdateMemberRoleResponse struct {
+	BusinessId    openapi_types.UUID  `json:"business_id"`
+	RoleChangedAt *time.Time          `json:"role_changed_at"`
+	RoleChangedBy *openapi_types.UUID `json:"role_changed_by"`
+	RoleId        openapi_types.UUID  `json:"role_id"`
+	Status        string              `json:"status"`
+	UserId        openapi_types.UUID  `json:"user_id"`
+}
+
+// UpdatePreferredLocaleRequest defines model for UpdatePreferredLocaleRequest.
+type UpdatePreferredLocaleRequest struct {
+	Locale UpdatePreferredLocaleRequestLocale `json:"locale"`
+}
+
+// UpdatePreferredLocaleRequestLocale defines model for UpdatePreferredLocaleRequest.Locale.
+type UpdatePreferredLocaleRequestLocale string
+
+// UpdateRoleRequest defines model for UpdateRoleRequest.
+type UpdateRoleRequest = CreateRoleRequest
+
+// UpdateScheduleRequest defines model for UpdateScheduleRequest.
+type UpdateScheduleRequest struct {
+	// Schedule Free-form per-day schedule blob.
+	Schedule *interface{} `json:"schedule,omitempty"`
+
+	// SpecialDates Optional special-date overrides.
+	SpecialDates *interface{} `json:"specialDates,omitempty"`
+}
+
+// UpdateToolApprovalsRequest defines model for UpdateToolApprovalsRequest.
+type UpdateToolApprovalsRequest struct {
+	ToolApprovals map[string]ToolFloor `json:"toolApprovals"`
+}
+
+// UpdateVoiceToneRequest defines model for UpdateVoiceToneRequest.
+type UpdateVoiceToneRequest struct {
+	Tones *[]string `json:"tones,omitempty"`
+}
+
+// UploadLogoRequest defines model for UploadLogoRequest.
+type UploadLogoRequest struct {
+	Logo openapi_types.File `json:"logo"`
+}
+
+// UsageLog defines model for UsageLog.
+type UsageLog struct {
+	BusinessId          openapi_types.UUID  `json:"business_id"`
+	CacheCreationTokens *int                `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens     *int                `json:"cache_read_tokens,omitempty"`
+	CommissionUsd       float64             `json:"commission_usd"`
+	ConversationId      *string             `json:"conversation_id,omitempty"`
+	CreatedAt           *time.Time          `json:"created_at,omitempty"`
+	Id                  *openapi_types.UUID `json:"id,omitempty"`
+	InputTokens         int                 `json:"input_tokens"`
+	Model               string              `json:"model"`
+	OutputTokens        int                 `json:"output_tokens"`
+	Provider            string              `json:"provider"`
+	ProviderCostUsd     float64             `json:"provider_cost_usd"`
+	RequestId           *string             `json:"request_id,omitempty"`
+	UserCostUsd         float64             `json:"user_cost_usd"`
+	UserId              openapi_types.UUID  `json:"user_id"`
+	UserTier            string              `json:"user_tier"`
 }
 
 // User defines model for User.
@@ -102,43 +1534,1107 @@ type User struct {
 // UserPreferredLocale defines model for User.PreferredLocale.
 type UserPreferredLocale string
 
+// VKCommunity defines model for VKCommunity.
+type VKCommunity struct {
+	Id           int64   `json:"id"`
+	MembersCount *int    `json:"members_count,omitempty"`
+	Name         string  `json:"name"`
+	Photo50      *string `json:"photo_50,omitempty"`
+	ScreenName   string  `json:"screen_name"`
+}
+
+// VerifyConfirmRequest defines model for VerifyConfirmRequest.
+type VerifyConfirmRequest struct {
+	Token string `json:"token"`
+}
+
+// VersionMismatchResponse defines model for VersionMismatchResponse.
+type VersionMismatchResponse struct {
+	Code           VersionMismatchResponseCode `json:"code"`
+	CurrentVersion string                      `json:"currentVersion"`
+}
+
+// VersionMismatchResponseCode defines model for VersionMismatchResponse.Code.
+type VersionMismatchResponseCode string
+
+// YandexCompaniesResponse defines model for YandexCompaniesResponse.
+type YandexCompaniesResponse struct {
+	Companies []YandexCompanyEntry `json:"companies"`
+}
+
+// YandexCompanyEntry defines model for YandexCompanyEntry.
+type YandexCompanyEntry struct {
+	Name      string `json:"name"`
+	Permalink string `json:"permalink"`
+}
+
+// YandexCookiesRequest defines model for YandexCookiesRequest.
+type YandexCookiesRequest struct {
+	Cookies string `json:"cookies"`
+}
+
+// YandexProbeResponse defines model for YandexProbeResponse.
+type YandexProbeResponse struct {
+	Error        *string   `json:"error,omitempty"`
+	Format       *string   `json:"format,omitempty"`
+	Ok           bool      `json:"ok"`
+	SessionValid *bool     `json:"session_valid"`
+	Username     *string   `json:"username,omitempty"`
+	Warnings     *[]string `json:"warnings,omitempty"`
+}
+
+// BusinessIDPath defines model for BusinessIDPath.
+type BusinessIDPath = openapi_types.UUID
+
+// IntegrationIDPath defines model for IntegrationIDPath.
+type IntegrationIDPath = openapi_types.UUID
+
+// InvitationTokenPath defines model for InvitationTokenPath.
+type InvitationTokenPath = string
+
+// RoleIDPath defines model for RoleIDPath.
+type RoleIDPath = openapi_types.UUID
+
+// UserIDPath defines model for UserIDPath.
+type UserIDPath = openapi_types.UUID
+
+// BusinessNotFound Plain-text error envelope; emitted by writeJSONError.
+type BusinessNotFound = ErrorResponse
+
+// InternalError Machine-routable error envelope; emitted by writeJSONCodeError.
+// Frontend resolves `code` to a localized message via i18n catalog.
+type InternalError = CodeErrorResponse
+
+// Unauthorized Plain-text error envelope; emitted by writeJSONError.
+type Unauthorized = ErrorResponse
+
+// InternalGetDailySpendParams defines parameters for InternalGetDailySpend.
+type InternalGetDailySpendParams struct {
+	BusinessId openapi_types.UUID `form:"business_id" json:"business_id"`
+	Date       string             `form:"date" json:"date"`
+}
+
+// ListAuditLogsParams defines parameters for ListAuditLogs.
+type ListAuditLogsParams struct {
+	Category *ListAuditLogsParamsCategory `form:"category,omitempty" json:"category,omitempty"`
+	Action   *AuditAction                 `form:"action,omitempty" json:"action,omitempty"`
+	Actor    *openapi_types.UUID          `form:"actor,omitempty" json:"actor,omitempty"`
+	From     *time.Time                   `form:"from,omitempty" json:"from,omitempty"`
+	To       *time.Time                   `form:"to,omitempty" json:"to,omitempty"`
+	Cursor   *string                      `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit    *int                         `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAuditLogsParamsCategory defines parameters for ListAuditLogs.
+type ListAuditLogsParamsCategory string
+
+// ChatTurnParams defines parameters for ChatTurn.
+type ChatTurnParams struct {
+	BatchId                *string `form:"batch_id,omitempty" json:"batch_id,omitempty"`
+	XOnevoiceResumeBatchId *string `json:"X-Onevoice-Resume-Batch-Id,omitempty"`
+}
+
+// HitlResumeParams defines parameters for HitlResume.
+type HitlResumeParams struct {
+	BatchId string `form:"batch_id" json:"batch_id"`
+}
+
+// ListConversationsParams defines parameters for ListConversations.
+type ListConversationsParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetVKCommunityAuthURLParams defines parameters for GetVKCommunityAuthURL.
+type GetVKCommunityAuthURLParams struct {
+	// GroupId Numeric VK group_id, screen_name, or full VK URL. Resolved
+	// server-side to a numeric id before the OAuth URL is built.
+	GroupId string `form:"group_id" json:"group_id"`
+}
+
+// ListPostsParams defines parameters for ListPosts.
+type ListPostsParams struct {
+	Platform *string `form:"platform,omitempty" json:"platform,omitempty"`
+	Status   *string `form:"status,omitempty" json:"status,omitempty"`
+	Limit    *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset   *int    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListReviewsParams defines parameters for ListReviews.
+type ListReviewsParams struct {
+	Platform    *string                       `form:"platform,omitempty" json:"platform,omitempty"`
+	ReplyStatus *ListReviewsParamsReplyStatus `form:"reply_status,omitempty" json:"reply_status,omitempty"`
+	Limit       *int                          `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset      *int                          `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListReviewsParamsReplyStatus defines parameters for ListReviews.
+type ListReviewsParamsReplyStatus string
+
+// CreateRoleParams defines parameters for CreateRole.
+type CreateRoleParams struct {
+	// CloneFrom Hint for the frontend pre-fill flow; ignored server-side.
+	CloneFrom *openapi_types.UUID `form:"clone_from,omitempty" json:"clone_from,omitempty"`
+}
+
+// DeleteRoleParams defines parameters for DeleteRole.
+type DeleteRoleParams struct {
+	// ReassignTo Destination role for members holding the doomed role.
+	ReassignTo *openapi_types.UUID `form:"reassign_to,omitempty" json:"reassign_to,omitempty"`
+}
+
+// SearchParams defines parameters for Search.
+type SearchParams struct {
+	Q         string  `form:"q" json:"q"`
+	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAgentTasksParams defines parameters for ListAgentTasks.
+type ListAgentTasksParams struct {
+	Platform *string `form:"platform,omitempty" json:"platform,omitempty"`
+	Status   *string `form:"status,omitempty" json:"status,omitempty"`
+	Type     *string `form:"type,omitempty" json:"type,omitempty"`
+	Limit    *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset   *int    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// OrchestratorChatParams defines parameters for OrchestratorChat.
+type OrchestratorChatParams struct {
+	XCorrelationID *string `json:"X-Correlation-ID,omitempty"`
+}
+
+// OrchestratorResumeParams defines parameters for OrchestratorResume.
+type OrchestratorResumeParams struct {
+	BatchId        string  `form:"batch_id" json:"batch_id"`
+	XCorrelationID *string `json:"X-Correlation-ID,omitempty"`
+}
+
+// GoogleBusinessOAuthCallbackParams defines parameters for GoogleBusinessOAuthCallback.
+type GoogleBusinessOAuthCallbackParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
+}
+
+// VkOAuthCallbackParams defines parameters for VkOAuthCallback.
+type VkOAuthCallbackParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
+}
+
+// VkCommunityOAuthCallbackParams defines parameters for VkCommunityOAuthCallback.
+type VkCommunityOAuthCallbackParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
+}
+
+// YandexBusinessOAuthCallbackParams defines parameters for YandexBusinessOAuthCallback.
+type YandexBusinessOAuthCallbackParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
+}
+
+// IngestTelemetryJSONBody defines parameters for IngestTelemetry.
+type IngestTelemetryJSONBody = []TelemetryEvent
+
+// InternalGetTokenParams defines parameters for InternalGetToken.
+type InternalGetTokenParams struct {
+	BusinessId openapi_types.UUID `form:"business_id" json:"business_id"`
+	Platform   string             `form:"platform" json:"platform"`
+	ExternalId *string            `form:"external_id,omitempty" json:"external_id,omitempty"`
+}
+
+// ReconsentJSONRequestBody defines body for Reconsent for application/json ContentType.
+type ReconsentJSONRequestBody = ReconsentRequest
+
+// ChangeEmailBeforeVerifyJSONRequestBody defines body for ChangeEmailBeforeVerify for application/json ContentType.
+type ChangeEmailBeforeVerifyJSONRequestBody = EmailBeforeVerifyRequest
+
+// UpdatePreferredLocaleJSONRequestBody defines body for UpdatePreferredLocale for application/json ContentType.
+type UpdatePreferredLocaleJSONRequestBody = UpdatePreferredLocaleRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
+
+// ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
+type ChangePasswordJSONRequestBody = ChangePasswordRequest
+
+// ConfirmPasswordResetJSONRequestBody defines body for ConfirmPasswordReset for application/json ContentType.
+type ConfirmPasswordResetJSONRequestBody = ConfirmPasswordResetRequest
+
+// RequestPasswordResetJSONRequestBody defines body for RequestPasswordReset for application/json ContentType.
+type RequestPasswordResetJSONRequestBody = RequestPasswordResetRequest
+
+// RegisterJSONRequestBody defines body for Register for application/json ContentType.
+type RegisterJSONRequestBody = RegisterRequest
+
+// ConfirmEmailVerificationJSONRequestBody defines body for ConfirmEmailVerification for application/json ContentType.
+type ConfirmEmailVerificationJSONRequestBody = VerifyConfirmRequest
+
+// InternalLogUsageJSONRequestBody defines body for InternalLogUsage for application/json ContentType.
+type InternalLogUsageJSONRequestBody = UsageLog
+
+// CreateBusinessJSONRequestBody defines body for CreateBusiness for application/json ContentType.
+type CreateBusinessJSONRequestBody = CreateBusinessRequest
+
+// UpdateBusinessJSONRequestBody defines body for UpdateBusiness for application/json ContentType.
+type UpdateBusinessJSONRequestBody = UpdateBusinessRequest
+
+// ChatTurnJSONRequestBody defines body for ChatTurn for application/json ContentType.
+type ChatTurnJSONRequestBody = ChatTurnRequest
+
+// CreateConversationJSONRequestBody defines body for CreateConversation for application/json ContentType.
+type CreateConversationJSONRequestBody = CreateConversationRequest
+
+// UpdateConversationJSONRequestBody defines body for UpdateConversation for application/json ContentType.
+type UpdateConversationJSONRequestBody = UpdateConversationRequest
+
+// MoveConversationJSONRequestBody defines body for MoveConversation for application/json ContentType.
+type MoveConversationJSONRequestBody = MoveConversationRequest
+
+// HitlResolveBatchJSONRequestBody defines body for HitlResolveBatch for application/json ContentType.
+type HitlResolveBatchJSONRequestBody = HITLResolveRequest
+
+// SelectGoogleLocationJSONRequestBody defines body for SelectGoogleLocation for application/json ContentType.
+type SelectGoogleLocationJSONRequestBody = GoogleSelectLocationRequest
+
+// ConnectTelegramJSONRequestBody defines body for ConnectTelegram for application/json ContentType.
+type ConnectTelegramJSONRequestBody = ConnectTelegramRequest
+
+// RefreshTelegramLinkedGroupJSONRequestBody defines body for RefreshTelegramLinkedGroup for application/json ContentType.
+type RefreshTelegramLinkedGroupJSONRequestBody = RefreshTelegramRequest
+
+// VerifyTelegramLoginJSONRequestBody defines body for VerifyTelegramLogin for application/json ContentType.
+type VerifyTelegramLoginJSONRequestBody = TelegramLoginRequest
+
+// ConnectVKJSONRequestBody defines body for ConnectVK for application/json ContentType.
+type ConnectVKJSONRequestBody = ConnectVKRequest
+
+// ListYandexCompaniesJSONRequestBody defines body for ListYandexCompanies for application/json ContentType.
+type ListYandexCompaniesJSONRequestBody = YandexCookiesRequest
+
+// ConnectYandexBusinessJSONRequestBody defines body for ConnectYandexBusiness for application/json ContentType.
+type ConnectYandexBusinessJSONRequestBody = ConnectYandexRequest
+
+// ProbeYandexBusinessJSONRequestBody defines body for ProbeYandexBusiness for application/json ContentType.
+type ProbeYandexBusinessJSONRequestBody = YandexCookiesRequest
+
+// CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
+type CreateInvitationJSONRequestBody = CreateInvitationRequest
+
+// UploadBusinessLogoMultipartRequestBody defines body for UploadBusinessLogo for multipart/form-data ContentType.
+type UploadBusinessLogoMultipartRequestBody = UploadLogoRequest
+
+// UpdateMemberRoleJSONRequestBody defines body for UpdateMemberRole for application/json ContentType.
+type UpdateMemberRoleJSONRequestBody = UpdateMemberRoleRequest
+
+// CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
+type CreateProjectJSONRequestBody = ProjectRequest
+
+// UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
+type UpdateProjectJSONRequestBody = ProjectRequest
+
+// ReplyToReviewJSONRequestBody defines body for ReplyToReview for application/json ContentType.
+type ReplyToReviewJSONRequestBody = ReplyToReviewRequest
+
+// CreateRoleJSONRequestBody defines body for CreateRole for application/json ContentType.
+type CreateRoleJSONRequestBody = CreateRoleRequest
+
+// UpdateRoleJSONRequestBody defines body for UpdateRole for application/json ContentType.
+type UpdateRoleJSONRequestBody = UpdateRoleRequest
+
+// UpdateBusinessScheduleJSONRequestBody defines body for UpdateBusinessSchedule for application/json ContentType.
+type UpdateBusinessScheduleJSONRequestBody = UpdateScheduleRequest
+
+// UpdateBusinessToolApprovalsJSONRequestBody defines body for UpdateBusinessToolApprovals for application/json ContentType.
+type UpdateBusinessToolApprovalsJSONRequestBody = UpdateToolApprovalsRequest
+
+// UpdateBusinessVoiceToneJSONRequestBody defines body for UpdateBusinessVoiceTone for application/json ContentType.
+type UpdateBusinessVoiceToneJSONRequestBody = UpdateVoiceToneRequest
+
+// OrchestratorChatJSONRequestBody defines body for OrchestratorChat for application/json ContentType.
+type OrchestratorChatJSONRequestBody = ChatRequest
+
+// OrchestratorResumeJSONRequestBody defines body for OrchestratorResume for application/json ContentType.
+type OrchestratorResumeJSONRequestBody = ResumeRequest
+
+// OrchestratorDraftReplyJSONRequestBody defines body for OrchestratorDraftReply for application/json ContentType.
+type OrchestratorDraftReplyJSONRequestBody = DraftReplyRequest
+
+// IngestTelemetryJSONRequestBody defines body for IngestTelemetry for application/json ContentType.
+type IngestTelemetryJSONRequestBody = IngestTelemetryJSONBody
+
+// DeleteAccountJSONRequestBody defines body for DeleteAccount for application/json ContentType.
+type DeleteAccountJSONRequestBody = DeleteAccountRequest
+
+// Getter for additional properties for TelegramLoginRequest. Returns the specified
+// element and whether it was found
+func (a TelegramLoginRequest) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for TelegramLoginRequest
+func (a *TelegramLoginRequest) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for TelegramLoginRequest to handle AdditionalProperties
+func (a *TelegramLoginRequest) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["auth_date"]; found {
+		err = json.Unmarshal(raw, &a.AuthDate)
+		if err != nil {
+			return fmt.Errorf("error reading 'auth_date': %w", err)
+		}
+		delete(object, "auth_date")
+	}
+
+	if raw, found := object["first_name"]; found {
+		err = json.Unmarshal(raw, &a.FirstName)
+		if err != nil {
+			return fmt.Errorf("error reading 'first_name': %w", err)
+		}
+		delete(object, "first_name")
+	}
+
+	if raw, found := object["hash"]; found {
+		err = json.Unmarshal(raw, &a.Hash)
+		if err != nil {
+			return fmt.Errorf("error reading 'hash': %w", err)
+		}
+		delete(object, "hash")
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["last_name"]; found {
+		err = json.Unmarshal(raw, &a.LastName)
+		if err != nil {
+			return fmt.Errorf("error reading 'last_name': %w", err)
+		}
+		delete(object, "last_name")
+	}
+
+	if raw, found := object["photo_url"]; found {
+		err = json.Unmarshal(raw, &a.PhotoUrl)
+		if err != nil {
+			return fmt.Errorf("error reading 'photo_url': %w", err)
+		}
+		delete(object, "photo_url")
+	}
+
+	if raw, found := object["username"]; found {
+		err = json.Unmarshal(raw, &a.Username)
+		if err != nil {
+			return fmt.Errorf("error reading 'username': %w", err)
+		}
+		delete(object, "username")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for TelegramLoginRequest to handle AdditionalProperties
+func (a TelegramLoginRequest) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["auth_date"], err = json.Marshal(a.AuthDate)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'auth_date': %w", err)
+	}
+
+	if a.FirstName != nil {
+		object["first_name"], err = json.Marshal(a.FirstName)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'first_name': %w", err)
+		}
+	}
+
+	object["hash"], err = json.Marshal(a.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'hash': %w", err)
+	}
+
+	if a.Id != nil {
+		object["id"], err = json.Marshal(a.Id)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'id': %w", err)
+		}
+	}
+
+	if a.LastName != nil {
+		object["last_name"], err = json.Marshal(a.LastName)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'last_name': %w", err)
+		}
+	}
+
+	if a.PhotoUrl != nil {
+		object["photo_url"], err = json.Marshal(a.PhotoUrl)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'photo_url': %w", err)
+		}
+	}
+
+	if a.Username != nil {
+		object["username"], err = json.Marshal(a.Username)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'username': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// AsSSEEventText returns the union data inside the SSEEvent as a SSEEventText
+func (t SSEEvent) AsSSEEventText() (SSEEventText, error) {
+	var body SSEEventText
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSSEEventText overwrites any union data inside the SSEEvent as the provided SSEEventText
+func (t *SSEEvent) FromSSEEventText(v SSEEventText) error {
+	v.Type = "text"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSSEEventText performs a merge with any union data inside the SSEEvent, using the provided SSEEventText
+func (t *SSEEvent) MergeSSEEventText(v SSEEventText) error {
+	v.Type = "text"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSSEEventToolCall returns the union data inside the SSEEvent as a SSEEventToolCall
+func (t SSEEvent) AsSSEEventToolCall() (SSEEventToolCall, error) {
+	var body SSEEventToolCall
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSSEEventToolCall overwrites any union data inside the SSEEvent as the provided SSEEventToolCall
+func (t *SSEEvent) FromSSEEventToolCall(v SSEEventToolCall) error {
+	v.Type = "tool_call"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSSEEventToolCall performs a merge with any union data inside the SSEEvent, using the provided SSEEventToolCall
+func (t *SSEEvent) MergeSSEEventToolCall(v SSEEventToolCall) error {
+	v.Type = "tool_call"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSSEEventToolResult returns the union data inside the SSEEvent as a SSEEventToolResult
+func (t SSEEvent) AsSSEEventToolResult() (SSEEventToolResult, error) {
+	var body SSEEventToolResult
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSSEEventToolResult overwrites any union data inside the SSEEvent as the provided SSEEventToolResult
+func (t *SSEEvent) FromSSEEventToolResult(v SSEEventToolResult) error {
+	v.Type = "tool_result"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSSEEventToolResult performs a merge with any union data inside the SSEEvent, using the provided SSEEventToolResult
+func (t *SSEEvent) MergeSSEEventToolResult(v SSEEventToolResult) error {
+	v.Type = "tool_result"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSSEEventToolRejected returns the union data inside the SSEEvent as a SSEEventToolRejected
+func (t SSEEvent) AsSSEEventToolRejected() (SSEEventToolRejected, error) {
+	var body SSEEventToolRejected
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSSEEventToolRejected overwrites any union data inside the SSEEvent as the provided SSEEventToolRejected
+func (t *SSEEvent) FromSSEEventToolRejected(v SSEEventToolRejected) error {
+	v.Type = "tool_rejected"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSSEEventToolRejected performs a merge with any union data inside the SSEEvent, using the provided SSEEventToolRejected
+func (t *SSEEvent) MergeSSEEventToolRejected(v SSEEventToolRejected) error {
+	v.Type = "tool_rejected"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSSEEventApprovalRequired returns the union data inside the SSEEvent as a SSEEventApprovalRequired
+func (t SSEEvent) AsSSEEventApprovalRequired() (SSEEventApprovalRequired, error) {
+	var body SSEEventApprovalRequired
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSSEEventApprovalRequired overwrites any union data inside the SSEEvent as the provided SSEEventApprovalRequired
+func (t *SSEEvent) FromSSEEventApprovalRequired(v SSEEventApprovalRequired) error {
+	v.Type = "tool_approval_required"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSSEEventApprovalRequired performs a merge with any union data inside the SSEEvent, using the provided SSEEventApprovalRequired
+func (t *SSEEvent) MergeSSEEventApprovalRequired(v SSEEventApprovalRequired) error {
+	v.Type = "tool_approval_required"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSSEEventDone returns the union data inside the SSEEvent as a SSEEventDone
+func (t SSEEvent) AsSSEEventDone() (SSEEventDone, error) {
+	var body SSEEventDone
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSSEEventDone overwrites any union data inside the SSEEvent as the provided SSEEventDone
+func (t *SSEEvent) FromSSEEventDone(v SSEEventDone) error {
+	v.Type = "done"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSSEEventDone performs a merge with any union data inside the SSEEvent, using the provided SSEEventDone
+func (t *SSEEvent) MergeSSEEventDone(v SSEEventDone) error {
+	v.Type = "done"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSSEEventError returns the union data inside the SSEEvent as a SSEEventError
+func (t SSEEvent) AsSSEEventError() (SSEEventError, error) {
+	var body SSEEventError
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSSEEventError overwrites any union data inside the SSEEvent as the provided SSEEventError
+func (t *SSEEvent) FromSSEEventError(v SSEEventError) error {
+	v.Type = "error"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSSEEventError performs a merge with any union data inside the SSEEvent, using the provided SSEEventError
+func (t *SSEEvent) MergeSSEEventError(v SSEEventError) error {
+	v.Type = "error"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SSEEvent) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t SSEEvent) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "done":
+		return t.AsSSEEventDone()
+	case "error":
+		return t.AsSSEEventError()
+	case "text":
+		return t.AsSSEEventText()
+	case "tool_approval_required":
+		return t.AsSSEEventApprovalRequired()
+	case "tool_call":
+		return t.AsSSEEventToolCall()
+	case "tool_rejected":
+		return t.AsSSEEventToolRejected()
+	case "tool_result":
+		return t.AsSSEEventToolResult()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t SSEEvent) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SSEEvent) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTelegramLoginRequestAuthDate0 returns the union data inside the TelegramLoginRequest_AuthDate as a TelegramLoginRequestAuthDate0
+func (t TelegramLoginRequest_AuthDate) AsTelegramLoginRequestAuthDate0() (TelegramLoginRequestAuthDate0, error) {
+	var body TelegramLoginRequestAuthDate0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTelegramLoginRequestAuthDate0 overwrites any union data inside the TelegramLoginRequest_AuthDate as the provided TelegramLoginRequestAuthDate0
+func (t *TelegramLoginRequest_AuthDate) FromTelegramLoginRequestAuthDate0(v TelegramLoginRequestAuthDate0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTelegramLoginRequestAuthDate0 performs a merge with any union data inside the TelegramLoginRequest_AuthDate, using the provided TelegramLoginRequestAuthDate0
+func (t *TelegramLoginRequest_AuthDate) MergeTelegramLoginRequestAuthDate0(v TelegramLoginRequestAuthDate0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTelegramLoginRequestAuthDate1 returns the union data inside the TelegramLoginRequest_AuthDate as a TelegramLoginRequestAuthDate1
+func (t TelegramLoginRequest_AuthDate) AsTelegramLoginRequestAuthDate1() (TelegramLoginRequestAuthDate1, error) {
+	var body TelegramLoginRequestAuthDate1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTelegramLoginRequestAuthDate1 overwrites any union data inside the TelegramLoginRequest_AuthDate as the provided TelegramLoginRequestAuthDate1
+func (t *TelegramLoginRequest_AuthDate) FromTelegramLoginRequestAuthDate1(v TelegramLoginRequestAuthDate1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTelegramLoginRequestAuthDate1 performs a merge with any union data inside the TelegramLoginRequest_AuthDate, using the provided TelegramLoginRequestAuthDate1
+func (t *TelegramLoginRequest_AuthDate) MergeTelegramLoginRequestAuthDate1(v TelegramLoginRequestAuthDate1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TelegramLoginRequest_AuthDate) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TelegramLoginRequest_AuthDate) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
